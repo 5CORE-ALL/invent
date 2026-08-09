@@ -19,6 +19,9 @@ class Ebay1CouponService
 
     private const DV_COUPON_PCT = 'PEF_COUPON_PCT';
 
+    /** PEF coupons: start now, end after 1 day (eBay markdown max is 45 days). */
+    private const DURATION_DAYS = 1;
+
     public function __construct(
         private readonly EbayApiService $ebay
     ) {}
@@ -44,7 +47,9 @@ class Ebay1CouponService
             return ['success' => false, 'message' => 'eBay1 item_id not found for SKU', 'promotion_id' => null];
         }
 
-        $dv = EbayDataView::query()->firstOrNew(['sku' => $sku]);
+        $dv = EbayDataView::query()->where('sku', $sku)->first()
+            ?: EbayDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+            ?: new EbayDataView(['sku' => $sku]);
         $val = is_array($dv->value) ? $dv->value : [];
         $promoId = isset($val[self::DV_PROMO_ID]) ? trim((string) $val[self::DV_PROMO_ID]) : '';
 
@@ -68,8 +73,17 @@ class Ebay1CouponService
             ];
         }
 
+        $imageUrl = $this->resolvePromotionImageUrl($itemId);
+        if ($imageUrl === '') {
+            return [
+                'success' => false,
+                'message' => 'eBay listing image required for coupon (promotionImageUrl) — GetItem returned none',
+                'promotion_id' => $promoId ?: null,
+            ];
+        }
+
         if ($promoId !== '') {
-            $updated = $this->updateMarkdown($token, $promoId, $itemId, $sku, $pctInt);
+            $updated = $this->updateMarkdown($token, $promoId, $itemId, $sku, $pctInt, $imageUrl);
             if ($updated['success']) {
                 $this->resumeIfNeeded($token, $promoId);
                 $this->persistDv($dv, $val, $promoId, $pctInt);
@@ -89,7 +103,7 @@ class Ebay1CouponService
             ]);
         }
 
-        $created = $this->createMarkdown($token, $itemId, $sku, $pctInt);
+        $created = $this->createMarkdown($token, $itemId, $sku, $pctInt, $imageUrl);
         if (! $created['success']) {
             return $created;
         }
@@ -161,9 +175,9 @@ class Ebay1CouponService
     /**
      * @return array{success:bool,message:string,promotion_id:?string}
      */
-    private function createMarkdown(string $token, string $itemId, string $sku, int $pctInt): array
+    private function createMarkdown(string $token, string $itemId, string $sku, int $pctInt, string $imageUrl): array
     {
-        $payload = $this->markdownPayload($itemId, $sku, $pctInt);
+        $payload = $this->markdownPayload($itemId, $sku, $pctInt, $imageUrl);
         $resp = Http::withoutVerifying()
             ->withToken($token)
             ->acceptJson()
@@ -207,9 +221,9 @@ class Ebay1CouponService
     /**
      * @return array{success:bool,message:string}
      */
-    private function updateMarkdown(string $token, string $promoId, string $itemId, string $sku, int $pctInt): array
+    private function updateMarkdown(string $token, string $promoId, string $itemId, string $sku, int $pctInt, string $imageUrl): array
     {
-        $payload = $this->markdownPayload($itemId, $sku, $pctInt);
+        $payload = $this->markdownPayload($itemId, $sku, $pctInt, $imageUrl);
         $resp = Http::withoutVerifying()
             ->withToken($token)
             ->acceptJson()
@@ -245,19 +259,21 @@ class Ebay1CouponService
     /**
      * @return array<string, mixed>
      */
-    private function markdownPayload(string $itemId, string $sku, int $pctInt): array
+    private function markdownPayload(string $itemId, string $sku, int $pctInt, string $imageUrl): array
     {
+        // Start immediately; end in 1 day
         $start = now('UTC')->subMinute()->format('Y-m-d\TH:i:s.000\Z');
-        $end = now('UTC')->addYear()->format('Y-m-d\TH:i:s.000\Z');
+        $end = now('UTC')->addDays(self::DURATION_DAYS)->format('Y-m-d\TH:i:s.000\Z');
         $safeSku = preg_replace('/[^A-Za-z0-9\-_ ]/', '', $sku) ?: 'SKU';
 
         return [
-            'name' => 'PEF CPN '.$safeSku,
+            'name' => 'PEF CPN '.$safeSku.' '.$pctInt.'% '.now('UTC')->format('mdHi'),
             'description' => 'Pricing Errors Fix coupon % for '.$safeSku,
             'marketplaceId' => self::MARKETPLACE,
             'startDate' => $start,
             'endDate' => $end,
             'promotionStatus' => 'SCHEDULED',
+            'promotionImageUrl' => $imageUrl,
             'selectedInventoryDiscounts' => [
                 [
                     'discountBenefit' => [
@@ -272,6 +288,33 @@ class Ebay1CouponService
         ];
     }
 
+    private function resolvePromotionImageUrl(string $itemId): string
+    {
+        try {
+            $details = $this->ebay->getItem($itemId);
+            $item = is_array($details) ? ($details['Item'] ?? null) : null;
+            if (! is_array($item)) {
+                return '';
+            }
+            $pic = $item['PictureDetails']['GalleryURL']
+                ?? $item['PictureDetails']['PictureURL']
+                ?? null;
+            if (is_array($pic)) {
+                $pic = $pic[0] ?? reset($pic);
+            }
+            $url = is_string($pic) ? trim($pic) : '';
+
+            return $url !== '' && filter_var($url, FILTER_VALIDATE_URL) ? $url : '';
+        } catch (\Throwable $e) {
+            Log::warning('eBay1 coupon image resolve failed', [
+                'item_id' => $itemId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return '';
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $val
      */
@@ -279,8 +322,13 @@ class Ebay1CouponService
     {
         if ($promoId !== '') {
             $val[self::DV_PROMO_ID] = $promoId;
+        } else {
+            unset($val[self::DV_PROMO_ID]);
         }
         $val[self::DV_COUPON_PCT] = (float) $pct;
+        if (! $dv->exists) {
+            $dv->sku = $dv->sku ?: ($val['sku'] ?? null);
+        }
         $dv->value = $val;
         $dv->save();
     }

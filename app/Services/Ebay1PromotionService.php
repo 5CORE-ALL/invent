@@ -19,6 +19,9 @@ class Ebay1PromotionService
 
     private const DV_PRMT_PCT = 'PEF_PRMT_PCT';
 
+    /** PEF promotions: start ASAP, end after 1 day. */
+    private const DURATION_DAYS = 1;
+
     public function __construct(
         private readonly EbayApiService $ebay
     ) {}
@@ -44,7 +47,9 @@ class Ebay1PromotionService
             return ['success' => false, 'message' => 'eBay1 item_id not found for SKU', 'promotion_id' => null];
         }
 
-        $dv = EbayDataView::query()->firstOrNew(['sku' => $sku]);
+        $dv = EbayDataView::query()->where('sku', $sku)->first()
+            ?: EbayDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+            ?: new EbayDataView(['sku' => $sku]);
         $val = is_array($dv->value) ? $dv->value : [];
         $promoId = isset($val[self::DV_PROMO_ID]) ? trim((string) $val[self::DV_PROMO_ID]) : '';
 
@@ -67,8 +72,17 @@ class Ebay1PromotionService
             ];
         }
 
+        $imageUrl = $this->resolvePromotionImageUrl($itemId);
+        if ($imageUrl === '') {
+            return [
+                'success' => false,
+                'message' => 'eBay listing image required for promotion (promotionImageUrl) — GetItem returned none',
+                'promotion_id' => $promoId ?: null,
+            ];
+        }
+
         if ($promoId !== '') {
-            $updated = $this->updatePromotion($token, $promoId, $itemId, $sku, $pctInt);
+            $updated = $this->updatePromotion($token, $promoId, $itemId, $sku, $pctInt, $imageUrl);
             if ($updated['success']) {
                 $this->resumeIfNeeded($token, $promoId);
                 $this->persistDv($dv, $val, $promoId, $pctInt);
@@ -87,7 +101,7 @@ class Ebay1PromotionService
             ]);
         }
 
-        $created = $this->createPromotion($token, $itemId, $sku, $pctInt);
+        $created = $this->createPromotion($token, $itemId, $sku, $pctInt, $imageUrl);
         if (! $created['success']) {
             return $created;
         }
@@ -159,9 +173,9 @@ class Ebay1PromotionService
     /**
      * @return array{success:bool,message:string,promotion_id:?string}
      */
-    private function createPromotion(string $token, string $itemId, string $sku, int $pctInt): array
+    private function createPromotion(string $token, string $itemId, string $sku, int $pctInt, string $imageUrl): array
     {
-        $payload = $this->promotionPayload($itemId, $sku, $pctInt);
+        $payload = $this->promotionPayload($itemId, $sku, $pctInt, $imageUrl);
         $resp = Http::withoutVerifying()
             ->withToken($token)
             ->acceptJson()
@@ -205,9 +219,9 @@ class Ebay1PromotionService
     /**
      * @return array{success:bool,message:string}
      */
-    private function updatePromotion(string $token, string $promoId, string $itemId, string $sku, int $pctInt): array
+    private function updatePromotion(string $token, string $promoId, string $itemId, string $sku, int $pctInt, string $imageUrl): array
     {
-        $payload = $this->promotionPayload($itemId, $sku, $pctInt);
+        $payload = $this->promotionPayload($itemId, $sku, $pctInt, $imageUrl);
         $resp = Http::withoutVerifying()
             ->withToken($token)
             ->acceptJson()
@@ -236,29 +250,31 @@ class Ebay1PromotionService
                 ->timeout(30)
                 ->post($url);
         } catch (\Throwable $e) {
-            // ignore — may already be RUNNING
+            // ignore — may already be RUNNING / SCHEDULED
         }
     }
 
     /**
-     * ORDER_DISCOUNT: buy 1+ get percentageOffItem.
+     * ORDER_DISCOUNT: buy 1+ get percentageOffOrder (supported combo on EBAY_US).
      *
      * @return array<string, mixed>
      */
-    private function promotionPayload(string $itemId, string $sku, int $pctInt): array
+    private function promotionPayload(string $itemId, string $sku, int $pctInt, string $imageUrl): array
     {
-        $start = now('UTC')->subMinute()->format('Y-m-d\TH:i:s.000\Z');
-        $end = now('UTC')->addYear()->format('Y-m-d\TH:i:s.000\Z');
+        // eBay requires startDate later than "now" — use +30s so it starts almost immediately
+        $start = now('UTC')->addSeconds(30)->format('Y-m-d\TH:i:s.000\Z');
+        $end = now('UTC')->addDays(self::DURATION_DAYS)->format('Y-m-d\TH:i:s.000\Z');
         $safeSku = preg_replace('/[^A-Za-z0-9\-_ ]/', '', $sku) ?: 'SKU';
 
         return [
-            'name' => 'PEF PRMT '.$safeSku,
+            'name' => 'PEF PRMT '.$safeSku.' '.$pctInt.'% '.now('UTC')->format('mdHi'),
             'description' => 'Pricing Errors Fix promotion % for '.$safeSku,
             'marketplaceId' => self::MARKETPLACE,
             'startDate' => $start,
             'endDate' => $end,
             'promotionStatus' => 'SCHEDULED',
             'promotionType' => 'ORDER_DISCOUNT',
+            'promotionImageUrl' => $imageUrl,
             'inventoryCriterion' => [
                 'inventoryCriterionType' => 'INVENTORY_BY_VALUE',
                 'listingIds' => [$itemId],
@@ -269,12 +285,40 @@ class Ebay1PromotionService
                         'minQuantity' => 1,
                     ],
                     'discountBenefit' => [
-                        'percentageOffItem' => (string) $pctInt,
+                        // percentageOffItem + minQuantity is rejected (38241); percentageOffOrder works
+                        'percentageOffOrder' => (string) $pctInt,
                     ],
                     'ruleOrder' => 1,
                 ],
             ],
         ];
+    }
+
+    private function resolvePromotionImageUrl(string $itemId): string
+    {
+        try {
+            $details = $this->ebay->getItem($itemId);
+            $item = is_array($details) ? ($details['Item'] ?? null) : null;
+            if (! is_array($item)) {
+                return '';
+            }
+            $pic = $item['PictureDetails']['GalleryURL']
+                ?? $item['PictureDetails']['PictureURL']
+                ?? null;
+            if (is_array($pic)) {
+                $pic = $pic[0] ?? reset($pic);
+            }
+            $url = is_string($pic) ? trim($pic) : '';
+
+            return $url !== '' && filter_var($url, FILTER_VALIDATE_URL) ? $url : '';
+        } catch (\Throwable $e) {
+            Log::warning('eBay1 promotion image resolve failed', [
+                'item_id' => $itemId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return '';
+        }
     }
 
     /**
@@ -284,6 +328,8 @@ class Ebay1PromotionService
     {
         if ($promoId !== '') {
             $val[self::DV_PROMO_ID] = $promoId;
+        } else {
+            unset($val[self::DV_PROMO_ID]);
         }
         $val[self::DV_PRMT_PCT] = (float) $pct;
         $dv->value = $val;
