@@ -600,7 +600,7 @@
 
                     <select id="marketplace-filter" class="form-select form-select-sm" style="width: 150px;">
                         <option value="all">All Marketplaces</option>
-                        <option value="amazon">Amazon</option>
+                        <option value="amazon">Amz</option>
                         <option value="ebay">eBay</option>
                         <option value="ebay2">eBay2</option>
                         <option value="ebay3">eBay3</option>

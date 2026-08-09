@@ -931,7 +931,7 @@
                                 <div class="col-md-3">
                                     <label class="form-label"><strong>Marketplace</strong></label>
                                     <select class="form-select" id="compMarketplace">
-                                        <option value="Amazon" selected>Amazon</option>
+                                        <option value="Amz" selected>Amz</option>
                                         <option value="US">US</option>
                                     </select>
                                 </div>

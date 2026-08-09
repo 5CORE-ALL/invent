@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon - CORRECTLY UTILIZED PT', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Amz - CORRECTLY UTILIZED PT', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -130,8 +130,8 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon - Budget',
-        'sub_title' => 'Amazon - Budget',
+        'page_title' => 'Amz - Budget',
+        'sub_title' => 'Amz - Budget',
     ])
     <div class="row">
         <div class="col-12">

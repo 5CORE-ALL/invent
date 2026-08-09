@@ -177,7 +177,7 @@
 
         <div class="alert alert-info mt-3 mb-0">
             <i class="ri-information-line me-1"></i>
-            Amazon (orders), AliExpress, Alibaba, Reverb, Newegg, Shein, TopDawg, Temu, Temu 2, eBay 2, eBay 3, and Faire are available here. More marketplaces can be added the same way.
+            Amz (orders), AliExpress, Alibaba, Reverb, Newegg, Shein, TopDawg, Temu, Temu 2, eBay 2, eBay 3, and Faire are available here. More marketplaces can be added the same way.
         </div>
     </div>
 </div>

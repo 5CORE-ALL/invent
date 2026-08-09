@@ -18,6 +18,13 @@ class BadgeCalculatorRegistry
             OnSeaTransitBadgeCalculator::class,
             ForecastAnalysisBadgeCalculator::class,
             AllMarketplaceMasterBadgeCalculator::class,
+            VideoMasterBadgeCalculator::class,
+            VideosMasterBadgeCalculator::class,
+            VideoAdsMasterBadgeCalculator::class,
+            CustomerCareBadgeCalculator::class,
+            AccountHealthBadgeCalculator::class,
+            InventoryVerifyBadgeCalculator::class,
+            PurchaseContractBadgeCalculator::class,
         ];
     }
 

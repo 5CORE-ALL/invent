@@ -52,7 +52,7 @@
                                             <td>505.94</td>
                                         </tr>
                                         <tr>
-                                            <th>AMZN <span class="co-name">Amazon.com Inc.</span></th>
+                                            <th>AMZN <span class="co-name">Amz.com Inc.</span></th>
                                             <td>191.55</td>
                                             <td>12:23PM</td>
                                             <td>3.16 (1.68%)</td>
@@ -130,7 +130,7 @@
                                             <td>505.94</td>
                                         </tr>
                                         <tr>
-                                            <th>AMZN <span class="co-name">Amazon.com Inc.</span></th>
+                                            <th>AMZN <span class="co-name">Amz.com Inc.</span></th>
                                             <td>191.55</td>
                                             <td>12:23PM</td>
                                             <td>3.16 (1.68%)</td>
@@ -208,7 +208,7 @@
                                             <td>505.94</td>
                                         </tr>
                                         <tr>
-                                            <th>AMZN <span class="co-name">Amazon.com Inc.</span></th>
+                                            <th>AMZN <span class="co-name">Amz.com Inc.</span></th>
                                             <td>191.55</td>
                                             <td>12:23PM</td>
                                             <td>3.16 (1.68%)</td>
@@ -286,7 +286,7 @@
                                             <td>505.94</td>
                                         </tr>
                                         <tr>
-                                            <th>AMZN <span class="co-name">Amazon.com Inc.</span></th>
+                                            <th>AMZN <span class="co-name">Amz.com Inc.</span></th>
                                             <td>191.55</td>
                                             <td>12:23PM</td>
                                             <td>3.16 (1.68%)</td>
@@ -364,7 +364,7 @@
                                             <td>505.94</td>
                                         </tr>
                                         <tr>
-                                            <th>AMZN <span class="co-name">Amazon.com Inc.</span></th>
+                                            <th>AMZN <span class="co-name">Amz.com Inc.</span></th>
                                             <td>191.55</td>
                                             <td>12:23PM</td>
                                             <td>3.16 (1.68%)</td>

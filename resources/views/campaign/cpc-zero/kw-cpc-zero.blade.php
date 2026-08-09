@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon - KW CPC Zero', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Amz - KW CPC Zero', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -130,8 +130,8 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon - KW CPC Zero',
-        'sub_title' => 'Amazon - KW CPC Zero',
+        'page_title' => 'Amz - KW CPC Zero',
+        'sub_title' => 'Amz - KW CPC Zero',
     ])
     <div class="row">
         <div class="col-12">

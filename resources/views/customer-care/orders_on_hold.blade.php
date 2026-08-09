@@ -2646,7 +2646,7 @@
             document.getElementById('importCsvSampleLink').addEventListener('click', (e) => {
                 e.preventDefault();
                 const headers = ['sku','qty','order_qty','parent','marketplace_1','marketplace_2','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark'];
-                const sample  = ['SAMPLE-SKU-001','5','2','PARENT-001','Amazon','eBay','Damaged','Cancelled','','TRK123','Quality Issue','','Fixed',''];
+                const sample  = ['SAMPLE-SKU-001','5','2','PARENT-001','Amz','eBay','Damaged','Cancelled','','TRK123','Quality Issue','','Fixed',''];
                 const csv = [headers.join(','), sample.join(',')].join('\r\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);

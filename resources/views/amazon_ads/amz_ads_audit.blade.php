@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Ads Audit', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amz Ads Audit', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -71,7 +71,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['sub_title' => 'Amazon Ads', 'page_title' => 'Amazon Ads Audit'])
+    @include('layouts.shared/page-title', ['sub_title' => 'Amz Ads', 'page_title' => 'Amz Ads Audit'])
 
     <div class="row amz-ads-audit">
         <div class="col-12">
@@ -182,7 +182,7 @@
                     {
                         title: 'Link', field: 'link', headerSort: false, hozAlign: 'center', headerHozAlign: 'center', width: 70,
                         formatter: function (c) {
-                            return '<a href="' + esc(c.getValue()) + '" target="_blank" rel="noopener" title="Open in Amazon Ads"><i class="fa fa-external-link-alt"></i></a>';
+                            return '<a href="' + esc(c.getValue()) + '" target="_blank" rel="noopener" title="Open in Amz Ads"><i class="fa fa-external-link-alt"></i></a>';
                         }
                     },
                     {

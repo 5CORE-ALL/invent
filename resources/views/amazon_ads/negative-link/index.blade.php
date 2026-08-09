@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Negative Campaign Link'])
+@extends('layouts.vertical', ['title' => 'Amz Negative Campaign Link'])
 
 @section('css')
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -38,7 +38,7 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
-                    <h4 class="mb-0"><i class="mdi mdi-link-variant"></i> Amazon Negative Campaign Link</h4>
+                    <h4 class="mb-0"><i class="mdi mdi-link-variant"></i> Amz Negative Campaign Link</h4>
                     <span class="small">Link SP campaigns into groups so negative keywords can be pushed across the whole group.</span>
                 </div>
                 <div class="card-body">
@@ -126,7 +126,7 @@
             <div class="modal-body">
                 <div id="acl-cmp-loading" class="text-center py-4">
                     <div class="spinner-border text-info" role="status"><span class="visually-hidden">Loading...</span></div>
-                    <p class="mt-2 mb-0">Checking Amazon live…</p>
+                    <p class="mt-2 mb-0">Checking Amz live…</p>
                 </div>
                 <div id="acl-cmp-error" class="alert alert-danger mb-0 d-none"></div>
                 <div id="acl-cmp-body" class="d-none">
@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!json.success) throw new Error(json.message || 'Compare failed.');
             loading.classList.add('d-none');
             bodyEl.classList.remove('d-none');
-            const liveTxt = json.live_ok ? (json.dest_live_count + ' (live on Amazon)') : (json.dest_live_count + ' (Amazon check unavailable — using stored data)');
+            const liveTxt = json.live_ok ? (json.dest_live_count + ' (live on Amz)') : (json.dest_live_count + ' (Amz check unavailable — using stored data)');
             document.getElementById('acl-cmp-summary').innerHTML =
                 '<strong>' + escHtml(campaign) + '</strong> currently has <strong>' + liveTxt + '</strong> negative keyword(s).<br>'
                 + 'Linked campaign(s) [' + (json.linked_campaigns || []).map(escHtml).join(', ') + '] contain <strong>' + json.group_source_count + '</strong> negative(s).<br>'
@@ -316,7 +316,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         html += '<button type="button" class="btn btn-sm btn-outline-danger acl-link-btn" data-campaign="' + campAttr + '" title="Link a campaign"><i class="fas fa-plus"></i></button>';
         if (others.length > 0) {
-            html += '<button type="button" class="btn btn-sm btn-outline-info acl-compare-btn ms-1" data-campaign="' + campAttr + '" title="Live-check Amazon: which negatives are actually missing">'
+            html += '<button type="button" class="btn btn-sm btn-outline-info acl-compare-btn ms-1" data-campaign="' + campAttr + '" title="Live-check Amz: which negatives are actually missing">'
                  + '<i class="fas fa-scale-balanced"></i> Compare</button>';
             html += '<button type="button" class="btn btn-sm btn-success acl-push-btn ms-1" data-campaign="' + campAttr + '" title="Import all negative keywords from linked campaign(s) into this campaign">'
                  + '<i class="fas fa-cloud-download-alt"></i> Push</button>';
@@ -530,7 +530,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ---- Bulk push (all linked) ----
     document.getElementById('acl-bulk-push').addEventListener('click', async function () {
-        if (!confirm('Import negative keywords into ALL linked campaigns now? This creates negatives on Amazon.')) return;
+        if (!confirm('Import negative keywords into ALL linked campaigns now? This creates negatives on Amz.')) return;
         const btn = this;
         const original = btn.innerHTML;
         btn.disabled = true;

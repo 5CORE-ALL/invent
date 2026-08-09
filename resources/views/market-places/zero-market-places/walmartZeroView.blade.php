@@ -1404,7 +1404,7 @@
                             <div class="spinner-border text-primary" role="status">
                                 <span class="visually-hidden">Loading...</span>
                             </div>
-                            <div class="loader-text">Loading Amazon Zero...</div>
+                            <div class="loader-text">Loading Amz Zero...</div>
                         </div>
                     </div>
                 </div>

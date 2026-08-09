@@ -740,7 +740,7 @@
                         <span id="temu-red-alert-badge"
                               class="badge text-center"
                               style="background-color: #a00211; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
-                              title="Click to filter rows where Temu Price &ge; Amazon × 0.85 AND &ge; eBay 1 × 0.90 AND &ge; eBay 2 × 0.90 (uncompetitive)"
+                              title="Click to filter rows where Temu Price &ge; Amz × 0.85 AND &ge; eBay 1 × 0.90 AND &ge; eBay 2 × 0.90 (uncompetitive)"
                               aria-label="Alert — uncompetitive Temu pricing"><i class="fas fa-triangle-exclamation"></i> 0</span>
 
                         <!-- Pricing & Performance -->
@@ -873,7 +873,7 @@
                          The existing #zero-sold-count-badge click handler just toggles this
                          dropdown so badges + dropdown can never disagree. There is no
                          "> 0 Sold" badge on this page, but the dropdown still offers the
-                         option for symmetry with the Amazon styling. --}}
+                         option for symmetry with the Amz styling. --}}
                     <select id="sold-filter" class="form-select form-select-sm" style="width: 130px;"
                             title="Filter by Temu L30 sold quantity (0 Sold also requires INV > 0)">
                         <option value="all">Sold</option>
@@ -1516,7 +1516,7 @@
     </div>
 
 
-    <!-- SKU Metrics Chart Modal (UI matches Amazon: teal header, ref panel High/Med/Low, median line, value labels on points) -->
+    <!-- SKU Metrics Chart Modal (UI matches Amz: teal header, ref panel High/Med/Low, median line, value labels on points) -->
     <div class="modal fade p-0" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow: hidden;">
@@ -1683,7 +1683,7 @@
                 <div class="modal-body">
                     <p class="text-muted small mb-3">
                         Adjusts existing <strong>SPRICE</strong> (falls back to Base Price) by row CVR%.
-                        Shared across Temu, Amazon, and eBay 1 / 2 / 3.
+                        Shared across Temu, Amz, and eBay 1 / 2 / 3.
                     </p>
                     <div class="row g-2">
                         <div class="col-6">
@@ -4318,9 +4318,9 @@
                 
                 if (amazonPrice > 0 && temuPrice > 0) {
                     if (temuPrice < amazonPrice) {
-                        lessAmzCount++; // Temu Price < Amazon Price
+                        lessAmzCount++; // Temu Price < Amz Price
                     } else if (temuPrice > amazonPrice) {
-                        moreAmzCount++; // Temu Price > Amazon Price
+                        moreAmzCount++; // Temu Price > Amz Price
                     }
                 }
             });
@@ -5059,10 +5059,10 @@
 
                         // Green/Red alerts compare normal Temu R Price vs Amazon / eBay thresholds.
                         if (temuIsGreenAlert(rowData)) {
-                            return `<span style="color: #28a745; font-weight: 600;" title="Green Alert: Temu R Price is below 85% of Amazon or 90% of eBay 1 / eBay 2.">$${displayPrice.toFixed(2)}</span>`;
+                            return `<span style="color: #28a745; font-weight: 600;" title="Green Alert: Temu R Price is below 85% of Amz or 90% of eBay 1 / eBay 2.">$${displayPrice.toFixed(2)}</span>`;
                         }
                         if (temuIsRedAlert(rowData)) {
-                            return `<span style="color: #a00211; font-weight: 600;" title="Red Alert: Temu R Price is at/above 85% of Amazon AND 90% of eBay 1 / eBay 2 (uncompetitive).">$${displayPrice.toFixed(2)}</span>`;
+                            return `<span style="color: #a00211; font-weight: 600;" title="Red Alert: Temu R Price is at/above 85% of Amz AND 90% of eBay 1 / eBay 2 (uncompetitive).">$${displayPrice.toFixed(2)}</span>`;
                         }
                         return `$${displayPrice.toFixed(2)}`;
                     }

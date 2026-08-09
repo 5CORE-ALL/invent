@@ -295,6 +295,131 @@
                 flex: 1 1 100%;
             }
         }
+        /* Member playback (same pattern as /tasks assignor/assignee controls) */
+        .task-summary-playback-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 4px;
+            background: #f8f9fa;
+            border-radius: 50px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        }
+        .task-summary-playback-group .btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 50% !important;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 1px solid #dee2e6;
+        }
+        .task-summary-playback-group .btn i { font-size: 1.05rem; line-height: 1; }
+        .task-summary-playback-group #ts-play-auto,
+        .task-summary-playback-group #ts-play-pause {
+            width: 32px !important;
+            height: 32px !important;
+            background-color: #28a745 !important;
+            color: #fff !important;
+            border-color: #28a745 !important;
+        }
+        .task-summary-playback-group #ts-play-pause {
+            background-color: #ffc107 !important;
+            border-color: #ffc107 !important;
+            color: #212529 !important;
+            display: none;
+        }
+        .task-summary-playback-group #ts-play-backward:not(:disabled),
+        .task-summary-playback-group #ts-play-forward:not(:disabled) {
+            background-color: #0d6efd !important;
+            color: #fff !important;
+            border-color: #0d6efd !important;
+        }
+        .task-summary-playback-group .btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        #ts-playback-label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #334155;
+            white-space: nowrap;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .task-summary-table tbody tr.task-summary-row-playback-hidden,
+        .task-summary-table tbody tr.task-summary-row.is-ts-minimized,
+        .task-summary-table tbody tr.task-summary-row.is-ts-snoozed {
+            display: none !important;
+        }
+        .task-summary-table tbody tr.task-summary-row.is-ts-playback-focus > td {
+            background-color: #eff6ff !important;
+            box-shadow: inset 3px 0 0 #2563eb;
+        }
+        .ts-member-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.05rem;
+            flex-shrink: 0;
+            margin-left: 0.15rem;
+        }
+        .ts-member-actions button {
+            border: 0;
+            background: transparent;
+            color: #94a3b8;
+            padding: 0.05rem 0.15rem;
+            line-height: 1;
+            font-size: 0.95rem;
+            border-radius: 0.25rem;
+        }
+        .ts-member-actions button:hover { background: #f1f5f9; color: #0f172a; }
+        .ts-member-actions .ts-member-expand-btn:hover { color: #2563eb; }
+        .ts-member-actions .ts-member-minimize-btn:hover { color: #ca8a04; }
+        .ts-member-actions .ts-member-snooze-btn:hover { color: #7c3aed; }
+        .ts-member-restore-bar {
+            display: none;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.4rem;
+            margin: 0 0 0.65rem;
+            padding: 0.4rem 0.55rem;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+        }
+        .ts-member-restore-bar.is-visible { display: flex; }
+        .ts-member-restore-bar__label {
+            font-size: 0.75rem;
+            color: #64748b;
+            font-weight: 600;
+            margin-right: 0.15rem;
+        }
+        .ts-member-restore-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #334155;
+            border-radius: 999px;
+            padding: 0.2rem 0.55rem 0.2rem 0.45rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            line-height: 1.2;
+            cursor: pointer;
+        }
+        .ts-member-restore-chip:hover {
+            border-color: #94a3b8;
+            background: #f8fafc;
+        }
+        .ts-member-restore-chip--snooze {
+            border-color: #ddd6fe;
+            background: #f5f3ff;
+            color: #5b21b6;
+        }
+        .ts-member-restore-chip i { font-size: 0.9rem; }
         .task-summary-th-sort {
             cursor: pointer;
             user-select: none;
@@ -746,6 +871,21 @@
                                         <i class="ri-arrow-up-s-line"></i> Collapse all
                                     </button>
                                 </div>
+                                <div class="btn-group task-summary-playback-group" role="group" aria-label="Member playback">
+                                    <button type="button" id="ts-play-backward" class="btn btn-light btn-sm" title="Previous member" disabled>
+                                        <i class="mdi mdi-skip-previous"></i>
+                                    </button>
+                                    <button type="button" id="ts-play-pause" class="btn btn-light btn-sm" title="Show all members" style="display:none;">
+                                        <i class="mdi mdi-pause"></i>
+                                    </button>
+                                    <button type="button" id="ts-play-auto" class="btn btn-light btn-sm" title="Step through members">
+                                        <i class="mdi mdi-play"></i>
+                                    </button>
+                                    <button type="button" id="ts-play-forward" class="btn btn-light btn-sm" title="Next member" disabled>
+                                        <i class="mdi mdi-skip-next"></i>
+                                    </button>
+                                </div>
+                                <span id="ts-playback-label" class="d-none" aria-live="polite"></span>
                             </div>
                             <div class="task-summary-search-wrap flex-grow-1 m-0">
                                 <label for="task-summary-search" class="visually-hidden">Search team members</label>
@@ -775,6 +915,10 @@
                             </div>
                         </div>
                     @endif
+                    <div id="tsMemberRestoreBar" class="ts-member-restore-bar" aria-live="polite">
+                        <span class="ts-member-restore-bar__label">Hidden members</span>
+                        <div id="tsMemberRestoreChips" class="d-flex flex-wrap gap-1"></div>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-hover table-striped table-bordered mb-0 task-summary-table">
                             <thead class="table-light">
@@ -893,6 +1037,17 @@
                                                         aria-label="Open profile for {{ e($row['team_member']) }}">
                                                     <i class="ri-search-eye-line" style="font-size:1rem;" aria-hidden="true"></i>
                                                 </button>
+                                                <span class="ts-member-actions" role="group" aria-label="Member row actions">
+                                                    <button type="button" class="ts-member-expand-btn" title="Expand member panel" aria-label="Expand {{ e($row['team_member']) }}">
+                                                        <i class="ri-fullscreen-line" aria-hidden="true"></i>
+                                                    </button>
+                                                    <button type="button" class="ts-member-minimize-btn" title="Minimize member" aria-label="Minimize {{ e($row['team_member']) }}">
+                                                        <i class="ri-subtract-line" aria-hidden="true"></i>
+                                                    </button>
+                                                    <button type="button" class="ts-member-snooze-btn" title="Hide until midnight PT (PST/PDT)" aria-label="Snooze {{ e($row['team_member']) }} until midnight PT">
+                                                        <i class="ri-timer-line" aria-hidden="true"></i>
+                                                    </button>
+                                                </span>
                                             </span>
                                         </td>
                                         <td class="task-summary-col-tm text-center">
@@ -1421,7 +1576,16 @@
             }
 
             function getVisibleTableData() {
-                return Array.prototype.slice.call(tbody.querySelectorAll('tr.task-summary-row:not(.d-none)')).map(function (tr) {
+                return Array.prototype.slice.call(tbody.querySelectorAll(
+                    'tr.task-summary-row'
+                    + ':not(.d-none)'
+                    + ':not(.task-summary-row-collapsed-hidden)'
+                    + ':not(.task-summary-row-juniors-hidden)'
+                    + ':not(.task-summary-row-orphan-hidden)'
+                    + ':not(.task-summary-row-playback-hidden)'
+                    + ':not(.is-ts-minimized)'
+                    + ':not(.is-ts-snoozed)'
+                )).map(function (tr) {
                     return {
                         member: (tr.getAttribute('data-sort-member') || '').trim(),
                         task: parseInt(tr.getAttribute('data-sort-task'), 10) || 0,
@@ -1773,6 +1937,9 @@
                     + ':not(.task-summary-row-collapsed-hidden)'
                     + ':not(.task-summary-row-juniors-hidden)'
                     + ':not(.task-summary-row-orphan-hidden)'
+                    + ':not(.task-summary-row-playback-hidden)'
+                    + ':not(.is-ts-minimized)'
+                    + ':not(.is-ts-snoozed)'
                 );
                 var sum = { task: 0, overdue: 0, done: 0, approval: 0, members: 0 };
                 rows.forEach(function (tr) {
@@ -2274,6 +2441,451 @@
         })();
 
         // -------------------------------------------------------------------
+        // Member playback — step through team members (like /tasks playback)
+        // -------------------------------------------------------------------
+        (function () {
+            var tbody = document.querySelector('.task-summary-table tbody');
+            var btnPlay = document.getElementById('ts-play-auto');
+            var btnPause = document.getElementById('ts-play-pause');
+            var btnPrev = document.getElementById('ts-play-backward');
+            var btnNext = document.getElementById('ts-play-forward');
+            var labelEl = document.getElementById('ts-playback-label');
+            if (!tbody || !btnPlay) return;
+
+            var members = [];
+            var idx = -1;
+            var active = false;
+
+            function visibleCandidateRows() {
+                return Array.prototype.slice.call(tbody.querySelectorAll(
+                    'tr.task-summary-row'
+                    + ':not(.d-none)'
+                    + ':not(.task-summary-row-collapsed-hidden)'
+                    + ':not(.task-summary-row-juniors-hidden)'
+                    + ':not(.task-summary-row-orphan-hidden)'
+                    + ':not(.is-ts-minimized)'
+                    + ':not(.is-ts-snoozed)'
+                ));
+            }
+
+            function collectMembers() {
+                var list = [];
+                var seen = {};
+                // Prefer DOM order of currently eligible rows (search / juniors filters applied)
+                visibleCandidateRows().forEach(function (tr) {
+                    var id = parseInt(tr.getAttribute('data-user-id'), 10) || 0;
+                    var name = (tr.getAttribute('data-sort-member') || '').trim();
+                    if (!name) return;
+                    var key = id ? ('id:' + id) : ('name:' + name.toLowerCase());
+                    if (seen[key]) return;
+                    seen[key] = true;
+                    list.push({ id: id, name: name, key: key });
+                });
+                return list;
+            }
+
+            function clearFocus() {
+                tbody.querySelectorAll('tr.task-summary-row.is-ts-playback-focus').forEach(function (tr) {
+                    tr.classList.remove('is-ts-playback-focus');
+                });
+            }
+
+            function updateButtons() {
+                if (btnPrev) btnPrev.disabled = !active || idx <= 0;
+                if (btnNext) btnNext.disabled = !active || idx >= members.length - 1;
+                if (btnPlay) btnPlay.style.display = active ? 'none' : '';
+                if (btnPause) btnPause.style.display = active ? '' : 'none';
+                if (labelEl) {
+                    if (active && idx >= 0 && members[idx]) {
+                        labelEl.textContent = members[idx].name + ' (' + (idx + 1) + '/' + members.length + ')';
+                        labelEl.classList.remove('d-none');
+                    } else {
+                        labelEl.textContent = '';
+                        labelEl.classList.add('d-none');
+                    }
+                }
+            }
+
+            function applyPlayback() {
+                var all = Array.prototype.slice.call(tbody.querySelectorAll('tr.task-summary-row'));
+                clearFocus();
+                if (!active || idx < 0 || !members[idx]) {
+                    all.forEach(function (tr) {
+                        tr.classList.remove('task-summary-row-playback-hidden');
+                    });
+                } else {
+                    var cur = members[idx];
+                    all.forEach(function (tr) {
+                        var id = parseInt(tr.getAttribute('data-user-id'), 10) || 0;
+                        var name = (tr.getAttribute('data-sort-member') || '').trim();
+                        var match = cur.id
+                            ? (id === cur.id)
+                            : (name.toLowerCase() === cur.name.toLowerCase());
+                        tr.classList.toggle('task-summary-row-playback-hidden', !match);
+                        if (match) {
+                            tr.classList.add('is-ts-playback-focus');
+                            try {
+                                tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                            } catch (e) { /* ignore */ }
+                        }
+                    });
+                }
+                updateButtons();
+                if (typeof window.taskSummaryRecomputeBadges === 'function') {
+                    window.taskSummaryRecomputeBadges();
+                }
+                if (typeof window.taskSummaryRefreshHeaderVisibility === 'function') {
+                    window.taskSummaryRefreshHeaderVisibility();
+                }
+            }
+
+            function start() {
+                members = collectMembers();
+                if (!members.length) return;
+                active = true;
+                idx = 0;
+                applyPlayback();
+            }
+
+            function stop() {
+                active = false;
+                idx = -1;
+                members = [];
+                applyPlayback();
+            }
+
+            function next() {
+                if (!active || idx >= members.length - 1) return;
+                idx++;
+                applyPlayback();
+            }
+
+            function prev() {
+                if (!active || idx <= 0) return;
+                idx--;
+                applyPlayback();
+            }
+
+            btnPlay.addEventListener('click', start);
+            if (btnPause) btnPause.addEventListener('click', stop);
+            if (btnNext) btnNext.addEventListener('click', next);
+            if (btnPrev) btnPrev.addEventListener('click', prev);
+
+            // If search changes while playing, rebuild list from remaining matches
+            var searchInput = document.getElementById('task-summary-search');
+            if (searchInput) {
+                searchInput.addEventListener('input', function () {
+                    if (!active) return;
+                    var curKey = members[idx] ? members[idx].key : null;
+                    // Temporarily clear playback hide so candidates reflect search only
+                    Array.prototype.slice.call(tbody.querySelectorAll('tr.task-summary-row')).forEach(function (tr) {
+                        tr.classList.remove('task-summary-row-playback-hidden');
+                    });
+                    members = collectMembers();
+                    if (!members.length) {
+                        stop();
+                        return;
+                    }
+                    idx = members.findIndex(function (m) { return m.key === curKey; });
+                    if (idx < 0) idx = 0;
+                    applyPlayback();
+                });
+            }
+
+            window.TaskSummaryMemberPlayback = { start: start, stop: stop, next: next, prev: prev };
+        })();
+
+        // -------------------------------------------------------------------
+        // Member expand / minimize / snooze-until-midnight-PT
+        // -------------------------------------------------------------------
+        (function () {
+            var tbody = document.querySelector('.task-summary-table tbody');
+            if (!tbody) return;
+
+            var STORAGE_MIN = 'taskSummaryMinimizedV1';
+            var STORAGE_SNOOZE = 'taskSummarySnoozedUntilV1';
+            var TZ = 'America/Los_Angeles';
+            var snoozeTimer = null;
+
+            function readJson(key, fallback) {
+                try {
+                    var raw = localStorage.getItem(key);
+                    if (!raw) return fallback;
+                    var parsed = JSON.parse(raw);
+                    return parsed == null ? fallback : parsed;
+                } catch (e) {
+                    return fallback;
+                }
+            }
+            function writeJson(key, value) {
+                try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ }
+            }
+
+            function rowKey(tr) {
+                var id = parseInt(tr.getAttribute('data-user-id'), 10) || 0;
+                if (id) return 'id:' + id;
+                var name = (tr.getAttribute('data-sort-member') || '').trim().toLowerCase();
+                return name ? ('name:' + name) : '';
+            }
+            function rowTitle(tr) {
+                return (tr.getAttribute('data-sort-member') || '').trim() || 'Member';
+            }
+            function allRows() {
+                return Array.prototype.slice.call(tbody.querySelectorAll('tr.task-summary-row'));
+            }
+            function findRowByKey(key) {
+                return allRows().find(function (tr) { return rowKey(tr) === key; }) || null;
+            }
+
+            function getParts(ms) {
+                var parts = new Intl.DateTimeFormat('en-US', {
+                    timeZone: TZ,
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    hourCycle: 'h23',
+                }).formatToParts(new Date(ms));
+                var map = {};
+                parts.forEach(function (p) {
+                    if (p.type !== 'literal') map[p.type] = p.value;
+                });
+                return {
+                    year: parseInt(map.year, 10),
+                    month: parseInt(map.month, 10),
+                    day: parseInt(map.day, 10),
+                    hour: parseInt(map.hour, 10),
+                    minute: parseInt(map.minute, 10),
+                    second: parseInt(map.second, 10),
+                };
+            }
+
+            function nextMidnightPstMs(fromMs) {
+                var now = fromMs == null ? Date.now() : fromMs;
+                var cur = getParts(now);
+                var lo = now + 1000;
+                var hi = now + 40 * 3600 * 1000;
+                for (var t = lo; t <= hi; t += 60 * 1000) {
+                    var p = getParts(t);
+                    if (p.hour === 0 && p.minute === 0 && (p.day !== cur.day || p.month !== cur.month || p.year !== cur.year)) {
+                        return t - (p.second * 1000);
+                    }
+                }
+                var msSince = ((cur.hour * 60 + cur.minute) * 60 + cur.second) * 1000;
+                return now + (24 * 3600 * 1000 - msSince);
+            }
+
+            function formatPstCountdown(untilMs) {
+                var p = getParts(untilMs);
+                var hh = String(p.hour).padStart(2, '0');
+                var mm = String(p.minute).padStart(2, '0');
+                return 'until ' + p.month + '/' + p.day + ' ' + hh + ':' + mm + ' PT';
+            }
+
+            function getMinimized() {
+                var list = readJson(STORAGE_MIN, []);
+                return Array.isArray(list) ? list.filter(function (id) { return typeof id === 'string'; }) : [];
+            }
+            function setMinimized(list) {
+                writeJson(STORAGE_MIN, Array.from(new Set(list)));
+            }
+            function getSnoozed() {
+                var map = readJson(STORAGE_SNOOZE, {});
+                return map && typeof map === 'object' ? map : {};
+            }
+            function setSnoozed(map) {
+                writeJson(STORAGE_SNOOZE, map);
+            }
+
+            function purgeExpiredSnoozes() {
+                var now = Date.now();
+                var map = getSnoozed();
+                var changed = false;
+                Object.keys(map).forEach(function (id) {
+                    var until = Number(map[id]);
+                    if (!until || until <= now) {
+                        delete map[id];
+                        changed = true;
+                    }
+                });
+                if (changed) setSnoozed(map);
+                return map;
+            }
+
+            function notifyVisibility() {
+                if (typeof window.taskSummaryRecomputeBadges === 'function') {
+                    window.taskSummaryRecomputeBadges();
+                }
+                if (typeof window.taskSummaryRefreshHeaderVisibility === 'function') {
+                    window.taskSummaryRefreshHeaderVisibility();
+                }
+            }
+
+            function renderRestoreBar() {
+                var bar = document.getElementById('tsMemberRestoreBar');
+                var wrap = document.getElementById('tsMemberRestoreChips');
+                if (!bar || !wrap) return;
+                var minimized = getMinimized();
+                var snoozed = purgeExpiredSnoozes();
+                wrap.innerHTML = '';
+                var entries = [];
+                minimized.forEach(function (key) {
+                    if (snoozed[key] && Number(snoozed[key]) > Date.now()) return;
+                    var tr = findRowByKey(key);
+                    if (!tr) return;
+                    entries.push({ key: key, title: rowTitle(tr), kind: 'min' });
+                });
+                Object.keys(snoozed).forEach(function (key) {
+                    var until = Number(snoozed[key]);
+                    if (!until || until <= Date.now()) return;
+                    var tr = findRowByKey(key);
+                    if (!tr) return;
+                    entries.push({ key: key, title: rowTitle(tr), kind: 'snooze', until: until });
+                });
+                if (!entries.length) {
+                    bar.classList.remove('is-visible');
+                    return;
+                }
+                bar.classList.add('is-visible');
+                entries.forEach(function (item) {
+                    var chip = document.createElement('button');
+                    chip.type = 'button';
+                    chip.className = 'ts-member-restore-chip' + (item.kind === 'snooze' ? ' ts-member-restore-chip--snooze' : '');
+                    chip.title = item.kind === 'snooze'
+                        ? ('Snoozed ' + formatPstCountdown(item.until) + ' — click to show now')
+                        : 'Click to restore member';
+                    chip.innerHTML = item.kind === 'snooze'
+                        ? '<i class="ri-timer-line"></i><span></span>'
+                        : '<i class="ri-eye-line"></i><span></span>';
+                    chip.querySelector('span').textContent = item.kind === 'snooze'
+                        ? (item.title + ' · ' + formatPstCountdown(item.until))
+                        : item.title;
+                    chip.addEventListener('click', function () { restoreMember(item.key); });
+                    wrap.appendChild(chip);
+                });
+            }
+
+            function applyVisibility() {
+                var minimized = new Set(getMinimized());
+                var snoozed = purgeExpiredSnoozes();
+                allRows().forEach(function (tr) {
+                    var key = rowKey(tr);
+                    if (!key) return;
+                    var isSnoozed = snoozed[key] && Number(snoozed[key]) > Date.now();
+                    var isMin = minimized.has(key);
+                    tr.classList.toggle('is-ts-snoozed', !!isSnoozed);
+                    tr.classList.toggle('is-ts-minimized', !!isMin && !isSnoozed);
+                });
+                renderRestoreBar();
+                notifyVisibility();
+            }
+
+            function minimizeMember(key) {
+                if (!key) return;
+                var list = getMinimized().filter(function (id) { return id !== key; });
+                list.push(key);
+                setMinimized(list);
+                var snoozed = getSnoozed();
+                if (snoozed[key]) {
+                    delete snoozed[key];
+                    setSnoozed(snoozed);
+                }
+                applyVisibility();
+            }
+
+            function snoozeMember(key) {
+                if (!key) return;
+                var until = nextMidnightPstMs();
+                var snoozed = getSnoozed();
+                snoozed[key] = until;
+                setSnoozed(snoozed);
+                setMinimized(getMinimized().filter(function (id) { return id !== key; }));
+                applyVisibility();
+                scheduleSnoozeWake();
+            }
+
+            function restoreMember(key) {
+                if (!key) return;
+                setMinimized(getMinimized().filter(function (id) { return id !== key; }));
+                var snoozed = getSnoozed();
+                if (snoozed[key]) {
+                    delete snoozed[key];
+                    setSnoozed(snoozed);
+                }
+                applyVisibility();
+                var tr = findRowByKey(key);
+                if (tr) {
+                    try { tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) { /* ignore */ }
+                    tr.classList.add('is-ts-playback-focus');
+                    setTimeout(function () { tr.classList.remove('is-ts-playback-focus'); }, 1200);
+                }
+            }
+
+            function expandMember(tr) {
+                if (!tr) return;
+                var userId = parseInt(tr.getAttribute('data-user-id'), 10) || 0;
+                var userName = (tr.getAttribute('data-sort-member') || '').trim();
+                if (window.taskSummaryUserDashboard && typeof window.taskSummaryUserDashboard.open === 'function') {
+                    window.taskSummaryUserDashboard.open(userId || null, userName);
+                    return;
+                }
+                var tmBtn = tr.querySelector('.task-summary-user-tasks-dot');
+                if (tmBtn) tmBtn.click();
+            }
+
+            function scheduleSnoozeWake() {
+                if (snoozeTimer) {
+                    clearTimeout(snoozeTimer);
+                    snoozeTimer = null;
+                }
+                var snoozed = purgeExpiredSnoozes();
+                var times = Object.keys(snoozed).map(function (k) { return Number(snoozed[k]); }).filter(function (n) {
+                    return n > Date.now();
+                });
+                if (!times.length) return;
+                var next = Math.min.apply(null, times);
+                var delay = Math.min(next - Date.now() + 250, 2147483647);
+                snoozeTimer = setTimeout(function () {
+                    applyVisibility();
+                    scheduleSnoozeWake();
+                }, Math.max(delay, 1000));
+            }
+
+            tbody.addEventListener('click', function (e) {
+                var expandBtn = e.target && e.target.closest && e.target.closest('.ts-member-expand-btn');
+                var minBtn = e.target && e.target.closest && e.target.closest('.ts-member-minimize-btn');
+                var snoozeBtn = e.target && e.target.closest && e.target.closest('.ts-member-snooze-btn');
+                if (!expandBtn && !minBtn && !snoozeBtn) return;
+                if (!tbody.contains(expandBtn || minBtn || snoozeBtn)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                var tr = (expandBtn || minBtn || snoozeBtn).closest('tr.task-summary-row');
+                if (!tr) return;
+                var key = rowKey(tr);
+                if (expandBtn) {
+                    expandMember(tr);
+                    return;
+                }
+                if (minBtn) {
+                    minimizeMember(key);
+                    return;
+                }
+                if (snoozeBtn) {
+                    snoozeMember(key);
+                }
+            });
+
+            applyVisibility();
+            scheduleSnoozeWake();
+
+            window.TaskSummaryMemberActions = {
+                minimizeMember: minimizeMember,
+                snoozeMember: snoozeMember,
+                restoreMember: restoreMember,
+                expandMember: expandMember,
+                applyVisibility: applyVisibility,
+            };
+        })();
+
+        // -------------------------------------------------------------------
         // Hierarchy grouping (Director → Mgr → Exec) — toggle + render
         // -------------------------------------------------------------------
         (function () {
@@ -2624,10 +3236,14 @@
                         + ':not(.task-summary-row-collapsed-hidden)'
                         + ':not(.task-summary-row-juniors-hidden)'
                         + ':not(.task-summary-row-orphan-hidden)'
+                        + ':not(.task-summary-row-playback-hidden)'
+                        + ':not(.is-ts-minimized)'
+                        + ':not(.is-ts-snoozed)'
                     ).length;
                     h.classList.toggle('d-none', visible === 0);
                 });
             }
+            window.taskSummaryRefreshHeaderVisibility = refreshHeaderVisibility;
 
             function setRowsCollapsed(gid, collapsed) {
                 tbody.querySelectorAll('tr.task-summary-row[data-group-id="' + gid + '"]').forEach(function (tr) {

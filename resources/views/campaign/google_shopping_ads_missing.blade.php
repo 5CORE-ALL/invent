@@ -401,7 +401,7 @@
                     </div>
                     <div id="gsAiNegExistingWrap" class="mb-3 d-none">
                         <div class="d-flex align-items-center justify-content-between mb-1">
-                            <div class="fw-semibold small">Already on Amazon KW(-) for this parent</div>
+                            <div class="fw-semibold small">Already on Amz KW(-) for this parent</div>
                             <span class="badge text-bg-secondary" id="gsAiNegExistingCount">0</span>
                         </div>
                         <div id="gsAiNegExisting" class="border rounded p-2 small bg-light" style="max-height:120px;overflow:auto;"></div>
@@ -449,7 +449,7 @@
                                 <div class="form-check mt-3">
                                     <input class="form-check-input" type="checkbox" id="gsAiNegIncludeAmazon" checked>
                                     <label class="form-check-label small" for="gsAiNegIncludeAmazon">
-                                        Also push Amazon KW(-) negatives for this parent
+                                        Also push Amz KW(-) negatives for this parent
                                     </label>
                                 </div>
                             </div>
@@ -728,7 +728,7 @@
                             cssClass: 'gs-kw-neg-col',
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: true, sorter: 'number',
-                            headerTooltip: 'Amazon KW negatives — same count as /purchase-master/ads-link',
+                            headerTooltip: 'Amz KW negatives — same count as /purchase-master/ads-link',
                             formatter: function (cell) {
                                 var row = cell.getRow().getData();
                                 var n = Number(cell.getValue()) || 0;
@@ -1260,7 +1260,7 @@
                         + (aiNegMeta.target_sku ? (' · SKU: ' + aiNegMeta.target_sku) : '')
                         + (aiNegMeta.product_title ? (' · ' + aiNegMeta.product_title) : '')
                         + ' · ' + texts.length + ' to push'
-                        + (aiNegExistingCache.length ? (' · ' + aiNegExistingCache.length + ' already on Amazon') : '');
+                        + (aiNegExistingCache.length ? (' · ' + aiNegExistingCache.length + ' already on Amz') : '');
                 }
 
                 function addManualNegativeKeyword(raw) {
@@ -1514,7 +1514,7 @@
                     var keywords = getSuggestedTexts();
                     var includeAmazon = !!document.getElementById('gsAiNegIncludeAmazon').checked;
                     if (!keywords.length && !includeAmazon) {
-                        errEl.textContent = 'Add keywords (AI or manual), or enable Amazon KW(-) negatives.';
+                        errEl.textContent = 'Add keywords (AI or manual), or enable Amz KW(-) negatives.';
                         errEl.classList.remove('d-none');
                         return;
                     }

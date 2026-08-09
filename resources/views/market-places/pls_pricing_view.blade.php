@@ -247,7 +247,7 @@
                                 placeholder="Enter %" step="0.01" style="width: 100px;">
                         </span>
                         <span id="pls-amz-mode-hint" class="text-muted small d-none">
-                            <i class="fab fa-amazon text-warning"></i> Apply sets SPRICE = Amazon price
+                            <i class="fab fa-amazon text-warning"></i> Apply sets SPRICE = Amz price
                         </span>
                         <button id="pls-apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                         <button id="pls-clear-sprice-selected-btn" class="btn btn-sm btn-danger">
@@ -756,7 +756,7 @@
                     field: "amazon_price",
                     hozAlign: "center",
                     sorter: "number",
-                    tooltip: "Amazon price",
+                    tooltip: "Amz price",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         if (value === 0) {
@@ -1489,7 +1489,7 @@
             if (plsAmzPriceModeActive) {
                 $btn.addClass('btn-warning')
                     .html('<i class="fab fa-amazon"></i>')
-                    .attr('title', 'Amz Prc ON — select SKUs, then Apply to set SPRICE = Amazon price');
+                    .attr('title', 'Amz Prc ON — select SKUs, then Apply to set SPRICE = Amz price');
                 if (selectColumn) selectColumn.show();
                 syncPlsDiscountBarForMode();
                 plsUpdateSelectedCount();
@@ -1902,7 +1902,7 @@
             const noAmazonPriceCount = plsSelectedSkus.size - totalSkus;
 
             if (totalSkus === 0) {
-                showToast('No selected SKUs have an Amazon price', 'error');
+                showToast('No selected SKUs have an Amz price', 'error');
                 return;
             }
 
@@ -1930,9 +1930,9 @@
                 updatedCount++;
             });
 
-            let message = `SPRICE set to Amazon price for ${updatedCount} SKU(s)`;
+            let message = `SPRICE set to Amz price for ${updatedCount} SKU(s)`;
             if (noAmazonPriceCount > 0) {
-                message += ` (${noAmazonPriceCount} had no Amazon price)`;
+                message += ` (${noAmazonPriceCount} had no Amz price)`;
             }
             showToast(message, updatedCount > 0 ? 'success' : 'info');
         }

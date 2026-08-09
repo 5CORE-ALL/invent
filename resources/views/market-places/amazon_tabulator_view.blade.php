@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amz Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -576,8 +576,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon Analytics',
-        'sub_title' => 'Amazon Analytics',
+        'page_title' => 'Amz Analytics',
+        'sub_title' => 'Amz Analytics',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -655,7 +655,7 @@
                     </select>
 
                     <select id="rating-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;"
-                        title="Filter by Reviews column (Amazon avg rating)">
+                        title="Filter by Reviews column (Amz avg rating)">
                         <option value="all">Reviews</option>
                         <option value="red">Red &lt;3</option>
                         <option value="yellow">Yellow 3-3.5</option>
@@ -767,7 +767,7 @@
                                 <div class="form-check">
                                     <input class="form-check-input bulk-push-checkbox" type="checkbox" value="amazon" id="bulkPushAmazon" checked>
                                     <label class="form-check-label" for="bulkPushAmazon" style="color: #FF9900; font-weight: 500;">
-                                        Amazon
+                                        Amz
                                     </label>
                                 </div>
                                 <div class="form-check">
@@ -849,26 +849,26 @@
 
                         <!-- Financial Metrics -->
                         <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer; display: none;" title="View trend">PFT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="30-day sales from real Amazon orders (same source as /amazon/daily-sales). Click for trend.">Sales: ${{ number_format((float) ($amazonSalesL30 ?? 0)) }}</span>
+                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="30-day sales from real Amz orders (same source as /amazon/daily-sales). Click for trend.">Sales: ${{ number_format((float) ($amazonSalesL30 ?? 0)) }}</span>
                         
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
 
-                        <!-- Ads% (from /all-marketplace-master — Amazon channel) -->
-                        <span class="badge fs-6 p-2" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Amazon Ads% (Total Ad Spend / L30 Sales) — from /all-marketplace-master">Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
+                        <!-- Ads% (from /all-marketplace-master — Amz channel) -->
+                        <span class="badge fs-6 p-2" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Amz Ads% (Total Ad Spend / L30 Sales) — from /all-marketplace-master">Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: 0%</span>
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View GROI% rolling history">GROI: 0%</span>
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View NROI% rolling history — Net ROI = (Total PFT − Ad Spend) / COGS">NROI: 0%</span>
                         
-                        <!-- Amazon Metrics -->
+                        <!-- Amz Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="total-qty-sold-badge" style="background-color: #20c997; color: black; font-weight: bold;" title="Total Amazon units sold in the last 30 days from real Amazon orders (Pacific, through yesterday) — same source as /amazon/daily-sales">Qty: {{ number_format((int) ($amazonUnitsSoldL30 ?? 0)) }}</span>
+                        <span class="badge fs-6 p-2" id="total-qty-sold-badge" style="background-color: #20c997; color: black; font-weight: bold;" title="Total Amz units sold in the last 30 days from real Amz orders (Pacific, through yesterday) — same source as /amazon/daily-sales">Qty: {{ number_format((int) ($amazonUnitsSoldL30 ?? 0)) }}</span>
                         <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0%</span>
 
                         <!-- Mapping / Listing Badges (Clickable filter — same logic as /map-issues) -->
-                        <span class="badge bg-secondary fs-6 p-2" id="nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter N Map (listed, REQ, INV>0, INV vs Amazon stock mismatch)">N Map: <span id="nmap-count">0</span></span>
-                        <span class="badge bg-secondary fs-6 p-2" id="ml-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter ML — Missing Listing (INV>0, not listed on Amazon, REQ)">ML: <span id="ml-count">0</span></span>
+                        <span class="badge bg-secondary fs-6 p-2" id="nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter N Map (listed, REQ, INV>0, INV vs Amz stock mismatch)">N Map: <span id="nmap-count">0</span></span>
+                        <span class="badge bg-secondary fs-6 p-2" id="ml-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter ML — Missing Listing (INV>0, not listed on Amz, REQ)">ML: <span id="ml-count">0</span></span>
 
                         <!-- Sold Filter Badges (Clickable + Hover for chart) -->
                         <span class="badge bg-success fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="all" data-metric="sold_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
@@ -954,7 +954,7 @@
                     </h5>
                     <div class="d-flex align-items-center gap-2 ms-auto">
                         <button type="button" id="lmpPullApiBtn" class="btn btn-sm btn-light"
-                            title="Pull live prices + shipping (delivery) for this SKU from SerpApi (Amazon)">
+                            title="Pull live prices + shipping (delivery) for this SKU from SerpApi (Amz)">
                             <i class="fas fa-cloud-download-alt"></i> Pull
                         </button>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -1013,7 +1013,7 @@
                                 <div class="col-md-2">
                                     <label class="form-label"><strong>Marketplace</strong></label>
                                     <select class="form-select" id="addCompMarketplace">
-                                        <option value="amazon" selected>Amazon</option>
+                                        <option value="amazon" selected>Amz</option>
                                         <option value="US">US</option>
                                     </select>
                                 </div>
@@ -1101,7 +1101,7 @@
                             NPFT: <span id="sprice-cvr-npft-val">0%</span>
                             <span class="sprice-cvr-trend-dot none" id="sprice-cvr-npft-trend" aria-hidden="true"></span>
                         </span>
-                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 vs L31–L60 + band · shared Amazon + eBay</span>
+                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 vs L31–L60 + band · shared Amz + eBay</span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1133,7 +1133,7 @@
                                             <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="down" value="-1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-zero-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="down" value="-1" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1142,7 +1142,7 @@
                                             <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-zero-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1151,7 +1151,7 @@
                                             <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-zero-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1188,7 +1188,7 @@
                                             <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-yellow-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1197,7 +1197,7 @@
                                             <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-yellow-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1206,7 +1206,7 @@
                                             <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-yellow-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1273,7 +1273,7 @@
                                             <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="down" value="-1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-blue-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="down" value="-1" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1282,7 +1282,7 @@
                                             <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-blue-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1291,7 +1291,7 @@
                                             <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-blue-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1328,7 +1328,7 @@
                                             <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-green-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1337,7 +1337,7 @@
                                             <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-green-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1346,7 +1346,7 @@
                                             <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-green-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1383,7 +1383,7 @@
                                             <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-pink-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1392,7 +1392,7 @@
                                             <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-pink-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1401,7 +1401,7 @@
                                             <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <input type="number" id="sprice-cvr-pink-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Adjust Amz price by this %: +N raise, −N lower, 0 = hold at Amz price (0% change, of price not PFT%)">
                                                     <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
@@ -1436,14 +1436,14 @@
         </div>
     </div>
 
-    <!-- Sprice × CVR pie history (rolling style, same as Amazon metric trend modals) -->
+    <!-- Sprice × CVR pie history (rolling style, same as Amz metric trend modals) -->
     <div class="modal fade p-0" id="spriceCvrHistoryModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-history me-1"></i>
-                        <span id="spriceCvrHistoryModalTitle">Amazon — Sprice × CVR History</span>
+                        <span id="spriceCvrHistoryModalTitle">Amz — Sprice × CVR History</span>
                         <span id="spriceCvrHistoryModalSuffix">(Rolling L30)</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
@@ -1498,7 +1498,7 @@
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="skuChartModalTitle">Amazon - <span id="modalSkuName"></span> - Metrics</span> <span id="skuChartModalSuffix">(Rolling L30)</span>
+                        <span id="skuChartModalTitle">Amz - <span id="modalSkuName"></span> - Metrics</span> <span id="skuChartModalSuffix">(Rolling L30)</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="sku-chart-days-filter" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
@@ -1539,14 +1539,14 @@
         </div>
     </div>
 
-    <!-- Amazon Metric Trend Chart Modal -->
+    <!-- Amz Metric Trend Chart Modal -->
     <div class="modal fade p-0" id="amzMetricChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="amzChartModalTitle">Amazon - Metric Trend</span>
+                        <span id="amzChartModalTitle">Amz - Metric Trend</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="amzChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
@@ -1862,7 +1862,7 @@
             }
             const fallback = lmpPrice > 0 ? lmpPrice : (lmpaPrice > 0 ? lmpaPrice : 0);
             if (fallback > 0) {
-                return '<span style="color: #6c757d; font-style: italic;" title="Reference (no Amazon list price)">' + amazonModalFmtMoney(fallback) + '</span>';
+                return '<span style="color: #6c757d; font-style: italic;" title="Reference (no Amz list price)">' + amazonModalFmtMoney(fallback) + '</span>';
             }
             return '<span class="text-muted">—</span>';
         }
@@ -1893,12 +1893,12 @@
             const sp2 = sp.toFixed(2);
             const ap2 = ap.toFixed(2);
             if (parseFloat(sp2) < parseFloat(ap2)) {
-                return { kind: 'reduce', color: '#dc3545', title: 'Reduced vs Amazon price' };
+                return { kind: 'reduce', color: '#dc3545', title: 'Reduced vs Amz price' };
             }
             if (parseFloat(sp2) > parseFloat(ap2)) {
-                return { kind: 'increase', color: '#28a745', title: 'Increase vs Amazon price' };
+                return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
             }
-            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amazon price)' };
+            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
         }
 
         function amazonSpriceChangeDotHtml(sprice, amazonPrice, sku) {
@@ -1944,21 +1944,21 @@
             // Amazon button
             let amazonIcon = '<i class="fas fa-check"></i>';
             let amazonColor = '#28a745';
-            let amazonTitle = 'Push to Amazon';
+            let amazonTitle = 'Push to Amz';
             if (amazonStatus === 'pushed') {
                 amazonIcon = '<i class="fa-solid fa-check-double"></i>';
-                amazonTitle = 'Price pushed to Amazon (Double-click to mark as Applied)';
+                amazonTitle = 'Price pushed to Amz (Double-click to mark as Applied)';
             } else if (amazonStatus === 'applied') {
                 amazonIcon = '<i class="fa-solid fa-check-double"></i>';
-                amazonTitle = 'Price applied to Amazon (Double-click to change)';
+                amazonTitle = 'Price applied to Amz (Double-click to change)';
             } else if (amazonStatus === 'error') {
                 amazonIcon = '<i class="fa-solid fa-x"></i>';
                 amazonColor = '#dc3545';
-                amazonTitle = 'Error pushing to Amazon';
+                amazonTitle = 'Error pushing to Amz';
             } else if (amazonStatus === 'processing') {
                 amazonIcon = '<i class="fas fa-spinner fa-spin"></i>';
                 amazonColor = '#ffc107';
-                amazonTitle = 'Pushing to Amazon...';
+                amazonTitle = 'Pushing to Amz...';
             }
             
             // Shopify button
@@ -2195,7 +2195,7 @@
             const isBadge = amzBadgeStatMetrics.includes(metricKey);
             const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct'];
             const suffix = isBadge ? (badgeSnapshotMetrics.includes(metricKey) ? 'Daily Snapshot' : 'Daily Count') : 'Rolling L30';
-            $('#amzChartModalTitle').text(`Amazon - ${label} (${suffix})`);
+            $('#amzChartModalTitle').text(`Amz - ${label} (${suffix})`);
             const modal = new bootstrap.Modal(document.getElementById('amzMetricChartModal'));
             modal.show();
             loadAmzMetricChart();
@@ -3329,7 +3329,7 @@
             }
 
             function showAmazonShopifyPushMessage(sku, price, response) {
-                const base = `Amazon pushed $${Number(price).toFixed(2)} for SKU: ${sku}`;
+                const base = `Amz pushed $${Number(price).toFixed(2)} for SKU: ${sku}`;
                 const shopify = response && response.shopify_push ? response.shopify_push : null;
                 if (!shopify) {
                     if (response && (response.S_STATUS === 'pushed' || response.S_STATUS === 'error')) {
@@ -3633,7 +3633,7 @@
                             $btn.removeClass('btn-primary').addClass('btn-success');
                             const selectedCount = selectedSkus.size;
                             $btn.html(`<i class="fas fa-check-double" style="color: black; font-weight: bold;"></i> Applied (<span class="apply-all-count">${selectedCount}</span>)`);
-                            showToast('success', `Amazon: ${successCount} SKU${successCount > 1 ? 's' : ''} pushed.`);
+                            showToast('success', `Amz: ${successCount} SKU${successCount > 1 ? 's' : ''} pushed.`);
                             
                             // Reset to original state after 3 seconds
                             setTimeout(() => {
@@ -3643,7 +3643,7 @@
                             }, 3000);
                         } else {
                             $btn.html(originalHtml);
-                            showToast('error', `Amazon: Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
+                            showToast('error', `Amz: Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                         }
                         return;
                     }
@@ -3682,9 +3682,9 @@
                             const minPush = resp && resp.min_price_push;
                             if (minPush && minPush.ok === false) {
                                 const minErr = (minPush.errors && minPush.errors[0] && minPush.errors[0].message) || 'Unknown error';
-                                showToast('warning', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
+                                showToast('warning', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
                             } else {
-                                showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                                showToast('success', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
                             }
                             
                             // Update row data with pushed status instantly
@@ -4993,13 +4993,13 @@
             }
 
             const SPRICE_CVR_HISTORY_TITLES = {
-                slab: 'Amazon — Sprice × CVR Slab History',
-                action: 'Amazon — Sprice × CVR Action History',
-                rule_zero: 'Amazon — Rule 1 Trend History',
-                rule_yellow: 'Amazon — Rule 2 Yellow Trend History',
-                rule_blue: 'Amazon — Rule 3 Blue Trend History',
-                rule_green: 'Amazon — Rule 4 Green Trend History',
-                rule_pink: 'Amazon — Rule 5 Pink Trend History'
+                slab: 'Amz — Sprice × CVR Slab History',
+                action: 'Amz — Sprice × CVR Action History',
+                rule_zero: 'Amz — Rule 1 Trend History',
+                rule_yellow: 'Amz — Rule 2 Yellow Trend History',
+                rule_blue: 'Amz — Rule 3 Blue Trend History',
+                rule_green: 'Amz — Rule 4 Green Trend History',
+                rule_pink: 'Amz — Rule 5 Pink Trend History'
             };
 
             function openSpriceCvrHistoryModal(type) {
@@ -5155,7 +5155,7 @@
                 refreshSpriceCvrSlabLabels();
                 const sp = r.slab_pct;
                 $('#apply-sprice-cvr-btn').attr('title',
-                    'SPRICE = Amazon price × (1 + %/100) — not PFT%: +inc / −dec / 0=hold at Amazon price · Z ' +
+                    'SPRICE = Amz price × (1 + %/100) — not PFT%: +inc / −dec / 0=hold at Amz price · Z ' +
                     sp.zero.down + '/' + sp.zero.equal + '/' + sp.zero.up +
                     ' · Y ' + sp.red.down + '/' + sp.red.equal + '/' + sp.red.up +
                     ' · B ' + sp.blue.down + '/' + sp.blue.equal + '/' + sp.blue.up +
@@ -5505,9 +5505,9 @@
                 const actLabel = function(slab, trend) {
                     const pct = slabPctForTrend(sp, slab || 'red', trend || 'down');
                     if (!isFinite(pct)) return 'hold';
-                    if (pct === 0) return '0% hold (= Amazon price)';
+                    if (pct === 0) return '0% hold (= Amz price)';
                     const s = formatSlabBound(pct);
-                    return (pct > 0 ? '+' : '') + s + '% of Amazon price';
+                    return (pct > 0 ? '+' : '') + s + '% of Amz price';
                 };
                 const midL = formatSlabBound(slabs.mid);
                 const highL = formatSlabBound(slabs.high);
@@ -5518,8 +5518,8 @@
                 const yellowStart = formatSlabBound(slabs.yellow_start || SPRICE_CVR_YELLOW_START);
                 const yellowBand = yellowStart + '–' + lowL + '%';
                 if (!confirm(
-                    'Adjust SPRICE by % of Amazon listing price for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
-                    '(SPRICE = Amazon price × (1 + %/100) — of price, not PFT%)\n' +
+                    'Adjust SPRICE by % of Amz listing price for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
+                    '(SPRICE = Amz price × (1 + %/100) — of price, not PFT%)\n' +
                     '1 Red CVR=0%: Down=' + actLabel('zero', 'down') +
                     ', Same=' + actLabel('zero', 'equal') +
                     ', Up=' + actLabel('zero', 'up') + '\n' +
@@ -5896,9 +5896,9 @@
                         const minPush = resp && resp.min_price_push;
                         if (minPush && minPush.ok === false) {
                             const minErr = (minPush.errors && minPush.errors[0] && minPush.errors[0].message) || 'Unknown error';
-                            showToast('warning', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
+                            showToast('warning', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
                         } else {
-                            showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                            showToast('success', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
                         }
                         $btn.removeClass('btn-success').addClass('btn-secondary');
                         $btn.html('<i class="fas fa-check-circle"></i> Applied');
@@ -5913,7 +5913,7 @@
                         const r = err && err.response;
                         const errorMsg = (r && r.errors && r.errors[0] && r.errors[0].message)
                             ? r.errors[0].message
-                            : 'Failed to apply price to Amazon';
+                            : 'Failed to apply price to Amz';
                         showToast('error', errorMsg);
                         console.error('Apply price error:', err);
                     });
@@ -5953,7 +5953,7 @@
                     success: function(response) {
                         if (response.errors && response.errors.length > 0) {
                             const errorMsg = response.errors[0].message || 'Unknown error';
-                            showToast('error', `Amazon push failed: ${errorMsg}`);
+                            showToast('error', `Amz push failed: ${errorMsg}`);
                             const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
                             if (pk) {
                                 showParentPricingBreakdownModal(pk);
@@ -5974,9 +5974,9 @@
                         const minPush = response.min_price_push;
                         if (minPush && minPush.ok === false) {
                             const minErr = (minPush.errors && minPush.errors[0] && minPush.errors[0].message) || 'Unknown error';
-                            showToast('warning', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
+                            showToast('warning', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
                         } else {
-                            showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                            showToast('success', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
                         }
                         const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
                         if (pk) {
@@ -5995,7 +5995,7 @@
                             }
                         }
                         const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
-                        showToast('error', `Amazon push failed: ${errorMsg}`);
+                        showToast('error', `Amz push failed: ${errorMsg}`);
                         const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
                         if (pk) {
                             showParentPricingBreakdownModal(pk);
@@ -6848,7 +6848,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         width: 85,
-                        headerTooltip: "Avg rating + review count from Amazon Ads API cron (amazon:collect-reviews). Falls back to SP-API Catalog when Ads Brand Posts is unavailable.",
+                        headerTooltip: "Avg rating + review count from Amz Ads API cron (amazon:collect-reviews). Falls back to SP-API Catalog when Ads Brand Posts is unavailable.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             if (row.is_parent_summary) return '';
@@ -6899,7 +6899,7 @@
                             }
                             const href = 'https://www.amazon.com/dp/' + encodeURIComponent(itemId);
                             return `<a href="${escapeHtmlAttr(href)}" target="_blank" rel="noopener noreferrer"
-                                title="Buyer link — Amazon ASIN ${escapeHtmlAttr(itemId)}"
+                                title="Buyer link — Amz ASIN ${escapeHtmlAttr(itemId)}"
                                 style="font-weight:600;color:#0d6efd;text-decoration:none;font-size:12px;"
                                 onclick="event.stopPropagation();">
                                 <i class="fas fa-external-link-alt me-1"></i>Buyer
@@ -6924,7 +6924,7 @@
                             }
                             const href = 'https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin=' + encodeURIComponent(itemId);
                             return `<a href="${escapeHtmlAttr(href)}" target="_blank" rel="noopener noreferrer"
-                                title="Seller Central inventory — Amazon ASIN ${escapeHtmlAttr(itemId)}"
+                                title="Seller Central inventory — Amz ASIN ${escapeHtmlAttr(itemId)}"
                                 style="font-weight:600;color:#0d6efd;text-decoration:none;font-size:12px;"
                                 onclick="event.stopPropagation();">
                                 <i class="fas fa-external-link-alt me-1"></i>Seller
@@ -7158,7 +7158,7 @@
                             if (price <= 0) {
                                 const fallback = lmpPrice > 0 ? lmpPrice : (lmpaPrice > 0 ? lmpaPrice : 0);
                                 if (fallback > 0) {
-                                    return `<span style="color: #6c757d; font-style: italic;" title="Reference price (no Amazon listing price)">$${fallback.toFixed(2)}</span> ${dotBtn}`.trim();
+                                    return `<span style="color: #6c757d; font-style: italic;" title="Reference price (no Amz listing price)">$${fallback.toFixed(2)}</span> ${dotBtn}`.trim();
                                 }
                                 return dotBtn || '';
                             }
@@ -7272,7 +7272,7 @@
                         title: "SP",
                         field: "STANDARD_PRICE",
                         hozAlign: "center",
-                        headerTooltip: "Standard Price — manual only (LMP modal / SP editor). Blank unless filled when LMP cannot be determined. Dot vs Amazon price.",
+                        headerTooltip: "Standard Price — manual only (LMP modal / SP editor). Blank unless filled when LMP cannot be determined. Dot vs Amz price.",
                         editor: "input",
                         width: 70,
                         formatter: function(cell) {
@@ -7461,7 +7461,7 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editor: "input",
-                        headerTooltip: "Red = reduced, Yellow = hold, Green = increase vs Amazon price",
+                        headerTooltip: "Red = reduced, Yellow = hold, Green = increase vs Amz price",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -7478,7 +7478,7 @@
                             // When SPRICE matches Amazon price, show "-" (hold) instead of the same dollar amount
                             if (currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
                                 return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                    dot + '<span style="color:#adb5bd;" title="Same as Amazon price">-</span></span>';
+                                    dot + '<span style="color:#adb5bd;" title="Same as Amz price">-</span></span>';
                             }
 
                             let formattedValue = '$' + sprice.toFixed(2);
@@ -7581,24 +7581,24 @@
                             // Determine Amazon button icon and color
                             let amazonIcon = '<i class="fas fa-check"></i>';
                             let amazonColor = '#28a745'; // Green
-                            let amazonTitle = 'Push to Amazon';
+                            let amazonTitle = 'Push to Amz';
                             
                             if (amazonStatus === 'pushed') {
                                 amazonIcon = '<i class="fa-solid fa-check-double"></i>';
                                 amazonColor = '#28a745';
-                                amazonTitle = 'Price pushed to Amazon';
+                                amazonTitle = 'Price pushed to Amz';
                             } else if (amazonStatus === 'applied') {
                                 amazonIcon = '<i class="fa-solid fa-check-double"></i>';
                                 amazonColor = '#28a745';
-                                amazonTitle = 'Price applied to Amazon';
+                                amazonTitle = 'Price applied to Amz';
                             } else if (amazonStatus === 'error') {
                                 amazonIcon = '<i class="fa-solid fa-x"></i>';
                                 amazonColor = '#dc3545'; // Red
-                                amazonTitle = 'Error pushing to Amazon';
+                                amazonTitle = 'Error pushing to Amz';
                             } else if (amazonStatus === 'processing') {
                                 amazonIcon = '<i class="fas fa-spinner fa-spin"></i>';
                                 amazonColor = '#ffc107'; // Yellow
-                                amazonTitle = 'Pushing to Amazon...';
+                                amazonTitle = 'Pushing to Amz...';
                             }
                             
                             // Determine Shopify button icon and color
@@ -7703,7 +7703,7 @@
                                             
                                             $btn.prop('disabled', false);
                                             $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
-                                            showToast('error', `Amazon push failed: ${errorMsg}`);
+                                            showToast('error', `Amz push failed: ${errorMsg}`);
                                             return;
                                         }
                                         
@@ -7719,9 +7719,9 @@
                                         const minPush = response.min_price_push;
                                         if (minPush && minPush.ok === false) {
                                             const minErr = minPush.errors?.[0]?.message || 'Unknown error';
-                                            showToast('warning', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
+                                            showToast('warning', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
                                         } else {
-                                            showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                                            showToast('success', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
                                         }
                                     },
                                     error: function(xhr) {
@@ -7734,7 +7734,7 @@
                                         $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
                                         
                                         const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
-                                        showToast('error', `Amazon push failed: ${errorMsg}`);
+                                        showToast('error', `Amz push failed: ${errorMsg}`);
                                     }
                                 });
                                 return;
@@ -9661,7 +9661,7 @@
                 }
                 
                 var marketplaceNames = selectedMarketplaces.map(function(m) {
-                    return m === 'amazon' ? 'Amazon' : (m === 'shopify' ? 'Shopify' : 'PLS');
+                    return m === 'amazon' ? 'Amz' : (m === 'shopify' ? 'Shopify' : 'PLS');
                 }).join(', ');
                 
                 if (!confirm('Push ' + selectedSkusList.length + ' price(s) to ' + marketplaceNames + '?')) {
@@ -10027,7 +10027,7 @@
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <p class="mt-2">${refreshFromApi ? 'Pulling live prices + shipping from Amazon API...' : 'Loading competitors...'}</p>
+                        <p class="mt-2">${refreshFromApi ? 'Pulling live prices + shipping from Amz API...' : 'Loading competitors...'}</p>
                     </div>
                 `);
 
@@ -10096,7 +10096,7 @@
                             </div>
                         `);
                         if (refreshFromApi) {
-                            showToast(apiMsg || 'Failed to pull Amazon LMP data', 'error');
+                            showToast(apiMsg || 'Failed to pull Amz LMP data', 'error');
                         }
                     },
                     complete: function() {
@@ -10158,7 +10158,7 @@
                             <th style="width: 70px;">Rating</th>
                             <th style="width: 70px;">Reviews</th>
                             <th style="width: 140px;">Delivery</th>
-                            <th style="width: 80px;" title="Competitor inventory / stock from Amazon (SerpApi)">Inv</th>
+                            <th style="width: 80px;" title="Competitor inventory / stock from Amz (SerpApi)">Inv</th>
                             <th style="width: 60px;">Link</th>
                             <th style="width: 80px;">Actions</th>
                         </tr>
@@ -10270,7 +10270,7 @@
                             <td class="text-center">${deliveryHtml}</td>
                             <td class="text-center">${stockHtml}</td>
                             <td class="text-center">
-                                <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on Amazon">
+                                <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on Amz">
                                     <i class="fa fa-external-link"></i>
                                 </a>
                             </td>

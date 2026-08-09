@@ -742,23 +742,7 @@
             font-weight: 700;
         }
 
-        /* Parent SKU dot - P column */
-        .parent-sku-dot {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #17a2b8;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .parent-sku-dot:hover {
-            background-color: #0d6efd;
-        }
-        .parent-sku-dot.no-parent {
-            background-color: #dee2e6;
-            cursor: default;
-        }
+        /* Parent expand icon - P column uses shared yellow triangle (partials.parent-row-highlight) */
 
         /* SKU column — keep long SKUs inside the cell (do not overwrite Details) */
         .pricing-master-sku-wrap {
@@ -1001,7 +985,7 @@
                             <span class="d-inline-flex align-items-center gap-1" style="font-size: 0.55em;">
                                 <strong class="mb-0">Group:</strong>
                                 <select id="modal-group-select" class="form-select form-select-sm" style="width: auto; min-width: 70px;"
-                                    title="A=Amazon+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
+                                    title="A=Amz+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
                                     <option value="">All</option>
                                     <option value="A">A</option>
                                     <option value="D">D</option>
@@ -1050,7 +1034,7 @@
                         </button>
                         <span class="text-muted small mb-0">Group:</span>
                         <select id="modal-group-select-bar" class="form-select form-select-sm" style="width: auto; min-width: 70px;"
-                            title="A=Amazon+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
+                            title="A=Amz+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
                             <option value="">All</option>
                             <option value="A">A</option>
                             <option value="D">D</option>
@@ -1283,13 +1267,13 @@
         </div>
     </div>
 
-    <!-- Amazon SPRICE Table Modal -->
+    <!-- Amz SPRICE Table Modal -->
     <div class="modal fade" id="amazonSpriceTableModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header" style="background-color: #232f3e; color: white;">
                     <h5 class="modal-title">
-                        <i class="fas fa-table me-2"></i> Amazon SPRICE Table
+                        <i class="fas fa-table me-2"></i> Amz SPRICE Table
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -1300,7 +1284,7 @@
                                 <tr>
                                     <th>SKU</th>
                                     <th class="text-end">SPRICE</th>
-                                    <th class="text-end">Amazon Margin</th>
+                                    <th class="text-end">Amz Margin</th>
                                     <th class="text-end">SGPFT%</th>
                                     <th class="text-end">SPFT%</th>
                                     <th class="text-end">SROI%</th>
@@ -1321,7 +1305,7 @@
         </div>
     </div>
 
-    <!-- LMP Competitors Modal – right-side drawer (Amazon + eBay) -->
+    <!-- LMP Competitors Modal – right-side drawer (Amz + eBay) -->
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="true">
         <div class="modal-dialog modal-dialog-scrollable">
             <div class="modal-content">
@@ -2963,12 +2947,16 @@
                     hozAlign: "center",
                     formatter: function(cell) {
                         const parent = cell.getValue();
+                        const playIcon = (window.ParentExpand && typeof window.ParentExpand.yellowSvg === 'function')
+                            ? window.ParentExpand.yellowSvg()
+                            : '<i class="fas fa-play" style="font-size:12px;color:#ffc107;"></i>';
                         if (!parent) {
-                            return '<span class="parent-sku-dot no-parent" title="No parent"></span>';
+                            return '<span class="parent-sku-dot no-parent" title="No parent">' + playIcon + '</span>';
                         }
-                        return `<span class="parent-sku-dot parent-sku-dot-btn" 
-                                    data-parent="${parent.replace(/"/g, '&quot;')}" 
-                                    title="Click to view SKUs for parent: ${parent.replace(/"/g, '&quot;')}"></span>`;
+                        const parentEsc = String(parent).replace(/"/g, '&quot;');
+                        return `<span class="parent-sku-dot parent-sku-dot-btn"
+                                    data-parent="${parentEsc}"
+                                    title="Click to view SKUs for parent: ${parentEsc}">${playIcon}</span>`;
                     }
                 },
                 {
@@ -3092,7 +3080,7 @@
                     hozAlign: "center",
                     minWidth: 80,
                     sorter: "number",
-                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Walmart, Temu, Temu 2, Macy's, Reverb, etc.). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
+                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amz, eBay, Walmart, Temu, Temu 2, Macy's, Reverb, etc.). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sw = parseFloat(cell.getValue() || 0);
@@ -3480,7 +3468,7 @@
                         const price = value != null && value !== '' ? parseFloat(value) : null;
                         if (price == null || price <= 0) {
                             const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amz repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
                         }
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
@@ -5195,7 +5183,7 @@
             const ch = isEdit
                 ? lmpEditState.channel
                 : (($('#lmpAddChannel').val() || lmpModalCache.filter || 'amazon').toLowerCase());
-            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
+            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
             const label = labelMap[ch] || ch;
             const $box = $form.closest('.lmp-add-form-box');
             $box.find('strong').html(
@@ -5479,7 +5467,7 @@
 
         function lmpChannelIconHtml(channel) {
             if (channel === 'amazon') {
-                return '<span class="lmp-channel-icon amazon" title="Amazon"><i class="fab fa-amazon"></i></span>';
+                return '<span class="lmp-channel-icon amazon" title="Amz"><i class="fab fa-amazon"></i></span>';
             }
             if (channel === 'ebay') {
                 return '<span class="lmp-channel-icon ebay" title="eBay"><i class="fas fa-gavel"></i></span>';
@@ -5754,7 +5742,7 @@
             html += '<div class="lmp-channel-filters">';
             [
                 { key: 'all', label: 'All' },
-                { key: 'amazon', label: 'Amazon' },
+                { key: 'amazon', label: 'Amz' },
                 { key: 'ebay', label: 'eBay' },
                 { key: 'google', label: 'Google' },
                 { key: 'bestbuy', label: 'BestBuy' },
@@ -5816,7 +5804,7 @@
             }
 
             if (!rows.length) {
-                const labelMap = { all: 'Amazon, eBay, Google, BestBuy, Macy, Reverb, or Temu', amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
+                const labelMap = { all: 'Amz, eBay, Google, BestBuy, Macy, Reverb, or Temu', amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
                 const label = labelMap[filter] || 'competitors';
                 html += '<div class="alert alert-info mb-0 py-2 px-2"><i class="fa fa-info-circle"></i> No ' + label + ' competitors found</div>';
                 $('#lmpDataList').html(html);
@@ -5928,7 +5916,7 @@
 
         function buildLmpAddFormHtml(sku, channel) {
             const ch = (channel || 'amazon').toLowerCase();
-            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
+            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
             const label = labelMap[ch] || ch;
             let idField = '';
             if (ch === 'amazon') {
@@ -5949,7 +5937,7 @@
                 + '<div class="d-flex align-items-center justify-content-between mb-1">'
                 + '<strong style="font-size:12px;"><i class="fas fa-plus-circle text-success me-1"></i>Add ' + label + ' LMP</strong>'
                 + '<select class="form-select form-select-sm" id="lmpAddChannel" style="width:110px;">'
-                + '<option value="amazon"' + (ch === 'amazon' ? ' selected' : '') + '>Amazon</option>'
+                + '<option value="amazon"' + (ch === 'amazon' ? ' selected' : '') + '>Amz</option>'
                 + '<option value="ebay"' + (ch === 'ebay' ? ' selected' : '') + '>eBay</option>'
                 + '<option value="google"' + (ch === 'google' ? ' selected' : '') + '>Google</option>'
                 + '<option value="bestbuy"' + (ch === 'bestbuy' ? ' selected' : '') + '>BestBuy</option>'
@@ -6219,9 +6207,9 @@
                     data: isEdit
                         ? { id: editId, asin: idVal, price: price, product_link: link || null }
                         : { sku: sku, asin: idVal, price: price, product_link: link || null, marketplace: 'amazon' },
-                    success: function(r) { done(!!r.success, r.message || (isEdit ? 'Amazon LMP updated' : 'Amazon LMP added')); },
+                    success: function(r) { done(!!r.success, r.message || (isEdit ? 'Amz LMP updated' : 'Amz LMP added')); },
                     error: function(xhr) {
-                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update Amazon LMP' : 'Failed to add Amazon LMP'));
+                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update Amz LMP' : 'Failed to add Amz LMP'));
                     }
                 });
                 return;
@@ -6363,7 +6351,7 @@
             const price = btn.attr('data-price') || btn.data('price');
             const extId = btn.attr('data-ext-id') || btn.data('ext-id') || '';
             const link = btn.attr('data-link') || btn.closest('tr').find('a.text-primary').attr('href') || '';
-            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
+            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
             const label = labelMap[marketplace] || marketplace;
             if (!id && !extId) {
                 showToast('Cannot delete — missing competitor id', 'error');

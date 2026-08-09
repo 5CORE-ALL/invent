@@ -3957,6 +3957,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel-counts', [ChannelMasterController::class, 'getChannelCounts']);
 
     Route::get('/home', [\App\Http\Controllers\TaskController::class, 'homeDashboard'])->name('home');
+    Route::get('/dashboard-preferences', [\App\Http\Controllers\DashboardPreferenceController::class, 'show'])->name('dashboard.preferences.show');
+    Route::post('/dashboard-preferences', [\App\Http\Controllers\DashboardPreferenceController::class, 'store'])->name('dashboard.preferences.store');
+    Route::get('/dashboard-kpi-history', [\App\Http\Controllers\DashboardKpiHistoryController::class, 'show'])->name('dashboard.kpi.history');
+    Route::post('/dashboard-kpi-tones', [\App\Http\Controllers\DashboardKpiHistoryController::class, 'tones'])->name('dashboard.kpi.tones');
     Route::get('/product-master', [ProductMasterController::class, 'product_master_index'])
         ->name('product.master');
     Route::get('/title-master', fn () => view('title-master'))->name('title.master');
@@ -5139,6 +5143,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inventory-history/get-data', [InventoryHistoryController::class, 'getData'])->name('inventory-history.get-data');
     Route::get('/inventory-history/get-stats', [InventoryHistoryController::class, 'getStats'])->name('inventory-history.get-stats');
     Route::post('/inventory-history/run-snapshot', [InventoryHistoryController::class, 'runSnapshot'])->name('inventory-history.run-snapshot');
+    Route::get('/inventory-history/sku-rolling', [InventoryHistoryController::class, 'skuRollingHistory'])->name('inventory-history.sku-rolling');
+    Route::post('/inventory-history/sku-tones', [InventoryHistoryController::class, 'skuTones'])->name('inventory-history.sku-tones');
 
     Route::get('/shopify-orders', [ShopifyOrdersController::class, 'index'])->name('shopify-orders.index');
     Route::get('/shopify-orders/get-data', [ShopifyOrdersController::class, 'getData'])->name('shopify-orders.get-data');

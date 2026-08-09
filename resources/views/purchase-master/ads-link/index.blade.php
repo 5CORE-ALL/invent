@@ -632,7 +632,7 @@
                     Link SP campaigns as <strong id="ads-link-campaign-modal-type">KW</strong> for parent
                     <strong id="ads-link-campaign-modal-parent"></strong>
                     (<span class="text-muted">(<span id="ads-link-campaign-modal-link-sku"></span>)</span>.
-                    Same data as Amazon Ads Missing.
+                    Same data as Amz Ads Missing.
                 </p>
                 <label for="ads-link-campaign-search" class="form-label mb-1">Quick search</label>
                 <input type="text" id="ads-link-campaign-search" class="form-control" placeholder="Search campaigns..." autocomplete="off">
@@ -3044,7 +3044,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 widthShrink: 0,
                 headerSort: true,
                 sorter: 'number',
-                headerTooltip: 'Amazon KW negatives — same count as /google/shopping/missing',
+                headerTooltip: 'Amz KW negatives — same count as /google/shopping/missing',
                 formatter: negativeCountFormatter,
                 cellClick: function (e, cell) {
                     const link = e.target.closest('.ads-link-neg-open');

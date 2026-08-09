@@ -2267,7 +2267,7 @@
                         `Data to be updated:\n` +
                         `- Weight (Weight ACT (Kg), Itm wt GW)\n` +
                         `- Dimensions (width/height inch, length/width/height CM)\n\n` +
-                        `This will update the data in: Amazon, eBay, Shopify, Walmart, Doba, Temu, and all other connected marketplaces.`;
+                        `This will update the data in: Amz, eBay, Shopify, Walmart, Doba, Temu, and all other connected marketplaces.`;
                     
                     if (!confirm(confirmMessage)) {
                         return;

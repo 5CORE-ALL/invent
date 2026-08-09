@@ -523,7 +523,7 @@
                         <option value="skus" selected>SKUs</option>
                     </select>
 
-                    <!-- DIL Filter — Amazon slabs (Red <25 / Green 25-50 / Pink 50%+) -->
+                    <!-- DIL Filter — Amz slabs (Red <25 / Green 25-50 / Pink 50%+) -->
                     <div class="dropdown manual-dropdown-container">
                         <button class="btn btn-sm btn-light dropdown-toggle" type="button" id="dilFilterDropdown"
                             title="DIL% = OV L30 / INV × 100">
@@ -612,7 +612,7 @@
                     </div>
                 </div>
 
-                <!-- Summary Stats (order:-1 → shown above filters, same as Amazon) -->
+                <!-- Summary Stats (order:-1 → shown above filters, same as Amz) -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <div class="d-flex flex-wrap gap-2 summary-badges-row">
                         <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;">PFT: $0</span>
@@ -644,10 +644,10 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 > 0">&gt;0 Sold: 0</span>
                         <span class="badge bg-info fs-6 p-2 d-none" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="GROI% = Σ PFT ÷ Σ COGS × 100 — same as /shopify-b2b/daily-sales and Amazon/eBay badges">GROI: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="GROI% = Σ PFT ÷ Σ COGS × 100 — same as /shopify-b2b/daily-sales and Amz/eBay badges">GROI: 0%</span>
                         <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">NROI: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
-                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
+                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">Miss: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Ads: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Spend: $0</span>
@@ -1695,9 +1695,9 @@
                 saveSpriceUpdates(updates);
             }
             
-            let message = `Amazon price applied to ${updatedCount} SKU(s)`;
+            let message = `Amz price applied to ${updatedCount} SKU(s)`;
             if (noAmazonPriceCount > 0) {
-                message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price or not found)`;
+                message += ` (${noAmazonPriceCount} SKU(s) had no Amz price or not found)`;
             }
             
             showToast(message, updatedCount > 0 ? 'success' : 'warning');

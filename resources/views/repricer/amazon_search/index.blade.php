@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Competitor Search', 'mode' => 'light'])
+@extends('layouts.vertical', ['title' => 'Amz Competitor Search', 'mode' => 'light'])
 
 @section('css')
 <link href="{{ URL::asset('build/assets/app-C9T8gcC6.css') }}" rel="stylesheet" type="text/type" />
@@ -196,10 +196,10 @@
                 <div class="page-title-right">
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="javascript: void(0);">Repricer</a></li>
-                        <li class="breadcrumb-item active">Amazon Competitor Search</li>
+                        <li class="breadcrumb-item active">Amz Competitor Search</li>
                     </ol>
                 </div>
-                <h4 class="page-title">Amazon Competitor Discovery</h4>
+                <h4 class="page-title">Amz Competitor Discovery</h4>
             </div>
         </div>
     </div>
@@ -207,7 +207,7 @@
     <div class="row">
         <div class="col-12">
             <div class="search-container">
-                <h5 class="mb-3">Search Amazon Products</h5>
+                <h5 class="mb-3">Search Amz Products</h5>
                 <p class="text-muted mb-4">Enter a search query to discover competitor ASINs and analyze their pricing, ratings, and positions.</p>
                 
                 <form id="searchForm">
@@ -223,17 +223,17 @@
                             <div class="mb-3">
                                 <label for="marketplace" class="form-label">Marketplace</label>
                                 <select class="form-select" id="marketplace" name="marketplace">
-                                    <option value="amazon" selected>Amazon US</option>
-                                    <option value="amazon.ca">Amazon CA</option>
-                                    <option value="amazon.co.uk">Amazon UK</option>
-                                    <option value="amazon.de">Amazon DE</option>
+                                    <option value="amazon" selected>Amz US</option>
+                                    <option value="amazon.ca">Amz CA</option>
+                                    <option value="amazon.co.uk">Amz UK</option>
+                                    <option value="amazon.de">Amz DE</option>
                                 </select>
                             </div>
                         </div>
                     </div>
                     
                     <button type="submit" class="btn btn-primary btn-lg">
-                        <i class="mdi mdi-magnify me-2"></i>Search Amazon
+                        <i class="mdi mdi-magnify me-2"></i>Search Amz
                     </button>
                     <button type="button" class="btn btn-secondary btn-lg" id="loadHistoryBtn">
                         <i class="mdi mdi-history me-2"></i>Load History
@@ -255,7 +255,7 @@
         <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
         </div>
-        <p class="mt-3 text-muted">Searching Amazon... This may take a moment.</p>
+        <p class="mt-3 text-muted">Searching Amz... This may take a moment.</p>
     </div>
 
     <div class="row mt-4" id="resultsContainer" style="display: none;">
@@ -273,7 +273,7 @@
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Sort By</label>
                                     <select class="form-select" id="sortBy">
-                                        <option value="position">Amazon Position (Default)</option>
+                                        <option value="position">Amz Position (Default)</option>
                                         <option value="price_low_high">Price: Low to High</option>
                                         <option value="price_high_low">Price: High to Low</option>
                                         <option value="rating_high_low">Rating: High to Low</option>

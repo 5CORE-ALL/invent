@@ -256,7 +256,7 @@
         </div>
         <div class="lm-actions" id="lm-header-actions-products">
             <button type="button" class="btn-lc btn-lc-ghost" id="lm-manage-channels-btn"><i class="fas fa-store me-1"></i>Add Marketplaces</button>
-            <button type="button" class="btn-lc btn-lc-primary" id="lm-import-amazon-btn"><i class="fas fa-cloud-download-alt me-1"></i>Import from Amazon</button>
+            <button type="button" class="btn-lc btn-lc-primary" id="lm-import-amazon-btn"><i class="fas fa-cloud-download-alt me-1"></i>Import from Amz</button>
         </div>
         <div class="lm-actions d-none" id="lm-header-actions-drafts">
             <button type="button" class="btn-lc btn-lc-primary" id="lm-quick-list-btn"><i class="fas fa-bolt me-1"></i>Quick/Auto List to eBay</button>
@@ -430,7 +430,7 @@
                     <div class="lc-desc-wrap" id="lc-desc-wrap">
                         <div class="lc-desc-code-row" id="lc-desc-code-row">
                             <div class="lc-desc-gutter" id="lc-desc-gutter">1</div>
-                            <textarea id="lc-description" class="form-control" rows="14" spellcheck="false" placeholder="Plain text from Amazon — click Optimize Description for eBay to build HTML with images."></textarea>
+                            <textarea id="lc-description" class="form-control" rows="14" spellcheck="false" placeholder="Plain text from Amz — click Optimize Description for eBay to build HTML with images."></textarea>
                         </div>
                         <div id="lc-description-preview"></div>
                         <div id="lc-description-rich" contenteditable="true"></div>
@@ -454,7 +454,7 @@
                             <label class="form-check-label" for="lc-gallery-plus">Gallery Plus</label>
                         </div>
                     </div>
-                    <p class="lc-help">Drag images to reorder. First image is Primary. Images load from Amazon / product master.</p>
+                    <p class="lc-help">Drag images to reorder. First image is Primary. Images load from Amz / product master.</p>
                     <input type="hidden" id="lc-images">
                     <div class="lc-image-grid" id="lc-image-preview"></div>
                 </div>
@@ -684,7 +684,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small mb-3">Choose which marketplaces appear when listing products from Amazon.</p>
+                <p class="text-muted small mb-3">Choose which marketplaces appear when listing products from Amz.</p>
                 <div class="lm-channel-list" id="lm-manage-channel-list"></div>
             </div>
             <div class="modal-footer">
@@ -947,7 +947,7 @@
 
     function renderProductInfo(p) {
         const rows = [
-            ['Product Origin', escapeHtml(p.origin || 'Amazon') + (p.origin === 'Main Store' ? ' <i class="fab fa-shopify text-success"></i>' : ' <i class="fab fa-amazon" style="color:#ff9900"></i>')],
+            ['Product Origin', escapeHtml(p.origin || 'Amz') + (p.origin === 'Main Store' ? ' <i class="fab fa-shopify text-success"></i>' : ' <i class="fab fa-amazon" style="color:#ff9900"></i>')],
             ['Product Name', escapeHtml(p.title || '')],
             ['Status', `<span class="lm-status-active">${escapeHtml(p.status || 'ACTIVE')}</span>`],
             ['SKU', escapeHtml(p.sku || '')],
@@ -985,7 +985,7 @@
         if (!list.length) {
             main.removeAttribute('src');
             main.alt = 'No images';
-            thumbs.innerHTML = '<div class="text-muted">No images from Amazon / Main Store.</div>';
+            thumbs.innerHTML = '<div class="text-muted">No images from Amz / Main Store.</div>';
             return;
         }
         main.src = list[0];
@@ -1080,7 +1080,7 @@
         if (!sku) { toast('Missing SKU.', 'error'); return; }
         currentProductSku = sku;
         currentProduct = null;
-        $('#lm-prod-loading').removeClass('d-none').text('Loading product from Amazon / Main Store…');
+        $('#lm-prod-loading').removeClass('d-none').text('Loading product from Amz / Main Store…');
         $('#lm-prod-content').addClass('d-none');
         bootstrap.Modal.getOrCreateInstance(document.getElementById('lmProductModal')).show();
         $.getJSON("{{ route('listing.manager.product') }}", { sku })
@@ -1177,7 +1177,7 @@
         syncImagesHidden();
         const $grid = $('#lc-image-preview');
         if (!editorImages.length) {
-            $grid.html('<div class="text-muted small">No images yet — click <strong>Load Images From Main Store</strong> (fetches live Amazon media) or Upload.</div>');
+            $grid.html('<div class="text-muted small">No images yet — click <strong>Load Images From Main Store</strong> (fetches live Amz media) or Upload.</div>');
             return;
         }
         $grid.html(editorImages.map((url, i) => `
@@ -1530,7 +1530,7 @@
         table = new Tabulator('#lm-products-table', {
             layout: 'fitDataStretch',
             height: '560px',
-            placeholder: 'No Amazon products found. Click Import from Amazon.',
+            placeholder: 'No Amz products found. Click Import from Amz.',
             selectableRows: true,
             pagination: true,
             paginationSize: 100,
@@ -1672,7 +1672,7 @@
 
         $('#lm-import-amazon-btn').on('click', function () {
             const $btn = $(this);
-            if (!confirm('Import all Amazon listing details? This may take a few minutes.')) return;
+            if (!confirm('Import all Amz listing details? This may take a few minutes.')) return;
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Importing…');
             $.ajax({
                 url: "{{ route('listing.manager.import') }}",
@@ -1684,7 +1684,7 @@
                     loadTable();
                 },
                 error: xhr => toast(xhr.responseJSON?.message || 'Import failed.', 'error'),
-                complete: () => $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt me-1"></i>Import from Amazon'),
+                complete: () => $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt me-1"></i>Import from Amz'),
             });
         });
 
@@ -1897,7 +1897,7 @@
                     toast(res.message || ('Loaded ' + imgs.length + ' image(s).'), 'success');
                 },
                 error: function (xhr) {
-                    toast(xhr.responseJSON?.message || 'Could not load images from Amazon.', 'error');
+                    toast(xhr.responseJSON?.message || 'Could not load images from Amz.', 'error');
                 },
                 complete: function () {
                     $btn.data('loading', false).prop('disabled', false).html('Load Images From Main Store');

@@ -319,7 +319,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amz CVR Issues',
-        'sub_title' => 'Amazon CVR issues',
+        'sub_title' => 'Amz CVR issues',
     ])
 
     <div class="row">
@@ -336,7 +336,7 @@
                             title="Click for rolling CVR graph. Overall = (Σ Sold L30 ÷ Σ Views L30) × 100. BG: Red ≤4% · Yellow 4–7% · Green &gt;7%">CVR: 0.0%</span>
                         <span id="amz-cvr-ml-badge" class="badge"
                             style="background-color: #28a745; color: #fff; cursor: pointer;"
-                            title="Missing L — INV&gt;0, not listed on Amazon (price ≤ 0), REQ. Click to filter.">
+                            title="Missing L — INV&gt;0, not listed on Amz (price ≤ 0), REQ. Click to filter.">
                             ML: <span id="amz-cvr-ml-count">0</span>
                         </span>
                         <select id="amz-cvr-cvr-filter" class="form-select form-select-sm"
@@ -592,7 +592,7 @@
                     </h5>
                     <div class="d-flex align-items-center gap-2 ms-auto">
                         <button type="button" id="amzCvrLmpPullBtn" class="btn btn-sm btn-light"
-                            title="Pull live prices from Amazon API">
+                            title="Pull live prices from Amz API">
                             <i class="fas fa-cloud-download-alt"></i> Pull
                         </button>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -1222,7 +1222,7 @@
                 ? '<img src="' + amzCvrEsc(our.image) + '" alt="" style="width:40px;height:40px;object-fit:contain;border-radius:4px;" loading="lazy">'
                 : '<span class="text-muted"><i class="fas fa-store"></i></span>';
             const linkBtn = our.link
-                ? '<a href="' + amzCvrEsc(our.link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-primary" title="Open our Amazon listing"><i class="fa fa-external-link"></i></a>'
+                ? '<a href="' + amzCvrEsc(our.link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-primary" title="Open our Amz listing"><i class="fa fa-external-link"></i></a>'
                 : '<span class="text-muted small">—</span>';
             const rating = (our.rating != null && our.rating > 0)
                 ? '<span style="color:#ffc107;">' + our.rating.toFixed(1) + ' <i class="fa fa-star"></i></span>'
@@ -1607,7 +1607,7 @@
                     hozAlign: 'center',
                     sorter: 'number',
                     width: 65,
-                    headerTooltip: 'Amazon sessions L30 (View L30) — red when &lt; 70',
+                    headerTooltip: 'Amz sessions L30 (View L30) — red when &lt; 70',
                     formatter: function(cell) {
                         const num = Math.round(cell.getValue() || 0);
                         const text = num.toLocaleString('en-US');
@@ -1623,7 +1623,7 @@
                     hozAlign: 'center',
                     sorter: 'number',
                     width: 70,
-                    headerTooltip: 'Amazon sessions L7 (View L7)',
+                    headerTooltip: 'Amz sessions L7 (View L7)',
                     formatter: function(cell) {
                         return Math.round(cell.getValue() || 0).toLocaleString('en-US');
                     }
@@ -1634,7 +1634,7 @@
                     hozAlign: 'center',
                     sorter: 'number',
                     width: 60,
-                    headerTooltip: 'Amazon units ordered L30 (A L30)',
+                    headerTooltip: 'Amz units ordered L30 (A L30)',
                     formatter: function(cell) {
                         return Math.round(cell.getValue() || 0).toLocaleString('en-US');
                     }
@@ -1705,14 +1705,14 @@
                     hozAlign: 'center',
                     sorter: 'number',
                     width: 70,
-                    headerTooltip: 'Amazon listing price',
+                    headerTooltip: 'Amz listing price',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const price = parseFloat(cell.getValue() || 0);
                         const lmpPrice = parseFloat(row.lmp_price || 0);
                         if (price <= 0) {
                             if (lmpPrice > 0) {
-                                return '<span style="color: #6c757d; font-style: italic;" title="Reference LMP (no Amazon price)">$'
+                                return '<span style="color: #6c757d; font-style: italic;" title="Reference LMP (no Amz price)">$'
                                     + lmpPrice.toFixed(2) + '</span>';
                             }
                             return '<span style="color: #999;">—</span>';
@@ -2329,7 +2329,7 @@
                 const label = meta.label || key;
                 const saved = prev[key] || {};
                 const title = saved.title || defaultAmzCvrTaskTitle(sku, label);
-                const group = saved.group || 'Amazon';
+                const group = saved.group || 'Amz';
                 const assigneeId = isOther
                     ? (saved.assigneeId || '')
                     : (meta.user_id ? String(meta.user_id) : '');
@@ -2389,7 +2389,7 @@
                 const key = row.getAttribute('data-issue');
                 if (!key) return;
                 const title = (row.querySelector('.amz-cvr-task-title')?.value || '').trim();
-                const group = (row.querySelector('.amz-cvr-task-group')?.value || '').trim() || 'Amazon';
+                const group = (row.querySelector('.amz-cvr-task-group')?.value || '').trim() || 'Amz';
                 const assigneeId = (row.querySelector('.amz-cvr-task-assignee-id')?.value || '').trim();
                 const assigneeLabel = (row.querySelector('.amz-cvr-task-assignee-search')?.value || '').trim();
 
@@ -2430,7 +2430,7 @@
             body.append('_token', AMZ_CVR_CSRF);
             body.append('title', payload.title);
             body.append('description', payload.description);
-            body.append('group', payload.group || 'Amazon');
+            body.append('group', payload.group || 'Amz');
             body.append('priority', 'normal');
             body.append('assignee_id', payload.assigneeId);
             body.append('etc_minutes', '10');
@@ -2846,7 +2846,7 @@
                             return createAmzCvrTask({
                                 title: title,
                                 description: descParts.join('\n'),
-                                group: job.group || 'Amazon',
+                                group: job.group || 'Amz',
                                 assigneeId: job.assigneeId
                             }).then(function(result) {
                                 results.push({ sku: sku, job: job, result: result });

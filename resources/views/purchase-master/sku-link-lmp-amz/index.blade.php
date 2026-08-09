@@ -475,7 +475,7 @@
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title">
-                    <i class="fa fa-amazon"></i> Amazon Competitors for SKU: <span id="sku-link-lmp-amz-lmp-sku"></span>
+                    <i class="fa fa-amazon"></i> Amz Competitors for SKU: <span id="sku-link-lmp-amz-lmp-sku"></span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>

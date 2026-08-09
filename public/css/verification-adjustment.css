@@ -4,21 +4,52 @@
  * Loaded with blade @section('css').
  */
 
-/* ---- Control bar structure ---- */
+/* ---- Control bar structure (single line, left → right) ---- */
 .va-controls-top {
     padding-bottom: 0.5rem;
     border-bottom: 1px solid #e9ecef;
 }
 
-/* overflow-x:auto forces overflow-y to clip — hides SKU/Parent autocomplete below the bar */
+.va-controls-bar.va-controls-filters,
 .va-controls-filters {
+    width: 100%;
     border: 1px solid #dee2e6;
     background-color: #f8f9fa;
-    flex-wrap: nowrap;
+    flex-wrap: nowrap !important;
     gap: 0.5rem;
-    overflow: visible;
-    min-height: 38px;
+    overflow-x: auto;
+    overflow-y: visible;
+    min-height: 70px;
     align-items: center;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
+}
+
+.va-controls-bar .va-controls-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #343a40;
+    white-space: nowrap;
+    margin-right: 0.25rem;
+}
+
+.va-controls-bar .va-controls-divider {
+    width: 1px;
+    height: 28px;
+    background: #ced4da;
+    margin: 0 0.15rem;
+    flex-shrink: 0;
+}
+
+.va-controls-bar .va-controls-actions-group {
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.va-controls-bar .va-verified-pie-wrap,
+.va-controls-bar #va-verified-pie {
+    width: 66px;
+    height: 66px;
 }
 
 .va-controls-filters .va-label {
@@ -27,42 +58,46 @@
     white-space: nowrap;
 }
 
-.va-controls-filters .va-controls-inner {
-    gap: 0.25rem;
+/* Equal-width filter fields fill remaining bar width */
+.va-controls-filters .va-controls-filters-grow {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 0.5rem;
+}
+
+.va-controls-filters .va-controls-filters-grow .va-controls-inner {
+    flex: 1 1 0;
+    min-width: 0;
+    width: 0; /* equal flex basis so all slots match */
+    gap: 0;
 }
 
 .va-controls-filters .dropdown-search-container {
+    width: 100%;
     min-width: 0;
 }
 
-/* Wide enough for full placeholders (“Search parent…”, “Search all columns”) */
-.va-controls-filters .va-input-sm {
-    width: 110px;
-    min-width: 110px;
-}
-
-.va-controls-filters #row-data-type.va-input-sm {
-    width: 110px;
-    min-width: 110px;
-}
-
+.va-controls-filters .va-input-sm,
+.va-controls-filters #row-data-type.va-input-sm,
 .va-controls-filters .parent-search.va-input-sm,
-.va-controls-filters .sku-search.va-input-sm {
-    width: 138px;
-    min-width: 138px;
-}
-
+.va-controls-filters .sku-search.va-input-sm,
 .va-controls-filters #search-input.va-input-sm {
-    width: 168px;
-    min-width: 168px;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none;
+    height: 34px;
+    box-sizing: border-box;
 }
 
-.va-controls-filters #bulk-action-select.va-input-sm {
-    width: 130px;
+.va-controls-filters .va-controls-status {
+    flex-shrink: 0;
+    gap: 0.35rem;
+    margin-left: 0.15rem;
 }
 
 .va-controls-filters .va-controls-status .btn {
     white-space: nowrap;
+    height: 34px;
 }
 
 /* Activity Log modal: wider width to fit Remarks column, content inside modal */
@@ -125,7 +160,11 @@
 
 @media (max-width: 1200px) {
     .va-controls-filters {
-        flex-wrap: wrap;
+        flex-wrap: wrap !important;
+    }
+    .va-controls-filters .va-controls-filters-grow {
+        flex: 1 1 100%;
+        width: 100%;
     }
 }
 
@@ -136,15 +175,24 @@
     }
     .va-controls-filters {
         flex-direction: column;
-        align-items: flex-start !important;
+        align-items: stretch !important;
+        flex-wrap: wrap !important;
+    }
+    .va-controls-filters .va-controls-filters-grow {
         flex-wrap: wrap;
+        width: 100%;
+    }
+    .va-controls-filters .va-controls-filters-grow .va-controls-inner {
+        flex: 1 1 calc(33.333% - 0.5rem);
+        width: auto;
+        min-width: 120px;
     }
     .va-controls-filters .va-input-sm {
         max-width: none;
     }
-    .va-controls-actions,
     .va-controls-status {
         width: 100%;
+        justify-content: flex-start;
     }
 }
 

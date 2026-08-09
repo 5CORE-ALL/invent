@@ -1015,7 +1015,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <h4 class="header-title">Amazon Zero View</h4>
+                    <h4 class="header-title">Amz Zero View</h4>
 
                     <!-- Custom Dropdown Filters Row -->
                     <div class="d-flex flex-wrap gap-2 mb-3">
@@ -1405,7 +1405,7 @@
                             <div class="spinner-border text-primary" role="status">
                                 <span class="visually-hidden">Loading...</span>
                             </div>
-                            <div class="loader-text">Loading Amazon Zero...</div>
+                            <div class="loader-text">Loading Amz Zero...</div>
                         </div>
                     </div>
                 </div>

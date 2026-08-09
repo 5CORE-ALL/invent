@@ -2536,7 +2536,7 @@
                     sorter: 'number',
                     sorterParams: { alignEmptyValues: 'bottom' },
                     cssClass: 'pef-sortable',
-                    headerTooltip: 'Lowest Marketplace Price for this SKU on this channel (same source as /price-increase OV L30 LMP). Amazon / eBay / Temu when available.',
+                    headerTooltip: 'Lowest Marketplace Price for this SKU on this channel (same source as /price-increase OV L30 LMP). Amz / eBay / Temu when available.',
                     formatter: function(cell) {
                         const v = cell.getValue();
                         if (v === null || v === undefined || v === '') {

@@ -24,7 +24,7 @@
                 </div>
             </div>
             <div class="col-lg-6">
-                <div class="px-3 py-2 {{ $rightClass }} border-bottom small fw-semibold">Amazon</div>
+                <div class="px-3 py-2 {{ $rightClass }} border-bottom small fw-semibold">Amz</div>
                 <div class="p-3">
                     @if(filled($right))
                         {!! $right !!}

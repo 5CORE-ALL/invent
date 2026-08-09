@@ -384,7 +384,7 @@
     {{--
         Channel integration: channel_master (active), same as /all-marketplace-master.
         // TODO: Fetch channels via API endpoint
-        Dummy fallback when empty: Amazon, Flipkart, Shopify, Website, WhatsApp (id 0 — stored as null in DB).
+        Dummy fallback when empty: Amz, Flipkart, Shopify, Website, WhatsApp (id 0 — stored as null in DB).
 
         // TODO: Replace static data with API integration (table loaded via AJAX from followups/data).
     --}}
@@ -1313,7 +1313,7 @@
     Sample $channels in controller:
         $channels = \App\Models\ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])->orderBy('type')->orderBy('id')->get(['id','channel']);
     Dummy row shape from /customer-care/followups/data:
-        {"id":1,"ticket_id":"TKT-DEMO-001","order_id":"ORD-1001","channel_name":"Amazon",
+        {"id":1,"ticket_id":"TKT-DEMO-001","order_id":"ORD-1001","channel_name":"Amz",
          "customecr_name":"Sample Customer","status":"Pending",
          "followup_display":"05 Apr 10:00",
          "next_followup":"03-18-2026 10:00","next_followup_at":"2026-03-18T10:00",

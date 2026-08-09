@@ -269,23 +269,7 @@
             max-width: 90% !important;
         }
 
-        /* Parent SKU dot - P column */
-        .parent-sku-dot {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #17a2b8;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .parent-sku-dot:hover {
-            background-color: #0d6efd;
-        }
-        .parent-sku-dot.no-parent {
-            background-color: #dee2e6;
-            cursor: default;
-        }
+        /* Parent expand icon - P column uses shared yellow triangle (partials.parent-row-highlight) */
 
         /* SKU column — larger on hover for readability */
         .pricing-master-sku-text {
@@ -653,13 +637,13 @@
         </div>
     </div>
 
-    <!-- Amazon SPRICE Table Modal -->
+    <!-- Amz SPRICE Table Modal -->
     <div class="modal fade" id="amazonSpriceTableModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header" style="background-color: #232f3e; color: white;">
                     <h5 class="modal-title">
-                        <i class="fas fa-table me-2"></i> Amazon SPRICE Table
+                        <i class="fas fa-table me-2"></i> Amz SPRICE Table
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -670,7 +654,7 @@
                                 <tr>
                                     <th>SKU</th>
                                     <th class="text-end">SPRICE</th>
-                                    <th class="text-end">Amazon Margin</th>
+                                    <th class="text-end">Amz Margin</th>
                                     <th class="text-end">SGPFT%</th>
                                     <th class="text-end">SPFT%</th>
                                     <th class="text-end">SROI%</th>
@@ -691,7 +675,7 @@
         </div>
     </div>
 
-    <!-- LMP Competitors Modal (Amazon + eBay in single view) -->
+    <!-- LMP Competitors Modal (Amz + eBay in single view) -->
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
@@ -1787,12 +1771,16 @@
                     hozAlign: "center",
                     formatter: function(cell) {
                         const parent = cell.getValue();
+                        const playIcon = (window.ParentExpand && typeof window.ParentExpand.yellowSvg === 'function')
+                            ? window.ParentExpand.yellowSvg()
+                            : '<i class="fas fa-play" style="font-size:12px;color:#ffc107;"></i>';
                         if (!parent) {
-                            return '<span class="parent-sku-dot no-parent" title="No parent"></span>';
+                            return '<span class="parent-sku-dot no-parent" title="No parent">' + playIcon + '</span>';
                         }
-                        return `<span class="parent-sku-dot parent-sku-dot-btn" 
-                                    data-parent="${parent.replace(/"/g, '&quot;')}" 
-                                    title="Click to view SKUs for parent: ${parent.replace(/"/g, '&quot;')}"></span>`;
+                        const parentEsc = String(parent).replace(/"/g, '&quot;');
+                        return `<span class="parent-sku-dot parent-sku-dot-btn"
+                                    data-parent="${parentEsc}"
+                                    title="Click to view SKUs for parent: ${parentEsc}">${playIcon}</span>`;
                     }
                 },
                 {
@@ -2311,7 +2299,7 @@ title: "Dil %",
                         const price = value != null && value !== '' ? parseFloat(value) : null;
                         if (price == null || price <= 0) {
                             const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amz repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
                         }
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
@@ -2918,7 +2906,7 @@ title: "Dil %",
             }
 
             const msg = `Apply price $${price.toFixed(2)} to ${skus.length} SKU(s) across all marketplaces?\n\n` +
-                'Amazon, Walmart, Shopify B2C, Reverb: full price\n' +
+                'Amz, Walmart, Shopify B2C, Reverb: full price\n' +
                 'Doba & Shopify Wholesale: 25% discount applied\n' +
                 'Shopify B2B: 25% discount + shipping deducted';
             if (!confirm(msg)) return;
@@ -3045,7 +3033,7 @@ title: "Dil %",
             
             const listToShow = onlyAmazon ? amzList : (onlyEbay ? ebayList : (onlyGoogle ? googleList : null));
             if (onlyAmazon && amzList.length === 0) {
-                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon competitors found for this SKU</div>');
+                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amz competitors found for this SKU</div>');
                 return;
             }
             if (onlyEbay && ebayList.length === 0) {
@@ -3057,7 +3045,7 @@ title: "Dil %",
                 return;
             }
             if (!onlyAmazon && !onlyEbay && !onlyGoogle && amzList.length === 0 && ebayList.length === 0 && googleList.length === 0) {
-                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon, eBay, or Google competitors found for this SKU</div>');
+                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amz, eBay, or Google competitors found for this SKU</div>');
                 return;
             }
             
@@ -3205,7 +3193,7 @@ title: "Dil %",
             const marketplace = btn.data('marketplace');
             const sku = btn.data('sku') || $('#lmpSku').text();
             const price = btn.data('price');
-            const label = marketplace === 'amazon' ? 'Amazon' : (marketplace === 'google' ? 'Google' : 'eBay');
+            const label = marketplace === 'amazon' ? 'Amz' : (marketplace === 'google' ? 'Google' : 'eBay');
             if (!id) return;
             if (!confirm('Delete this ' + label + ' competitor ($' + (price ? parseFloat(price).toFixed(2) : '') + ') from LMP? This cannot be undone.')) return;
             const url = marketplace === 'amazon' ? '/amazon/lmp/delete' : (marketplace === 'google' ? '/google-lmp-delete' : '/ebay-lmp-delete');

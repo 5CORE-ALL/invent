@@ -179,7 +179,7 @@
                     {{-- ── END ADD VIDEOS ──────────────────────────────────────── --}}
 
                     <!-- <div class="mb-2">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchAmazonBtn"><i class="fab fa-amazon"></i> Fetch Amazon videos</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchAmazonBtn"><i class="fab fa-amazon"></i> Fetch Amz videos</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay1Btn"><i class="fab fa-ebay"></i> Fetch eBay1</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay2Btn">eBay2</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay3Btn">eBay3</button>
@@ -908,8 +908,8 @@ document.addEventListener('DOMContentLoaded', () => {
             modalUrls = modalUrls.concat(add).slice(0, PM_MAX_VIDEOS);
             knownVideoUrls = knownVideoUrls.concat(add);
             renderSlots();
-            toast('Amazon videos loaded');
-        } else toast(j.message || 'No Amazon videos', false);
+            toast('Amz videos loaded');
+        } else toast(j.message || 'No Amz videos', false);
     });
 
     async function fetchEbay(account) {

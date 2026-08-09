@@ -25,10 +25,19 @@ class BadgeData extends Model
 
     public static function saveForPage(string $pageName, array $data): self
     {
-        return self::updateOrCreate(
+        $row = self::updateOrCreate(
             ['page_name' => $pageName],
             ['data' => $data, 'updated_at' => now()]
         );
+
+        try {
+            BadgeDataHistory::recordPage($pageName, $data);
+        } catch (\Throwable $e) {
+            // History must never block badge snapshots.
+            report($e);
+        }
+
+        return $row;
     }
 
     public static function forPage(string $pageName): ?self

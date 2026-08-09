@@ -26,21 +26,29 @@
     /* Yellow triangle expand control (shared ParentExpand column) */
     .pm-parent-sku-dot,
     .ebay2-parent-sku-dot,
-    .parent-sku-dot {
-        display: inline-flex;
+    .parent-sku-dot,
+    button.parent-sku-dot.p-dot-btn {
+        display: inline-flex !important;
         align-items: center;
         justify-content: center;
-        width: 16px;
-        height: 16px;
+        width: 16px !important;
+        height: 16px !important;
         cursor: pointer;
         vertical-align: middle;
         line-height: 0;
+        border-radius: 0 !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        border: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
         transition: transform 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
         filter: drop-shadow(0 1px 1px rgba(180, 110, 0, 0.35));
     }
     .pm-parent-sku-dot svg,
     .ebay2-parent-sku-dot svg,
-    .parent-sku-dot svg {
+    .parent-sku-dot svg,
+    button.parent-sku-dot.p-dot-btn svg {
         width: 14px;
         height: 14px;
         display: block;
@@ -67,6 +75,8 @@
         cursor: default;
         opacity: 0.35;
         filter: grayscale(1) drop-shadow(none);
+        background: transparent !important;
+        background-color: transparent !important;
     }
     .pm-parent-sku-dot.no-parent:hover,
     .ebay2-parent-sku-dot.no-parent:hover,

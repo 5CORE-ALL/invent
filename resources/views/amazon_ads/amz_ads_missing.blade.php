@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Ads Missing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amz Ads Missing', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -200,7 +200,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['sub_title' => 'Amazon Ads', 'page_title' => 'Amazon Ads Missing'])
+    @include('layouts.shared/page-title', ['sub_title' => 'Amz Ads', 'page_title' => 'Amz Ads Missing'])
 
     <div class="row amz-ads-missing">
         <div class="col-12">
@@ -239,14 +239,14 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amzCreateCampaignModalLabel">Create Amazon SP Campaign (AUTO / PT)</h5>
+                    <h5 class="modal-title" id="amzCreateCampaignModalLabel">Create Amz SP Campaign (AUTO / PT)</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info py-2 small mb-3">
                         Creates <strong>one PAUSED</strong> Sponsored Products <strong>AUTO</strong> campaign for the parent
                         (e.g. <code>PARENT PMX</code>). Selected child SKUs become product ads
-                        (Amazon seller rule: ads use seller <code>sku</code>; ASIN is shown for verification).
+                        (Amz seller rule: ads use seller <code>sku</code>; ASIN is shown for verification).
                         Campaign negative keywords support Phrase / Exact only (not Broad).
                     </div>
                     <form id="amzCreateCampaignForm">
@@ -330,7 +330,7 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amzAiNegModalLabel">AI Negative Keywords (Amazon SP)</h5>
+                    <h5 class="modal-title" id="amzAiNegModalLabel">AI Negative Keywords (Amz SP)</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -348,7 +348,7 @@
                     </div>
                     <div id="amzAiNegExistingWrap" class="mb-3 d-none">
                         <div class="d-flex align-items-center justify-content-between mb-1">
-                            <div class="fw-semibold small">Already on Amazon KW(-) for this parent</div>
+                            <div class="fw-semibold small">Already on Amz KW(-) for this parent</div>
                             <span class="badge text-bg-secondary" id="amzAiNegExistingCount">0</span>
                         </div>
                         <div id="amzAiNegExisting" class="border rounded p-2 small bg-light" style="max-height:120px;overflow:auto;"></div>
@@ -381,7 +381,7 @@
                         <ul id="amzAiNegSuggested" class="list-group list-group-flush border rounded" style="max-height:280px;overflow:auto;"></ul>
                     </div>
                     <div class="border rounded p-2 mt-3 bg-light" id="amzAiNegPushWrap">
-                        <div class="fw-semibold small mb-2">Push to Amazon SP campaign (campaign-level)</div>
+                        <div class="fw-semibold small mb-2">Push to Amz SP campaign (campaign-level)</div>
                         <div class="row g-2 align-items-end">
                             <div class="col-md-5">
                                 <label class="form-label small mb-1" for="amzAiNegMatchType">Match type</label>
@@ -394,13 +394,13 @@
                                 <div class="form-check mt-3">
                                     <input class="form-check-input" type="checkbox" id="amzAiNegIncludeExisting" checked>
                                     <label class="form-check-label small" for="amzAiNegIncludeExisting">
-                                        Also push existing Amazon KW(-) negatives for this parent
+                                        Also push existing Amz KW(-) negatives for this parent
                                     </label>
                                 </div>
                             </div>
                         </div>
                         <div class="form-text small mt-1">
-                            Pushes campaign negatives to the PT/AUTO campaign for this parent (create it first). Broad is not available at campaign level on Amazon.
+                            Pushes campaign negatives to the PT/AUTO campaign for this parent (create it first). Broad is not available at campaign level on Amz.
                         </div>
                         <div class="text-success small mt-2 d-none" id="amzAiNegPushOk"></div>
                     </div>
@@ -413,7 +413,7 @@
                     <button type="button" class="btn btn-primary btn-sm" id="amzAiNegRegenBtn">
                         <i class="fa fa-sync me-1"></i> Regenerate
                     </button>
-                    <button type="button" class="btn btn-success btn-sm" id="amzAiNegPushBtn" title="Push negatives to Amazon Ads">
+                    <button type="button" class="btn btn-success btn-sm" id="amzAiNegPushBtn" title="Push negatives to Amz Ads">
                         <i class="fa fa-cloud-upload-alt me-1"></i> Push Negative Keywords
                     </button>
                 </div>
@@ -425,7 +425,7 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amzAiPosModalLabel">AI Positive Keywords (Amazon SP)</h5>
+                    <h5 class="modal-title" id="amzAiPosModalLabel">AI Positive Keywords (Amz SP)</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -443,7 +443,7 @@
                     </div>
                     <div id="amzAiPosExistingWrap" class="mb-3 d-none">
                         <div class="d-flex align-items-center justify-content-between mb-1">
-                            <div class="fw-semibold small">Already on Amazon KW(+) for this parent</div>
+                            <div class="fw-semibold small">Already on Amz KW(+) for this parent</div>
                             <span class="badge text-bg-secondary" id="amzAiPosExistingCount">0</span>
                         </div>
                         <div id="amzAiPosExisting" class="border rounded p-2 small bg-light" style="max-height:120px;overflow:auto;"></div>
@@ -476,7 +476,7 @@
                         <ul id="amzAiPosSuggested" class="list-group list-group-flush border rounded" style="max-height:280px;overflow:auto;"></ul>
                     </div>
                     <div class="border rounded p-2 mt-3 bg-light">
-                        <div class="fw-semibold small mb-2">Push to Amazon SP ad group (positive keywords)</div>
+                        <div class="fw-semibold small mb-2">Push to Amz SP ad group (positive keywords)</div>
                         <div class="row g-2 align-items-end">
                             <div class="col-md-4">
                                 <label class="form-label small mb-1" for="amzAiPosMatchType">Match type</label>
@@ -494,7 +494,7 @@
                                 <div class="form-check mt-3">
                                     <input class="form-check-input" type="checkbox" id="amzAiPosIncludeExisting" checked>
                                     <label class="form-check-label small" for="amzAiPosIncludeExisting">
-                                        Also push existing Amazon KW(+) for this parent
+                                        Also push existing Amz KW(+) for this parent
                                     </label>
                                 </div>
                             </div>
@@ -617,7 +617,7 @@
                             + esc(c.campaign_name)
                             + ' <i class="fa fa-times chip-x" title="Unlink only" data-id="' + c.id + '" data-sku="' + esc(d.sku) + '"></i>'
                             + (canArchive
-                                ? ' <i class="fa fa-trash chip-trash" title="Archive campaign in Amazon Ads"'
+                                ? ' <i class="fa fa-trash chip-trash" title="Archive campaign in Amz Ads"'
                                     + ' data-sku="' + esc(d.sku) + '"'
                                     + ' data-id="' + esc(c.id || '') + '"'
                                     + ' data-type="' + esc(type) + '"'
@@ -812,7 +812,7 @@
                                 var hasPt = Array.isArray(d.pt) && d.pt.length > 0;
                                 var title = hasPt
                                     ? 'PT already linked — create another AUTO campaign?'
-                                    : 'Create Amazon AUTO SP campaign for this parent';
+                                    : 'Create Amz AUTO SP campaign for this parent';
                                 return '<button type="button" class="amz-create-btn" data-sku="' + esc(d.sku || '') + '" title="' + esc(title) + '">'
                                     + '<i class="fa fa-plus"></i></button>';
                             }
@@ -1103,7 +1103,7 @@
                         var delCid = trash.getAttribute('data-campaign-id') || '';
                         var delLinkId = trash.getAttribute('data-id') || '';
                         var delType = trash.getAttribute('data-type') || '';
-                        var confirmMsg = 'Archive campaign in Amazon Ads?\n\n'
+                        var confirmMsg = 'Archive campaign in Amz Ads?\n\n'
                             + (delName || delCid)
                             + '\n\nAmazon does not hard-delete campaigns — this sets state to ARCHIVED and unlinks it here.';
                         if (!window.confirm(confirmMsg)) {
@@ -1365,7 +1365,7 @@
                     var result = addManualNegativeKeyword(input.value);
                     if (!result || !result.ok) {
                         if (result && result.reason === 'amazon') {
-                            errEl.textContent = 'Duplicate — already on Amazon KW(-) for this parent. Not added.';
+                            errEl.textContent = 'Duplicate — already on Amz KW(-) for this parent. Not added.';
                         } else if (result && result.reason === 'list') {
                             errEl.textContent = 'Duplicate — already in the negatives list. Not added.';
                         } else {
@@ -1684,7 +1684,7 @@
                     var result = addManualPositiveKeyword(input.value);
                     if (!result || !result.ok) {
                         if (result && result.reason === 'amazon') {
-                            errEl.textContent = 'Duplicate — already on Amazon KW(+) for this parent. Not added.';
+                            errEl.textContent = 'Duplicate — already on Amz KW(+) for this parent. Not added.';
                         } else if (result && result.reason === 'list') {
                             errEl.textContent = 'Duplicate — already in the positives list. Not added.';
                         } else {

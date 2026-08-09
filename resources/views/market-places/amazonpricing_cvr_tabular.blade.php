@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Pricing CVR Tabular', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amz Pricing CVR Tabular', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -52,8 +52,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon Pricing CVR Tabular',
-        'sub_title' => 'Amazon Pricing CVR Tabular',
+        'page_title' => 'Amz Pricing CVR Tabular',
+        'sub_title' => 'Amz Pricing CVR Tabular',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -250,7 +250,7 @@
                         <span class="badge bg-danger fs-6 p-2 map-filter-badge" data-filter="nmapped" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter items where INV ≠ INV AMZ">
                              N Map: <span id="nmap-count">0</span>
                         </span>
-                        <span class="badge bg-warning fs-6 p-2 missing-amz-filter-badge" data-filter="missing-amazon" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter items missing from Amazon table">
+                        <span class="badge bg-warning fs-6 p-2 missing-amz-filter-badge" data-filter="missing-amazon" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter items missing from Amz table">
                             Missing: <span id="missing-amazon-count">0</span>
                         </span>
                         
@@ -271,7 +271,7 @@
                         <span class="badge bg-primary fs-6 p-2" id="nroi-percent-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="tcos-percent-badge" style="color: black; font-weight: bold;">TCOS: 0%</span>
                         
-                        <!-- Amazon Metrics -->
+                        <!-- Amz Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-views-badge" style="color: black; font-weight: bold;">Avg Views: 0</span>
@@ -379,7 +379,7 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Import Amazon Ratings</h5>
+                    <h5 class="modal-title">Import Amz Ratings</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form id="importForm">
@@ -525,7 +525,7 @@
                         },
                         title: {
                             display: true,
-                            text: 'Amazon SKU Metrics',
+                            text: 'Amz SKU Metrics',
                             font: {
                                 size: 16,
                                 weight: 'bold'
@@ -650,13 +650,13 @@
                             skuMetricsChart.data.datasets.forEach(dataset => {
                                 dataset.data = [];
                             });
-                            skuMetricsChart.options.plugins.title.text = 'Amazon Metrics';
+                            skuMetricsChart.options.plugins.title.text = 'Amz Metrics';
                             skuMetricsChart.update();
                             return;
                         }
                         
                         $('#chart-no-data-message').hide();
-                        skuMetricsChart.options.plugins.title.text = `Amazon Metrics (${days} Days)`;
+                        skuMetricsChart.options.plugins.title.text = `Amz Metrics (${days} Days)`;
                         skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
                         skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
                         skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
@@ -1580,11 +1580,11 @@
                         // Check for errors in response (matching FBA pattern)
                         if (response.errors && response.errors.length > 0) {
                             $btn.html(originalHtml);
-                            const errorMsg = response.errors[0].message || 'Failed to apply price to Amazon';
+                            const errorMsg = response.errors[0].message || 'Failed to apply price to Amz';
                             showToast('error', errorMsg);
                         } else {
                             // Success - no errors
-                            showToast('success', `Price $${price.toFixed(2)} applied successfully to Amazon for SKU: ${sku}`);
+                            showToast('success', `Price $${price.toFixed(2)} applied successfully to Amz for SKU: ${sku}`);
                             // Update button to show success state
                             $btn.removeClass('btn-success').addClass('btn-secondary');
                             $btn.html('<i class="fas fa-check-circle"></i> Applied');
@@ -1598,7 +1598,7 @@
                         $btn.prop('disabled', false);
                         $btn.html(originalHtml);
                         
-                        let errorMsg = 'Failed to apply price to Amazon';
+                        let errorMsg = 'Failed to apply price to Amz';
                         if (xhr.responseJSON) {
                             // Check for error field first (matching FBA pattern)
                             errorMsg = xhr.responseJSON.error || xhr.responseJSON.message || errorMsg;
@@ -1638,7 +1638,7 @@
                 const days = $(this).val();
                 if (currentSku) {
                     if (skuMetricsChart) {
-                        skuMetricsChart.options.plugins.title.text = `Amazon Metrics (${days} Days)`;
+                        skuMetricsChart.options.plugins.title.text = `Amz Metrics (${days} Days)`;
                         skuMetricsChart.update();
                     }
                     loadSkuMetricsData(currentSku, days);
@@ -2126,7 +2126,7 @@
                             const href = 'https://www.amazon.com/dp/' + encodeURIComponent(itemId);
                             const safeAsin = String(itemId).replace(/"/g, '&quot;');
                             return `<a href="${href}" target="_blank" rel="noopener noreferrer"
-                                title="Buyer link — Amazon ASIN ${safeAsin}"
+                                title="Buyer link — Amz ASIN ${safeAsin}"
                                 style="font-weight:600;color:#0d6efd;text-decoration:none;font-size:12px;"
                                 onclick="event.stopPropagation();">
                                 <i class="fas fa-external-link-alt me-1"></i>Buyer
@@ -2152,7 +2152,7 @@
                             const href = 'https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin=' + encodeURIComponent(itemId);
                             const safeAsin = String(itemId).replace(/"/g, '&quot;');
                             return `<a href="${href}" target="_blank" rel="noopener noreferrer"
-                                title="Seller Central inventory — Amazon ASIN ${safeAsin}"
+                                title="Seller Central inventory — Amz ASIN ${safeAsin}"
                                 style="font-weight:600;color:#0d6efd;text-decoration:none;font-size:12px;"
                                 onclick="event.stopPropagation();">
                                 <i class="fas fa-external-link-alt me-1"></i>Seller
@@ -2719,7 +2719,7 @@
                         titleFormatter: function(column) {
                             return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
                                 <span>Accept</span>
-                                <button type="button" class="btn btn-sm apply-all-prices-btn" title="Apply All Selected Prices to Amazon" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;" onclick="event.stopPropagation(); if(typeof applyAllSelectedPrices === 'function') { applyAllSelectedPrices(); }">
+                                <button type="button" class="btn btn-sm apply-all-prices-btn" title="Apply All Selected Prices to Amz" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;" onclick="event.stopPropagation(); if(typeof applyAllSelectedPrices === 'function') { applyAllSelectedPrices(); }">
                                     <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
                                 </button>
                             </div>`;
@@ -2741,20 +2741,20 @@
                             // Determine icon and color based on status
                             let icon = '<i class="fas fa-check"></i>';
                             let iconColor = '#28a745'; // Green for apply
-                            let titleText = 'Apply Price to Amazon';
+                            let titleText = 'Apply Price to Amz';
                             
                             if (status === 'pushed') {
                                 icon = '<i class="fa-solid fa-check-double"></i>';
                                 iconColor = '#28a745'; // Green
-                                titleText = 'Price pushed to Amazon (Double-click to mark as Applied)';
+                                titleText = 'Price pushed to Amz (Double-click to mark as Applied)';
                             } else if (status === 'applied') {
                                 icon = '<i class="fa-solid fa-check-double"></i>';
                                 iconColor = '#28a745'; // Green
-                                titleText = 'Price applied to Amazon (Double-click to change)';
+                                titleText = 'Price applied to Amz (Double-click to change)';
                             } else if (status === 'error') {
                                 icon = '<i class="fa-solid fa-x"></i>';
                                 iconColor = '#dc3545'; // Red
-                                titleText = 'Error applying price to Amazon';
+                                titleText = 'Error applying price to Amz';
                             } else if (status === 'processing') {
                                 icon = '<i class="fas fa-spinner fa-spin"></i>';
                                 iconColor = '#ffc107'; // Yellow

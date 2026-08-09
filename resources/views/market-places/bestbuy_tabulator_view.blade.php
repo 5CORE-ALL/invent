@@ -97,8 +97,8 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
-                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
+                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz</span>
+                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">Miss: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="N Map: INV vs BB INV mismatch &gt; 3 units (same tolerance as Temu/Macys/eBay)">N Map: 0</span>
 
@@ -870,9 +870,9 @@
                 saveSpriceUpdates(updates);
             }
             
-            let message = `Amazon price applied to ${updatedCount} SKU(s)`;
+            let message = `Amz price applied to ${updatedCount} SKU(s)`;
             if (noAmazonPriceCount > 0) {
-                message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price or not found)`;
+                message += ` (${noAmazonPriceCount} SKU(s) had no Amz price or not found)`;
             }
             
             showToast(message, updatedCount > 0 ? 'success' : 'warning');

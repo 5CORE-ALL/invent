@@ -1,9 +1,9 @@
-@extends('layouts.vertical', ['title' => $title ?? 'Amazon Order', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $title ?? 'Amz Order', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('content')
 <div class="row">
     <div class="col-12">
-        <a href="{{ route('marketplace.orders', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amazon Orders</a>
+        <a href="{{ route('marketplace.orders', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amz Orders</a>
         @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Order '.$order->amazon_order_id, 'mb' => 'mb-3'])
 
         @include('marketplace.amazon._nav', ['active' => 'orders'])
@@ -14,7 +14,7 @@
                     <div class="card-header"><h5 class="card-title mb-0">Order</h5></div>
                     <div class="card-body">
                         <dl class="row mb-0">
-                            <dt class="col-5">Amazon order</dt>
+                            <dt class="col-5">Amz order</dt>
                             <dd class="col-7"><code>{{ $order->amazon_order_id }}</code></dd>
                             <dt class="col-5">Date (PT)</dt>
                             <dd class="col-7">
@@ -66,7 +66,7 @@
                                 <div class="text-muted mt-1">{{ $shippingAddress['phone'] }}</div>
                             @endif
                         @else
-                            <p class="text-muted mb-0">No shipping address in stored payload (Amazon often redacts until ship-ready).</p>
+                            <p class="text-muted mb-0">No shipping address in stored payload (Amz often redacts until ship-ready).</p>
                         @endif
                     </div>
                 </div>

@@ -744,7 +744,7 @@
             document.getElementById('price-comparison-sku').textContent = sku;
 
             const marketplaces = [
-                { label: "Amazon", prefix: "amz" },
+                { label: "Amz", prefix: "amz" },
                 { label: "eBay", prefix: "ebay" },
                 { label: "Doba", prefix: "doba" },
                 { label: "Macy", prefix: "macy" },
@@ -2242,7 +2242,7 @@
         // Marketplace table generator
         function buildOVL30Table(data) {
           const rows = [
-                { label: "Amazon", prefix: "amz", logo: "{{ asset('uploads/amazon.png') }}" },
+                { label: "Amz", prefix: "amz", logo: "{{ asset('uploads/amazon.png') }}" },
                 { label: "eBay", prefix: "ebay", logo:  "{{ asset('uploads/1.png') }}" },
                 { label: "Doba", prefix: "doba", logo: "{{ asset('uploads/doba.png') }}" },
                 { label: "Macy", prefix: "macy", logo: "{{ asset('uploads/macy.png') }}" },
@@ -3168,10 +3168,10 @@
                         _token: '{{ csrf_token() }}'
                     },
                     success: function(response) {
-                        console.log('Amazon price updated');
+                        console.log('Amz price updated');
                     },
                     error: function(xhr, status, error) {
-                        console.error('Amazon update failed:', error);
+                        console.error('Amz update failed:', error);
                     }
                 });
 
@@ -3232,10 +3232,10 @@
                         price: sprice
                     },
                     success: function(res) {
-                       alert('Amazon price updated successfully!');
+                       alert('Amz price updated successfully!');
                     },
                     error: function(err) {
-                        alert('Error updating Amazon price: ' + err);
+                        alert('Error updating Amz price: ' + err);
                     },
                     complete: function() {
                         $btn.html('Push to Marketplace'); // reset button text

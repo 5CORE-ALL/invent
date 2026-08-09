@@ -194,7 +194,7 @@
                                         <input type="text" id="previewSearchBp" class="th-sub" placeholder="Filter">
                                     </th>
                                     <th>Action</th>
-                                    <th title="eBay1–3, Macy's, Amazon, Temu1, Temu2, Reverb, Wayfair, Best Buy">
+                                    <th title="eBay1–3, Macy's, Amz, Temu1, Temu2, Reverb, Wayfair, Best Buy">
                                         <div class="bp-mp-th-title">MARKET PLACES</div>
                                         <div class="bp-mp-th-icons">
                                             <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T1</span><span class="bp-mp-th-pill btn-temu">T2</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">W</span><span class="bp-mp-th-pill btn-bestbuy">B</span>

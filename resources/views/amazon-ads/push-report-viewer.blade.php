@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Amazon Ads Push Report Viewer</title>
+    <title>Amz Ads Push Report Viewer</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -162,7 +162,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🚀 Amazon Ads Push Report Viewer</h1>
+        <h1>🚀 Amz Ads Push Report Viewer</h1>
         
         <div id="alertContainer"></div>
         

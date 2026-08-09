@@ -1948,7 +1948,7 @@
                 const rating = row.rating;
                 const reviews = row.reviews || 0;
                 if (!rating || rating === 0) {
-                    return '<span class="text-muted">No Amazon rating data</span>';
+                    return '<span class="text-muted">No Amz rating data</span>';
                 }
                 let ratingColor = '#6c757d';
                 const ratingVal = parseFloat(rating);
@@ -3280,7 +3280,7 @@
                         visible: false,
                         hozAlign: "center",
                         headerSort: false,
-                        headerTooltip: "Amazon reviews",
+                        headerTooltip: "Amz reviews",
                         formatter: function(cell) {
                             const rating = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -3367,7 +3367,7 @@
                         title: "BL",
                         field: "buyer_link",
                         hozAlign: "center",
-                        headerTooltip: "Buyer link (Amazon product link)",
+                        headerTooltip: "Buyer link (Amz product link)",
                         formatter: function(cell) {
                             const buyerLink = (cell.getRow().getData().buyer_link || "").trim();
 
@@ -4906,9 +4906,9 @@
                 const rating = rowData.rating;
                 const reviews = rowData.reviews || 0;
                 if (!rating || rating === 0) {
-                    return 'Amazon: No rating data';
+                    return 'Amz: No rating data';
                 }
-                return 'Amazon: ' + parseFloat(rating).toFixed(1) + ' stars, ' + parseInt(reviews, 10).toLocaleString() + ' reviews';
+                return 'Amz: ' + parseFloat(rating).toFixed(1) + ' stars, ' + parseInt(reviews, 10).toLocaleString() + ' reviews';
             }
 
             function buildToaQcLmpExportText(rowData) {

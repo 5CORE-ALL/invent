@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $title ?? 'Amazon — Orders', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $title ?? 'Amz — Orders', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
 <style>
@@ -14,11 +14,11 @@
 @section('content')
 <div class="row">
     <div class="col-12">
-        <a href="{{ route('marketplace.manager.show', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amazon Manager</a>
-        @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amazon Orders'])
+        <a href="{{ route('marketplace.manager.show', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amz Manager</a>
+        @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amz Orders'])
         <p class="text-muted mb-3">
-            Orders stored locally from Amazon SP-API (same source as
-            <a href="{{ url('/amazon/daily-sales') }}" target="_blank" rel="noopener">Amazon Daily Sales</a>).
+            Orders stored locally from Amz SP-API (same source as
+            <a href="{{ url('/amazon/daily-sales') }}" target="_blank" rel="noopener">Amz Daily Sales</a>).
             Configure fetch schedule in <a href="{{ route('marketplace.settings', 'amazon') }}">Settings</a>.
         </p>
 
@@ -71,7 +71,7 @@
                         <option value="from:{{ now('America/Los_Angeles')->subDays(35)->toDateString() }}">Last 35 days</option>
                     </select>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-fetch-orders">
-                        <i class="ri-download-cloud-line"></i> Fetch from Amazon
+                        <i class="ri-download-cloud-line"></i> Fetch from Amz
                     </button>
                 </div>
             </div>
@@ -142,7 +142,7 @@
                             @empty
                                 <tr>
                                     <td colspan="8" class="text-center text-muted py-4">
-                                        No orders yet. Click <strong>Fetch from Amazon</strong>.
+                                        No orders yet. Click <strong>Fetch from Amz</strong>.
                                     </td>
                                 </tr>
                             @endforelse
@@ -167,11 +167,11 @@ document.getElementById('btn-fetch-orders')?.addEventListener('click', function 
     if (selected.indexOf('from:') === 0) {
         var fromDate = selected.slice(5);
         body.from_date = fromDate;
-        confirmMsg = 'Fetch Amazon orders from ' + fromDate + ' onward (Pacific)?\n\nThis may take a few minutes.';
+        confirmMsg = 'Fetch Amz orders from ' + fromDate + ' onward (Pacific)?\n\nThis may take a few minutes.';
     } else {
         var days = parseInt(selected, 10) || 7;
         body.days = days;
-        confirmMsg = 'Fetch Amazon orders from the last ' + days + ' days (Pacific)?';
+        confirmMsg = 'Fetch Amz orders from the last ' + days + ' days (Pacific)?';
     }
 
     if (!confirm(confirmMsg)) {

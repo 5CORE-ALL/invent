@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Sprice×CVR Auto Push', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amz Sprice×CVR Auto Push', 'sidenav' => 'condensed'])
 
 @section('css')
 <style>
@@ -63,8 +63,8 @@
 @section('content')
 <div class="container-fluid sprice-auto-wrap py-3">
     <div class="sprice-auto-hero">
-        <h3><i class="fas fa-robot me-2"></i>Amazon Sprice×CVR Auto Push</h3>
-        <p>Run price commands first, then Clear SPRICE → Apply % Sprice×CVR → Push (listing + min price) to Amazon.</p>
+        <h3><i class="fas fa-robot me-2"></i>Amz Sprice×CVR Auto Push</h3>
+        <p>Run price commands first, then Clear SPRICE → Apply % Sprice×CVR → Push (listing + min price) to Amz.</p>
         <span class="meta-pill"><i class="far fa-clock me-1"></i>{{ $scheduleLabel }}</span>
         <span class="meta-pill"><i class="fas fa-terminal me-1"></i>{{ $command }}</span>
     </div>
@@ -78,7 +78,7 @@
                         <div class="sprice-step-num">1</div>
                         <div>
                             <div class="fw-semibold">Run price commands</div>
-                            <div class="text-muted small"><code>sync:amazon-prices</code> then <code>app:fetch-amazon-listings</code> — freshest Amazon price + CVR inputs before Apply.</div>
+                            <div class="text-muted small"><code>sync:amazon-prices</code> then <code>app:fetch-amazon-listings</code> — freshest Amz price + CVR inputs before Apply.</div>
                         </div>
                     </div>
                     <div class="sprice-step">
@@ -92,13 +92,13 @@
                         <div class="sprice-step-num">3</div>
                         <div>
                             <div class="fw-semibold">Apply % Sprice×CVR</div>
-                            <div class="text-muted small">Same rule as tabulator (CVR L30 slabs × Down/Same/Up signed % of Amazon price). Ads% is not used.</div>
+                            <div class="text-muted small">Same rule as tabulator (CVR L30 slabs × Down/Same/Up signed % of Amz price). Ads% is not used.</div>
                         </div>
                     </div>
                     <div class="sprice-step">
                         <div class="sprice-step-num">4</div>
                         <div>
-                            <div class="fw-semibold">Push SPRICE to Amazon</div>
+                            <div class="fw-semibold">Push SPRICE to Amz</div>
                             <div class="text-muted small">Listings Items PATCH — listing price + minimum seller allowed price (Shopify push skipped).</div>
                         </div>
                     </div>
@@ -123,14 +123,14 @@
 
                     <div class="d-flex flex-wrap gap-2 mt-3">
                         <button type="button" id="btn-dry-run" class="btn btn-outline-secondary btn-sm"
-                            title="Clear + Apply SPRICE in DB; does not push to Amazon">
+                            title="Clear + Apply SPRICE in DB; does not push to Amz">
                             <i class="fas fa-eye"></i> Dry Run (Apply, no push)
                         </button>
                         <button type="button" id="btn-run-now" class="btn btn-push-amazon btn-sm">
                             <i class="fas fa-play"></i> Run Now (Price → Clear → Apply → Push)
                         </button>
                         <a href="{{ url('/amazon-tabulator-view') }}" class="btn btn-sprice-cvr btn-sm">
-                            <i class="fas fa-percentage"></i> % Sprice×CVR (Amazon)
+                            <i class="fas fa-percentage"></i> % Sprice×CVR (Amz)
                         </a>
                         <a href="{{ url('/cron-monitor') }}" class="btn btn-outline-dark btn-sm">
                             <i class="fas fa-heartbeat"></i> Cron Monitor
@@ -146,14 +146,14 @@
             <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body">
                     <h5 class="mb-2">Active Rule</h5>
-                    <p class="small text-muted mb-2">Shared key <code>ebay_sprice_cvr</code> (same as Amazon / eBay tabulator modal).</p>
+                    <p class="small text-muted mb-2">Shared key <code>ebay_sprice_cvr</code> (same as Amz / eBay tabulator modal).</p>
                     <ul class="small mb-0">
                         <li>Yellow end (low): {{ number_format((float)($rule['low_cvr'] ?? 3.5), 2) }}%</li>
                         <li>Mid (blue/green): {{ number_format((float)($rule['mid_cvr'] ?? 7), 2) }}%</li>
                         <li>High (pink after): {{ number_format((float)($rule['high_cvr'] ?? 13), 2) }}%</li>
                         <li>Trend tol: ±{{ number_format((float)($rule['trend_tolerance'] ?? 0.1), 3) }}%</li>
                     </ul>
-                    <a href="{{ url('/amazon-tabulator-view') }}" class="btn btn-link btn-sm px-0 mt-2">Edit rule on Amazon tabulator →</a>
+                    <a href="{{ url('/amazon-tabulator-view') }}" class="btn btn-link btn-sm px-0 mt-2">Edit rule on Amz tabulator →</a>
                 </div>
             </div>
 
@@ -192,7 +192,7 @@
                     <h6 class="mb-2">CLI</h6>
                     <code class="small d-block mb-2">php artisan amazon:sprice-cvr-auto-push</code>
                     <code class="small d-block mb-2">php artisan amazon:sprice-cvr-auto-push --dry-run</code>
-                    <div class="text-muted small mb-2">Always runs price refresh first (<code>sync:amazon-prices</code> + <code>app:fetch-amazon-listings</code>), then Clear + Apply. Dry-run skips Amazon push. Use <code>--skip-price-refresh</code> to skip the price step.</div>
+                    <div class="text-muted small mb-2">Always runs price refresh first (<code>sync:amazon-prices</code> + <code>app:fetch-amazon-listings</code>), then Clear + Apply. Dry-run skips Amz push. Use <code>--skip-price-refresh</code> to skip the price step.</div>
                     <code class="small d-block">php artisan amazon:sprice-cvr-auto-push --limit=10 --dry-run</code>
                 </div>
             </div>
@@ -260,21 +260,21 @@
 
     document.getElementById('btn-dry-run').addEventListener('click', function() {
         run({ dry_run: true },
-            'Dry Run for Amazon?\n\n' +
+            'Dry Run for Amz?\n\n' +
             '1) Price commands (sync + fetch listings)\n' +
             '2) Clear SPRICE in DB\n' +
             '3) Apply % Sprice×CVR in DB (S PRC will update after refresh)\n' +
-            '4) Skip push to Amazon\n\n' +
-            'Prices are NOT sent to Amazon.');
+            '4) Skip push to Amz\n\n' +
+            'Prices are NOT sent to Amz.');
     });
 
     document.getElementById('btn-run-now').addEventListener('click', function() {
         run({ dry_run: false },
-            'Run LIVE pipeline for Amazon?\n\n' +
+            'Run LIVE pipeline for Amz?\n\n' +
             '1) Price commands (sync:amazon-prices + fetch-amazon-listings)\n' +
             '2) Clear SPRICE\n' +
             '3) Apply % Sprice×CVR\n' +
-            '4) Push to Amazon (listing + min price)\n\n' +
+            '4) Push to Amz (listing + min price)\n\n' +
             'This starts in the background and can take a long time.');
     });
 })();

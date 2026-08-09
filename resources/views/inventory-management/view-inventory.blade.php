@@ -5,6 +5,31 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
+        /* SKU history — Bootstrap modal-fullscreen (same pattern as adv-masters / productmaster) */
+        #skuHistoryModal .modal-body {
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        #sku-history-content .sku-movement-history-table th {
+            font-weight: 700;
+        }
+        #sku-history-content .sku-movement-history-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background-color: #93c5fd;
+            color: #0f172a;
+        }
+        #sku-history-content .sku-movement-history-table tbody tr:nth-child(odd) {
+            background-color: #ffffff;
+        }
+        #sku-history-content .sku-movement-history-table tbody tr:nth-child(even) {
+            background-color: #eef6ff;
+        }
+        #sku-history-content .sku-movement-history-table tbody tr:hover {
+            background-color: #dbeafe;
+        }
+
         /* ========== TABLE STRUCTURE ========== */
         .table-container {
             overflow-x: auto;
@@ -22,11 +47,20 @@
         .custom-resizable-table th,
         .custom-resizable-table td {
             padding: 12px 15px;
-            text-align: left;
+            text-align: center;
+            vertical-align: middle;
             border-bottom: 1px solid #ddd;
             position: relative;
             white-space: nowrap;
             overflow: visible !important;
+        }
+        #ebay-table th,
+        #ebay-table td {
+            text-align: center !important;
+            vertical-align: middle !important;
+        }
+        #ebay-table .d-flex {
+            justify-content: center;
         }
 
         .custom-resizable-table th {
@@ -284,6 +318,12 @@
         /* ========== SEARCH DROPDOWNS ========== */
         .dropdown-search-container {
             position: relative;
+        }
+        .inv-table-top-filters .dropdown-search-container {
+            min-width: 160px;
+        }
+        .inv-table-top-filters .dropdown-search-container .form-control {
+            min-width: 160px;
         }
 
         .dropdown-search-results {
@@ -901,21 +941,13 @@
 
         
 
-        #ebay-table thead tr#summaryRow th {
+        /* Sticky column header row (light blue — matches global table headers) */
+        #ebay-table thead tr:first-child th {
             position: sticky;
             top: 0;
-            background: #f8f9fa;
-            z-index: 11;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-        }
-
-        /* Make the main header row stick below summary row */
-        #ebay-table thead tr:nth-child(2) th {
-            position: sticky;
-            top: 36px; /* height of summary row */
-            background: #ffffff;
+            background: #dbeafe !important;
             z-index: 10;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 1px 0 #93c5fd;
         }
 
         /* Optional: ensure headers are tall enough */
@@ -923,6 +955,57 @@
             height: 36px;
             text-align: center;
             vertical-align: middle;
+        }
+        /* INV rolling-history status dots (dashboard KPI style) */
+        .inv-hist-dot {
+            display: inline-block;
+            width: 0.65rem;
+            height: 0.65rem;
+            border-radius: 50%;
+            background: #9ca3af;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.35);
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        .inv-hist-dot:hover {
+            transform: scale(1.25);
+            box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.2);
+        }
+        .inv-hist-dot--green { background: #22c55e; }
+        .inv-hist-dot--red { background: #ef4444; }
+        .inv-hist-dot--gray { background: #9ca3af; }
+        .l30-hist-dot {
+            display: inline-block;
+            width: 0.65rem;
+            height: 0.65rem;
+            border-radius: 50%;
+            background: #9ca3af;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.35);
+            cursor: pointer;
+            vertical-align: middle;
+            margin-left: 0.35rem;
+        }
+        .l30-hist-dot:hover {
+            transform: scale(1.25);
+            box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.2);
+        }
+        .l30-hist-dot--green { background: #22c55e; }
+        .l30-hist-dot--red { background: #ef4444; }
+        .l30-hist-dot--gray { background: #9ca3af; }
+        #invSkuChartModal.modal {
+            --tz-modal-width: 100%;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            z-index: 1080;
+        }
+        #invSkuChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #invSkuChartModal .modal-body {
+            overflow-y: auto;
+            max-height: calc(100vh - 3.5rem);
         }
         
         #ebay-table {
@@ -1029,9 +1112,7 @@
                             <div class="modal-header">
                                 <h5 class="modal-title" id="activityLogModalLabel">Activity Log</h5>
                                 <!-- <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button> -->
-                                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                                    <span aria-hidden="true">&times;</span>
-                                </button>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
                             <div class="modal-body">
                                 <div class="mb-3">
@@ -1057,17 +1138,56 @@
                         </div>
                     </div>
 
-                    <!-- History modal  -->
-                    <div class="modal fade" id="skuHistoryModal" tabindex="-1" aria-labelledby="skuHistoryModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-lg">
-                            <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title" id="skuHistoryModalLabel">Adjustment History</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body" id="sku-history-content">
-                                Loading...
-                            </div>
+                    {{-- INV rolling history chart (dashboard KPI style) --}}
+                    <div class="modal fade p-0" id="invSkuChartModal" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog shadow-none m-0 mx-0">
+                            <div class="modal-content" style="overflow:hidden;max-height:100vh;">
+                                <div class="modal-header bg-dark text-white py-1 px-3 flex-shrink-0">
+                                    <h6 class="modal-title mb-0" style="font-size:13px;">
+                                        <i class="fas fa-chart-area me-1"></i>
+                                        <span id="invSkuChartTitle">INV — Rolling history</span>
+                                    </h6>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <select id="invSkuChartRange" class="form-select form-select-sm" style="width:auto;font-size:11px;">
+                                            <option value="7">L7</option>
+                                            <option value="14">L14</option>
+                                            <option value="30" selected>L30</option>
+                                            <option value="60">L60</option>
+                                            <option value="90">L90</option>
+                                            <option value="365">L365</option>
+                                        </select>
+                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                </div>
+                                <div class="modal-body py-2 px-3" style="overflow-y:auto;">
+                                    <div class="d-flex justify-content-between align-items-center mb-2 small">
+                                        <span id="invSkuChartSub" class="text-muted"></span>
+                                        <span id="invSkuChartTone" class="badge bg-secondary">—</span>
+                                    </div>
+                                    <div id="invSkuChartLoading" class="text-center py-3" style="display:none;">
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                    </div>
+                                    <div id="invSkuChartNoData" class="text-center py-3 text-muted small" style="display:none;">
+                                        No INV snapshot history yet. Run Inv History snapshot to populate.
+                                    </div>
+                                    <div id="invSkuChartWrap" style="display:none;height:320px;">
+                                        <canvas id="invSkuChartCanvas"></canvas>
+                                    </div>
+                                    <div class="d-flex justify-content-around small mt-2" id="invSkuChartStats" style="display:none;">
+                                        <div class="text-center"><div class="text-muted" style="font-size:10px;">Highest</div><div id="invSkuHi" class="fw-bold">—</div></div>
+                                        <div class="text-center"><div class="text-muted" style="font-size:10px;">Median</div><div id="invSkuMed" class="fw-bold">—</div></div>
+                                        <div class="text-center"><div class="text-muted" style="font-size:10px;">Lowest</div><div id="invSkuLo" class="fw-bold">—</div></div>
+                                    </div>
+                                    <div id="invSkuSalesWrap" style="display:none;" class="mt-3 pt-2 border-top">
+                                        <div class="d-flex justify-content-between align-items-center mb-1 small">
+                                            <span class="fw-semibold text-dark">Daily sales</span>
+                                            <span class="text-muted" style="font-size:11px;">units sold per day (not L30 total)</span>
+                                        </div>
+                                        <div style="height:200px;">
+                                            <canvas id="invSkuSalesCanvas"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1123,12 +1243,31 @@
                         <!-- <div id="invValue" style="background-color: #d0e7ff; color: #004080; font-size: 14px; font-weight: 600;         padding:5px 10px; border-radius: 6px; display:inline-block;">
                         </div> -->
 
-                    <!-- Search on right -->
-                        <div class="form-inline">
-                            <div class="form-group">
-                                <label for="search-input" class="mr-2">Search:</label>
-                                <input type="text" id="search-input" class="form-control form-control-sm"
-                                    placeholder="Search all columns">
+                    <!-- Table-top filters (Parent / SKU moved out of column headers) -->
+                        <div class="form-inline inv-table-top-filters d-flex flex-wrap align-items-center gap-2">
+                            <div class="form-group mb-0">
+                                <label for="parentSearch" class="mr-1 mb-0 small text-muted">Parent</label>
+                                <div class="dropdown-search-container d-inline-block">
+                                    <input type="text" class="form-control form-control-sm parent-search"
+                                        placeholder="Search parent..." id="parentSearch" autocomplete="off">
+                                    <div class="dropdown-search-results" id="parentSearchResults"></div>
+                                </div>
+                            </div>
+                            <div class="form-group mb-0">
+                                <label for="skuSearch" class="mr-1 mb-0 small text-muted">SKU</label>
+                                <div class="dropdown-search-container d-inline-block">
+                                    <input type="text" class="form-control form-control-sm sku-search"
+                                        placeholder="Search SKU..." id="skuSearch" autocomplete="off">
+                                    <div class="dropdown-search-results" id="skuSearchResults"></div>
+                                </div>
+                            </div>
+                            <div class="form-group mb-0">
+                                <label for="inv-qty-filter" class="mr-1 mb-0 small text-muted">INV</label>
+                                <select id="inv-qty-filter" class="form-control form-control-sm" title="Filter by INV quantity">
+                                    <option value="all" selected>INV All</option>
+                                    <option value="zero">INV = 0</option>
+                                    <option value="positive">INV &gt; 0</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -1136,28 +1275,6 @@
                     <div class="table-container">
                         <table class="custom-resizable-table" id="ebay-table">
                             <thead>
-                                <tr id="summaryRow">
-                                    <th colspan="3"></th> <!-- Skip Images, Parent, SKU -->
-                                    <th>
-                                        <div class="metric-total" id="inv-total" style="font-weight: bold; color: #007bff;">0</div>
-                                    </th>
-                                    <th>
-                                        <div class="metric-total" id="ovl30-total" style="font-weight: bold; color: #007bff;">0</div>
-                                    </th>
-                                    <th>
-                                        <div class="metric-total" id="ovdil-total" style="font-weight: bold; color: #007bff;">0%</div>
-                                    </th>
-                                    <th>
-                                        <div class="metric-total" id="onhand-total" style="font-weight: bold; color: #007bff;">0</div>
-                                    </th>
-                                    <th>
-                                        <div class="metric-total" id="committed-total" style="font-weight: bold; color: #007bff;">0</div>
-                                    </th>
-                                    <th>
-                                        <div class="metric-total" id="avltosell-total" style="font-weight: bold; color: #007bff;">0</div>
-                                    </th>
-                                    <th></th>
-                                </tr>
                                 <tr>
                                      <th data-field="images" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
@@ -1176,26 +1293,12 @@
                                             <div class="d-flex align-items-center sortable-header">
                                                 PARENT <span class="sort-arrow">↓</span>
                                             </div>
-                                        
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm parent-search"
-                                                    placeholder="Search parent..." id="parentSearch">
-                                                <div class="dropdown-search-results" id="parentSearchResults"></div>
-                                            </div>
                                         </div>
                                     </th>
                                     <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center sortable">
-                                            <div class="d-flex align-items-left">
+                                            <div class="d-flex align-items-center">
                                                 SKU <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm sku-search"
-                                                    placeholder="Search SKU..." id="skuSearch">
-                                                <div class="dropdown-search-results" id="skuSearchResults"></div>
-                                            </div>
-                                            
-                                            
                                             </div>
                                         </div>
                                     </th>
@@ -1213,6 +1316,11 @@
                                                 INV <span class="sort-arrow">↓</span>
                                             </div>
                                             <!-- <div class="metric-total" id="inv-total">0</div> -->
+                                        </div>
+                                    </th>
+                                    <th data-field="inv_hist" style="vertical-align: middle; white-space: nowrap; width: 2.25rem;" title="INV rolling history">
+                                        <div class="d-flex flex-column align-items-center">
+                                            <i class="fas fa-chart-area text-muted" style="font-size: 0.85rem;" aria-hidden="true"></i>
                                         </div>
                                     </th>
                                     <th data-field="ov_l30" style="vertical-align: middle; white-space: nowrap;">
@@ -1307,21 +1415,60 @@
     </div>
 @endsection
 
-@section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-    <!--for popup modal script-->
-    <script>
-        flatpickr("#duration", {
-            enableTime: true,
-            mode: "range",
-            dateFormat: "M d, Y h:i K"
-        });
+{{-- Outside content-page (avoids layout transform clipping) — same coding as adv-masters / ui modals --}}
+@section('modal')
+    <div class="modal fade" id="skuHistoryModal" tabindex="-1" aria-labelledby="skuHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="skuHistoryModalLabel">Inventory Movement History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="sku-history-content">
+                    Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
 
-        
-    </script>
+@section('script')
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+@endsection
+
+@section('script-after-vite')
     <script>
+        // Use layout Bootstrap 5 + jQuery from Vite — do NOT load Bootstrap 4 here (it breaks the theme).
+        function showBsModal(el) {
+            const node = (typeof el === 'string') ? document.querySelector(el) : el;
+            if (!node) return;
+            if (window.bootstrap && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(node).show();
+                return;
+            }
+            if (window.jQuery && jQuery.fn.modal) jQuery(node).modal('show');
+        }
+        function hideBsModal(el) {
+            const node = (typeof el === 'string') ? document.querySelector(el) : el;
+            if (!node) return;
+            if (window.bootstrap && bootstrap.Modal) {
+                const inst = bootstrap.Modal.getInstance(node);
+                if (inst) inst.hide();
+                return;
+            }
+            if (window.jQuery && jQuery.fn.modal) jQuery(node).modal('hide');
+        }
+
+        if (window.flatpickr) {
+            flatpickr("#duration", {
+                enableTime: true,
+                mode: "range",
+                dateFormat: "M d, Y h:i K"
+            });
+        }
+
         // load data on modal
         $('#activity-log-btn').on('click', function () {
             $.ajax({
@@ -1348,7 +1495,7 @@
                         });
                     }
 
-                    $('#activityLogModal').modal('show'); // Show the modal
+                    showBsModal('#activityLogModal');
                 },
                 error: function () {
                     alert('Failed to load activity log.');
@@ -1359,7 +1506,7 @@
 
         //close modal
         $('.close').on('click', function () {
-            $('#activityLogModal').modal('hide');
+            hideBsModal('#activityLogModal');
         });
 
         //search by sku
@@ -2128,6 +2275,8 @@
 
                         // Optional: filter if needed (your original filteredData logic)
                         filteredData = tableData.filter(row => row.ON_HAND !== "N/A");
+                        // Roll child totals up onto PARENT rows (INV, L30, On Hand, etc.)
+                        applyParentChildSums(tableData);
                         // Sort by Parent ascending by default
                         filteredData.sort((a, b) => String(a.Parent || '').localeCompare(String(b.Parent || '')));
                         currentSort.field = 'Parent';
@@ -2140,6 +2289,60 @@
                         showNotification('danger', 'Failed to load data from both sources.');
                         hideLoader();
                     });
+            }
+
+            // Sum child SKU metrics onto each PARENT row in the dataset
+            function applyParentChildSums(rows) {
+                if (!Array.isArray(rows) || !rows.length) return rows;
+                const sumsByParent = {};
+
+                rows.forEach((row) => {
+                    if (row.is_parent) return;
+                    const key = String(row.Parent || '').trim();
+                    if (!key || key === '(No Parent)') return;
+                    if (!sumsByParent[key]) {
+                        sumsByParent[key] = {
+                            INV: 0,
+                            L30: 0,
+                            ON_HAND: 0,
+                            COMMITTED: 0,
+                            AVAILABLE_TO_SELL: 0,
+                            VALUE: 0,
+                        };
+                    }
+                    const inv = Number(row.INV);
+                    const ats = Number(row.AVAILABLE_TO_SELL);
+                    const invQty = (isFinite(inv) ? inv : 0) || (isFinite(ats) ? ats : 0) || 0;
+                    const l30 = Number(row.L30);
+                    const onHand = Number(row.ON_HAND);
+                    const committed = Number(row.COMMITTED);
+                    const price = Number(row.AMAZON_PRICE);
+                    sumsByParent[key].INV += invQty;
+                    sumsByParent[key].L30 += isFinite(l30) ? l30 : 0;
+                    sumsByParent[key].ON_HAND += isFinite(onHand) ? onHand : 0;
+                    sumsByParent[key].COMMITTED += isFinite(committed) ? committed : 0;
+                    sumsByParent[key].AVAILABLE_TO_SELL += isFinite(ats) ? ats : invQty;
+                    sumsByParent[key].VALUE += invQty * (isFinite(price) ? price : 0);
+                });
+
+                rows.forEach((row) => {
+                    if (!row.is_parent) return;
+                    const parentKey = String(row.Parent || '').trim();
+                    const skuKey = String(row.SKU || '')
+                        .replace(/^PARENT\s+/i, '')
+                        .trim();
+                    const s = sumsByParent[parentKey] || sumsByParent[skuKey];
+                    if (!s) return;
+                    row.INV = s.INV;
+                    row.L30 = s.L30;
+                    row.ON_HAND = s.ON_HAND;
+                    row.COMMITTED = s.COMMITTED;
+                    row.AVAILABLE_TO_SELL = s.AVAILABLE_TO_SELL;
+                    row.parent_value_sum = s.VALUE;
+                    row.DIL = s.INV > 0 ? (s.L30 / s.INV) : 0;
+                });
+
+                return rows;
             }
 
             // Render table with current data
@@ -2267,36 +2470,50 @@
                         $row.append($raCell);
                     }
 
-                    $row.append($('<td>').text(item.AVAILABLE_TO_SELL));
-                    $row.append($('<td>').text(item.L30));   
-                    // $row.append($('<td>').text(item.DIL));
-                    // const dilValue = parseFloat(item.DIL) || 0;
-                    // const dilPercent = dilValue === 0 ? '-' : `${Math.round(dilValue * 100)}%`;
-                    // const dilClass = getDilColor(dilValue); 
-
-                    // $row.append(
-                    //     $('<td>').html(`<span class="dil-percent-value ${dilClass}">${dilPercent}%</span>`)
-                    // );
+                    const invQty = parseFloat(item.INV) || parseFloat(item.AVAILABLE_TO_SELL) || 0;
+                    const rowSku = item.SKU || item.sku || '';
+                    // INV column
+                    $row.append($('<td>').text(invQty));
+                    $row.append($('<td>').addClass('text-center align-middle').html(
+                        item.is_parent
+                            ? ''
+                            : `<span class="inv-hist-dot inv-hist-dot--gray"
+                                role="button" tabindex="0"
+                                data-sku="${String(rowSku).replace(/"/g, '&quot;')}"
+                                data-inv="${invQty}"
+                                title="INV rolling history graph"></span>`
+                    ));
+                    const l30Qty = parseFloat(item.L30) || 0;
+                    $row.append($('<td>').addClass('text-center align-middle text-nowrap').html(
+                        item.is_parent
+                            ? `<span>${l30Qty}</span>`
+                            : `<span class="d-inline-flex align-items-center justify-content-center gap-1">
+                                <span>${l30Qty}</span>
+                                <span class="l30-hist-dot l30-hist-dot--gray"
+                                    role="button" tabindex="0"
+                                    data-sku="${String(rowSku).replace(/"/g, '&quot;')}"
+                                    data-l30="${l30Qty}"
+                                    title="L30 sold rolling history graph"></span>
+                            </span>`
+                    ));
                     const dilValue = parseFloat(item.DIL) || 0;
 
                     let dilContent;
-                    // if (dilValue <= 0) {
-                    //     dilContent = `<span>-</span>`; // No color class, no percent symbol
-                    // } else {
                         const dilPercent = Math.round(dilValue * 100);
                         const dilClass = getDilColor(dilValue);
                         dilContent = `<span class="dil-percent-value ${dilClass}">${dilPercent}%</span>`;
-                    // }
 
                     $row.append(
                         $('<td>').html(dilContent)
                     );
 
-                    // Add Value column (INV * Amazon Price)
-                    const inv = parseFloat(item.INV) || parseFloat(item.AVAILABLE_TO_SELL) || 0;
+                    // Value: child = INV * price; parent = sum of child values
+                    const inv = invQty;
                     const amazonPrice = parseFloat(item.AMAZON_PRICE) || 0;
-                    const value = inv * amazonPrice;
-                    const valueFormatted = value > 0 ? '$' + value.toFixed(2) : '-';
+                    const value = (item.is_parent && item.parent_value_sum != null)
+                        ? Number(item.parent_value_sum)
+                        : (inv * amazonPrice);
+                    const valueFormatted = value > 0 ? '$' + Math.round(value).toLocaleString('en-US') : '-';
                     $row.append($('<td>').text(valueFormatted));
 
                     $row.append($('<td>').addClass('on-hand').text(item.ON_HAND));
@@ -2306,9 +2523,9 @@
                     const $historyIcon = $(`
                         <td class="text-center align-middle">
                             <div class="d-flex gap-2 justify-content-center align-items-center flex-wrap">
-                                <i class="fas fa-eye text-primary view-history-icon"
+                                <i class="fas fa-search text-primary view-history-icon"
                                     data-sku="${item.SKU || item.sku || ''}"
-                                    title="Our approval history"
+                                    title="All inventory movements (sales, returns, transfers, purchases, adjustments)"
                                     style="cursor: pointer;"></i>
                                 <i class="fas fa-external-link-alt text-success shopify-shop-history-icon"
                                     data-sku="${item.SKU || item.sku || ''}"
@@ -2403,7 +2620,405 @@
                 $('#visible-rows').text(`Showing all ${filteredData.length} rows`);
                 // Initialize tooltips
                 initTooltips();
+                applyInvHistTones();
             }
+
+            // ----- INV rolling history dots (dashboard KPI chart style) -----
+            const INV_ROLLING_URL = @json(route('inventory-history.sku-rolling'));
+            const INV_TONES_URL = @json(route('inventory-history.sku-tones'));
+            const INV_CSRF = @json(csrf_token());
+            const INV_TONE_COLORS = { green: '#22c55e', red: '#ef4444', gray: '#9ca3af' };
+            let invSkuChartInstance = null;
+            let invSkuSalesChartInstance = null;
+            let invSkuChartAjax = null;
+            let invSkuActive = { sku: '', inv: null, days: 30, metric: 'inv', label: 'INV' };
+
+            function applyDotTones(selector, classPrefix, metric) {
+                const skus = [];
+                $('#ebay-table tbody ' + selector).each(function () {
+                    const s = String($(this).data('sku') || '').trim();
+                    if (s) skus.push(s);
+                });
+                if (!skus.length) return;
+                $.ajax({
+                    url: INV_TONES_URL,
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ skus: skus, metric: metric || 'inv', _token: INV_CSRF }),
+                    headers: {
+                        'X-CSRF-TOKEN': INV_CSRF,
+                        Accept: 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    success: function (res) {
+                        const tones = (res && res.tones) ? res.tones : {};
+                        $('#ebay-table tbody ' + selector).each(function () {
+                            const key = String($(this).data('sku') || '').trim().toUpperCase().replace(/\s+/g, ' ');
+                            const tone = (tones[key] && tones[key].tone) ? tones[key].tone : 'gray';
+                            $(this)
+                                .removeClass(classPrefix + '--green ' + classPrefix + '--red ' + classPrefix + '--gray')
+                                .addClass(classPrefix + '--' + tone);
+                        });
+                    },
+                });
+            }
+
+            function applyInvHistTones() {
+                applyDotTones('.inv-hist-dot', 'inv-hist-dot', 'inv');
+                applyDotTones('.l30-hist-dot', 'l30-hist-dot', 'sold');
+            }
+
+            function invFmt(v) {
+                const n = Number(v || 0);
+                if (!isFinite(n)) return '—';
+                return Math.round(n).toLocaleString('en-US');
+            }
+
+            function invChartTitle() {
+                const prefix = invSkuActive.metric === 'sold' ? 'L30 Sold' : 'INV';
+                return prefix + ' — ' + invSkuActive.sku + ' — Rolling L' + invSkuActive.days;
+            }
+
+            function openInvSkuChart(sku, inv, metric) {
+                invSkuActive.sku = sku;
+                invSkuActive.metric = (metric === 'sold') ? 'sold' : 'inv';
+                invSkuActive.label = invSkuActive.metric === 'sold' ? 'L30 Sold' : 'INV';
+                invSkuActive.inv = (inv !== undefined && inv !== null && !isNaN(Number(inv))) ? Number(inv) : null;
+                if (invSkuActive.metric === 'sold') {
+                    $('#invSkuChartRange').val('30');
+                }
+                invSkuActive.days = parseInt($('#invSkuChartRange').val(), 10) || 30;
+                $('#invSkuChartTitle').text(invChartTitle());
+                $('#invSkuChartSub').text(sku);
+                $('#invSkuChartTone').text('—').css({ background: INV_TONE_COLORS.gray, color: '#fff' });
+                const modalEl = document.getElementById('invSkuChartModal');
+                showBsModal(modalEl);
+                loadInvSkuChart();
+            }
+
+            function loadInvSkuChart() {
+                if (!invSkuActive.sku) return;
+                if (invSkuChartAjax) invSkuChartAjax.abort();
+                $('#invSkuChartLoading').show();
+                $('#invSkuChartNoData').hide();
+                $('#invSkuChartWrap').hide();
+                $('#invSkuChartStats').hide();
+                $('#invSkuSalesWrap').hide();
+
+                const params = {
+                    sku: invSkuActive.sku,
+                    days: invSkuActive.days,
+                    metric: invSkuActive.metric || 'inv',
+                };
+                // Live overlay only for INV (L30 column is a 30-day total, not daily sold)
+                if (invSkuActive.metric !== 'sold' && invSkuActive.inv !== null) {
+                    params.badge_value = invSkuActive.inv;
+                }
+
+                invSkuChartAjax = $.ajax({
+                    url: INV_ROLLING_URL,
+                    type: 'GET',
+                    data: params,
+                    success: function (payload) {
+                        invSkuChartAjax = null;
+                        $('#invSkuChartLoading').hide();
+                        if (!payload || !payload.success || !payload.data || !payload.data.length) {
+                            $('#invSkuChartNoData').show();
+                            return;
+                        }
+                        const tone = payload.tone || 'gray';
+                        $('#invSkuChartTone')
+                            .text(String(tone).toUpperCase())
+                            .css({ background: INV_TONE_COLORS[tone] || INV_TONE_COLORS.gray, color: '#fff' });
+                        $('#invSkuChartWrap').show();
+                        $('#invSkuChartStats').css('display', 'flex');
+                        $('#invSkuSalesWrap').show();
+                        renderInvSkuChart(payload.data, payload.label || invSkuActive.label || 'INV');
+                        renderInvSkuSalesBarChart(payload.data);
+                    },
+                    error: function () {
+                        invSkuChartAjax = null;
+                        $('#invSkuChartLoading').hide();
+                        $('#invSkuChartNoData').show();
+                    },
+                });
+            }
+
+            function renderInvSkuChart(data, label) {
+                if (typeof Chart === 'undefined') return;
+                if (typeof ChartDataLabels !== 'undefined') {
+                    try { Chart.register(ChartDataLabels); } catch (e) { /* already registered */ }
+                }
+                const ctx = document.getElementById('invSkuChartCanvas').getContext('2d');
+                if (invSkuChartInstance) invSkuChartInstance.destroy();
+
+                const labels = data.map((d) => d.date);
+                const values = data.map((d) => Number(d.value || 0));
+                const colors = data.map((d) => INV_TONE_COLORS[d.tone] || INV_TONE_COLORS.gray);
+                const dataMin = Math.min.apply(null, values);
+                const dataMax = Math.max.apply(null, values);
+                const sorted = values.slice().sort((a, b) => a - b);
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                const range = dataMax - dataMin || 1;
+
+                $('#invSkuHi').text(invFmt(dataMax));
+                $('#invSkuMed').text(invFmt(median));
+                $('#invSkuLo').text(invFmt(dataMin));
+
+                const chartPlugins = (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [];
+                const dense = data.length >= 90 || (invSkuActive.days || 30) >= 90;
+                const labelSize = dense ? 11 : 18;
+                const pointR = dense ? 2.5 : 4;
+
+                invSkuChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    plugins: chartPlugins,
+                    data: {
+                        labels,
+                        datasets: [{
+                            label,
+                            data: values,
+                            borderColor: '#94a3b8',
+                            backgroundColor: 'rgba(148,163,184,0.12)',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: dense ? 1 : 1.5,
+                            pointRadius: pointR,
+                            pointHoverRadius: dense ? 6 : 8,
+                            pointHitRadius: dense ? 14 : 18,
+                            pointBackgroundColor: colors,
+                            pointBorderColor: colors,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+                        layout: { padding: { top: dense ? 36 : 28, right: 14, bottom: 8 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                enabled: true,
+                                filter: (item) => {
+                                    const pt = data[item.dataIndex];
+                                    return pt && (pt.tone === 'green' || pt.tone === 'red');
+                                },
+                                backgroundColor: 'rgba(15, 23, 42, 0.96)',
+                                titleColor: '#ffffff',
+                                bodyColor: '#f8fafc',
+                                borderColor: '#94a3b8',
+                                borderWidth: 2,
+                                padding: 14,
+                                cornerRadius: 8,
+                                displayColors: false,
+                                caretSize: 8,
+                                titleFont: { size: 18, weight: '700' },
+                                bodyFont: { size: 14, weight: '600' },
+                                callbacks: {
+                                    title: (items) => {
+                                        if (!items.length) return '';
+                                        const pt = data[items[0].dataIndex] || {};
+                                        const delta = Number(pt.delta);
+                                        const reason = pt.reason || (pt.tone === 'green' ? 'INV increase' : 'INV decrease');
+                                        if (isFinite(delta) && delta !== 0) {
+                                            return reason + '  ' + (delta > 0 ? '+' : '') + invFmt(delta);
+                                        }
+                                        return reason;
+                                    },
+                                    label: (item) => {
+                                        const pt = data[item.dataIndex] || {};
+                                        const delta = Number(pt.delta);
+                                        const lines = [];
+                                        if (isFinite(delta) && delta !== 0) {
+                                            lines.push((delta > 0 ? '↑ Increase' : '↓ Decrease') + ': ' + (delta > 0 ? '+' : '') + invFmt(delta));
+                                        }
+                                        if (Number(pt.sold) > 0) {
+                                            lines.push('Sales: ' + invFmt(pt.sold));
+                                        }
+                                        if (Number(pt.restocked) > 0) {
+                                            lines.push('Restock: ' + invFmt(pt.restocked));
+                                        }
+                                        if (!(Number(pt.sold) > 0) && !(Number(pt.restocked) > 0) && isFinite(delta) && delta !== 0) {
+                                            lines.push(delta > 0 ? 'Reason: INV increase' : 'Reason: INV decrease');
+                                        }
+                                        lines.push('On hand: ' + invFmt(pt.value));
+                                        lines.push(pt.date || labels[item.dataIndex] || '');
+                                        return lines;
+                                    },
+                                    labelTextColor: (item) => {
+                                        const pt = data[item.dataIndex] || {};
+                                        if (pt.tone === 'green') return '#86efac';
+                                        if (pt.tone === 'red') return '#fca5a5';
+                                        return '#f8fafc';
+                                    },
+                                },
+                            },
+                            datalabels: {
+                                // Hide labels on gray (no-movement) points
+                                display: (ctx) => {
+                                    const pt = data[ctx.dataIndex];
+                                    return !!(pt && pt.tone && pt.tone !== 'gray');
+                                },
+                                anchor: 'end',
+                                align: 'top',
+                                offset: 4,
+                                clamp: true,
+                                rotation: -45,
+                                color: (ctx) => {
+                                    const pt = data[ctx.dataIndex] || {};
+                                    return INV_TONE_COLORS[pt.tone] || '#0f172a';
+                                },
+                                backgroundColor: 'rgba(255,255,255,0.85)',
+                                borderRadius: 3,
+                                padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                                font: { size: labelSize, weight: '700' },
+                                formatter: (v) => invFmt(v),
+                            },
+                        },
+                        scales: {
+                            y: {
+                                min: Math.min(0, dataMin - range * 0.18),
+                                max: dataMax + range * 0.28,
+                                ticks: { font: { size: 9 }, callback: (v) => invFmt(v) },
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    font: { size: dense ? 8 : 9 },
+                                    autoSkip: true,
+                                    maxTicksLimit: dense ? 24 : 40,
+                                },
+                            },
+                        },
+                    },
+                });
+            }
+
+            function renderInvSkuSalesBarChart(data) {
+                if (typeof Chart === 'undefined') return;
+                const canvas = document.getElementById('invSkuSalesCanvas');
+                if (!canvas) return;
+                if (typeof ChartDataLabels !== 'undefined') {
+                    try { Chart.register(ChartDataLabels); } catch (e) { /* already registered */ }
+                }
+                if (invSkuSalesChartInstance) invSkuSalesChartInstance.destroy();
+
+                const labels = data.map((d) => d.date);
+                // Always use per-day sold_quantity from snapshot — never L30 total
+                const soldVals = data.map((d) => {
+                    const n = Number(d.sold);
+                    return isFinite(n) ? Math.max(0, n) : 0;
+                });
+                const dense = data.length >= 90 || (invSkuActive.days || 30) >= 90;
+                const soldMax = Math.max.apply(null, soldVals.concat([0]));
+                const barColors = soldVals.map((v, i) => {
+                    if (v <= 0) return '#cbd5e1';
+                    const prev = i > 0 ? soldVals[i - 1] : null;
+                    if (prev === null) return '#3b82f6';
+                    if (v > prev) return INV_TONE_COLORS.green;
+                    if (v < prev) return INV_TONE_COLORS.red;
+                    return '#3b82f6';
+                });
+
+                invSkuSalesChartInstance = new Chart(canvas.getContext('2d'), {
+                    type: 'bar',
+                    plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Daily sales',
+                            data: soldVals,
+                            backgroundColor: barColors,
+                            borderColor: barColors,
+                            borderWidth: 0,
+                            borderRadius: 2,
+                            maxBarThickness: dense ? 6 : 18,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: dense ? 22 : 16, right: 8 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                enabled: true,
+                                backgroundColor: 'rgba(15, 23, 42, 0.94)',
+                                titleFont: { size: 14, weight: '700' },
+                                bodyFont: { size: 12, weight: '600' },
+                                displayColors: false,
+                                callbacks: {
+                                    title: (items) => {
+                                        if (!items.length) return 'Daily sales';
+                                        const pt = data[items[0].dataIndex] || {};
+                                        return pt.date || labels[items[0].dataIndex] || 'Daily sales';
+                                    },
+                                    label: (item) => 'Sold: ' + invFmt(item.raw),
+                                },
+                            },
+                            datalabels: {
+                                display: (ctx) => Number(ctx.dataset.data[ctx.dataIndex] || 0) > 0,
+                                anchor: 'end',
+                                align: 'top',
+                                offset: 2,
+                                clamp: true,
+                                rotation: -45,
+                                color: '#0f172a',
+                                font: { size: dense ? 9 : 11, weight: '700' },
+                                formatter: (v) => (Number(v) > 0 ? invFmt(v) : ''),
+                            },
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                suggestedMax: soldMax > 0 ? soldMax * 1.2 : 1,
+                                ticks: { font: { size: 9 }, callback: (v) => invFmt(v) },
+                                title: { display: true, text: 'Sold / day', font: { size: 10 } },
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    font: { size: dense ? 8 : 9 },
+                                    autoSkip: true,
+                                    maxTicksLimit: dense ? 24 : 40,
+                                },
+                            },
+                        },
+                    },
+                });
+            }
+
+            $(document).on('click', '.inv-hist-dot', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                const inv = $(this).data('inv');
+                if (!sku) return;
+                openInvSkuChart(sku, inv, 'inv');
+            });
+            $(document).on('click', '.l30-hist-dot', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                if (!sku) return;
+                openInvSkuChart(sku, null, 'sold');
+            });
+            $(document).on('keydown', '.inv-hist-dot, .l30-hist-dot', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    $(this).trigger('click');
+                }
+            });
+            $('#invSkuChartRange').on('change', function () {
+                invSkuActive.days = parseInt(this.value, 10) || 30;
+                if (invSkuActive.sku) {
+                    $('#invSkuChartTitle').text(invChartTitle());
+                    loadInvSkuChart();
+                }
+            });
 
             $(document).on('click', '.shopify-shop-history-icon', function (e) {
                 e.stopPropagation();
@@ -2431,56 +3046,105 @@
                 });
             });
 
+            let skuHistoryAjax = null;
+            // Same pattern as verification-adjustment / adv-masters: Bootstrap modal-fullscreen
+            (function ensureSkuHistoryModalOnBody() {
+                const el = document.getElementById('skuHistoryModal');
+                if (el && el.parentElement !== document.body) {
+                    document.body.appendChild(el);
+                }
+            })();
+            $('#skuHistoryModal').on('hidden.bs.modal', function () {
+                if (skuHistoryAjax) {
+                    try { skuHistoryAjax.abort(); } catch (e) {}
+                    skuHistoryAjax = null;
+                }
+            });
+
             $(document).on('click', '.view-history-icon', function () {
                 const sku = $(this).data('sku');
+                if (!sku) return;
+                if (skuHistoryAjax) {
+                    try { skuHistoryAjax.abort(); } catch (e) {}
+                }
+                $('#skuHistoryModalLabel').text('Inventory Movement History');
+                $('#sku-history-content').html('<div class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div><div>Loading movements…</div></div>');
+                showBsModal('#skuHistoryModal');
 
-                $.ajax({
-                    url: '/sku-adjustment-history',
-                    type: 'GET',
-                    data: { sku },
-                    success: function (res) {
-                    
-                        let html = `<strong>History for SKU: ${sku}</strong><hr>`;
-                        if (!res.data.length) {
-                            html += `<p>No history found.</p>`;
-                        } else {
-                            html += `
-                                <table class="table table-bordered table-sm">
-                                    <thead>
-                                        <tr>
-                                            <th>SKU</th>
-                                            <th>On Hand</th>
-                                            <th>Verified Stock</th>
-                                            <th>To Adjust</th>
-                                            <th>Reason</th>
-                                            <th>Approved By</th>
-                                            <th>Approved At (Ohio)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>`;
-                            res.data.forEach(entry => {
-                                html += `
-                                    <tr>
-                                        <td>${entry.sku}</td>
-                                        <td>${entry.on_hand}</td>
-                                        <td>${entry.verified_stock}</td>
-                                        <td>${entry.to_adjust}</td>
-                                        <td>${entry.reason}</td>
-                                        <td>${entry.approved_by}</td>
-                                        <td>${entry.approved_at}</td>
-                                    </tr>`;
-                            });
-                            html += `</tbody></table>`;
+                const t0 = performance.now();
+                function renderSkuHistory(res, startedAt) {
+                    const rows = Array.isArray(res.movements) ? res.movements
+                        : (Array.isArray(res.data) ? res.data : []);
+                    const esc = (v) => String(v == null ? '' : v)
+                        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const qtyCell = (q) => {
+                        const n = Number(q);
+                        if (!isFinite(n)) return esc(q);
+                        const cls = n < 0 ? 'text-danger fw-bold' : (n > 0 ? 'text-success fw-bold' : '');
+                        const sign = n > 0 ? '+' : '';
+                        return `<span class="${cls}">${sign}${n.toLocaleString()}</span>`;
+                    };
+                    const ms = Math.round(performance.now() - startedAt);
+
+                    let html = `<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 flex-shrink-0">
+                        <strong>SKU: ${esc(sku)}</strong>
+                        <span class="text-muted">${rows.length} movement${rows.length === 1 ? '' : 's'}${res.truncated ? '+' : ''} · Ohio (ET) · ${ms}ms</span>
+                    </div>`;
+                    html += `<p class="text-muted mb-2 flex-shrink-0">Purchases, returns, transfers, balances, adjustments, sales/restocks, logs.${res.truncated ? ' Showing latest.' : ''}</p>`;
+
+                    if (!rows.length) {
+                        html += `<p class="mb-0">No inventory movements found for this SKU.</p>`;
+                    } else {
+                        const parts = [];
+                        parts.push(`<div class="table-responsive"><table class="table table-bordered table-striped table-hover align-middle mb-0 text-center sku-movement-history-table"><thead><tr>
+                            <th>When</th><th>Type</th><th>Qty</th><th>Location</th><th>Reason / Detail</th><th>By</th><th>On hand</th>
+                        </tr></thead><tbody>`);
+                        for (let i = 0; i < rows.length; i++) {
+                            const entry = rows[i];
+                            const type = entry.type_label || entry.movement_type || 'Movement';
+                            parts.push(`<tr>
+                                <td class="text-nowrap">${esc(entry.at || entry.approved_at || '—')}</td>
+                                <td>${esc(type)}</td>
+                                <td class="text-nowrap">${qtyCell(entry.qty != null ? entry.qty : entry.to_adjust)}</td>
+                                <td>${esc(entry.location || '—')}</td>
+                                <td class="text-nowrap">${esc(entry.reason || '—')}${entry.meta ? ' ' + esc(entry.meta) : ''}</td>
+                                <td>${esc(entry.by || entry.approved_by || '—')}</td>
+                                <td>${entry.on_hand != null && entry.on_hand !== '' ? esc(entry.on_hand) : '—'}</td>
+                            </tr>`);
                         }
-
-                        $('#sku-history-content').html(html);
-                        $('#skuHistoryModal').modal('show');
-                    },
-                    error: function () {
-                        $('#sku-history-content').html('<p class="text-danger">Failed to load history.</p>');
-                        $('#skuHistoryModal').modal('show');
+                        parts.push('</tbody></table></div>');
+                        html += parts.join('');
                     }
-                });
+                    $('#sku-history-content').html(html);
+                }
+
+                function loadSkuHistory(attempt) {
+                    skuHistoryAjax = $.ajax({
+                        url: '/sku-adjustment-history',
+                        type: 'GET',
+                        data: { sku },
+                        cache: true,
+                        timeout: 45000,
+                        success: function (res) {
+                            skuHistoryAjax = null;
+                            renderSkuHistory(res, t0);
+                        },
+                        error: function (xhr, status) {
+                            skuHistoryAjax = null;
+                            if (status === 'abort') return;
+                            if (status === 'timeout' && attempt < 2) {
+                                $('#sku-history-content').html('<div class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div><div>Still loading… retrying</div></div>');
+                                loadSkuHistory(attempt + 1);
+                                return;
+                            }
+                            const msg = status === 'timeout'
+                                ? 'History request timed out. Wait for the page to finish loading, then try again.'
+                                : 'Failed to load inventory movement history.';
+                            $('#sku-history-content').html('<p class="text-danger mb-0">' + msg + '</p>');
+                        }
+                    });
+                }
+                loadSkuHistory(1);
             });
 
 
@@ -3472,10 +4136,17 @@
                 });
             }
 
-            // Apply column filters
+            function getRowInvQty(item) {
+                const inv = parseFloat(item && item.INV);
+                if (!isNaN(inv)) return inv;
+                const avl = parseFloat(item && item.AVAILABLE_TO_SELL);
+                return isNaN(avl) ? 0 : avl;
+            }
+
+            // Apply column filters (+ Parent / SKU / INV qty filters)
             function applyColumnFilters() {
                 // Reset filteredData to all data first
-                filteredData = [...tableData];
+                filteredData = tableData.filter(row => row.ON_HAND !== 'N/A');
 
                 // Apply row type filter first
                 const rowTypeFilter = $('#row-data-type').val();
@@ -3483,6 +4154,27 @@
                     filteredData = filteredData.filter(item => item.is_parent);
                 } else if (rowTypeFilter === 'sku') {
                     filteredData = filteredData.filter(item => !item.is_parent);
+                }
+
+                const parentVal = ($('#parentSearch').val() || '').trim().toLowerCase();
+                if (parentVal) {
+                    filteredData = filteredData.filter(item =>
+                        String(item.Parent || '').toLowerCase() === parentVal
+                    );
+                }
+
+                const skuVal = ($('#skuSearch').val() || '').trim().toLowerCase();
+                if (skuVal) {
+                    filteredData = filteredData.filter(item =>
+                        String(item.SKU || item.sku || '').toLowerCase() === skuVal
+                    );
+                }
+
+                const invFilter = $('#inv-qty-filter').val() || 'all';
+                if (invFilter === 'zero') {
+                    filteredData = filteredData.filter(item => getRowInvQty(item) === 0);
+                } else if (invFilter === 'positive') {
+                    filteredData = filteredData.filter(item => getRowInvQty(item) > 0);
                 }
 
                 // Then apply other filters as before
@@ -3715,19 +4407,14 @@
                     $results.show();
                 }
 
-                // Function to filter the table by column value
+                // Function to filter the table by column value (keeps INV / other top filters)
                 function filterByColumn(column, value) {
-                    if (value === '') {
-                        filteredData = [...tableData];
-                    } else {
-                        filteredData = tableData.filter(item =>
-                            String(item[column] || '').toLowerCase() === value.toLowerCase()
-                        );
+                    if (column === 'Parent') {
+                        $('#parentSearch').val(value || '');
+                    } else if (column === 'SKU') {
+                        $('#skuSearch').val(value || '');
                     }
-
-                    currentPage = 1;
-                    renderTable();
-                    calculateTotals();
+                    applyColumnFilters();
                 }
 
                 // Initialize a single dropdown
@@ -3804,6 +4491,10 @@
                 $('#row-data-type').on('change', function() {
                     const filterType = $(this).val();
                     applyRowTypeFilter(filterType);
+                });
+
+                $('#inv-qty-filter').on('change', function () {
+                    applyColumnFilters();
                 });
             }
 
@@ -3926,21 +4617,18 @@
             }
 
             function applyRowTypeFilter(filterType) {
-                // Reset to all data first
-                filteredData = [...tableData];
+                // Keep Parent / SKU / INV filters in sync
+                applyColumnFilters();
+            }
 
-                // Apply the row type filter
-                if (filterType === 'parent') {
-                    filteredData = filteredData.filter(item => item.is_parent);
-                } else if (filterType === 'sku') {
-                    filteredData = filteredData.filter(item => !item.is_parent);
+            // Shared by dropdown helpers outside initSearch
+            function filterByColumn(column, value) {
+                if (column === 'Parent') {
+                    $('#parentSearch').val(value || '');
+                } else if (column === 'SKU') {
+                    $('#skuSearch').val(value || '');
                 }
-                // else 'all' - no filtering needed
-
-                // Reset to first page and render
-                currentPage = 1;
-                renderTable();
-                calculateTotals();
+                applyColumnFilters();
             }
 
             // Initialize manual dropdowns

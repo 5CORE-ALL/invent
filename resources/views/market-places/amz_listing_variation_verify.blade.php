@@ -115,7 +115,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amz Listing Variation Verify',
-        'sub_title'  => 'Amazon Listings',
+        'sub_title'  => 'Amz Listings',
     ])
 
     <div class="row">
@@ -135,7 +135,7 @@
                         <button type="button" id="amz-lvv-refresh-btn" class="btn btn-sm btn-outline-primary amz-raw-icon-btn" title="Refresh" aria-label="Refresh">
                             <i class="fa fa-refresh"></i>
                         </button>
-                        <button type="button" id="amz-lvv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull Amazon listings (inventory report)">
+                        <button type="button" id="amz-lvv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull Amz listings (inventory report)">
                             <i class="fas fa-cloud-download-alt me-1"></i> Pull Listings
                         </button>
                         <button type="button" id="amz-lvv-export-btn" class="btn btn-sm btn-success" title="Export filtered rows to Excel">
@@ -546,7 +546,7 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm('Pull all merchant listings from Amazon SP-API?\n\nThis uses GET_MERCHANT_LISTINGS_ALL_DATA and may take several minutes.')) {
+                if (!confirm('Pull all merchant listings from Amz SP-API?\n\nThis uses GET_MERCHANT_LISTINGS_ALL_DATA and may take several minutes.')) {
                     return;
                 }
 

@@ -106,7 +106,7 @@
                             </ul>
                         </div>
                         <div class="dropdown map-channel-dd">
-                            <button class="btn btn-sm dropdown-toggle map-ch-amazon" type="button" data-bs-toggle="dropdown" data-channel="amazon" aria-expanded="false" title="Amazon filters">
+                            <button class="btn btn-sm dropdown-toggle map-ch-amazon" type="button" data-bs-toggle="dropdown" data-channel="amazon" aria-expanded="false" title="Amz filters">
                                 <span class="map-ch-label">Amz</span>
                             </button>
                             <ul class="dropdown-menu">
@@ -250,7 +250,7 @@
             var showSiteOnly = false; // "Show SKUs not in Product Master" toggle
             var hideSmallDiff = false; // "Hide ≤3% diff rows" toggle
 
-            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', temu: 'Temu Inv', shein: 'Shein Inv', newegg: 'Newegg Inv', aliexpress: 'Ali Inv' };
+            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amz Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', temu: 'Temu Inv', shein: 'Shein Inv', newegg: 'Newegg Inv', aliexpress: 'Ali Inv' };
             var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req', reverb: 'reverb_nr_req', macys: 'macys_nr_req', bestbuy: 'bestbuy_nr_req', temu: 'temu_nr_req', shein: 'shein_nr_req', newegg: 'newegg_nr_req', aliexpress: 'aliexpress_nr_req' };
             var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3', reverb: 'reverb_within3', macys: 'macys_within3', bestbuy: 'bestbuy_within3', temu: 'temu_within3', shein: 'shein_within3', newegg: 'newegg_within3', aliexpress: 'aliexpress_within3' };
 
@@ -536,12 +536,12 @@
                         },
                     },
                     {
-                        title: 'Amazon Inv', field: 'Amazon Inv', hozAlign: 'right', sorter: 'number',
+                        title: 'Amz Inv', field: 'Amz Inv', hozAlign: 'right', sorter: 'number',
                         formatter: invFormatter('amazon_mismatch', 'amazon_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
-                                showIssueModal('Amazon', d['(Child) sku'], d.amazon_sku, d.amazon_issue);
+                                showIssueModal('Amz', d['(Child) sku'], d.amazon_sku, d.amazon_issue);
                             }
                         },
                     },

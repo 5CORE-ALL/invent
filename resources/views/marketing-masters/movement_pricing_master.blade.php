@@ -634,7 +634,7 @@
             document.getElementById('price-comparison-sku').textContent = sku;
 
             const marketplaces = [
-                { label: "Amazon", prefix: "amz" },
+                { label: "Amz", prefix: "amz" },
                 { label: "eBay", prefix: "ebay" },
                 { label: "Doba", prefix: "doba" },
                 { label: "Macy", prefix: "macy" },
@@ -1690,7 +1690,7 @@
         // Marketplace table generator
         function buildOVL30Table(data) {
           const rows = [
-                { label: "Amazon", prefix: "amz", logo: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQsCfh_CXD_i6zOEuHUqDxYNICIzzgZSctyVuDVmKkdf9AaiXuhUcD3ygkjY9va2kEN328&usqp=CAU" },
+                { label: "Amz", prefix: "amz", logo: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQsCfh_CXD_i6zOEuHUqDxYNICIzzgZSctyVuDVmKkdf9AaiXuhUcD3ygkjY9va2kEN328&usqp=CAU" },
                 { label: "eBay", prefix: "ebay", logo:  "{{ asset('uploads/1.png') }}" },
                 { label: "Doba", prefix: "doba", logo: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRfMH_EwwUY107czdyPEr5rqiMskbxexw6Jf9x6NZtFtVYafeyXNtm6HT5bROw2OqsH9gw&usqp=CAU" },
                 { label: "Macy", prefix: "macy", logo: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSOudE9Uxpaqbm0oiBvtX4Y-M-L6eUM63ol2GsWHSgGpNdyFxnBE0MAl6saYDUXMUCq63o&usqp=CAU" },
@@ -2495,10 +2495,10 @@
                         price: sprice
                     },
                     success: function(res) {
-                       alert('Amazon price updated successfully!');
+                       alert('Amz price updated successfully!');
                     },
                     error: function(err) {
-                        alert('Error updating Amazon price: ' + err);
+                        alert('Error updating Amz price: ' + err);
                     },
                     complete: function() {
                         $btn.html('Push to Marketplace'); // reset button text

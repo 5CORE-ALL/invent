@@ -18,6 +18,13 @@ class BadgeDataCatalog
             'all-marketplace-master' => 'All Marketplace Master',
             'forecast-analysis' => 'Forecast Analysis',
             'on-sea-transit' => 'On Sea Transit',
+            'video-master' => 'Video Master',
+            'videos-master' => 'Videos',
+            'video-ads-master' => 'Video Request & Check',
+            'customer-care' => 'Customer Care',
+            'account-health' => 'Account Health',
+            'verify-adjust' => 'Verify / Adjust',
+            'purchase-contract' => 'Purchase Contract',
         ];
     }
 
@@ -75,6 +82,58 @@ class BadgeDataCatalog
                 'total_cbm' => 'CBM',
                 'zero_stock_pct' => 'Zero stock %',
             ],
+            'video-master' => [
+                'products' => 'Products',
+                'with_video' => 'With video',
+                'missing_video' => 'Missing video',
+            ],
+            'videos-master' => [
+                'sku_count' => 'SKUs',
+                'missing_po' => 'Missing PO',
+                'missing_shop' => 'Missing Shop',
+                'missing_howto' => 'Missing HowTo',
+                'missing_setup' => 'Missing Setup',
+                'missing_ts' => 'Missing TS',
+                'missing_bs' => 'Missing BS',
+                'missing_pb' => 'Missing PB',
+            ],
+            'video-ads-master' => [
+                'required' => 'Required',
+                'sku' => 'SKU',
+                'parent' => 'Parent',
+                'group' => 'Group',
+                'available' => 'Available',
+                'missing' => 'Missing',
+            ],
+            'customer-care' => [
+                'pending_followups' => 'Pending follow-ups',
+                'active_issues' => 'Active issues',
+                'dispatch_issues' => 'Dispatch issues',
+                'qc_issues' => 'QC PKG issues',
+                'label_issues' => 'Label issues',
+                'l30_issue_rows' => 'L30 issue rows',
+            ],
+            'account-health' => [
+                'cc_red' => 'CC Health Red',
+                'cc_yellow' => 'CC Health Yellow',
+                'cc_green' => 'CC Health Green',
+                'cc_unrated' => 'CC Health Unrated',
+                'ship_red' => 'Shipping Health Red',
+                'ship_yellow' => 'Shipping Health Yellow',
+                'ship_green' => 'Shipping Health Green',
+                'ship_unrated' => 'Shipping Health Unrated',
+            ],
+            'verify-adjust' => [
+                'verified' => 'Verified',
+                'unverified' => 'Unverified',
+                'total' => 'Inventory rows',
+            ],
+            'purchase-contract' => [
+                'o_amount' => 'O Amount',
+                'advance' => 'Advance',
+                'balance' => 'Balance',
+                'po_count' => 'PO count',
+            ],
         ];
     }
 
@@ -115,6 +174,31 @@ class BadgeDataCatalog
     public static function humanize(string $value): string
     {
         return ucwords(str_replace('_', ' ', $value));
+    }
+
+    /**
+     * Whether a lower value is "better" for status-dot coloring
+     * (green when decreasing, red when increasing).
+     */
+    public static function isLowerBetter(string $pageName, string $field): bool
+    {
+        $f = strtolower($field);
+        $lowerNeedles = [
+            'missing', 'unverified', 'due', 'pending', 'issue', 'red',
+            'zero_stock', 'unrated', 'acos', 'tcos', 'ads_pct', 'loss',
+        ];
+        foreach ($lowerNeedles as $needle) {
+            if (str_contains($f, $needle)) {
+                return true;
+            }
+        }
+
+        // Explicit higher-is-worse fields
+        if (in_array($f, ['nmap', 'missing_l', 'missing_video'], true)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

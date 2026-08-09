@@ -1,15 +1,15 @@
-@extends('layouts.vertical', ['title' => $title ?? 'Amazon — Listings', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $title ?? 'Amz — Listings', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('content')
 <div class="row">
     <div class="col-12">
-        <a href="{{ route('marketplace.manager.show', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amazon Manager</a>
-        @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amazon Listings'])
+        <a href="{{ route('marketplace.manager.show', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amz Manager</a>
+        @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amz Listings'])
         <p class="text-muted mb-3">
             Linked tabs: <strong>All</strong> = every Shopify live SKU.
-            <strong>Active SKU / Inactive SKU</strong> = qty matched, split by Amazon status.
-            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = qty differs, split by Amazon status.
-            <em>Refresh live</em> warms Amazon status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
+            <strong>Active SKU / Inactive SKU</strong> = qty matched, split by Amz status.
+            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = qty differs, split by Amz status.
+            <em>Refresh live</em> warms Amz status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
         @if(!empty($shopifyCatalogSyncedAt))
@@ -30,7 +30,7 @@
                     @if(($linkTab ?? '') === 'all')
                         {{ $products->total() }} Shopify live SKU(s)
                     @elseif(($linkTab ?? '') === 'unlinked')
-                        {{ $products->total() }} not on Amazon (in-stock Shopify)
+                        {{ $products->total() }} not on Amz (in-stock Shopify)
                     @elseif(($linkTab ?? '') === 'matched')
                         {{ $products->total() }} Active SKU
                     @elseif(($linkTab ?? '') === 'matched_inactive')
@@ -50,7 +50,7 @@
                         <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1, 'clear_cache' => null]) }}" class="btn btn-sm btn-outline-success">
                             <i class="ri-flashlight-line"></i> Refresh live
                         </a>
-                        <a href="{{ request()->fullUrlWithQuery(['clear_cache' => 1, 'refresh_live' => null]) }}" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Clear the warm Amazon live listings cache? Counts will refresh after Refresh live.');">
+                        <a href="{{ request()->fullUrlWithQuery(['clear_cache' => 1, 'refresh_live' => null]) }}" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Clear the warm Amz live listings cache? Counts will refresh after Refresh live.');">
                             <i class="ri-delete-bin-line"></i> Clear cache
                         </a>
                     @endif
@@ -60,7 +60,7 @@
                         </button>
                     @endif
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
-                        <i class="ri-refresh-line"></i> Sync Amazon link map
+                        <i class="ri-refresh-line"></i> Sync Amz link map
                     </button>
                 </div>
             </div>
@@ -113,7 +113,7 @@
                         </div>
                     </div>
                     @if($isLinkedTab && empty($stateCacheReady))
-                        <p class="small text-muted mt-2 mb-0">State counts need the live Amazon catalog cache — click <em>Refresh live</em>, wait a minute, then reload.</p>
+                        <p class="small text-muted mt-2 mb-0">State counts need the live Amz catalog cache — click <em>Refresh live</em>, wait a minute, then reload.</p>
                     @endif
                 </form>
 
@@ -137,7 +137,7 @@
                         <a href="{{ request()->url() }}?link=zero&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'zero' ? 'active' : '' }}">Zero on Shopify {{ $counts['zero'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on Amazon {{ $counts['unlinked'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on Amz {{ $counts['unlinked'] ?? 0 }}</a>
                     </li>
                 </ul>
 
@@ -147,13 +147,13 @@
                             <tr>
                                 <th style="width: 64px;">Image</th>
                                 <th>SKU</th>
-                                <th>{{ ($linkTab ?? '') === 'not_in_shopify' ? 'Title (Amazon)' : 'Title (Shopify)' }}</th>
-                                <th>Amazon ID</th>
+                                <th>{{ ($linkTab ?? '') === 'not_in_shopify' ? 'Title (Amz)' : 'Title (Shopify)' }}</th>
+                                <th>Amz ID</th>
                                 <th>State</th>
                                 <th>Shopify Qty</th>
-                                <th>Amazon Qty</th>
+                                <th>Amz Qty</th>
                                 <th>Shopify Price</th>
-                                <th>Amazon Price</th>
+                                <th>Amz Price</th>
                                 <th>Link</th>
                             </tr>
                         </thead>
@@ -214,18 +214,18 @@
                                 <tr>
                                     <td colspan="10" class="text-center text-muted py-4">
                                         @if(($linkTab ?? 'all') === 'not_in_shopify')
-                                            No Amazon listings found without a matching Shopify SKU.
+                                            No Amz listings found without a matching Shopify SKU.
                                         @else
                                             No Shopify SKUs found.
                                         @endif
                                         @if(($linkTab ?? 'all') === 'linked')
-                                            None linked yet — click <strong>Sync Amazon link map</strong> after SKUs exist in Amazon.
+                                            None linked yet — click <strong>Sync Amz link map</strong> after SKUs exist in Amz.
                                         @elseif(($linkTab ?? 'all') === 'not_in_shopify')
-                                            All synced Amazon SKUs appear to exist in your Shopify catalog, or run <strong>Sync Amazon link map</strong> first.
+                                            All synced Amz SKUs appear to exist in your Shopify catalog, or run <strong>Sync Amz link map</strong> first.
                                         @elseif($connected)
                                             Your Shopify catalog may be empty, or filters excluded all rows.
                                         @else
-                                            <a href="{{ route('marketplace.manager.amazon.connect') }}">Connect Amazon</a> first.
+                                            <a href="{{ route('marketplace.manager.amazon.connect') }}">Connect Amz</a> first.
                                         @endif
                                     </td>
                                 </tr>
@@ -264,7 +264,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
         bar.textContent = pct + '%';
         pctEl.textContent = pct + '%';
         statusEl.textContent = message || ('Syncing page ' + pageNum + (totalPage ? ' of ' + totalPage : '') + '…');
-        var extra = totalCount ? ' (' + totalCount + ' products on Amazon)' : '';
+        var extra = totalCount ? ' (' + totalCount + ' products on Amz)' : '';
         countsEl.textContent = totalUpserted + ' SKU link(s) saved so far' + extra;
     }
 
@@ -280,7 +280,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
         }).then(function (r) { return r.json(); });
     }
 
-    if (!confirm('Sync all Amazon listings and refresh SKU ↔ product_id mappings? This may take a few minutes.')) {
+    if (!confirm('Sync all Amz listings and refresh SKU ↔ product_id mappings? This may take a few minutes.')) {
         return;
     }
 
@@ -295,7 +295,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
                 alert(data.message || 'Sync failed.');
                 progress.style.display = 'none';
                 btn.disabled = false;
-                btn.innerHTML = '<i class="ri-refresh-line"></i> Sync Amazon link map';
+                btn.innerHTML = '<i class="ri-refresh-line"></i> Sync Amz link map';
                 return;
             }
 
@@ -317,7 +317,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
             alert('Request failed.');
             progress.style.display = 'none';
             btn.disabled = false;
-            btn.innerHTML = '<i class="ri-refresh-line"></i> Sync Amazon link map';
+            btn.innerHTML = '<i class="ri-refresh-line"></i> Sync Amz link map';
         });
     }
 
@@ -327,7 +327,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
     var btn = this;
     var scope = btn.getAttribute('data-scope') || 'mismatch';
-    if (!confirm('Sync ' + (scope === 'mismatch_inactive' ? 'Inactive' : 'Active') + ' Mismatch SKUs from live Shopify → Amazon right now (no queue)? This runs in batches and may take a few minutes.')) {
+    if (!confirm('Sync ' + (scope === 'mismatch_inactive' ? 'Inactive' : 'Active') + ' Mismatch SKUs from live Shopify → Amz right now (no queue)? This runs in batches and may take a few minutes.')) {
         return;
     }
     btn.disabled = true;

@@ -919,7 +919,36 @@ class TaskController extends Controller
     {
         $taskDashboardStats = $this->getTaskDashboardAggregates();
 
-        return view('index', compact('taskDashboardStats'));
+        $user = Auth::user();
+        $dashCanCustomize = $user && in_array(
+            strtolower(trim((string) $user->email)),
+            array_map('strtolower', config('dashboard_customize.editor_emails', [])),
+            true
+        );
+        $dashPref = ['hidden_items' => [], 'custom_links' => [], 'custom_kpis' => []];
+        $dashCustomKpis = [];
+        try {
+            if ($user) {
+                $dashPref = \App\Models\UserDashboardPreference::forUser((int) $user->id)->asPayload();
+                $dashCustomKpis = \App\Http\Controllers\DashboardPreferenceController::resolveCustomKpis($dashPref['custom_kpis'] ?? []);
+            }
+        } catch (\Throwable $e) {
+            // Prefer empty prefs over breaking the home dashboard.
+            report($e);
+        }
+
+        // Refresh today's KPI history snapshots so status dots have day-over-day data.
+        try {
+            foreach (\App\Models\BadgeData::query()->get(['page_name', 'data']) as $badgeRow) {
+                if (is_array($badgeRow->data)) {
+                    \App\Models\BadgeDataHistory::recordPage((string) $badgeRow->page_name, $badgeRow->data);
+                }
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return view('index', compact('taskDashboardStats', 'dashCanCustomize', 'dashPref', 'dashCustomKpis'));
     }
 
     /**

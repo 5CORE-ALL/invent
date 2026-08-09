@@ -1025,8 +1025,8 @@ MS RBP5 2PCS,100,Main Godawn,Add,Other</pre>
                             id: 'product-master'
                         },
                         {
-                            name: 'Amazon',
-                            displayName: 'Amazon',
+                            name: 'Amz',
+                            displayName: 'Amz',
                             id: 'amazon'
                         },
                         {

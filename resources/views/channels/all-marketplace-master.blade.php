@@ -320,13 +320,13 @@
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             Channels: <span id="total-channels">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific (same window &amp; AMAZON_SALES_TOTAL_MODE as Amazon Daily Sales). Other channels vary.">
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amz = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific (same window &amp; AMAZON_SALES_TOTAL_MODE as Amz Daily Sales). Other channels vary.">
                             Sales: <span id="total-l30-sales">$0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
                             Y Sales: <span id="total-y-sales">$0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amazon = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amazon Daily Sales); other channels vary.">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amz = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amz Daily Sales); other channels vary.">
                             Orders: <span id="total-l30-orders">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link d-none" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
@@ -350,7 +350,7 @@
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Total Views (listing/Map traffic)">
                             Clicks: <span id="total-views-badge">0</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of Qty) ÷ (sum of Total Views) × 100. Qty = units sold (not order count) — matches the per-channel /temu-decrease formula. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or qty windows differ by channel (e.g. Amazon {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day units vs views from live tabulator).">
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of Qty) ÷ (sum of Total Views) × 100. Qty = units sold (not order count) — matches the per-channel /temu-decrease formula. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or qty windows differ by channel (e.g. Amz {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day units vs views from live tabulator).">
                             CVR: <span id="cvr-pct-badge">0%</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(rolling Sales×Gprofit% − Ad spend); same as Sales × (G% − Ad Spend/Sales) per channel">
@@ -368,7 +368,7 @@
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="missing_l" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Missing L : <span id="total-miss">0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amazon Price)">
+                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amz Price)">
                             inv: <span id="inventory-value-amazon">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
@@ -1121,7 +1121,7 @@
                             invValEl.textContent = compact;
                             const badge = invValEl.closest('.badge');
                             if (badge) {
-                                badge.title = 'Sum of (Inventory × Amazon Price): $' + val.toLocaleString('en-US');
+                                badge.title = 'Sum of (Inventory × Amz Price): $' + val.toLocaleString('en-US');
                             }
                         }
                         // Update Inv@LP badge (Shopify inv × LP) — compact e.g. 557K
@@ -1418,7 +1418,7 @@
                     {
                         title: "Sales",
                         field: "L30 Sales",
-                        headerTooltip: "Rolling sales per channel. Amazon = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific — same formula as Amazon Daily Sales (AMAZON_SALES_TOTAL_MODE; Canceled/Cancelled excluded).",
+                        headerTooltip: "Rolling sales per channel. Amz = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific — same formula as Amz Daily Sales (AMAZON_SALES_TOTAL_MODE; Canceled/Cancelled excluded).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -1763,7 +1763,7 @@
                     {
                         title: "Orders",
                         field: "L30 Orders",
-                        headerTooltip: "Rolling order count per channel. Amazon = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific — same as Amazon Daily Sales (Canceled/Cancelled excluded).",
+                        headerTooltip: "Rolling order count per channel. Amz = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific — same as Amz Daily Sales (Canceled/Cancelled excluded).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,

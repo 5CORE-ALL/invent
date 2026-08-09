@@ -992,7 +992,7 @@
                     moneyCol("Price", "price"),
                     {
                         title: "A Prc", field: "a_price", hozAlign: "right", sorter: "number",
-                        tooltip: "Amazon live selling price (from amazon_datasheet)",
+                        tooltip: "Amz live selling price (from amazon_datasheet)",
                         formatter: function(cell) {
                             const v = cell.getValue();
                             if (v === null || v === undefined || v === '') return '<span style="color:#bbb;">—</span>';

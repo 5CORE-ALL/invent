@@ -930,7 +930,7 @@
                                             placeholder="Search SKU">
                                     </th>
                                     <th rowspan="2" class="title-master-bs-th"
-                                        title="Buyer / Seller links from amazon_data_view (same as Amazon FBM tabulator Links: B Link = buyer, S Link = seller).">
+                                        title="Buyer / Seller links from amazon_data_view (same as Amz FBM tabulator Links: B Link = buyer, S Link = seller).">
                                         B/S
                                     </th>
                                     <th rowspan="2" class="title-master-pmcvr-th title-master-sortable" data-tm-sort="inv"
@@ -963,7 +963,7 @@
                                     <th rowspan="2" class="title-master-title-dot-th">
                                         <div style="display: flex; align-items: center; justify-content: center; gap: 3px; flex-wrap: wrap;">
                                             <span style="font-size: 9px;">170</span>
-                                            <span id="title150PresentCount" class="text-success" style="font-weight: bold; font-size: 9px;" title="Titles present (saved Title 170 or Amazon listing title)">(0)</span>
+                                            <span id="title150PresentCount" class="text-success" style="font-weight: bold; font-size: 9px;" title="Titles present (saved Title 170 or Amz listing title)">(0)</span>
                                             <span id="title150MissingCount" class="text-warning" style="font-weight: bold; font-size: 9px;" title="Missing Title 170">(0)</span>
                                             <span class="info-icon" style="font-size: 10px;" title="Green count = present, yellow = missing. Green/red dots in rows. Filter: Exceeds 170 chars.">ⓘ</span>
                                         </div>
@@ -1430,7 +1430,7 @@
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                    <h5 class="modal-title" id="aiTitleModalLabel" title="Target up to 170 characters for Amazon-style titles.">
+                    <h5 class="modal-title" id="aiTitleModalLabel" title="Target up to 170 characters for Amz-style titles.">
                         <i class="fas fa-magic me-2"></i>AI Generated Titles (4 options, up to 170 chars)
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -1503,14 +1503,14 @@
                     </div>
 
                     <div class="row">
-                        <!-- Amazon -->
+                        <!-- Amz -->
                         <div class="col-md-6 mb-3">
                             <div class="platform-item" onclick="togglePlatform('amazon')">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" value="amazon" id="platform_amazon">
                                     <label class="form-check-label w-100" for="platform_amazon">
                                         <i class="fab fa-amazon platform-icon text-warning"></i>
-                                        <strong>Amazon</strong>
+                                        <strong>Amz</strong>
                                         <span class="badge bg-primary platform-badge">Title 170</span>
                                     </label>
                                 </div>
@@ -1750,7 +1750,7 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p id="pushConfirmMessage">Distribute 0 titles to Amazon, Temu, Reverb &amp; Wayfair? This may take several minutes.</p>
+                    <p id="pushConfirmMessage">Distribute 0 titles to Amz, Temu, Reverb &amp; Wayfair? This may take several minutes.</p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -1989,9 +1989,9 @@
                 ? 'Each string in "drafts" must end with the SKU "' + s + '" at the very end.'
                 : 'No SKU in input; do not invent a trailing SKU.';
             return [
-                'You are an Amazon SEO expert and high-conversion copywriter.',
+                'You are an Amz SEO expert and high-conversion copywriter.',
                 '',
-                'Your task is to analyze the product listing context from the Buyer Link (B/S column), the reference title the app provides separately, and the SKU—then generate 3 optimized Amazon title variations.',
+                'Your task is to analyze the product listing context from the Buyer Link (B/S column), the reference title the app provides separately, and the SKU—then generate 3 optimized Amz title variations.',
                 '',
                 'INPUT DATA:',
                 '- Buyer Link (B/S): ' + b,
@@ -2002,14 +2002,14 @@
                 '1. Analyze the Buyer Link and context:',
                 '   - You cannot open URLs or fetch the live web; infer cues from the URL text (e.g. ASIN patterns), path, and the reference title supplied by the app.',
                 '   - Understand product type, features, specs, use-case, and target audience as far as the text allows.',
-                '   - Note keywords implied by the reference title; identify gaps where high-volume Amazon search terms could help.',
+                '   - Note keywords implied by the reference title; identify gaps where high-volume Amz search terms could help.',
                 '',
                 '2. Competitor-style analysis (without live browsing):',
-                '   - Reason about how strong competing listings for similar products are typically structured on Amazon.',
+                '   - Reason about how strong competing listings for similar products are typically structured on Amz.',
                 '   - Favor high-performing patterns: primary keyword early, clear benefits, specs, compatibility, and trust cues.',
                 '',
                 '3. Keyword optimization:',
-                '   - Add high-volume, relevant Amazon search keywords where they fit naturally.',
+                '   - Add high-volume, relevant Amz search keywords where they fit naturally.',
                 '   - Use long-tail keywords where beneficial.',
                 '   - Avoid keyword stuffing and repetition.',
                 '',
@@ -2018,7 +2018,7 @@
                 '   - Each title must be between 150 and 175 characters (inclusive).',
                 '   - Start with the primary keyword (important for SEO).',
                 '   - Maintain readability and conversion focus.',
-                '   - Use proper capitalization (Amazon style).',
+                '   - Use proper capitalization (Amz style).',
                 '   - Include key features (size, material, use-case, compatibility, etc.).',
                 '',
                 '5. Branding rules:',
@@ -2041,7 +2041,7 @@
                 '- Do NOT go below 150 characters per title.',
                 '- Do NOT include special characters like |, /, or excessive commas.',
                 '- Avoid duplicate words.',
-                '- Ensure titles are Amazon-compliant.'
+                '- Ensure titles are Amz-compliant.'
             ].join('\n');
         }
         let tableData = [];
@@ -2345,7 +2345,7 @@
 
             // Platform display names
             const platformNames = {
-                'amazon': 'Amazon (Title 170)',
+                'amazon': 'Amz (Title 170)',
                 'shopify_main': 'Shopify Main (Title 100)',
                 'shopify_pls': 'Shopify PLS (Title 100)',
                 'ebay1': 'eBay 1 (Title 80)',
@@ -2731,7 +2731,7 @@
                 });
             }
 
-            // Improve with AI button (generates Amazon title, shows in popup)
+            // Improve with AI button (generates Amz title, shows in popup)
             const aiImproveBtn = document.getElementById('aiImproveBtn');
             if (aiImproveBtn) {
                 aiImproveBtn.addEventListener('click', function() {
@@ -3486,7 +3486,7 @@
             initMarketplaceTooltips(wrapper100);
         }
 
-        /** Saved Title 170 (product_master.title150) wins over synced Amazon listing title. */
+        /** Saved Title 170 (product_master.title150) wins over synced Amz listing title. */
         function titleMasterGetTitle170Text(item) {
             if (!item) return '';
             const t = item.title150;
@@ -3570,7 +3570,7 @@
                 + ' <i class="fas fa-leaf ms-1" style="color:#2d6a4f;font-size:7px;vertical-align:middle;" aria-hidden="true" title="Jungle Scout LQS"></i>';
         }
 
-        const titleMasterBsMissingTip = 'No buyer/seller links in amazon_data_view for this SKU (same source as Amazon FBM tabulator).';
+        const titleMasterBsMissingTip = 'No buyer/seller links in amazon_data_view for this SKU (same source as Amz FBM tabulator).';
         function formatTitleMasterBsCell(item) {
             const b = item.amazon_buyer_link;
             const s = item.amazon_seller_link;
@@ -3584,7 +3584,7 @@
                 html += '<a href="' + escapeHtml(String(s).trim()) + '" target="_blank" rel="noopener noreferrer" class="text-info" title="Seller (Seller Central)">S</a>';
             }
             if (bOk) {
-                html += '<a href="' + escapeHtml(String(b).trim()) + '" target="_blank" rel="noopener noreferrer" class="text-success" title="Buyer (Amazon listing)">B</a>';
+                html += '<a href="' + escapeHtml(String(b).trim()) + '" target="_blank" rel="noopener noreferrer" class="text-success" title="Buyer (Amz listing)">B</a>';
             }
             html += '</div>';
             return html;
@@ -3801,7 +3801,7 @@
                 // Distribute to all markets column
                 const pushCell = document.createElement('td');
                 pushCell.className = 'push-button-cell';
-                pushCell.innerHTML = '<button type="button" class="action-btn push-amazon-btn push-all-marketplaces-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Push Title 170 to Amazon, Temu, Reverb" aria-label="Push Title 170 to Amazon, Temu, Reverb"><img src="' + escapeHtml(TM_PUSH_ALL_ICON_URL) + '" alt="" class="tm-push-all-icon" width="20" height="20"></button>';
+                pushCell.innerHTML = '<button type="button" class="action-btn push-amazon-btn push-all-marketplaces-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Push Title 170 to Amz, Temu, Reverb" aria-label="Push Title 170 to Amz, Temu, Reverb"><img src="' + escapeHtml(TM_PUSH_ALL_ICON_URL) + '" alt="" class="tm-push-all-icon" width="20" height="20"></button>';
                 row.appendChild(pushCell);
 
                 frag.appendChild(row);
@@ -4358,7 +4358,7 @@
             function doNext(start) {
                 if (start >= total) {
                     progressModal.hide();
-                    alert(successCount + ' successful, ' + failedCount + ' failed (Amazon, Temu, Reverb)');
+                    alert(successCount + ' successful, ' + failedCount + ' failed (Amz, Temu, Reverb)');
                     document.querySelectorAll('.row-checkbox:checked').forEach(function(cb) { cb.checked = false; });
                     document.getElementById('selectAll').checked = false;
                     updateSelectedCount();
@@ -4450,7 +4450,7 @@
             document.getElementById('editSkuLabel').textContent = sku;
             document.getElementById('editSku').value = sku;
 
-            // Pre-fill: Title 170 from saved product_master.title150 (fallback: synced Amazon title).
+            // Pre-fill: Title 170 from saved product_master.title150 (fallback: synced Amz title).
             // the rest from their saved values — so editing one never blanks the others.
             const v = (x) => (x != null ? String(x) : '');
             document.getElementById('title150').value = titleMasterGetTitle170Text(item);

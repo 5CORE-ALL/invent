@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Amz', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <div id="messageArea" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1055;"></div>
@@ -1212,7 +1212,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Amz FBM Analytics', 'sub_title' => 'Amazon'])
+    @include('layouts.shared/page-title', ['page_title' => 'Amz FBM Analytics', 'sub_title' => 'Amz'])
 
     <div class="row">
         <div class="col-12">
@@ -1267,7 +1267,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <h4 class="header-title">Amazon Product Analysis</h4>
+                    <h4 class="header-title">Amz Product Analysis</h4>
 
                     <!-- Custom Dropdown Filters Row -->
                     <div class="d-flex flex-wrap gap-2 mb-3 align-items-center justify-content-between">
@@ -1651,7 +1651,7 @@
                             enctype="multipart/form-data" class="modal-content" id="amazonImportForm">
                             @csrf
                             <div class="modal-header">
-                                <h5 class="modal-title" id="amazonImportModalLabel">Import Amazon Data</h5>
+                                <h5 class="modal-title" id="amazonImportModalLabel">Import Amz Data</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"
                                     aria-label="Close"></button>
                             </div>
@@ -1705,7 +1705,7 @@
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <div class="loader-text">Loading Amazon data...</div>
+                        <div class="loader-text">Loading Amz data...</div>
                     </div>
                 </div>
             </div>
@@ -6709,10 +6709,10 @@
                                 price: sprice
                             },
                             success: function(resp) {
-                                console.log('Amazon + Shopify price push response:', resp);
+                                console.log('Amz + Shopify price push response:', resp);
                             },
                             error: function(err) {
-                                console.error('Error pushing Amazon/Shopify price:', err
+                                console.error('Error pushing Amz/Shopify price:', err
                                     .responseText);
                             }
                         });

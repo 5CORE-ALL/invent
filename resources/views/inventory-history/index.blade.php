@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Inventory History', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Inv History', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -121,7 +121,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     
     @include('layouts.shared.page-title', [
-        'page_title' => 'Inventory History',
+        'page_title' => 'Inv History',
         'sub_title' => 'Daily Inventory Snapshots & Sales Tracking',
     ])
     
@@ -131,7 +131,7 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <h4 class="mb-3">
-                    <i class="fas fa-history me-2"></i>Inventory History
+                    <i class="fas fa-history me-2"></i>Inv History
                 </h4>
                 
                 <!-- Stats Cards -->

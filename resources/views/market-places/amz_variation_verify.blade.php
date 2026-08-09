@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Ads Variation Verification'])
+@extends('layouts.vertical', ['title' => 'Amz Ads Variation Verification'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -157,8 +157,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon Ads Variation Verification',
-        'sub_title'  => 'Amazon',
+        'page_title' => 'Amz Ads Variation Verification',
+        'sub_title'  => 'Amz',
     ])
 
     <div class="row">
@@ -170,7 +170,7 @@
                         <div class="d-flex align-items-center flex-wrap gap-2 py-1">
                             <span class="amz-stat-badge amz-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="amz-vv-badge-parents">0</span></span>
                             <span class="amz-stat-badge amz-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="amz-vv-badge-children">0</span></span>
-                            <span class="amz-stat-badge amz-stat-badge--listed" title="Amazon listings cache">LISTED:<span id="amz-vv-badge-listed">0</span></span>
+                            <span class="amz-stat-badge amz-stat-badge--listed" title="Amz listings cache">LISTED:<span id="amz-vv-badge-listed">0</span></span>
                             <span class="amz-stat-badge amz-stat-badge--campaigns" title="SP L30 campaigns">CAMPAIGNS:<span id="amz-vv-badge-campaigns">0</span></span>
                             <span class="amz-stat-badge amz-stat-badge--issues" id="amz-vv-badge-issues-wrap" title="Parents with KW/PT missing or extra ads — click badge to filter. Click dot for rolling history.">
                                 VARIATIONS ISSUES:<span id="amz-vv-badge-issues">0</span>
@@ -194,7 +194,7 @@
                         <button type="button" id="amz-vv-refresh-btn" class="btn btn-sm btn-outline-primary amz-raw-icon-btn" title="Refresh from CP Master" aria-label="Refresh">
                             <i class="fa fa-refresh"></i>
                         </button>
-                        <button type="button" id="amz-vv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull Amazon listings (SP-API)">
+                        <button type="button" id="amz-vv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull Amz listings (SP-API)">
                             <i class="fas fa-cloud-download-alt me-1"></i> Pull Listings
                         </button>
                         <button type="button" id="amz-vv-archive-extra-btn" class="btn btn-sm btn-outline-danger" title="Archive Extra ads campaigns that are not already ARCHIVED">
@@ -1049,7 +1049,7 @@
                 const label = names.length
                     ? (names.length + ' campaign(s)')
                     : (extras.length + ' extra ' + typeLabel + 'SKU base(s)');
-                if (!confirm('Archive Extra ' + typeLabel + 'ads in Amazon Ads (' + label + ')?')) {
+                if (!confirm('Archive Extra ' + typeLabel + 'ads in Amz Ads (' + label + ')?')) {
                     return;
                 }
 
@@ -1152,13 +1152,13 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm('Pull all merchant listings from Amazon SP-API?\n\nThis uses GET_MERCHANT_LISTINGS_ALL_DATA and may take several minutes.')) {
+                if (!confirm('Pull all merchant listings from Amz SP-API?\n\nThis uses GET_MERCHANT_LISTINGS_ALL_DATA and may take several minutes.')) {
                     return;
                 }
 
                 $btn.prop('disabled', true)
                     .html('<span class="spinner-border spinner-border-sm me-1"></span> Pulling…');
-                $('#amz-vv-status-line').text('Requesting listings report from Amazon…');
+                $('#amz-vv-status-line').text('Requesting listings report from Amz…');
 
                 $.ajax({
                     url: '{{ route("amz.variation.verify.pull") }}',

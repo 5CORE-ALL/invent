@@ -237,10 +237,10 @@
                     hozAlign: "center"
                 },
                 { 
-                    title: "Amazon", 
+                    title: "Amz", 
                     field: "Amazon", 
                     editor: "input", 
-                    titleFormatter: titleWithLinkIcon("Amazon"),
+                    titleFormatter: titleWithLinkIcon("Amz"),
                     
                     formatter: function(cell) {
                         const value = cell.getValue();
@@ -837,10 +837,10 @@
                     hozAlign: "center"  
                 },
                 { 
-                    title: "Amazon FBA", 
+                    title: "Amz FBA", 
                     field: "AmazonFBA", 
                     editor: "input", 
-                    titleFormatter: titleWithLinkIcon("Amazon FBA"),
+                    titleFormatter: titleWithLinkIcon("Amz FBA"),
                     
                     formatter: function(cell) {
                         const value = cell.getValue();

@@ -386,8 +386,8 @@
                             <div class="alert alert-info mt-3">
                                 <strong><i class="fas fa-lightbulb me-2"></i>A+ Content Reference Links:</strong>
                                 <ul class="mb-0 mt-2" style="font-size: 13px;">
-                                    <li><a href="https://advertising.amazon.com/solutions/products/a-plus-content" target="_blank" rel="noopener">Amazon A+ Content Overview - Official Guide</a></li>
-                                    <li><a href="https://sellercentral.amazon.com/gp/help/external/G202102950" target="_blank" rel="noopener">A+ Content Manager - Amazon Seller Central Help</a></li>
+                                    <li><a href="https://advertising.amazon.com/solutions/products/a-plus-content" target="_blank" rel="noopener">Amz A+ Content Overview - Official Guide</a></li>
+                                    <li><a href="https://sellercentral.amazon.com/gp/help/external/G202102950" target="_blank" rel="noopener">A+ Content Manager - Amz Seller Central Help</a></li>
                                     <li><a href="https://advertising.amazon.com/library/guides/a-plus-content" target="_blank" rel="noopener">A+ Content Best Practices & Examples</a></li>
                                     <li><a href="https://www.junglescout.com/blog/amazon-a-plus-content/" target="_blank" rel="noopener">Complete A+ Content Guide - Jungle Scout</a></li>
                                     <li><a href="https://www.helium10.com/blog/amazon-a-plus-content/" target="_blank" rel="noopener">A+ Content Strategy & Tips - Helium 10</a></li>
@@ -524,7 +524,7 @@
                                 <div class="col-md-3">
                                     <label class="form-label"><strong>Marketplace</strong></label>
                                     <select class="form-select" id="compMarketplace">
-                                        <option value="Amazon" selected>Amazon</option>
+                                        <option value="Amz" selected>Amz</option>
                                         <option value="US">US</option>
                                     </select>
                                 </div>

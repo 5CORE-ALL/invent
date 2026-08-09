@@ -957,7 +957,7 @@
         </div>
     </div>
 
-    <!-- SKU Metrics Chart Modal (UI matches Amazon: teal header, ref panel High/Med/Low, median line, value labels on points) -->
+    <!-- SKU Metrics Chart Modal (UI matches Amz: teal header, ref panel High/Med/Low, median line, value labels on points) -->
     <div class="modal fade p-0" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow: hidden;">

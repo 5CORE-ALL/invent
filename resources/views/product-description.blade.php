@@ -113,7 +113,7 @@
                                             <input type="text" id="previewSearchDm" class="th-sub" placeholder="Filter preview" autocomplete="off">
                                         </th>
                                         <th>Action</th>
-                                        <th title="Amazon &amp; Temu: 2000 plain text. Wayfair: 2000 (100–200 words). Reverb &amp; Best Buy: 1500.">
+                                        <th title="Amz &amp; Temu: 2000 plain text. Wayfair: 2000 (100–200 words). Reverb &amp; Best Buy: 1500.">
                                             <div class="bp-mp-th-title">DESC 1500</div>
                                             <div class="bp-mp-th-icons">
                                                 <span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">W</span><span class="bp-mp-th-pill btn-bestbuy">B</span>

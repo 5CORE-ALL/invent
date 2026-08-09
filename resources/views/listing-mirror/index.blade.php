@@ -213,8 +213,8 @@
                                 <th>SKU</th>
                                 <th>ASIN</th>
                                 <th>Title</th>
-                                <th>Amazon Price</th>
-                                <th>Amazon Inventory</th>
+                                <th>Amz Price</th>
+                                <th>Amz Inventory</th>
                                 <th>Status</th>
                                 <th>Channels</th>
                                 <th>Last Sync</th>

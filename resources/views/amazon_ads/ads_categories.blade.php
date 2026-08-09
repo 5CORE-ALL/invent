@@ -16,7 +16,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['sub_title' => 'Amazon Ads', 'page_title' => 'Ads Categories'])
+    @include('layouts.shared/page-title', ['sub_title' => 'Amz Ads', 'page_title' => 'Ads Categories'])
 
     <div class="row ads-categories">
         <div class="col-12">

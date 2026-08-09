@@ -164,7 +164,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'LQS Amz',
-        'sub_title'  => 'Amazon Listing Quality Score – Parent SKU, ASIN, Sessions, Units & LQS metrics',
+        'sub_title'  => 'Amz Listing Quality Score – Parent SKU, ASIN, Sessions, Units & LQS metrics',
     ])
 
     <div class="row">
@@ -615,7 +615,7 @@
                                 ? `<img src="${src}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">`
                                 : `<span style="color:#adb5bd;font-size:10px;">No img</span>`;
                             return asin
-                                ? `<a href="https://www.amazon.com/dp/${asin}" target="_blank" title="View on Amazon">${imgTag}</a>`
+                                ? `<a href="https://www.amazon.com/dp/${asin}" target="_blank" title="View on Amz">${imgTag}</a>`
                                 : imgTag;
                         }
                     },

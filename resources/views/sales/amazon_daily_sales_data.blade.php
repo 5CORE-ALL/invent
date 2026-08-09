@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Daily Sales Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amz Daily Sales Data', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -70,14 +70,14 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon Daily Sales Data',
-        'sub_title' => 'Amazon Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS) . ' Days, California)',
+        'page_title' => 'Amz Daily Sales Data',
+        'sub_title' => 'Amz Daily Sales Data (Last ' . (int) ($amazonSalesWindowDays ?? \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS) . ' Days, California)',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Amazon Daily Sales Data </h4>
+                <h4>Amz Daily Sales Data </h4>
                 <p class="text-muted small mb-2" id="date-range-info">
                     Date range (Pacific): {{ $amazonSalesWindowStart ?? '—' }} – {{ $amazonSalesWindowEnd ?? '—' }}
                     — {{ (int) ($amazonSalesWindowDays ?? \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS) }} days through yesterday (today excluded).
@@ -115,16 +115,16 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="amazon-sales-total-badge" style="background-color: #0d6efd; color: white; font-weight: bold;"> Total Sales: ${{ number_format($amazonSalesTotal ?? 0, 2) }}</span>
-                        <span class="badge fs-6 p-2" id="y-sales-badge" title="Yesterday's product sales, tax excluded ({{ $amazonYesterdayLabel ?? '' }} Pacific) — matches Amazon Seller Central 'Sales'" style="background-color: #0dcaf0; color: black; font-weight: bold;">Y Sales: ${{ number_format($salesYesterday ?? 0, 2) }}</span>
+                        <span class="badge fs-6 p-2" id="y-sales-badge" title="Yesterday's product sales, tax excluded ({{ $amazonYesterdayLabel ?? '' }} Pacific) — matches Amz Seller Central 'Sales'" style="background-color: #0dcaf0; color: black; font-weight: bold;">Y Sales: ${{ number_format($salesYesterday ?? 0, 2) }}</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
-                        <span class="badge fs-6 p-2" id="pt-spent-badge" title="Amazon PT spend — same source as /all-marketplace-master (/amazon-ads/all)" style="background-color: #28a745; color: white; font-weight: bold;">PT Spent: ${{ number_format($ptSpent ?? 0, 0) }}</span>
-                        <span class="badge fs-6 p-2" id="kw-spent-badge" title="Amazon KW spend — same source as /all-marketplace-master (/amazon-ads/all)" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>
-                        <span class="badge fs-6 p-2" id="hl-spent-badge" title="Amazon HL spend — same source as /all-marketplace-master (/amazon-ads/all)" style="background-color: #dc3545; color: white; font-weight: bold;">HL Spent: ${{ number_format($hlSpent ?? 0, 0) }}</span>
-                        <span class="badge fs-6 p-2" id="tacos-percentage-badge" title="Amazon Ads%/TACOS — same as /all-marketplace-master Amazon Ads%" style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: {{ number_format((float) ($amazonAdsPercent ?? 0), 1) }}%</span>
+                        <span class="badge fs-6 p-2" id="pt-spent-badge" title="Amz PT spend — same source as /all-marketplace-master (/amazon-ads/all)" style="background-color: #28a745; color: white; font-weight: bold;">PT Spent: ${{ number_format($ptSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="kw-spent-badge" title="Amz KW spend — same source as /all-marketplace-master (/amazon-ads/all)" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="hl-spent-badge" title="Amz HL spend — same source as /all-marketplace-master (/amazon-ads/all)" style="background-color: #dc3545; color: white; font-weight: bold;">HL Spent: ${{ number_format($hlSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="tacos-percentage-badge" title="Amz Ads%/TACOS — same as /all-marketplace-master Amz Ads%" style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: {{ number_format((float) ($amazonAdsPercent ?? 0), 1) }}%</span>
                         <span class="badge fs-6 p-2" id="m-pft-badge" title="NPFT% = GPFT% − TACOS% (Ads% from /all-marketplace-master)" style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
                         <span class="badge fs-6 p-2" id="n-roi-badge" title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — Ad Spend from /all-marketplace-master" style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                         <span class="badge fs-6 p-2" id="ads-percentage-badge" style="background-color: #20c997; color: white; font-weight: bold; display: none;">Ads %: 0%</span>
@@ -197,7 +197,7 @@
         });
         
         // Initialize Tabulator
-        console.log("Initializing Tabulator for Amazon Daily Sales Data...");
+        console.log("Initializing Tabulator for Amz Daily Sales Data...");
         table = new Tabulator("#amazon-table", {
             ajaxURL: "/amazon/daily-sales-data",
             ajaxSorting: false,

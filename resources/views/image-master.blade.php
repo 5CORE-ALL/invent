@@ -107,7 +107,7 @@
                                     <th>Product Name</th>
                                     <th>Preview</th>
                                     <th>Action</th>
-                                    <th title="eBay1–3, Macy's, Amazon, Temu, Reverb, Wayfair, Best Buy">
+                                    <th title="eBay1–3, Macy's, Amz, Temu, Reverb, Wayfair, Best Buy">
                                         <div class="bp-mp-th-title">MARKET PLACES</div>
                                         <div class="bp-mp-th-icons">
                                             <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">W</span><span class="bp-mp-th-pill btn-bestbuy">B</span>
@@ -172,7 +172,7 @@
                     {{-- ── END ADD IMAGES ──────────────────────────────────────── --}}
 
                     <!-- <div class="mb-2">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchAmazonBtn"><i class="fab fa-amazon"></i> Fetch Amazon images</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchAmazonBtn"><i class="fab fa-amazon"></i> Fetch Amz images</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay1Btn"><i class="fab fa-ebay"></i> Fetch eBay1</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay2Btn">eBay2</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay3Btn">eBay3</button>
@@ -1093,8 +1093,8 @@ document.addEventListener('DOMContentLoaded', () => {
             modalUrls = modalUrls.concat(add).slice(0, PM_MAX_IMAGES);
             knownImageUrls = knownImageUrls.concat(add);
             renderSlots();
-            toast('Amazon images loaded');
-        } else toast(j.message || 'No Amazon images', false);
+            toast('Amz images loaded');
+        } else toast(j.message || 'No Amz images', false);
     });
 
     async function fetchEbay(account) {

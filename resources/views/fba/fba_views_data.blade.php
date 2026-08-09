@@ -288,7 +288,7 @@
                         <span class="badge bg-danger  fs-6 p-2 fba-badge-chart" id="zero-sold-sku-count-badge" data-metric="zero_sold" style="color:black;font-weight:bold;cursor:pointer;" title="View trend">0 Sold: 0</span>
 
                         <!-- Financial Metrics -->
-                        <span class="badge fs-6 p-2" id="amazon-channel-ads-badge" style="background:#fff;border:1px solid rgba(0,0,0,.12);color:#212529;font-weight:bold;" title="Amazon channel Ads% — pulled directly from channel_master_calculated_data, same source as the all-marketplace-master page.">
+                        <span class="badge fs-6 p-2" id="amazon-channel-ads-badge" style="background:#fff;border:1px solid rgba(0,0,0,.12);color:#212529;font-weight:bold;" title="Amz channel Ads% — pulled directly from channel_master_calculated_data, same source as the all-marketplace-master page.">
                             Ads: <span id="amazon-channel-ads-value">—</span>
                             <i class="fas fa-circle ms-1" id="amazon-channel-ads-dot" style="font-size:8px;color:#adb5bd;vertical-align:middle;"></i>
                         </span>
@@ -1266,7 +1266,7 @@
                             }
                             
                             // After saving, push to Amazon using retry function
-                            console.log(`SKU ${sku}: Starting Amazon price push...`);
+                            console.log(`SKU ${sku}: Starting Amz price push...`);
                             applyPriceWithRetryPromise(sku, price, 5, 5000)
                                 .then((result) => {
                                     successCount++;
@@ -1501,34 +1501,34 @@
                         return {
                             html: '<i class="fas fa-spinner fa-spin"></i>',
                             style: iconStyle('#ffc107'),
-                            title: 'Pushing to Amazon...'
+                            title: 'Pushing to Amz...'
                         };
                     }
                     if (status === 'pushed') {
                         return {
                             html: '<i class="fa-solid fa-check-double"></i>',
                             style: iconStyle('#28a745'),
-                            title: 'Price pushed to Amazon (Double-click to mark as Applied)'
+                            title: 'Price pushed to Amz (Double-click to mark as Applied)'
                         };
                     }
                     if (status === 'applied') {
                         return {
                             html: '<i class="fa-solid fa-check-double"></i>',
                             style: iconStyle('#28a745'),
-                            title: 'Price applied to Amazon (Double-click to change)'
+                            title: 'Price applied to Amz (Double-click to change)'
                         };
                     }
                     if (status === 'error') {
                         return {
                             html: '<i class="fa-solid fa-x"></i>',
                             style: iconStyle('#dc3545'),
-                            title: 'Error pushing to Amazon — click to retry'
+                            title: 'Error pushing to Amz — click to retry'
                         };
                     }
                     return {
                         html: '<i class="fas fa-check"></i>',
                         style: iconStyle('#28a745'),
-                        title: 'Push to Amazon'
+                        title: 'Push to Amz'
                     };
                 }
 
@@ -2483,7 +2483,7 @@
                                 if (lmpValue <= 0) {
                                     const skuEnc = encodeURIComponent(baseSku || sku);
                                     const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                                    return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
+                                    return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amz repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
                                 }
                                 
                                 const fbaPrice = parseFloat(rowData.FBA_Price || 0);
@@ -2724,7 +2724,7 @@
                                             _token: '{{ csrf_token() }}'
                                         },
                                         success: function(result) {
-                                            console.log('Price pushed to Amazon', result);
+                                            console.log('Price pushed to Amz', result);
                                             if (result.success === false) {
                                                 alert('Failed to push price: ' + (result.error || 'Unknown error'));
                                                 cell.restoreOldValue();
@@ -2746,7 +2746,7 @@
                             titleFormatter: function(column) {
                                 return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
                                     <span>Check</span>
-                                    <button type="button" class="btn btn-sm" id="apply-all-btn" title="Apply All Selected Prices to Amazon" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;">
+                                    <button type="button" class="btn btn-sm" id="apply-all-btn" title="Apply All Selected Prices to Amz" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;">
                                         <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
                                     </button>
                                 </div>`;
@@ -3813,7 +3813,7 @@
                             if (resp.calculated_at) {
                                 $('#amazon-channel-ads-badge').attr(
                                     'title',
-                                    `Amazon channel Ads% from channel_master_calculated_data (calculated ${resp.calculated_at}). Same source as the all-marketplace-master page.`
+                                    `Amz channel Ads% from channel_master_calculated_data (calculated ${resp.calculated_at}). Same source as the all-marketplace-master page.`
                                 );
                             }
 
@@ -3831,7 +3831,7 @@
                             $('#amazon-channel-ads-value').text('N/A');
                             $('#amazon-channel-ads-dot').css('color', '#adb5bd');
                             if (xhr && xhr.status !== 404) {
-                                console.warn('Failed to fetch Amazon channel Ads%:', xhr.status);
+                                console.warn('Failed to fetch Amz channel Ads%:', xhr.status);
                             }
                         }
                     });
@@ -4070,7 +4070,7 @@
                         `<td class="text-end pe-0 fw-semibold">${value}</td></tr>`;
 
                     let html = '<table class="table table-sm mb-0" style="font-size:13px;">';
-                    html += row('FBA Fee', fmtNum(fbaFee), 'Fulfillment_Fee — Amazon-reported FBA fee');
+                    html += row('FBA Fee', fmtNum(fbaFee), 'Fulfillment_Fee — Amz-reported FBA fee');
                     html += row(
                         'FBA Fee M' + (usingManual ? ' <span class="badge bg-warning text-dark ms-1" style="font-size:9px;">in use</span>' : ''),
                         fmtNum(fbaFeeM),
@@ -4155,7 +4155,7 @@
                         if (res.success && res.competitors && res.competitors.length > 0) {
                             renderLmpCompetitors(sku, res.competitors);
                         } else {
-                            $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon competitors found for this SKU</div>');
+                            $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amz competitors found for this SKU</div>');
                         }
                     },
                     error: function(xhr) {
@@ -4374,7 +4374,7 @@
                 ${ageData.recommended_action ? `
                 <div class="mt-3 p-2 rounded" style="background:#fff3cd;border:1px solid #ffc107;font-size:12px;">
                     <i class="fas fa-lightbulb text-warning me-1"></i>
-                    <strong>Amazon Recommends:</strong> ${ageData.recommended_action}
+                    <strong>Amz Recommends:</strong> ${ageData.recommended_action}
                     ${ageData.estimated_excess_quantity > 0 ? `<span class="ms-2 text-muted">(Excess qty: ${ageData.estimated_excess_quantity})</span>` : ''}
                 </div>` : ''}
             `;

@@ -51,7 +51,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amz Buybox',
-        'sub_title'  => 'Amazon SP-API Buy Box',
+        'sub_title'  => 'Amz SP-API Buy Box',
     ])
 
     <div class="row">
@@ -355,7 +355,7 @@
                         hozAlign: 'center',
                         width: 65,
                         sorter: 'number',
-                        headerTooltip: 'Amazon units ordered L30 (A L30)',
+                        headerTooltip: 'Amz units ordered L30 (A L30)',
                         formatter: function(cell) {
                             return Math.round(parseFloat(cell.getValue()) || 0).toLocaleString('en-US');
                         },

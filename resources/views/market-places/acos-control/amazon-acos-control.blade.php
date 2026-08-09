@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon ACOS Control', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Amz ACOS Control', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -125,8 +125,8 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon ACOS Control',
-        'sub_title' => 'Amazon ACOS Control',
+        'page_title' => 'Amz ACOS Control',
+        'sub_title' => 'Amz ACOS Control',
     ])
     <div class="row">
         <div class="col-12">
@@ -134,7 +134,7 @@
                 <div class="card-body">
 
                     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-                        <h4 class="mb-0 fw-bold text-primary">Amazon ACOS Control</h4>
+                        <h4 class="mb-0 fw-bold text-primary">Amz ACOS Control</h4>
                     </div>
                     <div id="amazon-acos-table"></div>
                 </div>

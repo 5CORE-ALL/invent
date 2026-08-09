@@ -113,7 +113,7 @@
                             title="NPFT% = GPFT% − TACOS% (Ads% from /all-marketplace-master)"
                             style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
                         <span class="badge fs-6 p-2" id="n-roi-badge"
-                            title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon / ebay2-tabulator"
+                            title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amz / ebay2-tabulator"
                             style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                     </div>
                 </div>

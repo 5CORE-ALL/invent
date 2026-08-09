@@ -4,39 +4,35 @@
 <style>
     .dashboard-cards-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
         gap: 0.75rem;
         margin-top: 0.25rem;
         margin-bottom: 0.75rem;
         align-items: stretch;
     }
+    /* Uniform rectangular tiles — no full-width banners */
     .dashboard-cards-grid > .dashboard-badge-panel {
         margin: 0 !important;
         width: 100%;
         max-width: 100%;
         min-width: 0;
+        min-height: 220px;
         height: 100%;
-        padding: 0.65rem 0.75rem !important;
+        padding: 0.75rem !important;
         display: flex;
         flex-direction: column;
         align-items: stretch;
-        gap: 0.5rem;
-    }
-    /* Wide metric boards span full row when many badges */
-    .dashboard-cards-grid > #advertisement-card,
-    .dashboard-cards-grid > #all-marketplace-master-card,
-    .dashboard-cards-grid > #forecast-analysis-card {
-        grid-column: 1 / -1;
-        flex-direction: row;
-        align-items: flex-start;
-        gap: 0.75rem;
+        gap: 0.55rem;
+        border-radius: 0.5rem !important;
+        box-sizing: border-box;
     }
     .dashboard-badge-panel {
         width: 100%;
         max-width: 100%;
         display: flex;
+        flex-direction: column;
         align-items: stretch;
-        gap: 0.65rem;
+        gap: 0.55rem;
     }
     .dashboard-badge-panel__icon {
         flex: 0 0 40px;
@@ -47,7 +43,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 10px;
+        border-radius: 0.35rem;
         background: linear-gradient(145deg, #dbeafe, #eff6ff);
         font-size: 1.25rem;
         line-height: 1;
@@ -65,18 +61,20 @@
     }
     .dashboard-badge-panel__body {
         flex: 1 1 auto;
-        width: auto;
+        width: 100%;
         min-width: 0;
         display: flex;
         flex-direction: column;
-        gap: 0.35rem;
+        gap: 0.4rem;
     }
     .dashboard-badge-panel__badges {
         display: flex;
         flex-wrap: wrap;
+        align-content: flex-start;
         gap: 0.3rem;
         width: 100%;
         max-width: 100%;
+        flex: 1 1 auto;
     }
     .dashboard-badge-panel__badges .badge {
         white-space: nowrap;
@@ -84,6 +82,7 @@
         padding: 0.28rem 0.45rem !important;
         font-weight: 700 !important;
         line-height: 1.2 !important;
+        border-radius: 0.25rem !important;
     }
     .dashboard-badge-panel__header {
         display: flex;
@@ -93,6 +92,9 @@
         margin-bottom: 0 !important;
         width: 100%;
         max-width: 100%;
+    }
+    .dashboard-badge-panel__header .dash-card-actions {
+        margin-left: auto;
     }
     .dashboard-badge-panel__header h6 {
         font-size: 0.9rem;
@@ -108,29 +110,37 @@
         width: 40px;
         height: 40px;
         object-fit: contain;
-        border-radius: 50%;
+        border-radius: 0.35rem;
         display: block;
     }
     .dashboard-badge-panel__icon-img--tile {
         object-fit: cover;
-        border-radius: 10px;
+        border-radius: 0.35rem;
     }
     .dashboard-badge-panel__badges .lc-score-badge {
-        border-radius: 0.3rem !important;
+        border-radius: 0.25rem !important;
         font-size: 0.78rem !important;
         padding: 0.35rem 0.55rem !important;
         font-weight: 700 !important;
         cursor: pointer;
         user-select: none;
     }
-    @media (max-width: 767.98px) {
+    @media (min-width: 1400px) {
+        .dashboard-cards-grid {
+            grid-template-columns: repeat(4, 1fr);
+        }
+    }
+    @media (max-width: 991.98px) {
+        .dashboard-cards-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    @media (max-width: 575.98px) {
         .dashboard-cards-grid {
             grid-template-columns: 1fr;
         }
-        .dashboard-cards-grid > #advertisement-card,
-        .dashboard-cards-grid > #all-marketplace-master-card,
-        .dashboard-cards-grid > #forecast-analysis-card {
-            flex-direction: column;
+        .dashboard-cards-grid > .dashboard-badge-panel {
+            min-height: 0;
         }
     }
     #lcMetricChartModal.modal {
@@ -244,7 +254,171 @@
     $adm = \App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController::dashboardBadgeTotals();
     $fmtAdmDollar = static fn ($value): string => '$'.number_format((int) round((float) $value));
     $fmtAdmInt = static fn ($value): string => number_format((int) round((float) $value));
+
+    // Page badge snapshots (KPIs from relevant page toolbars)
+    $loadPageBadges = static function (string $calculatorClass, array $defaults) {
+        try {
+            $page = $calculatorClass::pageName();
+            $row = BadgeData::forPage($page);
+            if (! $row || empty($row->data)) {
+                BadgeData::saveForCalculator($calculatorClass);
+                $row = BadgeData::forPage($page);
+            }
+
+            return [
+                'row' => $row,
+                'data' => array_merge($defaults, $row?->data ?? []),
+            ];
+        } catch (\Throwable $e) {
+            return ['row' => null, 'data' => $defaults];
+        }
+    };
+
+    $vmPack = $loadPageBadges(\App\Support\Badges\VideoMasterBadgeCalculator::class, [
+        'products' => 0, 'with_video' => 0, 'missing_video' => 0,
+    ]);
+    $vmRow = $vmPack['row'];
+    $vm = $vmPack['data'];
+
+    $videosPack = $loadPageBadges(\App\Support\Badges\VideosMasterBadgeCalculator::class, [
+        'sku_count' => 0, 'missing_po' => 0, 'missing_shop' => 0, 'missing_howto' => 0,
+        'missing_setup' => 0, 'missing_ts' => 0, 'missing_bs' => 0, 'missing_pb' => 0,
+    ]);
+    $videosRow = $videosPack['row'];
+    $videos = $videosPack['data'];
+
+    $vamPack = $loadPageBadges(\App\Support\Badges\VideoAdsMasterBadgeCalculator::class, [
+        'required' => 0, 'sku' => 0, 'parent' => 0, 'group' => 0, 'available' => 0, 'missing' => 0,
+    ]);
+    $vamRow = $vamPack['row'];
+    $vam = $vamPack['data'];
+
+    $ccPack = $loadPageBadges(\App\Support\Badges\CustomerCareBadgeCalculator::class, [
+        'pending_followups' => 0, 'active_issues' => 0, 'dispatch_issues' => 0,
+        'qc_issues' => 0, 'label_issues' => 0, 'l30_issue_rows' => 0,
+    ]);
+    $cc = $ccPack['data'];
+
+    $ahPack = $loadPageBadges(\App\Support\Badges\AccountHealthBadgeCalculator::class, [
+        'cc_red' => 0, 'cc_yellow' => 0, 'cc_green' => 0, 'cc_unrated' => 0,
+        'ship_red' => 0, 'ship_yellow' => 0, 'ship_green' => 0, 'ship_unrated' => 0,
+    ]);
+    $ah = $ahPack['data'];
+
+    $vaPack = $loadPageBadges(\App\Support\Badges\InventoryVerifyBadgeCalculator::class, [
+        'verified' => 0, 'unverified' => 0, 'total' => 0,
+    ]);
+    $va = $vaPack['data'];
+
+    $poPack = $loadPageBadges(\App\Support\Badges\PurchaseContractBadgeCalculator::class, [
+        'o_amount' => 0, 'advance' => 0, 'balance' => 0, 'po_count' => 0,
+    ]);
+    $poBadges = $poPack['data'];
+
+    // Label-prefix → badges_data key for status dots + rolling charts
+    $kpi = static fn (string $prefix, string $page, string $field, $value = null, ?string $label = null) => [
+        'prefix' => $prefix,
+        'key' => \App\Support\Badges\BadgeDataCatalog::makeKey($page, $field),
+        'value' => is_numeric($value) ? (float) $value : null,
+        'label' => $label,
+    ];
+    $dashKpiAutoMap = [
+        $kpi('SALES:', 'all-marketplace-master', 'l30_sales', $amm['l30_sales'] ?? null, 'Sales'),
+        $kpi('CVR:', 'all-marketplace-master', 'cvr_pct', $amm['cvr_pct'] ?? null, 'CVR'),
+        $kpi('GPFT:', 'all-marketplace-master', 'gprofit_pct', $amm['gprofit_pct'] ?? null, 'GPFT'),
+        $kpi('G ROI:', 'all-marketplace-master', 'g_roi', $amm['g_roi'] ?? null, 'G ROI'),
+        $kpi('NPFT%:', 'all-marketplace-master', 'npft_pct', $amm['npft_pct'] ?? null, 'NPFT %'),
+        $kpi('NPFT:', 'all-marketplace-master', 'net_profit', $amm['net_profit'] ?? null, 'NPFT $'),
+        $kpi('NROI:', 'all-marketplace-master', 'n_roi', $amm['n_roi'] ?? null, 'NROI'),
+        $kpi('INV:', 'all-marketplace-master', 'inventory_value_amazon', $amm['inventory_value_amazon'] ?? null, 'Inventory'),
+        $kpi('INV@LP:', 'all-marketplace-master', 'inv_at_lp', $amm['inv_at_lp'] ?? null, 'Inv@LP'),
+        $kpi('TAT:', 'all-marketplace-master', 'tat', $amm['tat'] ?? null, 'TAT'),
+        $kpi('VIDEO MASTER:', 'video-master', 'products', $vm['products'] ?? null, 'Video Master'),
+        $kpi('WITH VIDEO:', 'video-master', 'with_video', $vm['with_video'] ?? null, 'With Video'),
+        $kpi('MISSING VIDEO:', 'video-master', 'missing_video', $vm['missing_video'] ?? null, 'Missing Video'),
+        $kpi('VIDEOS SKUS:', 'videos-master', 'sku_count', $videos['sku_count'] ?? null, 'Videos SKUs'),
+        $kpi('MISSING PO:', 'videos-master', 'missing_po', $videos['missing_po'] ?? null, 'Missing PO'),
+        $kpi('MISSING SHOP:', 'videos-master', 'missing_shop', $videos['missing_shop'] ?? null, 'Missing Shop'),
+        $kpi('MISSING HOWTO:', 'videos-master', 'missing_howto', $videos['missing_howto'] ?? null, 'Missing HowTo'),
+        $kpi('MISSING SETUP:', 'videos-master', 'missing_setup', $videos['missing_setup'] ?? null, 'Missing Setup'),
+        $kpi('MISSING TS:', 'videos-master', 'missing_ts', $videos['missing_ts'] ?? null, 'Missing TS'),
+        $kpi('MISSING BS:', 'videos-master', 'missing_bs', $videos['missing_bs'] ?? null, 'Missing BS'),
+        $kpi('MISSING PB:', 'videos-master', 'missing_pb', $videos['missing_pb'] ?? null, 'Missing PB'),
+        $kpi('REQUIRED:', 'video-ads-master', 'required', $vam['required'] ?? null, 'Required'),
+        $kpi('SKU:', 'video-ads-master', 'sku', $vam['sku'] ?? null, 'SKU targets'),
+        $kpi('PARENT:', 'video-ads-master', 'parent', $vam['parent'] ?? null, 'Parent targets'),
+        $kpi('GROUP:', 'video-ads-master', 'group', $vam['group'] ?? null, 'Group targets'),
+        $kpi('AVAILABLE:', 'video-ads-master', 'available', $vam['available'] ?? null, 'Available'),
+        $kpi('MISSING:', 'video-ads-master', 'missing', $vam['missing'] ?? null, 'Missing links'),
+        $kpi('PENDING:', 'customer-care', 'pending_followups', $cc['pending_followups'] ?? null, 'Pending follow-ups'),
+        $kpi('ACTIVE ISSUES:', 'customer-care', 'active_issues', $cc['active_issues'] ?? null, 'Active Issues'),
+        $kpi('L30 ISSUES:', 'customer-care', 'l30_issue_rows', $cc['l30_issue_rows'] ?? null, 'L30 Issues'),
+        $kpi('QC:', 'customer-care', 'qc_issues', $cc['qc_issues'] ?? null, 'QC Issues'),
+        $kpi('LABEL:', 'customer-care', 'label_issues', $cc['label_issues'] ?? null, 'Label Issues'),
+        $kpi('DISPATCH:', 'customer-care', 'dispatch_issues', $cc['dispatch_issues'] ?? null, 'Dispatch Issues'),
+        $kpi('SHIP RED:', 'account-health', 'ship_red', $ah['ship_red'] ?? null, 'Shipping Red'),
+        $kpi('SHIP YELLOW:', 'account-health', 'ship_yellow', $ah['ship_yellow'] ?? null, 'Shipping Yellow'),
+        $kpi('SHIP GREEN:', 'account-health', 'ship_green', $ah['ship_green'] ?? null, 'Shipping Green'),
+        $kpi('SHIP UNRATED:', 'account-health', 'ship_unrated', $ah['ship_unrated'] ?? null, 'Shipping Unrated'),
+        $kpi('CC RED:', 'account-health', 'cc_red', $ah['cc_red'] ?? null, 'CC Health Red'),
+        $kpi('CC YELLOW:', 'account-health', 'cc_yellow', $ah['cc_yellow'] ?? null, 'CC Health Yellow'),
+        $kpi('CC GREEN:', 'account-health', 'cc_green', $ah['cc_green'] ?? null, 'CC Health Green'),
+        $kpi('CC UNRATED:', 'account-health', 'cc_unrated', $ah['cc_unrated'] ?? null, 'CC Health Unrated'),
+        $kpi('ORD:', 'forecast-analysis', 'total_order_value', $fa['total_order_value'] ?? null, 'Order value'),
+        $kpi('FA MISSING:', 'forecast-analysis', 'total_minimal_msl', $fa['total_minimal_msl'] ?? null, 'Forecast Missing'),
+        $kpi('MIP:', 'forecast-analysis', 'total_mip_value', $fa['total_mip_value'] ?? null, 'MIP'),
+        $kpi('ON SEA:', 'on-sea-transit', 'on_sea', $ost['on_sea'] ?? null, 'On Sea'),
+        $kpi('DUE:', 'on-sea-transit', 'due', $ost['due'] ?? null, 'Due'),
+        $kpi('PRE-LOAD:', 'on-sea-transit', 'pre_load', $ost['pre_load'] ?? null, 'Pre-Load'),
+        $kpi('LANDED:', 'on-sea-transit', 'landed', $ost['landed'] ?? null, 'Landed'),
+        $kpi('TRANSIT:', 'on-sea-transit', 'transit', $ost['transit'] ?? null, 'Transit'),
+        $kpi('O AMT:', 'purchase-contract', 'o_amount', $poBadges['o_amount'] ?? null, 'O Amount'),
+        $kpi('ADVANCE:', 'purchase-contract', 'advance', $poBadges['advance'] ?? null, 'Advance'),
+        $kpi('BALANCE:', 'purchase-contract', 'balance', $poBadges['balance'] ?? null, 'Balance'),
+        $kpi('VERIFIED:', 'verify-adjust', 'verified', $va['verified'] ?? null, 'Verified'),
+        $kpi('UNVERIFIED:', 'verify-adjust', 'unverified', $va['unverified'] ?? null, 'Unverified'),
+        $kpi('ACTIVE:', 'advertisement', 'active', $adm['active'] ?? null, 'ACTIVE'),
+        $kpi('SPEND:', 'advertisement', 'spend', $adm['spend'] ?? null, 'SPEND'),
+        $kpi('CLICKS:', 'advertisement', 'clicks', $adm['clicks'] ?? null, 'CLICKS'),
+        $kpi('SOLD:', 'advertisement', 'sold', $adm['sold'] ?? null, 'SOLD'),
+        $kpi('ADS SALES:', 'advertisement', 'sales', $adm['sales'] ?? null, 'ADS SALES'),
+        $kpi('ACOS:', 'advertisement', 'acos', $adm['acos'] ?? null, 'ACOS'),
+        $kpi('TCOS:', 'advertisement', 'tcos', $adm['tcos'] ?? null, 'TCOS'),
+        $kpi('TOTAL SALES:', 'advertisement', 'ssales', $adm['ssales'] ?? null, 'TOTAL SALES'),
+        $kpi('ADS MISSING:', 'advertisement', 'ads_missing', $amzAdsMissingCount ?? null, 'Ads Missing'),
+        $kpi('CHANNELS:', 'all-marketplace-master', 'channels', $amm['channels'] ?? null, 'Channels'),
+        $kpi('Y SALES:', 'all-marketplace-master', 'y_sales', $amm['y_sales'] ?? null, 'Y Sales'),
+        $kpi('ORDERS:', 'all-marketplace-master', 'l30_orders', $amm['l30_orders'] ?? null, 'Orders'),
+        $kpi('TACOS:', 'all-marketplace-master', 'ads_pct', $amm['ads_pct'] ?? null, 'TACOS'),
+        $kpi('VIEWS:', 'all-marketplace-master', 'total_views', $amm['total_views'] ?? null, 'Views'),
+        $kpi('MAP:', 'all-marketplace-master', 'map', $amm['map'] ?? null, 'Map'),
+        $kpi('N MAP:', 'all-marketplace-master', 'nmap', $amm['nmap'] ?? null, 'N Map'),
+        $kpi('MISSING L:', 'all-marketplace-master', 'missing_l', $amm['missing_l'] ?? null, 'Missing L'),
+    ];
+
+    // Seed today's history from live dashboard values (so dots/charts work even before cron)
+    try {
+        $historyBuckets = [];
+        foreach ($dashKpiAutoMap as $row) {
+            if ($row['value'] === null) {
+                continue;
+            }
+            $parsed = \App\Support\Badges\BadgeDataCatalog::parseKey($row['key']);
+            if (! $parsed) {
+                continue;
+            }
+            $historyBuckets[$parsed['page']][$parsed['field']] = $row['value'];
+        }
+        foreach ($historyBuckets as $page => $fields) {
+            \App\Models\BadgeDataHistory::recordPage($page, $fields);
+        }
+    } catch (\Throwable $e) {
+        // ignore history seed failures
+    }
 @endphp
+
+@include('partials.dashboard-card-playback')
+@include('partials.dashboard-card-actions')
 
 <div class="dashboard-cards-grid">
 <!-- All Marketplace Master — badges_data (page_name: all-marketplace-master) -->
@@ -256,9 +430,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 All Marketplace Master
-                <a href="{{ route('all.marketplace.master') }}" class="ms-2 small text-decoration-none" title="Open All Marketplace Master">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
             @if ($ammRow?->updated_at)
                 <small class="dashboard-badge-panel__updated">Updated {{ $ammRow->updated_at->format('M j, g:i A') }}</small>
@@ -299,9 +470,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Advertisement
-                <a href="{{ route('advertisement.master') }}" class="ms-2 small text-decoration-none" title="Open Advertisement Master">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
             @if (! empty($adm['updated_at']))
                 <small class="dashboard-badge-panel__updated">Updated {{ $adm['updated_at']->format('M j, g:i A') }}</small>
@@ -324,7 +492,7 @@
     </div>
 </div>
 
-<!-- Video — same card layout / icon size as On Sea Transit -->
+<!-- Video — badges_data KPIs from Video Master / Videos / Video Request & Check -->
 <div id="video-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #bae6fd, #eff6ff); padding: 0; overflow: hidden;">
         <a href="{{ route('video.master') }}" title="Open Video Master">
@@ -340,33 +508,37 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Video
-                <a href="{{ route('video.master') }}" class="ms-2 small text-decoration-none" title="Open Video Master">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
+            @php
+                $videoUpdated = collect([$vmRow?->updated_at, $videosRow?->updated_at, $vamRow?->updated_at])->filter()->sortDesc()->first();
+            @endphp
+            @if ($videoUpdated)
+                <small class="dashboard-badge-panel__updated">Updated {{ $videoUpdated->format('M j, g:i A') }}</small>
+            @endif
         </div>
         <div class="dashboard-badge-panel__badges">
-            <span
-                class="badge bg-info text-dark fs-6 p-2"
-                style="font-weight:bold;cursor:pointer;"
-                onclick="window.location.href='{{ route('video.master') }}'"
-                role="button"
-                title="Open Video Master"
-            >Video Master</span>
-            <span
-                class="badge bg-primary text-white fs-6 p-2"
-                style="font-weight:bold;cursor:pointer;"
-                onclick="window.location.href='{{ route('videos.master') }}'"
-                role="button"
-                title="Open Videos"
-            >Videos</span>
-            <span
-                class="badge fs-6 p-2"
-                style="background-color:#0ea5e9;color:#fff;font-weight:bold;cursor:pointer;"
-                onclick="window.location.href='{{ route('video.ads.master') }}'"
-                role="button"
-                title="Open Video Request & Check"
-            >Video Request & Check</span>
+            {{-- Video Master --}}
+            <span class="badge bg-info text-dark fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('video.master') }}'" role="button" title="Video Master — products">Video Master: {{ number_format((int) ($vm['products'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#0284c7;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('video.master') }}'" role="button" title="Video Master — SKUs with a video">With Video: {{ number_format((int) ($vm['with_video'] ?? 0)) }}</span>
+            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('video.master') }}'" role="button" title="Video Master — SKUs missing video">Missing Video: {{ number_format((int) ($vm['missing_video'] ?? 0)) }}</span>
+
+            {{-- Videos Master (all missing-column KPIs) --}}
+            <span class="badge bg-primary text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('videos.master') }}'" role="button" title="Videos — SKU count">Videos SKUs: {{ number_format((int) ($videos['sku_count'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#7c3aed;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('videos.master') }}'" role="button" title="Videos — missing Product Overview">Missing PO: {{ number_format((int) ($videos['missing_po'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#6366f1;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('videos.master') }}'" role="button" title="Videos — missing Shop / Unboxing">Missing Shop: {{ number_format((int) ($videos['missing_shop'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#db2777;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('videos.master') }}'" role="button" title="Videos — missing HowTo">Missing HowTo: {{ number_format((int) ($videos['missing_howto'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#ea580c;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('videos.master') }}'" role="button" title="Videos — missing Setup">Missing Setup: {{ number_format((int) ($videos['missing_setup'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#d97706;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('videos.master') }}'" role="button" title="Videos — missing Troubleshooting">Missing TS: {{ number_format((int) ($videos['missing_ts'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#b45309;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('videos.master') }}'" role="button" title="Videos — missing Brand Story">Missing BS: {{ number_format((int) ($videos['missing_bs'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#9f1239;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('videos.master') }}'" role="button" title="Videos — missing Product Benefits">Missing PB: {{ number_format((int) ($videos['missing_pb'] ?? 0)) }}</span>
+
+            {{-- Video Request & Check (all toolbar KPIs) --}}
+            <span class="badge fs-6 p-2" style="background-color:#0ea5e9;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('video.ads.master') }}'" role="button" title="Video Request & Check — required rows">Required: {{ number_format((int) ($vam['required'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#2563eb;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('video.ads.master') }}'" role="button" title="Video Request & Check — SKU targets">SKU: {{ number_format((int) ($vam['sku'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#4f46e5;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('video.ads.master') }}'" role="button" title="Video Request & Check — Parent targets">Parent: {{ number_format((int) ($vam['parent'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#7c3aed;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('video.ads.master') }}'" role="button" title="Video Request & Check — Group targets">Group: {{ number_format((int) ($vam['group'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#059669;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('video.ads.master') }}'" role="button" title="Video Request & Check — links available">Available: {{ number_format((int) ($vam['available'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#a71d2a;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('video.ads.master') }}'" role="button" title="Video Request & Check — missing links">Missing: {{ number_format((int) ($vam['missing'] ?? 0)) }}</span>
         </div>
     </div>
 </div>
@@ -387,9 +559,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Pricing
-                <a href="{{ route('pricing.master.cvr') }}" class="ms-2 small text-decoration-none" title="Open Pricing Master CVR">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
         </div>
         <div class="dashboard-badge-panel__badges">
@@ -422,6 +591,20 @@
                 title="Open Pricing Container"
             >Pricing Container</span>
             <span
+                class="badge bg-success text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('all.marketplace.master') }}'"
+                role="button"
+                title="L30 Sales"
+            >Sales: {{ $fmtAmmDollar($amm['l30_sales']) }}</span>
+            <span
+                class="badge bg-info text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('all.marketplace.master') }}'"
+                role="button"
+                title="Listing CVR"
+            >CVR: {{ $ammCvrLabel }}</span>
+            <span
                 class="badge bg-warning text-dark fs-6 p-2"
                 style="font-weight:bold;cursor:pointer;"
                 onclick="window.location.href='{{ route('all.marketplace.master') }}'"
@@ -448,7 +631,7 @@
                 onclick="window.location.href='{{ route('all.marketplace.master') }}'"
                 role="button"
                 title="Net profit %"
-            >NPFT: {{ number_format((float) ($amm['npft_pct'] ?? 0), 1) }}%</span>
+            >NPFT%: {{ number_format((float) ($amm['npft_pct'] ?? 0), 1) }}%</span>
             <span
                 class="badge bg-primary text-white fs-6 p-2"
                 style="font-weight:bold;cursor:pointer;"
@@ -476,9 +659,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Customer Care
-                <a href="{{ route('customer.care') }}" class="ms-2 small text-decoration-none" title="Open Customer Care Overview">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
         </div>
         <div class="dashboard-badge-panel__badges">
@@ -517,6 +697,9 @@
                 role="button"
                 title="Open All Issues"
             >All Issues</span>
+            <span class="badge fs-6 p-2" style="background-color:#0d9488;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.followups') }}'" role="button" title="Follow Up CC — pending">Pending: {{ number_format((int) ($cc['pending_followups'] ?? 0)) }}</span>
+            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.dispatch.issues') }}'" role="button" title="All Issues — active">Active Issues: {{ number_format((int) ($cc['active_issues'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#ea580c;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.dispatch.issues') }}'" role="button" title="All Issues — L30 rows">L30 Issues: {{ number_format((int) ($cc['l30_issue_rows'] ?? 0)) }}</span>
         </div>
     </div>
 </div>
@@ -537,9 +720,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Fulfillment
-                <a href="{{ route('fullfillment.rate') }}" class="ms-2 small text-decoration-none" title="Open Fulfillment Rate">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
         </div>
         <div class="dashboard-badge-panel__badges">
@@ -578,6 +758,12 @@
                 role="button"
                 title="Open Dispatch Issues"
             >Dispatch Issues</span>
+            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.qc.and.packing') }}'" role="button" title="QC PKG active issues">QC: {{ number_format((int) ($cc['qc_issues'] ?? 0)) }}</span>
+            <span class="badge bg-info text-dark fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.label.issues') }}'" role="button" title="Label Issues active">Label: {{ number_format((int) ($cc['label_issues'] ?? 0)) }}</span>
+            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.dispatch.issues.only') }}'" role="button" title="Dispatch Issues active">Dispatch: {{ number_format((int) ($cc['dispatch_issues'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#dc2626;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('shipping.health.overview.tabulator') }}'" role="button" title="Shipping Health — Red">Ship Red: {{ number_format((int) ($ah['ship_red'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#eab308;color:#212529;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('shipping.health.overview.tabulator') }}'" role="button" title="Shipping Health — Yellow">Ship Yellow: {{ number_format((int) ($ah['ship_yellow'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#16a34a;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('shipping.health.overview.tabulator') }}'" role="button" title="Shipping Health — Green">Ship Green: {{ number_format((int) ($ah['ship_green'] ?? 0)) }}</span>
         </div>
     </div>
 </div>
@@ -598,9 +784,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Dispatch
-                <a href="{{ route('customer.care.dispatch.issues.only') }}" class="ms-2 small text-decoration-none" title="Open Dispatch Issues">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
         </div>
         <div class="dashboard-badge-panel__badges">
@@ -659,9 +842,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Purchases
-                <a href="{{ route('purchase.index') }}" class="ms-2 small text-decoration-none" title="Open Purchase">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
         </div>
         <div class="dashboard-badge-panel__badges">
@@ -700,6 +880,14 @@
                 role="button"
                 title="Open Purchase Contract"
             >Purchase Contract</span>
+            <span class="badge bg-success text-dark fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('forecast.analysis') }}'" role="button" title="Forecast — Order value">Ord: ${{ $formatForecastBadgeK($fa['total_order_value']) }}</span>
+            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('forecast.analysis') }}'" role="button" title="Forecast — Missing">FA Missing: ${{ $formatForecastBadgeK($fa['total_minimal_msl']) }}</span>
+            <span class="badge bg-info text-dark fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('forecast.analysis') }}'" role="button" title="Forecast — MIP">MIP: ${{ $formatForecastBadgeK($fa['total_mip_value']) }}</span>
+            <span class="badge bg-primary text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('on.sea.transit') }}'" role="button" title="On Sea Transit — On Sea">On Sea: {{ number_format((int) ($ost['on_sea'] ?? 0)) }}</span>
+            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('on.sea.transit') }}'" role="button" title="On Sea Transit — Due">Due: ${{ number_format((float) ($ost['due'] ?? 0), 0) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#ea580c;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('list-all-purchase-orders') }}'" role="button" title="Purchase Contract — O Amount">O Amt: {{ $fmtAmmDollar($poBadges['o_amount'] ?? 0) }}</span>
+            <span class="badge bg-primary text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('list-all-purchase-orders') }}'" role="button" title="Purchase Contract — Advance">Advance: {{ $fmtAmmDollar($poBadges['advance'] ?? 0) }}</span>
+            <span class="badge bg-success text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('list-all-purchase-orders') }}'" role="button" title="Purchase Contract — Balance">Balance: {{ $fmtAmmDollar($poBadges['balance'] ?? 0) }}</span>
         </div>
     </div>
 </div>
@@ -720,9 +908,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Inventory
-                <a href="{{ route('view-inventory-data') }}" class="ms-2 small text-decoration-none" title="Open Inventory Main">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
         </div>
         <div class="dashboard-badge-panel__badges">
@@ -766,7 +951,7 @@
                 style="font-weight:bold;cursor:pointer;"
                 onclick="window.location.href='{{ route('all.marketplace.master') }}'"
                 role="button"
-                title="Inventory × Amazon Price"
+                title="Inventory × Amz Price"
             >inv: {{ $fmtAmmDollar($amm['inventory_value_amazon']) }}</span>
             <span
                 class="badge bg-warning text-dark fs-6 p-2"
@@ -782,6 +967,8 @@
                 role="button"
                 title="inv ÷ Sales"
             >TAT: {{ ((float) ($amm['tat'] ?? 0)) > 0 ? number_format((float) $amm['tat'], 2) : '0' }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#16a34a;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('verify-adjust') }}'" role="button" title="Verify / Adjust — verified">Verified: {{ number_format((int) ($va['verified'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#eab308;color:#212529;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('verify-adjust') }}'" role="button" title="Verify / Adjust — unverified">Unverified: {{ number_format((int) ($va['unverified'] ?? 0)) }}</span>
         </div>
     </div>
 </div>
@@ -802,9 +989,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Account Health
-                <a href="{{ route('account.health.master.channel.dashboard') }}" class="ms-2 small text-decoration-none" title="Open Dashboard Account Health" target="_blank" rel="noopener">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
         </div>
         <div class="dashboard-badge-panel__badges">
@@ -843,6 +1027,14 @@
                 role="button"
                 title="Open Fulfillment Rate"
             >Fulfillment Rate</span>
+            <span class="badge fs-6 p-2" style="background-color:#dc2626;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.health.tabulator') }}'" role="button" title="Customer Care Health — Red">CC Red: {{ number_format((int) ($ah['cc_red'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#eab308;color:#212529;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.health.tabulator') }}'" role="button" title="Customer Care Health — Yellow">CC Yellow: {{ number_format((int) ($ah['cc_yellow'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#16a34a;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.health.tabulator') }}'" role="button" title="Customer Care Health — Green">CC Green: {{ number_format((int) ($ah['cc_green'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#6b7280;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('customer.care.health.tabulator') }}'" role="button" title="Customer Care Health — Unrated">CC Unrated: {{ number_format((int) ($ah['cc_unrated'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#dc2626;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('shipping.health.overview.tabulator') }}'" role="button" title="Shipping Health — Red">Ship Red: {{ number_format((int) ($ah['ship_red'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#eab308;color:#212529;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('shipping.health.overview.tabulator') }}'" role="button" title="Shipping Health — Yellow">Ship Yellow: {{ number_format((int) ($ah['ship_yellow'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#16a34a;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('shipping.health.overview.tabulator') }}'" role="button" title="Shipping Health — Green">Ship Green: {{ number_format((int) ($ah['ship_green'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#6b7280;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('shipping.health.overview.tabulator') }}'" role="button" title="Shipping Health — Unrated">Ship Unrated: {{ number_format((int) ($ah['ship_unrated'] ?? 0)) }}</span>
         </div>
     </div>
 </div>
@@ -856,9 +1048,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 On Sea Transit
-                <a href="{{ route('on.sea.transit') }}" class="ms-2 small text-decoration-none" title="Open On Sea Transit">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
             @if ($ostRow?->updated_at)
                 <small class="dashboard-badge-panel__updated">Updated {{ $ostRow->updated_at->format('M j, g:i A') }}</small>
@@ -885,9 +1074,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Forecast Analysis
-                <a href="{{ route('forecast.analysis') }}" class="ms-2 small text-decoration-none" title="Open Forecast Analysis">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
             @if ($forecastBadgeRow?->updated_at)
                 <small class="dashboard-badge-panel__updated">Updated {{ $forecastBadgeRow->updated_at->format('M j, g:i A') }}</small>
@@ -918,9 +1104,6 @@
         <div class="dashboard-badge-panel__header">
             <h6 class="mb-0">
                 Listing Catalogue
-                <a href="{{ route('missing.listing') }}" class="ms-2 small text-decoration-none" title="Open Missing Listing">
-                    <i class="mdi mdi-open-in-new"></i>
-                </a>
             </h6>
             <small class="dashboard-badge-panel__updated">Updated {{ $lcUpdatedAt->format('M j, g:i A') }} (California)</small>
         </div>
@@ -1021,6 +1204,9 @@
         </div>
     </div>
 </div>
+
+@include('partials.dashboard-customize')
+@include('partials.dashboard-kpi-dots')
 @endsection
 
 @section('script')

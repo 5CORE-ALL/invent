@@ -3,138 +3,113 @@
 <!-- App js -->
 @yield('script-bottom')
 <script>
-    // Only run if searchMenuItem exists (not on login page)
-    const searchMenuItem = document.getElementById('searchMenuItem');
-    if (searchMenuItem) {
-        // Match when every search word appears in text, regardless of order
-        const matchesQuery = (text, queryWords) => queryWords.every(word => text.includes(word));
+    (function () {
+        const searchMenuItem = document.getElementById('searchMenuItem');
+        if (!searchMenuItem) return;
 
-        searchMenuItem.addEventListener('input', function () {
-            const query = this.value.toLowerCase().trim();
+        const sideNav = document.querySelector('.leftside-menu .side-nav');
+        if (!sideNav) return;
+
+        const matchesQuery = (text, queryWords) => {
+            if (!queryWords.length) return true;
+            const t = (text || '').toLowerCase();
+            return queryWords.every((word) => t.includes(word));
+        };
+
+        const linkLabel = (el) => {
+            if (!el) return '';
+            const span = el.querySelector(':scope > span:not(.menu-arrow):not(.badge)');
+            if (span && span.textContent.trim()) return span.textContent.trim();
+            return (el.textContent || '').replace(/\s+/g, ' ').trim();
+        };
+
+        const allMenuLis = () => sideNav.querySelectorAll('li');
+
+        const resetVisibility = () => {
+            allMenuLis().forEach((item) => {
+                item.style.display = '';
+            });
+            sideNav.querySelectorAll('a').forEach((a) => {
+                a.style.display = '';
+            });
+        };
+
+        const collapseAll = () => {
+            sideNav.querySelectorAll('.collapse').forEach((c) => c.classList.remove('show'));
+            sideNav.querySelectorAll('[data-bs-toggle="collapse"]').forEach((link) => {
+                link.setAttribute('aria-expanded', 'false');
+            });
+        };
+
+        const expandCollapseEl = (collapseEl) => {
+            if (!collapseEl || !collapseEl.classList.contains('collapse')) return;
+            collapseEl.classList.add('show');
+            const id = collapseEl.id;
+            if (!id) return;
+            const toggle = sideNav.querySelector('[href="#' + CSS.escape(id) + '"], [data-bs-target="#' + CSS.escape(id) + '"]');
+            if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        };
+
+        // Show matching pages only; keep ancestor containers for layout but hide non-matching group headers
+        const revealMatchingPage = (anchor, queryWords) => {
+            const ownLi = anchor.closest('li');
+            if (!ownLi) return;
+
+            ownLi.style.display = '';
+            anchor.style.display = '';
+
+            let node = ownLi.parentElement;
+            while (node && node !== sideNav) {
+                if (node.classList && node.classList.contains('collapse')) {
+                    expandCollapseEl(node);
+                }
+                if (node.tagName === 'LI') {
+                    node.style.display = '';
+                    const headerLink = node.querySelector(':scope > a');
+                    if (headerLink) {
+                        // Hide group/subgroup header unless the header label itself matches
+                        headerLink.style.display = matchesQuery(linkLabel(headerLink), queryWords) ? '' : 'none';
+                    }
+                }
+                node = node.parentElement;
+            }
+        };
+
+        const runSidebarQuickSearch = () => {
+            const query = searchMenuItem.value.toLowerCase().trim();
             const queryWords = query.split(/\s+/).filter(Boolean);
 
-            // If empty query, reset everything
-            if (query === '') {
-                document.querySelectorAll('.side-nav-item, .side-nav-second-level li, .side-nav-third-level li, .side-nav-forth-level li').forEach(item => {
-                    item.style.display = '';
-                });
-                document.querySelectorAll('.collapse').forEach(collapse => collapse.classList.remove('show'));
-                document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(link => link.setAttribute('aria-expanded', 'false'));
+            if (!queryWords.length) {
+                resetVisibility();
+                collapseAll();
                 return;
             }
 
-            // Select all top-level menu items
-            const topLevelItems = document.querySelectorAll('.side-nav > .side-nav-item');
-
-            topLevelItems.forEach(topItem => {
-                // Check if top item matches
-                const topItemText = topItem.querySelector('.side-nav-link')?.textContent.toLowerCase() || '';
-                const topItemMatches = matchesQuery(topItemText, queryWords);
-
-                // Check if any child matches
-                let hasMatchingChild = false;
-                const allChildLinks = topItem.querySelectorAll('.side-nav-second-level a, .side-nav-third-level a, .side-nav-forth-level a');
-                allChildLinks.forEach(link => {
-                    const text = link.textContent.toLowerCase();
-                    if (matchesQuery(text, queryWords)) {
-                        hasMatchingChild = true;
-                    }
-                });
-
-                // Show/hide top level item
-                if (topItemMatches || hasMatchingChild) {
-                    topItem.style.display = '';
-                    
-                    // If parent matches, show ALL children
-                    if (topItemMatches) {
-                        // Show all second level items
-                        const secondLevelItems = topItem.querySelectorAll('.side-nav-second-level > li');
-                        secondLevelItems.forEach(secondItem => {
-                            secondItem.style.display = '';
-                            
-                            // Show all third level items
-                            const thirdLevelItems = secondItem.querySelectorAll('.side-nav-third-level > li');
-                            thirdLevelItems.forEach(thirdItem => {
-                                thirdItem.style.display = '';
-                                
-                                // Show all fourth level items
-                                const fourthLevelItems = thirdItem.querySelectorAll('.side-nav-forth-level > li');
-                                fourthLevelItems.forEach(fourthItem => {
-                                    fourthItem.style.display = '';
-                                });
-                                
-                                // Expand fourth level collapses
-                                const fourthCollapse = thirdItem.querySelector('.collapse');
-                                if (fourthCollapse) {
-                                    fourthCollapse.classList.add('show');
-                                    const fourthToggleLink = thirdItem.querySelector(`[data-bs-toggle="collapse"]`);
-                                    if (fourthToggleLink) fourthToggleLink.setAttribute('aria-expanded', 'true');
-                                }
-                            });
-                            
-                            // Expand third level collapses
-                            const thirdCollapse = secondItem.querySelector('.collapse');
-                            if (thirdCollapse) {
-                                thirdCollapse.classList.add('show');
-                                const thirdToggleLink = secondItem.querySelector(`[data-bs-toggle="collapse"]`);
-                                if (thirdToggleLink) thirdToggleLink.setAttribute('aria-expanded', 'true');
-                            }
-                        });
-                        
-                        // Expand second level collapse
-                        const collapse = topItem.querySelector('.collapse');
-                        if (collapse) {
-                            collapse.classList.add('show');
-                            const toggleLink = topItem.querySelector(`[data-bs-toggle="collapse"]`);
-                            if (toggleLink) toggleLink.setAttribute('aria-expanded', 'true');
-                        }
-                    } else {
-                        // If parent doesn't match, only show matching children
-                        const secondLevelItems = topItem.querySelectorAll('.side-nav-second-level > li');
-                        secondLevelItems.forEach(secondItem => {
-                            const secondText = secondItem.textContent.toLowerCase();
-                            const secondMatches = matchesQuery(secondText, queryWords);
-
-                            if (secondMatches) {
-                                secondItem.style.display = '';
-                                
-                                // Show all children of matching second level item
-                                const thirdLevelItems = secondItem.querySelectorAll('.side-nav-third-level > li');
-                                thirdLevelItems.forEach(thirdItem => {
-                                    thirdItem.style.display = '';
-                                    
-                                    const fourthLevelItems = thirdItem.querySelectorAll('.side-nav-forth-level > li');
-                                    fourthLevelItems.forEach(fourthItem => {
-                                        fourthItem.style.display = '';
-                                    });
-                                });
-                                
-                                // Expand collapses for matching item
-                                const thirdCollapse = secondItem.querySelector('.collapse');
-                                if (thirdCollapse) {
-                                    thirdCollapse.classList.add('show');
-                                    const thirdToggleLink = secondItem.querySelector(`[data-bs-toggle="collapse"]`);
-                                    if (thirdToggleLink) thirdToggleLink.setAttribute('aria-expanded', 'true');
-                                }
-                            } else {
-                                secondItem.style.display = 'none';
-                            }
-                        });
-                        
-                        // Expand parent collapse to show matching children
-                        const collapse = topItem.querySelector('.collapse');
-                        if (collapse) {
-                            collapse.classList.add('show');
-                            const toggleLink = topItem.querySelector(`[data-bs-toggle="collapse"]`);
-                            if (toggleLink) toggleLink.setAttribute('aria-expanded', 'true');
-                        }
-                    }
-                } else {
-                    topItem.style.display = 'none';
-                }
+            collapseAll();
+            allMenuLis().forEach((li) => {
+                li.style.display = 'none';
             });
+            sideNav.querySelectorAll('a').forEach((a) => {
+                a.style.display = '';
+            });
+
+            const matchedLinks = [...sideNav.querySelectorAll('a')].filter((a) =>
+                matchesQuery(linkLabel(a), queryWords)
+            );
+
+            matchedLinks.forEach((a) => {
+                revealMatchingPage(a, queryWords);
+            });
+        };
+
+        searchMenuItem.addEventListener('input', runSidebarQuickSearch);
+        searchMenuItem.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                this.value = '';
+                runSidebarQuickSearch();
+            }
         });
-    }
+    })();
 </script>
 
 {{-- Global: any badge with a light background gets black text for readability --}}

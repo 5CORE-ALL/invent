@@ -764,7 +764,7 @@
                         <span class="badge bg-secondary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="groi-percent-badge" data-metric="groi_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">GROI: 0%</span>
                         <span class="badge fs-6 p-2" id="ads-percent-badge" style="background-color: #d63384; color: white; font-weight: bold;" title="TACOS = eBay 3 channel Total Ad Spend (31-day KW + PMT from ebay_3_priority_reports + ebay_3_general_reports — same source as /ebay3/campaign-ads) ÷ real-orders L30 Sales × 100.">Ads: {{ number_format((float) ($channelAdsPercent ?? 0), 1) }}%</span>
                         <span class="badge fs-6 p-2" id="npft-percent-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="NPFT% = GPFT% − Ads% (net profit margin after ad spend).">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
-                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon (do not cut Ads% from GROI%).">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
+                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amz (do not cut Ads% from GROI%).">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
                         <span class="badge bg-warning fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Prc: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="CVR = (real-orders L30 units sold / Σ Views) × 100. Numerator is the orders-API L30 units (same source /ebay3/daily-sales uses), denominator is Σ views across rows with E Stock > 0. Click for trend.">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="total-views-badge" data-metric="total_views" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Views: 0</span>
@@ -1081,7 +1081,7 @@
                             NPFT: <span id="sprice-cvr-npft-val">0%</span>
                             <span class="sprice-cvr-trend-dot none" id="sprice-cvr-npft-trend" aria-hidden="true"></span>
                         </span>
-                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 vs L31–L60 + band · shared Amazon + eBay</span>
+                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 vs L31–L60 + band · shared Amz + eBay</span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1416,7 +1416,7 @@
         </div>
     </div>
 
-    <!-- Sprice × CVR pie history (rolling style, same as Amazon metric trend modals) -->
+    <!-- Sprice × CVR pie history (rolling style, same as Amz metric trend modals) -->
     <div class="modal fade p-0" id="spriceCvrHistoryModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow: hidden;">

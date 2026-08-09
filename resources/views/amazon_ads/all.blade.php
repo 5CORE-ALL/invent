@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Ads All'])
+@extends('layouts.vertical', ['title' => 'Amz Ads All'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -85,7 +85,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['sub_title' => 'Amazon Ads', 'page_title' => 'Amazon Ads All'])
+    @include('layouts.shared/page-title', ['sub_title' => 'Amz Ads', 'page_title' => 'Amz Ads All'])
 
     <div class="row">
         <div class="col-12">
@@ -791,7 +791,7 @@
                 }
                 if (sbgtBtn) {
                     sbgtBtn.disabled = !ok;
-                    sbgtBtn.title = ok ? ('Sets ' + (isSp ? 'SP' : 'SB') + ' daily budget on Amazon to each row SBGT tier as dollars') : 'Switch to SP or SB reports to push SBGT';
+                    sbgtBtn.title = ok ? ('Sets ' + (isSp ? 'SP' : 'SB') + ' daily budget on Amz to each row SBGT tier as dollars') : 'Switch to SP or SB reports to push SBGT';
                 }
             }
             function amzUpdatePieButton() {
@@ -1046,7 +1046,7 @@
                     amzShowPushResult(
                         opts.loadingTitle,
                         'Chunk ' + (index + 1) + '/' + chunkCount
-                            + ' (' + doneCount + '/' + total + ' row(s)). Waiting for Amazon Ads API — do not close this tab.',
+                            + ' (' + doneCount + '/' + total + ' row(s)). Waiting for Amz Ads API — do not close this tab.',
                         'loading'
                     );
 

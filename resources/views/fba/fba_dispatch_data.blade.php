@@ -1434,7 +1434,7 @@
                                 if (value == null || value === '' || parseFloat(value) <= 0) {
                                     const skuEnc = encodeURIComponent(sku);
                                     const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                                    return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
+                                    return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amz repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
                                 }
                                 
                                 const price = parseFloat(value);
@@ -2978,7 +2978,7 @@
                         if (res.success && res.competitors && res.competitors.length > 0) {
                             renderLmpCompetitors(sku, res.competitors);
                         } else {
-                            $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon competitors found for this SKU</div>');
+                            $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amz competitors found for this SKU</div>');
                         }
                     },
                     error: function(xhr) {

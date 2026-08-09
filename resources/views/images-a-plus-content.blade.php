@@ -116,7 +116,7 @@
                         <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:120px; overflow:auto;"></div>
                     </div>
                     <p class="small text-muted mb-3">
-                        Up to 12 A+ Content image slots per SKU. Upload a file (like Amazon A+ Contents) or paste an image URL, then Save.
+                        Up to 12 A+ Content image slots per SKU. Upload a file (like Amz A+ Contents) or paste an image URL, then Save.
                     </p>
                     <div class="iac-slots" id="iacSlots"></div>
                 </div>

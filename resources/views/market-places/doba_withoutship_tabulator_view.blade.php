@@ -1458,7 +1458,7 @@
                         
                         if (amazonPrice === 0) {
                             noAmazonPriceCount++;
-                            return; // Skip this SKU if no Amazon price
+                            return; // Skip this SKU if no Amz price
                         }
                         
                         // Calculate suggested price: Amazon Price - 30%
@@ -1498,10 +1498,10 @@
                                 _token: $('meta[name="csrf-token"]').attr('content')
                             },
                             success: function() {
-                                console.log('Amazon - 30% price applied for SKU:', sku);
+                                console.log('Amz - 30% price applied for SKU:', sku);
                             },
                             error: function(xhr) {
-                                console.error('Failed to save Amazon - 30% price for SKU:', sku, xhr.responseText);
+                                console.error('Failed to save Amz - 30% price for SKU:', sku, xhr.responseText);
                             }
                         });
                         
@@ -1510,10 +1510,10 @@
                 });
 
                 if (appliedCount > 0) {
-                    showToast('success', `Amazon - 30% price applied to ${appliedCount} SKU(s)`);
+                    showToast('success', `Amz - 30% price applied to ${appliedCount} SKU(s)`);
                 }
                 if (noAmazonPriceCount > 0) {
-                    showToast('warning', `${noAmazonPriceCount} SKU(s) skipped (no Amazon price)`);
+                    showToast('warning', `${noAmazonPriceCount} SKU(s) skipped (no Amz price)`);
                 }
             });
 
@@ -1537,7 +1537,7 @@
                         
                         if (amazonPrice === 0) {
                             noAmazonPriceCount++;
-                            return; // Skip this SKU if no Amazon price
+                            return; // Skip this SKU if no Amz price
                         }
                         
                         // Calculate suggested price: Amazon Price - 25%
@@ -1577,10 +1577,10 @@
                                 _token: $('meta[name="csrf-token"]').attr('content')
                             },
                             success: function() {
-                                console.log('Amazon - 25% price applied for SKU:', sku);
+                                console.log('Amz - 25% price applied for SKU:', sku);
                             },
                             error: function(xhr) {
-                                console.error('Failed to save Amazon - 25% price for SKU:', sku, xhr.responseText);
+                                console.error('Failed to save Amz - 25% price for SKU:', sku, xhr.responseText);
                             }
                         });
                         
@@ -1589,10 +1589,10 @@
                 });
 
                 if (appliedCount > 0) {
-                    showToast('success', `Amazon - 25% price applied to ${appliedCount} SKU(s)`);
+                    showToast('success', `Amz - 25% price applied to ${appliedCount} SKU(s)`);
                 }
                 if (noAmazonPriceCount > 0) {
-                    showToast('warning', `${noAmazonPriceCount} SKU(s) skipped (no Amazon price)`);
+                    showToast('warning', `${noAmazonPriceCount} SKU(s) skipped (no Amz price)`);
                 }
             });
 

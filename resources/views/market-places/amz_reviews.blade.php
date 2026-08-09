@@ -40,7 +40,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amz Reviews',
-        'sub_title'  => 'Amazon product ratings & reviews',
+        'sub_title'  => 'Amz product ratings & reviews',
     ])
 
     <div class="row">
@@ -72,7 +72,7 @@
                                 <input type="checkbox" id="amz-rv-inv-gt0" class="form-check-input m-0"> INV &gt; 0
                             </label>
                             <select id="amz-rv-rating-filter" class="form-select form-select-sm"
-                                style="width: auto;" title="Filter by Reviews color (Amazon avg rating)">
+                                style="width: auto;" title="Filter by Reviews color (Amz avg rating)">
                                 <option value="all">Reviews</option>
                                 <option value="red">Red &lt;3</option>
                                 <option value="yellow">Yellow 3-3.5</option>
@@ -216,7 +216,7 @@
                     hozAlign: 'center',
                     width: 75,
                     sorter: 'number',
-                    headerTooltip: 'Amazon units ordered L30 (A L30)',
+                    headerTooltip: 'Amz units ordered L30 (A L30)',
                     formatter: function(cell) {
                         return Math.round(parseFloat(cell.getValue()) || 0).toLocaleString('en-US');
                     },
@@ -271,7 +271,7 @@
                     hozAlign: 'center',
                     headerSort: true,
                     width: 75,
-                    headerTooltip: 'Stop Ads when Amazon avg rating is below 3',
+                    headerTooltip: 'Stop Ads when Amz avg rating is below 3',
                     formatter: function(cell) {
                         if (!cell.getValue()) return '<span class="text-muted">—</span>';
                         return '<span class="amz-rv-stop-sign" title="Stop Ads — rating below 3">STOP</span>';

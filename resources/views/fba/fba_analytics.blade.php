@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon FBA Sales Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amz FBA Sales Data', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -18,7 +18,7 @@
                 <div class="card">
                     <div class="card-header">
                         <div class="d-flex justify-content-between align-items-center">
-                            <h4 class="mb-0">Amazon FBA Data</h4>
+                            <h4 class="mb-0">Amz FBA Data</h4>
                             <div class="btn-group" role="group">
                                 <button type="button" class="btn btn-primary" id="filter-fba-sku" data-filter="fba">FBA
                                     SKU</button>

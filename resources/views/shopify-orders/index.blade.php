@@ -122,7 +122,7 @@
     
     @include('layouts.shared.page-title', [
         'page_title' => 'SKU Sales by Source (Last 30 Days)',
-        'sub_title' => 'Amazon, eBay, Shopify & Other Sources - PST Timezone',
+        'sub_title' => 'Amz, eBay, Shopify & Other Sources - PST Timezone',
     ])
     
     <div class="toast-container"></div>
@@ -339,7 +339,7 @@ $(document).ready(function() {
                         width: 75,
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Amazon Daily Sales (Last 30 Days)",
+                        headerTooltip: "Amz Daily Sales (Last 30 Days)",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value > 0) {

@@ -389,7 +389,7 @@
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary || !asin) return '';
                             return `<div style="display: flex; align-items: center; gap: 5px;">
-                                <a href="https://www.amazon.com/dp/${encodeURIComponent(asin)}" target="_blank" rel="noopener" title="Open ${escAttr(asin)} on Amazon.com">${escAttr(asin)}</a>
+                                <a href="https://www.amazon.com/dp/${encodeURIComponent(asin)}" target="_blank" rel="noopener" title="Open ${escAttr(asin)} on Amz.com">${escAttr(asin)}</a>
                                 <button class="btn btn-sm btn-link copy-asin-btn p-0" data-asin="${escAttr(asin)}" title="Copy ASIN">
                                     <i class="fas fa-copy"></i>
                                 </button>
@@ -503,12 +503,12 @@
                         }
                     },
                     {
-                        title: "Amazon",
+                        title: "Amz",
                         field: "amazon_link",
                         hozAlign: "center",
                         width: 70,
                         headerSort: false,
-                        headerTooltip: "Open on Amazon.com",
+                        headerTooltip: "Open on Amz.com",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const asin = (row.asin || '').toString().trim();
@@ -525,7 +525,7 @@
                             }
 
                             if (!url) return '';
-                            return `<a href="${url}" target="_blank" rel="noopener" title="Open on Amazon.com" style="color: #ff9900;"><i class="fas fa-external-link-alt"></i></a>`;
+                            return `<a href="${url}" target="_blank" rel="noopener" title="Open on Amz.com" style="color: #ff9900;"><i class="fas fa-external-link-alt"></i></a>`;
                         }
                     },
                     {

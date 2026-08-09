@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Listing Amazon', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Listing Amz', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -507,7 +507,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Listing Amazon', 'sub_title' => 'Amazon'])
+    @include('layouts.shared/page-title', ['page_title' => 'Listing Amz', 'sub_title' => 'Amz'])
 
     <div class="row">
         <div class="col-12">
@@ -822,8 +822,8 @@
                 : ('https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin=' + encodeURIComponent(itemId));
             const label = isBuyer ? 'Buyer' : 'Seller';
             const title = isBuyer
-                ? ('Buyer link — Amazon ASIN ' + itemId)
-                : ('Seller Central inventory — Amazon ASIN ' + itemId);
+                ? ('Buyer link — Amz ASIN ' + itemId)
+                : ('Seller Central inventory — Amz ASIN ' + itemId);
 
             return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
                 title="${escapeHtml(title)}" onclick="event.stopPropagation();">

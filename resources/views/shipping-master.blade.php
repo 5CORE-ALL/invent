@@ -4779,7 +4779,7 @@
                         `Data to be updated:\n` +
                         `- Weight (Weight ACT (Kg), WT ACT (LB), WT DECL (LB))\n` +
                         `- Dimensions (Length/Width/Height in inch and CM)\n\n` +
-                        `This will update the data in: Amazon, eBay, Shopify, Walmart, Doba, Temu, and all other connected marketplaces.`;
+                        `This will update the data in: Amz, eBay, Shopify, Walmart, Doba, Temu, and all other connected marketplaces.`;
                     
                     if (!confirm(confirmMessage)) {
                         return;

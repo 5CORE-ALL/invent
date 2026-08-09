@@ -315,14 +315,14 @@
                 const price = d.amz_price;
                 const loss = d.amz_loss;
                 if (price == null || isNaN(parseFloat(price))) {
-                    return 'No Amazon price for this SKU';
+                    return 'No Amz price for this SKU';
                 }
                 const orderQty = d.order_qty;
                 const qty = d.qty;
                 const lossQty = (orderQty != null && !isNaN(parseFloat(orderQty)) && parseFloat(orderQty) > 0)
                     ? orderQty
                     : qty;
-                const parts = ['Amazon price $' + Number(price).toFixed(2)];
+                const parts = ['Amz price $' + Number(price).toFixed(2)];
                 if (lossQty != null && !isNaN(parseFloat(lossQty))) {
                     parts.push('× qty ' + lossQty);
                 }

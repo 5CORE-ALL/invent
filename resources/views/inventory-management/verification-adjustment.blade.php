@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Verification Adjustment', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Verification & Adjustment', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -259,9 +259,13 @@
 
         /* ========== VERIFIED STATUS BUTTONS ========== */
         .verified-status-btn {
-            min-width: 120px;
+            min-width: 0;
             font-size: 12px;
-            padding: 4px 8px;
+            padding: 0;
+            line-height: 1;
+        }
+        .verified-column .verified-status-btn:hover i.fa-circle {
+            transform: scale(1.25);
         }
 
         .verified-filter-btn {
@@ -271,47 +275,36 @@
         .verified-filter-btn.active {
             box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.5);
         }
-        
-        /* Ensure verified filter button is green */
-        #filter-verified-green,
-        #filter-verified-green.btn-success {
-            background-color: #28a745 !important;
-            border-color: #28a745 !important;
-            color: #fff !important;
+
+        /* Merged Verified / Unverified pie filter */
+        .va-verified-pie-wrap {
+            position: relative;
+            width: 66px;
+            height: 66px;
+            flex-shrink: 0;
         }
-        
-        #filter-verified-green:hover,
-        #filter-verified-green.btn-success:hover {
-            background-color: #218838 !important;
-            border-color: #1e7e34 !important;
+
+        #va-verified-pie {
+            width: 66px;
+            height: 66px;
+            cursor: pointer;
         }
-        
-        #filter-verified-green.active,
-        #filter-verified-green.btn-success.active {
-            background-color: #218838 !important;
-            border-color: #1e7e34 !important;
-            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.5) !important;
+
+        .va-verified-pie-wrap.has-filter {
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.45);
+            border-radius: 50%;
         }
-        
-        /* Ensure unverified filter button is red */
-        #filter-verified-yellow,
-        #filter-verified-yellow.btn-danger {
-            background-color: #dc3545 !important;
-            border-color: #dc3545 !important;
-            color: #fff !important;
+
+        .va-verified-pie-wrap.has-filter.filter-green {
+            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.65);
         }
-        
-        #filter-verified-yellow:hover,
-        #filter-verified-yellow.btn-danger:hover {
-            background-color: #c82333 !important;
-            border-color: #bd2130 !important;
+
+        .va-verified-pie-wrap.has-filter.filter-yellow {
+            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.65);
         }
-        
-        #filter-verified-yellow.active,
-        #filter-verified-yellow.btn-danger.active {
-            background-color: #c82333 !important;
-            border-color: #bd2130 !important;
-            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.5) !important;
+
+        .va-verified-pie-legend {
+            display: none;
         }
 
         /* ========== MERGED LOG COLUMN (USER + HISTORY + ACTIVITY) ========== */
@@ -350,15 +343,12 @@
         .va-merged-log-history {
             font-size: 11px;
             color: #495057;
+            white-space: nowrap;
         }
 
-        /* ========== HISTORY DATE FILTER DROPDOWN ========== */
-        #verifiedDateFilterBtn.dropdown-toggle::after {
-            margin-left: 0.35em;
-        }
-
-        #verifiedDateFilterBtn + .dropdown-menu {
-            cursor: default;
+        /* ========== DATE FILTER (modal) ========== */
+        #verifiedDateFilterBtn.btn-warning {
+            color: #212529;
         }
 
         /* ========== SORTING ========== */
@@ -371,7 +361,7 @@
         }
 
         .sort-arrow {
-            display: none; /* Hide sort arrow icon but keep functionality */
+            display: none !important; /* Hide sort arrow icon but keep click-to-sort */
             margin-left: 5px;
         }
 
@@ -445,66 +435,35 @@
             color: #17a2b8 !important;
         }
 
-        #ebay-table td.va-refresh-col {
-            min-width: 2.75rem;
-            width: 44px;
-            text-align: center;
-            vertical-align: middle !important;
-        }
-
-        #ebay-table td.va-refresh-col .va-shopify-refresh-btn {
-            color: #0d6efd;
-            font-size: 15px;
-            line-height: 1;
-            text-decoration: none;
-            min-width: 28px;
-            min-height: 28px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        #ebay-table td.va-refresh-col .va-shopify-refresh-btn:hover:not(:disabled) {
-            color: #0a58ca;
-            transform: scale(1.08);
-        }
-
-        #ebay-table td.va-refresh-col .va-shopify-refresh-btn:disabled {
-            opacity: 0.65;
-            cursor: wait;
-        }
-
-        #ebay-table th[data-field="refresh"] {
-            min-width: 44px !important;
-            max-width: 56px !important;
-        }
-
         /* ========== VERTICAL TABLE HEADERS (narrow columns, label reads upward) ========== */
+        /* Height auto-fits longest label via writing-mode (no fixed 132px row). */
         #ebay-table thead th.va-th-v {
-            height: 132px;
+            height: auto;
             width: 40px;
             min-width: 36px;
             max-width: 52px;
-            padding: 6px 2px !important;
+            padding: 4px 2px !important;
             vertical-align: bottom !important;
             text-align: center !important;
             box-sizing: border-box;
         }
 
         #ebay-table thead th.va-th-v .va-th-v-inner {
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            justify-content: center;
-            width: 100%;
-            min-height: 108px;
-            transform: rotate(-90deg);
-            transform-origin: center center;
+            justify-content: flex-start;
+            width: auto;
+            max-width: 100%;
+            min-height: 0;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
             white-space: nowrap;
             font-size: 11px;
             font-weight: 600;
-            line-height: 1.2;
+            line-height: 1.1;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.04em;
+            padding: 2px 0;
         }
 
         #ebay-table thead th.va-th-v .va-th-v-inner .header-text {
@@ -513,7 +472,7 @@
         }
 
         #ebay-table thead th.va-th-v .sort-arrow {
-            display: inline-block;
+            display: none !important;
             font-size: 0.85em;
             margin-left: 2px;
         }
@@ -1244,10 +1203,6 @@
             justify-content: center;
         }
 
-        .va-icon-btn.filter-show-all-btn.active {
-            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85);
-        }
-
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .time-navigation-group button {
@@ -1397,18 +1352,19 @@
             max-width: none;
         }
 
-        /* Sticky header row: vertical labels need fixed row height */
+        /* Sticky header row: height follows vertical label length */
         #ebay-table thead th {
             height: auto;
             min-height: 0;
             max-width: none;
-            padding: 12px 10px !important;
+            padding: 8px 10px !important;
             text-align: center;
             vertical-align: middle !important;
         }
 
         #ebay-table thead th.va-th-v {
             vertical-align: bottom !important;
+            padding: 4px 2px !important;
         }
 
         /* Body: Parent + SKU stay left-aligned */
@@ -1581,7 +1537,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Inventory Management', 'sub_title' => 'Verification & Adjustment'])
+    @include('layouts.shared/page-title', ['page_title' => 'Verification & Adjustment', 'sub_title' => 'Inventory Management'])
     <!-- <div class="row">
         <div class="col-12">
             <div class="card">
@@ -1598,10 +1554,9 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <!-- Top bar: title + primary actions -->
-                    <div class="va-controls-top d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
-                        <h4 class="header-title mb-0">Verification & Adjustment</h4>
-                        <div class="d-flex flex-wrap align-items-center gap-2">
+                    <!-- Single toolbar: title → actions → filters (left to right) -->
+                    <div class="va-controls-bar va-controls-filters d-flex flex-nowrap align-items-center mb-3 py-2 px-2 rounded border bg-light w-100">
+                        <div class="d-flex flex-nowrap align-items-center gap-1 va-controls-actions-group flex-shrink-0">
                             <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
                                 <button type="button" id="play-backward" class="btn btn-sm btn-light" title="Previous parent">
                                     <i class="fas fa-step-backward"></i>
@@ -1616,106 +1571,110 @@
                                     <i class="fas fa-step-forward"></i>
                                 </button>
                             </div>
-                            <button id="filter-show-all" class="btn btn-secondary btn-sm va-icon-btn filter-show-all-btn active" data-status="all" title="Show All">
-                                <i class="fas fa-list"></i>
+                            <button id="exportToGoogleSheets" class="btn btn-success btn-sm" title="Export to Google Sheets" aria-label="Export to Google Sheets">
+                                <i class="fas fa-download"></i>
+                                <i class="fab fa-google"></i>
                             </button>
-                            <button id="viewHiddenRows" class="btn btn-outline-primary btn-sm va-icon-btn" data-toggle="modal" title="History">
+                            <button id="activity-log-btn" class="btn btn-dark btn-sm" data-toggle="modal" data-target="#activityLogModal" title="Activity Log — All history by work date" aria-label="Activity Log">
                                 <i class="fas fa-history"></i>
                             </button>
-                            <button id="exportToGoogleSheets" class="btn btn-success btn-sm">
-                                <i class="fab fa-google"></i> Export to Google Sheets
+                        </div>
+                        <div class="va-controls-divider flex-shrink-0" aria-hidden="true"></div>
+                        <div class="va-controls-filters-grow d-flex flex-nowrap align-items-center flex-grow-1 min-w-0">
+                            <div class="d-flex align-items-center va-controls-inner">
+                                <select id="row-data-type" class="form-control form-control-sm va-input-sm" title="All">
+                                    <option value="all">All</option>
+                                    <option value="sku">SKU (Child)</option>
+                                    <option value="parent">Parent</option>
+                                </select>
+                            </div>
+                            <div class="d-flex align-items-center va-controls-inner">
+                                <div class="dropdown-search-container w-100">
+                                    <input type="text" class="form-control form-control-sm parent-search va-input-sm" placeholder="Parent..." id="parentSearch" title="Search parent" autocomplete="off">
+                                    <div class="dropdown-search-results" id="parentSearchResults"></div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center va-controls-inner">
+                                <div class="dropdown-search-container w-100">
+                                    <input type="text" class="form-control form-control-sm sku-search va-input-sm" placeholder="SKU..." id="skuSearch" title="Search SKU" autocomplete="off">
+                                    <div class="dropdown-search-results" id="skuSearchResults"></div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center va-controls-inner">
+                                <select id="invFilter" class="form-control form-control-sm va-input-sm" title="Filter by Main-INV">
+                                    <option value="">INV</option>
+                                    <option value="0">0</option>
+                                    <option value="0-30">0-30</option>
+                                    <option value="gt30">&gt;30</option>
+                                </select>
+                            </div>
+                            <div class="d-flex align-items-center va-controls-inner">
+                                <select id="l30Filter" class="form-control form-control-sm va-input-sm" title="Filter by L30">
+                                    <option value="">L30</option>
+                                    <option value="0">0</option>
+                                    <option value="0-30">0-30</option>
+                                    <option value="gt30">&gt;30</option>
+                                </select>
+                            </div>
+                            <div class="d-flex align-items-center va-controls-inner">
+                                <select id="dilFilter" class="form-control form-control-sm va-input-sm" title="Filter by DIL color">
+                                    <option value="">DIL</option>
+                                    <option value="red">Red</option>
+                                    <option value="green">Green</option>
+                                    <option value="magenta">Magenta</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center va-controls-status flex-shrink-0">
+                            <button class="btn btn-outline-info btn-sm py-1 px-2 mr-1" type="button" id="verifiedDateFilterBtn" data-toggle="modal" data-target="#verifiedDateFilterModal" title="Filter by last verified date">
+                                <i class="fas fa-calendar-alt"></i> <span class="va-btn-text">Date</span>
                             </button>
-                            <button id="activity-log-btn" class="btn btn-dark btn-sm" data-toggle="modal" data-target="#activityLogModal" title="All history by work date">
-                                <i class="fas fa-history"></i> Activity Log
+                            {{-- Hidden buttons keep existing verified-filter-btn logic; pie drives them --}}
+                            <button type="button" id="filter-verified-green" class="verified-filter-btn d-none" data-status="green" aria-hidden="true" tabindex="-1">
+                                <span id="green-count">0</span>
                             </button>
+                            <button type="button" id="filter-verified-yellow" class="verified-filter-btn d-none" data-status="yellow" aria-hidden="true" tabindex="-1">
+                                <span id="yellow-count">0</span>
+                            </button>
+                            <div class="va-verified-pie-wrap" id="va-verified-pie-wrap" title="Verified / Unverified — click a slice to filter">
+                                <div id="va-verified-pie" role="img" aria-label="Verified vs Unverified pie chart"></div>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Filters bar: single line, compact -->
-                    <div class="va-controls-filters d-flex flex-nowrap align-items-center mb-3 py-2 px-2 rounded border bg-light">
-                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
-                            <select id="row-data-type" class="form-control form-control-sm va-input-sm" title="Data Type">
-                                <option value="all">Data Type</option>
-                                <option value="sku">SKU (Child)</option>
-                                <option value="parent">Parent</option>
-                            </select>
-                        </div>
-                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
-                            <div class="dropdown-search-container">
-                                <input type="text" class="form-control form-control-sm parent-search va-input-sm" placeholder="Parent..." id="parentSearch" title="Search parent" autocomplete="off">
-                                <div class="dropdown-search-results" id="parentSearchResults"></div>
-                            </div>
-                        </div>
-                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
-                            <div class="dropdown-search-container">
-                                <input type="text" class="form-control form-control-sm sku-search va-input-sm" placeholder="SKU..." id="skuSearch" title="Search SKU" autocomplete="off">
-                                <div class="dropdown-search-results" id="skuSearchResults"></div>
-                            </div>
-                        </div>
-                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
-                            <select id="invFilter" class="form-control form-control-sm va-input-sm" title="Filter by Main-INV">
-                                <option value="">INV</option>
-                                <option value="0">0</option>
-                                <option value="0-30">0-30</option>
-                                <option value="gt30">&gt;30</option>
-                            </select>
-                        </div>
-                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
-                            <select id="l30Filter" class="form-control form-control-sm va-input-sm" title="Filter by L30">
-                                <option value="">L30</option>
-                                <option value="0">0</option>
-                                <option value="0-30">0-30</option>
-                                <option value="gt30">&gt;30</option>
-                            </select>
-                        </div>
-                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
-                            <select id="dilFilter" class="form-control form-control-sm va-input-sm" title="Filter by DIL color">
-                                <option value="">DIL</option>
-                                <option value="red">Red</option>
-                                <option value="green">Green</option>
-                                <option value="magenta">Magenta</option>
-                            </select>
-                        </div>
-                        <div class="d-flex align-items-center va-controls-actions flex-shrink-0">
-                            <select id="bulk-action-select" class="form-control form-control-sm va-input-sm" title="Bulk action">
-                                <option value="">Select action...</option>
-                                <option value="mark-verified">Mark as Verified</option>
-                                <option value="mark-unverified">Mark as Unverified</option>
-                            </select>
-                            <button id="apply-bulk-action" class="btn btn-primary btn-sm ml-1">Apply</button>
-                        </div>
-                        <div class="d-flex align-items-center va-controls-status flex-shrink-0 ml-1">
-                            <div class="dropdown va-controls-inner flex-shrink-0 mr-1">
-                                <button class="btn btn-outline-info btn-sm dropdown-toggle py-1 px-2" type="button" id="verifiedDateFilterBtn" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Filter by last verified date">
-                                    <i class="fas fa-calendar-alt"></i> <span class="va-btn-text">Verified Date</span>
-                                </button>
-                                <div class="dropdown-menu p-3" aria-labelledby="verifiedDateFilterBtn" style="min-width: 300px;">
-                                    <h6 class="dropdown-header">Filter by last verified date</h6>
+                    <!-- Date filter modal -->
+                    <div class="modal fade" id="verifiedDateFilterModal" tabindex="-1" role="dialog" aria-labelledby="verifiedDateFilterModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-sm modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header py-2">
+                                    <h5 class="modal-title" id="verifiedDateFilterModalLabel">
+                                        <i class="fas fa-calendar-alt mr-1"></i> Date filter
+                                    </h5>
+                                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                        <span aria-hidden="true">&times;</span>
+                                    </button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="small text-muted mb-3">Filter by last verified date</p>
                                     <div class="form-group mb-2">
                                         <label for="verifiedDateFrom" class="small mb-1">From</label>
                                         <input type="date" id="verifiedDateFrom" class="form-control form-control-sm">
                                     </div>
-                                    <div class="form-group mb-2">
+                                    <div class="form-group mb-3">
                                         <label for="verifiedDateTo" class="small mb-1">To</label>
                                         <input type="date" id="verifiedDateTo" class="form-control form-control-sm">
                                     </div>
-                                    <div class="d-flex justify-content-between">
-                                        <button type="button" id="applyVerifiedDateFilter" class="btn btn-primary btn-sm">
-                                            <i class="fas fa-check"></i> Apply
-                                        </button>
-                                        <button type="button" id="clearVerifiedDateFilter" class="btn btn-secondary btn-sm">
-                                            <i class="fas fa-times"></i> Clear
-                                        </button>
-                                    </div>
-                                    <div id="verifiedDateFilterStatus" class="mt-2 small text-muted"></div>
+                                    <div id="verifiedDateFilterStatus" class="small text-muted mb-0"></div>
+                                </div>
+                                <div class="modal-footer py-2">
+                                    <button type="button" id="clearVerifiedDateFilter" class="btn btn-secondary btn-sm">
+                                        <i class="fas fa-times"></i> Clear
+                                    </button>
+                                    <button type="button" id="applyVerifiedDateFilter" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-check"></i> Apply
+                                    </button>
                                 </div>
                             </div>
-                            <button id="filter-verified-green" class="btn btn-success btn-sm verified-filter-btn py-1 px-2" data-status="green">
-                                <i class="fas fa-check-circle"></i> <span class="va-btn-text">Verified</span> <span class="badge badge-light ml-1" id="green-count">0</span>
-                            </button>
-                            <button id="filter-verified-yellow" class="btn btn-danger btn-sm verified-filter-btn py-1 px-2" data-status="yellow">
-                                <i class="fas fa-circle"></i> <span class="va-btn-text">Unverified</span> <span class="badge badge-light ml-1" id="yellow-count">0</span>
-                            </button>
                         </div>
                     </div>
 
@@ -1806,48 +1765,6 @@
                         </div>
                     </div>
 
-                    <div class="modal fade" id="hiddenRowsModal" tabindex="-1" aria-labelledby="hideRowsModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-xl">
-                            <div class="modal-content">
-                            <div class="modal-header d-flex justify-content-between align-items-center">
-                                <h5 class="modal-title" id="hideRowsModalLabel">Hidden Rows</h5>
-
-                                <div class="d-flex align-items-center ms-auto">
-                                    <input type="text" id="hiddenRowsSearch" 
-                                        class="form-control me-2" 
-                                        placeholder="Search..." 
-                                        style="max-width: 250px;">
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                    {{-- <input type="text" id="hiddenRowsSearch" class="form-control ms-auto me-2" placeholder="Search..." style="max-width: 250px;"> --}}
-                                    {{-- <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
-                                        <span aria-hidden="true">&times;</span>
-                                    </button> --}}
-                            </div>
-                            <div class="modal-body">
-                                <table class="table" id="hiddenRowsTable">
-                                <thead>
-                                    <tr>
-                                    <th><input type="checkbox" id="selectAllHidden"></th>
-                                    <!-- <th>Parent</th> -->
-                                    <th>SKU</th>
-                                    <th>Verified</th>
-                                    <th>Adjusted</th>
-                                    <th>Loss/Gain</th>
-                                    <th>Reason</th>
-                                    <th>Approved By</th>
-                                    <th>Approved</th>
-                                    <th>Remarks</th>
-                                    </tr>
-                                </thead>
-                                <tbody></tbody>
-                                </table>
-                                <button id="clearSelectedHiddenRows" class="btn btn-success">Unverified Selected Rows</button>
-                            </div>
-                            </div>
-                        </div>
-                    </div>
-
                         <!-- <div id="zeroInvLabel" style="background-color: #d0e7ff; color: #004080; font-size: 14px; font-weight: 600; padding: 6px 12px; border-radius: 6px; display: inline-block; margin-bottom: 10px;"> -->
                             <!-- Will be filled by JS -->
                         <!-- </div> -->
@@ -1920,10 +1837,7 @@
                                         <div class="va-th-v-inner">R&amp;A <span class="sort-arrow">↓</span></div>
                                     </th>
                                     <th data-field="INV" class="va-th-v">
-                                        <div class="va-th-v-inner">Main-INV <span class="sort-arrow">↓</span></div>
-                                    </th>
-                                    <th data-field="refresh" class="text-center va-th-v" style="min-width: 56px; white-space: nowrap;" title="Pull latest inventory from Shopify">
-                                        <div class="va-th-v-inner">Refresh <span class="sort-arrow"></span></div>
+                                        <div class="va-th-v-inner">Main <span class="sort-arrow">↓</span></div>
                                     </th>
                                     <th data-field="L30" class="va-th-v">
                                         <div class="va-th-v-inner">L30 <span class="sort-arrow">↓</span></div>
@@ -1932,10 +1846,10 @@
                                         <div class="va-th-v-inner">DIL <span class="sort-arrow">↓</span></div>
                                     </th>
                                     <th data-field="AVAILABLE_TO_SELL" class="va-th-v">
-                                        <div class="va-th-v-inner">AVL TO SELL <span class="sort-arrow">↓</span></div>
+                                        <div class="va-th-v-inner">AVL SELL <span class="sort-arrow">↓</span></div>
                                     </th>
                                     <th data-field="COMMITTED" class="va-th-v">
-                                        <div class="va-th-v-inner">COMMITTED <span class="sort-arrow">↓</span></div>
+                                        <div class="va-th-v-inner">Commit <span class="sort-arrow">↓</span></div>
                                     </th>
                                     <th data-field="UNAVAILABLE" data-no-column-toggle="1" class="hide-column va-th-v unavailable-col-header" title="Shopify: reserved + damaged + safety stock + quality control">
                                         <div class="va-th-v-inner">UNAVAIL <span class="sort-arrow">↓</span></div>
@@ -1965,8 +1879,8 @@
                                     <th data-field="tacos" class="va-th-v">
                                         <div class="va-th-v-inner">ACCEPT <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="shopify_push" class="text-center va-th-v" style="min-width: 88px; white-space: nowrap;" title="Shopify Push &amp; Pull status. Yellow = pending, green tick = done, red cross = not done / failed.">
-                                        <div class="va-th-v-inner">Push &amp; Pull <span class="sort-arrow"></span></div>
+                                    <th data-field="shopify_push" class="text-center va-th-v" style="min-width: 88px; white-space: nowrap;" title="Shopify Push Pull status. Yellow = pending, green tick = done, red cross = not done / failed.">
+                                        <div class="va-th-v-inner">Push Pull <span class="sort-arrow"></span></div>
                                     </th>
                                     <th data-field="tacos" class="va-th-v" style="display: none;">
                                         <div class="va-th-v-inner">ADJ HISTORY <span class="sort-arrow"></span></div>
@@ -2192,7 +2106,6 @@
             let currentParentIndex = -1; // -1 means showing all products
             let uniqueParents = [];
             let isPlaying = false;
-            let hiddenRows = [];
             let allData = []; 
 
             // Define status indicator fields for different modal types
@@ -3170,7 +3083,7 @@
                     $row.append($checkboxCell);
 
                     const imgTd = $('<td>').html(
-                        item.IMAGE_URL ? `<img src="${item.IMAGE_URL}" style="width:40px;height:auto;">` : ''
+                        item.IMAGE_URL ? `<img src="${escAttr(item.IMAGE_URL)}" alt="Product" class="product-thumb" style="width:32px;height:32px;object-fit:cover;">` : ''
                     );
                     $row.append(imgTd);
 
@@ -3180,7 +3093,10 @@
                     // P column: dot to show all SKUs in this parent
                     const parentName = item.Parent || '(No Parent)';
                     const $pCell = $('<td>').addClass('text-center p-dot-cell').css('vertical-align', 'middle');
-                    $pCell.html(`<button type="button" class="btn btn-link p-0 border-0 p-dot-btn" data-parent="${parentName.replace(/"/g, '&quot;')}" title="Filter table to this parent only"><i class="fas fa-circle" style="font-size: 8px; color: #6c757d;"></i></button>`);
+                    const pIcon = (window.ParentExpand && typeof window.ParentExpand.yellowSvg === 'function')
+                        ? window.ParentExpand.yellowSvg()
+                        : '<i class="fas fa-play" style="font-size:12px;color:#ffc107;"></i>';
+                    $pCell.html(`<button type="button" class="btn btn-link p-0 border-0 p-dot-btn parent-sku-dot" data-parent="${parentName.replace(/"/g, '&quot;')}" title="Filter table to this parent only">${pIcon}</button>`);
                     $row.append($pCell);
 
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
@@ -3223,11 +3139,6 @@
 
                     // R&A column stays hidden (header has hide-column); play mode matches CP Master and does not inject an extra cell
                     $row.append($('<td>').addClass('va-inv-col').text(item.INV || 0));
-
-                    const refreshColumnHtml = isParentRow
-                        ? '<span class="text-muted" title="N/A for parent">—</span>'
-                        : `<button type="button" class="btn btn-sm btn-link va-shopify-refresh-btn p-0 border-0" data-sku="${escAttr(item.SKU || '')}" title="Pull latest inventory from Shopify"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>`;
-                    $row.append($('<td>').addClass('text-center align-middle va-refresh-col').html(refreshColumnHtml));
 
                     $row.append($('<td>').addClass('va-l30-col').text(item.L30));
 
@@ -3347,10 +3258,11 @@
 
                     // Merged LOG column: user + history (click text to open activity log)
                     const verifiedByFirstName = item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || '';
+                    // Line 1 = user name; line 2 = date + time together
                     let historyHTML = '—';
                     if (item.HISTORY && item.HISTORY.includes(', ')) {
                         const [datePart, timePart] = item.HISTORY.split(', ');
-                        historyHTML = `<div style="line-height:1.3">${datePart}<br><small>${timePart}</small></div>`;
+                        historyHTML = `${escAttr(datePart)} ${escAttr(timePart)}`;
                     } else if (item.HISTORY) {
                         historyHTML = escAttr(item.HISTORY);
                     }
@@ -3522,9 +3434,10 @@
                 if (!historyFormatted) {
                     return '—';
                 }
+                // Keep date + time on one line (LOG cell is user on line 1, datetime on line 2)
                 if (String(historyFormatted).includes(', ')) {
                     const [datePart, timePart] = String(historyFormatted).split(', ');
-                    return `<div style="line-height:1.3">${escAttr(datePart)}<br><small>${escAttr(timePart)}</small></div>`;
+                    return `${escAttr(datePart)} ${escAttr(timePart)}`;
                 }
                 return escAttr(historyFormatted);
             }
@@ -3600,18 +3513,157 @@
             }
 
             // Update Verified status counts (exclude parent rows; uses 29-day rule)
+            let vaVerifiedPieChart = null;
+
+            function syncVerifiedPieWrapState() {
+                const $wrap = $('#va-verified-pie-wrap');
+                const active = String($('.verified-filter-btn.active').data('status') || '');
+                $wrap.removeClass('has-filter filter-green filter-yellow');
+                if (active === 'green') {
+                    $wrap.addClass('has-filter filter-green');
+                } else if (active === 'yellow') {
+                    $wrap.addClass('has-filter filter-yellow');
+                }
+            }
+
+            function applyVerifiedPieFilter(status) {
+                const current = String($('.verified-filter-btn.active').data('status') || '');
+                $('.verified-filter-btn').removeClass('active');
+
+                // Clicking the same slice again clears the filter (show all)
+                if (status && status === current) {
+                    syncVerifiedPieWrapState();
+                    applyAllFilters();
+                    return;
+                }
+
+                if (status === 'green') {
+                    $('#filter-verified-green').addClass('active');
+                } else if (status === 'yellow') {
+                    $('#filter-verified-yellow').addClass('active');
+                }
+                syncVerifiedPieWrapState();
+                applyAllFilters();
+            }
+
+            function renderVerifiedPieChart(greenCount, yellowCount) {
+                if (typeof Highcharts === 'undefined' || !$('#va-verified-pie').length) {
+                    return;
+                }
+
+                const seriesData = [
+                    {
+                        id: 'green',
+                        name: 'Verified',
+                        y: greenCount,
+                        color: '#28a745',
+                        filterStatus: 'green'
+                    },
+                    {
+                        id: 'yellow',
+                        name: 'Unverified',
+                        y: yellowCount,
+                        color: '#dc3545',
+                        filterStatus: 'yellow'
+                    }
+                ];
+
+                if (vaVerifiedPieChart) {
+                    vaVerifiedPieChart.series[0].setData(seriesData, true);
+                    syncVerifiedPieWrapState();
+                    return;
+                }
+
+                vaVerifiedPieChart = Highcharts.chart('va-verified-pie', {
+                    chart: {
+                        type: 'pie',
+                        backgroundColor: 'transparent',
+                        margin: [0, 0, 0, 0],
+                        spacing: [0, 0, 0, 0],
+                        height: 66,
+                        width: 66,
+                        style: { cursor: 'pointer' }
+                    },
+                    title: { text: undefined },
+                    credits: { enabled: false },
+                    exporting: { enabled: false },
+                    tooltip: {
+                        useHTML: true,
+                        pointFormat: '<b>{point.y}</b> ({point.percentage:.0f}%)'
+                    },
+                    plotOptions: {
+                        pie: {
+                            innerSize: '42%',
+                            size: '100%',
+                            borderWidth: 1,
+                            borderColor: '#fff',
+                            dataLabels: { enabled: false },
+                            showInLegend: false,
+                            cursor: 'pointer',
+                            point: {
+                                events: {
+                                    click: function () {
+                                        applyVerifiedPieFilter(this.options.filterStatus || this.id);
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    series: [{
+                        name: 'Status',
+                        colorByPoint: true,
+                        data: seriesData
+                    }]
+                });
+
+                // Click donut hole / empty area → clear filter
+                $('#va-verified-pie').on('click', function (e) {
+                    if ($(e.target).closest('.highcharts-point').length) {
+                        return;
+                    }
+                    applyVerifiedPieFilter(null);
+                });
+
+                syncVerifiedPieWrapState();
+            }
+
             function updateVerifiedCounts() {
                 const nonParentItems = tableData.filter(item => !isParentRow(item));
                 const greenCount = nonParentItems.filter(item => isVerifiedDotGreen(item)).length;
                 const yellowCount = nonParentItems.length - greenCount;
                 $('#green-count').text(greenCount);
                 $('#yellow-count').text(yellowCount);
+                renderVerifiedPieChart(greenCount, yellowCount);
+                const total = greenCount + yellowCount;
+                $('#va-verified-pie-wrap').attr(
+                    'title',
+                    `Verified ${greenCount} / Unverified ${yellowCount}` +
+                    (total ? ` (${Math.round((greenCount / total) * 100)}% verified)` : '') +
+                    ' — click a slice to filter'
+                );
+            }
+
+            function refreshVerifiedBulkHint() {
+                const n = $('.row-checkbox:checked').length;
+                $('.verified-status-btn').each(function() {
+                    const $btn = $(this);
+                    const baseTitle = $btn.data('base-title') || $btn.attr('title') || 'Verified status';
+                    if (!$btn.data('base-title')) {
+                        $btn.data('base-title', baseTitle);
+                    }
+                    if (n > 1) {
+                        $btn.attr('title', `Bulk edit: click to mark all ${n} selected as Verified/Unverified`);
+                    } else {
+                        $btn.attr('title', $btn.data('base-title'));
+                    }
+                });
             }
 
             // Select All checkbox functionality
             $(document).on('change', '#select-all-checkbox', function() {
                 const isChecked = $(this).is(':checked');
                 $('.row-checkbox').prop('checked', isChecked);
+                refreshVerifiedBulkHint();
             });
 
             // Individual row checkbox - update select all state
@@ -3619,87 +3671,77 @@
                 const totalCheckboxes = $('.row-checkbox').length;
                 const checkedCheckboxes = $('.row-checkbox:checked').length;
                 $('#select-all-checkbox').prop('checked', totalCheckboxes > 0 && totalCheckboxes === checkedCheckboxes);
+                refreshVerifiedBulkHint();
             });
 
             // Get selected rows (for bulk operations)
             function getSelectedRows() {
                 const selectedSkus = [];
                 $('.row-checkbox:checked').each(function() {
-                    selectedSkus.push($(this).data('sku'));
+                    const sku = $(this).data('sku');
+                    if (sku) selectedSkus.push(String(sku));
                 });
                 return selectedSkus;
             }
 
-            // Bulk action handler
-            $(document).on('click', '#apply-bulk-action', function() {
-                const action = $('#bulk-action-select').val();
-                if (!action) {
-                    showNotification('warning', 'Please select an action');
-                    return;
+            function clearRowSelection() {
+                $('.row-checkbox').prop('checked', false);
+                $('#select-all-checkbox').prop('checked', false);
+            }
+
+            /**
+             * Bulk set verified status for SKUs (sequential AJAX).
+             * Used by toolbar Apply and by VERIFIED status-dot when multi-selected.
+             */
+            function bulkSetVerifiedStatus(skus, isVerified) {
+                const list = (skus || []).map(String).filter(Boolean);
+                if (!list.length) {
+                    return $.Deferred().reject().promise();
                 }
 
-                const selectedSkus = getSelectedRows();
-                if (selectedSkus.length === 0) {
-                    showNotification('warning', 'Please select at least one product');
-                    return;
-                }
+                showNotification('info', `Processing ${list.length} product(s)...`);
 
-                const isVerified = action === 'mark-verified';
-
-                // Show loading notification
-                showNotification('info', `Processing ${selectedSkus.length} product(s)...`);
-
-                // Process each SKU
                 let processed = 0;
                 let failed = 0;
-                const total = selectedSkus.length;
+                const deferred = $.Deferred();
 
                 function processNext(index) {
-                    if (index >= selectedSkus.length) {
-                        // All done
+                    if (index >= list.length) {
                         if (failed === 0) {
                             showNotification('success', `Successfully ${isVerified ? 'verified' : 'unverified'} ${processed} product(s)`);
                         } else {
                             showNotification('warning', `Processed ${processed} product(s), ${failed} failed`);
                         }
-                        // Reload data to reflect changes
                         loadData();
-                        // Reset dropdown
-                        $('#bulk-action-select').val('');
-                        // Uncheck all checkboxes
-                        $('.row-checkbox').prop('checked', false);
-                        $('#select-all-checkbox').prop('checked', false);
+                        clearRowSelection();
+                        deferred.resolve({ processed, failed });
                         return;
                     }
 
-                    const sku = selectedSkus[index];
-                    
+                    const sku = list[index];
                     $.ajax({
                         url: '/update-verified-status',
                         method: 'POST',
                         data: {
                             sku: sku,
-                            is_verified: isVerified,
+                            is_verified: isVerified ? 1 : 0,
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(res) {
-                            if (res.success) {
-                                processed++;
-                            } else {
-                                failed++;
-                            }
+                            if (res.success) processed++;
+                            else failed++;
                             processNext(index + 1);
                         },
-                        error: function(xhr) {
+                        error: function() {
                             failed++;
                             processNext(index + 1);
                         }
                     });
                 }
 
-                // Start processing
                 processNext(0);
-            });
+                return deferred.promise();
+            }
 
             // Verified status button click handler
             // Copy SKU to clipboard functionality (for main table)
@@ -3906,52 +3948,43 @@
                 });
             }
 
-            $(document).on('click', '.va-shopify-refresh-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const $btn = $(this);
-                const sku = String($btn.data('sku') || '').trim();
-                if (!sku || $btn.prop('disabled')) {
-                    return;
-                }
-
-                const $row = $btn.closest('tr');
-                const $icon = $btn.find('i');
-
-                $btn.prop('disabled', true);
-                $icon.removeClass('fa-sync-alt').addClass('fa-spinner fa-spin');
-
-                pullShopifyInventoryForSku(sku, $row, { notifySuccess: true })
-                    .always(function() {
-                        $btn.prop('disabled', false);
-                        $icon.removeClass('fa-spinner fa-spin').addClass('fa-sync-alt');
-                    });
-            });
-
             $(document).on('click', '.verified-status-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-                
+
                 const $btn = $(this);
-                const sku = $btn.data('sku');
-                // Read current verified state from attribute directly (more reliable than .data())
-                // Get the current value from the data attribute to avoid jQuery caching issues
+                const sku = String($btn.data('sku') || '');
                 const currentVerifiedAttr = $btn.attr('data-verified');
                 const currentVerified = currentVerifiedAttr === '1' || currentVerifiedAttr === 1 || currentVerifiedAttr === true;
-                const newVerified = !currentVerified; // Toggle the value (true becomes false, false becomes true)
-                
-                // Disable button during save
+                const newVerified = !currentVerified;
+
+                // Multi-select: VERIFIED dot acts as bulk edit for all checked rows
+                const selectedSkus = getSelectedRows();
+                if (selectedSkus.length > 1) {
+                    const skusToUpdate = selectedSkus.includes(sku)
+                        ? selectedSkus
+                        : selectedSkus.concat([sku]);
+                    const actionLabel = newVerified ? 'Verified' : 'Unverified';
+                    if (!confirm(`Bulk edit: mark ${skusToUpdate.length} selected items as ${actionLabel}?`)) {
+                        return false;
+                    }
+                    $btn.prop('disabled', true);
+                    bulkSetVerifiedStatus(skusToUpdate, newVerified).always(function() {
+                        $btn.prop('disabled', false);
+                    });
+                    return false;
+                }
+
+                // Single-row toggle
                 $btn.prop('disabled', true);
-                
-                // Save to server - send the new (toggled) value
+
                 $.ajax({
                     url: '/update-verified-status',
                     method: 'POST',
                     data: {
                         sku: sku,
-                        is_verified: newVerified ? 1 : 0, // Send as 1 or 0 - this is the toggled value
+                        is_verified: newVerified ? 1 : 0,
                         _token: $('meta[name="csrf-token"]').attr('content')
                     },
                     success: function(response) {
@@ -3977,18 +4010,17 @@
                             const itemRef = itemIndex !== -1 ? tableData[itemIndex] : { LAST_VERIFIED_AT: newVerified ? nowIso : null };
                             const newColor = newVerified ? getVerifiedDotColor(itemRef) : '#dc3545';
                             const $icon = $btn.find('i.fa-circle');
-                            
+
                             if ($icon.length > 0) {
                                 $icon.css('color', newColor);
                             } else {
                                 $btn.html(`<i class="fas fa-circle" style="color: ${newColor}; font-size: 12px;"></i>`);
                             }
-                            
+
                             $btn.attr('data-verified', newVerified && isVerifiedDotGreen(itemRef) ? '1' : '0');
                             $btn.attr('title', newVerified ? getVerifiedDotTitle(itemRef) : 'Marked unverified');
                             updateVerifiedCounts();
 
-                            // Instantly refresh LOG user without page reload
                             updateMergedLogCell($btn.closest('tr'), {
                                 sku: sku,
                                 userName: newVerified ? verifiedByFirstName : ''
@@ -4001,12 +4033,11 @@
                         alert('Failed to update verified status. Please try again.');
                     },
                     complete: function() {
-                        // Re-enable button
                         $btn.prop('disabled', false);
                     }
                 });
-                
-                return false; // Prevent any default action
+
+                return false;
             });
 
             // Unified filter function that applies all filters together (AND logic)
@@ -4088,12 +4119,12 @@
                 renderTable();
             }
 
-            // Verified filter button handlers - Allow multiple filters to be active
+            // Verified filter button handlers (hidden; driven by pie chart)
             $(document).on('click', '.verified-filter-btn', function() {
                 // Toggle active state for verified filters (only one verified filter can be active)
                 $('.verified-filter-btn').removeClass('active');
-                $('.filter-show-all-btn').removeClass('active');
                 $(this).addClass('active');
+                syncVerifiedPieWrapState();
                 applyAllFilters();
             });
 
@@ -4105,20 +4136,6 @@
                 } else {
                     $(this).addClass('active');
                 }
-                $('.filter-show-all-btn').removeClass('active');
-                applyAllFilters();
-            });
-
-            // Show All filter button handler - Clears all filters
-            $(document).on('click', '.filter-show-all-btn', function() {
-                $('.verified-filter-btn').removeClass('active');
-                $('.doubtful-filter-btn').removeClass('active');
-                $('.filter-show-all-btn').removeClass('active');
-                $(this).addClass('active');
-                clearVerifiedDateFilter(true);
-                $('#invFilter').val('');
-                $('#l30Filter').val('');
-                $('#dilFilter').val('');
                 applyAllFilters();
             });
 
@@ -4688,83 +4705,8 @@
                 });
             }
 
-            //  call after click hide checkbox
-
-            // Step 5: Button to open hidden modal
-            $('#viewHiddenRows').on('click', function () {
-                $.get('/get-hidden-rows', function (res) {
-                    const $tbody = $('#hiddenRowsTable tbody');
-                    $tbody.empty();
-
-                    if (res.data.length === 0) {
-                    $tbody.append('<tr><td colspan="8">No hidden rows available.</td></tr>');
-                    } else {
-                    res.data.forEach(row => {
-                        $tbody.append(`
-                        <tr>
-                            <td><input type="checkbox" class="hidden-row-select" value="${row.sku}"></td>
-                            <td>${row.sku}</td>
-                            <td>${row.verified_stock}</td>
-                            <td>${row.to_adjust}</td>
-                            <td>${row.loss_gain}</td>
-                            <td>${row.reason || ''}</td>
-                            <td>${row.approved_by}</td>
-                            <td>${escapeHtml(formatHistoryLogDateTime(row.approved_at))}</td>
-                            <td>${row.remarks || '-'}</td>
-                        </tr>
-                        `);
-                    });
-                    }
-
-                    $('#hiddenRowsModal').modal('show');
-                });
-            });
-
-            // Step 6: Select all checkbox logic
-            $(document).on('change', '#selectAllHidden', function () {
-                $('.hidden-row-select').prop('checked', this.checked);
-            });
-
-            // Step 7: Unhide selected rows
-            $('#clearSelectedHiddenRows').on('click', function () {
-                const skus = $('.hidden-row-select:checked').map(function () {
-                    return $(this).val();
-                }).get();
-
-                if (skus.length === 0) {
-                    alert('Please select at least one row to unhide.');
-                    return;
-                }
-
-                $.post('/unhide-multiple-rows', {
-                    skus: skus,
-                    _token: $('meta[name="csrf-token"]').attr('content')
-                }, function (res) {
-                    if (res.success) {
-                        $('#hiddenRowsModal').modal('hide');
-                        //Refresh only filteredData and rerender (not full loadData)
-                        filteredData = filteredData.concat(res.unhiddenRows);
-                        renderTable();
-                    }
-                });
-            }); 
-
-            // Search filter for hidden rows
-            $(document).on('keyup', '#hiddenRowsSearch', function () {
-                let value = $(this).val().toLowerCase();
-                $("#hiddenRowsTable tbody tr").filter(function () {
-                    $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1);
-                });
-            });
-
-            // Verified date range filter (last verified date)
-            $('.dropdown-menu').on('click', function(e) {
-                e.stopPropagation();
-            });
-
-            $('#applyVerifiedDateFilter').on('click', function(e) {
-                e.stopPropagation();
-
+            // Date range filter modal (last verified date)
+            $('#applyVerifiedDateFilter').on('click', function() {
                 const fromDate = $('#verifiedDateFrom').val();
                 const toDate = $('#verifiedDateTo').val();
 
@@ -4777,7 +4719,7 @@
                 verifiedDateFilter.toDate = toDate ? new Date(toDate + 'T23:59:59.999') : null;
                 verifiedDateFilter.active = true;
 
-                let statusMsg = 'Showing verified dates: ';
+                let statusMsg = 'Showing dates: ';
                 if (fromDate && toDate) {
                     statusMsg += `${fromDate} to ${toDate}`;
                 } else if (fromDate) {
@@ -4787,14 +4729,13 @@
                 }
                 $('#verifiedDateFilterStatus').text(statusMsg).removeClass('text-muted').addClass('text-success');
                 updateVerifiedDateFilterButtonState();
-
-                $('.filter-show-all-btn').removeClass('active');
                 applyAllFilters();
+                $('#verifiedDateFilterModal').modal('hide');
             });
 
-            $('#clearVerifiedDateFilter').on('click', function(e) {
-                e.stopPropagation();
+            $('#clearVerifiedDateFilter').on('click', function() {
                 clearVerifiedDateFilter(false);
+                $('#verifiedDateFilterModal').modal('hide');
             });
 
             // Export to Google Sheets
@@ -5951,7 +5892,7 @@
                     const $th = $(this);
                     const dataField = $th.data('field');
 
-                    if (!dataField || dataField === 'refresh' || dataField === 'shopify_push' || dataField === 'bulk-select') return;
+                    if (!dataField || dataField === 'shopify_push' || dataField === 'bulk-select') return;
 
                     const sortField = dataField === 'parent'
                         ? 'Parent'
@@ -5966,8 +5907,9 @@
                     }
 
                     // Update UI arrows
-                    $('th .sort-arrow').html('↓'); // reset all
-                    $th.find('.sort-arrow').html(currentSort.direction === 1 ? '↑' : '↓');
+                    // Sort icons stay hidden; keep direction state for click-to-sort only
+                    $('th .sort-arrow').html('');
+                    $th.find('.sort-arrow').html('');
 
                     // Sort tableData (not just filteredData)
                     const sorted = [...filteredData].sort((a, b) => {

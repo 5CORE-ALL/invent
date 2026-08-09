@@ -1922,7 +1922,7 @@
 
 
                     const prices = {
-                        Amazon: parseFloat(item.amz_price) || Infinity,
+                        Amz: parseFloat(item.amz_price) || Infinity,
                         eBay: parseFloat(item.ebay_price) || Infinity,
                         Shopify: parseFloat(item.shopifyb2c_price) || Infinity,
                         Macy: parseFloat(item.macy_price) || Infinity,
@@ -1957,7 +1957,7 @@
                     style="cursor: pointer;" 
                     data-inv="${item.INV || 0}" 
                     data-l30='${JSON.stringify({
-                            Amazon: { l30: item.amz_l30 },
+                            Amz: { l30: item.amz_l30 },
                             eBay: { l30: item.ebay_l30 },
                             Shopify: { l30: item.shopiyb2c_l30 },
                             Macy: { l30: item.macy_l30 },
@@ -2060,7 +2060,7 @@
                     }
 
                     const profitData = {
-                        Amazon: {
+                        Amz: {
                             price: item.amz_price,
                             profit: Math.round((item.amz_pft || 0) * 100)
                         },
@@ -2118,7 +2118,7 @@
 
                     // Append with span having white text and background
                     const roiData = {
-                        Amazon: {
+                        Amz: {
                             price: item.amz_price || 0,
                             roi: Math.round((item.amz_roi || 0) * 100)
                         },
@@ -2161,7 +2161,7 @@
                             <div class="sku-tooltip-container">
                                 <span class="price-text">${amzPrice}</span>
                                 <div class="sku-tooltip">
-                                    ${amzBuyerLink ? `<div class="sku-link"><a href="${amzBuyerLink}" target="_blank" rel="noopener noreferrer">Amazon Buyer Link</a></div>` : ''}
+                                    ${amzBuyerLink ? `<div class="sku-link"><a href="${amzBuyerLink}" target="_blank" rel="noopener noreferrer">Amz Buyer Link</a></div>` : ''}
                                     ${`<div class="sku-link"><strong>L30: ${parseFloat(amzL30 || 0).toFixed(2)}</strong></div>`}
                                     ${`<div class="sku-link"><strong>DIL: ${parseFloat(amzDil || 0).toFixed(2)}%</strong></div>`}
                                 </div>

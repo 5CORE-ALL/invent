@@ -23,8 +23,8 @@
     $importCsvHeaders = array_merge($importCsvHeaders, $tailFromReplacement);
 
     $importCsvSampleRow = $woOrderId
-        ? ['SAMPLE-SKU-001', '112-1234567-8901234', '5', '2', 'PARENT-001', 'Amazon', 'Damaged', 'Cancelled']
-        : ['SAMPLE-SKU-001', '5', '2', 'PARENT-001', 'Amazon', 'Damaged', 'Cancelled'];
+        ? ['SAMPLE-SKU-001', '112-1234567-8901234', '5', '2', 'PARENT-001', 'Amz', 'Damaged', 'Cancelled']
+        : ['SAMPLE-SKU-001', '5', '2', 'PARENT-001', 'Amz', 'Damaged', 'Cancelled'];
     if (!$hideActionRemarkFlag) {
         $importCsvSampleRow[] = '';
     }
@@ -2694,11 +2694,11 @@
                     if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
                         return 'Loss $' + Number(tl).toFixed(2);
                     }
-                    return 'No Amazon price for this SKU';
+                    return 'No Amz price for this SKU';
                 }
                 const loss = row?.amz_loss;
                 const lossQty = lossQtyForRow(row);
-                const parts = ['Amazon price $' + Number(price).toFixed(2)];
+                const parts = ['Amz price $' + Number(price).toFixed(2)];
                 if (lossQty != null) {
                     parts.push('× qty ' + lossQty);
                 }

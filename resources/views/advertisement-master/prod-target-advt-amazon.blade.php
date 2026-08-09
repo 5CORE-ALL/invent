@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Product Target Amazon', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Product Target Amz', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -432,8 +432,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     @include('layouts.shared/page-title', [
-        'page_title' => 'Product Target Amazon',
-        'sub_title' => 'Amazon master Analysis',
+        'page_title' => 'Product Target Amz',
+        'sub_title' => 'Amz master Analysis',
     ])
 
     <div class="row">

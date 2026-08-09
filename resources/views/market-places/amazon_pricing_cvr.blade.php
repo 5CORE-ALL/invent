@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Amz', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <div id="messageArea" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1055;"></div>
@@ -995,7 +995,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Amazon Analysis', 'sub_title' => 'Amazon'])
+    @include('layouts.shared/page-title', ['page_title' => 'Amz Analysis', 'sub_title' => 'Amz'])
 
     <div class="row">
         <div class="col-12">
@@ -1031,7 +1031,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <h4 class="header-title">Amazon Product Analysis</h4>
+                    <h4 class="header-title">Amz Product Analysis</h4>
 
                     <!-- Custom Dropdown Filters Row -->
                     <div class="d-flex flex-wrap gap-2 mb-3">
@@ -1720,7 +1720,7 @@
                             <div class="spinner-border text-primary" role="status">
                                 <span class="visually-hidden">Loading...</span>
                             </div>
-                            <div class="loader-text">Loading Amazon data...</div>
+                            <div class="loader-text">Loading Amz data...</div>
                         </div>
                     </div>
                 </div>

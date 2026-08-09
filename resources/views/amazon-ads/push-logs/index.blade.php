@@ -41,7 +41,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['sub_title' => 'Amazon Ads', 'page_title' => 'Failed Campaigns Tracker'])
+    @include('layouts.shared/page-title', ['sub_title' => 'Amz Ads', 'page_title' => 'Failed Campaigns Tracker'])
 
     <div class="row failed-campaigns">
         <div class="col-12">

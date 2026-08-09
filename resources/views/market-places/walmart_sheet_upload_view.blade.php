@@ -458,8 +458,8 @@
                         <span class="badge bg-danger fs-6 p-2" id="missing-ads-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing Ads (INV>0, no campaign spend)">Missing Ads: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Mapped items (INV>0)">Map: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="nmap-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter: Not mapped items (INV>0)">Nmap: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="lt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: API Price < Amazon (INV>0)">&lt; AMZ: 0</span>
-                        <span class="badge fs-6 p-2" id="gt-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: API Price > Amazon (INV>0)">&gt; AMZ: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="lt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: API Price < Amz (INV>0)">&lt; AMZ: 0</span>
+                        <span class="badge fs-6 p-2" id="gt-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: API Price > Amz (INV>0)">&gt; AMZ: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="bb-issue-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: BB Issue items (API<A)">BB Issue: 0</span>
                         
                         <!-- Financial Metrics -->
@@ -1525,9 +1525,9 @@
                 saveAmazonPriceUpdates(updates);
             }
             
-            let message = `Amazon price applied to ${updatedCount} SKU(s)`;
+            let message = `Amz price applied to ${updatedCount} SKU(s)`;
             if (noAmazonPriceCount > 0) {
-                message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price or not found)`;
+                message += ` (${noAmazonPriceCount} SKU(s) had no Amz price or not found)`;
             }
             
             showToast(message, updatedCount > 0 ? 'success' : 'warning');
@@ -1671,8 +1671,8 @@
             let mapCount = 0; // Count of items with inventory mapped
             let nmapCount = 0; // Count of items with inventory not mapped
             let moreThanZeroSoldCount = 0; // Count of items with sales > 0
-            let gtAmzCount = 0; // Count of items where API Price > Amazon Price
-            let ltAmzCount = 0; // Count of items where API Price < Amazon Price
+            let gtAmzCount = 0; // Count of items where API Price > Amz Price
+            let ltAmzCount = 0; // Count of items where API Price < Amz Price
             
             data.forEach(row => {
                 const qty = parseInt(row['total_qty']) || 0;

@@ -662,8 +662,8 @@
             });
 
             if (updates.length) saveSpriceUpdates(updates);
-            let msg = `Amazon price applied to ${updatedCount} SKU(s)`;
-            if (noAmzCount) msg += ` (${noAmzCount} had no Amazon price)`;
+            let msg = `Amz price applied to ${updatedCount} SKU(s)`;
+            if (noAmzCount) msg += ` (${noAmzCount} had no Amz price)`;
             showToast(msg, updatedCount > 0 ? 'success' : 'warning');
         }
 

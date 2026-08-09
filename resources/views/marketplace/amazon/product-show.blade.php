@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $title ?? 'Amazon — Listing Detail', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $title ?? 'Amz — Listing Detail', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
 <style>
@@ -58,7 +58,7 @@
         'Product ID' => $linked ? ($ae['product_id'] ?? $l['product_id'] ?? null) : null,
         'Title' => $linked ? ($ae['title'] ?? $l['title'] ?? null) : null,
         'Status' => $linked ? ($ae['status'] ?? null) : null,
-        'Amazon Qty' => $linked ? ($ae['stock'] ?? $l['ae_stock'] ?? null) : null,
+        'Amz Qty' => $linked ? ($ae['stock'] ?? $l['ae_stock'] ?? null) : null,
         'Category ID' => $linked ? ($ae['category_id'] ?? null) : null,
         'Currency' => $linked ? ($ae['currency'] ?? null) : null,
         'Product unit' => $linked ? ($ae['unit'] ?? null) : null,
@@ -95,16 +95,16 @@
                 <div class="sku-hero"><code>{{ $s['sku'] ?? '—' }}</code></div>
                 <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
                     @if($linked)
-                        <span class="badge bg-success-subtle text-success">Linked on Amazon</span>
+                        <span class="badge bg-success-subtle text-success">Linked on Amz</span>
                     @else
-                        <span class="badge bg-light text-muted">Not linked on Amazon</span>
+                        <span class="badge bg-light text-muted">Not linked on Amz</span>
                     @endif
                     @if($aeSource === 'api')
-                        <span class="badge bg-info-subtle text-info source-pill">Amazon data: live API</span>
+                        <span class="badge bg-info-subtle text-info source-pill">Amz data: live API</span>
                     @elseif($aeSource === 'cached')
-                        <span class="badge bg-warning-subtle text-warning source-pill">Amazon data: cached map</span>
+                        <span class="badge bg-warning-subtle text-warning source-pill">Amz data: cached map</span>
                     @else
-                        <span class="badge bg-light text-muted source-pill">Amazon data: not loaded</span>
+                        <span class="badge bg-light text-muted source-pill">Amz data: not loaded</span>
                     @endif
                     @if($linked && !empty($l['last_synced_at']))
                         <span class="badge bg-secondary-subtle text-secondary source-pill" title="Latest of link-map or inventory/price sync">
@@ -118,7 +118,7 @@
             <div class="d-flex gap-2 flex-wrap">
                 @if($connected)
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-pull-ae" data-id="{{ $shopifySkuId }}">
-                        <i class="ri-download-cloud-line"></i> Pull from Amazon
+                        <i class="ri-download-cloud-line"></i> Pull from Amz
                     </button>
                 @endif
                 @if($connected && !empty($inventoryMismatch))
@@ -133,12 +133,12 @@
 
         @if(!empty($inventoryMismatch))
             <div class="alert alert-warning py-2 small mb-3">
-                Inventory mismatch: Shopify <strong>{{ (int) $shopifyQtyShow }}</strong> vs Amazon <strong>{{ (int) $mpQtyShow }}</strong>.
-                Click <strong>Sync Inventory</strong> to push Shopify qty to Amazon now.
+                Inventory mismatch: Shopify <strong>{{ (int) $shopifyQtyShow }}</strong> vs Amz <strong>{{ (int) $mpQtyShow }}</strong>.
+                Click <strong>Sync Inventory</strong> to push Shopify qty to Amz now.
             </div>
         @else
             <div class="alert alert-info py-2 small mb-3">
-                <strong>Compare view.</strong> Shopify (source) vs Amazon side by side.
+                <strong>Compare view.</strong> Shopify (source) vs Amz side by side.
             </div>
         @endif
 
@@ -154,7 +154,7 @@
             <div class="col-md-6">
                 <div class="card h-100 {{ !empty($inventoryMismatch) ? 'border-warning' : '' }}">
                     <div class="card-body py-3">
-                        <div class="text-muted small">Amazon Qty</div>
+                        <div class="text-muted small">Amz Qty</div>
                         <div class="fs-4 fw-semibold {{ !empty($inventoryMismatch) ? 'text-warning' : '' }}">
                             @if($linked)
                                 {{ $mpQtyShow !== null ? $mpQtyShow : '—' }}
@@ -174,7 +174,7 @@
         @if(!$linked)
             <div class="alert alert-secondary small">
                 This Shopify SKU is not linked in <code>amazon_products</code> yet.
-                Go to <a href="{{ route('marketplace.products', 'amazon') }}">Listings</a> and click <strong>Sync Amazon link map</strong> to match SKUs.
+                Go to <a href="{{ route('marketplace.products', 'amazon') }}">Listings</a> and click <strong>Sync Amz link map</strong> to match SKUs.
             </div>
         @endif
 
@@ -183,7 +183,7 @@
             'left' => $shopifyListingHtml,
             'right' => $aeListingHtml,
             'leftEmpty' => 'No Shopify listing data',
-            'rightEmpty' => 'No Amazon listing data — link SKU and pull from Amazon',
+            'rightEmpty' => 'No Amz listing data — link SKU and pull from Amz',
         ])
 
         @php
@@ -207,7 +207,7 @@
             'left' => $shopifyImagesHtml,
             'right' => $aeImagesHtml,
             'leftEmpty' => 'No Shopify images in catalog cache',
-            'rightEmpty' => 'No Amazon images — pull live product details',
+            'rightEmpty' => 'No Amz images — pull live product details',
         ])
 
         @if(!empty($ae['variants']))
@@ -303,7 +303,7 @@
                 'left' => $shopifyAttrsHtml,
                 'right' => $aeAttrsHtml,
                 'leftEmpty' => 'No Shopify attributes in catalog',
-                'rightEmpty' => 'No Amazon properties',
+                'rightEmpty' => 'No Amz properties',
             ])
         @endif
 
@@ -340,7 +340,7 @@
                 'left' => $shopifyDescHtml,
                 'right' => $aeDescHtml,
                 'leftEmpty' => 'No Shopify description in catalog cache or Product Master',
-                'rightEmpty' => 'No Amazon description — pull live product details',
+                'rightEmpty' => 'No Amz description — pull live product details',
             ])
         @endif
     </div>
@@ -382,7 +382,7 @@ document.getElementById('btn-pull-ae')?.addEventListener('click', function () {
     .catch(function () { alert('Request failed.'); })
     .finally(function () {
         btn.disabled = false;
-        btn.innerHTML = '<i class="ri-download-cloud-line"></i> Pull from Amazon';
+        btn.innerHTML = '<i class="ri-download-cloud-line"></i> Pull from Amz';
     });
 });
 
@@ -390,7 +390,7 @@ document.getElementById('btn-sync-inventory')?.addEventListener('click', functio
     var btn = this;
     var id = btn.getAttribute('data-id');
     if (!id) return;
-    if (!confirm('Push live Shopify quantity to Amazon for this SKU now (no queue)?')) return;
+    if (!confirm('Push live Shopify quantity to Amz for this SKU now (no queue)?')) return;
     btn.disabled = true;
     var original = btn.innerHTML;
     btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing…';

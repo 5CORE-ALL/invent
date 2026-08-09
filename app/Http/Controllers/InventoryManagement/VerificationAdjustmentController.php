@@ -12,11 +12,15 @@ use App\Models\Warehouse;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Inventory;
+use App\Models\StockBalance;
+use App\Models\ShopifySkuInventoryHistory;
+use App\Models\InventoryLog;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use App\Models\ShopifyInventory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use App\Models\ShopifyInventoryLog;
 use App\Jobs\UpdateShopifyInventoryJob;
 use App\Models\LostGainAqHistory;
@@ -1369,23 +1373,26 @@ class VerificationAdjustmentController extends Controller
 
     public function getVerifiedStock()
     {
-        $savedInventories = Inventory::all();
-
-
-        // Format data to return in JSON with key 'data'
-        $data = $savedInventories->map(function ($item) {
-
-            return [
-                'sku' => strtoupper(trim($item->sku)),
-                'R&A' => (bool) $item->is_ra_checked,
-                'verified_stock' => $item->verified_stock,
-                'reason' => $item->reason,
-                'is_approved' => (bool) $item->is_approved,
-                'approved_by_ih' => (bool) $item->approved_by_ih,
-                'approved_by' => $item->approved_by,
-                'approved_at' =>  $item->approved_at,
-            ];
-        });
+        $data = Inventory::query()
+            ->select([
+                'sku', 'is_ra_checked', 'verified_stock', 'reason',
+                'is_approved', 'approved_by_ih', 'approved_by', 'approved_at',
+            ])
+            ->orderByDesc('id')
+            ->get()
+            ->map(static function ($item) {
+                return [
+                    'sku' => strtoupper(trim((string) $item->sku)),
+                    'R&A' => (bool) $item->is_ra_checked,
+                    'verified_stock' => $item->verified_stock,
+                    'reason' => $item->reason,
+                    'is_approved' => (bool) $item->is_approved,
+                    'approved_by_ih' => (bool) $item->approved_by_ih,
+                    'approved_by' => $item->approved_by,
+                    'approved_at' => $item->approved_at,
+                ];
+            })
+            ->values();
 
         return response()->json(['data' => $data]);
     }
@@ -1906,40 +1913,358 @@ class VerificationAdjustmentController extends Controller
      * SKU-wise activity log: returns all approved inventory records for a SKU,
      * ordered by most recent activity (updated_at) for easy-to-understand history.
      */
+    /**
+     * Unified SKU inventory movement history for the eye button on /view-inventory-data.
+     * Includes purchases, sales returns, stock transfers, adjustments, outgoing/deletions,
+     * SKU↔SKU stock balances, daily sales/restocks, and inventory logs.
+     */
     public function getSkuWiseHistory(Request $request)
     {
-        $sku = $request->input('sku');
-
-        $query = Inventory::where('is_approved', true);
-
-        if ($sku) {
-            $normalizedSku = strtoupper(trim((string) $sku));
-            $query->whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku]);
+        $sku = trim((string) $request->input('sku', ''));
+        if ($sku === '') {
+            return response()->json(['data' => [], 'movements' => []]);
         }
 
-        $activityLogs = $query
-            ->orderByDesc('updated_at')
-            ->orderByDesc('created_at')
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'sku' => $item->sku,
-                    'verified_stock' => $item->verified_stock,
-                    'to_adjust' => $item->to_adjust,
-                    'on_hand' => $item->on_hand,
-                    'reason' => $item->reason,
-                    'remarks' => $item->remarks ?? '-',
-                    'approved_by' => $item->approved_by,
-                    'approved_at' => $item->approved_at
-                        ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('j M, g:i A')
-                        : '-',
-                    'updated_at' => $item->updated_at
-                        ? Carbon::parse($item->updated_at)->timezone('America/New_York')->format('j M, g:i A')
-                        : '-',
-                ];
+        $normalizedSku = strtoupper(preg_replace('/\s+/u', ' ', $sku));
+        $cacheKey = 'sku-hist:v3:'.$normalizedSku;
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached) && isset($cached['movements'])) {
+            return response()->json($cached);
+        }
+
+        // Index-friendly SKU variants only (no UPPER(TRIM()) full scans)
+        $skuCandidates = array_values(array_unique(array_filter([
+            $sku,
+            $normalizedSku,
+            strtoupper($sku),
+            trim($sku),
+            preg_replace('/\s+/u', ' ', $sku),
+        ], static fn ($v) => $v !== null && $v !== '')));
+
+        $tz = 'America/New_York';
+        $flags = Cache::remember('sku-hist:schema-flags', 3600, static function () {
+            return [
+                'has_is_hide' => Schema::hasColumn('inventories', 'is_hide'),
+                'has_stock_balances' => Schema::hasTable('stock_balances'),
+                'has_shopify_hist' => Schema::hasTable('shopifysku_inventory_history'),
+                'has_inventory_logs' => Schema::hasTable('inventory_logs'),
+            ];
+        });
+        $warehouses = Cache::remember('warehouses:id-name-map', 600, static function () {
+            return Warehouse::query()->pluck('name', 'id')->all();
+        });
+
+        $toTs = static function ($value): int {
+            if (! $value) {
+                return 0;
+            }
+            if ($value instanceof Carbon) {
+                return $value->getTimestamp();
+            }
+            try {
+                return Carbon::parse($value)->getTimestamp();
+            } catch (\Throwable $e) {
+                return 0;
+            }
+        };
+
+        $fmtAt = static function ($value) use ($tz): string {
+            if (! $value) {
+                return '—';
+            }
+            try {
+                $dt = $value instanceof Carbon ? $value->copy() : Carbon::parse($value);
+
+                return $dt->timezone($tz)->format('j M Y, g:i A');
+            } catch (\Throwable $e) {
+                return (string) $value;
+            }
+        };
+
+        $typeLabel = static function (?string $type): string {
+            return match (strtolower((string) $type)) {
+                'incoming' => 'Purchase / Incoming',
+                'incoming_return' => 'Sales Return',
+                'outgoing' => 'Outgoing / Deletion',
+                'transfer' => 'Stock Transfer (WH)',
+                'adjustment' => 'Stock Adjustment',
+                default => 'Verification Adjustment',
+            };
+        };
+
+        $movements = [];
+        $invLimit = 120;
+        $balanceLimit = 80;
+        $snapLimit = 90;
+        $logLimit = 50;
+        $maxPayload = 200;
+
+        // 1) inventories ledger (purchases, returns, transfers, outgoing, adjustments, verification)
+        $invCols = [
+            'id', 'sku', 'type', 'to_adjust', 'verified_stock', 'on_hand', 'warehouse_id', 'to_warehouse',
+            'reason', 'remarks', 'comment', 'approved_by', 'verified_by', 'approved_at', 'updated_at',
+            'created_at', 'order_id', 'channel', 'is_archived', 'is_approved',
+        ];
+        if (! empty($flags['has_is_hide'])) {
+            $invCols[] = 'is_hide';
+        }
+
+        $invQuery = Inventory::query()
+            ->select($invCols)
+            ->whereIn('sku', $skuCandidates)
+            ->where(function ($q) {
+                $q->whereNotNull('type')
+                    ->orWhere('is_approved', true);
             });
 
-        return response()->json(['data' => $activityLogs]);
+        if (! empty($flags['has_is_hide'])) {
+            $invQuery->where(function ($q) {
+                $q->whereNull('is_hide')->orWhere('is_hide', false)->orWhere('is_hide', 0);
+            });
+        }
+
+        $invRows = $invQuery
+            ->orderByDesc('id')
+            ->limit($invLimit)
+            ->get();
+
+        foreach ($invRows as $item) {
+            $type = $item->type;
+            $qty = $item->to_adjust;
+            if ($qty === null || $qty === '') {
+                $base = (int) ($item->verified_stock ?? 0);
+                $qty = in_array(strtolower((string) $type), ['outgoing'], true) ? -$base : $base;
+            } else {
+                $qty = (float) $qty;
+            }
+
+            $fromWh = $warehouses[$item->warehouse_id] ?? null;
+            $toWh = $warehouses[$item->to_warehouse] ?? null;
+            $location = ($fromWh && $toWh) ? ($fromWh.' → '.$toWh) : ($fromWh ?: ($toWh ?: '—'));
+
+            $occurred = $item->approved_at ?: ($item->updated_at ?: $item->created_at);
+            $metaParts = [];
+            if (! empty($item->order_id)) {
+                $metaParts[] = 'Order: '.$item->order_id;
+            }
+            if (! empty($item->channel)) {
+                $metaParts[] = 'Channel: '.$item->channel;
+            }
+            if (! empty($item->is_archived)) {
+                $metaParts[] = 'Archived';
+            }
+
+            $movements[] = [
+                'source' => 'inventories',
+                'movement_type' => $type ?: 'verification_adjustment',
+                'type_label' => $typeLabel($type),
+                'sku' => $item->sku,
+                'qty' => $qty,
+                'on_hand' => $item->on_hand,
+                'verified_stock' => $item->verified_stock,
+                'to_adjust' => $item->to_adjust,
+                'location' => $location,
+                'reason' => $item->reason ?: ($item->remarks ?: ($item->comment ?: '—')),
+                'by' => $item->approved_by ?: ($item->verified_by ?: '—'),
+                'at' => $fmtAt($occurred),
+                'at_raw' => $toTs($occurred),
+                'meta' => implode(' · ', $metaParts),
+                'approved_by' => $item->approved_by,
+                'approved_at' => $fmtAt($item->approved_at),
+                'remarks' => $item->remarks ?? '-',
+                'updated_at' => $fmtAt($item->updated_at),
+            ];
+        }
+
+        // 2) SKU↔SKU stock balance transfers
+        if (! empty($flags['has_stock_balances'])) {
+            $balRows = StockBalance::query()
+                ->select([
+                    'id', 'from_sku', 'to_sku', 'from_adjust_qty', 'to_adjust_qty',
+                    'from_available_qty', 'to_available_qty', 'from_warehouse_id', 'to_warehouse_id',
+                    'transferred_by', 'transferred_at', 'created_at',
+                ])
+                ->where(function ($q) use ($skuCandidates) {
+                    $q->whereIn('from_sku', $skuCandidates)
+                        ->orWhereIn('to_sku', $skuCandidates);
+                })
+                ->orderByDesc('id')
+                ->limit($balanceLimit)
+                ->get();
+
+            foreach ($balRows as $row) {
+                $fromSku = strtoupper(trim((string) $row->from_sku));
+                $toSku = strtoupper(trim((string) $row->to_sku));
+                $isFrom = $fromSku === $normalizedSku;
+                $qty = $isFrom
+                    ? -1 * abs((float) ($row->from_adjust_qty ?? 0))
+                    : abs((float) ($row->to_adjust_qty ?? 0));
+                $fromWh = $warehouses[$row->from_warehouse_id] ?? null;
+                $toWh = $warehouses[$row->to_warehouse_id] ?? null;
+                $occurred = $row->transferred_at ?: $row->created_at;
+                $movements[] = [
+                    'source' => 'stock_balances',
+                    'movement_type' => 'stock_balance',
+                    'type_label' => 'Stock Balance (SKU↔SKU)',
+                    'sku' => $isFrom ? $row->from_sku : $row->to_sku,
+                    'qty' => $qty,
+                    'on_hand' => $isFrom ? $row->from_available_qty : $row->to_available_qty,
+                    'verified_stock' => null,
+                    'to_adjust' => $qty,
+                    'location' => ($fromWh && $toWh) ? ($fromWh.' → '.$toWh) : ($fromWh ?: ($toWh ?: '—')),
+                    'reason' => ($row->from_sku ?: '?').' → '.($row->to_sku ?: '?'),
+                    'by' => $row->transferred_by ?: '—',
+                    'at' => $fmtAt($occurred),
+                    'at_raw' => $toTs($occurred),
+                    'meta' => '',
+                    'approved_by' => $row->transferred_by,
+                    'approved_at' => $fmtAt($occurred),
+                    'remarks' => '-',
+                    'updated_at' => $fmtAt($occurred),
+                ];
+            }
+        }
+
+        // 3) Daily sales / restocks from Shopify INV snapshots (recent window only)
+        if (! empty($flags['has_shopify_hist'])) {
+            $snapStart = now('America/Los_Angeles')->subDays($snapLimit)->toDateString();
+            $snapRows = ShopifySkuInventoryHistory::query()
+                ->select([
+                    'sku', 'sold_quantity', 'restocked_quantity', 'closing_inventory',
+                    'opening_inventory', 'snapshot_date', 'pst_end_datetime',
+                ])
+                ->whereIn('sku', $skuCandidates)
+                ->where('snapshot_date', '>=', $snapStart)
+                ->where(function ($q) {
+                    $q->where('sold_quantity', '>', 0)
+                        ->orWhere('restocked_quantity', '>', 0);
+                })
+                ->orderByDesc('snapshot_date')
+                ->limit($snapLimit)
+                ->get();
+
+            foreach ($snapRows as $row) {
+                $snapDate = $row->snapshot_date
+                    ? Carbon::parse($row->snapshot_date)
+                    : null;
+                $meta = $snapDate ? $snapDate->format('j M') : '';
+                $day = $snapDate ? $snapDate->copy()->startOfDay() : null;
+
+                if ((int) ($row->sold_quantity ?? 0) > 0) {
+                    $occurred = $row->pst_end_datetime ?: $day;
+                    $soldQty = -1 * abs((int) $row->sold_quantity);
+                    $movements[] = [
+                        'source' => 'shopifysku_inventory_history',
+                        'movement_type' => 'sale',
+                        'type_label' => 'Sales',
+                        'sku' => $row->sku,
+                        'qty' => $soldQty,
+                        'on_hand' => $row->closing_inventory,
+                        'verified_stock' => $row->opening_inventory,
+                        'to_adjust' => $soldQty,
+                        'location' => 'Shopify',
+                        'reason' => 'Daily sold (snapshot)',
+                        'by' => 'System',
+                        'at' => $fmtAt($occurred),
+                        'at_raw' => $toTs($occurred),
+                        'meta' => $meta,
+                        'approved_by' => 'System',
+                        'approved_at' => $fmtAt($occurred),
+                        'remarks' => '-',
+                        'updated_at' => $fmtAt($occurred),
+                    ];
+                }
+                if ((int) ($row->restocked_quantity ?? 0) > 0) {
+                    $occurred = $row->pst_end_datetime ?: $day;
+                    $restockQty = abs((int) $row->restocked_quantity);
+                    $movements[] = [
+                        'source' => 'shopifysku_inventory_history',
+                        'movement_type' => 'restock',
+                        'type_label' => 'Restock / Return (snapshot)',
+                        'sku' => $row->sku,
+                        'qty' => $restockQty,
+                        'on_hand' => $row->closing_inventory,
+                        'verified_stock' => $row->opening_inventory,
+                        'to_adjust' => $restockQty,
+                        'location' => 'Shopify',
+                        'reason' => 'Daily restocked (snapshot)',
+                        'by' => 'System',
+                        'at' => $fmtAt($occurred),
+                        'at_raw' => $toTs($occurred),
+                        'meta' => $meta,
+                        'approved_by' => 'System',
+                        'approved_at' => $fmtAt($occurred),
+                        'remarks' => '-',
+                        'updated_at' => $fmtAt($occurred),
+                    ];
+                }
+            }
+        }
+
+        // 4) Manual / CSV inventory logs
+        if (! empty($flags['has_inventory_logs'])) {
+            $logRows = InventoryLog::query()
+                ->select([
+                    'sku', 'qty_change', 'new_qty', 'old_qty', 'change_source',
+                    'notes', 'created_by', 'created_at', 'pushed_to_shopify',
+                ])
+                ->whereIn('sku', $skuCandidates)
+                ->orderByDesc('id')
+                ->limit($logLimit)
+                ->get();
+
+            foreach ($logRows as $row) {
+                $qty = $row->qty_change;
+                if ($qty === null || $qty === '') {
+                    $qty = ((int) ($row->new_qty ?? 0)) - ((int) ($row->old_qty ?? 0));
+                }
+                $occurred = $row->created_at;
+                $movements[] = [
+                    'source' => 'inventory_logs',
+                    'movement_type' => 'inventory_log',
+                    'type_label' => 'Inventory Log / Push',
+                    'sku' => $row->sku,
+                    'qty' => (float) $qty,
+                    'on_hand' => $row->new_qty,
+                    'verified_stock' => $row->old_qty,
+                    'to_adjust' => $qty,
+                    'location' => '—',
+                    'reason' => $row->change_source ?: ($row->notes ?: 'Qty change'),
+                    'by' => $row->created_by ?: '—',
+                    'at' => $fmtAt($occurred),
+                    'at_raw' => $toTs($occurred),
+                    'meta' => $row->pushed_to_shopify ? 'Pushed to Shopify' : '',
+                    'approved_by' => $row->created_by,
+                    'approved_at' => $fmtAt($occurred),
+                    'remarks' => $row->notes ?? '-',
+                    'updated_at' => $fmtAt($occurred),
+                ];
+            }
+        }
+
+        usort($movements, static function ($a, $b) {
+            return ($b['at_raw'] ?? 0) <=> ($a['at_raw'] ?? 0);
+        });
+
+        if (count($movements) > $maxPayload) {
+            $movements = array_slice($movements, 0, $maxPayload);
+        }
+
+        $payload = array_map(static function (array $m) {
+            unset($m['at_raw']);
+
+            return $m;
+        }, $movements);
+
+        $result = [
+            'data' => $payload,
+            'movements' => $payload,
+            'sku' => $sku,
+            'truncated' => count($payload) >= $maxPayload,
+        ];
+        Cache::put($cacheKey, $result, 60);
+
+        return response()->json($result);
     }
 
     /**

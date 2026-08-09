@@ -217,17 +217,17 @@
                         <span class="badge flex-shrink-0" id="rd-sum-qty-amount-badge" style="background-color: #5dade2; color: #111; font-weight: bold;" title="Sales from full reverb_daily_data table: SUM(quantity × amount), rounded to whole dollars">Sales: $0</span>
                         <span class="badge bg-dark flex-shrink-0" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
                         <span class="badge bg-info flex-shrink-0" id="gpft-list-badge" style="color: black; font-weight: bold;" title="Weighted GPFT% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×RV Price) — same method as /temu-decrease, using normal ship">GPFT: 0%</span>
-                        <span class="badge flex-shrink-0" id="rd-ads-percent-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Reverb Ads% (Bump fees ÷ L30 Sales) — from /all-marketplace-master (same source Amazon Ads badge uses)">Ads: {{ isset($reverbAdsPercent) ? round((float) $reverbAdsPercent, 1) . '%' : 'N/A' }}</span>
+                        <span class="badge flex-shrink-0" id="rd-ads-percent-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Reverb Ads% (Bump fees ÷ L30 Sales) — from /all-marketplace-master (same source Amz Ads badge uses)">Ads: {{ isset($reverbAdsPercent) ? round((float) $reverbAdsPercent, 1) . '%' : 'N/A' }}</span>
                         <span class="badge bg-info flex-shrink-0" id="npft-badge" style="color: black; font-weight: bold;" title="PFT% = GPFT% − Ads% (same as /amazon-tabulator-view)">PFT: 0%</span>
                         <span class="badge flex-shrink-0" id="groi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Weighted GROI% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×LP) — same method as /temu-decrease, using normal ship">GROI: 0%</span>
                         <span class="badge flex-shrink-0" id="nroi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = (Total PFT − Ad Spend) ÷ COGS × 100; Ad Spend = Ads% × Sales (same as /amazon-tabulator-view)">NROI: 0%</span>
-                        <span class="badge flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of Views for currently filtered rows (same as Amazon Sess30 — raw, not ÷10)">Views: 0</span>
-                        <span class="badge flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views) × 100 — same Amazon formula as A_L30 ÷ Sess30">CVR: 0%</span>
+                        <span class="badge flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of Views for currently filtered rows (same as Amz Sess30 — raw, not ÷10)">Views: 0</span>
+                        <span class="badge flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views) × 100 — same Amz formula as A_L30 ÷ Sess30">CVR: 0%</span>
                         <span class="badge flex-shrink-0" id="rd-qty-sum-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Sum of RD Qty column (reverb_daily_qty) for currently filtered rows">RD Qty: 0</span>
-                        <span class="badge bg-danger flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 = 0 (same as Amazon 0 Sold on A_L30)">0 Sold: 0</span>
-                        <span class="badge flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 &gt; 0 (same as Amazon Sold &gt;0 on A_L30)">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-danger flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
-                        <span class="badge flex-shrink-0" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
+                        <span class="badge bg-danger flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 = 0 (same as Amz 0 Sold on A_L30)">0 Sold: 0</span>
+                        <span class="badge flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 &gt; 0 (same as Amz Sold &gt;0 on A_L30)">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-danger flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
+                        <span class="badge flex-shrink-0" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">M L: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter stock mismatch (REQ + INV&gt;0 + |INV − R Stock| &gt; 3)">N Map: 0</span>
                     </div>
@@ -278,20 +278,20 @@
                     {{-- Sold dropdown (mirrors Amazon tabulator + /doba + /shopify-b2c + /macys
                          + /purchasing-power + /wayfair). Backed by `reverb_daily_qty`:
                            all  → no filter
-                           sold → RV L30 > 0  (same as Amazon A_L30 Sold filter)
+                           sold → RV L30 > 0  (same as Amz A_L30 Sold filter)
                            zero → RV L30 = 0
                          Single source of truth. The #zero-sold-count-badge / #more-sold-count-badge
                          click handlers (and the ?badge=zero_sold|more_sold URL deep-link) all
                          drive this dropdown value, so badges + dropdown + URL stay in sync. --}}
                     <select id="sold-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;"
-                            title="Filter by RV L30 sold quantity (same role as Amazon A_L30 Sold filter)">
+                            title="Filter by RV L30 sold quantity (same role as Amz A_L30 Sold filter)">
                         <option value="all">Sold</option>
                         <option value="sold">Sold &gt; 0</option>
                         <option value="zero">0 Sold</option>
                     </select>
 
                     <select id="status-filter" class="form-select form-select-sm flex-shrink-0" style="width: 120px;"
-                            title="Filter by price push status (same as Amazon)">
+                            title="Filter by price push status (same as Amz)">
                         <option value="all">Status</option>
                         <option value="not-pushed">Not Pushed</option>
                         <option value="pushed">Pushed</option>
@@ -1311,9 +1311,9 @@
                 saveSpriceUpdates(updates);
             }
             
-            let message = `Amazon price applied to ${updatedCount} SKU(s)`;
+            let message = `Amz price applied to ${updatedCount} SKU(s)`;
             if (noAmazonPriceCount > 0) {
-                message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price or not found)`;
+                message += ` (${noAmazonPriceCount} SKU(s) had no Amz price or not found)`;
             }
             
             showToast(message, updatedCount > 0 ? 'success' : 'warning');

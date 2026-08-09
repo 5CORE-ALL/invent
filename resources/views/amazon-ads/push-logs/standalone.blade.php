@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Amazon Ads - Failed Campaigns Tracker</title>
+    <title>Amz Ads - Failed Campaigns Tracker</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -131,7 +131,7 @@
     <!-- Page Header -->
     <div class="page-header">
         <div class="container-fluid">
-            <h1><i class="fas fa-exclamation-triangle"></i> Amazon Ads - Failed Campaigns Tracker</h1>
+            <h1><i class="fas fa-exclamation-triangle"></i> Amz Ads - Failed Campaigns Tracker</h1>
             <p class="mb-0">Monitor and analyze campaigns that failed to update</p>
         </div>
     </div>

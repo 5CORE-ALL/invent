@@ -1827,7 +1827,7 @@
                                     <span class="cd-reviews-action-dots" id="comparison-cd-reviews-dots">
                                         <span class="cd-reviews-dot cd-reviews-dot-graph is-disabled" data-reviews-action="graph" title="Lifetime rating graph" role="button" tabindex="0" aria-label="Lifetime rating graph"></span>
                                         <span class="cd-reviews-dot cd-reviews-dot-intel is-disabled" data-reviews-action="intel" title="Review Intelligence (parent)" role="button" tabindex="0" aria-label="Open Review Intelligence"></span>
-                                        <span class="cd-reviews-dot cd-reviews-dot-amazon is-disabled" data-reviews-action="amazon" title="Amazon buyer reviews" role="button" tabindex="0" aria-label="Open Amazon reviews"></span>
+                                        <span class="cd-reviews-dot cd-reviews-dot-amazon is-disabled" data-reviews-action="amazon" title="Amz buyer reviews" role="button" tabindex="0" aria-label="Open Amz reviews"></span>
                                     </span>
                                 </button>
                                 <label class="btn btn-sm btn-outline-secondary" id="comparison-cd-siblings-badge" title="Sync this sheet to all sibling SKUs under the same parent">
@@ -1938,7 +1938,7 @@
                                         <div class="col-md-2">
                                             <label class="form-label"><strong>Marketplace</strong></label>
                                             <select class="form-select" id="comparison-cd-add-comp-marketplace">
-                                                <option value="amazon" selected>Amazon</option>
+                                                <option value="amazon" selected>Amz</option>
                                                 <option value="US">US</option>
                                             </select>
                                         </div>
@@ -1999,7 +1999,7 @@
                             <div class="col-md-2">
                                 <label class="form-label"><strong>Marketplace</strong></label>
                                 <select class="form-select" id="comparison-lmp-add-comp-marketplace">
-                                    <option value="amazon" selected>Amazon</option>
+                                    <option value="amazon" selected>Amz</option>
                                     <option value="US">US</option>
                                 </select>
                             </div>
@@ -2145,7 +2145,7 @@ document.addEventListener('DOMContentLoaded', function () {
         '1688': '#e65100',
     };
 
-    const ROI_CHANNELS = ['Amazon', 'Ebay'];
+    const ROI_CHANNELS = ['Amz', 'Ebay'];
     const ROI_LMP_SALE_FACTOR = 0.9;
     const ROI_SALE_NET_FACTOR = 0.7;
     const ROI_FIELD_OFFSETS = {
@@ -2970,7 +2970,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const specCol = detectSpecColumnIndex(sheetCells);
         const criticalCol = detectCriticalColumnIndex(sheetCells, specCol);
         const qcCol = detectQcColumnIndex(sheetCells, specCol);
-        if (colIndex === specCol - 2) return 'Amazon';
+        if (colIndex === specCol - 2) return 'Amz';
         if (colIndex === specCol - 1) return '5 Core';
         if (colIndex === specCol) return 'Spec';
         if (criticalCol !== null && colIndex === criticalCol) return 'Critical';
@@ -3439,7 +3439,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 btn.title = canDeleteCol
                     ? `Delete column ${colLabel}`
                     : (isProtectedSheetColumn(col)
-                        ? 'Protected column (Amazon / 5 Core / Spec / Critical / QC) cannot be deleted'
+                        ? 'Protected column (Amz / 5 Core / Spec / Critical / QC) cannot be deleted'
                         : 'Cannot delete the last column');
             });
 
@@ -3527,7 +3527,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         if (isProtectedSheetColumn(col)) {
-            setSheetStatus('Protected column (Amazon / 5 Core / Spec / Critical / QC) cannot be deleted.', true);
+            setSheetStatus('Protected column (Amz / 5 Core / Spec / Critical / QC) cannot be deleted.', true);
             return;
         }
 
@@ -4074,8 +4074,8 @@ document.addEventListener('DOMContentLoaded', function () {
             const canAmazon = !!amazonUrl;
             amazonDot.classList.toggle('is-disabled', !canAmazon);
             amazonDot.title = canAmazon
-                ? 'Open Amazon buyer reviews'
-                : 'No Amazon buyer/ASIN link for this SKU';
+                ? 'Open Amz buyer reviews'
+                : 'No Amz buyer/ASIN link for this SKU';
         }
     }
 
@@ -4662,7 +4662,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <td class="text-center">${reviews}</td>
                 <td class="text-center">${deliveryHtml}</td>
                 <td class="text-center">
-                    <a href="${escapeHtmlAttr(productLink)}" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View Product on Amazon">
+                    <a href="${escapeHtmlAttr(productLink)}" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View Product on Amz">
                         <i class="fa fa-external-link"></i>
                     </a>
                 </td>
@@ -4945,7 +4945,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         platform = String(platform || 'amazon').toLowerCase();
-        const platformLabel = platform === 'ebay' ? 'eBay' : 'Amazon';
+        const platformLabel = platform === 'ebay' ? 'eBay' : 'Amz';
 
         const lmpModalEl = document.getElementById('comparisonLmpModal');
         if (!lmpModalEl || !window.bootstrap?.Modal) {
@@ -5188,7 +5188,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const fiveCoreCol = specCol - 1;
 
         if (!columnMatchesKeywords(cells, amazonCol, ['amazon'])) {
-            stampColumnHeader(cells, amazonCol, 'Amazon');
+            stampColumnHeader(cells, amazonCol, 'Amz');
         }
         if (!columnMatchesKeywords(cells, fiveCoreCol, ['5 core', '5core', '5-core'])) {
             stampColumnHeader(cells, fiveCoreCol, '5 Core');
@@ -5855,7 +5855,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
         if (currentSheetCells.length === 0) {
-            currentSheetCells = [['Amazon', '5 Core', 'Product Photo', 'Critical', 'QC', '', '']];
+            currentSheetCells = [['Amz', '5 Core', 'Product Photo', 'Critical', 'QC', '', '']];
         }
 
         const colCountBeforeMove = Math.max(...currentSheetCells.map(row => row.length), 1);
@@ -6995,7 +6995,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (hint) {
             const parts = [];
             if (missingAmazon) {
-                parts.push('Amazon');
+                parts.push('Amz');
             }
             if (missingEbay) {
                 parts.push('Ebay');
@@ -7394,7 +7394,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return `<td class="comparison-roi-lmp-cell">
             <button type="button" class="btn btn-link comparison-roi-lmp-link p-0 border-0"
                 data-row="${rowIndex}" data-platform="${escapeHtmlAttr(platform)}"
-                title="View ${escapeHtml(platform === 'ebay' ? 'eBay' : 'Amazon')} LMP competitors">
+                title="View ${escapeHtml(platform === 'ebay' ? 'eBay' : 'Amz')} LMP competitors">
                 ${escapeHtml(display)}
             </button>
         </td>`;

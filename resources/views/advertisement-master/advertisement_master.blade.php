@@ -195,7 +195,7 @@
                             <span class="adm-stat-badge adm-stat-badge--cvr adm-badge-link" data-metric="cvr" data-label="CVR" title="Click for trend">CVR: <span id="adm-badge-cvr">0%</span></span>
                             <span class="adm-stat-badge adm-stat-badge--acos adm-badge-link" data-metric="acos" data-label="ACOS" title="Click for trend">ACOS: <span id="adm-badge-acos">0%</span></span>
                             <span class="adm-stat-badge adm-stat-badge--tcos adm-badge-link" data-metric="tcos" data-label="Tcos" title="Click for trend">TCOS: <span id="adm-badge-tcos">0%</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--ssales adm-badge-link" data-metric="ssales" data-label="Total Sales" title="Combined Amazon + eBay + eBay 2 + eBay 3 + Shopify L30 store sales — click for trend">TOTAL SALES: <span id="adm-badge-ssales">$0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--ssales adm-badge-link" data-metric="ssales" data-label="Total Sales" title="Combined Amz + eBay + eBay 2 + eBay 3 + Shopify L30 store sales — click for trend">TOTAL SALES: <span id="adm-badge-ssales">$0</span></span>
                         </div>
                         <input type="text" id="adm-search" class="form-control form-control-sm"
                             placeholder="Search channel…" style="width:180px; flex-shrink:0;">
@@ -342,10 +342,10 @@
             }
 
             const channelLinks = {
-                'Amazon': "{{ route('amazon.ads.all') }}",
-                'Amazon · KW': "{{ route('amazon.ads.all') }}?search=KW",
-                'Amazon · PT': "{{ route('amazon.ads.all') }}?search=PT",
-                'Amazon · HL': "{{ route('amazon.ads.all') }}?source=sb_reports",
+                'Amz': "{{ route('amazon.ads.all') }}",
+                'Amz · KW': "{{ route('amazon.ads.all') }}?search=KW",
+                'Amz · PT': "{{ route('amazon.ads.all') }}?search=PT",
+                'Amz · HL': "{{ route('amazon.ads.all') }}?source=sb_reports",
                 'eBay': "{{ route('ebay.campaign.ads') }}",
                 'eBay 2': "{{ route('ebay2.campaign.ads') }}",
                 'eBay 3': "{{ route('ebay3.campaign.ads') }}",

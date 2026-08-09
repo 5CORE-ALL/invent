@@ -797,7 +797,7 @@
                         <span class="badge fs-6 p-2" id="npft-percent-badge" style="background-color: #0f766e; color: white; font-weight: bold;"
                               title="NPFT% = GPFT% − Ads% (net profit margin after ad spend).">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
                         <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;"
-                              title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon (do not cut Ads% from GROI%).">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
+                              title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amz (do not cut Ads% from GROI%).">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
 
                         <!-- eBay Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Prc: $0.00</span>
@@ -1272,7 +1272,7 @@
                             NPFT: <span id="sprice-cvr-npft-val">0%</span>
                             <span class="sprice-cvr-trend-dot none" id="sprice-cvr-npft-trend" aria-hidden="true"></span>
                         </span>
-                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 vs L31–L60 + band · shared Amazon + eBay</span>
+                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 vs L31–L60 + band · shared Amz + eBay</span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1607,7 +1607,7 @@
         </div>
     </div>
 
-    <!-- Sprice × CVR pie history (rolling style, same as Amazon metric trend modals) -->
+    <!-- Sprice × CVR pie history (rolling style, same as Amz metric trend modals) -->
     <div class="modal fade p-0" id="spriceCvrHistoryModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow: hidden;">

@@ -1725,7 +1725,7 @@
                             NPFT: <span id="sprice-cvr-npft-val">0%</span>
                             <span class="sprice-cvr-trend-dot none" id="sprice-cvr-npft-trend" aria-hidden="true"></span>
                         </span>
-                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 vs L31–L60 + band · shared Amazon + eBay</span>
+                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 vs L31–L60 + band · shared Amz + eBay</span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -2060,7 +2060,7 @@
         </div>
     </div>
 
-    <!-- Sprice × CVR pie history (rolling style, same as Amazon metric trend modals) -->
+    <!-- Sprice × CVR pie history (rolling style, same as Amz metric trend modals) -->
     <div class="modal fade p-0" id="spriceCvrHistoryModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow: hidden;">

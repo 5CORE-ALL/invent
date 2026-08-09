@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Listings - Listing Master', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amz Listings - Listing Master', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -611,18 +611,18 @@
 
     <div class="amz-page-header">
         <div>
-            <h1>Amazon Listings</h1>
+            <h1>Amz Listings</h1>
             <div class="sub">Raw listing data from SP-API (GET_MERCHANT_LISTINGS_ALL_DATA)</div>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <button type="button" class="btn btn-outline-light border border-secondary" id="btn-analyze-data" title="Analyze Amazon data quality (item_name, raw_data)">
-                <i class="ri-bar-chart-line me-1"></i> Analyze Amazon Data
+            <button type="button" class="btn btn-outline-light border border-secondary" id="btn-analyze-data" title="Analyze Amz data quality (item_name, raw_data)">
+                <i class="ri-bar-chart-line me-1"></i> Analyze Amz Data
             </button>
-            <button type="button" class="btn btn-outline-light border border-secondary" id="btn-extract-titles" title="Copy Item Name from Amazon listings into Title Master (product_master.title150)">
+            <button type="button" class="btn btn-outline-light border border-secondary" id="btn-extract-titles" title="Copy Item Name from Amz listings into Title Master (product_master.title150)">
                 <i class="ri-file-copy-line me-1"></i> Extract Titles to Title Master
             </button>
             <button type="button" class="btn btn-import-amazon" id="btn-import-amazon">
-                <i class="ri-download-cloud-line me-1"></i> Import from Amazon
+                <i class="ri-download-cloud-line me-1"></i> Import from Amz
             </button>
         </div>
     </div>
@@ -676,7 +676,7 @@
         </div>
     </div>
 
-    <!-- Amazon Seller Central-style detail stack (slide-out) -->
+    <!-- Amz Seller Central-style detail stack (slide-out) -->
     <div class="amz-stack-overlay" id="amz-detail-stack">
         <div class="amz-stack-panel">
             <div class="amz-stack-header">
@@ -1565,7 +1565,7 @@
                 var btn = this;
                 btn.disabled = true;
                 btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Importing…';
-                showToast('info', 'Requesting report from Amazon. This may take a few minutes…');
+                showToast('info', 'Requesting report from Amz. This may take a few minutes…');
 
                 fetch(importUrl, {
                     method: 'POST',
@@ -1589,7 +1589,7 @@
                     })
                     .finally(function() {
                         btn.disabled = false;
-                        btn.innerHTML = '<i class="ri-download-cloud-line me-1"></i> Import from Amazon';
+                        btn.innerHTML = '<i class="ri-download-cloud-line me-1"></i> Import from Amz';
                     });
             });
 
@@ -1646,14 +1646,14 @@
                             msg += '\n\nSample missing (first ' + data.sample_missing.length + '): ' + data.sample_missing.map(function(m) { return m.sku; }).join(', ');
                         }
                         showToast('info', 'Analysis complete. Check console for details.');
-                        alert('Amazon Data Analysis\n\n' + msg);
+                        alert('Amz Data Analysis\n\n' + msg);
                     })
                     .catch(function(err) {
                         showToast('error', 'Analysis failed: ' + (err.message || 'Request failed'));
                     })
                     .finally(function() {
                         btn.disabled = false;
-                        btn.innerHTML = '<i class="ri-bar-chart-line me-1"></i> Analyze Amazon Data';
+                        btn.innerHTML = '<i class="ri-bar-chart-line me-1"></i> Analyze Amz Data';
                     });
             });
 

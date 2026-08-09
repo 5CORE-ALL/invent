@@ -1637,7 +1637,7 @@
                                 </td>
                             </tr>
                             <tr>
-                                <th title="Amazon channel Ads% from All Marketplace Master — applied to SPFT &amp; SNROI">Amz Ads%</th>
+                                <th title="Amz channel Ads% from All Marketplace Master — applied to SPFT &amp; SNROI">Amz Ads%</th>
                                 <td class="text-end" id="spriceModalAmzAds">-</td>
                             </tr>
                             <tr>
@@ -1715,7 +1715,7 @@
                             <span class="ovl30-tool-group py-0">
                                 <label for="modal-group-select" class="mb-0">Group</label>
                                 <select id="modal-group-select" class="form-select form-select-sm" style="width: auto; min-width: 64px; height: 28px; font-size: 12px;"
-                                    title="A=Amazon+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
+                                    title="A=Amz+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
                                     <option value="">All</option>
                                     <option value="A">A</option>
                                     <option value="D">D</option>
@@ -1765,7 +1765,7 @@
                     <span class="ovl30-tool-group py-0">
                         <label for="modal-group-select-bar" class="mb-0">Group</label>
                         <select id="modal-group-select-bar" class="form-select form-select-sm" style="width: auto; min-width: 64px; height: 28px; font-size: 12px;"
-                            title="A=Amazon+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
+                            title="A=Amz+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
                             <option value="">All</option>
                             <option value="A">A</option>
                             <option value="D">D</option>
@@ -2183,13 +2183,13 @@
         </div>
     </div>
 
-    <!-- Amazon SPRICE Table Modal -->
+    <!-- Amz SPRICE Table Modal -->
     <div class="modal fade" id="amazonSpriceTableModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header" style="background-color: #232f3e; color: white;">
                     <h5 class="modal-title">
-                        <i class="fas fa-table me-2"></i> Amazon SPRICE Table
+                        <i class="fas fa-table me-2"></i> Amz SPRICE Table
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -2200,7 +2200,7 @@
                                 <tr>
                                     <th>SKU</th>
                                     <th class="text-end">SPRICE</th>
-                                    <th class="text-end">Amazon Margin</th>
+                                    <th class="text-end">Amz Margin</th>
                                     <th class="text-end">SGPFT%</th>
                                     <th class="text-end">SPFT%</th>
                                     <th class="text-end">SROI%</th>
@@ -2221,7 +2221,7 @@
         </div>
     </div>
 
-    <!-- LMP Competitors Modal – right-side drawer (Amazon + eBay) -->
+    <!-- LMP Competitors Modal – right-side drawer (Amz + eBay) -->
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="true">
         <div class="modal-dialog modal-dialog-scrollable">
             <div class="modal-content">
@@ -2231,7 +2231,7 @@
                     </h5>
                     <div class="d-flex align-items-center gap-2 ms-auto">
                         <button type="button" id="lmpPullApiBtn" class="btn btn-sm btn-light"
-                            title="Pull live LMP prices from SerpApi (Amazon / eBay / Google — same as pricing tabulators)">
+                            title="Pull live LMP prices from SerpApi (Amz / eBay / Google — same as pricing tabulators)">
                             <i class="fas fa-cloud-download-alt"></i> Pull
                         </button>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -2666,7 +2666,7 @@
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded"
                         id="pi-sprice-lmp-rule"
                         style="background: #ffc107;"
-                        title="Sprice Rule — set SP = Amazon LMP × factor. Factor is editable (default 0.98). Applies to selected SKUs, or visible parents' children when none selected.">
+                        title="Sprice Rule — set SP = Amz LMP × factor. Factor is editable (default 0.98). Applies to selected SKUs, or visible parents' children when none selected.">
                         <button type="button" id="pi-apply-sprice-lmp-rule-btn"
                             class="btn btn-sm btn-warning border-0 py-0 px-2 fw-bold text-dark"
                             style="background: transparent;">
@@ -5254,7 +5254,7 @@
                     hozAlign: "center",
                     minWidth: 80,
                     sorter: "number",
-                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Temu, Temu 2, Macy's, Reverb, etc. — Walmart & Tiendamia excluded). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
+                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amz, eBay, Temu, Temu 2, Macy's, Reverb, etc. — Walmart & Tiendamia excluded). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sw = parseFloat(cell.getValue() || 0);
@@ -5537,7 +5537,7 @@
                         const sku = rowData.sku || '';
                         // Hold (SP = Amazon price): show price only — no yellow dot
                         if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="font-weight:600;" title="Hold (matches Amazon price) — SP">$'
+                            return '<span style="font-weight:600;" title="Hold (matches Amz price) — SP">$'
                                 + std.toFixed(2) + '</span>';
                         }
                         const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
@@ -5588,7 +5588,7 @@
                     hozAlign: "right",
                     minWidth: 70,
                     sorter: "number",
-                    headerTooltip: "Amazon suggested price — editable (same as Sprice modal)",
+                    headerTooltip: "Amz suggested price — editable (same as Sprice modal)",
                     editor: "number",
                     editorParams: { step: 0.01, min: 0 },
                     editable: function(cell) {
@@ -5845,7 +5845,7 @@
                     visible: true,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Amazon LMP. Parent row shows average of child Amz LMPs (children with LMP > 0).",
+                    headerTooltip: "Amz LMP. Parent row shows average of child Amz LMPs (children with LMP > 0).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = (rowData.sku || '').replace(/"/g, '&quot;');
@@ -5865,7 +5865,7 @@
                         const price = value != null && value !== '' ? parseFloat(value) : null;
                         if (price == null || price <= 0) {
                             const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amz repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
                         }
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
@@ -6177,12 +6177,12 @@
             const sp2 = sp.toFixed(2);
             const ap2 = ap.toFixed(2);
             if (parseFloat(sp2) < parseFloat(ap2)) {
-                return { kind: 'reduce', color: '#dc3545', title: 'Reduced vs Amazon price' };
+                return { kind: 'reduce', color: '#dc3545', title: 'Reduced vs Amz price' };
             }
             if (parseFloat(sp2) > parseFloat(ap2)) {
-                return { kind: 'increase', color: '#28a745', title: 'Increase vs Amazon price' };
+                return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
             }
-            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amazon price)' };
+            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
         }
 
         function priceIncreaseSpChangeDotHtml(sprice, amazonPrice, sku) {
@@ -6314,13 +6314,13 @@
             const targets = collectSkusForPiSpriceLmpRule();
             if (targets.length === 0) {
                 showToast(selectedSkus.size > 0
-                    ? 'No selected SKUs with Amazon LMP > 0'
-                    : 'No visible SKUs with Amazon LMP > 0', 'error');
+                    ? 'No selected SKUs with Amz LMP > 0'
+                    : 'No visible SKUs with Amz LMP > 0', 'error');
                 return;
             }
 
             const scope = selectedSkus.size > 0 ? 'selected' : 'visible';
-            if (!confirm('Set SP = Amazon LMP × ' + multLabel + ' for ' + targets.length + ' ' + scope + ' SKU(s)?\n\nSaves to the same SP field as /amazon-tabulator-view.')) {
+            if (!confirm('Set SP = Amz LMP × ' + multLabel + ' for ' + targets.length + ' ' + scope + ' SKU(s)?\n\nSaves to the same SP field as /amazon-tabulator-view.')) {
                 return;
             }
 
@@ -10179,7 +10179,7 @@
             const ch = isEdit
                 ? lmpEditState.channel
                 : (($('#lmpAddChannel').val() || lmpModalCache.filter || 'amazon').toLowerCase());
-            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
+            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
             const label = labelMap[ch] || ch;
             const $box = $form.closest('.lmp-add-form-box');
             $box.find('strong').html(
@@ -10265,11 +10265,11 @@
             if (!$btn.length) return;
             const ch = String(filter || 'all').toLowerCase();
             if (ch === 'all') {
-                $btn.attr('title', 'Pull live LMP for Amazon + eBay + Google (SerpApi) — same as pricing tabulators');
+                $btn.attr('title', 'Pull live LMP for Amz + eBay + Google (SerpApi) — same as pricing tabulators');
             } else if (LMP_PULLABLE_CHANNELS.indexOf(ch) !== -1) {
                 $btn.attr('title', 'Pull live ' + ch.charAt(0).toUpperCase() + ch.slice(1) + ' LMP prices from SerpApi');
             } else {
-                $btn.attr('title', 'Live Pull is available for Amazon, eBay, and Google. Select one of those channels (or All).');
+                $btn.attr('title', 'Live Pull is available for Amz, eBay, and Google. Select one of those channels (or All).');
             }
         }
 
@@ -10377,7 +10377,7 @@
             if (refreshFromApi) {
                 const ch = String(initialFilter || 'all').toLowerCase();
                 if (ch !== 'all' && LMP_PULLABLE_CHANNELS.indexOf(ch) === -1) {
-                    showToast('Live Pull is available for Amazon, eBay, and Google. Select one of those channels (or All).', 'warning');
+                    showToast('Live Pull is available for Amz, eBay, and Google. Select one of those channels (or All).', 'warning');
                     const $btn = $('#lmpPullApiBtn');
                     if ($btn.length) $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt"></i> Pull');
                     return;
@@ -10442,7 +10442,7 @@
                         showToast('LMP Pull finished with some errors — check the list', 'warning');
                     } else {
                         const labels = [];
-                        if (refreshAmazon) labels.push('Amazon');
+                        if (refreshAmazon) labels.push('Amz');
                         if (refreshEbay) labels.push('eBay');
                         if (refreshGoogle) labels.push('Google');
                         showToast('Pulled live LMP for ' + (labels.join(', ') || 'channels') + ' — ' + sku, 'success');
@@ -10594,7 +10594,7 @@
                 || 'all';
             const ch = String(filter || 'all').toLowerCase();
             if (ch !== 'all' && LMP_PULLABLE_CHANNELS.indexOf(ch) === -1) {
-                showToast('Live Pull is available for Amazon, eBay, and Google. Select one of those channels (or All).', 'warning');
+                showToast('Live Pull is available for Amz, eBay, and Google. Select one of those channels (or All).', 'warning');
                 return;
             }
             const $btn = $(this);
@@ -10715,7 +10715,7 @@
 
         function lmpChannelIconHtml(channel) {
             if (channel === 'amazon') {
-                return '<span class="lmp-channel-icon amazon" title="Amazon"><i class="fab fa-amazon"></i></span>';
+                return '<span class="lmp-channel-icon amazon" title="Amz"><i class="fab fa-amazon"></i></span>';
             }
             if (channel === 'ebay') {
                 return '<span class="lmp-channel-icon ebay" title="eBay"><i class="fas fa-gavel"></i></span>';
@@ -11104,7 +11104,7 @@
             if (rev != null) {
                 const reviewColor = rev < 4 ? '#a00211' : '#334155';
                 reviewsCell = '<span style="color:' + reviewColor + ';font-weight:600;" title="'
-                    + rev.toLocaleString() + ' Amazon reviews">'
+                    + rev.toLocaleString() + ' Amz reviews">'
                     + rev.toLocaleString() + '</span>';
             }
             return { ratingCell: ratingCell, reviewsCell: reviewsCell };
@@ -11200,7 +11200,7 @@
             html += '<div class="lmp-channel-filters">';
             [
                 { key: 'all', label: 'All' },
-                { key: 'amazon', label: 'Amazon' },
+                { key: 'amazon', label: 'Amz' },
                 { key: 'ebay', label: 'eBay' },
                 { key: 'google', label: 'Google' },
                 { key: 'bestbuy', label: 'BestBuy' },
@@ -11241,7 +11241,7 @@
                 const revTxt = (ourAmz.reviews != null) ? ourAmz.reviews.toLocaleString() : '—';
                 badgeParts.push(
                     '<span class="badge" style="background:#fff7ed;color:#9a3412;font-weight:600;border:1px solid #fdba74;" '
-                    + 'title="Our Amazon listing rating &amp; review count">'
+                    + 'title="Our Amz listing rating &amp; review count">'
                     + 'Amz Reviews ' + star + ' · ' + revTxt
                     + '</span>'
                 );
@@ -11289,7 +11289,7 @@
             const fiveCoreHtml = buildLmpFiveCoreRowHtml(ourListing);
 
             if (!rows.length && !fiveCoreHtml) {
-                const labelMap = { all: 'Amazon, eBay, Google, BestBuy, Macy, Reverb, or Temu', amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
+                const labelMap = { all: 'Amz, eBay, Google, BestBuy, Macy, Reverb, or Temu', amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
                 const label = labelMap[filter] || 'competitors';
                 html += '<div class="alert alert-info mb-0 py-2 px-2"><i class="fa fa-info-circle"></i> No ' + label + ' competitors found</div>';
                 $('#lmpDataList').html(html);
@@ -11313,11 +11313,11 @@
                 + '</th>'
                 + '<th>#</th>'
                 + '<th>Price</th>'
-                + '<th title="Amazon competitor star rating (SerpApi / Jungle Scout for Ours)">Rating</th>'
-                + '<th title="Amazon review count">Reviews</th>'
+                + '<th title="Amz competitor star rating (SerpApi / Jungle Scout for Ours)">Rating</th>'
+                + '<th title="Amz review count">Reviews</th>'
                 + '<th>Del</th>'
                 + '<th title="Price + Shipping">P+S</th>'
-                + '<th title="Competitor inventory / stock (Amazon SerpApi)">Inv</th>'
+                + '<th title="Competitor inventory / stock (Amz SerpApi)">Inv</th>'
                 + '<th title="Ignore for L1 (same as Temu Decrease)">Ign</th><th></th></tr>'
                 + '</thead><tbody>';
 
@@ -11437,7 +11437,7 @@
 
         function buildLmpAddFormHtml(sku, channel) {
             const ch = (channel || 'amazon').toLowerCase();
-            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
+            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
             const label = labelMap[ch] || ch;
             let idField = '';
             if (ch === 'amazon') {
@@ -11473,7 +11473,7 @@
                 + '<div class="d-flex align-items-center justify-content-between mb-1">'
                 + '<strong style="font-size:12px;"><i class="fas fa-plus-circle text-success me-1"></i>Add ' + chLabel + ' LMP</strong>'
                 + '<select class="form-select form-select-sm" id="lmpAddChannel" style="width:120px;">'
-                + '<option value="amazon"' + (ch === 'amazon' ? ' selected' : '') + '>Amazon</option>'
+                + '<option value="amazon"' + (ch === 'amazon' ? ' selected' : '') + '>Amz</option>'
                 + '<option value="ebay"' + (ch === 'ebay' ? ' selected' : '') + '>eBay</option>'
                 + '<option value="google"' + (ch === 'google' ? ' selected' : '') + '>Google</option>'
                 + '<option value="bestbuy"' + (ch === 'bestbuy' ? ' selected' : '') + '>BestBuy</option>'
@@ -11842,9 +11842,9 @@
                     data: isEdit
                         ? { id: editId, asin: idVal, price: price, product_link: link || null }
                         : { sku: sku, asin: idVal, price: price, product_link: link || null, marketplace: 'amazon' },
-                    success: function(r) { done(!!r.success, r.message || (isEdit ? 'Amazon LMP updated' : 'Amazon LMP added')); },
+                    success: function(r) { done(!!r.success, r.message || (isEdit ? 'Amz LMP updated' : 'Amz LMP added')); },
                     error: function(xhr) {
-                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update Amazon LMP' : 'Failed to add Amazon LMP'));
+                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update Amz LMP' : 'Failed to add Amz LMP'));
                     }
                 });
                 return;
@@ -12368,7 +12368,7 @@
             const price = btn.attr('data-price') || btn.data('price');
             const extId = btn.attr('data-ext-id') || btn.data('ext-id') || '';
             const link = btn.attr('data-link') || btn.closest('tr').find('a.text-primary').attr('href') || '';
-            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
+            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
             const label = labelMap[marketplace] || marketplace;
 
             const selected = collectCheckedLmpRows();

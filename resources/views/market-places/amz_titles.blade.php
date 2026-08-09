@@ -83,7 +83,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amz Titles',
-        'sub_title'  => 'Amazon titles overview',
+        'sub_title'  => 'Amz titles overview',
     ])
 
     <div class="row">
@@ -97,8 +97,8 @@
                             <i class="fa fa-refresh"></i>
                         </button>
                         <button type="button" id="amz-tt-pull-btn" class="btn btn-sm btn-warning text-dark"
-                            title="Pull Amazon titles for selected rows only → Current Title">
-                            <i class="fas fa-cloud-download-alt me-1"></i> Pull Titles from Amazon
+                            title="Pull Amz titles for selected rows only → Current Title">
+                            <i class="fas fa-cloud-download-alt me-1"></i> Pull Titles from Amz
                         </button>
                         <button type="button" id="amz-tt-prompt-badge" class="badge bg-primary border-0"
                             title="Edit AI analyze prompt">
@@ -169,7 +169,7 @@
                 </div>
                 <div class="modal-body">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="small text-muted" id="amz-tt-comp-summary">LMP Amazon data</span>
+                        <span class="small text-muted" id="amz-tt-comp-summary">LMP Amz data</span>
                         <button type="button" id="amz-tt-comp-refresh" class="btn btn-sm btn-outline-secondary" title="Reload from LMP">
                             <i class="fa fa-refresh"></i> Reload
                         </button>
@@ -214,7 +214,7 @@
                 .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        /** Saved Title 170 (product_master.title150) wins over Amazon datasheet title — same as Title Master. */
+        /** Saved Title 170 (product_master.title150) wins over Amz datasheet title — same as Title Master. */
         function amzTtGetTitle170Text(row) {
             if (!row) return '';
             const t = row.title150;
@@ -304,7 +304,7 @@
                         const href = String(row.buyer_link || '').trim()
                             || (asin ? ('https://www.amazon.com/dp/' + encodeURIComponent(asin)) : '');
                         if (!href) {
-                            return '<span class="text-muted" title="No Amazon ASIN">—</span>';
+                            return '<span class="text-muted" title="No Amz ASIN">—</span>';
                         }
                         return '<a href="' + amzTtEsc(href) + '" target="_blank" rel="noopener noreferrer"'
                             + ' title="Buyer link — ASIN ' + amzTtEsc(asin) + '"'
@@ -360,7 +360,7 @@
                     hozAlign: 'center',
                     width: 75,
                     sorter: 'number',
-                    headerTooltip: 'Amazon units ordered L30 (A L30)',
+                    headerTooltip: 'Amz units ordered L30 (A L30)',
                     formatter: function(cell) {
                         return Math.round(parseFloat(cell.getValue()) || 0).toLocaleString('en-US');
                     },
@@ -372,7 +372,7 @@
                     hozAlign: 'center',
                     headerHozAlign: 'center',
                     sorter: 'number',
-                    headerTooltip: 'LMP Amazon competitors (amazon_sku_competitors) — lowest price + View list',
+                    headerTooltip: 'LMP Amz competitors (amazon_sku_competitors) — lowest price + View list',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         if (row.is_parent_summary) return '<span class="text-muted">—</span>';
@@ -421,7 +421,7 @@
                             return '<span class="text-muted" title="Click to edit">—</span>';
                         }
                         return '<div class="amz-tt-title170' + (saved ? '' : ' is-fallback') + '" title="'
-                            + amzTtEsc(text) + (saved ? '' : ' (from Amazon listing — save to Title Master)') + '">'
+                            + amzTtEsc(text) + (saved ? '' : ' (from Amz listing — save to Title Master)') + '">'
                             + amzTtEsc(text) + '</div>'
                             + (saved ? '' : '<div class="amz-tt-title170-meta">listing</div>');
                     },
@@ -503,7 +503,7 @@
                     width: 220,
                     minWidth: 160,
                     headerSort: false,
-                    headerTooltip: 'Top 20 Amazon Ads keywords (L30 impressions). Ticked when the keyword appears in AI Title.',
+                    headerTooltip: 'Top 20 Amz Ads keywords (L30 impressions). Ticked when the keyword appears in AI Title.',
                     formatter: function(cell) {
                         return amzTtFormatTopKeywords(cell.getRow().getData());
                     },
@@ -514,7 +514,7 @@
                     width: 240,
                     minWidth: 180,
                     headerSort: false,
-                    headerTooltip: 'Top 30 AI negative keywords. Checked by default — uncheck to skip. Approve pushes checked terms to Amazon Ads KW(-).',
+                    headerTooltip: 'Top 30 AI negative keywords. Checked by default — uncheck to skip. Approve pushes checked terms to Amz Ads KW(-).',
                     formatter: function(cell) {
                         return amzTtFormatNegativeKeywords(cell.getRow().getData());
                     },
@@ -623,7 +623,7 @@
                     width: 85,
                     hozAlign: 'center',
                     headerSort: false,
-                    headerTooltip: 'Push Current Title to Amazon via SP-API',
+                    headerTooltip: 'Push Current Title to Amz via SP-API',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         if (row.is_parent_summary) {
@@ -764,7 +764,7 @@
                     return '<li class="' + (item.checked ? 'is-checked' : '') + (item.pushed ? ' is-pushed' : '') + '">'
                         + '<input type="checkbox" class="form-check-input amz-tt-neg-check" data-idx="' + idx + '"'
                         + (item.checked ? ' checked' : '')
-                        + ' title="Include when Approve pushes to Amazon KW(-)">'
+                        + ' title="Include when Approve pushes to Amz KW(-)">'
                         + '<span class="amz-tt-neg-text">' + (idx + 1) + '. ' + amzTtEsc(item.keyword)
                         + (item.pushed ? ' <span class="badge bg-success" style="font-size:9px;">pushed</span>' : '')
                         + '</span></li>';
@@ -780,7 +780,7 @@
                     : '<button type="button" class="btn btn-outline-primary amz-tt-neg-load-btn">Load Top 30</button>')
                 + '<button type="button" class="btn btn-success amz-tt-neg-approve-btn"'
                 + (checkedCount ? '' : ' disabled')
-                + ' title="Push checked negatives to Amazon Ads">'
+                + ' title="Push checked negatives to Amz Ads">'
                 + 'Approve</button>'
                 + '</div>';
         }
@@ -870,7 +870,7 @@
                 return;
             }
             if (!confirm(
-                'Push ' + selected.length + ' negative keyword(s) to Amazon Ads for parent:\n'
+                'Push ' + selected.length + ' negative keyword(s) to Amz Ads for parent:\n'
                 + parent + '\n\nMatch type: NEGATIVE_PHRASE'
             )) {
                 return;
@@ -878,7 +878,7 @@
 
             row.update({ neg_busy: true });
             try { row.reformat(); } catch (e) {}
-            $('#amz-tt-status-line').text('Approving ' + selected.length + ' Negative KW → Amazon…');
+            $('#amz-tt-status-line').text('Approving ' + selected.length + ' Negative KW → Amz…');
 
             fetch(AMZ_TT_NEG_APPROVE_URL, {
                 method: 'POST',
@@ -929,7 +929,7 @@
                 linked: Array.isArray(linkedSkus) ? linkedSkus : [],
             };
             $('#amz-tt-comp-sku-label').text('· ' + sku);
-            $('#amz-tt-comp-summary').text('Loading LMP Amazon competitors…');
+            $('#amz-tt-comp-summary').text('Loading LMP Amz competitors…');
             $('#amz-tt-comp-list').html('<div class="text-center text-muted py-4"><i class="fa fa-spinner fa-spin me-1"></i> Loading…</div>');
             const modalEl = document.getElementById('amzTtCompetitorsModal');
             if (modalEl && typeof bootstrap !== 'undefined') {
@@ -960,7 +960,7 @@
                     $('#amz-tt-comp-summary').text(
                         list.length + ' competitor(s)'
                         + (lowest != null ? (' · LMP $' + parseFloat(lowest).toFixed(2)) : '')
-                        + ' · LMP Amazon data'
+                        + ' · LMP Amz data'
                     );
                     if (!list.length) {
                         $('#amz-tt-comp-list').html('<div class="text-muted py-3">No competitors found for this SKU.</div>');
@@ -1161,10 +1161,10 @@
                 alert('No title to push. Approve an AI title or set Current Title first.');
                 return;
             }
-            if (!confirm('Push title to Amazon for SKU:\n' + pushSku + '\n\n' + title)) return;
+            if (!confirm('Push title to Amz for SKU:\n' + pushSku + '\n\n' + title)) return;
 
             row.update({ ai_pushing: true });
-            $('#amz-tt-status-line').text('Pushing title to Amazon…');
+            $('#amz-tt-status-line').text('Pushing title to Amz…');
 
             fetch(AMZ_TT_PUSH_URL, {
                 method: 'POST',
@@ -1186,7 +1186,7 @@
                 })
                 .then(function(body) {
                     row.update({ ai_pushing: false, ai_pushed: true });
-                    $('#amz-tt-status-line').text(body.message || ('Pushed to Amazon · ' + pushSku));
+                    $('#amz-tt-status-line').text(body.message || ('Pushed to Amz · ' + pushSku));
                 })
                 .catch(function(err) {
                     row.update({ ai_pushing: false });
@@ -1316,7 +1316,7 @@
             } else {
                 if (msg) $('#amz-tt-status-line').text(msg);
                 $('#amz-tt-pull-btn').prop('disabled', false)
-                    .html('<i class="fas fa-cloud-download-alt me-1"></i> Pull Titles from Amazon');
+                    .html('<i class="fas fa-cloud-download-alt me-1"></i> Pull Titles from Amz');
             }
         }
 
@@ -1420,9 +1420,9 @@
                 }
 
                 if (!confirm(
-                    'Pull Amazon listing titles for ' + selected.length + ' selected SKU(s)?\n\n' +
+                    'Pull Amz listing titles for ' + selected.length + ' selected SKU(s)?\n\n' +
                     '· Selected rows only (parents → their children)\n' +
-                    '· Uses Amazon SP-API (Listings item_name)\n' +
+                    '· Uses Amz SP-API (Listings item_name)\n' +
                     '· Writes to Current Title (product_master.title150)\n' +
                     '· Synced with Title Master'
                 )) {
@@ -1455,7 +1455,7 @@
                         if (st) amzTtApplyPullStatus(st);
                         else {
                             $btn.prop('disabled', false)
-                                .html('<i class="fas fa-cloud-download-alt me-1"></i> Pull Titles from Amazon');
+                                .html('<i class="fas fa-cloud-download-alt me-1"></i> Pull Titles from Amz');
                         }
                         const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
                             || (xhr.statusText === 'timeout' ? 'Pull timed out — try again' : 'Failed to pull titles');

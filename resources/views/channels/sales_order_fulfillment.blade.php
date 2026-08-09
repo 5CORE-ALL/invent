@@ -927,7 +927,7 @@
                                     <option value="ups">UPS</option>
                                     <option value="fedex">FedEx</option>
                                     <option value="dhl">DHL</option>
-                                    <option value="amazon">Amazon</option>
+                                    <option value="amazon">Amz</option>
                                     <option value="ontrac">OnTrac</option>
                                     <option value="veeqo">Veeqo</option>
                                     <option value="other">Other</option>
@@ -1304,7 +1304,7 @@
                             <option value="UPS"></option>
                             <option value="FedEx"></option>
                             <option value="DHL"></option>
-                            <option value="Amazon"></option>
+                            <option value="Amz"></option>
                             <option value="OnTrac"></option>
                             <option value="Veeqo"></option>
                         </datalist>

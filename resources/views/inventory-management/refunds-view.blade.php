@@ -1859,8 +1859,8 @@
                             id: 'product-master'
                         },
                         {
-                            name: 'Amazon',
-                            displayName: 'Amazon',
+                            name: 'Amz',
+                            displayName: 'Amz',
                             id: 'amazon'
                         },
                         {
@@ -2141,7 +2141,7 @@
             $(document).on('click', '#importRefundsSampleLink', function (e) {
                 e.preventDefault();
                 var headers = ['sku','qty','refund_amt','reason','comment','person_responsible','order_id','channel_name','supplier_name'];
-                var sample  = ['SAMPLE-SKU-001','1','15.99','Damaged','Replace packaging','Shivaji','ORD-12345','Amazon B2C','Supplier A'];
+                var sample  = ['SAMPLE-SKU-001','1','15.99','Damaged','Replace packaging','Shivaji','ORD-12345','Amz B2C','Supplier A'];
                 var csv = [headers.join(','), sample.join(',')].join('\r\n');
                 var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 var url = URL.createObjectURL(blob);

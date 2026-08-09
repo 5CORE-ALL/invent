@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $title ?? 'Amazon — Connect', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $title ?? 'Amz — Connect', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
 <style>
@@ -12,7 +12,7 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.manager.index') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Marketplace Manager</a>
-        @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amazon — Connect', 'mb' => 'mb-3'])
+        @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amz — Connect', 'mb' => 'mb-3'])
 
         @include('marketplace.amazon._nav', ['active' => 'connect'])
 
@@ -21,12 +21,12 @@
                 <i class="ri-checkbox-circle-line fs-5 mt-1"></i>
                 <div>
                     <strong>Credentials found in .env</strong>
-                    <p class="mb-0 small">Amazon SP-API keys are configured. Click <strong>Test connection</strong> to verify the access token.</p>
+                    <p class="mb-0 small">Amz SP-API keys are configured. Click <strong>Test connection</strong> to verify the access token.</p>
                 </div>
             </div>
         @else
             <div class="alert alert-warning">
-                <strong>Setup required</strong> — add Amazon SP-API client id/secret, refresh token, and seller id to <code>.env</code>, then refresh.
+                <strong>Setup required</strong> — add Amz SP-API client id/secret, refresh token, and seller id to <code>.env</code>, then refresh.
             </div>
         @endif
 
@@ -116,7 +116,7 @@
                     <div class="card-body">
                         <h5 class="card-title">Orders hub</h5>
                         <p class="text-muted small mb-3">
-                            Marketplace Manager for Amazon focuses on <strong>order fetch + visibility</strong>
+                            Marketplace Manager for Amz focuses on <strong>order fetch + visibility</strong>
                             (same SP-API source as <code>/amazon/daily-sales</code>).
                         </p>
                         <a href="{{ route('marketplace.orders', 'amazon') }}" class="btn btn-outline-primary btn-sm">

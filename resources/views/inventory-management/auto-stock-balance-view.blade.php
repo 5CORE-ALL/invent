@@ -1132,8 +1132,8 @@
                             id: 'product-master'
                         },
                         {
-                            name: 'Amazon',
-                            displayName: 'Amazon',
+                            name: 'Amz',
+                            displayName: 'Amz',
                             id: 'amazon'
                         },
                         {

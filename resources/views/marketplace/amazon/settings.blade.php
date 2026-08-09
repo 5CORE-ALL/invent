@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $title ?? 'Amazon — Settings', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $title ?? 'Amz — Settings', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
 <style>
@@ -13,9 +13,9 @@
 @section('content')
 <div class="row">
     <div class="col-12">
-        <a href="{{ route('marketplace.manager.show', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amazon Manager</a>
-        @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amazon Sync Settings'])
-        <p class="text-muted mb-3">Configure how Shopify (source) syncs with Amazon for pricing, inventory, and orders.</p>
+        <a href="{{ route('marketplace.manager.show', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amz Manager</a>
+        @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amz Sync Settings'])
+        <p class="text-muted mb-3">Configure how Shopify (source) syncs with Amz for pricing, inventory, and orders.</p>
 
         @include('marketplace.amazon._nav', ['active' => 'settings'])
 
@@ -28,7 +28,7 @@
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="pricing[price_sync]" value="1" {{ ($settings['pricing']['price_sync'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Sync prices from Shopify to Amazon</span>
+                            <span class="form-check-label">Sync prices from Shopify to Amz</span>
                         </label>
                     </div>
                     <div class="sync-toggle-row">
@@ -46,7 +46,7 @@
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="inventory[inventory_sync]" value="1" {{ ($settings['inventory']['inventory_sync'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Sync stock quantities from Shopify to Amazon</span>
+                            <span class="form-check-label">Sync stock quantities from Shopify to Amz</span>
                         </label>
                     </div>
                     <div class="row g-2 mt-2">
@@ -66,37 +66,37 @@
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="order[fetch_orders]" value="1" {{ ($settings['order']['fetch_orders'] ?? true) ? 'checked' : '' }}>
-                            <span class="form-check-label">Fetch orders from Amazon on schedule</span>
+                            <span class="form-check-label">Fetch orders from Amz on schedule</span>
                         </label>
-                        <div class="form-text ms-4">When on, the 15‑minute schedule pulls Amazon orders into our DB. Manual <strong>Fetch from Amazon</strong> on the Orders page always works.</div>
+                        <div class="form-text ms-4">When on, the 15‑minute schedule pulls Amz orders into our DB. Manual <strong>Fetch from Amz</strong> on the Orders page always works.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? true) ? 'checked' : '' }}>
-                            <span class="form-check-label">Automatically import Amazon orders to Shopify</span>
+                            <span class="form-check-label">Automatically import Amz orders to Shopify</span>
                         </label>
-                        <div class="form-text ms-4">ON by default. New Amazon orders are queued to Shopify on the 15‑minute schedule.</div>
+                        <div class="form-text ms-4">ON by default. New Amz orders are queued to Shopify on the 15‑minute schedule.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="order[import_paid_orders_only]" value="1" {{ ($settings['order']['import_paid_orders_only'] ?? false) ? 'checked' : '' }}>
                             <span class="form-check-label">Only auto-import paid orders</span>
                         </label>
-                        <div class="form-text ms-4">When on, unpaid / payment-pending Amazon orders stay in our DB and are not queued or manually pushed to Shopify. Turn this off to import unpaid orders.</div>
+                        <div class="form-text ms-4">When on, unpaid / payment-pending Amz orders stay in our DB and are not queued or manually pushed to Shopify. Turn this off to import unpaid orders.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="order[sync_address_to_shopify]" value="1" {{ ($settings['order']['sync_address_to_shopify'] ?? true) ? 'checked' : '' }}>
-                            <span class="form-check-label">Automatically sync Amazon customer / shipping address to Shopify</span>
+                            <span class="form-check-label">Automatically sync Amz customer / shipping address to Shopify</span>
                         </label>
-                        <div class="form-text ms-4">ON by default. Every 15 minutes the app fills missing Shopify shipping/billing/customer address from Amazon — no manual Pull needed.</div>
+                        <div class="form-text ms-4">ON by default. Every 15 minutes the app fills missing Shopify shipping/billing/customer address from Amz — no manual Pull needed.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="order[push_tracking_to_amazon]" value="1" {{ ($settings['order']['push_tracking_to_amazon'] ?? true) ? 'checked' : '' }}>
-                            <span class="form-check-label">Automatically push Shopify tracking numbers to Amazon</span>
+                            <span class="form-check-label">Automatically push Shopify tracking numbers to Amz</span>
                         </label>
-                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments (after you print/download a label) and ships the order on Amazon — no manual push needed. You can still push per order from the order detail page.</div>
+                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments (after you print/download a label) and ships the order on Amz — no manual push needed. You can still push per order from the order detail page.</div>
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>
@@ -107,16 +107,16 @@
                             <option value="business" {{ $shopifyStore === 'business' ? 'selected' : '' }}>Business 5Core</option>
                             <option value="prolightsounds" {{ $shopifyStore === 'prolightsounds' ? 'selected' : '' }}>ProLightSounds</option>
                         </select>
-                        <div class="form-text">Amazon orders import here. Default is main B2C store (same as <code>shopify_skus</code>).</div>
+                        <div class="form-text">Amz orders import here. Default is main B2C store (same as <code>shopify_skus</code>).</div>
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify channel handle (source_name)</label>
                         <input type="text" class="form-control form-control-sm" name="order[shopify_source_name]" value="{{ $settings['order']['shopify_source_name'] ?? 'amazon' }}" style="max-width: 400px;">
-                        <div class="form-text">Case-sensitive handle registered in your Shopify app’s <strong>Marketplace extension</strong> (Partner Dashboard). Shopify shows this as the channel name (e.g. Amazon) instead of the app name (5core).</div>
+                        <div class="form-text">Case-sensitive handle registered in your Shopify app’s <strong>Marketplace extension</strong> (Partner Dashboard). Shopify shows this as the channel name (e.g. Amz) instead of the app name (5core).</div>
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify channel display label</label>
-                        <input type="text" class="form-control form-control-sm" name="order[shopify_source_display_name]" value="{{ $settings['order']['shopify_source_display_name'] ?? 'Amazon' }}" style="max-width: 400px;">
+                        <input type="text" class="form-control form-control-sm" name="order[shopify_source_display_name]" value="{{ $settings['order']['shopify_source_display_name'] ?? 'Amz' }}" style="max-width: 400px;">
                         <div class="form-text">Used in our dry-run preview only. Shopify Admin uses the label from your registered Marketplace handle.</div>
                     </div>
                     <div class="mt-2">
@@ -129,30 +129,30 @@
             <div class="settings-section">
                 <div class="settings-section-header">Listings</div>
                 <div class="settings-section-body">
-                    <p class="text-muted small mb-2">Sync Amazon link map only reads Amazon and saves SKU mappings locally — it never creates listings on Amazon. When <strong>Auto-link</strong> is on, this also runs hourly on schedule.</p>
+                    <p class="text-muted small mb-2">Sync Amz link map only reads Amz and saves SKU mappings locally — it never creates listings on Amz. When <strong>Auto-link</strong> is on, this also runs hourly on schedule.</p>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="listings[auto_link_by_sku]" value="1" {{ ($settings['listings']['auto_link_by_sku'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Auto-link listings by SKU match</span>
                         </label>
-                        <div class="form-text ms-4">When on, refresh Amazon SKU ↔ product_id mappings hourly (same as manual Sync Amazon link map). Manual sync on Listings always works.</div>
+                        <div class="form-text ms-4">When on, refresh Amz SKU ↔ product_id mappings hourly (same as manual Sync Amz link map). Manual sync on Listings always works.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="listings[create_products_on_amazon]" value="1" {{ ($settings['listings']['create_products_on_amazon'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Create new listings on Amazon from Shopify <span class="text-muted">(off for testing — not implemented yet)</span></span>
+                            <span class="form-check-label">Create new listings on Amz from Shopify <span class="text-muted">(off for testing — not implemented yet)</span></span>
                         </label>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="listings[sync_title]" value="1" {{ ($settings['listings']['sync_title'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Push title updates to existing Amazon listings</span>
+                            <span class="form-check-label">Push title updates to existing Amz listings</span>
                         </label>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="listings[sync_images]" value="1" {{ ($settings['listings']['sync_images'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Push image updates to existing Amazon listings</span>
+                            <span class="form-check-label">Push image updates to existing Amz listings</span>
                         </label>
                     </div>
                 </div>
