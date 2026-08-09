@@ -554,6 +554,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/sales-order-fulfillment/badge-link', [SalesOrderFulfillmentController::class, 'saveBadgeLink'])->name('sales.order.fulfillment.badge.link');
     Route::post('/sales-order-fulfillment/refresh-shipment-status', [SalesOrderFulfillmentController::class, 'refreshShipmentStatus'])->name('sales.order.fulfillment.refresh.shipment.status');
     Route::post('/sales-order-fulfillment/pull-tracking-numbers', [SalesOrderFulfillmentController::class, 'pullTrackingNumbers'])->name('sales.order.fulfillment.pull.tracking.numbers');
+    Route::post('/sales-order-fulfillment/bulk-update-shipment', [SalesOrderFulfillmentController::class, 'bulkUpdateShipment'])->name('sales.order.fulfillment.bulk.update.shipment');
     Route::get('/sales-order-fulfillment/gofo/status', [SalesOrderFulfillmentController::class, 'gofoStatus'])->name('sales.order.fulfillment.gofo.status');
     Route::post('/sales-order-fulfillment/gofo/verify-delivery', [SalesOrderFulfillmentController::class, 'gofoVerifyDelivery'])->name('sales.order.fulfillment.gofo.verify');
     Route::post('/sales-order-fulfillment/gofo/track', [SalesOrderFulfillmentController::class, 'gofoTrack'])->name('sales.order.fulfillment.gofo.track');

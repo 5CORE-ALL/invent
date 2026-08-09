@@ -938,6 +938,12 @@
                                 <button type="button" class="btn btn-sm btn-primary" id="sof-date-filter-apply">Apply</button>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-date-filter-clear" title="Reset date + carrier filters">Clear</button>
                             </div>
+                            <div class="d-flex align-items-end gap-2 ms-md-2">
+                                <button type="button" class="btn btn-sm btn-success" id="sof-bulk-edit-btn" disabled title="Edit selected rows (only changed fields are saved)">
+                                    <i class="mdi mdi-pencil-box-multiple-outline me-1"></i>
+                                    Edit selected (<span id="sof-bulk-edit-count">0</span>)
+                                </button>
+                            </div>
                             <div class="small text-muted ms-auto pb-1" id="sof-date-filter-hint">Order date range (default: last 30 days)</div>
                         </div>
                     </div>
@@ -1272,6 +1278,70 @@
         </div>
     </div>
 
+    <div class="modal fade" id="sofShipmentEditModal" tabindex="-1" aria-labelledby="sofShipmentEditModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-semibold mb-0" id="sofShipmentEditModalLabel">Edit shipment</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small text-muted mb-2" id="sof-ship-edit-target-hint">Editing 1 row</div>
+                    <div class="alert alert-light border small py-2 mb-3" id="sof-ship-edit-dirty-hint">
+                        Only fields you change are saved. Unchanged fields stay as-is on every selected row.
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1" for="sof-ship-edit-tracking">Tracking number</label>
+                        <input type="text" class="form-control form-control-sm sof-ship-edit-field" id="sof-ship-edit-tracking" data-field="tracking_number" autocomplete="off">
+                        <div class="form-text sof-ship-mixed-hint d-none" data-for="tracking_number">Mixed values — leave blank to keep each row’s current value.</div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1" for="sof-ship-edit-carrier">Carrier</label>
+                        <input type="text" class="form-control form-control-sm sof-ship-edit-field" id="sof-ship-edit-carrier" data-field="tracking_company" list="sof-ship-edit-carrier-list" autocomplete="off" placeholder="GOFO, USPS, UPS, FedEx…">
+                        <datalist id="sof-ship-edit-carrier-list">
+                            <option value="GOFO"></option>
+                            <option value="USPS"></option>
+                            <option value="UPS"></option>
+                            <option value="FedEx"></option>
+                            <option value="DHL"></option>
+                            <option value="Amazon"></option>
+                            <option value="OnTrac"></option>
+                            <option value="Veeqo"></option>
+                        </datalist>
+                        <div class="form-text sof-ship-mixed-hint d-none" data-for="tracking_company">Mixed values — leave blank to keep each row’s current value.</div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1" for="sof-ship-edit-status">Shipment status</label>
+                        <select class="form-select form-select-sm sof-ship-edit-field" id="sof-ship-edit-status" data-field="shipment_status">
+                            <option value="">— keep / choose —</option>
+                            <option value="Pending">Pending</option>
+                            <option value="InfoReceived">InfoReceived</option>
+                            <option value="InTransit">InTransit</option>
+                            <option value="OutForDelivery">OutForDelivery</option>
+                            <option value="AvailableForPickup">AvailableForPickup</option>
+                            <option value="Delivered">Delivered</option>
+                            <option value="Exception">Exception</option>
+                            <option value="DeliveryFailure">DeliveryFailure</option>
+                            <option value="Expired">Expired</option>
+                            <option value="NotFound">NotFound</option>
+                        </select>
+                        <div class="form-text sof-ship-mixed-hint d-none" data-for="shipment_status">Mixed values — leave as “keep” to skip this field.</div>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label small mb-1" for="sof-ship-edit-detail">Status detail</label>
+                        <input type="text" class="form-control form-control-sm sof-ship-edit-field" id="sof-ship-edit-detail" data-field="shipment_status_detail" autocomplete="off">
+                        <div class="form-text sof-ship-mixed-hint d-none" data-for="shipment_status_detail">Mixed values — leave blank to keep each row’s current value.</div>
+                    </div>
+                    <div class="small text-danger mt-2 d-none" id="sof-ship-edit-error"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="sof-ship-edit-save">Save changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="sofLabelDimsModal" tabindex="-1" aria-labelledby="sofLabelDimsModalLabel" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -1451,6 +1521,11 @@
         headerSortClickElement: 'header',
     };
 
+    /** Order tabs: row checkboxes + Edit / bulk partial update. */
+    const sofOrderTableOpts = Object.assign({}, sofLocalTableOpts, {
+        selectableRows: true,
+    });
+
     function sofFormatDateInput(d) {
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -1601,6 +1676,236 @@
         sofApplyAllCarrierFilters();
     });
 
+    // ── Row select + Edit / bulk partial update ─────────────────────────────
+    let sofShipEditCtx = null; // { table, rows, baseline, mixed }
+
+    function sofActiveOrderTable() {
+        const pairs = [
+            ['#sof-pending-tab', pendingTable],
+            ['#sof-fulfilled-tab', fulfilledTable],
+            ['#sof-scan-done-tab', scanDoneTable],
+            ['#sof-in-transit-tab', inTransitTable],
+            ['#sof-in-received-tab', inReceivedTable],
+            ['#sof-invoiced-tab', invoicedTable],
+            ['#sof-delivered-tab', deliveredTable],
+            ['#sof-all-order-tab', allOrderTable],
+        ];
+        for (let i = 0; i < pairs.length; i++) {
+            if ($(pairs[i][0]).hasClass('active')) {
+                return pairs[i][1];
+            }
+        }
+        return null;
+    }
+
+    function sofUpdateBulkEditButton() {
+        const tbl = sofActiveOrderTable();
+        const n = (tbl && tbl.getSelectedData) ? tbl.getSelectedData().length : 0;
+        const btn = document.getElementById('sof-bulk-edit-btn');
+        const countEl = document.getElementById('sof-bulk-edit-count');
+        if (countEl) countEl.textContent = String(n);
+        if (btn) btn.disabled = n < 1;
+    }
+
+    function sofWireOrderTable(tbl) {
+        if (!tbl || tbl._sofSelWired) return;
+        tbl._sofSelWired = true;
+        tbl.on('rowSelectionChanged', function () {
+            sofUpdateBulkEditButton();
+        });
+    }
+
+    function sofFieldValuesAcrossRows(rows, field) {
+        const vals = rows.map(function (r) {
+            const v = r && r[field];
+            return v == null ? '' : String(v).trim();
+        });
+        const uniq = Array.from(new Set(vals));
+        return {
+            mixed: uniq.length > 1,
+            value: uniq.length === 1 ? uniq[0] : '',
+        };
+    }
+
+    function openSofShipmentEdit(table, clickedRow) {
+        if (!table || !clickedRow) return;
+        const selected = (table.getSelectedData && table.getSelectedData()) || [];
+        const clickedId = clickedRow.id;
+        const selectedIncludes = selected.some(function (r) { return r && r.id === clickedId; });
+        let rows;
+        if (selected.length > 1 && selectedIncludes) {
+            rows = selected;
+        } else if (selected.length === 1 && selectedIncludes) {
+            rows = selected;
+        } else {
+            rows = [clickedRow];
+        }
+
+        const fields = ['tracking_number', 'tracking_company', 'shipment_status', 'shipment_status_detail'];
+        const baseline = {};
+        const mixed = {};
+        fields.forEach(function (f) {
+            const info = sofFieldValuesAcrossRows(rows, f);
+            baseline[f] = info.value;
+            mixed[f] = info.mixed;
+        });
+
+        sofShipEditCtx = { table: table, rows: rows, baseline: baseline, mixed: mixed };
+
+        const title = document.getElementById('sofShipmentEditModalLabel');
+        const hint = document.getElementById('sof-ship-edit-target-hint');
+        if (title) title.textContent = rows.length > 1 ? ('Bulk edit (' + rows.length + ' rows)') : 'Edit shipment';
+        if (hint) {
+            hint.textContent = rows.length > 1
+                ? ('Editing ' + rows.length + ' selected rows. Only fields you change are written.')
+                : ('Editing order ' + (clickedRow.order_id || clickedRow.id || ''));
+        }
+
+        const err = document.getElementById('sof-ship-edit-error');
+        if (err) {
+            err.textContent = '';
+            err.classList.add('d-none');
+        }
+
+        document.querySelectorAll('.sof-ship-edit-field').forEach(function (el) {
+            const field = el.getAttribute('data-field');
+            const isMixed = !!mixed[field];
+            const hintEl = document.querySelector('.sof-ship-mixed-hint[data-for="' + field + '"]');
+            if (hintEl) hintEl.classList.toggle('d-none', !isMixed);
+
+            if (el.tagName === 'SELECT') {
+                if (isMixed) {
+                    el.value = '';
+                } else {
+                    el.value = baseline[field] || '';
+                }
+            } else {
+                el.value = isMixed ? '' : (baseline[field] || '');
+                el.placeholder = isMixed ? 'Keep existing (mixed)' : '';
+            }
+            el.dataset.sofBaseline = isMixed ? '__mixed__' : (baseline[field] || '');
+        });
+
+        const modalEl = document.getElementById('sofShipmentEditModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+    }
+
+    function sofCollectDirtyShipmentFields() {
+        if (!sofShipEditCtx) return {};
+        const dirty = {};
+        document.querySelectorAll('.sof-ship-edit-field').forEach(function (el) {
+            const field = el.getAttribute('data-field');
+            const baseline = el.dataset.sofBaseline || '';
+            let current = (el.value || '').trim();
+            if (el.tagName === 'SELECT' && current === '') {
+                // "keep" for status when blank
+                return;
+            }
+            if (baseline === '__mixed__') {
+                // Mixed: only apply if user entered a value
+                if (current !== '') {
+                    dirty[field] = current;
+                }
+                return;
+            }
+            if (current !== baseline) {
+                dirty[field] = current;
+            }
+        });
+        return dirty;
+    }
+
+    function sofSaveShipmentEdit() {
+        if (!sofShipEditCtx || !sofShipEditCtx.rows || !sofShipEditCtx.rows.length) return;
+        const fields = sofCollectDirtyShipmentFields();
+        const err = document.getElementById('sof-ship-edit-error');
+        if (Object.keys(fields).length === 0) {
+            if (err) {
+                err.textContent = 'Change at least one field before saving. Unchanged fields are skipped.';
+                err.classList.remove('d-none');
+            }
+            return;
+        }
+
+        const rows = sofShipEditCtx.rows.map(function (r) {
+            return {
+                shopify_order_id: r.shopify_order_id || '',
+                order_number: r.order_number || '',
+                order_id: r.order_id || '',
+                order_id_api: r.order_id_api || '',
+                tracking_number: r.tracking_number || '',
+            };
+        });
+
+        const saveBtn = document.getElementById('sof-ship-edit-save');
+        if (saveBtn) saveBtn.disabled = true;
+        if (err) {
+            err.textContent = '';
+            err.classList.add('d-none');
+        }
+
+        fetch('{{ route("sales.order.fulfillment.bulk.update.shipment") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': sofCsrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ rows: rows, fields: fields }),
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (res) {
+                if (!res.ok || !res.json || !res.json.success) {
+                    throw new Error((res.json && res.json.message) || 'Update failed.');
+                }
+                // Patch local table rows for immediate UI feedback
+                const tbl = sofShipEditCtx.table;
+                if (tbl) {
+                    sofShipEditCtx.rows.forEach(function (r) {
+                        const patch = Object.assign({ id: r.id }, fields);
+                        try { tbl.updateData([patch]); } catch (e) {}
+                    });
+                }
+                const modalEl = document.getElementById('sofShipmentEditModal');
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                }
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Updated',
+                        text: res.json.message || 'Saved.',
+                        timer: 2200,
+                        showConfirmButton: false,
+                    });
+                }
+            })
+            .catch(function (e) {
+                if (err) {
+                    err.textContent = e.message || 'Update failed.';
+                    err.classList.remove('d-none');
+                }
+            })
+            .finally(function () {
+                if (saveBtn) saveBtn.disabled = false;
+            });
+    }
+
+    $('#sof-ship-edit-save').on('click', sofSaveShipmentEdit);
+    $('#sof-bulk-edit-btn').on('click', function () {
+        const tbl = sofActiveOrderTable();
+        if (!tbl) return;
+        const selected = tbl.getSelectedData() || [];
+        if (!selected.length) return;
+        openSofShipmentEdit(tbl, selected[0]);
+    });
+    $('#sof-tabs button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+        sofUpdateBulkEditButton();
+    });
+
     function sofIsEmptySortValue(v) {
         return v === null || v === undefined || String(v).trim() === '';
     }
@@ -1675,11 +1980,13 @@
             {
                 title: 'Tracking',
                 field: 'tracking_number',
-                minWidth: 170,
+                minWidth: 70,
+                width: 78,
+                hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sofStringSorter,
-                headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
+                headerTooltip: 'Green = tracking number available · Red = missing',
                 formatter: formatTrackingCell,
             },
             {
@@ -1700,22 +2007,15 @@
         const tracking = (cell.getValue() || row.tracking_number || '').toString().trim();
         const shipStatus = (row.shipment_status || '').toString().trim();
         const detail = (row.shipment_status_detail || '').toString().trim();
-        if (!tracking && !shipStatus) {
-            return '<span class="sof-oc-missing">—</span>';
-        }
-        let html = '';
-        if (tracking) {
-            html += `<code style="font-size:0.78rem;color:#334155;word-break:break-all;">${escapeHtml(tracking)}</code>`;
-        } else {
-            html += '<span class="sof-oc-missing">No #</span>';
-        }
-        if (shipStatus) {
-            html += `<div style="font-size:0.7rem;color:#64748b;line-height:1.2;margin-top:2px;">${escapeHtml(shipStatus)}</div>`;
-        }
-        if (detail && shipStatus) {
-            html += `<div style="font-size:0.68rem;color:#94a3b8;line-height:1.2;" title="${escapeHtml(detail)}">${escapeHtml(detail.length > 42 ? detail.slice(0, 42) + '…' : detail)}</div>`;
-        }
-        return html;
+        const hasTracking = tracking !== '';
+        const tipParts = [];
+        if (hasTracking) tipParts.push(tracking);
+        if (shipStatus) tipParts.push(shipStatus);
+        if (detail) tipParts.push(detail);
+        const tip = tipParts.length ? tipParts.join(' · ') : 'No tracking number';
+        const color = hasTracking ? 'green' : 'red';
+        const label = hasTracking ? 'Tracking available' : 'Tracking missing';
+        return '<span class="sof-ch-orders-dot ' + color + '" title="' + escapeHtml(tip) + '" aria-label="' + escapeHtml(label) + '" style="cursor:default;"></span>';
     }
 
     function carrierBadgeClass(name) {
@@ -2150,6 +2450,41 @@
 
     function orderListColumns(statusBadgeClass) {
         return [
+            {
+                title: '',
+                field: '__sof_select',
+                formatter: 'rowSelection',
+                titleFormatter: 'rowSelection',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                headerSort: false,
+                width: 44,
+                minWidth: 44,
+                frozen: true,
+            },
+            {
+                title: 'Edit',
+                field: '__sof_edit',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                headerSort: false,
+                width: 70,
+                minWidth: 70,
+                frozen: true,
+                formatter: function (cell) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-sm btn-outline-primary py-0 px-2';
+                    btn.textContent = 'Edit';
+                    btn.title = 'Edit this row (or all selected rows)';
+                    btn.addEventListener('click', function (ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        openSofShipmentEdit(cell.getTable(), cell.getRow().getData());
+                    });
+                    return btn;
+                },
+            },
             {
                 title: 'Channel',
                 field: 'channel_label',
@@ -2990,7 +3325,7 @@
         }
         pendingTableLoading = true;
 
-        pendingTable = new Tabulator('#sof-pending-table', Object.assign({}, sofLocalTableOpts, {
+        pendingTable = new Tabulator('#sof-pending-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading pending orders…',
             initialSort: [
@@ -3031,6 +3366,7 @@
             },
             columns: orderListColumns('sof-pending-badge'),
         }));
+        sofWireOrderTable(pendingTable);
     }
 
     function applyFulfilledFilters() {
@@ -3046,7 +3382,7 @@
         }
         fulfilledTableLoading = true;
 
-        fulfilledTable = new Tabulator('#sof-fulfilled-table', Object.assign({}, sofLocalTableOpts, {
+        fulfilledTable = new Tabulator('#sof-fulfilled-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading Label Created / No Scan orders…',
             initialSort: [
@@ -3100,6 +3436,7 @@
                 return cols;
             })(),
         }));
+        sofWireOrderTable(fulfilledTable);
     }
 
     function applyScanDoneFilters() {
@@ -3115,7 +3452,7 @@
         }
         scanDoneTableLoading = true;
 
-        scanDoneTable = new Tabulator('#sof-scan-done-table', Object.assign({}, sofLocalTableOpts, {
+        scanDoneTable = new Tabulator('#sof-scan-done-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading Shipped/Received orders…',
             initialSort: [
@@ -3168,6 +3505,7 @@
                 return cols;
             })(),
         }));
+        sofWireOrderTable(scanDoneTable);
     }
 
     function applyInTransitFilters() {
@@ -3183,7 +3521,7 @@
         }
         inTransitTableLoading = true;
 
-        inTransitTable = new Tabulator('#sof-in-transit-table', Object.assign({}, sofLocalTableOpts, {
+        inTransitTable = new Tabulator('#sof-in-transit-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading In Transit orders…',
             initialSort: [
@@ -3236,6 +3574,7 @@
                 return cols;
             })(),
         }));
+        sofWireOrderTable(inTransitTable);
     }
 
     function applyInReceivedFilters() {
@@ -3251,7 +3590,7 @@
         }
         inReceivedTableLoading = true;
 
-        inReceivedTable = new Tabulator('#sof-in-received-table', Object.assign({}, sofLocalTableOpts, {
+        inReceivedTable = new Tabulator('#sof-in-received-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading In Received orders…',
             initialSort: [
@@ -3304,6 +3643,7 @@
                 return cols;
             })(),
         }));
+        sofWireOrderTable(inReceivedTable);
     }
 
     function applyInvoicedFilters() {
@@ -3319,7 +3659,7 @@
         }
         invoicedTableLoading = true;
 
-        invoicedTable = new Tabulator('#sof-invoiced-table', Object.assign({}, sofLocalTableOpts, {
+        invoicedTable = new Tabulator('#sof-invoiced-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading Invoiced orders…',
             initialSort: [
@@ -3372,6 +3712,7 @@
                 return cols;
             })(),
         }));
+        sofWireOrderTable(invoicedTable);
     }
 
     function applyDeliveredFilters() {
@@ -3393,7 +3734,7 @@
         }
         deliveredTableLoading = true;
 
-        deliveredTable = new Tabulator('#sof-delivered-table', Object.assign({}, sofLocalTableOpts, {
+        deliveredTable = new Tabulator('#sof-delivered-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading Delivered orders (last 30 days)…',
             initialSort: [
@@ -3458,6 +3799,7 @@
                 return cols;
             })(),
         }));
+        sofWireOrderTable(deliveredTable);
     }
 
     function applyAllOrderFilters() {
@@ -3473,7 +3815,7 @@
         }
         allOrderTableLoading = true;
 
-        allOrderTable = new Tabulator('#sof-all-order-table', Object.assign({}, sofLocalTableOpts, {
+        allOrderTable = new Tabulator('#sof-all-order-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading all orders…',
             initialSort: [
@@ -3526,6 +3868,7 @@
                 return cols;
             })(),
         }));
+        sofWireOrderTable(allOrderTable);
     }
 
     document.getElementById('sof-all-order-tab')?.addEventListener('shown.bs.tab', function () {

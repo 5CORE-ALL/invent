@@ -2841,6 +2841,150 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * Partial bulk update of shipment fields on shopify_raw_orders.
+     * Only keys present in `fields` are written (dirty-field patch).
+     */
+    public function bulkUpdateShipment(Request $request): JsonResponse
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return response()->json(['success' => false, 'message' => 'shopify_raw_orders table missing.'], 422);
+        }
+
+        $validated = $request->validate([
+            'rows' => 'required|array|min:1|max:200',
+            'rows.*.shopify_order_id' => 'nullable|string|max:64',
+            'rows.*.order_number' => 'nullable|string|max:128',
+            'rows.*.order_id' => 'nullable|string|max:128',
+            'rows.*.order_id_api' => 'nullable|string|max:128',
+            'rows.*.tracking_number' => 'nullable|string|max:128',
+            'fields' => 'required|array|min:1',
+        ]);
+
+        $allowed = [
+            'tracking_number',
+            'tracking_company',
+            'tracking_url',
+            'shipment_status',
+            'shipment_status_detail',
+        ];
+
+        $fields = [];
+        foreach ($allowed as $key) {
+            if (! array_key_exists($key, $validated['fields'])) {
+                continue;
+            }
+            $val = $validated['fields'][$key];
+            if ($val === null) {
+                $fields[$key] = null;
+                continue;
+            }
+            $fields[$key] = is_string($val) ? trim($val) : $val;
+        }
+
+        if ($fields === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No editable fields provided. Only changed fields are saved.',
+            ], 422);
+        }
+
+        if (array_key_exists('shipment_status', $fields) && $fields['shipment_status'] !== null && $fields['shipment_status'] !== '') {
+            $allowedStatuses = [
+                ShipmentTrackingService::STATUS_PENDING,
+                ShipmentTrackingService::STATUS_INFO_RECEIVED,
+                ShipmentTrackingService::STATUS_IN_TRANSIT,
+                ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
+                ShipmentTrackingService::STATUS_PICKUP,
+                ShipmentTrackingService::STATUS_DELIVERED,
+                ShipmentTrackingService::STATUS_EXCEPTION,
+                ShipmentTrackingService::STATUS_FAILED,
+                ShipmentTrackingService::STATUS_EXPIRED,
+                ShipmentTrackingService::STATUS_NOT_FOUND,
+            ];
+            if (! in_array((string) $fields['shipment_status'], $allowedStatuses, true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid shipment_status value.',
+                ], 422);
+            }
+        }
+
+        $updated = 0;
+        $skipped = 0;
+        $errors = [];
+        $now = now();
+
+        foreach ($validated['rows'] as $idx => $row) {
+            try {
+                $query = DB::table('shopify_raw_orders');
+                $matched = false;
+
+                $sid = trim((string) ($row['shopify_order_id'] ?? ''));
+                if ($sid !== '' && ctype_digit($sid)) {
+                    $query->where('order_id', (int) $sid);
+                    $matched = true;
+                } else {
+                    $candidates = [];
+                    foreach (['order_number', 'order_id', 'order_id_api'] as $k) {
+                        $v = trim((string) ($row[$k] ?? ''));
+                        if ($v !== '') {
+                            $candidates[] = $v;
+                            if (! str_starts_with($v, 'Amz')) {
+                                $candidates[] = 'Amz'.$v;
+                            }
+                        }
+                    }
+                    $candidates = array_values(array_unique($candidates));
+                    if ($candidates !== []) {
+                        $query->whereIn('order_number', $candidates);
+                        $matched = true;
+                    } else {
+                        $tn = trim((string) ($row['tracking_number'] ?? ''));
+                        if ($tn !== '') {
+                            $query->where('tracking_number', $tn);
+                            $matched = true;
+                        }
+                    }
+                }
+
+                if (! $matched) {
+                    $skipped++;
+                    $errors[] = 'Row '.($idx + 1).': no Shopify match key.';
+                    continue;
+                }
+
+                $payload = array_merge($fields, [
+                    'shipment_checked_at' => $now,
+                    'updated_at' => $now,
+                ]);
+
+                $affected = $query->update($payload);
+                if ($affected > 0) {
+                    $updated += $affected;
+                } else {
+                    $skipped++;
+                    $errors[] = 'Row '.($idx + 1).': no matching shopify_raw_orders row.';
+                }
+            } catch (\Throwable $e) {
+                $skipped++;
+                $errors[] = 'Row '.($idx + 1).': '.$e->getMessage();
+            }
+        }
+
+        return response()->json([
+            'success' => $updated > 0,
+            'message' => $updated > 0
+                ? "Updated {$updated} Shopify order row(s)."
+                    .($skipped > 0 ? " Skipped {$skipped}." : '')
+                : 'No rows updated.'.($errors !== [] ? ' '.implode(' ', array_slice($errors, 0, 3)) : ''),
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'errors' => array_slice($errors, 0, 10),
+            'fields' => array_keys($fields),
+        ], $updated > 0 ? 200 : 422);
+    }
+
+    /**
      * GOFO Open API connectivity / auth check for Sales Order Fulfillment tools.
      */
     public function gofoStatus(GofoExpressService $gofo): JsonResponse
