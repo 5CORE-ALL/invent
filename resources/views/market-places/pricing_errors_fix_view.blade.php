@@ -706,6 +706,8 @@
                     <p class="small text-muted mb-2">
                         Map CVR% slabs to CPN%. First-time defaults: <strong>&gt; 7% → 0</strong> up to
                         <strong>CVR 0% → 10</strong>. Save stores rules; Apply fills <strong>CPN %</strong> from each row’s CVR%.
+                        Auto-applies to <strong>eBay1</strong> coupons every night at <strong>00:30 IST</strong>
+                        (after Dil/PRMT @ midnight — whether or not CVR changed).
                     </p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="pef-cvr-cpn-table">
@@ -756,6 +758,8 @@
                     <p class="small text-muted mb-2">
                         Map Dil% slabs to PRMT%. First-time defaults: <strong>&gt; 100% → 0</strong> up to
                         <strong>0–10% → 10</strong>. Save stores rules; Apply fills the <strong>PRMT %</strong> column from each row’s Dil%.
+                        If <strong>INV = 0</strong>, PRMT% is forced to <strong>0</strong>.
+                        Auto-applies to <strong>eBay1</strong> promotions every night at <strong>midnight IST</strong> (whether or not Dil/INV changed).
                     </p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="pef-dil-prmt-table">
@@ -1586,11 +1590,11 @@
     function pefPromoFieldMeta(kind, mode) {
         if (kind === 'dsc') {
             return {
-                label: 'DSC',
+                label: 'DSC %',
                 field: 'dsc',
                 appliedKey: '_dsc_applied',
-                parse: parsePefDollarAmount,
-                err: 'Enter DSC $ (e.g. 1)',
+                parse: parsePefPercentAmount,
+                err: 'Enter DSC % (e.g. 1)',
                 skipPairSync: false,
             };
         }
@@ -1662,7 +1666,7 @@
     }
 
     /**
-     * Clear Appr + DSC (and restore SPRICE if a DSC $ was applied).
+     * Clear Appr + DSC (and restore SPRICE if a DSC % was applied).
      */
     function clearPefApprDiscount(row, opts) {
         opts = opts || {};
@@ -1674,8 +1678,8 @@
             dsc: '',
             _dsc_applied: 0,
         };
-        if (prev > 0 && Number(d.sprice) > 0) {
-            patch.sprice = round2(Number(d.sprice) + prev);
+        if (prev > 0 && prev < 100 && Number(d.sprice) > 0) {
+            patch.sprice = round2(Number(d.sprice) / (1 - (prev / 100)));
         }
         row.update(patch);
         syncPefRowCache(d.id, patch);
@@ -1687,7 +1691,7 @@
     }
 
     /**
-     * Approve: put Price−LMP amount into DSC and discount SPRICE.
+     * Approve: convert Price−LMP into DSC % of SPRICE base and discount SPRICE.
      */
     function applyPefApprDiscount(row) {
         const d = row.getData();
@@ -1700,10 +1704,25 @@
             if (table) table.redraw(true);
             return false;
         }
-        const promo = { type: 'dollar', value: amt };
-        const base = getPefDiscountBase(d, '_dsc_applied', 'dollar');
+        const base = getPefDiscountBase(d, '_dsc_applied', 'percent');
+        if (!(base > 0)) {
+            row.update({ appr: false, _appr_lmp: null });
+            syncPefRowCache(d.id, { appr: false, _appr_lmp: null });
+            toast('No SPRICE/Price to discount', 'error');
+            if (table) table.redraw(true);
+            return false;
+        }
+        let pct = round2((amt / base) * 100);
+        if (!(pct > 0) || pct >= 100) {
+            row.update({ appr: false, _appr_lmp: null });
+            syncPefRowCache(d.id, { appr: false, _appr_lmp: null });
+            toast('Appr DSC % out of range', 'error');
+            if (table) table.redraw(true);
+            return false;
+        }
+        const promo = { type: 'percent', value: pct };
         const newPrice = applyPromoToSpriceBase(base, promo);
-        if (!(base > 0) || !(newPrice > 0)) {
+        if (!(newPrice > 0)) {
             row.update({ appr: false, _appr_lmp: null });
             syncPefRowCache(d.id, { appr: false, _appr_lmp: null });
             toast('No SPRICE/Price to discount', 'error');
@@ -1713,8 +1732,8 @@
         const patch = {
             appr: true,
             _appr_lmp: round2(lmp),
-            dsc: String(amt),
-            _dsc_applied: amt,
+            dsc: String(pct),
+            _dsc_applied: pct,
             sprice: newPrice,
         };
         row.update(patch);
@@ -1854,7 +1873,7 @@
             patch[meta.field] = displayVal;
             patch[meta.appliedKey] = promo.value;
             patch.sprice = newPrice;
-            // Manual DSC edit clears Appr (approval is tied to LMP-diff amount)
+            // Manual DSC % edit clears Appr (approval is tied to LMP-gap %)
             if (kind === 'dsc') {
                 patch.appr = false;
                 patch._appr_lmp = null;
@@ -2038,7 +2057,7 @@
             patch._prmt_pct_applied = d._prmt_pct_applied;
             patch._dsc_applied = d._dsc_applied;
 
-            // If Appr was on and LMP revised ↑/↓ → clear DSC + untick Appr + restore SPRICE
+            // If Appr was on and LMP revised ↑/↓ → clear DSC % + untick Appr + restore SPRICE
             let lmpRevisedClear = false;
             if (d.appr && pefLmpChanged(d._appr_lmp, patch.lmp)) {
                 const prev = Number(d._dsc_applied) || 0;
@@ -2046,9 +2065,9 @@
                 patch._appr_lmp = null;
                 patch.dsc = '';
                 patch._dsc_applied = 0;
-                if (prev > 0) {
+                if (prev > 0 && prev < 100) {
                     const curSp = Number(patch.sprice != null ? patch.sprice : d.sprice) || 0;
-                    if (curSp > 0) patch.sprice = round2(curSp + prev);
+                    if (curSp > 0) patch.sprice = round2(curSp / (1 - (prev / 100)));
                 }
                 lmpRevisedClear = true;
             }
@@ -2489,17 +2508,17 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
-                    headerTooltip: 'Approve — ticks to put LMP difference amount (Price − LMP) into DSC. Auto-clears if LMP is revised.',
+                    headerTooltip: 'Approve — ticks to put LMP gap (Price − LMP) as DSC % off SPRICE. Auto-clears if LMP is revised.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         const checked = d.appr ? 'checked' : '';
                         const id = String(d.id || '').replace(/"/g, '&quot;');
                         return '<input type="checkbox" class="pef-appr-cb" data-id="' + id + '" ' + checked
-                            + ' title="Approve LMP difference amount → DSC">';
+                            + ' title="Approve LMP gap → DSC %">';
                     },
                 },
                 {
-                    title: 'DSC',
+                    title: 'DSC %',
                     field: 'dsc',
                     width: 56,
                     hozAlign: 'center',
@@ -2507,12 +2526,12 @@
                     headerSort: false,
                     editable: true,
                     editor: 'input',
-                    headerTooltip: 'Discount amount $ off SPRICE. Filled by Appr (Price − LMP) or edit manually.',
+                    headerTooltip: '% less on SPRICE. Filled by Appr (Price − LMP as %) or edit manually.',
                     formatter: function(cell) {
-                        return fmtPefPromoCell(cell.getValue(), '$1');
+                        return fmtPefPromoCell(cell.getValue(), '%');
                     },
                     cellEdited: function(cell) {
-                        applyPefPromoFromCell(cell, 'dsc', 'dollar');
+                        applyPefPromoFromCell(cell, 'dsc', 'percent');
                     },
                 },
                 {
@@ -2825,15 +2844,15 @@
                         _prmt_pct_applied: after._prmt_pct_applied != null ? after._prmt_pct_applied : d._prmt_pct_applied,
                         _dsc_applied: after._dsc_applied != null ? after._dsc_applied : d._dsc_applied,
                     };
-                    // If refresh brought a revised LMP while Appr was on, clear DSC/Appr
+                    // If refresh brought a revised LMP while Appr was on, clear DSC %/Appr
                     if (keep.appr && pefLmpChanged(keep._appr_lmp, after.lmp != null ? after.lmp : d.lmp)) {
                         const prev = Number(keep._dsc_applied) || 0;
                         keep.appr = false;
                         keep._appr_lmp = null;
                         keep.dsc = '';
                         keep._dsc_applied = 0;
-                        if (prev > 0 && Number(after.sprice) > 0) {
-                            keep.sprice = round2(Number(after.sprice) + prev);
+                        if (prev > 0 && prev < 100 && Number(after.sprice) > 0) {
+                            keep.sprice = round2(Number(after.sprice) / (1 - (prev / 100)));
                         }
                     }
                     row.update(keep);
@@ -3646,7 +3665,8 @@
             const item = targets[i];
             const d = item.row.getData();
             const dil = Number(d.dil);
-            const prmt = pefPrmtForDil(dil);
+            // INV = 0 → always PRMT% = 0 (pauses eBay1 promotion)
+            let prmt = Number(d.inv || 0) === 0 ? 0 : pefPrmtForDil(dil);
 
             // eBay1 → promotion API (0 pauses)
             if (isPefEbay1Row(d)) {

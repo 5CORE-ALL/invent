@@ -2395,6 +2395,26 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // PEF Dil vs PRMT → eBay1 Promotion API (always once/day, even if Dil/INV/rules unchanged).
+        // INV=0 forces PRMT%=0 (pause). Uses saved pef_dil_vs_prmt rules or first-time defaults.
+        $schedule->command('pef:dil-prmt-auto-apply')
+            ->dailyAt('00:00')
+            ->timezone('Asia/Kolkata')
+            ->name('pef-dil-prmt-auto-apply-midnight-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // PEF CVR vs CPN → eBay1 Coupon API (always once/day after Dil/PRMT / price window).
+        // Uses saved pef_cvr_vs_cpn rules or defaults; CPN%=0 pauses coupon.
+        $schedule->command('pef:cvr-cpn-auto-apply')
+            ->dailyAt('00:30')
+            ->timezone('Asia/Kolkata')
+            ->name('pef-cvr-cpn-auto-apply-after-price-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // SOF summary history — always one row per Pacific day (even if metrics unchanged).
         // Primary write at 00:00 PST (stores the day that just ended).
         $schedule->command('sof:snapshot-daily')
