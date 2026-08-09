@@ -301,10 +301,12 @@ class EbayApiService
         }
     }
 
-    public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null)
+    public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null, bool $allowVariationFallback = true)
     {
         // Multi-variation listings ignore item-level StartPrice (ErrorCode 21916618).
         // When a SKU is provided, revise that variation only — same as EbayThreeApiService.
+        // Note: many single-SKU listings still have a SKU field; variation revise then fails with
+        // ErrorCode 21916635 ("Invalid Multi-SKU item id supplied with variations") → fallback below.
         $skuTrim = trim((string) $sku);
         $isVariationListing = $skuTrim !== '';
         $itemDetails = null;
@@ -544,8 +546,8 @@ class EbayApiService
                 return $this->reviseItemWithFullDetails($itemId, $price, $quantity, $itemDetails['Item']);
             }
 
-            // Variation SKU path used on a non-variation listing — retry item-level once.
-            if ($isVariationListing) {
+            // Variation SKU path used on a non-variation listing (or bad variation SKU) — recover once.
+            if ($allowVariationFallback && $isVariationListing) {
                 $errBlob = '';
                 foreach ($errors as $error) {
                     if (! is_array($error)) {
@@ -555,25 +557,100 @@ class EbayApiService
                     $errBlob .= ' '.strtolower((string) ($error['ShortMessage'] ?? ''));
                     $errBlob .= ' '.(string) ($error['ErrorCode'] ?? '');
                 }
-                if (
-                    str_contains($errBlob, 'not a multi-variation')
+                $looksLikeBadVariationPath = str_contains($errBlob, 'not a multi-variation')
                     || str_contains($errBlob, 'not a multi-sku')
+                    || str_contains($errBlob, 'invalid multi-sku')
+                    || str_contains($errBlob, 'supplied with variations')
                     || str_contains($errBlob, 'variations node')
                     || str_contains($errBlob, 'does not have variations')
                     || str_contains($errBlob, '21916587')
                     || str_contains($errBlob, '21916613')
                     || str_contains($errBlob, '21916317')
-                ) {
-                    return $this->reviseFixedPriceItem($itemId, $price, $quantity, null, $variationSpecifics, $variationSpecificsSet);
+                    || str_contains($errBlob, '21916635');
+
+                if ($looksLikeBadVariationPath) {
+                    $resolved = $this->resolveVariationReviseTarget($itemId, $skuTrim);
+                    if ($resolved['mode'] === 'variation' && $resolved['sku'] !== '' && strcasecmp($resolved['sku'], $skuTrim) !== 0) {
+                        Log::info('eBay1 variation revise failed — retrying with GetItem SKU casing', [
+                            'itemId' => $itemId,
+                            'requested_sku' => $skuTrim,
+                            'resolved_sku' => $resolved['sku'],
+                        ]);
+
+                        return $this->reviseFixedPriceItem(
+                            $itemId,
+                            $price,
+                            $quantity,
+                            $resolved['sku'],
+                            $variationSpecifics,
+                            $variationSpecificsSet,
+                            false
+                        );
+                    }
+
+                    Log::info('eBay1 variation revise failed — retrying item-level StartPrice', [
+                        'itemId' => $itemId,
+                        'sku' => $skuTrim,
+                        'error' => substr($errBlob, 0, 220),
+                    ]);
+
+                    return $this->reviseFixedPriceItem(
+                        $itemId,
+                        $price,
+                        $quantity,
+                        null,
+                        $variationSpecifics,
+                        $variationSpecificsSet,
+                        false
+                    );
                 }
             }
-            
+
             return [
                 'success' => false,
                 'errors' => $errors,
                 'data' => $responseArray,
             ];
         }
+    }
+
+    /**
+     * After 21916635 / bad variation revise: inspect listing and decide variation vs item-level.
+     *
+     * @return array{mode:'variation'|'item',sku:string}
+     */
+    private function resolveVariationReviseTarget(string $itemId, string $requestedSku): array
+    {
+        $details = $this->getItem($itemId);
+        $item = is_array($details) ? ($details['Item'] ?? null) : null;
+        if (! is_array($item)) {
+            return ['mode' => 'item', 'sku' => ''];
+        }
+
+        $rawVars = $item['Variations']['Variation'] ?? null;
+        if ($rawVars === null) {
+            return ['mode' => 'item', 'sku' => ''];
+        }
+        $rows = (is_array($rawVars) && (isset($rawVars['SKU']) || isset($rawVars['StartPrice'])))
+            ? [$rawVars]
+            : (is_array($rawVars) ? $rawVars : []);
+        if ($rows === []) {
+            return ['mode' => 'item', 'sku' => ''];
+        }
+
+        $want = strtoupper(trim($requestedSku));
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['SKU'] ?? ''));
+            if ($sku !== '' && strtoupper($sku) === $want) {
+                return ['mode' => 'variation', 'sku' => $sku];
+            }
+        }
+
+        // Listing has variations but requested SKU is not among them — do not invent a match.
+        return ['mode' => 'item', 'sku' => ''];
     }
     
     /**
