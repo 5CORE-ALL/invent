@@ -327,8 +327,18 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 4px;
+            gap: 2px;
             line-height: 1.25;
+        }
+
+        .va-merged-log-cell.va-merged-log-clickable {
+            cursor: pointer;
+        }
+
+        .va-merged-log-cell.va-merged-log-clickable:hover .va-merged-log-user,
+        .va-merged-log-cell.va-merged-log-clickable:hover .va-merged-log-history {
+            color: #0a58ca;
+            text-decoration: underline;
         }
 
         .va-merged-log-user {
@@ -340,22 +350,6 @@
         .va-merged-log-history {
             font-size: 11px;
             color: #495057;
-        }
-
-        .va-merged-log-action .view-activity-logs-btn {
-            color: #0dcaf0;
-            font-size: 15px;
-            line-height: 1;
-            text-decoration: none;
-            min-width: 24px;
-            min-height: 24px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .va-merged-log-action .view-activity-logs-btn:hover {
-            color: #0aa2c0;
         }
 
         /* ========== HISTORY DATE FILTER DROPDOWN ========== */
@@ -703,6 +697,41 @@
         .spinner-border {
             width: 3rem;
             height: 3rem;
+        }
+
+        /* ========== ACCEPT BUTTON ========== */
+        button.btn.approve-accept-btn,
+        .approve-accept-btn {
+            background-color: #ffc107 !important;
+            background-image: none !important;
+            border: 1px solid #e0a800 !important;
+            color: #212529 !important;
+            font-weight: 600;
+            font-size: 11px;
+            padding: 2px 8px;
+            line-height: 1.4;
+            white-space: nowrap;
+            border-radius: 4px;
+            box-shadow: none !important;
+        }
+
+        button.btn.approve-accept-btn:hover:not(:disabled),
+        button.btn.approve-accept-btn:focus:not(:disabled),
+        button.btn.approve-accept-btn:active:not(:disabled),
+        .approve-accept-btn:hover:not(:disabled),
+        .approve-accept-btn:focus:not(:disabled),
+        .approve-accept-btn:active:not(:disabled) {
+            background-color: #ffca2c !important;
+            background-image: none !important;
+            border-color: #e0a800 !important;
+            color: #212529 !important;
+        }
+
+        button.btn.approve-accept-btn:disabled,
+        .approve-accept-btn:disabled {
+            background-color: #ffc107 !important;
+            opacity: 0.65;
+            cursor: not-allowed;
         }
 
         /* ========== CARD BODY ========== */
@@ -1936,8 +1965,8 @@
                                     <th data-field="tacos" class="va-th-v">
                                         <div class="va-th-v-inner">ACCEPT <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="shopify_push" class="text-center va-th-v" style="min-width: 64px; white-space: nowrap;" title="Last Shopify push when you save an approved adjustment. Hover for details.">
-                                        <div class="va-th-v-inner">PUSH <span class="sort-arrow"></span></div>
+                                    <th data-field="shopify_push" class="text-center va-th-v" style="min-width: 88px; white-space: nowrap;" title="Shopify Push &amp; Pull status. Yellow = pending, green tick = done, red cross = not done / failed.">
+                                        <div class="va-th-v-inner">Push &amp; Pull <span class="sort-arrow"></span></div>
                                     </th>
                                     <th data-field="tacos" class="va-th-v" style="display: none;">
                                         <div class="va-th-v-inner">ADJ HISTORY <span class="sort-arrow"></span></div>
@@ -1961,7 +1990,7 @@
                                     <th data-field="lastVerifiedQty" class="va-th-v" title="Last verified quantity from adjustment history">
                                         <div class="va-th-v-inner">LAST QTY <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="activityLog" class="va-merged-log-header va-th-v" style="min-width: 88px;" title="User, history date, and activity log">
+                                    <th data-field="activityLog" class="va-merged-log-header va-th-v" style="min-width: 88px;" title="User and history date — click text to open activity log">
                                         <div class="va-th-v-inner">LOG <span class="sort-arrow"></span></div>
                                     </th>
                                 </tr>
@@ -2666,42 +2695,68 @@
                 const dateObj = new Date(rawDate);
                 if (isNaN(dateObj)) return '-';
 
-                const day = dateObj.getDate().toString().padStart(2, '0'); 
+                const day = dateObj.getDate(); // no leading zero: 1 Apr
                 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
                 const month = monthNames[dateObj.getMonth()];
-                const year = dateObj.getFullYear();
 
                 let hours = dateObj.getHours();
                 const minutes = dateObj.getMinutes().toString().padStart(2, '0');
                 const ampm = hours >= 12 ? 'PM' : 'AM';
                 hours = hours % 12 || 12;
 
-                const datePart = `${day} ${month} ${year}`;
+                const datePart = `${day} ${month}`;
                 const timePart = `${hours}:${minutes} ${ampm}`;
 
                 return `<div style="line-height:1.3">${datePart}<br><small>${timePart}</small></div>`;
             }
 
-            // Format date/time for display (returns string format: "04 Nov 2025, 04:04 AM")
+            // Format date/time for display (returns string format: "1 Apr, 7:15 PM")
             function formatOhioTime(rawDate) {
                 if (!rawDate) return '';
 
                 const dateObj = new Date(rawDate);
                 if (isNaN(dateObj)) return '';
 
-                const day = dateObj.getDate().toString().padStart(2, '0'); 
+                const day = dateObj.getDate(); // no leading zero: 1 Apr
                 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
                 const month = monthNames[dateObj.getMonth()];
-                const year = dateObj.getFullYear();
 
                 let hours = dateObj.getHours();
                 const minutes = dateObj.getMinutes().toString().padStart(2, '0');
                 const ampm = hours >= 12 ? 'PM' : 'AM';
                 hours = hours % 12 || 12;
 
-                return `${day} ${month} ${year}, ${hours}:${minutes} ${ampm}`;
+                return `${day} ${month}, ${hours}:${minutes} ${ampm}`;
+            }
+
+            /** History-log date only: "1 Apr" */
+            function formatHistoryDate(rawDate) {
+                if (!rawDate) return '';
+                const dateObj = new Date(rawDate);
+                if (isNaN(dateObj)) return String(rawDate);
+                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                return `${dateObj.getDate()} ${monthNames[dateObj.getMonth()]}`;
+            }
+
+            /**
+             * Normalize history timestamps for display as "1 Apr, 7:15 PM".
+             * Accepts ISO strings or already-formatted "d M Y, h:i A" values from the API.
+             */
+            function formatHistoryLogDateTime(raw) {
+                if (raw == null || raw === '' || raw === '-') return '-';
+                const s = String(raw).trim();
+                // Already short form
+                if (/^\d{1,2} [A-Za-z]{3}, /.test(s)) return s;
+                // API style: "04 Aug 2026, 07:15 PM" or with timezone suffix
+                const m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+\d{4},\s*(.+)$/);
+                if (m) {
+                    return `${parseInt(m[1], 10)} ${m[2]}, ${m[3].replace(/\s+[A-Z]{2,4}$/, '').trim()}`;
+                }
+                const parsed = formatOhioTime(s);
+                return parsed || s;
             }
 
             /** Escape for HTML attributes (SKUs with inch mark e.g. WF 8"-890 2PC break value="..." otherwise). */
@@ -2739,31 +2794,79 @@
                 return formatOhioTime(t);
             }
 
-            /** Per-SKU latest Shopify push state: loader, check, cross, or n/a (0 adjustment) — for title tooltip use escAttr. */
-            function shopifyPushMarkupFromState(status, err, succeededAt) {
-                const base = (title, icon, extraClass) =>
-                    '<span class="va-shopify-push d-inline-block align-middle" style="min-width:1.1em;margin-left:4px" title="' + escAttr(title) + '">' +
-                    '<i class="fas ' + icon + (extraClass ? ' ' + extraClass : '') + '"></i></span>';
-                if (status === 'success') {
+            /**
+             * Single Push/Pull status icon:
+             * pending → yellow dot, success → green tick, failed → red cross, loading → spinner
+             */
+            function shopifyStatusIcon(kind, status, title) {
+                let icon = 'fa-circle';
+                let cls = 'va-pp-pending';
+                let label = title || (kind === 'pull' ? 'Pull pending' : 'Push pending');
+
+                if (status === 'loading') {
+                    icon = 'fa-spinner fa-spin';
+                    cls = 'va-pp-loading text-primary';
+                    label = title || (kind === 'pull' ? 'Pulling from Shopify…' : 'Pushing to Shopify…');
+                } else if (status === 'success' || status === 'na') {
+                    icon = 'fa-check';
+                    cls = 'va-pp-done text-success';
+                    label = title || (kind === 'pull'
+                        ? 'Pull done'
+                        : (status === 'na' ? 'No Shopify change (0 adjustment)' : 'Push done'));
+                } else if (status === 'failed') {
+                    icon = 'fa-times';
+                    cls = 'va-pp-failed text-danger';
+                    label = title || (kind === 'pull' ? 'Pull not done' : 'Push not done');
+                }
+
+                return '<span class="va-pp-dot va-pp-' + kind + ' ' + cls + '" title="' + escAttr(label) + '" aria-label="' + escAttr(label) + '">' +
+                    '<i class="fas fa-2x ' + icon + '"></i></span>';
+            }
+
+            /** Two indicators: Push + Pull (yellow dots by default). */
+            function shopifyPushPullMarkup(pushStatus, pullStatus, pushErr, pullErr, succeededAt) {
+                let pushTitle = null;
+                if (pushStatus === 'success') {
                     const when = shopifyPushTimeLabel(succeededAt);
-                    const label = when ? 'Pushed to Shopify · ' + when : 'Pushed to Shopify';
-                    return base(label, 'fa-check-circle', 'text-success');
+                    pushTitle = when ? 'Push done · ' + when : 'Push done';
+                } else if (pushStatus === 'failed') {
+                    const msg = (pushErr == null || pushErr === '') ? 'Push not done / failed' : String(pushErr).trim();
+                    pushTitle = msg.slice(0, 500);
+                } else if (pushStatus === 'na') {
+                    pushTitle = 'No Shopify change (0 adjustment) · record saved';
+                } else if (pushStatus === 'loading') {
+                    pushTitle = 'Pushing to Shopify…';
                 }
-                if (status === 'failed') {
-                    const msg = (err == null || err === '') ? 'Push to Shopify failed' : String(err).trim();
-                    return base(msg.slice(0, 500), 'fa-times-circle', 'text-danger');
+
+                let pullTitle = null;
+                if (pullStatus === 'success') {
+                    pullTitle = 'Pull done · inventory refreshed from Shopify';
+                } else if (pullStatus === 'failed') {
+                    const msg = (pullErr == null || pullErr === '') ? 'Pull not done / failed' : String(pullErr).trim();
+                    pullTitle = msg.slice(0, 500);
+                } else if (pullStatus === 'loading') {
+                    pullTitle = 'Pulling from Shopify…';
                 }
-                if (status === 'na') {
-                    return base('No Shopify change (0 adjustment) · record saved in history', 'fa-minus-circle', 'text-secondary');
-                }
-                return '';
+
+                return '<span class="va-shopify-push va-pp-pair d-inline-flex align-items-center justify-content-center">' +
+                    shopifyStatusIcon('push', pushStatus || 'pending', pushTitle) +
+                    shopifyStatusIcon('pull', pullStatus || 'pending', pullTitle) +
+                    '</span>';
             }
 
-            function shopifyPushLoadingHtml() {
-                return '<span class="va-shopify-push d-inline-block align-middle" style="min-width:1.1em;margin-left:4px" title="Pushing to Shopify…"><i class="fas fa-spinner fa-spin text-primary" style="font-size:0.9em"></i></span>';
+            function shopifyPushMarkupFromState(status, err, succeededAt, pullStatus, pullErr) {
+                // Always show both dots (pending yellow when unknown)
+                return shopifyPushPullMarkup(status || 'pending', pullStatus || 'pending', err, pullErr, succeededAt);
             }
 
-            function setRowShopifyPushUi($row, status, err, succeededAt) {
+            function shopifyPushLoadingHtml(phase) {
+                if (phase === 'pull') {
+                    return shopifyPushPullMarkup('success', 'loading', null, null, null);
+                }
+                return shopifyPushPullMarkup('loading', 'pending', null, null, null);
+            }
+
+            function setRowShopifyPushUi($row, status, err, succeededAt, pullStatus, pullErr) {
                 if ($row.is('.parent-row')) {
                     return;
                 }
@@ -2771,9 +2874,41 @@
                 if (!$cell.length) {
                     return;
                 }
-                const m = shopifyPushMarkupFromState(status, err, succeededAt);
-                const html = m || '<span class="va-shopify-push" style="display:none" aria-hidden="true"></span>';
-                $cell.html(html);
+                $cell.html(shopifyPushMarkupFromState(status, err, succeededAt, pullStatus, pullErr));
+            }
+
+            function setRowShopifyPullUi($row, pullStatus, pullErr) {
+                if ($row.is('.parent-row')) {
+                    return;
+                }
+                const $cell = $row.find('td.va-shopify-push-col');
+                if (!$cell.length) {
+                    return;
+                }
+                const $push = $cell.find('.va-pp-push');
+                const pushStatus = $push.hasClass('va-pp-done')
+                    ? 'success'
+                    : ($push.hasClass('va-pp-failed') ? 'failed' : ($push.hasClass('va-pp-loading') ? 'loading' : 'pending'));
+                const pushTitle = $push.attr('title') || null;
+                // Preserve push success time title; rebuild pair
+                const skuKey = String($row.find('.sku-hidden').val() || '').trim();
+                let pushErr = null;
+                let succeededAt = null;
+                let storedPush = pushStatus;
+                [tableData, filteredData].forEach(function (arr) {
+                    const j = arr.findIndex(function (it) { return String(it.SKU || '').trim() === skuKey; });
+                    if (j !== -1) {
+                        storedPush = arr[j].SHOPIFY_PUSH_STATUS || storedPush;
+                        pushErr = arr[j].SHOPIFY_PUSH_ERROR || null;
+                        succeededAt = arr[j].SHOPIFY_PUSH_AT || null;
+                        arr[j].SHOPIFY_PULL_STATUS = pullStatus || null;
+                        arr[j].SHOPIFY_PULL_ERROR = pullErr || null;
+                    }
+                });
+                $cell.html(shopifyPushPullMarkup(storedPush || pushStatus, pullStatus || 'pending', pushErr, pullErr, succeededAt));
+                if (pushTitle && storedPush === 'success') {
+                    // keep richer title from previous render when available
+                }
             }
 
             // Load data from server
@@ -2852,6 +2987,9 @@
                                     SHOPIFY_PUSH_STATUS: item.shopify_adjustment_status != null && item.shopify_adjustment_status !== '' ? item.shopify_adjustment_status : null,
                                     SHOPIFY_PUSH_ERROR: item.shopify_adjustment_error || null,
                                     SHOPIFY_PUSH_AT: item.shopify_adjustment_succeeded_at || null,
+                                    // Pull status is session/runtime (after Accept); default pending yellow until known
+                                    SHOPIFY_PULL_STATUS: item.shopify_pull_status != null && item.shopify_pull_status !== '' ? item.shopify_pull_status : null,
+                                    SHOPIFY_PULL_ERROR: item.shopify_pull_error || null,
 
                                     raw_data: item || {} // Full original row, in case needed later
                                 };
@@ -3149,17 +3287,29 @@
 
                     $row.append($('<td>').html(`
                         <div class="d-flex flex-column align-items-center">
-                            <input type="checkbox" class="form-check-input approve-checkbox" 
-                                data-index="${rowIndex}" />
+                            <button type="button" class="btn btn-sm btn-warning approve-accept-btn"
+                                data-index="${rowIndex}">Accept</button>
                             <small class="approved-by text-success">${item.APPROVED_BY || ''}</small>
                         </div>
                     `));
 
-                    // Dedicated PUSH column (Shopify) — right after Accept
+                    // Dedicated Push & Pull column (Shopify) — right after Accept
+                    // Default: 2 yellow dots; green tick = done; red cross = not done / failed
+                    let rowPullStatus = item.SHOPIFY_PULL_STATUS;
+                    let rowPullErr = item.SHOPIFY_PULL_ERROR;
+                    if (!rowPullStatus && item.SHOPIFY_PUSH_STATUS === 'failed') {
+                        rowPullStatus = 'failed';
+                        rowPullErr = 'Pull not done (push failed)';
+                    }
                     const pushColumnHtml = isParentRow
                         ? '<span class="text-muted" title="N/A for parent">—</span>'
-                        : (shopifyPushMarkupFromState(item.SHOPIFY_PUSH_STATUS, item.SHOPIFY_PUSH_ERROR, item.SHOPIFY_PUSH_AT) ||
-                            '<span class="va-shopify-push" style="display:none" aria-hidden="true"></span>');
+                        : shopifyPushMarkupFromState(
+                            item.SHOPIFY_PUSH_STATUS,
+                            item.SHOPIFY_PUSH_ERROR,
+                            item.SHOPIFY_PUSH_AT,
+                            rowPullStatus,
+                            rowPullErr
+                        );
                     $row.append($('<td>').addClass('text-center align-middle va-shopify-push-col').html(pushColumnHtml));
 
                     const $historyIcon = $(`
@@ -3195,7 +3345,7 @@
                         : '—';
                     $row.append($('<td>').addClass('va-last-qty-col text-center align-middle').text(lastQtyDisplay));
 
-                    // Merged LOG column: user + history + activity eye icon
+                    // Merged LOG column: user + history (click text to open activity log)
                     const verifiedByFirstName = item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || '';
                     let historyHTML = '—';
                     if (item.HISTORY && item.HISTORY.includes(', ')) {
@@ -3205,15 +3355,12 @@
                         historyHTML = escAttr(item.HISTORY);
                     }
 
-                    const activityEyeBtn = (!isParentRow && item.SKU)
-                        ? `<button type="button" class="btn btn-sm btn-link view-activity-logs-btn p-0 border-0" data-sku="${escAttr(item.SKU || '')}" title="View activity log for this SKU"><i class="fas fa-eye" aria-hidden="true"></i></button>`
-                        : '';
-
+                    const logClickable = (!isParentRow && item.SKU);
                     const mergedLogHTML = `
-                        <div class="va-merged-log-cell">
+                        <div class="va-merged-log-cell${logClickable ? ' va-merged-log-clickable view-activity-logs-btn' : ''}"
+                            ${logClickable ? `data-sku="${escAttr(item.SKU || '')}" title="View activity log for this SKU" role="button" tabindex="0"` : ''}>
                             <div class="va-merged-log-user">${escAttr(verifiedByFirstName) || '—'}</div>
                             <div class="va-merged-log-history">${historyHTML}</div>
-                            <div class="va-merged-log-action">${activityEyeBtn}</div>
                         </div>
                     `;
                     $row.append($('<td>').addClass('va-merged-log-col text-center align-middle').html(mergedLogHTML));
@@ -3382,7 +3529,7 @@
                 return escAttr(historyFormatted);
             }
 
-            /** Update LOG column (user + timestamp + eye) in DOM and in-memory data without full reload. */
+            /** Update LOG column (user + timestamp) in DOM and in-memory data without full reload. */
             function updateMergedLogCell($row, options) {
                 const opts = options || {};
                 const sku = String(opts.sku || $row.find('.sku-hidden').val() || '').trim();
@@ -3418,14 +3565,11 @@
 
                 let $cell = $logCol.find('.va-merged-log-cell');
                 if (!$cell.length) {
-                    const eyeBtn = sku
-                        ? `<button type="button" class="btn btn-sm btn-link view-activity-logs-btn p-0 border-0" data-sku="${escAttr(sku)}" title="View activity log for this SKU"><i class="fas fa-eye" aria-hidden="true"></i></button>`
-                        : '';
                     $logCol.html(`
-                        <div class="va-merged-log-cell">
+                        <div class="va-merged-log-cell${sku ? ' va-merged-log-clickable view-activity-logs-btn' : ''}"
+                            ${sku ? `data-sku="${escAttr(sku)}" title="View activity log for this SKU" role="button" tabindex="0"` : ''}>
                             <div class="va-merged-log-user">—</div>
                             <div class="va-merged-log-history">—</div>
-                            <div class="va-merged-log-action">${eyeBtn}</div>
                         </div>
                     `);
                     $cell = $logCol.find('.va-merged-log-cell');
@@ -3437,10 +3581,12 @@
                 if (historyFormatted !== null) {
                     $cell.find('.va-merged-log-history').html(buildMergedLogHistoryHtml(historyFormatted));
                 }
-                if (sku && !$cell.find('.view-activity-logs-btn').length) {
-                    $cell.find('.va-merged-log-action').html(
-                        `<button type="button" class="btn btn-sm btn-link view-activity-logs-btn p-0 border-0" data-sku="${escAttr(sku)}" title="View activity log for this SKU"><i class="fas fa-eye" aria-hidden="true"></i></button>`
-                    );
+                if (sku) {
+                    $cell.addClass('va-merged-log-clickable view-activity-logs-btn')
+                        .attr('data-sku', sku)
+                        .attr('title', 'View activity log for this SKU')
+                        .attr('role', 'button')
+                        .attr('tabindex', '0');
                 }
             }
 
@@ -3708,6 +3854,58 @@
                 $row.find('.adjusted-qty').text(toAdjust);
             }
 
+            /**
+             * Pull live inventory from Shopify for one SKU and update this row/app data.
+             * Returns a jQuery Deferred so callers can chain (e.g. after Accept push).
+             */
+            function pullShopifyInventoryForSku(sku, $row, options) {
+                const opts = options || {};
+                const normalizedSku = String(sku || '').trim();
+                const csrfToken = $('meta[name="csrf-token"]').attr('content');
+
+                if (!normalizedSku) {
+                    return $.Deferred().reject({ message: 'Missing SKU' }).promise();
+                }
+
+                return $.ajax({
+                    url: '/verification-adjustment-refresh-shopify',
+                    type: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    data: {
+                        sku: normalizedSku,
+                        _token: csrfToken
+                    }
+                }).then(function(response) {
+                    if (!response.success || !response.data) {
+                        const msg = response.message || 'Failed to refresh inventory from Shopify.';
+                        if (opts.notify !== false) {
+                            showNotification('danger', msg);
+                        }
+                        return $.Deferred().reject(response).promise();
+                    }
+
+                    applyShopifyRefreshDataToArrays(normalizedSku, response.data);
+                    if ($row && $row.length) {
+                        applyShopifyRefreshDataToRow($row, response.data);
+                    }
+                    if (opts.notifySuccess) {
+                        showNotification('success', response.message || 'Inventory refreshed from Shopify.');
+                    }
+                    return response;
+                }, function(xhr) {
+                    let errorMsg = 'Failed to refresh inventory from Shopify.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                    if (opts.notify !== false) {
+                        showNotification(opts.notifyErrorType || 'danger', errorMsg);
+                    }
+                    return $.Deferred().reject({ message: errorMsg, xhr: xhr }).promise();
+                });
+            }
+
             $(document).on('click', '.va-shopify-refresh-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -3720,43 +3918,15 @@
 
                 const $row = $btn.closest('tr');
                 const $icon = $btn.find('i');
-                const csrfToken = $('meta[name="csrf-token"]').attr('content');
 
                 $btn.prop('disabled', true);
                 $icon.removeClass('fa-sync-alt').addClass('fa-spinner fa-spin');
 
-                $.ajax({
-                    url: '/verification-adjustment-refresh-shopify',
-                    type: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': csrfToken
-                    },
-                    data: {
-                        sku: sku,
-                        _token: csrfToken
-                    },
-                    success: function(response) {
-                        if (!response.success || !response.data) {
-                            showNotification('danger', response.message || 'Failed to refresh inventory from Shopify.');
-                            return;
-                        }
-
-                        applyShopifyRefreshDataToArrays(sku, response.data);
-                        applyShopifyRefreshDataToRow($row, response.data);
-                        showNotification('success', response.message || 'Inventory refreshed from Shopify.');
-                    },
-                    error: function(xhr) {
-                        let errorMsg = 'Failed to refresh inventory from Shopify.';
-                        if (xhr.responseJSON && xhr.responseJSON.message) {
-                            errorMsg = xhr.responseJSON.message;
-                        }
-                        showNotification('danger', errorMsg);
-                    },
-                    complete: function() {
+                pullShopifyInventoryForSku(sku, $row, { notifySuccess: true })
+                    .always(function() {
                         $btn.prop('disabled', false);
                         $icon.removeClass('fa-spinner fa-spin').addClass('fa-sync-alt');
-                    }
-                });
+                    });
             });
 
             $(document).on('click', '.verified-status-btn', function(e) {
@@ -3991,40 +4161,34 @@
             });
 
             
-            //call after checked the appr-WH checkbox
-            $('#ebay-table').on('change', '.approve-checkbox', function () {
-                const $checkbox = $(this);
-                
-                // Skip if this is a programmatic change (to prevent processing when we auto-uncheck)
-                if ($checkbox.data('programmatic-change')) {
-                    $checkbox.removeData('programmatic-change');
-                    console.log('Skipping programmatic change');
+            // Accept button — same approval flow as former Accept checkbox
+            $('#ebay-table').on('click', '.approve-accept-btn', function () {
+                const $btn = $(this);
+
+                if ($btn.prop('disabled')) {
                     return;
                 }
-                
-                const $row = $checkbox.closest('tr');
+
+                const $row = $btn.closest('tr');
                 const sku = $row.find('.sku-hidden').val();
                 const verifiedStock = parseInt($row.find('.verified-stock-input').val().trim()) || 0;
                 const onHand = parseInt($row.find('.on-hand').text().trim()) || 0;
                 const toAdjust = verifiedStock - onHand;
                 const reason = $row.find('.reason-select').val() || '';
-                const isApproved = $checkbox.is(':checked') ? 1 : 0;
-                const index = parseInt($checkbox.data('index'));
-                const remarks = $row.find('.remarks-input').val() || ''; 
+                const isApproved = 1;
+                const index = parseInt($btn.data('index'));
+                const remarks = $row.find('.remarks-input').val() || '';
                 console.log("Remarks for SKU", sku, ":", remarks);
-
 
                 $row.find('.to-adjust').text(toAdjust);
 
-                if (isApproved && $row.find('.verified-stock-input').val().trim() === '') {
+                if ($row.find('.verified-stock-input').val().trim() === '') {
                     alert('Please enter Verified before approving.');
-                    $checkbox.prop('checked', false);
                     return;
                 }
 
-                if (isApproved && !reason) {
+                if (!reason) {
                     alert('Please select a reason before approving.');
-                    $checkbox.prop('checked', false);
                     return;
                 }
 
@@ -4042,12 +4206,13 @@
                         _token: $('meta[name="csrf-token"]').attr('content')
                     },
                     beforeSend: function () {
-                        if (!isApproved || $row.is('.parent-row')) {
+                        $btn.prop('disabled', true);
+                        if ($row.is('.parent-row')) {
                             return;
                         }
                         const $pc = $row.find('td.va-shopify-push-col');
                         if ($pc.length) {
-                            $pc.html(shopifyPushLoadingHtml());
+                            $pc.html(shopifyPushLoadingHtml('push'));
                         }
                     },
                     success: function (res) {
@@ -4055,13 +4220,16 @@
                             const approvedAt = res.data.approved_at;
                             const approvedBy = res.data.approved_by;
                             const lossGain = res.data.loss_gain ?? 0;
+                            const pushStatus = res.shopify_adjustment_status || res.data?.shopify_adjustment_status || null;
+                            const pushErr = res.data?.shopify_adjustment_error || null;
+                            const pushAt = res.data?.shopify_adjustment_succeeded_at || null;
 
                             // Format approved_at visually only (do NOT change timezone)
                             let approvedAtFormatted = '-';
                             if (approvedAt) {
                                 const dateObj = new Date(approvedAt);
                                 const day = dateObj.getUTCDate().toString().padStart(2, '0');
-                                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
                                 const month = monthNames[dateObj.getUTCMonth()];
                                 const year = dateObj.getUTCFullYear();
@@ -4074,6 +4242,29 @@
 
                                 approvedAtFormatted = `${day} ${month} ${year}<br><small>${hours}:${minutes} ${ampm}</small>`;
 
+                            }
+
+                            // Resolve pull status from server payload (or mark not-done when push failed)
+                            let pullStatus = 'pending';
+                            let pullErr = null;
+                            if (pushStatus === 'failed') {
+                                pullStatus = 'failed';
+                                pullErr = 'Pull not done (push failed)';
+                            } else if (pushStatus === 'success') {
+                                if (res.shopify_pull && res.shopify_pull.success && (res.data?.shopify_pull || res.shopify_pull.data)) {
+                                    pullStatus = 'success';
+                                } else if (res.data?.shopify_pull) {
+                                    pullStatus = 'success';
+                                } else if (res.shopify_pull && res.shopify_pull.success === false) {
+                                    pullStatus = 'failed';
+                                    pullErr = res.shopify_pull.message || 'Pull not done';
+                                } else {
+                                    pullStatus = 'loading';
+                                }
+                            } else if (pushStatus === 'na') {
+                                // No push needed; pull not attempted
+                                pullStatus = 'failed';
+                                pullErr = 'Pull not done (no Shopify adjustment)';
                             }
 
                             if (!isNaN(index) && filteredData[index]) {
@@ -4096,14 +4287,16 @@
                                         arr[j].LAST_VERIFIED_QTY = res.data.verified_stock;
                                     }
                                     if (res.data) {
-                                        arr[j].SHOPIFY_PUSH_STATUS = res.data.shopify_adjustment_status;
-                                        arr[j].SHOPIFY_PUSH_ERROR = res.data.shopify_adjustment_error || null;
-                                        arr[j].SHOPIFY_PUSH_AT = res.data.shopify_adjustment_succeeded_at || null;
+                                        arr[j].SHOPIFY_PUSH_STATUS = pushStatus;
+                                        arr[j].SHOPIFY_PUSH_ERROR = pushErr;
+                                        arr[j].SHOPIFY_PUSH_AT = pushAt;
+                                        arr[j].SHOPIFY_PULL_STATUS = pullStatus === 'loading' ? null : pullStatus;
+                                        arr[j].SHOPIFY_PULL_ERROR = pullErr;
                                     }
                                 }
                             });
                             if (res.data) {
-                                setRowShopifyPushUi($row, res.data.shopify_adjustment_status, res.data.shopify_adjustment_error, res.data.shopify_adjustment_succeeded_at);
+                                setRowShopifyPushUi($row, pushStatus, pushErr, pushAt, pullStatus, pullErr);
                             }
 
                             setRowVerifiedGreen($row, sku);
@@ -4138,56 +4331,81 @@
                                 // .addClass('bg-primary')
                                 .text(`$ ${Math.trunc(totalLossGain)}`);
 
-                            let message = res.message || (isApproved ? 'Saved.' : 'Approval removed');
+                            let message = res.message || 'Saved.';
                             let alertType = 'success';
-                            if (isApproved && res.shopify_adjustment_status === 'failed') {
+                            if (pushStatus === 'failed' || pullStatus === 'failed') {
                                 alertType = 'warning';
-                            } else if (!isApproved) {
-                                message = 'Approval removed';
-                                alertType = 'success';
                             }
 
                             showNotification(alertType, message);
-                            
-                            // Uncheck the Accept checkbox after successful approval to allow next approval
-                            if (isApproved) {
-                                console.log('Unchecking checkbox for SKU:', sku);
-                                console.log('Checkbox before uncheck:', $checkbox.prop('checked'));
-                                
-                                // Uncheck the checkbox
-                                $checkbox.prop('checked', false);
-                                
-                                // Also trigger change to ensure any event listeners are notified
-                                // But we need to prevent infinite loop, so we'll use a flag
-                                $checkbox.data('programmatic-change', true);
-                                
-                                console.log('Checkbox after uncheck:', $checkbox.prop('checked'));
-                                
-                                // Clear the verified stock input to prepare for next entry
-                                $row.find('.verified-stock-input').val('');
-                                $row.find('.to-adjust').text('');
-                                
-                                // Update the data to show checkbox should be unchecked
-                                if (!isNaN(index)) {
-                                    filteredData[index].APPROVED = false;
+
+                            // Clear verified stock for next entry; keep Accept ready for another approval
+                            $row.find('.verified-stock-input').val('');
+                            $row.find('.to-adjust').text('');
+
+                            if (!isNaN(index)) {
+                                filteredData[index].APPROVED = false;
+                            }
+
+                            // After Shopify push succeeds, apply pulled inventory for this SKU
+                            if (pushStatus === 'success' && !$row.is('.parent-row')) {
+                                const pulled = res.data?.shopify_pull || (res.shopify_pull?.success ? res.shopify_pull.data : null);
+                                if (pulled) {
+                                    applyShopifyRefreshDataToArrays(sku, pulled);
+                                    applyShopifyRefreshDataToRow($row, pulled);
+                                    setRowShopifyPushUi($row, 'success', pushErr, pushAt, 'success', null);
+                                    [tableData, filteredData].forEach(function (arr) {
+                                        const j = arr.findIndex(function (it) { return String(it.SKU || '').trim() === String(sku || '').trim(); });
+                                        if (j !== -1) {
+                                            arr[j].SHOPIFY_PULL_STATUS = 'success';
+                                            arr[j].SHOPIFY_PULL_ERROR = null;
+                                        }
+                                    });
+                                    $btn.prop('disabled', false);
+                                    return;
                                 }
+
+                                // Fallback: pull via existing refresh endpoint if server did not return data
+                                setRowShopifyPushUi($row, 'success', pushErr, pushAt, 'loading', null);
+                                pullShopifyInventoryForSku(sku, $row, {
+                                    notifySuccess: false,
+                                    notifyErrorType: 'warning',
+                                    notify: true
+                                }).done(function () {
+                                    setRowShopifyPushUi($row, 'success', pushErr, pushAt, 'success', null);
+                                    [tableData, filteredData].forEach(function (arr) {
+                                        const j = arr.findIndex(function (it) { return String(it.SKU || '').trim() === String(sku || '').trim(); });
+                                        if (j !== -1) {
+                                            arr[j].SHOPIFY_PULL_STATUS = 'success';
+                                            arr[j].SHOPIFY_PULL_ERROR = null;
+                                        }
+                                    });
+                                }).fail(function (err) {
+                                    const msg = (err && err.message) ? err.message : 'Pull not done';
+                                    setRowShopifyPushUi($row, 'success', pushErr, pushAt, 'failed', msg);
+                                    [tableData, filteredData].forEach(function (arr) {
+                                        const j = arr.findIndex(function (it) { return String(it.SKU || '').trim() === String(sku || '').trim(); });
+                                        if (j !== -1) {
+                                            arr[j].SHOPIFY_PULL_STATUS = 'failed';
+                                            arr[j].SHOPIFY_PULL_ERROR = msg;
+                                        }
+                                    });
+                                }).always(function () {
+                                    $btn.prop('disabled', false);
+                                });
+                                return;
                             }
                         } else {
-                            if (isApproved) {
-                                setRowShopifyPushUi($row, 'failed', res.message || 'Save failed', null);
-                            }
-                            $checkbox.prop('checked', !isApproved);
+                            setRowShopifyPushUi($row, 'failed', res.message || 'Save failed', null, 'failed', 'Pull not done');
                             showNotification('danger', res.message || 'Something went wrong.');
                         }
+                        $btn.prop('disabled', false);
                     },
                     error: function (xhr) {
-                        if (isApproved) {
-                            const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to update data. Please try again.';
-                            setRowShopifyPushUi($row, 'failed', msg, null);
-                        }
-                        $checkbox.prop('checked', !isApproved);
                         const errMsg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to update data. Please try again.';
+                        setRowShopifyPushUi($row, 'failed', errMsg, null, 'failed', 'Pull not done');
                         showNotification('danger', errMsg);
+                        $btn.prop('disabled', false);
                     }
                 });
             });
@@ -4298,8 +4516,8 @@
                                     <td>${escapeHtml(entry.reason ?? '-')}</td>
                                     <td>${escapeHtml(entry.remarks ?? '-')}</td>
                                     <td>${escapeHtml(entry.approved_by ?? '-')}</td>
-                                    <td>${escapeHtml(entry.approved_at ?? '-')}</td>
-                                    <td>${escapeHtml(entry.updated_at ?? '-')}</td>
+                                    <td>${escapeHtml(formatHistoryLogDateTime(entry.approved_at))}</td>
+                                    <td>${escapeHtml(formatHistoryLogDateTime(entry.updated_at))}</td>
                                 </tr>`;
                             });
                             html += `</tbody></table></div>`;
@@ -4454,7 +4672,7 @@
                                     <td>${entry.reason || '-'}</td>
                                     <td>${entry.remarks || '-'}</td>
                                     <td>${entry.approved_by || '-'}</td>
-                                    <td>${entry.approved_at || '-'}</td>
+                                    <td>${escapeHtml(formatHistoryLogDateTime(entry.approved_at))}</td>
                                 </tr>`;
                         });
                         html += `</tbody></table>
@@ -4491,7 +4709,7 @@
                             <td>${row.loss_gain}</td>
                             <td>${row.reason || ''}</td>
                             <td>${row.approved_by}</td>
-                            <td>${row.approved_at}</td>
+                            <td>${escapeHtml(formatHistoryLogDateTime(row.approved_at))}</td>
                             <td>${row.remarks || '-'}</td>
                         </tr>
                         `);
@@ -4789,7 +5007,7 @@
                             '<td>' + formattedLossGain + '</td>' +
                             '<td>' + (item.reason ?? '-') + '</td>' +
                             '<td>' + (item.approved_by ?? '-') + '</td>' +
-                            '<td>' + (item.approved_at ?? '-') + '</td>' +
+                            '<td>' + escapeHtml(formatHistoryLogDateTime(item.approved_at)) + '</td>' +
                             '<td class="activity-log-remarks-cell">' + remarksDisplay + '</td></tr>');
                     });
                 }
@@ -4839,10 +5057,17 @@
                 filterActivityLogTable();
             });
 
-            // Merged LOG column: open SKU-wise history modal (eye icon)
+            // Merged LOG column: click name/date text to open SKU activity history
             $(document).on('click', '.view-activity-logs-btn', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
+                const sku = $(this).data('sku') || $(this).closest('.view-activity-logs-btn').data('sku');
+                if (sku) showSkuHistory(sku);
+            });
+
+            $(document).on('keydown', '.view-activity-logs-btn', function (e) {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
                 const sku = $(this).data('sku');
                 if (sku) showSkuHistory(sku);
             });

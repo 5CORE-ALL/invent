@@ -455,36 +455,37 @@ class VerificationAdjustmentController extends Controller
     /**
      * Pull live inventory from Shopify for one SKU and return updated Main-INV fields.
      */
-    public function refreshShopifyInventoryForSku(Request $request)
+    /**
+     * Pull live Shopify inventory for one SKU into shopify_skus and return UI fields.
+     *
+     * @return array{success: bool, message?: string, data?: array<string, int|float>}
+     */
+    protected function pullShopifyInventoryDataForSku(string $sku): array
     {
-        $validated = $request->validate([
-            'sku' => 'required|string|max:255',
-        ]);
-
-        $sku = trim($validated['sku']);
+        $sku = trim($sku);
         $normalized = strtoupper(preg_replace('/\s+/u', ' ', $sku));
 
-        if (str_starts_with($normalized, 'PARENT')) {
-            return response()->json([
+        if ($sku === '' || str_starts_with($normalized, 'PARENT')) {
+            return [
                 'success' => false,
                 'message' => 'Cannot refresh inventory for a parent row.',
-            ], 422);
+            ];
         }
 
         $shopifyController = app(ShopifyApiInventoryController::class);
         if (! $shopifyController->syncLiveInventoryForSku($sku, 0)) {
-            return response()->json([
+            return [
                 'success' => false,
                 'message' => 'Could not refresh from Shopify. Ensure this SKU exists in shopify_skus with a variant_id.',
-            ], 422);
+            ];
         }
 
         $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
         if (! $row) {
-            return response()->json([
+            return [
                 'success' => false,
                 'message' => 'SKU not found after Shopify sync.',
-            ], 422);
+            ];
         }
 
         $availableToSell = (int) ($row->available_to_sell ?? 0);
@@ -499,7 +500,7 @@ class VerificationAdjustmentController extends Controller
             $dil = round($l30 / $inv, 2);
         }
 
-        return response()->json([
+        return [
             'success' => true,
             'message' => 'Inventory refreshed from Shopify.',
             'data' => [
@@ -512,6 +513,28 @@ class VerificationAdjustmentController extends Controller
                 'UNAVAILABLE' => (int) ($row->unavailable ?? 0),
                 'INCOMING' => (int) ($row->incoming ?? 0),
             ],
+        ];
+    }
+
+    public function refreshShopifyInventoryForSku(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+        ]);
+
+        $result = $this->pullShopifyInventoryDataForSku($validated['sku']);
+
+        if (! ($result['success'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'] ?? 'Could not refresh from Shopify.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['message'] ?? 'Inventory refreshed from Shopify.',
+            'data' => $result['data'],
         ]);
     }
 
@@ -765,12 +788,38 @@ class VerificationAdjustmentController extends Controller
                 $verifiedByFirstName = $nameParts[0] ?? Auth::user()->name;
             }
 
+            // After a successful Shopify push, pull this SKU only to refresh app inventory
+            $shopifyPull = null;
+            if ($shopifyAdjustmentStatus === 'success') {
+                try {
+                    $shopifyPull = $this->pullShopifyInventoryDataForSku($sku);
+                    if (! ($shopifyPull['success'] ?? false)) {
+                        Log::warning('Post-push Shopify pull failed', [
+                            'sku' => $sku,
+                            'message' => $shopifyPull['message'] ?? null,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Post-push Shopify pull exception', [
+                        'sku' => $sku,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $shopifyPull = [
+                        'success' => false,
+                        'message' => $e->getMessage(),
+                    ];
+                }
+            }
+
             // Determine message
             $message = 'Record saved successfully';
             if ($validated['is_approved']) {
                 if ($toAdjust != 0) {
                     if ($shopifyAdjustmentStatus === 'success') {
                         $message = 'Shopify inventory updated successfully and saved to database';
+                        if (($shopifyPull['success'] ?? false)) {
+                            $message .= '. Inventory pulled from Shopify for this SKU.';
+                        }
                     } elseif ($shopifyAdjustmentStatus === 'failed') {
                         $message = 'Saved, but Shopify was not updated. Check Status — you can Retry or wait for automatic retries (every 1 min, up to 5).';
                     } else {
@@ -786,6 +835,7 @@ class VerificationAdjustmentController extends Controller
                 'message' => $message,
                 'shopify_updated' => $shopifyAdjustmentStatus === 'success',
                 'shopify_adjustment_status' => $shopifyAdjustmentStatus,
+                'shopify_pull' => $shopifyPull,
                 'data' => [
                     'sku' => $record->sku,
                     'inventory_id' => $record->id,
@@ -808,6 +858,7 @@ class VerificationAdjustmentController extends Controller
                         ? Carbon::parse($record->approved_at)->timezone('America/New_York')->format('Y-m-d')
                         : null,
                     'verified_by_first_name' => $verifiedByFirstName,
+                    'shopify_pull' => ($shopifyPull['success'] ?? false) ? ($shopifyPull['data'] ?? null) : null,
                 ]
             ]);
 
@@ -1720,10 +1771,10 @@ class VerificationAdjustmentController extends Controller
                     'remarks' => $item->remarks,
                     'approved_by' => $item->approved_by,
                     'approved_at' => $item->approved_at
-                        ? Carbon::parse($item->approved_at, 'America/New_York')->timezone($displayTz)->format('d M Y, h:i A T')
+                        ? Carbon::parse($item->approved_at, 'America/New_York')->timezone($displayTz)->format('j M, g:i A T')
                         : '-',
                     'updated_at' => $item->updated_at
-                        ? Carbon::parse($item->updated_at)->timezone($displayTz)->format('d M Y, h:i A T')
+                        ? Carbon::parse($item->updated_at)->timezone($displayTz)->format('j M, g:i A T')
                         : '-',
                     'is_ia' => (bool) $item->is_ia,
                 ];
@@ -1880,10 +1931,10 @@ class VerificationAdjustmentController extends Controller
                     'remarks' => $item->remarks ?? '-',
                     'approved_by' => $item->approved_by,
                     'approved_at' => $item->approved_at
-                        ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('d M Y, h:i A')
+                        ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('j M, g:i A')
                         : '-',
                     'updated_at' => $item->updated_at
-                        ? Carbon::parse($item->updated_at)->timezone('America/New_York')->format('d M Y, h:i A')
+                        ? Carbon::parse($item->updated_at)->timezone('America/New_York')->format('j M, g:i A')
                         : '-',
                 ];
             });
@@ -2094,12 +2145,27 @@ GQL;
 
             $successYmd = Carbon::parse($record->shopify_adjustment_succeeded_at)->timezone('America/New_York')->format('Y-m-d');
 
+            $shopifyPull = null;
+            try {
+                $shopifyPull = $this->pullShopifyInventoryDataForSku($sku);
+            } catch (\Exception $e) {
+                Log::warning('Post-retry Shopify pull exception', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+                $shopifyPull = [
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ];
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Shopify inventory updated successfully.',
                 'shopify_adjustment_status' => 'success',
                 'shopify_retry_count' => (int) $record->shopify_retry_count,
                 'shopify_success_ymd' => $successYmd,
+                'shopify_pull' => $shopifyPull,
             ]);
         }
 
@@ -2442,7 +2508,7 @@ GQL;
                     'new_loss_gain' => $h->new_loss_gain,
                     'user_email' => $h->user ? $h->user->email : null,
                     'created_at' => $h->created_at
-                        ? Carbon::parse($h->created_at)->timezone('America/New_York')->format('d M Y, h:i A')
+                        ? Carbon::parse($h->created_at)->timezone('America/New_York')->format('j M, g:i A')
                         : '-',
                 ];
             });
