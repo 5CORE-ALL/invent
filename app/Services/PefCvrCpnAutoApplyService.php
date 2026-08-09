@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Midnight CVR vs CPN auto-apply for PEF eBay1 (runs after Dil/PRMT / price window).
  * Always runs once per day (even if CVR/rules unchanged):
- * map CVR% slab → CPN% and sync Coupon (item_price_markdown) API; 0 pauses.
+ * INV = 0 → CPN% = 0 (pause); else map CVR% slab → CPN% and sync Coupon API.
  */
 class PefCvrCpnAutoApplyService
 {
@@ -189,13 +189,16 @@ class PefCvrCpnAutoApplyService
                 continue;
             }
 
+            $inv = (float) ($row['inv'] ?? 0);
             $cvr = $this->resolveCvr($row);
-            $cpn = $this->cpnForCvr($cvr, $rules);
+            // Match PEF UI: INV = 0 → CPN% = 0 (pause coupon)
+            $cpn = ! ($inv > 0) ? 0.0 : $this->cpnForCvr($cvr, $rules);
 
             if ($dryRun) {
                 $log(sprintf(
-                    '  DRY %s cvr=%s → cpn=%s',
+                    '  DRY %s inv=%s cvr=%s → cpn=%s',
                     $sku,
+                    rtrim(rtrim(number_format($inv, 2, '.', ''), '0'), '.') ?: '0',
                     rtrim(rtrim(number_format($cvr, 2, '.', ''), '0'), '.') ?: '0',
                     rtrim(rtrim(number_format($cpn, 2, '.', ''), '0'), '.') ?: '0'
                 ));

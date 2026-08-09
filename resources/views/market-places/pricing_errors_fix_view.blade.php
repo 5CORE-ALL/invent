@@ -706,6 +706,7 @@
                     <p class="small text-muted mb-2">
                         Map CVR% slabs to CPN%. First-time defaults: <strong>&gt; 7% → 0</strong> up to
                         <strong>CVR 0% → 10</strong>. Save stores rules; Apply fills <strong>CPN %</strong> from each row’s CVR%.
+                        If <strong>INV = 0</strong>, CPN% is forced to <strong>0</strong>.
                         Auto-applies to <strong>eBay1</strong> coupons every night at <strong>00:30 IST</strong>
                         (after Dil/PRMT @ midnight — whether or not CVR changed).
                     </p>
@@ -2340,6 +2341,29 @@
                     },
                 },
                 {
+                    title: 'CVR',
+                    field: 'cvr',
+                    width: 56,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    sorter: 'number',
+                    sorterParams: { alignEmptyValues: 'bottom' },
+                    cssClass: 'pef-sortable',
+                    headerTooltip: 'Channel CVR% — same as /price-increase (L30 ÷ Views × 100 for this marketplace)',
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        let n = Number(cell.getValue());
+                        if (!isFinite(n)) {
+                            const views = Number(d.views) || 0;
+                            const l30 = Number(d.l30) || 0;
+                            n = views > 0 ? (l30 / views) * 100 : 0;
+                        }
+                        if (!isFinite(n)) return '';
+                        return (Math.round(n * 10) / 10).toFixed(1) + '%';
+                    },
+                },
+                {
                     title: 'STD PRC',
                     field: 'standard_price',
                     width: 78,
@@ -3901,7 +3925,8 @@
                 const l30 = Number(d.l30) || 0;
                 cvr = views > 0 ? round2((l30 / views) * 100) : 0;
             }
-            const cpn = pefCpnForCvr(cvr);
+            // INV = 0 → always CPN% = 0 (pauses eBay1 coupon)
+            let cpn = Number(d.inv || 0) === 0 ? 0 : pefCpnForCvr(cvr);
 
             // eBay1 → coupon API (0 pauses)
             if (isPefEbay1Row(d)) {
