@@ -437,8 +437,8 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * PEF CPN % → eBay1 Sell Marketing coupon (item_price_markdown).
-     * percent = 0 pauses any stored coupon for the SKU.
+     * PEF CPN % → eBay1 Sell Marketing coupon membership (item_price_markdown).
+     * percent > 0 adds SKU to an existing coupon at that %; 0 removes SKU (never creates coupons).
      */
     public function pricingErrorsFixEbay1Coupon(Request $request): JsonResponse
     {

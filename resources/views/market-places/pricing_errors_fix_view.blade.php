@@ -641,6 +641,10 @@
                             <i class="fas fa-sync-alt"></i> Reload
                         </button>
                         <span class="small text-muted d-none" id="pef-pull-hint"></span>
+                        <button type="button" class="btn btn-sm btn-success" id="pef-std-to-sprice-btn" disabled
+                            title="Set SPRICE from STD PRC on selected rows. Doba −25%. TopDawg/Faire/SB2B = (STD × marketplace%) − Ship. Purchase = (STD × 1.15) − Ship. Others = STD.">
+                            <i class="fas fa-arrow-right"></i> Add STD price to Sprice (<span id="pef-std-to-sprice-count">0</span>)
+                        </button>
                         <button type="button" class="btn btn-sm btn-outline-danger" id="pef-clear-sprice-btn" disabled
                             title="Clear SPRICE on selected rows (same as /price-increase Clear SPRICE)">
                             <i class="fas fa-eraser"></i> Clear SPRICE (<span id="pef-clear-sprice-count">0</span>)
@@ -910,12 +914,14 @@
     function updatePushBtn() {
         let n = 0;
         let clearN = 0;
+        let stdN = 0;
         let selected = 0;
         if (table) {
             table.getRows('active').forEach(row => {
                 const d = row.getData();
                 if (selectedIds.has(d.id)) {
                     selected++;
+                    if (Number(d.standard_price) > 0) stdN++;
                     if (Number(d.sprice) > 0) {
                         clearN++;
                         if (isPushableChannel(d)) n++;
@@ -927,6 +933,8 @@
         $('#pef-bulk-push-btn').prop('disabled', pefPushInFlight || n === 0);
         $('#pef-clear-sprice-count').text(clearN);
         $('#pef-clear-sprice-btn').prop('disabled', pefPushInFlight || clearN === 0);
+        $('#pef-std-to-sprice-count').text(stdN);
+        $('#pef-std-to-sprice-btn').prop('disabled', pefPushInFlight || stdN === 0);
         if (selected > 0) {
             $('#pef-selected-count').show().text(selected + ' selected');
         } else {
@@ -1118,6 +1126,93 @@
             if (selectedIds.has(d.id)) out.push({ row: row, d: d });
         });
         return out;
+    }
+
+    /** Product-master ship for STD→SPRICE rules (fallback to any sibling row ship for same SKU). */
+    function pefShipForStdApply(d) {
+        let ship = Number(d.ship || 0);
+        if (isFinite(ship) && ship > 0) return ship;
+        if (!table || !d.sku) return 0;
+        const want = String(d.sku).toUpperCase();
+        const rows = table.getRows('active');
+        for (let i = 0; i < rows.length; i++) {
+            const rd = rows[i].getData();
+            if (String(rd.sku || '').toUpperCase() !== want) continue;
+            const sn = Number(rd.ship || 0);
+            if (isFinite(sn) && sn > 0) return sn;
+        }
+        return 0;
+    }
+
+    /**
+     * STD PRC → channel SPRICE (same rules as /price-increase):
+     * Doba −25%; TopDawg/Faire/SB2B = (STD × marketplace%) − Ship; Purchase = (STD × 1.15) − Ship; else STD.
+     */
+    function spriceFromStdPrice(d, stdPrice) {
+        const base = Math.max(0.01, round2(Number(stdPrice)));
+        const mp = String(d.marketplace || d.channel_key || '').toLowerCase().replace(/\s+/g, '');
+        const ship = pefShipForStdApply(d);
+        if (mp === 'doba') {
+            return Math.max(0.01, round2(base * 0.75));
+        }
+        if (mp === 'ppower' || mp === 'purchasingpower' || mp === 'purchase') {
+            return Math.max(0.01, round2((base * 1.15) - ship));
+        }
+        if (mp === 'topdawg' || mp === 'topdog' || mp === 'faire'
+            || mp === 'sb2b' || mp === 'shopifyb2b' || mp === 'shopify_b2b') {
+            let rate = Number(d.margin || 0);
+            if (rate > 1) rate = rate / 100;
+            if (!(rate > 0 && rate <= 1)) rate = 0.80;
+            return Math.max(0.01, round2((base * rate) - ship));
+        }
+        return base;
+    }
+
+    /** Selected rows: copy STD PRC into SPRICE (channel rules) and save. */
+    function applyStdPriceToSprice() {
+        const selected = collectSelectedRows();
+        if (!selected.length) {
+            toast('Select row(s) first', 'error');
+            return;
+        }
+        const rowsToProcess = [];
+        let skippedNoStd = 0;
+        selected.forEach(function(item) {
+            const std = Number(item.d.standard_price || 0);
+            if (!(std > 0)) {
+                skippedNoStd++;
+                return;
+            }
+            const sprice = spriceFromStdPrice(item.d, std);
+            if (!(sprice > 0)) return;
+            rowsToProcess.push({
+                row: item.row,
+                d: item.d,
+                sprice: sprice,
+                margin: rowMargin(item.d),
+            });
+        });
+        if (!rowsToProcess.length) {
+            toast(skippedNoStd
+                ? 'No selected rows have STD PRC > 0'
+                : 'Could not compute SPRICE from STD PRC', 'error');
+            return;
+        }
+        const sampleStd = Number(rowsToProcess[0].d.standard_price || 0);
+        if (!confirm(
+            'Add STD price to Sprice for ' + rowsToProcess.length + ' row(s)?'
+            + (sampleStd > 0 ? ('\n\nExample STD: $' + sampleStd.toFixed(2)) : '')
+            + '\nDoba −25%; TopDawg/Faire/SB2B = (STD × marketplace%) − Ship; Purchase = (STD × 1.15) − Ship'
+            + (skippedNoStd ? ('\n(' + skippedNoStd + ' skipped — no STD PRC)') : '')
+        )) {
+            return;
+        }
+        bulkSaveTargetSprice(
+            rowsToProcess,
+            'STD → SPRICE',
+            $('#pef-std-to-sprice-btn'),
+            '<i class="fas fa-arrow-right"></i> Add STD price to Sprice (<span id="pef-std-to-sprice-count">' + rowsToProcess.length + '</span>)'
+        );
     }
 
     /**
@@ -4177,6 +4272,7 @@
 
     $('#pef-bulk-push-btn').on('click', pushSelected);
     $('#pef-clear-sprice-btn').on('click', clearSelectedSprice);
+    $('#pef-std-to-sprice-btn').on('click', applyStdPriceToSprice);
     $('#pef-reload-btn').on('click', loadFromCache);
 
     // Target ROI% / GPFT% — same as /amazon-tabulator-view
