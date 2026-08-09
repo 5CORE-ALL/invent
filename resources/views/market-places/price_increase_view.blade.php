@@ -1961,7 +1961,7 @@
                                     <th title="Push history — date, price, user for this marketplace"><span>Hist</span></th>
                                 </tr>
                                 <tr class="modal-totals-row">
-                                    <th><img id="modal-product-image" src="" alt="" style="width: 36px; height: 36px; object-fit: cover; border-radius: 4px; display: none;"></th>
+                                    <th><img id="modal-product-image" src="" alt="" style="width: 36px; height: 36px; max-width: 36px; max-height: 36px; object-fit: cover; border-radius: 4px; display: none;"></th>
                                     <th class="text-end" id="modal-total-l30">0</th>
                                     <th class="text-center">
                                         <span class="missing-l-dot" data-sku=""

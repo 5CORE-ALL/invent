@@ -138,11 +138,10 @@
         object-fit: cover !important;
     }
 
-    /* Keep modal / zoom previews larger */
-    .modal img[alt="Product"],
-    .modal img[alt="SKU Image"],
+    /* Keep scout / zoom previews larger.
+       Do NOT include #modal-product-image or generic .modal img[alt="Product"] —
+       those are OV L30 / price-increase thumbs; unbounded size hides channel rows. */
     .modal img.image-thumbnail,
-    .modal #modal-product-image,
     img.scouth-image-thumbnail,
     img[data-preview],
     img[style*="max-width:120px"],
@@ -154,6 +153,13 @@
         max-width: none !important;
         max-height: none !important;
         object-fit: contain !important;
+    }
+
+    /* Cap OV L30 modal SKU thumb (inline width/height win within this ceiling) */
+    .modal #modal-product-image {
+        max-width: 50px !important;
+        max-height: 50px !important;
+        object-fit: cover !important;
     }
 
 </style>
