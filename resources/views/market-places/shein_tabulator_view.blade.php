@@ -112,8 +112,8 @@
                 <div id="shein-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <!-- SKU & Parent Search -->
                     <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
-                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU..." style="max-width: 220px;">
                         <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU..." style="max-width: 220px;">
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="shein-table" style="flex: 1;"></div>

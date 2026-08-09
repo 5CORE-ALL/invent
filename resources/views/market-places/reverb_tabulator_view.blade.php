@@ -409,8 +409,8 @@
                         </button>
                     </div>
 
-                    <input type="text" id="sku-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search SKU..." style="max-width: 160px;">
                     <input type="text" id="parent-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search Parent..." style="max-width: 160px;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search SKU..." style="max-width: 160px;">
                 </div>
 
             </div>

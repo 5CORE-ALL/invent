@@ -176,10 +176,10 @@
 
                     {{-- Filter toolbar (layout / compact UI matches /ebay2-tabulator-view) --}}
                     <div class="d-flex align-items-center flex-wrap gap-2 shein-toolbar-row mb-1">
-                        <input type="text" id="pricing-sku-search" class="form-control form-control-sm"
-                            placeholder="Search SKU..." style="width: 160px; display: inline-block;">
                         <input type="text" id="pricing-parent-search" class="form-control form-control-sm"
                             placeholder="Search Parent..." style="width: 160px; display: inline-block;">
+                        <input type="text" id="pricing-sku-search" class="form-control form-control-sm"
+                            placeholder="Search SKU..." style="width: 160px; display: inline-block;">
 
                         <select id="ae-inv-filter" class="form-select form-select-sm pricing-filter-item">
                             <option value="all">INV</option>

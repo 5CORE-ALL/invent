@@ -530,10 +530,10 @@
                 <div class="px-2 py-1 bg-light border-bottom">
                     <div class="row g-1">
                         <div class="col-6">
-                            <input type="text" id="sku-search" class="form-control form-control-sm w-100" placeholder="Search SKU..." autocomplete="off">
+                            <input type="text" id="parent-search" class="form-control form-control-sm w-100" placeholder="Search Parent..." autocomplete="off">
                         </div>
                         <div class="col-6">
-                            <input type="text" id="parent-search" class="form-control form-control-sm w-100" placeholder="Search Parent..." autocomplete="off">
+                            <input type="text" id="sku-search" class="form-control form-control-sm w-100" placeholder="Search SKU..." autocomplete="off">
                         </div>
                     </div>
                 </div>

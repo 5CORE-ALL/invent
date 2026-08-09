@@ -202,17 +202,17 @@
                 </div>
                 <div class="row g-2 align-items-end mb-3">
                     <div class="col-md-4 col-lg-3">
-                        <label for="mbSkuSearch" class="form-label fw-semibold mb-1">Search SKU</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-search"></i></span>
-                            <input type="text" id="mbSkuSearch" class="form-control" placeholder="Type SKU…">
-                        </div>
-                    </div>
-                    <div class="col-md-4 col-lg-3">
                         <label for="mbParentSearch" class="form-label fw-semibold mb-1">Search Parent</label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-search"></i></span>
                             <input type="text" id="mbParentSearch" class="form-control" placeholder="Type Parent…">
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-lg-3">
+                        <label for="mbSkuSearch" class="form-label fw-semibold mb-1">Search SKU</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="text" id="mbSkuSearch" class="form-control" placeholder="Type SKU…">
                         </div>
                     </div>
                     <div class="col-md-4 col-lg-3">

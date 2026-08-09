@@ -808,6 +808,8 @@
 
     {{-- Shared SP (Standard Price) box for all LMP competitor modals --}}
     <script src="{{ asset('js/lmp-modal-sp.js') }}"></script>
+    {{-- Global: enlarge product thumbnails on hover --}}
+    <script src="{{ asset('js/image-hover-preview.js') }}"></script>
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
 

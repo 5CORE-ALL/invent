@@ -61,8 +61,8 @@
             <div class="card-body py-3">
                 
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 150px; display: inline-block;">
                     <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 150px; display: inline-block;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 150px; display: inline-block;">
 
                     <!-- Play / Pause parent navigation -->
                     <div class="btn-group align-items-center ms-1" role="group" aria-label="Parent navigation">

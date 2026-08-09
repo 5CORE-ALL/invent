@@ -327,8 +327,8 @@
                 @endif
 
                 <div class="d-flex align-items-center flex-wrap gap-2 tt-toolbar-row">
-                    <input type="text" id="sku-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search SKU..." style="width: 150px;">
                     <input type="text" id="parent-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search Parent..." style="width: 150px;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search SKU..." style="width: 150px;">
 
                     <select id="row-type-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
                         <option value="all" selected>All Rows</option>

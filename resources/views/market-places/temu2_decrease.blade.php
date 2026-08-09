@@ -339,8 +339,8 @@
         <div class="card shadow-sm">
             <div class="card-body py-2 d-flex flex-column">
                 <div class="d-flex align-items-center flex-wrap gap-2" id="ebay-filter-bar">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px; display: inline-block;">
                     <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 180px; display: inline-block;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px; display: inline-block;">
 
                     {{-- Row type filter (All Rows / Parents / SKUs) — same as Amazon / Shopify B2C --}}
                     <select id="parent-filter" class="form-select form-select-sm pricing-filter-item"

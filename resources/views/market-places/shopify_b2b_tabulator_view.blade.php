@@ -458,8 +458,8 @@
             <div class="card-body py-2 shopify-b2b-controls">
                 {{-- Filter bar (Amazon-style flex-wrap + auto-width selects) --}}
                 <div class="d-flex align-items-center flex-wrap shopify-b2b-toolbar" id="shopify-b2b-filter-bar">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px;">
                     <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 180px;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px;">
 
                     <select id="inventory-filter" class="form-select form-select-sm" title="Inventory filter">
                         <option value="all">INV</option>
