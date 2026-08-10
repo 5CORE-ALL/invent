@@ -2836,6 +2836,197 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Fetch shipment tracking/carrier for a parent order from Temu OpenAPI.
+     * Tries bg.logistics.shipment.v2.get then bg.logistics.shipment.get.
+     *
+     * @return array{
+     *   success: bool,
+     *   tracking_number: ?string,
+     *   carrier: ?string,
+     *   carrier_id: ?int,
+     *   package_sn: ?string,
+     *   shipments: list<array{tracking_number:?string,carrier:?string,carrier_id:?int,package_sn:?string,order_sn:?string}>,
+     *   message?: string,
+     *   raw?: mixed
+     * }
+     */
+    public function getShipmentInfo(string $parentOrderSn, ?string $orderSn = null): array
+    {
+        $parentOrderSn = trim($parentOrderSn);
+        $orderSn = $orderSn !== null ? trim($orderSn) : '';
+        if ($parentOrderSn === '') {
+            return [
+                'success' => false,
+                'tracking_number' => null,
+                'carrier' => null,
+                'carrier_id' => null,
+                'package_sn' => null,
+                'shipments' => [],
+                'message' => 'parentOrderSn is required.',
+            ];
+        }
+
+        $params = ['parentOrderSn' => $parentOrderSn];
+        if ($orderSn !== '') {
+            $params['orderSn'] = $orderSn;
+        }
+
+        $lastMessage = 'No shipment info returned.';
+        $lastRaw = null;
+        foreach (['bg.logistics.shipment.v2.get', 'bg.logistics.shipment.get'] as $type) {
+            $res = $this->callOpenApi($type, $params);
+            $lastRaw = $res['result'] ?? $res['raw'] ?? null;
+            if (empty($res['success'])) {
+                $lastMessage = (string) ($res['message'] ?? $res['errorMsg'] ?? $lastMessage);
+
+                continue;
+            }
+
+            $parsed = $this->parseShipmentInfoResult(is_array($res['result'] ?? null) ? $res['result'] : []);
+            if (($parsed['tracking_number'] ?? null) !== null || ($parsed['shipments'] ?? []) !== []) {
+                return array_merge($parsed, [
+                    'success' => true,
+                    'message' => 'Shipment loaded via '.$type,
+                    'raw' => $res['result'] ?? null,
+                ]);
+            }
+
+            $lastMessage = 'Temu returned empty shipment payload from '.$type;
+        }
+
+        return [
+            'success' => false,
+            'tracking_number' => null,
+            'carrier' => null,
+            'carrier_id' => null,
+            'package_sn' => null,
+            'shipments' => [],
+            'message' => $lastMessage,
+            'raw' => $lastRaw,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     * @return array{
+     *   tracking_number: ?string,
+     *   carrier: ?string,
+     *   carrier_id: ?int,
+     *   package_sn: ?string,
+     *   shipments: list<array{tracking_number:?string,carrier:?string,carrier_id:?int,package_sn:?string,order_sn:?string}>
+     * }
+     */
+    public function parseShipmentInfoResult(array $raw): array
+    {
+        $rows = [];
+        $queue = [$raw];
+        $seen = 0;
+        while ($queue !== [] && $seen < 200) {
+            $seen++;
+            $node = array_shift($queue);
+            if (! is_array($node)) {
+                continue;
+            }
+
+            $tracking = $this->pickShipmentScalar($node, [
+                'trackingNumber', 'tracking_number', 'mailNo', 'mail_no',
+                'logisticsNo', 'logistics_no', 'waybillNo', 'waybill_no',
+            ]);
+            $carrier = $this->pickShipmentScalar($node, [
+                'carrierName', 'carrier_name', 'shippingCompanyName', 'shipping_company_name',
+                'logisticsBrandName', 'logistics_brand_name', 'logisticsServiceProviderName',
+                'shipCompanyName', 'ship_company_name', 'carrier',
+            ]);
+            $carrierIdRaw = $node['carrierId'] ?? $node['carrier_id'] ?? $node['shipCompanyId']
+                ?? $node['ship_company_id'] ?? $node['logisticsServiceProviderId'] ?? null;
+            $carrierId = is_numeric($carrierIdRaw) ? (int) $carrierIdRaw : null;
+            $packageSn = $this->pickShipmentScalar($node, [
+                'packageSn', 'package_sn', 'packageNumber', 'package_number',
+            ]);
+            $orderSn = $this->pickShipmentScalar($node, [
+                'orderSn', 'order_sn',
+            ]);
+
+            if ($tracking !== null || $packageSn !== null) {
+                $rows[] = [
+                    'tracking_number' => $tracking,
+                    'carrier' => $carrier,
+                    'carrier_id' => $carrierId,
+                    'package_sn' => $packageSn,
+                    'order_sn' => $orderSn,
+                ];
+            }
+
+            foreach ([
+                'shipmentInfoDTO', 'shipmentInfoList', 'shipmentList', 'packageList',
+                'packageInfoList', 'packageInfoResultList', 'sendRequestList',
+                'orderSendInfoList', 'packageInfoResult', 'result',
+            ] as $key) {
+                if (! isset($node[$key]) || ! is_array($node[$key])) {
+                    continue;
+                }
+                $child = $node[$key];
+                if (array_is_list($child)) {
+                    foreach ($child as $item) {
+                        if (is_array($item)) {
+                            $queue[] = $item;
+                        }
+                    }
+                } else {
+                    $queue[] = $child;
+                }
+            }
+
+            // Also walk list-shaped roots.
+            if (array_is_list($node)) {
+                foreach ($node as $item) {
+                    if (is_array($item)) {
+                        $queue[] = $item;
+                    }
+                }
+            }
+        }
+
+        $best = null;
+        foreach ($rows as $row) {
+            if (($row['tracking_number'] ?? null) !== null) {
+                $best = $row;
+                break;
+            }
+            if ($best === null) {
+                $best = $row;
+            }
+        }
+
+        return [
+            'tracking_number' => $best['tracking_number'] ?? null,
+            'carrier' => $best['carrier'] ?? null,
+            'carrier_id' => $best['carrier_id'] ?? null,
+            'package_sn' => $best['package_sn'] ?? null,
+            'shipments' => $rows,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<string>  $keys
+     */
+    protected function pickShipmentScalar(array $row, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $row)) {
+                continue;
+            }
+            $val = $row[$key];
+            if (is_scalar($val) && trim((string) $val) !== '') {
+                return trim((string) $val);
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Decrypt / fetch ship-to for a parent order.
      * Tries bg.order.decryptshippinginfo.get, then shippinginfo.v2 / shippinginfo.get.
      *

@@ -489,7 +489,9 @@ class SalesOrderFulfillmentController extends Controller
                     'order_date' => $this->formatOrderDate($n['order_date'] ?? null),
                     'updated_at' => $this->formatOrderDate($n['updated_at'] ?? null),
                     'tracking_number' => $tracking !== null ? $tracking : ($n['tracking_number'] ?? null),
-                    'tracking_company' => null,
+                    'tracking_company' => isset($n['tracking_company']) && trim((string) $n['tracking_company']) !== ''
+                        ? trim((string) $n['tracking_company'])
+                        : null,
                     'tracking_url' => null,
                     'shipment_status' => null,
                     'shipment_status_detail' => null,
@@ -531,16 +533,16 @@ class SalesOrderFulfillmentController extends Controller
         $rows = $this->attachInvToOrderRows(array_values($rows));
         $rows = $this->attachShippingMasterLabelToOrderRows($rows);
         $rows = $this->attachShopifyTrackingToOrderRows($rows);
-        // Temu Sites sheets → Tracking/Carrier on SOF (no Shopify). Overwrites Shopify for Temu/Temu2.
+        // Temu OpenAPI tracking on temu*_orders is already on the row; Sites sheets only fill gaps.
         $rows = $this->attachTemuSitesTrackingToOrderRows($rows);
 
         return $this->attachShipmentStatusToOrderRows($rows);
     }
 
     /**
-     * Fill tracking_number + tracking_company for Temu / Temu 2 from Temu Sites daily sheets
-     * (temu_daily_data* / temu2_daily_data*). Match by parent order id (PO-…) and/or SKU.
-     * Does not read or write Shopify.
+     * Fallback: fill missing Temu / Temu 2 tracking from Sites daily sheets.
+     * Primary source is temu:pull-tracking / temu2:pull-tracking → temu*_orders columns.
+     * Does not read or write Shopify. Does not overwrite API-populated tracking.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
@@ -556,6 +558,10 @@ class SalesOrderFulfillmentController extends Controller
         foreach ($rows as $row) {
             $slug = (string) ($row['mm_slug'] ?? '');
             if ($slug !== 'temu' && $slug !== 'temu2') {
+                continue;
+            }
+            // Skip rows that already have API tracking.
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
                 continue;
             }
             $candidates = [
@@ -596,6 +602,9 @@ class SalesOrderFulfillmentController extends Controller
             if ($slug !== 'temu' && $slug !== 'temu2') {
                 continue;
             }
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
             $map = $slug === 'temu2' ? $temu2Map : $temuMap;
             $sku = trim((string) ($row['sku'] ?? ''));
             $hit = null;
@@ -622,7 +631,7 @@ class SalesOrderFulfillmentController extends Controller
             if (($hit['tracking_number'] ?? '') !== '') {
                 $row['tracking_number'] = $hit['tracking_number'];
             }
-            if (($hit['carrier'] ?? '') !== '') {
+            if (($hit['carrier'] ?? '') !== '' && trim((string) ($row['tracking_company'] ?? '')) === '') {
                 $row['tracking_company'] = $hit['carrier'];
             }
         }
@@ -2703,13 +2712,15 @@ class SalesOrderFulfillmentController extends Controller
                 'display_title' => (string) ($order->goods_name ?? ''),
                 'quantity' => (int) ($order->quantity ?? 1),
                 'amount' => $order->order_total_amount ?? $order->order_base_amount ?? null,
-                // Prefer parent PO for Temu Sites sheet match (order_id on daily data).
+                // Prefer parent PO (matches Temu API / Sites order_id).
                 'order_id' => (string) ($order->parent_order_sn ?: $order->order_sn ?: ''),
                 'order_number' => (string) ($order->parent_order_sn ?: $order->order_sn ?: ''),
                 'import_status' => (string) ($order->import_status ?? ''),
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
                 'raw_payload' => $order->raw_json ?? null,
-                'tracking_number' => null,
+                // Filled by temu:pull-tracking / temu2:pull-tracking (Temu OpenAPI).
+                'tracking_number' => isset($order->tracking_number) ? trim((string) $order->tracking_number) ?: null : null,
+                'tracking_company' => isset($order->carrier) ? trim((string) $order->carrier) ?: null : null,
                 'show_id' => (int) $order->id,
             ],
             'bestbuy', 'macy' => [
