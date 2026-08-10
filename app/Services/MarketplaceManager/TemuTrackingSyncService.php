@@ -222,6 +222,24 @@ class TemuTrackingSyncService
             }
         }
 
+        if ($unique === []) {
+            $total = (int) TemuOrder::query()->count();
+            $linked = (int) TemuOrder::query()
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->count();
+
+            return [
+                'success' => true,
+                'attempted' => 0,
+                'checked' => 0,
+                'pushed' => 0,
+                'skipped' => 0,
+                'failed' => 0,
+                'message' => "Tracking sync: no Shopify-linked Temu orders found (temu_orders={$total}, with shopify_order_id={$linked}). Import/push orders to Shopify first, or use --order=PO-xxx after linking.",
+            ];
+        }
+
         $checked = 0;
         $pushed = 0;
         $skipped = 0;
