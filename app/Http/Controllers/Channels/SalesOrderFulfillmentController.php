@@ -1515,21 +1515,40 @@ class SalesOrderFulfillmentController extends Controller
         if (! is_array($selectedRaw)) {
             $selectedRaw = [];
         }
+        $selectedOnly = filter_var($request->input('selected_only', false), FILTER_VALIDATE_BOOL);
         $selected = [];
         foreach ($selectedRaw as $row) {
             if (! is_array($row)) {
                 continue;
             }
             $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
-            $selected[] = [
+            $item = [
                 'mm_slug' => $slug,
                 'order_id' => trim((string) ($row['order_id'] ?? '')),
                 'order_id_api' => trim((string) ($row['order_id_api'] ?? '')),
                 'order_number' => trim((string) ($row['order_number'] ?? '')),
                 'shopify_order_id' => trim((string) ($row['shopify_order_id'] ?? '')),
             ];
+            if (
+                $item['mm_slug'] === ''
+                && $item['order_id'] === ''
+                && $item['order_id_api'] === ''
+                && $item['order_number'] === ''
+                && $item['shopify_order_id'] === ''
+            ) {
+                continue;
+            }
+            $selected[] = $item;
         }
         $hasSelection = $selected !== [];
+        if ($selectedOnly && ! $hasSelection) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No valid selected rows received. Check row checkboxes and try again.',
+                'data' => [],
+                'summary' => ['checked' => 0, 'with_tracking' => 0, 'updated' => 0, 'empty' => 0, 'selected' => 0],
+            ], 422);
+        }
         if ($hasSelection) {
             $limit = max(1, min(100, count($selected)));
         }

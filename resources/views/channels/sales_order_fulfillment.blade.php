@@ -1764,10 +1764,16 @@
     function sofOrderTabIsActive(tabSelector, paneSelector) {
         const tab = document.querySelector(tabSelector);
         const pane = paneSelector ? document.querySelector(paneSelector) : null;
-        if (tab && (tab.classList.contains('active') || tab.getAttribute('aria-selected') === 'true')) {
+        // Prefer visible pane — tab buttons can keep stale aria-selected.
+        if (pane && pane.classList.contains('active') && pane.classList.contains('show')) {
             return true;
         }
-        if (pane && pane.classList.contains('active')) return true;
+        if (pane && pane.classList.contains('active') && !pane.classList.contains('fade')) {
+            return true;
+        }
+        if (tab && tab.classList.contains('active') && tab.getAttribute('aria-selected') === 'true') {
+            return true;
+        }
         return false;
     }
 
@@ -1939,8 +1945,8 @@
     // ── Row select + Edit / bulk partial update ─────────────────────────────
     let sofShipEditCtx = null; // { table, rows, baseline, mixed }
 
-    function sofActiveOrderTable() {
-        const pairs = [
+    function sofOrderTablePairs() {
+        return [
             ['#sof-pending-tab', '#sof-pending-pane', pendingTable],
             ['#sof-fulfilled-tab', '#sof-fulfilled-pane', fulfilledTable],
             ['#sof-scan-done-tab', '#sof-scan-done-pane', scanDoneTable],
@@ -1950,21 +1956,55 @@
             ['#sof-delivered-tab', '#sof-delivered-pane', deliveredTable],
             ['#sof-all-order-tab', '#sof-all-order-pane', allOrderTable],
         ];
+    }
+
+    function sofActiveOrderTable() {
+        const pairs = sofOrderTablePairs();
         for (let i = 0; i < pairs.length; i++) {
             if (sofOrderTabIsActive(pairs[i][0], pairs[i][1])) {
+                return pairs[i][2];
+            }
+        }
+        // Fallback: any order pane that is currently displayed.
+        for (let i = 0; i < pairs.length; i++) {
+            const pane = document.querySelector(pairs[i][1]);
+            if (pane && pane.offsetParent !== null && pairs[i][2]) {
                 return pairs[i][2];
             }
         }
         return null;
     }
 
+    function sofTableSelectedData(tbl) {
+        if (!tbl) return [];
+        try {
+            if (typeof tbl.getSelectedData === 'function') {
+                const data = tbl.getSelectedData() || [];
+                if (data.length) return data;
+            }
+        } catch (e) {}
+        try {
+            if (typeof tbl.getSelectedRows === 'function') {
+                return (tbl.getSelectedRows() || []).map(function (r) {
+                    try { return r.getData(); } catch (e2) { return null; }
+                }).filter(Boolean);
+            }
+        } catch (e) {}
+        return [];
+    }
+
     function sofUpdateBulkEditButton() {
-        const tbl = sofActiveOrderTable();
-        const n = (tbl && tbl.getSelectedData) ? tbl.getSelectedData().length : 0;
+        const n = sofSelectedPullTargets().length;
         const btn = document.getElementById('sof-bulk-edit-btn');
         const countEl = document.getElementById('sof-bulk-edit-count');
         if (countEl) countEl.textContent = String(n);
         if (btn) btn.disabled = n < 1;
+        const pullBtn = document.getElementById('sof-pull-tracking-btn');
+        if (pullBtn) {
+            pullBtn.title = n > 0
+                ? ('Pull tracking for ' + n + ' selected row(s) only')
+                : 'Check row checkbox(es) first to pull only those orders. With none checked, pulls a batch of 40.';
+        }
     }
 
     function sofWireOrderTable(tbl) {
@@ -1989,7 +2029,7 @@
 
     function openSofShipmentEdit(table, clickedRow) {
         if (!table || !clickedRow) return;
-        const selected = (table.getSelectedData && table.getSelectedData()) || [];
+        const selected = sofTableSelectedData(table);
         const clickedId = clickedRow.id;
         const selectedIncludes = selected.some(function (r) { return r && r.id === clickedId; });
         let rows;
@@ -4432,37 +4472,62 @@
         applyAllOrderFilters();
     });
 
-    function sofSelectedPullTargets() {
-        const tbl = sofActiveOrderTable();
-        if (!tbl || typeof tbl.getSelectedData !== 'function') return [];
-        const selected = tbl.getSelectedData() || [];
-        return selected.map(function (r) {
-            return {
-                mm_slug: String(r.mm_slug || '').trim(),
-                order_id: String(r.order_id || '').trim(),
-                order_id_api: String(r.order_id_api || '').trim(),
-                order_number: String(r.order_number || '').trim(),
-                shopify_order_id: String(r.shopify_order_id || '').trim(),
-            };
-        }).filter(function (r) {
-            return r.mm_slug || r.order_id || r.order_id_api || r.order_number || r.shopify_order_id;
-        });
+    function sofMapPullTarget(r) {
+        if (!r || typeof r !== 'object') return null;
+        const mapped = {
+            id: String(r.id || '').trim(),
+            mm_slug: String(r.mm_slug || '').trim(),
+            order_id: String(r.order_id || '').trim(),
+            order_id_api: String(r.order_id_api || '').trim(),
+            order_number: String(r.order_number || '').trim(),
+            shopify_order_id: String(r.shopify_order_id || '').trim(),
+        };
+        if (!(mapped.mm_slug || mapped.order_id || mapped.order_id_api || mapped.order_number || mapped.shopify_order_id)) {
+            return null;
+        }
+        return mapped;
     }
 
-    $('#sof-pull-tracking-btn').on('click', function () {
-        const $btn = $(this);
+    function sofSelectedPullTargets() {
+        const seen = {};
+        const out = [];
+        function addRows(list) {
+            (list || []).forEach(function (r) {
+                const mapped = sofMapPullTarget(r);
+                if (!mapped) return;
+                const key = mapped.id
+                    || (mapped.mm_slug + '|' + (mapped.order_id_api || mapped.order_id || mapped.order_number || mapped.shopify_order_id));
+                if (seen[key]) return;
+                seen[key] = true;
+                out.push(mapped);
+            });
+        }
+
+        // 1) Active order tab first
+        addRows(sofTableSelectedData(sofActiveOrderTable()));
+
+        // 2) Any other order table that still has checked rows
+        sofOrderTablePairs().forEach(function (pair) {
+            addRows(sofTableSelectedData(pair[2]));
+        });
+
+        return out;
+    }
+
+    function sofRunPullTracking(selected) {
+        const $btn = $('#sof-pull-tracking-btn');
         if ($btn.prop('disabled')) return;
         const $label = $btn.find('.sof-pull-tracking-label');
         const prev = $label.text();
         $btn.prop('disabled', true);
-        $label.text('Pulling…');
+        $label.text(selected.length ? ('Pulling ' + selected.length + '…') : 'Pulling…');
 
         const channelFilter = sofChannelFilterValue();
-        const selected = sofSelectedPullTargets();
         const payload = {
             limit: selected.length ? Math.min(100, selected.length) : 40,
             channel: channelFilter || '',
             selected: selected,
+            selected_only: selected.length > 0,
         };
         fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
             method: 'POST',
@@ -4487,7 +4552,9 @@
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
                         icon: res.ok ? 'success' : 'error',
-                        title: res.ok ? 'Pulled tracking numbers' : 'Pull failed',
+                        title: res.ok
+                            ? (selected.length ? ('Pulled ' + selected.length + ' selected') : 'Pulled tracking numbers')
+                            : 'Pull failed',
                         width: Math.min(920, window.innerWidth - 40),
                         html: '<div style="text-align:left;font-size:0.9rem;">'
                             + '<p class="mb-1">' + escapeHtml(msg) + '</p>'
@@ -4501,7 +4568,6 @@
                     alert(msg + '\n' + summaryLine);
                 }
                 if (res.ok) {
-                    // Update only matching Tracking/Carrier cells — no full table reload.
                     sofApplyPulledTrackingToTables(rows);
                 }
             })
@@ -4517,6 +4583,29 @@
                 $btn.prop('disabled', false);
                 $label.text(prev);
             });
+    }
+
+    $('#sof-pull-tracking-btn').on('click', function () {
+        const selected = sofSelectedPullTargets();
+        if (!selected.length) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'No rows checked',
+                    html: 'Check one or more row checkboxes first, then click <b>Pull Tracking Number</b>.<br><br>'
+                        + 'Or continue to pull a batch of 40 (not selected-only).',
+                    showCancelButton: true,
+                    confirmButtonText: 'Pull batch of 40',
+                    cancelButtonText: 'Cancel',
+                }).then(function (result) {
+                    if (result.isConfirmed) sofRunPullTracking([]);
+                });
+            } else if (confirm('No rows checked. Pull a batch of 40?')) {
+                sofRunPullTracking([]);
+            }
+            return;
+        }
+        sofRunPullTracking(selected);
     });
 
     const sofHistoryLabels = {
