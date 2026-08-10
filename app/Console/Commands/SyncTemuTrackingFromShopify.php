@@ -13,7 +13,7 @@ class SyncTemuTrackingFromShopify extends Command
                             {--force : Run even if Push Shopify tracking setting is Off}
                             {--order= : Push tracking for a single Temu parent_order_sn}';
 
-    protected $description = 'Push Shopify fulfillment tracking numbers to Temu (stub).';
+    protected $description = 'Push Shopify fulfillment tracking numbers to Temu (self-fulfilled shipment confirm).';
 
     public function handle(TemuTrackingSyncService $sync): int
     {

@@ -2587,7 +2587,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     {
         try {
             $signedRequest = $this->generateSignValue($requestBody);
-            $url = rtrim((string) config('services.temu.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+            $url = $this->openApiRouterUrl();
             $request = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(60);
             if (config('filesystems.default') === 'local') {
                 $request = $request->withoutVerifying();
@@ -2611,5 +2611,227 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    protected function openApiRouterUrl(): string
+    {
+        return rtrim((string) config('services.temu.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+    }
+
+    /**
+     * Generic Temu Open API call (signed POST to router).
+     *
+     * @param  array<string, mixed>  $params
+     * @return array{success: bool, errorCode?: mixed, errorMsg?: string, message?: string, result?: mixed, raw?: mixed}
+     */
+    public function callOpenApi(string $type, array $params = [], int $timeout = 60): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Temu API credentials missing.',
+                'errorMsg' => 'Temu API credentials missing.',
+                'result' => null,
+            ];
+        }
+
+        $requestBody = array_merge(['type' => $type], $params);
+
+        try {
+            $signedRequest = $this->generateSignValue($requestBody);
+            $request = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(max(10, $timeout));
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->post($this->openApiRouterUrl(), $signedRequest);
+            $data = $response->json() ?? [];
+
+            if ($response->successful() && ($data['success'] ?? false)) {
+                return [
+                    'success' => true,
+                    'result' => $data['result'] ?? $data,
+                    'raw' => $data,
+                ];
+            }
+
+            $errorMsg = (string) ($data['errorMsg'] ?? $response->body() ?: 'Unknown Temu API error');
+
+            return [
+                'success' => false,
+                'errorCode' => $data['errorCode'] ?? $response->status(),
+                'errorMsg' => $errorMsg,
+                'message' => trim(($data['errorCode'] ?? $response->status()).': '.$errorMsg),
+                'result' => $data['result'] ?? null,
+                'raw' => $data,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('TemuApiService::callOpenApi failed', [
+                'type' => $type,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'errorMsg' => $e->getMessage(),
+                'result' => null,
+            ];
+        }
+    }
+
+    /**
+     * @return array{success: bool, companies: list<array{id:int,name:string,brand:?string}>, message?: string}
+     */
+    public function listLogisticsCompanies(?int $regionId = null): array
+    {
+        $params = [];
+        if ($regionId !== null && $regionId > 0) {
+            $params['regionId'] = $regionId;
+        }
+
+        $res = $this->callOpenApi('bg.logistics.companies.get', $params);
+        if (empty($res['success'])) {
+            return [
+                'success' => false,
+                'companies' => [],
+                'message' => (string) ($res['message'] ?? $res['errorMsg'] ?? 'Failed to list logistics companies'),
+            ];
+        }
+
+        $raw = $res['result'] ?? [];
+        $list = [];
+        if (is_array($raw)) {
+            if (array_is_list($raw)) {
+                $list = $raw;
+            } elseif (isset($raw['companyList']) && is_array($raw['companyList'])) {
+                $list = $raw['companyList'];
+            } elseif (isset($raw['logisticsCompanies']) && is_array($raw['logisticsCompanies'])) {
+                $list = $raw['logisticsCompanies'];
+            }
+        }
+
+        $companies = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = $row['logisticsServiceProviderId']
+                ?? $row['carrierId']
+                ?? $row['shipCompanyId']
+                ?? $row['id']
+                ?? null;
+            $name = trim((string) (
+                $row['logisticsBrandName']
+                ?? $row['logisticsServiceProviderName']
+                ?? $row['carrierName']
+                ?? $row['name']
+                ?? ''
+            ));
+            if (! is_numeric($id) || $name === '') {
+                continue;
+            }
+            $companies[] = [
+                'id' => (int) $id,
+                'name' => $name,
+                'brand' => isset($row['logisticsBrandName']) ? trim((string) $row['logisticsBrandName']) : null,
+            ];
+        }
+
+        return ['success' => true, 'companies' => $companies];
+    }
+
+    /**
+     * @return array{success: bool, warehouses: list<array{id:string,name:string,default:bool}>, message?: string}
+     */
+    public function listWarehouses(): array
+    {
+        $res = $this->callOpenApi('bg.logistics.warehouse.list.get', [
+            'returnEnableBuyShippingLabelOnly' => false,
+        ]);
+        if (empty($res['success'])) {
+            return [
+                'success' => false,
+                'warehouses' => [],
+                'message' => (string) ($res['message'] ?? $res['errorMsg'] ?? 'Failed to list warehouses'),
+            ];
+        }
+
+        $raw = $res['result'] ?? [];
+        $list = [];
+        if (is_array($raw)) {
+            $list = is_array($raw['warehouseList'] ?? null) ? $raw['warehouseList'] : (array_is_list($raw) ? $raw : []);
+        }
+
+        $warehouses = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = trim((string) ($row['warehouseId'] ?? $row['id'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+            $warehouses[] = [
+                'id' => $id,
+                'name' => trim((string) ($row['warehouseName'] ?? $row['name'] ?? $id)),
+                'default' => (bool) ($row['defaultWarehouse'] ?? false),
+            ];
+        }
+
+        return ['success' => true, 'warehouses' => $warehouses];
+    }
+
+    /**
+     * Self-fulfilled shipment confirm (Shopify/own label → Temu shipped).
+     * API: bg.logistics.shipment.v2.confirm
+     *
+     * @param  list<array{parentOrderSn:string,orderSn:string,quantity:int,goodsId?:int|null,skuId?:int|null}>  $orderSendInfoList
+     * @return array{success: bool, message: string, carrier_id?: int|null, result?: mixed}
+     */
+    public function confirmSelfShipment(
+        string $trackingNumber,
+        int $carrierId,
+        string $warehouseId,
+        array $orderSendInfoList,
+        int $sendType = 0
+    ): array {
+        $trackingNumber = preg_replace('/[\s\-%#]+/', '', trim($trackingNumber)) ?? trim($trackingNumber);
+        $warehouseId = trim($warehouseId);
+
+        if ($trackingNumber === '' || $carrierId <= 0 || $warehouseId === '' || $orderSendInfoList === []) {
+            return [
+                'success' => false,
+                'message' => 'trackingNumber, carrierId, warehouseId, and order lines are required.',
+            ];
+        }
+
+        $sendRequest = [
+            'carrierId' => $carrierId,
+            'trackingNumber' => $trackingNumber,
+            'selfShippingWarehouseId' => $warehouseId,
+            'orderSendInfoList' => array_values($orderSendInfoList),
+        ];
+
+        $res = $this->callOpenApi('bg.logistics.shipment.v2.confirm', [
+            'sendType' => $sendType,
+            'sendRequestList' => [$sendRequest],
+        ]);
+
+        if (! empty($res['success'])) {
+            return [
+                'success' => true,
+                'message' => "Temu shipment confirmed with tracking {$trackingNumber}.",
+                'carrier_id' => $carrierId,
+                'result' => $res['result'] ?? null,
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => (string) ($res['message'] ?? $res['errorMsg'] ?? 'Temu shipment confirm failed'),
+            'carrier_id' => $carrierId,
+            'result' => $res['result'] ?? null,
+            'errorCode' => $res['errorCode'] ?? null,
+        ];
     }
 }

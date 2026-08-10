@@ -399,6 +399,7 @@
         .sof-top-badge.gofo { background: #0d6efd; }
         .sof-top-badge.gofo.is-api-ready { box-shadow: inset 0 0 0 2px rgba(255,255,255,0.55); cursor: pointer; }
         .sof-top-badge.veeqo { background: #6610f2; }
+        .sof-top-badge.veeqo.is-api-ready { box-shadow: inset 0 0 0 2px rgba(255,255,255,0.55); cursor: default; }
         .sof-top-badge.shopify { background: #198754; }
         .sof-top-badge.others { background: #6c757d; }
         #sofGofoToolsModal .sof-gofo-result {
@@ -889,16 +890,19 @@
                                         $badgeLink = $badge['link'] ?? null;
                                         $hasLink = !empty($badgeLink);
                                         $gofoApiReady = $badgeKey === 'gofo' && !empty($gofoApiConfigured);
+                                        $veeqoApiReady = $badgeKey === 'veeqo' && !empty($veeqoApiConfigured);
+                                        $apiReady = $gofoApiReady || $veeqoApiReady;
                                     @endphp
-                                    <span class="sof-top-badge {{ $badgeKey }} {{ ($hasLink || $gofoApiReady) ? '' : 'is-disabled' }} {{ $gofoApiReady ? 'is-api-ready' : '' }}"
+                                    <span class="sof-top-badge {{ $badgeKey }} {{ ($hasLink || $apiReady) ? '' : 'is-disabled' }} {{ $apiReady ? 'is-api-ready' : '' }}"
                                           data-badge-key="{{ $badgeKey }}"
                                           data-badge-label="{{ $badgeLabel }}"
                                           data-badge-link="{{ $badgeLink ?? '' }}"
                                           data-gofo-api="{{ $gofoApiReady ? '1' : '0' }}"
-                                          title="{{ $gofoApiReady ? 'Click to open GOFO API tools' : ($hasLink ? 'Click to open '.$badgeLabel : 'Add a link via the red dot') }}">
+                                          data-veeqo-api="{{ $veeqoApiReady ? '1' : '0' }}"
+                                          title="{{ $gofoApiReady ? 'Click to open GOFO API tools' : ($veeqoApiReady ? 'Veeqo API connected' : ($hasLink ? 'Click to open '.$badgeLabel : 'Add a link via the red dot')) }}">
                                         <span class="sof-top-badge-label">{{ $badgeLabel }}</span>
-                                        <span class="sof-ch-orders-dot {{ ($hasLink || $gofoApiReady) ? 'green' : 'red' }} sof-top-badge-dot"
-                                              title="{{ $hasLink ? 'Double-click to edit link' : 'Click to add link' }}"
+                                        <span class="sof-ch-orders-dot {{ ($hasLink || $apiReady) ? 'green' : 'red' }} sof-top-badge-dot"
+                                              title="{{ $hasLink ? 'Double-click to edit link' : ($apiReady ? 'API connected' : 'Click to add link') }}"
                                               role="button"
                                               tabindex="0"></span>
                                     </span>
@@ -920,23 +924,48 @@
                             </div>
                             <div>
                                 <label class="sof-filter-label" for="sof-carrier-filter">Carrier</label>
-                                <select id="sof-carrier-filter" class="form-select form-select-sm" style="min-width:160px;">
+                                <select id="sof-carrier-filter" class="form-select form-select-sm" style="min-width:160px;" title="{{ !empty($veeqoApiConfigured) ? 'Carriers from Veeqo API + GOFO/Veeqo' : 'Carrier filter' }}">
                                     <option value="">All carriers</option>
                                     <option value="gofo">GOFO</option>
-                                    <option value="usps">USPS</option>
-                                    <option value="ups">UPS</option>
-                                    <option value="fedex">FedEx</option>
-                                    <option value="dhl">DHL</option>
-                                    <option value="amazon">Amz</option>
-                                    <option value="ontrac">OnTrac</option>
-                                    <option value="veeqo">Veeqo</option>
-                                    <option value="other">Other</option>
+                                    @php
+                                        $sofVeeqoCarriers = collect($veeqoCarriers ?? []);
+                                        $sofDefaultCarriers = [
+                                            ['key' => 'usps', 'label' => 'USPS'],
+                                            ['key' => 'ups', 'label' => 'UPS'],
+                                            ['key' => 'fedex', 'label' => 'FedEx'],
+                                            ['key' => 'dhl', 'label' => 'DHL'],
+                                            ['key' => 'amazon', 'label' => 'Amz'],
+                                            ['key' => 'ontrac', 'label' => 'OnTrac'],
+                                            ['key' => 'other', 'label' => 'Other'],
+                                        ];
+                                        $sofCarrierOptions = $sofVeeqoCarriers->isNotEmpty()
+                                            ? $sofVeeqoCarriers->map(fn ($c) => [
+                                                'key' => $c['key'] ?? '',
+                                                'label' => $c['label'] ?? ($c['name'] ?? ''),
+                                            ])->filter(fn ($c) => ($c['key'] ?? '') !== '' && ($c['key'] ?? '') !== 'gofo' && ($c['key'] ?? '') !== 'veeqo')->values()
+                                            : collect($sofDefaultCarriers);
+                                    @endphp
+                                    @foreach($sofCarrierOptions as $carrierOpt)
+                                        <option value="{{ $carrierOpt['key'] }}">{{ $carrierOpt['label'] }}</option>
+                                    @endforeach
+                                    <option value="veeqo">Veeqo{{ !empty($veeqoApiConfigured) ? ' ✓' : '' }}</option>
+                                    @if($sofVeeqoCarriers->isNotEmpty() && ! $sofCarrierOptions->contains(fn ($c) => ($c['key'] ?? '') === 'other'))
+                                        <option value="other">Other</option>
+                                    @endif
                                     <option value="none">No carrier</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="sof-filter-label" for="sof-tracking-filter">Tracking</label>
+                                <select id="sof-tracking-filter" class="form-select form-select-sm" style="min-width:200px;" title="Filter by tracking number presence">
+                                    <option value="">Tracking (0)</option>
+                                    <option value="updated">Tracking Updated (0)</option>
+                                    <option value="pending">Tracking Pending (0)</option>
                                 </select>
                             </div>
                             <div class="d-flex align-items-end gap-2">
                                 <button type="button" class="btn btn-sm btn-primary" id="sof-date-filter-apply">Apply</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-date-filter-clear" title="Reset date + carrier filters">Clear</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-date-filter-clear" title="Reset date + carrier + tracking filters">Clear</button>
                             </div>
                             <div class="d-flex align-items-end gap-2 ms-md-2">
                                 <button type="button" class="btn btn-sm btn-success" id="sof-bulk-edit-btn" disabled title="Edit selected rows (only changed fields are saved)">
@@ -1300,12 +1329,16 @@
                         <input type="text" class="form-control form-control-sm sof-ship-edit-field" id="sof-ship-edit-carrier" data-field="tracking_company" list="sof-ship-edit-carrier-list" autocomplete="off" placeholder="GOFO, USPS, UPS, FedEx…">
                         <datalist id="sof-ship-edit-carrier-list">
                             <option value="GOFO"></option>
-                            <option value="USPS"></option>
-                            <option value="UPS"></option>
-                            <option value="FedEx"></option>
-                            <option value="DHL"></option>
-                            <option value="Amz"></option>
-                            <option value="OnTrac"></option>
+                            @forelse(($veeqoCarriers ?? []) as $vc)
+                                <option value="{{ $vc['name'] ?? $vc['label'] ?? '' }}"></option>
+                            @empty
+                                <option value="USPS"></option>
+                                <option value="UPS"></option>
+                                <option value="FedEx"></option>
+                                <option value="DHL"></option>
+                                <option value="Amz"></option>
+                                <option value="OnTrac"></option>
+                            @endforelse
                             <option value="Veeqo"></option>
                         </datalist>
                         <div class="form-text sof-ship-mixed-hint d-none" data-for="tracking_company">Mixed values — leave blank to keep each row’s current value.</div>
@@ -1588,6 +1621,17 @@
         return el ? String(el.value || '').trim().toLowerCase() : '';
     }
 
+    function sofTrackingFilterValue() {
+        const el = document.getElementById('sof-tracking-filter');
+        return el ? String(el.value || '').trim().toLowerCase() : '';
+    }
+
+    /** Same rule as Tracking column dots: green = has number, red = missing. */
+    function sofRowHasTracking(data) {
+        if (!data || typeof data !== 'object') return false;
+        return String(data.tracking_number || '').trim() !== '';
+    }
+
     function sofCarrierKeyFromName(name) {
         const n = String(name || '').trim().toLowerCase();
         if (!n) return 'none';
@@ -1608,6 +1652,14 @@
         return sofCarrierKeyFromName(data && data.tracking_company) === selected;
     }
 
+    function sofRowMatchesTracking(data) {
+        const selected = sofTrackingFilterValue();
+        if (!selected) return true; // Tracking = ALL
+        if (selected === 'updated') return sofRowHasTracking(data);
+        if (selected === 'pending') return !sofRowHasTracking(data);
+        return true;
+    }
+
     function sofOrderSearchMatches(data, q) {
         if (!q) return true;
         return String(data.channel_label || '').toLowerCase().includes(q)
@@ -1623,13 +1675,21 @@
         if (!tbl) return;
         const q = ($(searchSelector).val() || '').trim().toLowerCase();
         const carrier = sofCarrierFilterValue();
-        if (!q && !carrier) {
+        const tracking = sofTrackingFilterValue();
+        if (!q && !carrier && !tracking) {
             tbl.clearFilter(true);
-            return;
+        } else {
+            tbl.setFilter(function (data) {
+                return sofOrderSearchMatches(data, q)
+                    && sofRowMatchesCarrier(data)
+                    && sofRowMatchesTracking(data);
+            });
         }
-        tbl.setFilter(function (data) {
-            return sofOrderSearchMatches(data, q) && sofRowMatchesCarrier(data);
-        });
+        // Refresh Tracking badge counts from unfiltered cache for the visible table.
+        if (sofActiveOrderTable() === tbl) {
+            const cached = sofRowsForTable(tbl);
+            sofUpdateTrackingFilterCounts(Array.isArray(cached) ? cached : sofCachedRowsForActiveOrderTab());
+        }
     }
 
     function sofApplyAllCarrierFilters() {
@@ -1641,6 +1701,87 @@
         applyInvoicedFilters();
         applyDeliveredFilters();
         applyAllOrderFilters();
+        sofUpdateTrackingFilterCounts();
+    }
+
+    function sofOrderTabIsActive(tabSelector, paneSelector) {
+        const tab = document.querySelector(tabSelector);
+        const pane = paneSelector ? document.querySelector(paneSelector) : null;
+        if (tab && (tab.classList.contains('active') || tab.getAttribute('aria-selected') === 'true')) {
+            return true;
+        }
+        if (pane && pane.classList.contains('active')) return true;
+        return false;
+    }
+
+    /** Unfiltered row cache for the visible order tab (Tracking column source). */
+    function sofCachedRowsForActiveOrderTab() {
+        const pairs = [
+            ['#sof-pending-tab', '#sof-pending-pane', function () { return pendingRows; }],
+            ['#sof-fulfilled-tab', '#sof-fulfilled-pane', function () { return fulfilledRows; }],
+            ['#sof-scan-done-tab', '#sof-scan-done-pane', function () { return scanDoneRows; }],
+            ['#sof-in-transit-tab', '#sof-in-transit-pane', function () { return inTransitRows; }],
+            ['#sof-in-received-tab', '#sof-in-received-pane', function () { return inReceivedRows; }],
+            ['#sof-invoiced-tab', '#sof-invoiced-pane', function () { return invoicedRows; }],
+            ['#sof-delivered-tab', '#sof-delivered-pane', function () { return deliveredRows; }],
+            ['#sof-all-order-tab', '#sof-all-order-pane', function () { return allOrderRows; }],
+        ];
+        for (let i = 0; i < pairs.length; i++) {
+            if (sofOrderTabIsActive(pairs[i][0], pairs[i][1])) {
+                const rows = pairs[i][2]();
+                return Array.isArray(rows) ? rows : [];
+            }
+        }
+        return [];
+    }
+
+    function sofRowsForTable(tbl) {
+        if (!tbl) return null;
+        if (tbl === pendingTable) return pendingRows;
+        if (tbl === fulfilledTable) return fulfilledRows;
+        if (tbl === scanDoneTable) return scanDoneRows;
+        if (tbl === inTransitTable) return inTransitRows;
+        if (tbl === inReceivedTable) return inReceivedRows;
+        if (tbl === invoicedTable) return invoicedRows;
+        if (tbl === deliveredTable) return deliveredRows;
+        if (tbl === allOrderTable) return allOrderRows;
+        return null;
+    }
+
+    function sofAnyLoadedOrderRows() {
+        const caches = [
+            pendingRows, fulfilledRows, scanDoneRows, inTransitRows,
+            inReceivedRows, invoicedRows, deliveredRows, allOrderRows,
+        ];
+        let best = [];
+        for (let i = 0; i < caches.length; i++) {
+            if (Array.isArray(caches[i]) && caches[i].length > best.length) {
+                best = caches[i];
+            }
+        }
+        return best;
+    }
+
+    function sofUpdateTrackingFilterCounts(rows) {
+        const el = document.getElementById('sof-tracking-filter');
+        if (!el || !el.options || el.options.length < 3) return;
+        // Prefer explicit rows, then active-tab cache, then any loaded order rows.
+        let list = Array.isArray(rows) ? rows : sofCachedRowsForActiveOrderTab();
+        if (!Array.isArray(list) || !list.length) {
+            list = sofAnyLoadedOrderRows();
+        }
+        if (!Array.isArray(list)) list = [];
+        let updated = 0;
+        let pending = 0;
+        for (let i = 0; i < list.length; i++) {
+            if (sofRowHasTracking(list[i])) updated += 1;
+            else pending += 1;
+        }
+        const total = list.length;
+        const fmt = function (n) { return Number(n || 0).toLocaleString(); };
+        el.options[0].text = 'Tracking (' + fmt(total) + ')';
+        el.options[1].text = 'Tracking Updated (' + fmt(updated) + ')';
+        el.options[2].text = 'Tracking Pending (' + fmt(pending) + ')';
     }
 
     function sofUpdateDateFilterHint() {
@@ -1649,12 +1790,16 @@
         const carrierLabel = carrier
             ? (($('#sof-carrier-filter option:selected').text() || carrier))
             : 'All carriers';
+        const tracking = sofTrackingFilterValue();
+        const trackingLabel = tracking
+            ? (($('#sof-tracking-filter option:selected').text() || tracking))
+            : 'Tracking (all)';
         const hint = document.getElementById('sof-date-filter-hint');
         if (!hint) return;
         let text = (p.date_from && p.date_to)
             ? ('California dates ' + p.date_from + ' → ' + p.date_to)
             : 'Order date range (California, default: last 30 days)';
-        text += ' · ' + carrierLabel;
+        text += ' · ' + carrierLabel + ' · ' + trackingLabel;
         hint.textContent = text;
     }
 
@@ -1707,6 +1852,7 @@
         $('#sof-date-from').val(sofDefaultDateFrom());
         $('#sof-date-to').val(sofDefaultDateTo());
         $('#sof-carrier-filter').val('');
+        $('#sof-tracking-filter').val('');
         sofReloadAllTablesForDateRange();
     });
 
@@ -1715,23 +1861,29 @@
         sofApplyAllCarrierFilters();
     });
 
+    $('#sof-tracking-filter').on('change', function () {
+        sofApplyAllCarrierFilters();
+        sofUpdateTrackingFilterCounts();
+        sofUpdateDateFilterHint();
+    });
+
     // ── Row select + Edit / bulk partial update ─────────────────────────────
     let sofShipEditCtx = null; // { table, rows, baseline, mixed }
 
     function sofActiveOrderTable() {
         const pairs = [
-            ['#sof-pending-tab', pendingTable],
-            ['#sof-fulfilled-tab', fulfilledTable],
-            ['#sof-scan-done-tab', scanDoneTable],
-            ['#sof-in-transit-tab', inTransitTable],
-            ['#sof-in-received-tab', inReceivedTable],
-            ['#sof-invoiced-tab', invoicedTable],
-            ['#sof-delivered-tab', deliveredTable],
-            ['#sof-all-order-tab', allOrderTable],
+            ['#sof-pending-tab', '#sof-pending-pane', pendingTable],
+            ['#sof-fulfilled-tab', '#sof-fulfilled-pane', fulfilledTable],
+            ['#sof-scan-done-tab', '#sof-scan-done-pane', scanDoneTable],
+            ['#sof-in-transit-tab', '#sof-in-transit-pane', inTransitTable],
+            ['#sof-in-received-tab', '#sof-in-received-pane', inReceivedTable],
+            ['#sof-invoiced-tab', '#sof-invoiced-pane', invoicedTable],
+            ['#sof-delivered-tab', '#sof-delivered-pane', deliveredTable],
+            ['#sof-all-order-tab', '#sof-all-order-pane', allOrderTable],
         ];
         for (let i = 0; i < pairs.length; i++) {
-            if ($(pairs[i][0]).hasClass('active')) {
-                return pairs[i][1];
+            if (sofOrderTabIsActive(pairs[i][0], pairs[i][1])) {
+                return pairs[i][2];
             }
         }
         return null;
@@ -1943,6 +2095,7 @@
     });
     $('#sof-tabs button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
         sofUpdateBulkEditButton();
+        sofUpdateTrackingFilterCounts();
     });
 
     function sofIsEmptySortValue(v) {
@@ -3398,9 +3551,11 @@
                 if (tabCount) tabCount.textContent = count.toLocaleString();
                 const pendingEl = document.getElementById('sof-pending-total');
                 if (pendingEl) pendingEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(pendingRows);
                 return pendingRows;
             },
             dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(pendingRows);
                 applyPendingFilters();
             },
             columns: orderListColumns('sof-pending-badge'),
@@ -3455,9 +3610,11 @@
                 if (tabCount) tabCount.textContent = count.toLocaleString();
                 const fulfilledEl = document.getElementById('sof-fulfilled-24h');
                 if (fulfilledEl) fulfilledEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(fulfilledRows);
                 return fulfilledRows;
             },
             dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(fulfilledRows);
                 applyFulfilledFilters();
             },
             columns: (function () {
@@ -3525,9 +3682,11 @@
                 if (tabCount) tabCount.textContent = count.toLocaleString();
                 const scanDoneEl = document.getElementById('sof-scan-done-24h');
                 if (scanDoneEl) scanDoneEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(scanDoneRows);
                 return scanDoneRows;
             },
             dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(scanDoneRows);
                 applyScanDoneFilters();
             },
             columns: (function () {
@@ -3594,9 +3753,11 @@
                 if (tabCount) tabCount.textContent = count.toLocaleString();
                 const inTransitEl = document.getElementById('sof-in-transit-total');
                 if (inTransitEl) inTransitEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(inTransitRows);
                 return inTransitRows;
             },
             dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(inTransitRows);
                 applyInTransitFilters();
             },
             columns: (function () {
@@ -3663,9 +3824,11 @@
                 if (tabCount) tabCount.textContent = count.toLocaleString();
                 const inReceivedEl = document.getElementById('sof-in-received-total');
                 if (inReceivedEl) inReceivedEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(inReceivedRows);
                 return inReceivedRows;
             },
             dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(inReceivedRows);
                 applyInReceivedFilters();
             },
             columns: (function () {
@@ -3732,9 +3895,11 @@
                 if (tabCount) tabCount.textContent = count.toLocaleString();
                 const invoicedEl = document.getElementById('sof-invoiced-total');
                 if (invoicedEl) invoicedEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(invoicedRows);
                 return invoicedRows;
             },
             dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(invoicedRows);
                 applyInvoicedFilters();
             },
             columns: (function () {
@@ -3811,6 +3976,7 @@
                 if (tabCount) tabCount.textContent = count.toLocaleString();
                 const deliveredEl = document.getElementById('sof-delivered-total');
                 if (deliveredEl) deliveredEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(deliveredRows);
                 return deliveredRows;
             },
             ajaxError: function () {
@@ -3822,6 +3988,7 @@
                 }
             },
             dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(deliveredRows);
                 applyDeliveredFilters();
             },
             columns: (function () {
@@ -3888,9 +4055,11 @@
                 if (tabCount) tabCount.textContent = count.toLocaleString();
                 const allOrderEl = document.getElementById('sof-all-order-total');
                 if (allOrderEl) allOrderEl.textContent = count.toLocaleString();
+                sofUpdateTrackingFilterCounts(allOrderRows);
                 return allOrderRows;
             },
             dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(allOrderRows);
                 applyAllOrderFilters();
             },
             columns: (function () {

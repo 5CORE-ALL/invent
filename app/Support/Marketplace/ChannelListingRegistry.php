@@ -10,6 +10,7 @@ use App\Models\FaireMetric;
 use App\Models\MacyProduct;
 use App\Models\NeweggMetric;
 use App\Models\PLSProduct;
+use App\Models\ReverbListingStatus;
 use App\Models\ReverbProduct;
 use App\Models\SheinMetric;
 use App\Models\ShopifySku;
@@ -400,8 +401,12 @@ class ChannelListingRegistry
     }
 
     /**
+     * Reverb Listed = reverb_products.reverb_listing_id (preferred), else price > 0,
+     * else ReverbListingStatus.value.listing_id (keeps /listing-reverb correct when
+     * reverb_products lags behind the listing-status sync).
+     *
      * @param  list<string>  $skus
-     * @return array<string, string>
+     * @return array<string, string> lowercase product-master SKU => listing id (or SKU sentinel)
      */
     public static function listedReverb(array $skus): array
     {
@@ -410,19 +415,72 @@ class ChannelListingRegistry
         }
 
         $map = [];
-        $rows = ReverbProduct::whereIn('sku', $skus)->get(['sku', 'reverb_listing_id', 'price']);
-        foreach ($rows as $row) {
-            $sku = trim((string) $row->sku);
+        $lookup = ReverbProduct::buildLookupByNormalizedSku($skus);
+
+        foreach ($skus as $rawSku) {
+            $sku = trim((string) $rawSku);
             if ($sku === '') {
                 continue;
             }
+
+            $norm = ReverbProduct::normalizeSkuForLookup($sku);
+            $row = $norm !== '' ? ($lookup[$norm] ?? null) : null;
+            if (! $row) {
+                continue;
+            }
+
             $id = trim((string) ($row->reverb_listing_id ?? ''));
             if ($id !== '') {
                 $map[strtolower($sku)] = $id;
                 continue;
             }
+
             if ((float) ($row->price ?? 0) > 0) {
                 $map[strtolower($sku)] = $sku;
+            }
+        }
+
+        // Normalized SKU => lowercase ProductMaster SKU (only rows still missing a listing id)
+        $wanted = [];
+        foreach ($skus as $rawSku) {
+            $sku = trim((string) $rawSku);
+            if ($sku === '' || isset($map[strtolower($sku)])) {
+                continue;
+            }
+            $norm = ReverbProduct::normalizeSkuForLookup($sku);
+            if ($norm !== '') {
+                $wanted[$norm] = strtolower($sku);
+            }
+        }
+
+        if ($wanted === []) {
+            return $map;
+        }
+
+        $statusRows = ReverbListingStatus::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'value']);
+
+        foreach ($statusRows as $row) {
+            $norm = ReverbProduct::normalizeSkuForLookup((string) $row->sku);
+            if ($norm === '' || ! isset($wanted[$norm])) {
+                continue;
+            }
+
+            $value = is_array($row->value)
+                ? $row->value
+                : (json_decode((string) $row->value, true) ?? []);
+            $id = trim((string) ($value['listing_id'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+
+            $pmKey = $wanted[$norm];
+            $state = strtolower(trim((string) ($value['state'] ?? '')));
+            // Prefer live/published when duplicate status rows exist for one SKU.
+            if (! isset($map[$pmKey]) || in_array($state, ['live', 'published'], true)) {
+                $map[$pmKey] = $id;
             }
         }
 

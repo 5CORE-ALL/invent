@@ -9,7 +9,7 @@ class SyncReverbListingStatuses extends Command
 {
     protected $signature = 'reverb:sync-listing-statuses';
 
-    protected $description = 'Fetch all Reverb listings (state=all) and update ReverbListingStatus + ProductStockMapping. Run every 6 hours.';
+    protected $description = 'Fetch all Reverb listings (state=all) and update ReverbListingStatus + ProductStockMapping + reverb_products.';
 
     public function handle(): int
     {

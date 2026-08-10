@@ -30,6 +30,7 @@ use App\Services\GofoExpressService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
+use App\Services\VeeqoApiService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -56,12 +57,25 @@ class SalesOrderFulfillmentController extends Controller
         protected MarketplaceApiConfigService $apiConfig
     ) {}
 
-    public function index(GofoExpressService $gofo): View
+    public function index(GofoExpressService $gofo, VeeqoApiService $veeqo): View
     {
+        $veeqoConfigured = $veeqo->isConfigured();
+        $veeqoCarriers = [];
+        if ($veeqoConfigured) {
+            try {
+                $veeqoCarriers = $veeqo->carrierOptions();
+            } catch (\Throwable $e) {
+                $veeqoCarriers = [];
+            }
+        }
+
         return view('channels.sales_order_fulfillment', [
             'topBadges' => $this->topBadgePayload(),
             'gofoApiConfigured' => $gofo->isConfigured(),
             'gofoApiBase' => (string) config('services.gofo.api_base', ''),
+            'veeqoApiConfigured' => $veeqoConfigured,
+            'veeqoApiBase' => (string) config('services.veeqo.api_base', ''),
+            'veeqoCarriers' => $veeqoCarriers,
         ]);
     }
 

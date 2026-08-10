@@ -155,7 +155,8 @@ class ReverbApiService
     }
 
     /**
-     * Fetch ALL Reverb listings (including ended) and update ProductStockMapping + ReverbListingStatus.
+     * Fetch ALL Reverb listings (including ended) and update ProductStockMapping + ReverbListingStatus
+     * + upsert reverb_products (listing id / state / price / inventory) so /listing-reverb stays accurate.
      * Uses state=all&per_page=100. Ended/out_of_stock/suspended => inventory_reverb=0; live => actual quantity.
      * SKUs not in API response get inventory_reverb=0 (cleanup).
      */
@@ -191,26 +192,56 @@ class ReverbApiService
                     'url' => $url,
                 ]);
 
-                $response = Http::withoutVerifying()
-                    ->timeout(60)
-                    ->withHeaders([
-                        'Authorization' => 'Bearer '.$token,
-                        'Accept' => 'application/hal+json',
-                        'Accept-Version' => '3.0',
-                    ])->get($url);
+                $response = null;
+                $maxPageAttempts = 5;
+                for ($attempt = 1; $attempt <= $maxPageAttempts; $attempt++) {
+                    $response = Http::withoutVerifying()
+                        ->timeout(60)
+                        ->withHeaders([
+                            'Authorization' => 'Bearer '.$token,
+                            'Accept' => 'application/hal+json',
+                            'Accept-Version' => '3.0',
+                        ])->get($url);
 
-                if ($response->failed()) {
+                    if (! $response->failed()) {
+                        break;
+                    }
+
+                    $status = $response->status();
+                    $retriable = in_array($status, [408, 425, 429, 500, 502, 503, 504], true);
+                    $log->warning('Reverb getInventory page attempt failed', [
+                        'page' => $pageNumber,
+                        'attempt' => $attempt,
+                        'status' => $status,
+                        'retriable' => $retriable,
+                    ]);
+                    if (! $retriable || $attempt >= $maxPageAttempts) {
+                        break;
+                    }
+                    usleep((int) (pow(2, $attempt) * 250000)); // 0.5s, 1s, 2s, 4s
+                }
+
+                if ($response === null || $response->failed()) {
                     $log->error('Reverb getInventory API error', [
                         'page' => $pageNumber,
                         'url' => $url,
-                        'status' => $response->status(),
-                        'body' => $response->body(),
+                        'status' => $response?->status(),
+                        'body' => $response?->body(),
                     ]);
                     Log::channel('reverb_daily')->error('Reverb getInventory API error', [
                         'page' => $pageNumber,
-                        'status' => $response->status(),
-                        'body' => substr($response->body(), 0, 500),
+                        'status' => $response?->status(),
+                        'body' => substr((string) $response?->body(), 0, 500),
                     ]);
+
+                    // Keep partial progress instead of discarding earlier pages.
+                    if ($inventory !== []) {
+                        $log->warning('Reverb getInventory continuing with partial listing set', [
+                            'listings_so_far' => count($inventory),
+                            'failed_page' => $pageNumber,
+                        ]);
+                        break;
+                    }
 
                     return [];
                 }
@@ -232,6 +263,10 @@ class ReverbApiService
                         $sku = isset($item['sku']) ? trim((string) $item['sku']) : null;
                         $qty = isset($item['inventory']) ? (int) $item['inventory'] : 0;
                         $listingId = $item['id'] ?? null;
+                        $price = $item['price']['amount'] ?? ($item['price'] ?? null);
+                        if (is_array($price)) {
+                            $price = $price['amount'] ?? null;
+                        }
                         $log->debug('Reverb getInventory listing', [
                             'sku' => $sku,
                             'quantity' => $qty,
@@ -245,6 +280,7 @@ class ReverbApiService
                                 'state' => $state,
                                 'listing_id' => $listingId,
                                 'title' => $item['title'] ?? null,
+                                'price' => $price,
                             ];
                         }
                     }
@@ -266,6 +302,7 @@ class ReverbApiService
 
             $apiSkus = [];
             $zeroStates = ['ended', 'out_of_stock', 'suspended'];
+            $productsUpserted = 0;
 
             foreach ($inventory as $entry) {
                 $sku = $entry['sku'];
@@ -288,11 +325,27 @@ class ReverbApiService
                     ]
                 );
 
+                try {
+                    if ($this->upsertReverbProductFromInventoryEntry($entry, $effectiveQty)) {
+                        $productsUpserted++;
+                    }
+                } catch (\Throwable $e) {
+                    $log->warning('Reverb getInventory reverb_products upsert failed', [
+                        'sku' => $sku,
+                        'listing_id' => $listingId,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+
                 $affected = ProductStockMapping::where('sku', $sku)->update(['inventory_reverb' => $effectiveQty]);
                 if ($affected > 0) {
                     $log->debug('Reverb getInventory updated stock', ['sku' => $sku, 'inventory_reverb' => $effectiveQty, 'state' => $state]);
                 }
             }
+
+            $log->info('Reverb getInventory reverb_products upsert', [
+                'rows_upserted' => $productsUpserted,
+            ]);
 
             $updatedCount = count($apiSkus);
             $dbTotalSkus = ProductStockMapping::count();
@@ -326,6 +379,92 @@ class ReverbApiService
 
             return [];
         }
+    }
+
+    /**
+     * Keep reverb_products in sync with listing-status inventory pulls (id/state/price/qty).
+     * Preserves analytics fields (r_l30, bump_bid, etc.). Prefer live listings over ended duplicates.
+     *
+     * @param  array{sku?: mixed, listing_id?: mixed, state?: mixed, title?: mixed, price?: mixed, quantity?: mixed}  $entry
+     */
+    protected function upsertReverbProductFromInventoryEntry(array $entry, int $effectiveQty): bool
+    {
+        if (! Schema::hasTable('reverb_products')) {
+            return false;
+        }
+
+        $sku = ReverbProduct::normalizeSkuForLookup((string) ($entry['sku'] ?? ''));
+        if ($sku === '') {
+            return false;
+        }
+
+        $listingId = trim((string) ($entry['listing_id'] ?? ''));
+        if ($listingId === '') {
+            return false;
+        }
+
+        $state = strtolower(trim((string) ($entry['state'] ?? 'live')));
+        if ($state === '') {
+            $state = 'live';
+        }
+
+        $existing = ReverbProduct::query()
+            ->where(function ($q) use ($sku, $listingId) {
+                $q->where('sku', $sku)->orWhere('reverb_listing_id', $listingId);
+            })
+            ->orderByRaw('CASE WHEN sku = ? THEN 0 ELSE 1 END', [$sku])
+            ->first();
+
+        if ($existing) {
+            $existingId = trim((string) ($existing->reverb_listing_id ?? ''));
+            $existingPriority = $this->listingStatePriorityForProductUpsert((string) ($existing->listing_state ?? ''));
+            $newPriority = $this->listingStatePriorityForProductUpsert($state);
+            if ($existingId !== '' && $existingId !== $listingId && $existingPriority > $newPriority) {
+                return false;
+            }
+
+            $payload = [
+                'sku' => $sku,
+                'reverb_listing_id' => $listingId,
+                'listing_state' => $state,
+                'remaining_inventory' => $effectiveQty,
+                'last_synced_at' => now(),
+            ];
+            if (! empty($entry['title'])) {
+                $payload['product_title'] = $entry['title'];
+            }
+            if (isset($entry['price']) && $entry['price'] !== null && $entry['price'] !== '') {
+                $payload['price'] = $entry['price'];
+            }
+
+            $existing->fill($payload);
+            $existing->save();
+
+            return true;
+        }
+
+        ReverbProduct::create([
+            'sku' => $sku,
+            'reverb_listing_id' => $listingId,
+            'listing_state' => $state,
+            'product_title' => $entry['title'] ?? null,
+            'price' => $entry['price'] ?? null,
+            'remaining_inventory' => $effectiveQty,
+            'r_l30' => 0,
+            'r_l60' => 0,
+            'last_synced_at' => now(),
+        ]);
+
+        return true;
+    }
+
+    protected function listingStatePriorityForProductUpsert(?string $state): int
+    {
+        return match (strtolower((string) $state)) {
+            'live', 'published' => 100,
+            'sold' => 50,
+            default => 10,
+        };
     }
 
     /**

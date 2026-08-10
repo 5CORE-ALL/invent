@@ -420,6 +420,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Veeqo API (private x-api-key)
+    |--------------------------------------------------------------------------
+    |
+    | Header: x-api-key: VEEQO_API_KEY
+    | Base:   https://api.veeqo.com
+    | Docs:   https://developers.veeqo.com/
+    |
+    */
+    'veeqo' => [
+        'api_key'      => env('VEEQO_API_KEY', ''),
+        'api_base'     => env('VEEQO_API_BASE', 'https://api.veeqo.com'),
+        'http_timeout' => (int) env('VEEQO_HTTP_TIMEOUT', 30),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Amazon SP-API
     |--------------------------------------------------------------------------
     */
@@ -677,6 +693,8 @@ return [
         /** Comma-separated extra `type` values to try after the primary (e.g. regional variants). */
         'image_upload_types' => array_values(array_filter(array_map('trim', explode(',', env('TEMU_IMAGE_UPLOAD_TYPES', 'temu.local.image.upload,bg.local.goods.image.upload'))))),
         'openapi_router_url' => env('TEMU_OPENAPI_URL', 'https://openapi-b-us.temu.com/openapi/router'),
+        /** Optional warehouseId for self-fulfilled shipment confirm (bg.logistics.shipment.v2.confirm). */
+        'self_shipping_warehouse_id' => env('TEMU_SELF_SHIPPING_WAREHOUSE_ID', ''),
         /** If true, after URL-based upload fails, download the image and try base64 fields (implementation-dependent). */
         'image_upload_try_base64' => filter_var(env('TEMU_IMAGE_UPLOAD_TRY_BASE64', true), FILTER_VALIDATE_BOOLEAN),
         /** If true, download each image and upload base64 first (avoids Temu fetching your image host URL). */
@@ -722,6 +740,7 @@ return [
         'image_upload_types' => array_values(array_filter(array_map('trim', explode(',', env('TEMU2_IMAGE_UPLOAD_TYPES', 'temu.local.image.upload,bg.local.goods.image.upload'))))),
         // Partner US OpenAPI path is /openapi/router (same host as Temu).
         'openapi_router_url' => env('TEMU2_OPENAPI_URL', 'https://openapi-b-us.temu.com/openapi/router'),
+        'self_shipping_warehouse_id' => env('TEMU2_SELF_SHIPPING_WAREHOUSE_ID', ''),
         'image_upload_try_base64' => filter_var(env('TEMU2_IMAGE_UPLOAD_TRY_BASE64', true), FILTER_VALIDATE_BOOLEAN),
         'image_upload_prefer_base64' => filter_var(env('TEMU2_IMAGE_UPLOAD_PREFER_BASE64', true), FILTER_VALIDATE_BOOLEAN),
         'list_price_field' => env('TEMU2_LIST_PRICE_FIELD', 'listPrice'),

@@ -57,12 +57,17 @@ class ShipmentTrackingService
 
     public function isConfigured(): bool
     {
-        return $this->has17Track() || $this->hasUsps() || $this->hasUps() || $this->hasFedex() || $this->hasGofo();
+        return $this->has17Track() || $this->hasUsps() || $this->hasUps() || $this->hasFedex() || $this->hasGofo() || $this->hasVeeqo();
     }
 
     public function hasGofo(): bool
     {
         return app(GofoExpressService::class)->isConfigured();
+    }
+
+    public function hasVeeqo(): bool
+    {
+        return app(VeeqoApiService::class)->isConfigured();
     }
 
     public function has17Track(): bool
@@ -343,6 +348,15 @@ class ShipmentTrackingService
             }
             if (str_contains($c, 'gofo')) {
                 return 'gofo';
+            }
+            // Veeqo is a shipping platform — resolve via tracking number when possible.
+            if (str_contains($c, 'veeqo')) {
+                $guess = $this->guessCarrierFromNumber($number);
+                if ($guess === 'usps' || $guess === 'ups' || $guess === 'fedex' || $guess === 'gofo') {
+                    return $guess;
+                }
+
+                return '17track';
             }
             if (str_contains($c, 'ups') && ! str_contains($c, 'usps')) {
                 return 'ups';
@@ -1149,6 +1163,8 @@ class ShipmentTrackingService
             'fedex ground' => 100003,
             'gofo' => 100996,
             'gofo express' => 100996,
+            'dhl' => 100001,
+            'ontrac' => 100027,
         ];
 
         foreach ($map as $needle => $code) {
