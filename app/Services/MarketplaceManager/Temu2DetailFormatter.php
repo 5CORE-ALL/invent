@@ -223,15 +223,23 @@ class Temu2DetailFormatter
 
         if ($lineItems === []) {
             foreach ($lines as $line) {
-                $sku = (string) $line->sku;
+                $sku = trim((string) ($line->ext_code ?: $line->display_sku ?: ''));
                 if (in_array($sku, ['__order__', '__unknown__', ''], true)) {
                     continue;
                 }
+                $qty = max(1, (int) ($line->quantity ?? 1));
+                $lineTotal = is_numeric($line->order_base_amount)
+                    ? (float) $line->order_base_amount
+                    : (is_numeric($line->order_total_amount) ? (float) $line->order_total_amount : 0.0);
+                $title = trim((string) ($line->goods_name ?: $sku));
+                if (! empty($line->spec)) {
+                    $title = trim($title.' '.$line->spec);
+                }
                 $lineItems[] = [
                     'sku' => $sku,
-                    'title' => (string) ($line->display_title ?: $sku),
-                    'quantity' => max(1, (int) ($line->quantity ?? 1)),
-                    'price' => number_format((float) ($line->amount ?? 0), 2, '.', ''),
+                    'title' => $title !== '' ? $title : $sku,
+                    'quantity' => $qty,
+                    'price' => number_format($qty > 0 ? ($lineTotal / $qty) : $lineTotal, 2, '.', ''),
                 ];
             }
         }
@@ -1804,14 +1812,27 @@ class Temu2DetailFormatter
      */
     protected function extractOrderAmounts(array $order, Collection $lines): array
     {
+        $baseSum = 0.0;
+        $totalSum = 0.0;
+        foreach ($lines as $line) {
+            if (is_numeric($line->order_base_amount)) {
+                $baseSum += (float) $line->order_base_amount;
+            }
+            if (is_numeric($line->order_total_amount)) {
+                $totalSum += (float) $line->order_total_amount;
+            }
+        }
+        $paid = $totalSum > 0 ? $totalSum : ($baseSum > 0 ? $baseSum : null);
+
         return [
             'order_total' => $this->money($order['order_amount'] ?? $order['total_amount'] ?? null)
+                ?? $paid
                 ?? $this->sumLineTotals($lines),
-            'pay_amount' => $this->money($order['pay_amount'] ?? null),
+            'pay_amount' => $this->money($order['pay_amount'] ?? null) ?? $paid,
             'shipping_cost' => $this->money($order['logistics_amount'] ?? $order['shipping_cost'] ?? null),
             'discount' => $this->money($order['discount_amount'] ?? $order['promotion_amount'] ?? null),
             'tax' => $this->money($order['tax_amount'] ?? null),
-            'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null),
+            'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null) ?? 'USD',
         ];
     }
 
@@ -1866,59 +1887,37 @@ class Temu2DetailFormatter
      */
     protected function extractRichOrderLines(array $order, Collection $lines): array
     {
-        $apiProducts = $this->list(
-            $order['product_list']['order_product_dto']
-            ?? $order['product_list']['aeop_order_product_dto']
-            ?? $order['product_list']
-            ?? $order['child_order_list']['global_aeop_tp_child_order_dto']
-            ?? $order['child_order_list']
-            ?? []
-        );
-
-        $bySku = [];
-        foreach ($lines as $line) {
-            $bySku[(string) $line->sku] = $line;
-        }
-
+        unset($order);
         $out = [];
-        foreach ($apiProducts as $product) {
-            $product = $this->arr($product);
-            $sku = $this->str($product['sku_code'] ?? $product['sku'] ?? $product['skuCode'] ?? null) ?: '__unknown__';
-            $db = $bySku[$sku] ?? null;
-            $unit = $product['product_unit_price'] ?? $product['product_price'] ?? $product['total_product_amount'] ?? null;
+
+        foreach ($lines as $line) {
+            $sku = trim((string) ($line->ext_code ?: $line->display_sku ?: '')) ?: '__unknown__';
+            $qty = max(1, (int) ($line->quantity ?? 1));
+            $lineTotal = is_numeric($line->order_base_amount)
+                ? (float) $line->order_base_amount
+                : (is_numeric($line->order_total_amount) ? (float) $line->order_total_amount : null);
+            $unit = $lineTotal !== null ? round($lineTotal / $qty, 2) : null;
+            $title = trim((string) ($line->goods_name ?: ''));
+            if (! empty($line->spec)) {
+                $title = trim($title.' '.$line->spec);
+            }
+            if ($title === '') {
+                $title = $sku !== '__unknown__' ? $sku : 'Temu order item';
+            }
 
             $out[] = [
                 'sku' => $sku,
-                'product_id' => $this->str($product['product_id'] ?? $db?->product_id),
-                'title' => $this->str($product['product_name'] ?? $product['subject'] ?? $db?->display_title),
-                'quantity' => (int) ($product['product_count'] ?? $product['quantity'] ?? $db?->quantity ?? 1),
-                'unit_price' => $this->money($unit),
-                'line_total' => $this->multiplyMoney($this->money($unit), (int) ($product['product_count'] ?? 1)),
-                'image' => $this->resolveOrderLineImage($product, $db),
-                'child_order_id' => $this->str($product['child_order_id'] ?? $product['order_sort_id'] ?? null),
-                'status' => $this->str($product['order_status'] ?? $product['logistics_status'] ?? null),
-                'import_status' => $db?->import_status,
-                'shopify_order_id' => $db?->shopify_order_id,
+                'product_id' => $this->str($line->goods_id),
+                'title' => $title,
+                'quantity' => $qty,
+                'unit_price' => $unit,
+                'line_total' => $lineTotal,
+                'image' => $this->normalizeOrderImageUrl(is_string($line->thumb_url) ? $line->thumb_url : null),
+                'child_order_id' => $this->str($line->order_sn),
+                'status' => $this->str($line->order_status_text),
+                'import_status' => $line->import_status,
+                'shopify_order_id' => $line->shopify_order_id,
             ];
-        }
-
-        if ($out === []) {
-            foreach ($lines as $line) {
-                $rawLine = is_array($line->raw_payload) ? ($line->raw_payload['line'] ?? []) : [];
-                $out[] = [
-                    'sku' => $line->sku,
-                    'product_id' => $line->product_id,
-                    'title' => $line->display_title,
-                    'quantity' => $line->quantity ?? 1,
-                    'unit_price' => is_numeric($line->amount) ? (float) $line->amount : null,
-                    'line_total' => is_numeric($line->amount) ? (float) $line->amount * max(1, (int) $line->quantity) : null,
-                    'image' => $this->resolveOrderLineImage($rawLine, $line),
-                    'child_order_id' => null,
-                    'status' => $line->status,
-                    'import_status' => $line->import_status,
-                    'shopify_order_id' => $line->shopify_order_id,
-                ];
-            }
         }
 
         return $out;
@@ -2114,7 +2113,16 @@ class Temu2DetailFormatter
      */
     protected function sumLineTotals(Collection $lines): ?float
     {
-        $sum = $lines->sum(fn ($row) => is_numeric($row->amount) ? (float) $row->amount * max(1, (int) $row->quantity) : 0);
+        $sum = $lines->sum(function ($row) {
+            if (is_numeric($row->order_base_amount)) {
+                return (float) $row->order_base_amount;
+            }
+            if (is_numeric($row->order_total_amount)) {
+                return (float) $row->order_total_amount;
+            }
+
+            return 0;
+        });
 
         return $sum > 0 ? $sum : null;
     }

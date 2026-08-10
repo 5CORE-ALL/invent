@@ -2834,4 +2834,135 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'errorCode' => $res['errorCode'] ?? null,
         ];
     }
+
+    /**
+     * Decrypt / fetch ship-to for a parent order.
+     * Tries bg.order.decryptshippinginfo.get, then shippinginfo.v2 / shippinginfo.get.
+     *
+     * @return array{success: bool, address: array<string, mixed>, raw?: mixed, message?: string}
+     */
+    public function getOrderShippingAddress(string $parentOrderSn): array
+    {
+        $parentOrderSn = trim($parentOrderSn);
+        if ($parentOrderSn === '') {
+            return ['success' => false, 'address' => [], 'message' => 'parentOrderSn is required.'];
+        }
+
+        $lastMessage = 'No shipping address returned.';
+        foreach ([
+            'bg.order.decryptshippinginfo.get',
+            'bg.order.shippinginfo.v2.get',
+            'bg.order.shippinginfo.get',
+        ] as $type) {
+            $res = $this->callOpenApi($type, ['parentOrderSn' => $parentOrderSn]);
+            if (empty($res['success'])) {
+                $lastMessage = (string) ($res['message'] ?? $res['errorMsg'] ?? $lastMessage);
+
+                continue;
+            }
+
+            $raw = is_array($res['result'] ?? null) ? $res['result'] : [];
+            $address = $this->normalizeShippingAddressResult($raw);
+            if ($address !== []) {
+                return [
+                    'success' => true,
+                    'address' => $address,
+                    'raw' => $raw,
+                    'message' => 'Shipping address loaded via '.$type,
+                ];
+            }
+
+            $lastMessage = 'Temu returned empty shipping address from '.$type;
+        }
+
+        return ['success' => false, 'address' => [], 'message' => $lastMessage];
+    }
+
+    /**
+     * Normalize Temu shipping-info payloads into Shein-like receipt_address keys.
+     *
+     * @param  array<string, mixed>  $raw
+     * @return array<string, mixed>
+     */
+    public function normalizeShippingAddressResult(array $raw): array
+    {
+        $candidates = [$raw];
+        foreach ([
+            'shippingInfo', 'shipping_info', 'receiptAddress', 'receipt_address',
+            'address', 'decryptShippingInfo', 'decrypt_shipping_info', 'result',
+        ] as $key) {
+            if (isset($raw[$key]) && is_array($raw[$key])) {
+                $candidates[] = $raw[$key];
+            }
+        }
+
+        foreach ($candidates as $src) {
+            if (! is_array($src)) {
+                continue;
+            }
+            $pick = static function (array $row, array $keys): ?string {
+                foreach ($keys as $key) {
+                    if (! array_key_exists($key, $row)) {
+                        continue;
+                    }
+                    $val = $row[$key];
+                    if (is_scalar($val) && trim((string) $val) !== '') {
+                        return trim((string) $val);
+                    }
+                }
+
+                return null;
+            };
+
+            $address1 = $pick($src, [
+                'addressLine1', 'addressLineOne', 'address1', 'address_line_1',
+                'detailAddress', 'detail_address', 'mailAddress', 'mail_address', 'address',
+            ]);
+            if ($address1 === null) {
+                continue;
+            }
+
+            $mapped = array_filter([
+                'contact_person' => $pick($src, [
+                    'receiptName', 'receiverName', 'receiver_name', 'contactPerson',
+                    'contact_person', 'name', 'fullName', 'full_name',
+                ]),
+                'address' => $address1,
+                'address2' => $pick($src, [
+                    'addressLine2', 'addressLineTwo', 'address2', 'address_line_2',
+                    'addressLine3', 'address3',
+                ]),
+                'city' => $pick($src, [
+                    'regionName2', 'region_name_2', 'city', 'cityName', 'city_name',
+                ]),
+                'province' => $pick($src, [
+                    'regionName1', 'region_name_1', 'state', 'stateName', 'province',
+                    'provinceName', 'province_name',
+                ]),
+                'zip' => $pick($src, [
+                    'postCode', 'post_code', 'mail', 'zipCode', 'zip_code', 'zip',
+                ]),
+                'country' => $pick($src, [
+                    'regionName0', 'region_name_0', 'countryCode', 'country_code', 'country',
+                ]),
+                'country_name' => $pick($src, [
+                    'countryName', 'country_name', 'regionName0', 'region_name_0',
+                ]),
+                'mobile_no' => $pick($src, [
+                    'mobile', 'mobileNo', 'mobile_no', 'phone', 'phoneNumber', 'phone_number',
+                ]),
+                'phone_number' => $pick($src, [
+                    'phone', 'phoneNumber', 'phone_number', 'mobile', 'mobileNo', 'mobile_no',
+                ]),
+                'email' => $pick($src, ['email', 'mail', 'buyerEmail', 'buyer_email']),
+                'company' => $pick($src, ['company', 'companyName', 'company_name']),
+            ], static fn ($v) => $v !== null && $v !== '');
+
+            if ($mapped !== []) {
+                return $mapped;
+            }
+        }
+
+        return [];
+    }
 }

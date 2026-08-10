@@ -119,12 +119,21 @@ class TemuOrderSyncService
             ->orderBy('id');
 
         $dispatched = 0;
-        $query->chunkById(50, function ($rows) use (&$dispatched, $paidOnly) {
+        $seenParents = [];
+        $query->chunkById(50, function ($rows) use (&$dispatched, $paidOnly, &$seenParents) {
             foreach ($rows as $row) {
+                $parent = trim((string) ($row->parent_order_sn ?? ''));
+                if ($parent === '' || isset($seenParents[$parent])) {
+                    continue;
+                }
                 if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('temu', $row)) {
                     continue;
                 }
-                $row->update(['import_status' => 'queued']);
+                $seenParents[$parent] = true;
+                TemuOrder::query()
+                    ->where('parent_order_sn', $parent)
+                    ->whereNull('shopify_order_id')
+                    ->update(['import_status' => 'queued']);
                 ImportTemuOrderToShopify::dispatch((int) $row->id);
                 $dispatched++;
             }

@@ -3,12 +3,21 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\Temu2Order;
+use App\Services\Temu2ApiService;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class Temu2OrderDetailService
 {
+    public function __construct(
+        protected Temu2ApiService $api
+    ) {}
+
     /**
-     * @return array{success: bool, message?: string}
+     * Refresh ship-to (and keep cached line payload) for one parent order.
+     * Does not re-run the full 60-day order sync.
+     *
+     * @return array{success: bool, message?: string, address_loaded?: bool}
      */
     public function fetchAndPersistOrderDetail(string $orderId): array
     {
@@ -17,20 +26,55 @@ class Temu2OrderDetailService
             return ['success' => false, 'message' => 'Order id missing or table unavailable.'];
         }
 
-        $result = app(Temu2OrderSyncService::class)->fetchAndStore(60);
-        if (empty($result['success'])) {
-            return ['success' => false, 'message' => $result['message'] ?? 'Fetch failed.'];
-        }
-
-        $exists = Temu2Order::query()
+        $lines = Temu2Order::query()
             ->where('parent_order_sn', $orderId)
-            ->exists();
+            ->orderBy('id')
+            ->get();
 
-        if (! $exists) {
-            return ['success' => false, 'message' => 'Order not found in temu2_orders after refresh.'];
+        if ($lines->isEmpty()) {
+            return ['success' => false, 'message' => 'Order not found in temu2_orders.'];
         }
 
-        return ['success' => true, 'message' => 'Order refreshed from Temu 2 fetch.'];
+        $addressLoaded = false;
+        $addressMessage = null;
+
+        try {
+            $addrRes = $this->api->getOrderShippingAddress($orderId);
+            $addressMessage = $addrRes['message'] ?? null;
+            if (! empty($addrRes['success']) && ! empty($addrRes['address'])) {
+                $address = $addrRes['address'];
+                foreach ($lines as $line) {
+                    $raw = is_array($line->raw_json) ? $line->raw_json : (
+                        is_string($line->raw_json) ? (json_decode($line->raw_json, true) ?: []) : []
+                    );
+                    $raw['receipt_address'] = $address;
+                    if (! empty($address['email'])) {
+                        $raw['buyer_email'] = $address['email'];
+                        $raw['buyer_info'] = array_merge(
+                            is_array($raw['buyer_info'] ?? null) ? $raw['buyer_info'] : [],
+                            ['email' => $address['email']]
+                        );
+                    }
+                    $line->raw_json = $raw;
+                    $line->save();
+                }
+                $addressLoaded = true;
+            }
+        } catch (\Throwable $e) {
+            $addressMessage = $e->getMessage();
+            Log::warning('Temu2OrderDetailService: address refresh failed', [
+                'parent_order_sn' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'success' => true,
+            'address_loaded' => $addressLoaded,
+            'message' => $addressLoaded
+                ? 'Order refreshed with Temu shipping address.'
+                : ('Order found locally.'.($addressMessage ? ' Address: '.$addressMessage : ' Address unavailable — push may omit shipping_address.')),
+        ];
     }
 
     /**
@@ -41,22 +85,46 @@ class Temu2OrderDetailService
         $raw = is_array($line->raw_json) ? $line->raw_json : (
             is_string($line->raw_json) ? (json_decode($line->raw_json, true) ?: []) : []
         );
-        if ($raw !== []) {
-            return $raw;
+
+        return $this->flattenOrderRoot($raw, $line);
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     * @return array<string, mixed>
+     */
+    public function flattenOrderRoot(array $raw, ?Temu2Order $line = null): array
+    {
+        $parentMap = is_array($raw['parentOrderMap'] ?? null) ? $raw['parentOrderMap'] : [];
+        $sub = is_array($raw['order'] ?? null) ? $raw['order'] : [];
+
+        $flat = $raw;
+        $flat['parent_order_sn'] = $raw['parent_order_sn']
+            ?? $parentMap['parentOrderSn']
+            ?? $line?->parent_order_sn;
+        $flat['order_sn'] = $raw['order_sn'] ?? $sub['orderSn'] ?? $line?->order_sn;
+        $flat['parent_order_status_text'] = $raw['parent_order_status_text']
+            ?? $line?->parent_order_status_text;
+        $flat['order_status_text'] = $raw['order_status_text']
+            ?? $sub['orderStatus']
+            ?? $line?->order_status_text;
+        $flat['parent_order_time'] = $raw['parent_order_time']
+            ?? $parentMap['parentOrderTime']
+            ?? $line?->parent_order_time;
+        $flat['payment_type'] = $raw['payment_type']
+            ?? $sub['orderPaymentType']
+            ?? $line?->order_payment_type;
+        $flat['order_base_amount'] = $raw['order_base_amount'] ?? $line?->order_base_amount;
+        $flat['order_total_amount'] = $raw['order_total_amount'] ?? $line?->order_total_amount;
+        $flat['ext_code'] = $raw['ext_code'] ?? $line?->ext_code;
+        $flat['goods_name'] = $raw['goods_name'] ?? $sub['goodsName'] ?? $line?->goods_name;
+        $flat['goods_id'] = $raw['goods_id'] ?? (isset($sub['goodsId']) ? (string) $sub['goodsId'] : null) ?? $line?->goods_id;
+        $flat['quantity'] = $raw['quantity'] ?? $sub['quantity'] ?? $line?->quantity;
+
+        if (! isset($flat['receipt_address']) || ! is_array($flat['receipt_address'])) {
+            $flat['receipt_address'] = [];
         }
 
-        return [
-            'parent_order_sn' => $line->parent_order_sn,
-            'order_sn' => $line->order_sn,
-            'parent_order_status_text' => $line->parent_order_status_text,
-            'order_status_text' => $line->order_status_text,
-            'parent_order_time' => $line->parent_order_time,
-            'order_total_amount' => $line->order_total_amount,
-            'order_base_amount' => $line->order_base_amount,
-            'ext_code' => $line->ext_code,
-            'goods_name' => $line->goods_name,
-            'goods_id' => $line->goods_id,
-            'quantity' => $line->quantity,
-        ];
+        return $flat;
     }
 }

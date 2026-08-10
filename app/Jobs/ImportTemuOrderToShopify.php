@@ -30,8 +30,13 @@ class ImportTemuOrderToShopify implements ShouldQueue
 
     public function middleware(): array
     {
+        $order = TemuOrder::find($this->temuOrderId);
+        $key = $order?->parent_order_sn
+            ? 'temu_import_parent:'.$order->parent_order_sn
+            : 'temu_import:'.$this->temuOrderId;
+
         return [
-            (new WithoutOverlapping("temu_import:{$this->temuOrderId}"))
+            (new WithoutOverlapping($key))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];
@@ -50,30 +55,53 @@ class ImportTemuOrderToShopify implements ShouldQueue
             return;
         }
 
-        Log::info('ImportTemuOrderToShopify: not fully implemented — skipping', [
-            'parent_order_sn' => $order->parent_order_sn,
-            'order_sn' => $order->order_sn,
-        ]);
-
-        $shopifyOrderId = $pushService->importToShopify($order);
-        if ($shopifyOrderId) {
-            $order->update([
-                'shopify_order_id' => $shopifyOrderId,
-                'pushed_to_shopify_at' => now(),
-                'import_status' => 'imported',
-            ]);
+        $parent = trim((string) $order->parent_order_sn);
+        $sibling = $parent !== ''
+            ? TemuOrder::query()
+                ->where('parent_order_sn', $parent)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->first()
+            : null;
+        if ($sibling) {
+            TemuOrder::query()
+                ->where('parent_order_sn', $parent)
+                ->whereNull('shopify_order_id')
+                ->update([
+                    'shopify_order_id' => $sibling->shopify_order_id,
+                    'pushed_to_shopify_at' => $sibling->pushed_to_shopify_at ?? now(),
+                    'import_status' => 'imported',
+                ]);
 
             return;
         }
 
-        $order->update(['import_status' => 'import_failed']);
+        $shopifyOrderId = $pushService->importToShopify($order);
+        if ($shopifyOrderId) {
+            return;
+        }
+
+        TemuOrder::query()
+            ->where('parent_order_sn', $parent !== '' ? $parent : $order->parent_order_sn)
+            ->whereNull('shopify_order_id')
+            ->update(['import_status' => 'import_failed']);
+
+        Log::warning('ImportTemuOrderToShopify: import failed', [
+            'id' => $this->temuOrderId,
+            'parent_order_sn' => $parent,
+            'reason' => $pushService->lastFailureReason,
+        ]);
     }
 
     public function failed(\Throwable $exception): void
     {
         $order = TemuOrder::find($this->temuOrderId);
         if ($order && ! $order->shopify_order_id) {
-            $order->update(['import_status' => 'import_failed']);
+            $parent = trim((string) $order->parent_order_sn);
+            TemuOrder::query()
+                ->where('parent_order_sn', $parent !== '' ? $parent : $order->parent_order_sn)
+                ->whereNull('shopify_order_id')
+                ->update(['import_status' => 'import_failed']);
         }
         Log::error('ImportTemuOrderToShopify: job failed', [
             'order_id' => $this->temuOrderId,
