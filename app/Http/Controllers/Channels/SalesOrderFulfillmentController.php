@@ -28,6 +28,7 @@ use App\Models\TemuOrder;
 use App\Models\TopDawgOrderMetric;
 use App\Models\WayfairDailyData;
 use App\Services\GofoExpressService;
+use App\Services\MarketplaceManager\ChannelTrackingApiFallbackService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\Temu2OrderTrackingPullService;
 use App\Services\MarketplaceManager\TemuOrderTrackingPullService;
@@ -1350,17 +1351,25 @@ class SalesOrderFulfillmentController extends Controller
             }
         }
 
-        // Newegg package list
-        foreach (['PackageInfoList', 'packageInfoList'] as $pkgKey) {
+        // Newegg package list / Faire shipments / AE logistics list
+        foreach (['PackageInfoList', 'packageInfoList', 'shipments', 'packages', 'logistic_info_list'] as $pkgKey) {
             $packages = $order[$pkgKey] ?? null;
             if (! is_array($packages)) {
                 continue;
             }
-            foreach ($packages as $pkg) {
+            $items = array_is_list($packages) ? $packages : [$packages];
+            if (isset($packages['aeop_tp_logistics_info_dto']) && is_array($packages['aeop_tp_logistics_info_dto'])) {
+                $nested = $packages['aeop_tp_logistics_info_dto'];
+                $items = array_is_list($nested) ? $nested : [$nested];
+            }
+            foreach ($items as $pkg) {
                 if (! is_array($pkg)) {
                     continue;
                 }
-                foreach (['TrackingNumber', 'tracking_number', 'tracking'] as $key) {
+                foreach ([
+                    'TrackingNumber', 'tracking_number', 'tracking', 'tracking_code',
+                    'trackingCode', 'logistics_no', 'shipping_code',
+                ] as $key) {
                     if (! empty($pkg[$key]) && is_scalar($pkg[$key])) {
                         $val = trim((string) $pkg[$key]);
                         if ($val !== '') {
@@ -1477,18 +1486,20 @@ class SalesOrderFulfillmentController extends Controller
 
     /**
      * Pull tracking numbers into SOF.
-     * Temu / Temu 2 → Temu OpenAPI only (never Shopify).
-     * Other channels → Shopify fulfillments into shopify_raw_orders.
+     * 1) Temu / Temu 2 → Temu OpenAPI only (never Shopify).
+     * 2) Other channels → Shopify fulfillments first.
+     * 3) If still missing → pull from that channel's own API (Newegg, Reverb, AE, Alibaba, Faire, PP, Doba).
      */
     public function pullTrackingNumbers(
         Request $request,
         TemuOrderTrackingPullService $temuPull,
         Temu2OrderTrackingPullService $temu2Pull,
+        ChannelTrackingApiFallbackService $channelApiFallback,
     ): JsonResponse {
         $limit = max(1, min(100, (int) $request->input('limit', 40)));
         $channel = strtolower(trim((string) $request->input('channel', '')));
         // Resolve Channels quick-search label → slug when needed.
-        if ($channel !== '' && ! in_array($channel, ['temu', 'temu2'], true)) {
+        if ($channel !== '') {
             foreach (MarketplaceManagerRegistry::channels() as $c) {
                 $slug = strtolower((string) ($c['slug'] ?? ''));
                 $label = strtolower((string) ($c['label'] ?? ''));
@@ -1502,6 +1513,7 @@ class SalesOrderFulfillmentController extends Controller
         $pullTemu = $channel === '' || $channel === 'temu';
         $pullTemu2 = $channel === '' || $channel === 'temu2';
         $pullShopify = $channel === '' || ! in_array($channel, ['temu', 'temu2'], true);
+        $pullChannelApi = $channel === '' || ! in_array($channel, ['temu', 'temu2'], true);
 
         try {
             $checked = 0;
@@ -1538,6 +1550,34 @@ class SalesOrderFulfillmentController extends Controller
                 $withTracking += $shopWith;
                 $parts[] = "Shopify: checked {$shopChecked}, found {$shopWith}, saved {$shopUpdated}.";
                 $rows = array_merge($rows, $result['rows'] ?? []);
+            }
+
+            // Shopify miss → channel API for Label Created / No Scan rows still without tracking.
+            if ($pullChannelApi) {
+                $this->cachedLabelCreatedRows = null;
+                $missing = array_values(array_filter(
+                    $this->labelCreatedOrderRows(),
+                    static fn ($row) => is_array($row)
+                        && trim((string) ($row['tracking_number'] ?? '')) === ''
+                        && ! in_array(strtolower((string) ($row['mm_slug'] ?? '')), ['temu', 'temu2'], true)
+                        && ($channel === '' || strtolower((string) ($row['mm_slug'] ?? '')) === $channel)
+                ));
+
+                if ($missing !== []) {
+                    $fallback = $channelApiFallback->pullForMissingRows(
+                        $missing,
+                        $limit,
+                        $channel !== '' ? $channel : null
+                    );
+                    $checked += (int) ($fallback['checked'] ?? 0);
+                    $updated += (int) ($fallback['updated'] ?? 0);
+                    $withTracking += (int) ($fallback['with_tracking'] ?? 0);
+                    if (($fallback['message'] ?? '') !== '') {
+                        $parts[] = (string) $fallback['message'];
+                    }
+                    $rows = array_merge($rows, $fallback['rows'] ?? []);
+                    $this->cachedLabelCreatedRows = null;
+                }
             }
 
             $empty = max(0, $checked - $withTracking);

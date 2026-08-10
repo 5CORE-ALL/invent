@@ -872,7 +872,7 @@
                                 <button type="button"
                                         id="sof-pull-tracking-btn"
                                         class="btn btn-sm btn-outline-secondary"
-                                        title="Pull tracking: Temu/Temu2 from Temu API (not Shopify); other channels from Shopify">
+                                        title="Pull tracking: Shopify first; if missing, pull from that channel's API (Temu/Temu2 always from Temu API)">
                                     <i class="mdi mdi-barcode-scan me-1"></i>
                                     <span class="sof-pull-tracking-label">Pull Tracking Number</span>
                                 </button>
