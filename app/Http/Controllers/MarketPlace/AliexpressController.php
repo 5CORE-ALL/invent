@@ -12,7 +12,9 @@ use App\Models\AliexpressDailyData;
 use App\Models\AliexpressDailyDataL60;
 use App\Models\AliexpressLmpDataSheet;
 use App\Models\AliexpressPricingPrice;
+use App\Models\AliexpressMetric;
 use App\Models\ChannelMaster;
+use App\Services\AliExpressApiService;
 use App\Models\AmazonChannelSummary;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
@@ -579,16 +581,8 @@ class AliexpressController extends Controller
             return strtoupper(trim((string) $item->sku));
         });
 
-        // Margin source MUST match getDailyData() so /all-marketplace-master's
-        // Aliexpress PFT % / ROI % stays byte-identical with the
-        // /aliexpress-tabulator page badges. Previously this used
-        // ChannelMaster.channel_percentage which could diverge from
-        // MarketplacePercentage.percentage and silently drift the snapshot.
-        $mpRow = MarketplacePercentage::where('marketplace', 'Aliexpress')->first();
-        $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 100) : 100.0;
-        if ($percentage <= 0) {
-            $percentage = 89.0;
-        }
+        // Margin from Active Channel Master (same as /aliexpress-pricing).
+        $percentage = $this->resolveAliexpressMarginPercent();
         $margin = $percentage / 100.0;
 
         $totalOrders = 0;
@@ -961,15 +955,8 @@ class AliexpressController extends Controller
                 });
             }
 
-            // Net revenue % after fees: marketplace_percentages (same source as getViewAliexpressData).
-            // NOTE: Must stay in sync with aggregateAliexpressOrderRows() so the
-            // /aliexpress-tabulator page's PFT % / ROI % badges match the
-            // /all-marketplace-master Aliexpress row exactly. Change one, change both.
-            $mpRow = MarketplacePercentage::where('marketplace', 'Aliexpress')->first();
-            $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 100) : 100.0;
-            if ($percentage <= 0) {
-                $percentage = 89.0;
-            }
+            // Net revenue % after fees: Active Channel Master (same as /aliexpress-pricing).
+            $percentage = $this->resolveAliexpressMarginPercent();
             $margin = $percentage / 100.0;
 
             $data = [];
@@ -1095,112 +1082,77 @@ class AliexpressController extends Controller
      */
     public function aliexpressPricingView()
     {
-        return view('market-places.aliexpress_pricing_view');
-    }
-
-    /**
-     * Download sample CSV for AliExpress pricing upload (sku, price, stock).
-     */
-    public function downloadPricingPriceSample()
-    {
-        $fileName = 'aliexpress_pricing_sample.csv';
-        $rows = [
-            ['sku', 'price', 'stock'],
-            ['SKU-001', '19.99', '10'],
-            ['SKU-002', '24.50', '25'],
-            ['SKU-003', '13.25', '0'],
-        ];
-
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment;filename="'.$fileName.'"');
-        header('Cache-Control: max-age=0');
-
-        $handle = fopen('php://output', 'w');
-        foreach ($rows as $row) {
-            fputcsv($handle, $row);
-        }
-        fclose($handle);
-        exit;
-    }
-
-    /**
-     * Upload price/stock sheet into aliexpress_pricing_prices.
-     */
-    public function uploadPricingPriceSheet(Request $request)
-    {
-        $request->validate([
-            'price_file' => 'required|file|mimes:xlsx,xls,csv,txt',
+        return view('market-places.aliexpress_pricing_view', [
+            'marginPercent' => $this->resolveAliexpressMarginPercent(),
         ]);
-
-        try {
-            $spreadsheet = IOFactory::load($request->file('price_file')->getPathName());
-            $rows = $spreadsheet->getActiveSheet()->toArray();
-
-            if (empty($rows) || count($rows) < 2) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Price sheet is empty.',
-                ], 422);
-            }
-
-            $headers = array_map(static function ($header) {
-                return strtolower(trim((string) $header));
-            }, $rows[0]);
-
-            $skuIndex = array_search('sku', $headers, true);
-            $priceIndex = array_search('price', $headers, true);
-            $stockIndex = array_search('stock', $headers, true);
-            if ($stockIndex === false) {
-                $stockIndex = array_search('ae_stock', $headers, true);
-            }
-
-            if ($skuIndex === false || $priceIndex === false) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Required columns not found. Use headers: sku, price, stock (stock optional).',
-                ], 422);
-            }
-
-            $updated = 0;
-            foreach (array_slice($rows, 1) as $row) {
-                $sku = isset($row[$skuIndex]) ? $this->normalizeAeSkuExact((string) $row[$skuIndex]) : '';
-                if ($sku === '') {
-                    continue;
-                }
-
-                $priceRaw = isset($row[$priceIndex]) ? (string) $row[$priceIndex] : '';
-                $price = (float) preg_replace('/[^0-9.\-]/', '', $priceRaw);
-                $aeStock = ($stockIndex !== false && isset($row[$stockIndex]))
-                    ? (int) preg_replace('/[^0-9\-]/', '', (string) $row[$stockIndex])
-                    : 0;
-
-                AliexpressPricingPrice::updateOrCreate(
-                    ['sku' => $sku],
-                    ['price' => max(0, $price), 'ae_stock' => max(0, $aeStock)]
-                );
-                $updated++;
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => "Price sheet uploaded. {$updated} SKU row(s) updated.",
-                'updated' => $updated,
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('AliExpress pricing upload failed: '.$e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Price upload failed: '.$e->getMessage(),
-            ], 500);
-        }
     }
 
     /**
-     * Sync listings, price, stock, and sold from AliExpress Open Platform API.
+     * AliExpress API Sync card / endpoints — software@5core.com only.
+     */
+    protected function canUseAliexpressApiSync(): bool
+    {
+        return strtolower(trim((string) (auth()->user()->email ?? ''))) === 'software@5core.com';
+    }
+
+    /**
+     * Keep-rate % from Active Channel Master (channel_master.channel_percentage).
+     * If blank on the Active Aliexpress row, copy from marketplace_percentages and persist
+     * so pricing + Active Channel Master stay connected.
+     */
+    protected function resolveAliexpressMarginPercent(): float
+    {
+        $channel = ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(channel)) = ?', ['aliexpress'])
+            ->orderByRaw("CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'active' THEN 0 ELSE 1 END")
+            ->orderBy('id')
+            ->first();
+
+        $pct = null;
+        if ($channel !== null && $channel->channel_percentage !== null && $channel->channel_percentage !== ''
+            && is_numeric($channel->channel_percentage) && (float) $channel->channel_percentage > 0) {
+            $pct = (float) $channel->channel_percentage;
+        }
+
+        if ($pct === null) {
+            $mp = MarketplacePercentage::query()
+                ->where('marketplace', 'Aliexpress')
+                ->orWhere('marketplace', 'AliExpress')
+                ->first();
+            $pct = ($mp !== null && (float) ($mp->percentage ?? 0) > 0)
+                ? (float) $mp->percentage
+                : 89.0;
+
+            if ($channel !== null) {
+                $channel->channel_percentage = number_format($pct, 2, '.', '');
+                $channel->save();
+            }
+
+            MarketplacePercentage::updateOrCreate(
+                ['marketplace' => 'Aliexpress'],
+                ['percentage' => number_format($pct, 2, '.', '')]
+            );
+        }
+
+        return $pct;
+    }
+
+    /**
+     * Sync price and/or orders from AliExpress Open Platform API into pricing tables.
+     *
+     * mode=price  → listed products → aliexpress_pricing_prices (+ aliexpress_metric)
+     * mode=orders → order L30/L60   → aliexpress_metric
+     * mode=both   → price + orders (default)
      */
     public function syncPricingFromApi(Request $request)
     {
+        if (! $this->canUseAliexpressApiSync()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Not authorized.',
+            ], 403, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+
         if (empty(config('services.aliexpress.access_token'))) {
             return response()->json([
                 'success' => false,
@@ -1211,9 +1163,28 @@ class AliexpressController extends Controller
         try {
             @set_time_limit(0);
 
-            $options = ['--listed' => true, '--orders' => true];
-            if ($request->boolean('replace')) {
+            $mode = strtolower(trim((string) $request->input('mode', 'both')));
+            if (! in_array($mode, ['price', 'orders', 'both'], true)) {
+                $mode = 'both';
+            }
+
+            $options = [];
+            if ($mode === 'price') {
+                $options['--listed'] = true;
+            } elseif ($mode === 'orders') {
+                $options['--orders'] = true;
+            } else {
+                $options['--listed'] = true;
+                $options['--orders'] = true;
+            }
+
+            if ($request->boolean('replace') && ($mode === 'price' || $mode === 'both')) {
                 $options['--replace'] = true;
+            }
+
+            $days = (int) $request->input('days', 60);
+            if ($days > 0 && ($mode === 'orders' || $mode === 'both')) {
+                $options['--days'] = max(1, min(180, $days));
             }
 
             $exitCode = Artisan::call('app:fetch-aliexpress-metrics', $options);
@@ -1223,12 +1194,20 @@ class AliexpressController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => $output !== '' ? $output : 'AliExpress API sync failed.',
+                    'mode' => $mode,
                 ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
             }
 
+            $fallback = match ($mode) {
+                'price' => 'AliExpress price/stock synced from API.',
+                'orders' => 'AliExpress orders (AL30) synced from API.',
+                default => 'AliExpress price and orders synced from API.',
+            };
+
             return response()->json([
                 'success' => true,
-                'message' => $output !== '' ? $output : 'AliExpress pricing data synced from API.',
+                'message' => $output !== '' ? $output : $fallback,
+                'mode' => $mode,
             ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
         } catch (\Throwable $e) {
             Log::error('AliExpress API pricing sync failed: '.$e->getMessage());
@@ -1236,6 +1215,190 @@ class AliexpressController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'API sync failed: '.$e->getMessage(),
+            ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+    }
+
+    /**
+     * Push selected SKU prices live to AliExpress (same pattern as Newegg / TopDawg pricing pages).
+     *
+     * Request: { updates: [ { sku, price|sprice }, ... ] }
+     * Uses SPRICE when provided; resolves product_id from aliexpress_metric.
+     */
+    public function pushPricingPrice(Request $request, AliExpressApiService $api)
+    {
+        if (empty(config('services.aliexpress.access_token'))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'ALIEXPRESS_ACCESS_TOKEN is missing in .env.',
+                'pushed' => 0,
+                'failed' => 0,
+                'results' => [],
+            ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+
+        $updates = $request->input('updates', []);
+        if (! is_array($updates) || $updates === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No updates provided.',
+                'pushed' => 0,
+                'failed' => 0,
+                'results' => [],
+            ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+
+        try {
+            @set_time_limit(0);
+
+            if (! Schema::hasTable('aliexpress_metric')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'aliexpress_metric table missing. Run Sync Price first.',
+                    'pushed' => 0,
+                    'failed' => 0,
+                    'results' => [],
+                ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
+            }
+
+            $metricByNorm = [];
+            AliexpressMetric::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->whereNotNull('product_id')
+                ->where('product_id', '!=', '')
+                ->get(['sku', 'product_id'])
+                ->each(function (AliexpressMetric $row) use (&$metricByNorm) {
+                    $norm = $this->normalizeAeSkuExact((string) $row->sku);
+                    if ($norm === '' || isset($metricByNorm[$norm])) {
+                        return;
+                    }
+                    $metricByNorm[$norm] = [
+                        'sku' => (string) $row->sku,
+                        'product_id' => (string) $row->product_id,
+                    ];
+                });
+
+            $priceRows = [];
+            $results = [];
+            $skuByKey = [];
+
+            foreach ($updates as $u) {
+                if (! is_array($u)) {
+                    continue;
+                }
+                $sku = trim((string) ($u['sku'] ?? ''));
+                $price = isset($u['price']) ? (float) $u['price'] : (float) ($u['sprice'] ?? 0);
+                if ($sku === '') {
+                    continue;
+                }
+                if ($price <= 0) {
+                    $results[] = ['sku' => $sku, 'success' => false, 'error' => 'Price must be > 0', 'price' => null];
+                    continue;
+                }
+
+                $norm = $this->normalizeAeSkuExact($sku);
+                $metric = $metricByNorm[$norm] ?? null;
+                if ($metric === null) {
+                    $results[] = [
+                        'sku' => $sku,
+                        'success' => false,
+                        'error' => 'No AliExpress listing (product_id) — run Sync Price first',
+                        'price' => null,
+                    ];
+                    continue;
+                }
+
+                $rounded = round($price, 2);
+                $priceRows[] = [
+                    'product_id' => $metric['product_id'],
+                    'sku_code' => $metric['sku'],
+                    'price' => $rounded,
+                ];
+                $skuByKey[$metric['product_id'].'|'.$this->normalizeAeSkuExact($metric['sku'])] = [
+                    'sku' => $sku,
+                    'price' => $rounded,
+                    'metric_sku' => $metric['sku'],
+                ];
+            }
+
+            if ($priceRows === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No valid SKU/price pairs to push.',
+                    'pushed' => 0,
+                    'failed' => count($results),
+                    'results' => $results,
+                ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
+            }
+
+            $apiResult = $api->batchUpdatePrice($priceRows);
+            $apiOk = ! empty($apiResult['success']);
+            $pushed = 0;
+
+            if ($apiOk) {
+                foreach ($priceRows as $row) {
+                    $skuCode = (string) $row['sku_code'];
+                    $price = (float) $row['price'];
+                    $norm = $this->normalizeAeSkuExact($skuCode);
+
+                    AliexpressMetric::query()
+                        ->where(function ($q) use ($skuCode, $norm) {
+                            $q->where('sku', $skuCode);
+                            if ($norm !== '') {
+                                $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$norm]);
+                            }
+                        })
+                        ->update(['price' => $price]);
+
+                    AliexpressPricingPrice::updateOrCreate(
+                        ['sku' => $norm !== '' ? $norm : $skuCode],
+                        ['price' => $price]
+                    );
+
+                    $localSku = $skuByKey[$row['product_id'].'|'.$norm]['sku'] ?? $skuCode;
+                    $results[] = [
+                        'sku' => $localSku,
+                        'success' => true,
+                        'price' => $price,
+                        'error' => null,
+                    ];
+                    $pushed++;
+                }
+            } else {
+                $err = (string) ($apiResult['message'] ?? 'AliExpress price push failed.');
+                foreach ($priceRows as $row) {
+                    $norm = $this->normalizeAeSkuExact((string) $row['sku_code']);
+                    $localSku = $skuByKey[$row['product_id'].'|'.$norm]['sku'] ?? $row['sku_code'];
+                    $results[] = [
+                        'sku' => $localSku,
+                        'success' => false,
+                        'price' => (float) $row['price'],
+                        'error' => $err,
+                    ];
+                }
+            }
+
+            $failed = count(array_filter($results, static fn ($r) => empty($r['success'])));
+
+            return response()->json([
+                'success' => $pushed > 0,
+                'message' => $apiOk
+                    ? "Pushed {$pushed} price(s) to AliExpress."
+                    : ($apiResult['message'] ?? 'AliExpress price push failed.'),
+                'pushed' => $pushed,
+                'failed' => $failed,
+                'results' => array_values($results),
+            ], $pushed > 0 ? 200 : 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        } catch (\Throwable $e) {
+            Log::error('AliExpress pricing push failed: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Push failed: '.$e->getMessage(),
+                'pushed' => 0,
+                'failed' => 0,
+                'results' => [],
             ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
@@ -1317,11 +1480,7 @@ class AliexpressController extends Controller
                 }
             }
 
-            $marketplaceData = MarketplacePercentage::query()
-                ->where('marketplace', 'Aliexpress')
-                ->orWhere('marketplace', 'AliExpress')
-                ->first();
-            $percentage = $marketplaceData ? ($marketplaceData->percentage ?? 100) : 100;
+            $percentage = $this->resolveAliexpressMarginPercent();
             $margin = ((float) $percentage) / 100;
 
             $rows = [];
@@ -1539,11 +1698,7 @@ class AliexpressController extends Controller
                 $updates = [['sku' => $request->input('sku'), 'sprice' => $request->input('sprice')]];
             }
 
-            $marketplaceData = MarketplacePercentage::query()
-                ->where('marketplace', 'Aliexpress')
-                ->orWhere('marketplace', 'AliExpress')
-                ->first();
-            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 100)) : 100;
+            $percentage = $this->resolveAliexpressMarginPercent();
             $margin     = $percentage / 100;
 
             $updatedCount = 0;

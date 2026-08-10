@@ -5350,9 +5350,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/aliexpress-pricing', [AliexpressController::class, 'aliexpressPricingView'])->name('aliexpress.pricing.view');
     Route::get('/aliexpress/pricing-data', [AliexpressController::class, 'getPricingData'])->name('aliexpress.pricing.data');
-    Route::get('/aliexpress/pricing-price-sample', [AliexpressController::class, 'downloadPricingPriceSample'])->name('aliexpress.pricing.price.sample');
-    Route::post('/aliexpress/pricing-upload-price', [AliexpressController::class, 'uploadPricingPriceSheet'])->name('aliexpress.pricing.upload.price');
     Route::post('/aliexpress/pricing-sync-api', [AliexpressController::class, 'syncPricingFromApi'])->name('aliexpress.pricing.sync.api');
+    Route::post('/aliexpress/pricing-push-price', [AliexpressController::class, 'pushPricingPrice'])->name('aliexpress.pricing.push');
     Route::post('/aliexpress/save-sprice', [AliexpressController::class, 'saveSpriceUpdates'])->name('aliexpress.pricing.save.sprice');
     Route::post('/aliexpress/save-links', [AliexpressController::class, 'saveLinks'])->name('aliexpress.pricing.save.links');
     Route::get('/aliexpress/badge-chart-data', [AliexpressController::class, 'badgeChartData'])->name('aliexpress.badge.chart');

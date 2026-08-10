@@ -530,7 +530,7 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm("Refresh AliExpress listings from aliexpress_pricing_prices cache?\n\nUpload price sheet on AliExpress Pricing (/aliexpress-pricing) if the cache is empty.")) {
+                if (!confirm("Refresh AliExpress listings from aliexpress_pricing_prices cache?\n\nRun Sync Price on AliExpress Pricing (/aliexpress-pricing) if the cache is empty.")) {
                     return;
                 }
 

@@ -149,20 +149,34 @@
 
     <div class="row">
         <div class="col-12">
-            <div class="card border-warning mb-3">
-                <div class="card-header bg-warning bg-opacity-25 py-2">
-                    <strong><i class="fas fa-upload me-1"></i> List price upload</strong>
-                    <span class="text-muted small ms-2">Columns: <strong>sku</strong>, <strong>price</strong>, <strong>stock</strong> (optional).</span>
+            @php
+                $canAeApiSync = strtolower(trim((string) (auth()->user()->email ?? ''))) === 'software@5core.com';
+            @endphp
+            @if($canAeApiSync)
+            <div class="card border-primary mb-3">
+                <div class="card-header bg-primary bg-opacity-10 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <div>
+                        <strong><i class="fas fa-cloud-download-alt me-1"></i> AliExpress API sync</strong>
+                        <span class="text-muted small ms-2">
+                            <strong>Price</strong> → list price + AE stock into <code>aliexpress_pricing_prices</code>.
+                            <strong>Orders</strong> → AL30 into <code>aliexpress_metric</code>.
+                        </span>
+                    </div>
+                    <span class="badge bg-dark" title="Active Channel Master → channel_master.channel_percentage (Aliexpress)">
+                        Margin: {{ number_format((float) ($marginPercent ?? 89), 2) }}%
+                    </span>
                 </div>
                 <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
-                    <a href="{{ route('aliexpress.pricing.price.sample') }}" class="btn btn-sm btn-outline-secondary">
-                        <i class="fas fa-download"></i> Sample CSV
-                    </a>
-                    <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadAePriceModal">
-                        <i class="fas fa-upload"></i> Upload price sheet
+                    <button type="button" class="btn btn-sm btn-primary" id="ae-sync-price-btn" title="Pull listed product price + stock from AliExpress API">
+                        <i class="fas fa-tag"></i> Sync Price
                     </button>
+                    <button type="button" class="btn btn-sm btn-success" id="ae-sync-orders-btn" title="Pull last 60 days of orders (AL30) from AliExpress API">
+                        <i class="fas fa-shopping-cart"></i> Sync Orders
+                    </button>
+                    <span id="ae-sync-api-status" class="small text-muted"></span>
                 </div>
             </div>
+            @endif
 
             <div class="card">
                 <div class="card-body">
@@ -263,6 +277,10 @@
 
                         <button type="button" id="refresh-pricing-table" class="btn btn-sm btn-outline-primary">
                             <i class="fa fa-refresh"></i> Refresh
+                        </button>
+                        <button type="button" id="ae-push-price-btn" class="btn btn-sm btn-dark"
+                            title="Push each selected SKU's SPRICE (or Price if no SPRICE) live to AliExpress">
+                            <i class="fas fa-cloud-upload-alt"></i> Push to AliExpress
                         </button>
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success">
                             <i class="fas fa-file-csv"></i> Export CSV
@@ -382,25 +400,6 @@
                     </div>
 
                     <div id="aliexpress-pricing-table"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="uploadAePriceModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Upload AliExpress price sheet</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="file" class="form-control" id="aePriceSheetFile" accept=".xlsx,.xls,.csv,.txt">
-                    <small class="text-muted d-block mt-2">Headers: <strong>sku</strong>, <strong>price</strong>, optional <strong>stock</strong> (or ae_stock).</small>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-warning" id="aeUploadPriceSheetBtn">Upload</button>
                 </div>
             </div>
         </div>
@@ -654,32 +653,27 @@
 
         function syncPriceModeUi() {
             const $btn = $('#ae-price-mode-btn');
-            const selectCol = table ? table.getColumn('_ae_select') : null;
+            // Select column stays visible always (used by Push / Target ROI / Price Mode).
             if (decreaseModeActive) {
                 $btn.removeClass('btn-secondary btn-primary btn-info').addClass('btn-danger')
                     .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                if (selectCol) selectCol.show();
                 syncAeDiscountInputUi();
                 return;
             }
             if (increaseModeActive) {
                 $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-primary')
                     .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                if (selectCol) selectCol.show();
                 syncAeDiscountInputUi();
                 return;
             }
             if (samePriceModeActive) {
                 $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-info')
                     .html('<i class="fas fa-equals"></i> Same Price ON');
-                if (selectCol) selectCol.show();
                 syncAeDiscountInputUi();
                 return;
             }
             $btn.removeClass('btn-danger btn-primary btn-info').addClass('btn-secondary')
                 .html('<i class="fas fa-exchange-alt"></i> Price Mode');
-            if (selectCol) selectCol.hide();
-            selectedSkus.clear();
             updateSelectedCount();
             syncAeDiscountInputUi();
         }
@@ -1187,14 +1181,14 @@
                     }
                 },
                 columns: [
-                    // ── Select checkbox (Price Mode) ──────────────────────
+                    // ── Select checkbox (always visible) ──────────────────
                     {
                         title: "<input type='checkbox' id='ae-select-all'>",
                         field: "_ae_select",
                         hozAlign: "center",
                         headerSort: false,
                         width: 38,
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -1680,7 +1674,7 @@
              */
             function aeApplyTargetBackSolve(computeFn, labelPrefix) {
                 if (selectedSkus.size === 0) {
-                    aeNotify('Please check at least one SKU first (turn on Price Mode to reveal checkboxes)', 'warning');
+                    aeNotify('Please check at least one SKU first', 'warning');
                     return;
                 }
 
@@ -1975,6 +1969,175 @@
                 table.download("csv", "aliexpress_analytics_data.csv");
             });
 
+            const AE_PUSH_CHUNK_SIZE = 40;
+
+            function aePushUpdatesInChunks(updates, $btn) {
+                if (!updates || updates.length === 0) {
+                    aeNotify('Nothing to push', 'error');
+                    return;
+                }
+
+                const origHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing 0/' + updates.length + '…');
+
+                const chunks = [];
+                for (let i = 0; i < updates.length; i += AE_PUSH_CHUNK_SIZE) {
+                    chunks.push(updates.slice(i, i + AE_PUSH_CHUNK_SIZE));
+                }
+
+                let totalPushed = 0;
+                let totalFailed = 0;
+                const allFails = [];
+
+                function next(idx) {
+                    if (idx >= chunks.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        const msgType = totalFailed > 0 ? (totalPushed > 0 ? 'warning' : 'error') : 'success';
+                        aeNotify(`AliExpress push: ${totalPushed} ok, ${totalFailed} failed`, msgType);
+                        if (allFails.length) {
+                            console.warn('AliExpress push failures:', allFails);
+                            const sample = allFails.slice(0, 3).map(f => `• ${f.sku}: ${f.error || 'failed'}`).join('\n');
+                            const more = allFails.length > 3 ? `\n…and ${allFails.length - 3} more (see console)` : '';
+                            aeNotify(`Failed:\n${sample}${more}`, 'error');
+                        }
+                        return;
+                    }
+
+                    $btn.html('<i class="fas fa-spinner fa-spin"></i> Pushing ' + Math.min((idx + 1) * AE_PUSH_CHUNK_SIZE, updates.length) + '/' + updates.length + '…');
+
+                    $.ajax({
+                        url: '{{ route("aliexpress.pricing.push") }}',
+                        type: 'POST',
+                        timeout: 0,
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            updates: chunks[idx]
+                        },
+                        success: function(res) {
+                            totalPushed += (res.pushed || 0);
+                            totalFailed += (res.failed || 0);
+                            (res.results || []).filter(r => r.success).forEach(r => {
+                                const rows = table.searchRows('sku', '=', r.sku);
+                                if (rows.length) {
+                                    rows[0].update({ price: r.price });
+                                }
+                            });
+                            (res.results || []).filter(r => !r.success).forEach(r => allFails.push(r));
+                        },
+                        error: function(xhr) {
+                            const r = xhr.responseJSON || {};
+                            const err = r.message || r.error || ('HTTP ' + xhr.status);
+                            chunks[idx].forEach(u => allFails.push({ sku: u.sku, error: err }));
+                            totalFailed += chunks[idx].length;
+                        },
+                        complete: function() {
+                            next(idx + 1);
+                        }
+                    });
+                }
+
+                next(0);
+            }
+
+            function aePushSelectedPrices() {
+                if (!selectedSkus || selectedSkus.size === 0) {
+                    aeNotify('Select SKUs first', 'warning');
+                    return;
+                }
+
+                const updates = [];
+                const skipped = [];
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows('sku', '=', sku);
+                    if (!rows.length) return;
+                    const d = rows[0].getData();
+                    if (d.is_parent) return;
+                    const price = parseFloat(d.sprice) > 0 ? parseFloat(d.sprice)
+                        : (parseFloat(d.price) > 0 ? parseFloat(d.price) : 0);
+                    if (!(price > 0)) {
+                        skipped.push(sku);
+                        return;
+                    }
+                    updates.push({ sku: sku, price: +price.toFixed(2) });
+                });
+
+                if (updates.length === 0) {
+                    aeNotify('No selected SKU has a positive SPRICE or Price to push', 'error');
+                    return;
+                }
+
+                const summary = 'Push ' + updates.length + ' price' + (updates.length !== 1 ? 's' : '') + ' live to AliExpress?'
+                    + (skipped.length ? '\n(' + skipped.length + ' skipped — no SPRICE/Price)' : '');
+                if (!confirm(summary)) return;
+                aePushUpdatesInChunks(updates, $('#ae-push-price-btn'));
+            }
+
+            $('#ae-push-price-btn').on('click', aePushSelectedPrices);
+
+            function aeSyncPricingApi(mode, $btn) {
+                const originalHtml = $btn.html();
+                const $status = $('#ae-sync-api-status');
+                const label = mode === 'orders' ? 'orders' : 'price';
+                $('#ae-sync-price-btn, #ae-sync-orders-btn').prop('disabled', true);
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> Syncing…');
+                $status.removeClass('text-success text-danger').addClass('text-muted').text('Pulling ' + label + ' from AliExpress API…');
+
+                $.ajax({
+                    url: '{{ route("aliexpress.pricing.sync.api") }}',
+                    type: 'POST',
+                    timeout: 0,
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        mode: mode,
+                        days: 60
+                    },
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    success: function(response) {
+                        const msg = (response && response.message) ? response.message : ('AliExpress ' + label + ' synced.');
+                        if (response && response.success === false) {
+                            $status.removeClass('text-muted text-success').addClass('text-danger').text(msg);
+                            if (window.toastr) toastr.error(msg); else alert(msg);
+                            return;
+                        }
+                        $status.removeClass('text-muted text-danger').addClass('text-success').text(msg);
+                        if (window.toastr) toastr.success(msg); else alert(msg);
+                        table.setData('/aliexpress/pricing-data');
+                    },
+                    error: function(xhr) {
+                        let message = 'AliExpress ' + label + ' sync failed.';
+                        const j = xhr.responseJSON;
+                        if (j && j.message) message = j.message;
+                        else if (xhr.status === 419) message = 'Session expired. Refresh the page and try again.';
+                        else if (xhr.status === 0) message = 'Request timed out or network error. Try again on the server.';
+                        $status.removeClass('text-muted text-success').addClass('text-danger').text(message);
+                        if (window.toastr) toastr.error(message); else alert(message);
+                    },
+                    complete: function() {
+                        $('#ae-sync-price-btn, #ae-sync-orders-btn').prop('disabled', false);
+                        $btn.html(originalHtml);
+                    }
+                });
+            }
+
+            $('#ae-sync-price-btn').on('click', function() {
+                if (!confirm('Sync list price + AE stock from AliExpress API?\n\nThis may take several minutes.')) return;
+                aeSyncPricingApi('price', $(this));
+            });
+
+            $('#ae-sync-orders-btn').on('click', function() {
+                if (!confirm('Sync orders (AL30 / sales) from AliExpress API for the last 60 days?\n\nThis may take several minutes.')) return;
+                aeSyncPricingApi('orders', $(this));
+            });
+
             function aeOpenLmpModal(sku, entries) {
                 aeLmpModalSku = sku || '';
                 $('#aeLmpModalSku').text(aeLmpModalSku);
@@ -2081,43 +2244,6 @@
                     },
                     complete: function() {
                         $('#aeLmpModalSaveBtn').prop('disabled', false);
-                    }
-                });
-            });
-
-            $('#aeUploadPriceSheetBtn').on('click', function() {
-                const file = document.getElementById('aePriceSheetFile').files[0];
-                if (!file) {
-                    aeNotify('Please select a file first.', 'warning');
-                    return;
-                }
-                const formData = new FormData();
-                formData.append('price_file', file);
-                formData.append('_token', '{{ csrf_token() }}');
-                const $btn = $(this);
-                $btn.prop('disabled', true);
-                $.ajax({
-                    url: '{{ route("aliexpress.pricing.upload.price") }}',
-                    type: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    success: function(response) {
-                        aeNotify(response.message || 'Upload completed.', 'success');
-                        bootstrap.Modal.getOrCreateInstance(document.getElementById('uploadAePriceModal')).hide();
-                        $('#aePriceSheetFile').val('');
-                        if (table) {
-                            table.setData('/aliexpress/pricing-data');
-                        }
-                    },
-                    error: function(xhr) {
-                        const message = (xhr.responseJSON && xhr.responseJSON.message)
-                            ? xhr.responseJSON.message
-                            : 'Upload failed.';
-                        aeNotify(message, 'error');
-                    },
-                    complete: function() {
-                        $btn.prop('disabled', false);
                     }
                 });
             });

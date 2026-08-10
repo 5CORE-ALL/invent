@@ -191,7 +191,7 @@ class AliexpressListingVariationVerifyController extends Controller
             if ($count === 0) {
                 return response()->json([
                     'status' => 422,
-                    'message' => 'No AliExpress listings in aliexpress_pricing_prices. Upload price sheet on AliExpress Pricing (/aliexpress-pricing) first.',
+                    'message' => 'No AliExpress listings in aliexpress_pricing_prices. Run Sync Price on AliExpress Pricing (/aliexpress-pricing) first.',
                     'count' => 0,
                     'last_pulled_at' => $lastPulledAt,
                 ], 422);
