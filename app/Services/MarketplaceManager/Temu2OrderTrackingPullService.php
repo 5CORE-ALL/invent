@@ -78,6 +78,7 @@ class Temu2OrderTrackingPullService
         $updated = 0;
         $missing = 0;
         $failed = 0;
+        $firstError = null;
 
         foreach ($parents as $parentOrderSn) {
             $checked++;
@@ -88,8 +89,16 @@ class Temu2OrderTrackingPullService
                 $missing++;
             } elseif (empty($result['success'])) {
                 $failed++;
+                if ($firstError === null) {
+                    $firstError = (string) ($result['message'] ?? 'unknown error');
+                }
             }
             usleep(150000);
+        }
+
+        $message = "Temu 2 tracking pull: checked {$checked}, updated {$updated}, missing {$missing}, failed {$failed}.";
+        if ($firstError !== null) {
+            $message .= ' First error: '.$firstError;
         }
 
         return [
@@ -98,7 +107,7 @@ class Temu2OrderTrackingPullService
             'updated' => $updated,
             'missing' => $missing,
             'failed' => $failed,
-            'message' => "Temu 2 tracking pull: checked {$checked}, updated {$updated}, missing {$missing}, failed {$failed}.",
+            'message' => $message,
         ];
     }
 
@@ -118,14 +127,30 @@ class Temu2OrderTrackingPullService
 
         $shipment = $this->temuApi->getShipmentInfo($parentOrderSn);
         if (empty($shipment['success'])) {
+            $msg = (string) ($shipment['message'] ?? 'Temu 2 shipment fetch failed.');
             Log::info('Temu2OrderTrackingPullService: shipment fetch failed', [
                 'parent_order_sn' => $parentOrderSn,
-                'message' => $shipment['message'] ?? null,
+                'message' => $msg,
             ]);
+
+            if (
+                str_contains(strtolower($msg), 'no packagesn')
+                || str_contains(strtolower($msg), 'not labeled')
+                || str_contains(strtolower($msg), 'no tracking')
+            ) {
+                return [
+                    'success' => true,
+                    'missing' => true,
+                    'updated' => false,
+                    'message' => $msg,
+                    'tracking_number' => null,
+                    'carrier' => null,
+                ];
+            }
 
             return [
                 'success' => false,
-                'message' => (string) ($shipment['message'] ?? 'Temu 2 shipment fetch failed.'),
+                'message' => $msg,
             ];
         }
 

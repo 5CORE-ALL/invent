@@ -2837,7 +2837,12 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     /**
      * Fetch shipment tracking/carrier for a parent order from Temu OpenAPI.
-     * Tries bg.logistics.shipment.v2.get then bg.logistics.shipment.get.
+     *
+     * Working path (US semi):
+     *   1) bg.order.detail.v2.get → packageSn from orderList[].packageSnInfo
+     *   2) bg.logistics.shipment.result.get → trackingNumber + shippingCompanyName
+     *
+     * Legacy bg.logistics.shipment.get is deprecated (3000037); v2.get often returns BUSINESS_SERVICE_ERROR.
      *
      * @return array{
      *   success: bool,
@@ -2866,43 +2871,143 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             ];
         }
 
-        $params = ['parentOrderSn' => $parentOrderSn];
-        if ($orderSn !== '') {
-            $params['orderSn'] = $orderSn;
+        $detail = $this->callOpenApi('bg.order.detail.v2.get', ['parentOrderSn' => $parentOrderSn]);
+        if (empty($detail['success'])) {
+            return [
+                'success' => false,
+                'tracking_number' => null,
+                'carrier' => null,
+                'carrier_id' => null,
+                'package_sn' => null,
+                'shipments' => [],
+                'message' => (string) ($detail['message'] ?? $detail['errorMsg'] ?? 'bg.order.detail.v2.get failed'),
+                'raw' => $detail['result'] ?? $detail['raw'] ?? null,
+            ];
         }
 
-        $lastMessage = 'No shipment info returned.';
-        $lastRaw = null;
-        foreach (['bg.logistics.shipment.v2.get', 'bg.logistics.shipment.get'] as $type) {
-            $res = $this->callOpenApi($type, $params);
-            $lastRaw = $res['result'] ?? $res['raw'] ?? null;
-            if (empty($res['success'])) {
-                $lastMessage = (string) ($res['message'] ?? $res['errorMsg'] ?? $lastMessage);
-
-                continue;
-            }
-
-            $parsed = $this->parseShipmentInfoResult(is_array($res['result'] ?? null) ? $res['result'] : []);
-            if (($parsed['tracking_number'] ?? null) !== null || ($parsed['shipments'] ?? []) !== []) {
-                return array_merge($parsed, [
+        $detailResult = is_array($detail['result'] ?? null) ? $detail['result'] : [];
+        $packageMeta = $this->extractPackageSnListFromOrderDetail($detailResult, $orderSn !== '' ? $orderSn : null);
+        $packageSnList = $packageMeta['package_sns'];
+        if ($packageSnList === []) {
+            // Detail itself sometimes embeds tracking (rare) — try parse before failing.
+            $fromDetail = $this->parseShipmentInfoResult($detailResult);
+            if (($fromDetail['tracking_number'] ?? null) !== null) {
+                return array_merge($fromDetail, [
                     'success' => true,
-                    'message' => 'Shipment loaded via '.$type,
-                    'raw' => $res['result'] ?? null,
+                    'message' => 'Tracking found on bg.order.detail.v2.get',
+                    'raw' => $detailResult,
                 ]);
             }
 
-            $lastMessage = 'Temu returned empty shipment payload from '.$type;
+            return [
+                'success' => false,
+                'tracking_number' => null,
+                'carrier' => null,
+                'carrier_id' => null,
+                'package_sn' => null,
+                'shipments' => [],
+                'message' => 'No packageSn on Temu order detail yet (not labeled / not shipped).',
+                'raw' => $detailResult,
+            ];
+        }
+
+        $resultRes = $this->callOpenApi('bg.logistics.shipment.result.get', [
+            'packageSnList' => array_values($packageSnList),
+        ]);
+        if (empty($resultRes['success'])) {
+            return [
+                'success' => false,
+                'tracking_number' => null,
+                'carrier' => null,
+                'carrier_id' => null,
+                'package_sn' => $packageSnList[0] ?? null,
+                'shipments' => [],
+                'message' => (string) ($resultRes['message'] ?? $resultRes['errorMsg'] ?? 'bg.logistics.shipment.result.get failed'),
+                'raw' => [
+                    'detail' => $detailResult,
+                    'shipment_result' => $resultRes['result'] ?? $resultRes['raw'] ?? null,
+                ],
+            ];
+        }
+
+        $parsed = $this->parseShipmentInfoResult(is_array($resultRes['result'] ?? null) ? $resultRes['result'] : []);
+        // Attach order_sn hints from detail when shipment result omits them.
+        if (($parsed['shipments'] ?? []) !== [] && ($packageMeta['by_package'] ?? []) !== []) {
+            foreach ($parsed['shipments'] as $i => $ship) {
+                $psn = (string) ($ship['package_sn'] ?? '');
+                if ($psn !== '' && ($ship['order_sn'] ?? null) === null && isset($packageMeta['by_package'][$psn])) {
+                    $parsed['shipments'][$i]['order_sn'] = $packageMeta['by_package'][$psn];
+                }
+            }
+        }
+
+        if (($parsed['tracking_number'] ?? null) === null && ($parsed['shipments'] ?? []) === []) {
+            return [
+                'success' => false,
+                'tracking_number' => null,
+                'carrier' => null,
+                'carrier_id' => null,
+                'package_sn' => $packageSnList[0] ?? null,
+                'shipments' => [],
+                'message' => 'Shipment result returned no trackingNumber yet.',
+                'raw' => $resultRes['result'] ?? null,
+            ];
+        }
+
+        if (($parsed['package_sn'] ?? null) === null) {
+            $parsed['package_sn'] = $packageSnList[0] ?? null;
+        }
+
+        return array_merge($parsed, [
+            'success' => true,
+            'message' => 'Shipment loaded via bg.order.detail.v2.get + bg.logistics.shipment.result.get',
+            'raw' => $resultRes['result'] ?? null,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $detailResult
+     * @return array{package_sns: list<string>, by_package: array<string, string>}
+     */
+    protected function extractPackageSnListFromOrderDetail(array $detailResult, ?string $orderSn = null): array
+    {
+        $packageSns = [];
+        $byPackage = [];
+        $orderList = $detailResult['orderList'] ?? $detailResult['order_list'] ?? null;
+        if (! is_array($orderList)) {
+            $orderList = [];
+        }
+
+        foreach ($orderList as $order) {
+            if (! is_array($order)) {
+                continue;
+            }
+            $osn = trim((string) ($order['orderSn'] ?? $order['order_sn'] ?? ''));
+            if ($orderSn !== null && $orderSn !== '' && $osn !== '' && strcasecmp($osn, $orderSn) !== 0) {
+                continue;
+            }
+            $infoList = $order['packageSnInfo'] ?? $order['package_sn_info'] ?? null;
+            if (! is_array($infoList)) {
+                continue;
+            }
+            foreach ($infoList as $info) {
+                if (! is_array($info)) {
+                    continue;
+                }
+                $psn = trim((string) ($info['packageSn'] ?? $info['package_sn'] ?? $info['mainPackageSn'] ?? ''));
+                if ($psn === '') {
+                    continue;
+                }
+                $packageSns[$psn] = true;
+                if ($osn !== '') {
+                    $byPackage[$psn] = $osn;
+                }
+            }
         }
 
         return [
-            'success' => false,
-            'tracking_number' => null,
-            'carrier' => null,
-            'carrier_id' => null,
-            'package_sn' => null,
-            'shipments' => [],
-            'message' => $lastMessage,
-            'raw' => $lastRaw,
+            'package_sns' => array_keys($packageSns),
+            'by_package' => $byPackage,
         ];
     }
 
@@ -2937,15 +3042,47 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 'logisticsBrandName', 'logistics_brand_name', 'logisticsServiceProviderName',
                 'shipCompanyName', 'ship_company_name', 'carrier',
             ]);
+            // shippingInfoList[].shippingCompanyName (shipment.result.get)
+            if ($carrier === null && isset($node['shippingInfoList']) && is_array($node['shippingInfoList'])) {
+                foreach ($node['shippingInfoList'] as $si) {
+                    if (! is_array($si)) {
+                        continue;
+                    }
+                    $carrier = $this->pickShipmentScalar($si, [
+                        'shippingCompanyName', 'shipping_company_name', 'carrierName', 'carrier',
+                    ]);
+                    if ($carrier === null) {
+                        $trackingFromSi = $this->pickShipmentScalar($si, ['trackingNumber', 'tracking_number']);
+                        if ($tracking === null && $trackingFromSi !== null) {
+                            $tracking = $trackingFromSi;
+                        }
+                    }
+                    if ($carrier !== null) {
+                        break;
+                    }
+                }
+            }
             $carrierIdRaw = $node['carrierId'] ?? $node['carrier_id'] ?? $node['shipCompanyId']
                 ?? $node['ship_company_id'] ?? $node['logisticsServiceProviderId'] ?? null;
             $carrierId = is_numeric($carrierIdRaw) ? (int) $carrierIdRaw : null;
             $packageSn = $this->pickShipmentScalar($node, [
-                'packageSn', 'package_sn', 'packageNumber', 'package_number',
+                'packageSn', 'package_sn', 'mainPackageSn', 'main_package_sn',
+                'packageNumber', 'package_number',
             ]);
             $orderSn = $this->pickShipmentScalar($node, [
                 'orderSn', 'order_sn',
             ]);
+            if ($orderSn === null && isset($node['orderSendInfoList']) && is_array($node['orderSendInfoList'])) {
+                foreach ($node['orderSendInfoList'] as $osi) {
+                    if (! is_array($osi)) {
+                        continue;
+                    }
+                    $orderSn = $this->pickShipmentScalar($osi, ['orderSn', 'order_sn']);
+                    if ($orderSn !== null) {
+                        break;
+                    }
+                }
+            }
 
             if ($tracking !== null || $packageSn !== null) {
                 $rows[] = [
@@ -2958,9 +3095,9 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             }
 
             foreach ([
-                'shipmentInfoDTO', 'shipmentInfoList', 'shipmentList', 'packageList',
+                'shipmentInfoDTO', 'shipmentInfoList', 'shippingInfoList', 'shipmentList', 'packageList',
                 'packageInfoList', 'packageInfoResultList', 'sendRequestList',
-                'orderSendInfoList', 'packageInfoResult', 'result',
+                'orderSendInfoList', 'packageInfoResult', 'packageSnInfo', 'orderList', 'result',
             ] as $key) {
                 if (! isset($node[$key]) || ! is_array($node[$key])) {
                     continue;
