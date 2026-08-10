@@ -29,6 +29,8 @@ use App\Models\TopDawgOrderMetric;
 use App\Models\WayfairDailyData;
 use App\Services\GofoExpressService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
+use App\Services\MarketplaceManager\Temu2OrderTrackingPullService;
+use App\Services\MarketplaceManager\TemuOrderTrackingPullService;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Services\VeeqoApiService;
@@ -1474,25 +1476,74 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Pull tracking numbers from Shopify fulfillments into shopify_raw_orders and return the data.
+     * Pull tracking numbers into SOF.
+     * Temu / Temu 2 → Temu OpenAPI only (never Shopify).
+     * Other channels → Shopify fulfillments into shopify_raw_orders.
      */
-    public function pullTrackingNumbers(Request $request): JsonResponse
-    {
+    public function pullTrackingNumbers(
+        Request $request,
+        TemuOrderTrackingPullService $temuPull,
+        Temu2OrderTrackingPullService $temu2Pull,
+    ): JsonResponse {
         $limit = max(1, min(100, (int) $request->input('limit', 40)));
+        $channel = strtolower(trim((string) $request->input('channel', '')));
+        // Resolve Channels quick-search label → slug when needed.
+        if ($channel !== '' && ! in_array($channel, ['temu', 'temu2'], true)) {
+            foreach (MarketplaceManagerRegistry::channels() as $c) {
+                $slug = strtolower((string) ($c['slug'] ?? ''));
+                $label = strtolower((string) ($c['label'] ?? ''));
+                if ($channel === $slug || $channel === $label) {
+                    $channel = $slug;
+                    break;
+                }
+            }
+        }
+
+        $pullTemu = $channel === '' || $channel === 'temu';
+        $pullTemu2 = $channel === '' || $channel === 'temu2';
+        $pullShopify = $channel === '' || ! in_array($channel, ['temu', 'temu2'], true);
 
         try {
-            $result = $this->backfillShopifyTrackingForLabelCreated($limit, true);
+            $checked = 0;
+            $updated = 0;
+            $withTracking = 0;
+            $rows = [];
+            $parts = [];
 
-            $withTracking = (int) ($result['with_tracking'] ?? 0);
-            $updated = (int) ($result['updated'] ?? 0);
-            $checked = (int) ($result['checked'] ?? 0);
+            if ($pullTemu) {
+                $temu = $temuPull->pullPending($limit, false);
+                $checked += (int) ($temu['checked'] ?? 0);
+                $updated += (int) ($temu['updated'] ?? 0);
+                $withTracking += (int) ($temu['updated'] ?? 0);
+                $parts[] = 'Temu API: '.((string) ($temu['message'] ?? 'done'));
+                $rows = array_merge($rows, $this->recentTemuPulledTrackingRows('temu', $limit));
+            }
+
+            if ($pullTemu2) {
+                $temu2 = $temu2Pull->pullPending($limit, false);
+                $checked += (int) ($temu2['checked'] ?? 0);
+                $updated += (int) ($temu2['updated'] ?? 0);
+                $withTracking += (int) ($temu2['updated'] ?? 0);
+                $parts[] = 'Temu 2 API: '.((string) ($temu2['message'] ?? 'done'));
+                $rows = array_merge($rows, $this->recentTemuPulledTrackingRows('temu2', $limit));
+            }
+
+            if ($pullShopify) {
+                $result = $this->backfillShopifyTrackingForLabelCreated($limit, true);
+                $shopChecked = (int) ($result['checked'] ?? 0);
+                $shopWith = (int) ($result['with_tracking'] ?? 0);
+                $shopUpdated = (int) ($result['updated'] ?? 0);
+                $checked += $shopChecked;
+                $updated += $shopUpdated;
+                $withTracking += $shopWith;
+                $parts[] = "Shopify: checked {$shopChecked}, found {$shopWith}, saved {$shopUpdated}.";
+                $rows = array_merge($rows, $result['rows'] ?? []);
+            }
+
             $empty = max(0, $checked - $withTracking);
-
-            $message = "Checked {$checked} Shopify order(s). Found tracking on {$withTracking}, saved {$updated}.";
-            if ($withTracking === 0 && $checked > 0) {
-                $message .= ' Shopify fulfillments had empty tracking (common for Amazon “Other” fulfills). Add the number in Shopify, then pull again.';
-            } elseif ($empty > 0) {
-                $message .= " {$empty} order(s) still had no tracking number in Shopify.";
+            $message = implode(' ', $parts);
+            if ($message === '') {
+                $message = 'Nothing to pull for the selected channel.';
             }
 
             return response()->json([
@@ -1503,8 +1554,9 @@ class SalesOrderFulfillmentController extends Controller
                     'with_tracking' => $withTracking,
                     'updated' => $updated,
                     'empty' => $empty,
+                    'channel' => $channel !== '' ? $channel : 'all',
                 ],
-                'data' => $result['rows'] ?? [],
+                'data' => $rows,
             ]);
         } catch (\Throwable $e) {
             report($e);
@@ -1515,6 +1567,43 @@ class SalesOrderFulfillmentController extends Controller
                 'data' => [],
             ], 500);
         }
+    }
+
+    /**
+     * Recent Temu/Temu2 rows with API-pulled tracking for the Pull Tracking modal.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function recentTemuPulledTrackingRows(string $slug, int $limit = 40): array
+    {
+        $limit = max(1, min(100, $limit));
+        $model = $slug === 'temu2' ? Temu2Order::class : TemuOrder::class;
+        $table = $slug === 'temu2' ? 'temu2_orders' : 'temu_orders';
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'tracking_number')) {
+            return [];
+        }
+
+        $label = $slug === 'temu2' ? 'Temu 2' : 'Temu';
+
+        return $model::query()
+            ->whereNotNull('tracking_number')
+            ->where('tracking_number', '!=', '')
+            ->whereNotNull('tracking_fetched_at')
+            ->orderByDesc('tracking_fetched_at')
+            ->limit($limit)
+            ->get(['parent_order_sn', 'order_sn', 'tracking_number', 'carrier', 'tracking_fetched_at'])
+            ->map(function ($row) use ($label) {
+                return [
+                    'order_number' => (string) ($row->parent_order_sn ?: $row->order_sn ?: ''),
+                    'shopify_order_id' => null,
+                    'tracking_number' => (string) ($row->tracking_number ?? ''),
+                    'tracking_company' => (string) ($row->carrier ?? ''),
+                    'fulfillment_status' => $label.' API',
+                    'shipment_status' => '',
+                    'note' => 'Pulled from Temu OpenAPI (not Shopify)',
+                ];
+            })
+            ->all();
     }
 
     /**

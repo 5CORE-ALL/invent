@@ -872,7 +872,7 @@
                                 <button type="button"
                                         id="sof-pull-tracking-btn"
                                         class="btn btn-sm btn-outline-secondary"
-                                        title="Pull tracking numbers from Shopify fulfillments into this page">
+                                        title="Pull tracking: Temu/Temu2 from Temu API (not Shopify); other channels from Shopify">
                                     <i class="mdi mdi-barcode-scan me-1"></i>
                                     <span class="sof-pull-tracking-label">Pull Tracking Number</span>
                                 </button>
@@ -2307,7 +2307,7 @@
     function buildPulledTrackingTableHtml(rows) {
         const list = Array.isArray(rows) ? rows : [];
         if (!list.length) {
-            return '<p class="text-muted mb-0" style="font-size:0.9rem;">No Shopify orders were checked.</p>';
+            return '<p class="text-muted mb-0" style="font-size:0.9rem;">No orders with tracking were returned.</p>';
         }
         let body = '';
         list.forEach(function (r) {
@@ -2329,25 +2329,17 @@
     }
 
     function reloadSofTrackingTables() {
-        if (fulfilledTable) {
-            fulfilledTableLoaded = false;
-            fulfilledTable.replaceData();
-        }
-        if (inTransitTable) {
-            inTransitTableLoaded = false;
-            inTransitTable.replaceData();
-        }
-        if (deliveredTable) {
-            deliveredTableLoaded = false;
-            deliveredTable.replaceData();
-        }
-        if (scanDoneTable) {
-            scanDoneTableLoaded = false;
-            scanDoneTable.replaceData();
-        }
-        if (table) {
-            table.replaceData();
-        }
+        [
+            fulfilledTable, inTransitTable, deliveredTable, scanDoneTable,
+            pendingTable, inReceivedTable, invoicedTable, allOrderTable, table,
+        ].forEach(function (t) {
+            if (!t) return;
+            try {
+                if (typeof t.replaceData === 'function') t.replaceData();
+                else if (typeof t.setData === 'function') t.setData();
+            } catch (e) {}
+        });
+        sofApplyAllCarrierFilters();
     }
 
     function sumPending(rows) {
@@ -4336,6 +4328,7 @@
         $btn.prop('disabled', true);
         $label.text('Pulling…');
 
+        const channelFilter = sofChannelFilterValue();
         fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
             method: 'POST',
             headers: {
@@ -4344,7 +4337,7 @@
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                 'X-Requested-With': 'XMLHttpRequest',
             },
-            body: JSON.stringify({ limit: 40 }),
+            body: JSON.stringify({ limit: 40, channel: channelFilter || '' }),
         })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
             .then(function (res) {
