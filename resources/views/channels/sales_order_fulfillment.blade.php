@@ -963,9 +963,27 @@
                                     <option value="pending">Tracking Pending (0)</option>
                                 </select>
                             </div>
+                            <div>
+                                <label class="sof-filter-label" for="sof-channel-filter">Channels</label>
+                                <div class="input-group input-group-sm" style="min-width:180px;">
+                                    <span class="input-group-text" title="Quick Search Channels"><i class="fas fa-search"></i></span>
+                                    <input type="text" id="sof-channel-filter" class="form-control"
+                                           list="sof-channel-datalist"
+                                           placeholder="Quick Search…"
+                                           autocomplete="off"
+                                           title="Quick Search filter by channel">
+                                </div>
+                                <datalist id="sof-channel-datalist">
+                                    @foreach(($sofChannels ?? []) as $chOpt)
+                                        @if(($chOpt['slug'] ?? '') !== '')
+                                            <option value="{{ $chOpt['label'] }}" data-slug="{{ $chOpt['slug'] }}"></option>
+                                        @endif
+                                    @endforeach
+                                </datalist>
+                            </div>
                             <div class="d-flex align-items-end gap-2">
                                 <button type="button" class="btn btn-sm btn-primary" id="sof-date-filter-apply">Apply</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-date-filter-clear" title="Reset date + carrier + tracking filters">Clear</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-date-filter-clear" title="Reset date + carrier + tracking + channels filters">Clear</button>
                             </div>
                             <div class="d-flex align-items-end gap-2 ms-md-2">
                                 <button type="button" class="btn btn-sm btn-success" id="sof-bulk-edit-btn" disabled title="Edit selected rows (only changed fields are saved)">
@@ -1626,6 +1644,42 @@
         return el ? String(el.value || '').trim().toLowerCase() : '';
     }
 
+    const SOF_CHANNEL_OPTIONS = @json($sofChannels ?? []);
+
+    function sofChannelFilterValue() {
+        const el = document.getElementById('sof-channel-filter');
+        return el ? String(el.value || '').trim() : '';
+    }
+
+    /** Resolve Quick Search Channels input to mm_slug when it matches a known label/slug. */
+    function sofResolvedChannelSlug() {
+        const raw = sofChannelFilterValue();
+        if (!raw) return '';
+        const q = raw.toLowerCase();
+        for (let i = 0; i < SOF_CHANNEL_OPTIONS.length; i++) {
+            const slug = String(SOF_CHANNEL_OPTIONS[i].slug || '').toLowerCase();
+            const label = String(SOF_CHANNEL_OPTIONS[i].label || '').toLowerCase();
+            if (q === slug || q === label) {
+                return slug;
+            }
+        }
+        return '';
+    }
+
+    function sofRowMatchesChannel(data) {
+        const raw = sofChannelFilterValue();
+        if (!raw) return true;
+        const slug = sofResolvedChannelSlug();
+        if (slug) {
+            return String(data && data.mm_slug || '').toLowerCase() === slug;
+        }
+        const q = raw.toLowerCase();
+        return String(data && data.channel_label || '').toLowerCase().includes(q)
+            || String(data && data.mm_slug || '').toLowerCase().includes(q)
+            || String(data && data.channel || '').toLowerCase().includes(q)
+            || String(data && data.alias || '').toLowerCase().includes(q);
+    }
+
     /** Same rule as Tracking column dots: green = has number, red = missing. */
     function sofRowHasTracking(data) {
         if (!data || typeof data !== 'object') return false;
@@ -1676,13 +1730,15 @@
         const q = ($(searchSelector).val() || '').trim().toLowerCase();
         const carrier = sofCarrierFilterValue();
         const tracking = sofTrackingFilterValue();
-        if (!q && !carrier && !tracking) {
+        const channel = sofChannelFilterValue();
+        if (!q && !carrier && !tracking && !channel) {
             tbl.clearFilter(true);
         } else {
             tbl.setFilter(function (data) {
                 return sofOrderSearchMatches(data, q)
                     && sofRowMatchesCarrier(data)
-                    && sofRowMatchesTracking(data);
+                    && sofRowMatchesTracking(data)
+                    && sofRowMatchesChannel(data);
             });
         }
         // Refresh Tracking badge counts from unfiltered cache for the visible table.
@@ -1701,6 +1757,7 @@
         applyInvoicedFilters();
         applyDeliveredFilters();
         applyAllOrderFilters();
+        applyFilters();
         sofUpdateTrackingFilterCounts();
     }
 
@@ -1794,12 +1851,14 @@
         const trackingLabel = tracking
             ? (($('#sof-tracking-filter option:selected').text() || tracking))
             : 'Tracking (all)';
+        const channel = sofChannelFilterValue();
+        const channelLabel = channel ? ('Channels: ' + channel) : 'All channels';
         const hint = document.getElementById('sof-date-filter-hint');
         if (!hint) return;
         let text = (p.date_from && p.date_to)
             ? ('California dates ' + p.date_from + ' → ' + p.date_to)
             : 'Order date range (California, default: last 30 days)';
-        text += ' · ' + carrierLabel + ' · ' + trackingLabel;
+        text += ' · ' + carrierLabel + ' · ' + trackingLabel + ' · ' + channelLabel;
         hint.textContent = text;
     }
 
@@ -1853,6 +1912,7 @@
         $('#sof-date-to').val(sofDefaultDateTo());
         $('#sof-carrier-filter').val('');
         $('#sof-tracking-filter').val('');
+        $('#sof-channel-filter').val('');
         sofReloadAllTablesForDateRange();
     });
 
@@ -1865,6 +1925,15 @@
         sofApplyAllCarrierFilters();
         sofUpdateTrackingFilterCounts();
         sofUpdateDateFilterHint();
+    });
+
+    let sofChannelFilterTimer = null;
+    $('#sof-channel-filter').on('input change', function () {
+        sofUpdateDateFilterHint();
+        if (sofChannelFilterTimer) clearTimeout(sofChannelFilterTimer);
+        sofChannelFilterTimer = setTimeout(function () {
+            sofApplyAllCarrierFilters();
+        }, 150);
     });
 
     // ── Row select + Edit / bulk partial update ─────────────────────────────
@@ -3000,13 +3069,26 @@
     function applyFilters() {
         if (!table) return;
         const q = ($('#sof-search').val() || '').trim().toLowerCase();
+        const channel = sofChannelFilterValue();
 
-        if (!q) {
+        if (!q && !channel) {
             table.clearFilter(true);
         } else {
             table.setFilter(function (data) {
-                return String(data.channel || '').toLowerCase().includes(q)
-                    || String(data.alias || '').toLowerCase().includes(q);
+                const searchOk = !q || (
+                    String(data.channel || '').toLowerCase().includes(q)
+                    || String(data.alias || '').toLowerCase().includes(q)
+                );
+                if (!searchOk) return false;
+                if (!channel) return true;
+                const slug = sofResolvedChannelSlug();
+                if (slug) {
+                    return String(data.mm_slug || '').toLowerCase() === slug;
+                }
+                const cq = channel.toLowerCase();
+                return String(data.channel || '').toLowerCase().includes(cq)
+                    || String(data.alias || '').toLowerCase().includes(cq)
+                    || String(data.mm_slug || '').toLowerCase().includes(cq);
             });
         }
         updateSummaryStats();

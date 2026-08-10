@@ -70,6 +70,16 @@ class SalesOrderFulfillmentController extends Controller
             }
         }
 
+        $sofChannels = collect(MarketplaceManagerRegistry::channels())
+            ->filter(fn ($c) => ($c['enabled'] ?? false) === true)
+            ->map(fn ($c) => [
+                'slug' => (string) ($c['slug'] ?? ''),
+                'label' => (string) ($c['label'] ?? ($c['slug'] ?? '')),
+            ])
+            ->filter(fn ($c) => ($c['slug'] ?? '') !== '')
+            ->values()
+            ->all();
+
         return view('channels.sales_order_fulfillment', [
             'topBadges' => $this->topBadgePayload(),
             'gofoApiConfigured' => $gofo->isConfigured(),
@@ -77,6 +87,7 @@ class SalesOrderFulfillmentController extends Controller
             'veeqoApiConfigured' => $veeqoConfigured,
             'veeqoApiBase' => (string) config('services.veeqo.api_base', ''),
             'veeqoCarriers' => $veeqoCarriers,
+            'sofChannels' => $sofChannels,
         ]);
     }
 
