@@ -569,6 +569,22 @@ class MarketplaceController extends Controller
         ], 404);
     }
 
+    public function reversePushOrders(Request $request, string $marketplace): JsonResponse
+    {
+        $marketplace = strtolower($marketplace);
+        if ($marketplace === 'temu') {
+            return app(TemuSyncController::class)->reversePushOrders($request);
+        }
+        if ($marketplace === 'temu2') {
+            return app(Temu2SyncController::class)->reversePushOrders($request);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Reverse push is not available for this marketplace yet.',
+        ], 404);
+    }
+
     public function deleteReadyOrder(Request $request, string $marketplace): JsonResponse
     {
         if (strtolower($marketplace) === 'aliexpress') {

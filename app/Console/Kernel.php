@@ -1431,26 +1431,28 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '2026-07-07', true))
+        // Fetch only — do NOT auto-push Temu orders to Shopify (manual push from MM Orders).
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '2026-07-07', false))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('temu-sync-orders')
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncTemuTrackingJob(true, 40))
-            ->everyFiveMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('temu-sync-tracking')
-            ->withoutOverlapping(4)
-            ->appendOutputTo($log);
+        // Auto tracking/address apply disabled — use order page / Settings "Sync now" manually.
+        // $schedule->job(new \App\Jobs\SyncTemuTrackingJob(true, 40))
+        //     ->everyFiveMinutes()
+        //     ->timezone('Asia/Kolkata')
+        //     ->name('temu-sync-tracking')
+        //     ->withoutOverlapping(4)
+        //     ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncTemuAddressJob(true, 40))
-            ->everyFifteenMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('temu-sync-address')
-            ->withoutOverlapping(20)
-            ->appendOutputTo($log);
+        // $schedule->job(new \App\Jobs\SyncTemuAddressJob(true, 40))
+        //     ->everyFifteenMinutes()
+        //     ->timezone('Asia/Kolkata')
+        //     ->name('temu-sync-address')
+        //     ->withoutOverlapping(20)
+        //     ->appendOutputTo($log);
 
         $schedule->command('temu:sync-link-map')
             ->hourly()
@@ -1475,26 +1477,28 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '2026-07-07', true))
+        // Fetch only — do NOT auto-push Temu 2 orders to Shopify (manual push from MM Orders).
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '2026-07-07', false))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('temu2-sync-orders')
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncTemu2TrackingJob(true, 40))
-            ->everyFiveMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('temu2-sync-tracking')
-            ->withoutOverlapping(4)
-            ->appendOutputTo($log);
+        // Auto tracking/address apply disabled — use order page / Settings "Sync now" manually.
+        // $schedule->job(new \App\Jobs\SyncTemu2TrackingJob(true, 40))
+        //     ->everyFiveMinutes()
+        //     ->timezone('Asia/Kolkata')
+        //     ->name('temu2-sync-tracking')
+        //     ->withoutOverlapping(4)
+        //     ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncTemu2AddressJob(true, 40))
-            ->everyFifteenMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('temu2-sync-address')
-            ->withoutOverlapping(20)
-            ->appendOutputTo($log);
+        // $schedule->job(new \App\Jobs\SyncTemu2AddressJob(true, 40))
+        //     ->everyFifteenMinutes()
+        //     ->timezone('Asia/Kolkata')
+        //     ->name('temu2-sync-address')
+        //     ->withoutOverlapping(20)
+        //     ->appendOutputTo($log);
 
         $schedule->command('temu2:sync-link-map')
             ->hourly()

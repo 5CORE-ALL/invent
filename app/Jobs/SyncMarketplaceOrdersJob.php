@@ -132,10 +132,7 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 }
             } elseif ($slug === 'topdawg' && \App\Services\MarketplaceManager\TopDawgOrderPushService::canAutoSyncAddress()) {
                 SyncTopDawgAddressJob::dispatch(false, 25);
-            } elseif ($slug === 'temu' && \App\Services\MarketplaceManager\TemuOrderPushService::canAutoSyncAddress()) {
-                SyncTemuAddressJob::dispatch(false, 25);
-            } elseif ($slug === 'temu2' && \App\Services\MarketplaceManager\Temu2OrderPushService::canAutoSyncAddress()) {
-                SyncTemu2AddressJob::dispatch(false, 25);
+            // Temu / Temu 2: no auto address apply from cron (manual only).
             } elseif ($slug === 'purchasingpower' && \App\Services\MarketplaceManager\PurchasingPowerOrderPushService::canAutoSyncAddress()) {
                 SyncPurchasingPowerAddressJob::dispatch(false, 25);
             } elseif ($slug === 'wayfair' && \App\Services\MarketplaceManager\WayfairOrderPushService::canAutoSyncAddress()) {

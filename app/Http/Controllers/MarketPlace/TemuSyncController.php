@@ -1033,6 +1033,110 @@ class TemuSyncController extends Controller
     }
 
     /**
+     * Reverse a Shopify push for selected Temu rows (selected SKU only).
+     * Clears local shopify_order_id for matching SKU lines under each parent.
+     * Does NOT delete or cancel the Shopify order.
+     */
+    public function reversePushOrders(Request $request): JsonResponse
+    {
+        $ids = $request->input('ids', []);
+        if (! is_array($ids)) {
+            $ids = [];
+        }
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn ($id) => $id > 0)));
+
+        if ($ids === []) {
+            return response()->json(['success' => false, 'message' => 'No orders selected.'], 422);
+        }
+        if (count($ids) > 50) {
+            return response()->json(['success' => false, 'message' => 'Select at most 50 orders at a time.'], 422);
+        }
+
+        $rows = TemuOrder::query()->whereIn('id', $ids)->orderBy('id')->get();
+        $reversed = 0;
+        $skipped = 0;
+        $lineCount = 0;
+        $results = [];
+        $seen = [];
+
+        foreach ($rows as $order) {
+            $parent = trim((string) $order->parent_order_sn);
+            $sku = trim((string) ($order->ext_code ?: $order->display_sku ?: ''));
+            $key = $parent.'|'.$sku.'|'.$order->id;
+            if (isset($seen[$key])) {
+                $skipped++;
+
+                continue;
+            }
+            $seen[$key] = true;
+
+            if (empty($order->shopify_order_id)) {
+                $skipped++;
+                $results[] = [
+                    'id' => $order->id,
+                    'parent_order_sn' => $parent,
+                    'sku' => $sku,
+                    'status' => 'skipped',
+                    'message' => 'Not pushed to Shopify.',
+                ];
+
+                continue;
+            }
+
+            $query = TemuOrder::query()
+                ->where('parent_order_sn', $parent)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '');
+
+            // Selected SKU only — do not unlink sibling SKUs on the same parent.
+            if ($sku !== '') {
+                $query->where(function ($q) use ($sku) {
+                    $q->where('ext_code', $sku)->orWhere('display_sku', $sku);
+                });
+            } else {
+                $query->where('id', $order->id);
+            }
+
+            $updated = $query->update([
+                'shopify_order_id' => null,
+                'pushed_to_shopify_at' => null,
+                'import_status' => null,
+            ]);
+
+            if ($updated > 0) {
+                $reversed++;
+                $lineCount += $updated;
+                $results[] = [
+                    'id' => $order->id,
+                    'parent_order_sn' => $parent,
+                    'sku' => $sku,
+                    'status' => 'reversed',
+                    'lines' => $updated,
+                    'message' => 'Unlinked from Shopify (local only).',
+                ];
+            } else {
+                $skipped++;
+                $results[] = [
+                    'id' => $order->id,
+                    'parent_order_sn' => $parent,
+                    'sku' => $sku,
+                    'status' => 'skipped',
+                    'message' => 'No matching pushed SKU lines found.',
+                ];
+            }
+        }
+
+        return response()->json([
+            'success' => $reversed > 0,
+            'message' => "Reverse push: {$reversed} order(s) / {$lineCount} line(s) unlinked, {$skipped} skipped. Shopify orders were not deleted.",
+            'reversed' => $reversed,
+            'lines' => $lineCount,
+            'skipped' => $skipped,
+            'results' => $results,
+        ], $reversed > 0 ? 200 : 422);
+    }
+
+    /**
      * Delete a local Temu order that is still ready for Shopify import
      * (not yet imported). Removes all line rows for that AE order_id.
      */
