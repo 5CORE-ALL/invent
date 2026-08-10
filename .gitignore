@@ -4,6 +4,18 @@
 /docker-compose.override.yml
 /Dockerfile.local
 
+# Never commit SSH private keys / local tunnel secrets
+*.pem
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.id_rsa
+*.id_ed25519
+/scripts/**/*.pem
+/scripts/**/id_*
+/scripts/.ssh/
+
 # Ignore Google credentials
 /storage/app/google-credentials.json
 
