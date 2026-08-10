@@ -23,6 +23,7 @@ use App\Models\SalesOrderFulfillmentBadgeLink;
 use App\Models\SalesOrderFulfillmentDailySummary;
 use App\Models\SheinOrderMetric;
 use App\Models\ShopifySku;
+use App\Models\Temu2Order;
 use App\Models\TemuOrder;
 use App\Models\TopDawgOrderMetric;
 use App\Models\WayfairDailyData;
@@ -519,8 +520,156 @@ class SalesOrderFulfillmentController extends Controller
         $rows = $this->attachInvToOrderRows(array_values($rows));
         $rows = $this->attachShippingMasterLabelToOrderRows($rows);
         $rows = $this->attachShopifyTrackingToOrderRows($rows);
+        // Temu Sites sheets → Tracking/Carrier on SOF (no Shopify). Overwrites Shopify for Temu/Temu2.
+        $rows = $this->attachTemuSitesTrackingToOrderRows($rows);
 
         return $this->attachShipmentStatusToOrderRows($rows);
+    }
+
+    /**
+     * Fill tracking_number + tracking_company for Temu / Temu 2 from Temu Sites daily sheets
+     * (temu_daily_data* / temu2_daily_data*). Match by parent order id (PO-…) and/or SKU.
+     * Does not read or write Shopify.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function attachTemuSitesTrackingToOrderRows(array $rows): array
+    {
+        if ($rows === []) {
+            return $rows;
+        }
+
+        $temuKeys = [];
+        $temu2Keys = [];
+        foreach ($rows as $row) {
+            $slug = (string) ($row['mm_slug'] ?? '');
+            if ($slug !== 'temu' && $slug !== 'temu2') {
+                continue;
+            }
+            $candidates = [
+                trim((string) ($row['order_id_api'] ?? '')),
+                trim((string) ($row['order_id'] ?? '')),
+                trim((string) ($row['order_number'] ?? '')),
+            ];
+            foreach ($candidates as $key) {
+                if ($key === '') {
+                    continue;
+                }
+                if ($slug === 'temu2') {
+                    $temu2Keys[$key] = true;
+                } else {
+                    $temuKeys[$key] = true;
+                }
+            }
+        }
+
+        $temuMap = $temuKeys !== []
+            ? $this->loadTemuSitesTrackingMap(array_keys($temuKeys), [
+                'temu_daily_data',
+                'temu_daily_data_l7',
+                'temu_daily_data_l60',
+                'temu_daily_data_l70',
+            ])
+            : ['by_order' => [], 'by_order_sku' => []];
+        $temu2Map = $temu2Keys !== []
+            ? $this->loadTemuSitesTrackingMap(array_keys($temu2Keys), [
+                'temu2_daily_data',
+                'temu2_daily_data_l7',
+                'temu2_daily_data_l60',
+            ])
+            : ['by_order' => [], 'by_order_sku' => []];
+
+        foreach ($rows as &$row) {
+            $slug = (string) ($row['mm_slug'] ?? '');
+            if ($slug !== 'temu' && $slug !== 'temu2') {
+                continue;
+            }
+            $map = $slug === 'temu2' ? $temu2Map : $temuMap;
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $hit = null;
+            foreach ([
+                trim((string) ($row['order_id_api'] ?? '')),
+                trim((string) ($row['order_id'] ?? '')),
+                trim((string) ($row['order_number'] ?? '')),
+            ] as $orderKey) {
+                if ($orderKey === '') {
+                    continue;
+                }
+                if ($sku !== '' && isset($map['by_order_sku'][$orderKey.'|'.$sku])) {
+                    $hit = $map['by_order_sku'][$orderKey.'|'.$sku];
+                    break;
+                }
+                if (isset($map['by_order'][$orderKey])) {
+                    $hit = $map['by_order'][$orderKey];
+                    break;
+                }
+            }
+            if ($hit === null) {
+                continue;
+            }
+            if (($hit['tracking_number'] ?? '') !== '') {
+                $row['tracking_number'] = $hit['tracking_number'];
+            }
+            if (($hit['carrier'] ?? '') !== '') {
+                $row['tracking_company'] = $hit['carrier'];
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @param  list<string>  $orderIds
+     * @param  list<string>  $tables
+     * @return array{by_order: array<string, array{tracking_number: string, carrier: string}>, by_order_sku: array<string, array{tracking_number: string, carrier: string}>}
+     */
+    protected function loadTemuSitesTrackingMap(array $orderIds, array $tables): array
+    {
+        $byOrder = [];
+        $byOrderSku = [];
+        if ($orderIds === []) {
+            return ['by_order' => $byOrder, 'by_order_sku' => $byOrderSku];
+        }
+
+        foreach ($tables as $table) {
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+            try {
+                $query = DB::table($table)
+                    ->select(['order_id', 'contribution_sku', 'tracking_number', 'carrier', 'id'])
+                    ->whereIn('order_id', $orderIds)
+                    ->whereNotNull('tracking_number')
+                    ->where('tracking_number', '!=', '')
+                    ->orderByDesc('id');
+
+                foreach ($query->get() as $srow) {
+                    $oid = trim((string) ($srow->order_id ?? ''));
+                    $tn = trim((string) ($srow->tracking_number ?? ''));
+                    if ($oid === '' || $tn === '') {
+                        continue;
+                    }
+                    $carrier = trim((string) ($srow->carrier ?? ''));
+                    $payload = ['tracking_number' => $tn, 'carrier' => $carrier];
+                    $sku = trim((string) ($srow->contribution_sku ?? ''));
+                    if ($sku !== '') {
+                        $skuKey = $oid.'|'.$sku;
+                        if (! isset($byOrderSku[$skuKey])) {
+                            $byOrderSku[$skuKey] = $payload;
+                        }
+                    }
+                    if (! isset($byOrder[$oid])) {
+                        $byOrder[$oid] = $payload;
+                    }
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return ['by_order' => $byOrder, 'by_order_sku' => $byOrderSku];
     }
 
     /**
@@ -599,6 +748,12 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         foreach ($rows as &$row) {
+            // Temu / Temu 2 tracking comes from Temu Sites sheets only — never Shopify.
+            $slug = (string) ($row['mm_slug'] ?? '');
+            if ($slug === 'temu' || $slug === 'temu2') {
+                continue;
+            }
+
             $match = null;
             $sid = trim((string) ($row['shopify_order_id'] ?? ''));
             if ($sid !== '' && isset($byShopifyId[$sid])) {
@@ -1233,9 +1388,9 @@ class SalesOrderFulfillmentController extends Controller
                 || $lower === 'pending'
             ) => 'Pending',
             $slug === 'shein' && $lower === 'received' => 'Received',
-            $slug === 'temu' && $upper === 'UN_SHIPPING' => 'Pending',
-            $slug === 'temu' && in_array($upper, ['SHIPPED', 'PARTIALLY_SHIPPED'], true) => 'Label Created',
-            $slug === 'temu' && in_array($upper, ['DELIVERED', 'PARTIALLY_DELIVERED'], true) => 'Delivered',
+            in_array($slug, ['temu', 'temu2'], true) && $upper === 'UN_SHIPPING' => 'Pending',
+            in_array($slug, ['temu', 'temu2'], true) && in_array($upper, ['SHIPPED', 'PARTIALLY_SHIPPED'], true) => 'Label Created',
+            in_array($slug, ['temu', 'temu2'], true) && in_array($upper, ['DELIVERED', 'PARTIALLY_DELIVERED'], true) => 'Delivered',
             in_array($slug, ['aliexpress', 'alibaba'], true)
                 && str_replace([' ', '-'], '_', $upper) === 'WAIT_SELLER_SEND_GOODS' => 'Pending',
             $slug === 'aliexpress' && $upper === 'WAIT_BUYER_ACCEPT_GOODS' => 'Shipped',
@@ -2108,7 +2263,7 @@ class SalesOrderFulfillmentController extends Controller
                 $q->whereDate('order_date', '>=', $fromDate)
                     ->whereDate('order_date', '<=', $toDate);
             }),
-            'temu' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
+            'temu', 'temu2' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
                 $q->where(function (Builder $q2) use ($fromDt, $toDt) {
                     $q2->where('parent_order_time', '>=', $fromDt)
                         ->where('parent_order_time', '<=', $toDt);
@@ -2166,7 +2321,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         return match ($slug) {
             'amazon' => $query->whereHas('order', fn (Builder $q) => $q->where('updated_at', '>=', $since)),
-            'temu' => $query->where(function (Builder $q) use ($since) {
+            'temu', 'temu2' => $query->where(function (Builder $q) use ($since) {
                 $q->where('order_update_time', '>=', $since)
                     ->orWhere('parent_order_time', '>=', $since);
             }),
@@ -2191,7 +2346,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         return match ($slug) {
             'amazon' => null, // on related order
-            'temu' => 'parent_order_time',
+            'temu', 'temu2' => 'parent_order_time',
             'bestbuy', 'macy' => 'order_created_at',
             'purchasingpower' => 'date_created',
             'wayfair' => 'po_date',
@@ -2204,7 +2359,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         return match ($slug) {
             'amazon' => null,
-            'temu' => 'order_update_time',
+            'temu', 'temu2' => 'order_update_time',
             'bestbuy', 'macy' => 'order_updated_at',
             'purchasingpower', 'wayfair', 'doba' => 'updated_at',
             default => 'updated_at',
@@ -2278,7 +2433,7 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)",
                 ['SHIPPED', 'PARTIALLYSHIPPED']
             )),
-            'temu' => $base->whereRaw(
+            'temu', 'temu2' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['SHIPPED', 'PARTIALLY_SHIPPED']
             ),
@@ -2352,7 +2507,7 @@ class SalesOrderFulfillmentController extends Controller
             'shein', 'reverb' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['received']),
             'purchasingpower' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['RECEIVED']),
             'bestbuy', 'macy' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['RECEIVED']),
-            'ebay1', 'ebay2', 'ebay3', 'newegg', 'wayfair', 'amazon', 'temu', 'faire',
+            'ebay1', 'ebay2', 'ebay3', 'newegg', 'wayfair', 'amazon', 'temu', 'temu2', 'faire',
             'aliexpress', 'alibaba', 'topdawg', 'doba' => null,
             default => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['received']),
         };
@@ -2392,7 +2547,7 @@ class SalesOrderFulfillmentController extends Controller
                 ['FINISH', 'BUYER_ACCEPT_GOODS', 'TRADE_FINISHED']
             ),
             'topdawg' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['delivered']),
-            'temu' => $base->whereRaw(
+            'temu', 'temu2' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['DELIVERED', 'PARTIALLY_DELIVERED']
             ),
@@ -2428,6 +2583,7 @@ class SalesOrderFulfillmentController extends Controller
                 ? AmazonOrderItem::query()->with('order')
                 : null,
             'temu' => Schema::hasTable('temu_orders') ? TemuOrder::query() : null,
+            'temu2' => Schema::hasTable('temu2_orders') ? Temu2Order::query() : null,
             'purchasingpower' => Schema::hasTable('purchasing_power_sales') ? PurchasingPowerSale::query() : null,
             'wayfair' => Schema::hasTable('wayfair_daily_data') ? WayfairDailyData::query() : null,
             'bestbuy' => Schema::hasTable('mirakl_daily_data') ? BestBuyOrderMetric::query() : null,
@@ -2466,7 +2622,7 @@ class SalesOrderFulfillmentController extends Controller
                 "LOWER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)",
                 ['pending', 'processing', 'saved']
             ),
-            'temu' => $base->whereRaw(
+            'temu', 'temu2' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['UN_SHIPPING', 'PENDING']
             ),
@@ -2528,7 +2684,7 @@ class SalesOrderFulfillmentController extends Controller
                     'show_id' => (int) ($parent->id ?? $order->id),
                 ];
             })(),
-            'temu' => [
+            'temu', 'temu2' => [
                 'status' => (string) ($order->parent_order_status_text ?: $order->order_status_text ?: ''),
                 'order_date' => $order->parent_order_time ?? null,
                 'updated_at' => $order->order_update_time ?? $order->updated_at ?? null,
@@ -2536,8 +2692,9 @@ class SalesOrderFulfillmentController extends Controller
                 'display_title' => (string) ($order->goods_name ?? ''),
                 'quantity' => (int) ($order->quantity ?? 1),
                 'amount' => $order->order_total_amount ?? $order->order_base_amount ?? null,
+                // Prefer parent PO for Temu Sites sheet match (order_id on daily data).
                 'order_id' => (string) ($order->parent_order_sn ?: $order->order_sn ?: ''),
-                'order_number' => (string) ($order->order_sn ?: $order->parent_order_sn ?: ''),
+                'order_number' => (string) ($order->parent_order_sn ?: $order->order_sn ?: ''),
                 'import_status' => (string) ($order->import_status ?? ''),
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
                 'raw_payload' => $order->raw_json ?? null,
