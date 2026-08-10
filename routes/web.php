@@ -806,6 +806,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/settings', [\App\Http\Controllers\MarketplaceController::class, 'settings'])->name('marketplace.settings');
         Route::post('/settings', [\App\Http\Controllers\MarketplaceController::class, 'saveSettings'])->name('marketplace.settings.save');
         Route::post('/orders/push', [\App\Http\Controllers\MarketplaceController::class, 'pushOrderToShopify'])->name('marketplace.orders.push');
+        Route::post('/orders/bulk-push', [\App\Http\Controllers\MarketplaceController::class, 'bulkPushOrdersToShopify'])->name('marketplace.orders.bulk-push');
         Route::post('/orders/delete-ready', [\App\Http\Controllers\MarketplaceController::class, 'deleteReadyOrder'])->name('marketplace.orders.delete-ready');
         Route::post('/orders/mark-imported', [\App\Http\Controllers\MarketplaceController::class, 'markOrderAlreadyImported'])->name('marketplace.orders.mark-imported');
         Route::get('/queue-status', [\App\Http\Controllers\MarketplaceController::class, 'queueStatus'])->name('marketplace.queue.status');

@@ -566,7 +566,13 @@ class TemuSyncController extends Controller
         $apiError = null;
 
         if (Schema::hasTable('temu_orders')) {
+            // One row per parent order (Shopify import is parent-scoped).
             $orders = TemuOrder::query()
+                ->whereIn('id', function ($q) {
+                    $q->selectRaw('MAX(id)')
+                        ->from('temu_orders')
+                        ->groupBy('parent_order_sn');
+                })
                 ->orderByDesc('parent_order_time')
                 ->orderByDesc('id')
                 ->paginate(50)
@@ -899,12 +905,131 @@ class TemuSyncController extends Controller
             ]);
         }
 
-        $order->update(['import_status' => 'import_failed']);
+        TemuOrder::query()
+            ->where('parent_order_sn', (string) $order->parent_order_sn)
+            ->whereNull('shopify_order_id')
+            ->update(['import_status' => 'import_failed']);
 
         return response()->json([
             'success' => false,
             'message' => $push->lastFailureReason ?: 'Shopify import failed.',
         ], 422);
+    }
+
+    /**
+     * Push multiple Temu parent orders to Shopify (max 50).
+     */
+    public function bulkPushOrdersToShopify(Request $request): JsonResponse
+    {
+        $ids = $request->input('ids', []);
+        if (! is_array($ids)) {
+            $ids = [];
+        }
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn ($id) => $id > 0)));
+
+        if ($ids === []) {
+            return response()->json(['success' => false, 'message' => 'No orders selected.'], 422);
+        }
+        if (count($ids) > 50) {
+            return response()->json(['success' => false, 'message' => 'Select at most 50 orders at a time.'], 422);
+        }
+
+        $rows = TemuOrder::query()->whereIn('id', $ids)->orderBy('id')->get();
+        $push = app(TemuOrderPushService::class);
+        $seenParents = [];
+        $pushed = 0;
+        $skipped = 0;
+        $failed = 0;
+        $results = [];
+
+        foreach ($rows as $order) {
+            $parent = trim((string) $order->parent_order_sn);
+            if ($parent !== '' && isset($seenParents[$parent])) {
+                $skipped++;
+
+                continue;
+            }
+            if ($parent !== '') {
+                $seenParents[$parent] = true;
+            }
+
+            if (! empty($order->shopify_order_id)) {
+                $skipped++;
+                $results[] = [
+                    'id' => $order->id,
+                    'parent_order_sn' => $parent,
+                    'status' => 'skipped',
+                    'message' => 'Already imported',
+                    'shopify_order_id' => $order->shopify_order_id,
+                ];
+
+                continue;
+            }
+
+            if (MarketplaceOrderPaidFilter::blocksUnpaidPush('temu', $order)) {
+                $skipped++;
+                $results[] = [
+                    'id' => $order->id,
+                    'parent_order_sn' => $parent,
+                    'status' => 'skipped',
+                    'message' => MarketplaceOrderPaidFilter::unpaidPushBlockedMessage(),
+                ];
+
+                continue;
+            }
+
+            try {
+                $shopifyOrderId = $push->importToShopify($order);
+            } catch (\Throwable $e) {
+                $failed++;
+                TemuOrder::query()
+                    ->where('parent_order_sn', $parent)
+                    ->whereNull('shopify_order_id')
+                    ->update(['import_status' => 'import_failed']);
+                $results[] = [
+                    'id' => $order->id,
+                    'parent_order_sn' => $parent,
+                    'status' => 'failed',
+                    'message' => $e->getMessage() ?: 'Shopify import failed.',
+                ];
+                usleep(250000);
+
+                continue;
+            }
+
+            if ($shopifyOrderId) {
+                $pushed++;
+                $results[] = [
+                    'id' => $order->id,
+                    'parent_order_sn' => $parent,
+                    'status' => 'pushed',
+                    'shopify_order_id' => $shopifyOrderId,
+                ];
+            } else {
+                $failed++;
+                TemuOrder::query()
+                    ->where('parent_order_sn', $parent)
+                    ->whereNull('shopify_order_id')
+                    ->update(['import_status' => 'import_failed']);
+                $results[] = [
+                    'id' => $order->id,
+                    'parent_order_sn' => $parent,
+                    'status' => 'failed',
+                    'message' => $push->lastFailureReason ?: 'Shopify import failed.',
+                ];
+            }
+
+            usleep(350000);
+        }
+
+        return response()->json([
+            'success' => $failed === 0,
+            'message' => "Bulk push: {$pushed} pushed, {$skipped} skipped, {$failed} failed.",
+            'pushed' => $pushed,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'results' => $results,
+        ], $failed > 0 ? 422 : 200);
     }
 
     /**

@@ -553,6 +553,22 @@ class MarketplaceController extends Controller
         return response()->json(['success' => false], 404);
     }
 
+    public function bulkPushOrdersToShopify(Request $request, string $marketplace): JsonResponse
+    {
+        $marketplace = strtolower($marketplace);
+        if ($marketplace === 'temu') {
+            return app(TemuSyncController::class)->bulkPushOrdersToShopify($request);
+        }
+        if ($marketplace === 'temu2') {
+            return app(Temu2SyncController::class)->bulkPushOrdersToShopify($request);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Bulk push is not available for this marketplace yet.',
+        ], 404);
+    }
+
     public function deleteReadyOrder(Request $request, string $marketplace): JsonResponse
     {
         if (strtolower($marketplace) === 'aliexpress') {
