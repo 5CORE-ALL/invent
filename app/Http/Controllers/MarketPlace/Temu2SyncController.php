@@ -642,6 +642,15 @@ class Temu2SyncController extends Controller
         $apiError = null;
 
         if (Schema::hasTable('temu2_orders')) {
+            // Temu 2 schedule fetches without auto-import (same as Reverb manual-push flow).
+            // Unstick failed/orphan "queued" rows so Shopify column shows Pending, not Queued.
+            if (Schema::hasColumn('temu2_orders', 'import_status')) {
+                Temu2Order::query()
+                    ->whereNull('shopify_order_id')
+                    ->where('import_status', 'queued')
+                    ->update(['import_status' => null]);
+            }
+
             $cutoff = Temu2OrderSyncService::MIN_ORDER_DATE.' 00:00:00';
             // One row per parent order (Shopify import is parent-scoped).
             // Hide pre-cutoff rows (same as Reverb) — older orders were entered on Shopify manually.
@@ -790,6 +799,12 @@ class Temu2SyncController extends Controller
         if ($request->boolean('import')) {
             $dispatched = $sync->dispatchImportsForNewOrders();
             $result['message'] .= " Dispatched {$dispatched} import job(s).";
+        } elseif (Schema::hasTable('temu2_orders') && Schema::hasColumn('temu2_orders', 'import_status')) {
+            // Fetch without import must leave rows Pending (same as Reverb), not stuck Queued.
+            Temu2Order::query()
+                ->whereNull('shopify_order_id')
+                ->where('import_status', 'queued')
+                ->update(['import_status' => null]);
         }
 
         return response()->json([
