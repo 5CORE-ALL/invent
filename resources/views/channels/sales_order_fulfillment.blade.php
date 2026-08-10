@@ -465,6 +465,33 @@
             text-overflow: clip;
             pointer-events: none; /* clicks pass through to sortable column */
         }
+        /* Select-all checkbox: keep horizontal + clickable (vertical headers break header tickbox) */
+        #sof-pending-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
+        #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
+        #sof-scan-done-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
+        #sof-in-transit-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
+        #sof-in-received-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
+        #sof-invoiced-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
+        #sof-delivered-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title,
+        #sof-all-order-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header .tabulator-col-title {
+            writing-mode: horizontal-tb;
+            text-orientation: mixed;
+            transform: none;
+            height: auto;
+            min-height: 0;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+        #sof-pending-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
+        #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
+        #sof-scan-done-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
+        #sof-in-transit-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
+        #sof-in-received-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
+        #sof-invoiced-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
+        #sof-delivered-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
+        #sof-all-order-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header {
+            cursor: pointer;
+        }
         #sof-pending-table.tabulator .tabulator-header .tabulator-col,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col,
@@ -1575,6 +1602,19 @@
     /** Order tabs: row checkboxes + Edit / bulk partial update. */
     const sofOrderTableOpts = Object.assign({}, sofLocalTableOpts, {
         selectableRows: true,
+        // Tabulator 6: header tickbox belongs on rowHeader (not a normal column).
+        rowHeader: {
+            formatter: 'rowSelection',
+            titleFormatter: 'rowSelection',
+            titleFormatterParams: { rowRange: 'active' },
+            headerSort: false,
+            resizable: false,
+            frozen: true,
+            headerHozAlign: 'center',
+            hozAlign: 'center',
+            width: 44,
+            minWidth: 44,
+        },
     });
 
     /** California (America/Los_Angeles) calendar helpers — never use browser local TZ. */
@@ -2855,18 +2895,6 @@
 
     function orderListColumns(statusBadgeClass) {
         return [
-            {
-                title: '',
-                field: '__sof_select',
-                formatter: 'rowSelection',
-                titleFormatter: 'rowSelection',
-                hozAlign: 'center',
-                headerHozAlign: 'center',
-                headerSort: false,
-                width: 44,
-                minWidth: 44,
-                frozen: true,
-            },
             {
                 title: 'Edit',
                 field: '__sof_edit',
