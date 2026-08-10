@@ -112,6 +112,96 @@ class Temu2OrderTrackingPullService
     }
 
     /**
+     * Pull tracking for an explicit list of parent_order_sn values (selected SOF rows).
+     *
+     * @param  list<string>  $parentOrderSns
+     * @return array{success: bool, checked: int, updated: int, missing: int, failed: int, message: string, rows: list<array<string,mixed>>}
+     */
+    public function pullForParents(array $parentOrderSns, bool $refreshExisting = false): array
+    {
+        $parents = [];
+        foreach ($parentOrderSns as $sn) {
+            $sn = trim((string) $sn);
+            if ($sn !== '') {
+                $parents[$sn] = true;
+            }
+        }
+        $parents = array_keys($parents);
+        if ($parents === []) {
+            return [
+                'success' => true,
+                'checked' => 0,
+                'updated' => 0,
+                'missing' => 0,
+                'failed' => 0,
+                'message' => 'Temu 2 tracking pull: no selected parent orders.',
+                'rows' => [],
+            ];
+        }
+
+        if (! $this->temuApi->isConfigured()) {
+            return [
+                'success' => false,
+                'checked' => 0,
+                'updated' => 0,
+                'missing' => 0,
+                'failed' => 0,
+                'message' => 'Temu 2 API credentials missing.',
+                'rows' => [],
+            ];
+        }
+
+        $checked = 0;
+        $updated = 0;
+        $missing = 0;
+        $failed = 0;
+        $firstError = null;
+        $rows = [];
+
+        foreach ($parents as $parentOrderSn) {
+            $checked++;
+            $result = $this->pullForParentOrder($parentOrderSn, $refreshExisting);
+            if (! empty($result['success']) && ! empty($result['updated'])) {
+                $updated++;
+                $rows[] = [
+                    'order_number' => $parentOrderSn,
+                    'order_id' => $parentOrderSn,
+                    'order_id_api' => $parentOrderSn,
+                    'shopify_order_id' => null,
+                    'tracking_number' => (string) ($result['tracking_number'] ?? ''),
+                    'tracking_company' => (string) ($result['carrier'] ?? ''),
+                    'fulfillment_status' => 'Temu 2 API',
+                    'shipment_status' => '',
+                    'note' => 'Pulled from Temu 2 OpenAPI (selected rows)',
+                ];
+            } elseif (! empty($result['missing'])) {
+                $missing++;
+            } elseif (empty($result['success'])) {
+                $failed++;
+                if ($firstError === null) {
+                    $firstError = (string) ($result['message'] ?? 'unknown error');
+                }
+            }
+            usleep(150000);
+        }
+
+        $message = "Temu 2 tracking pull (selected): checked {$checked}, updated {$updated}, missing {$missing}, failed {$failed}.";
+        if ($firstError !== null) {
+            $message .= ' First error: '.$firstError;
+        }
+
+        return [
+            'success' => $failed === 0,
+            'checked' => $checked,
+            'updated' => $updated,
+            'missing' => $missing,
+            'failed' => $failed,
+            'message' => $message,
+            'rows' => $rows,
+        ];
+    }
+
+    /**
      * @return array{success: bool, updated?: bool, missing?: bool, message: string, tracking_number?: ?string, carrier?: ?string}
      */
     public function pullForParentOrder(string $parentOrderSn, bool $refreshExisting = false): array

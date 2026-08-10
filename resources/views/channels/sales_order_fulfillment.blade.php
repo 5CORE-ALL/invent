@@ -872,7 +872,7 @@
                                 <button type="button"
                                         id="sof-pull-tracking-btn"
                                         class="btn btn-sm btn-outline-secondary"
-                                        title="Pull tracking: Shopify first; if missing, pull from that channel's API (Temu/Temu2 always from Temu API)">
+                                        title="Pull tracking for selected rows only (checkbox). If none selected, pulls a batch. Temu/Temu2 → Temu API; others → Shopify then channel API.">
                                     <i class="mdi mdi-barcode-scan me-1"></i>
                                     <span class="sof-pull-tracking-label">Pull Tracking Number</span>
                                 </button>
@@ -2340,6 +2340,118 @@
             } catch (e) {}
         });
         sofApplyAllCarrierFilters();
+    }
+
+    /**
+     * Patch only rows that received tracking from Pull Tracking — no full table reload.
+     * Matches by order_number / order_id / order_id_api / shopify_order_id.
+     * @returns {number} count of table cells updated
+     */
+    function sofApplyPulledTrackingToTables(pulledRows) {
+        const list = Array.isArray(pulledRows) ? pulledRows : [];
+        const byKey = {};
+        list.forEach(function (r) {
+            if (!r || typeof r !== 'object') return;
+            const tn = String(r.tracking_number || '').trim();
+            if (!tn) return;
+            const carrier = String(r.tracking_company || '').trim();
+            const patch = {
+                tracking_number: tn,
+                tracking_company: carrier,
+            };
+            ['order_number', 'shopify_order_id', 'order_id', 'order_id_api'].forEach(function (k) {
+                const v = String(r[k] || '').trim().toLowerCase();
+                if (v) byKey[v] = patch;
+            });
+        });
+        if (!Object.keys(byKey).length) return 0;
+
+        function lookupPatch(row) {
+            if (!row || typeof row !== 'object') return null;
+            const candidates = [
+                row.order_number, row.order_id, row.order_id_api, row.shopify_order_id,
+            ];
+            for (let i = 0; i < candidates.length; i++) {
+                const key = String(candidates[i] || '').trim().toLowerCase();
+                if (key && byKey[key]) return byKey[key];
+            }
+            return null;
+        }
+
+        function patchCache(arr) {
+            if (!Array.isArray(arr) || !arr.length) return arr;
+            return arr.map(function (row) {
+                const hit = lookupPatch(row);
+                if (!hit) return row;
+                return Object.assign({}, row, {
+                    tracking_number: hit.tracking_number,
+                    tracking_company: hit.tracking_company || row.tracking_company || '',
+                });
+            });
+        }
+
+        pendingRows = patchCache(pendingRows);
+        fulfilledRows = patchCache(fulfilledRows);
+        scanDoneRows = patchCache(scanDoneRows);
+        inTransitRows = patchCache(inTransitRows);
+        inReceivedRows = patchCache(inReceivedRows);
+        invoicedRows = patchCache(invoicedRows);
+        deliveredRows = patchCache(deliveredRows);
+        allOrderRows = patchCache(allOrderRows);
+
+        let updated = 0;
+        [
+            pendingTable, fulfilledTable, scanDoneTable, inTransitTable,
+            inReceivedTable, invoicedTable, deliveredTable, allOrderTable,
+        ].forEach(function (tbl) {
+            if (!tbl || typeof tbl.getRows !== 'function') return;
+            try {
+                tbl.getRows().forEach(function (tabRow) {
+                    const data = tabRow.getData() || {};
+                    const hit = lookupPatch(data);
+                    if (!hit) return;
+                    try {
+                        tabRow.update({
+                            tracking_number: hit.tracking_number,
+                            tracking_company: hit.tracking_company || data.tracking_company || '',
+                        });
+                        updated += 1;
+                    } catch (e) {
+                        try {
+                            tbl.updateData([Object.assign({ id: data.id }, {
+                                tracking_number: hit.tracking_number,
+                                tracking_company: hit.tracking_company || data.tracking_company || '',
+                            })]);
+                            updated += 1;
+                        } catch (e2) {}
+                    }
+                });
+            } catch (e) {}
+        });
+
+        // Refresh filters / Tracking dropdown counts for the active tab only.
+        const active = sofActiveOrderTable();
+        if (active) {
+            const searchMap = [
+                [pendingTable, '#sof-pending-search'],
+                [fulfilledTable, '#sof-fulfilled-search'],
+                [scanDoneTable, '#sof-scan-done-search'],
+                [inTransitTable, '#sof-in-transit-search'],
+                [inReceivedTable, '#sof-in-received-search'],
+                [invoicedTable, '#sof-invoiced-search'],
+                [deliveredTable, '#sof-delivered-search'],
+                [allOrderTable, '#sof-all-order-search'],
+            ];
+            for (let i = 0; i < searchMap.length; i++) {
+                if (searchMap[i][0] === active) {
+                    sofApplyOrderTableFilter(active, searchMap[i][1]);
+                    break;
+                }
+            }
+        }
+        sofUpdateTrackingFilterCounts();
+        sofUpdateDateFilterHint();
+        return updated;
     }
 
     function sumPending(rows) {
@@ -4320,6 +4432,23 @@
         applyAllOrderFilters();
     });
 
+    function sofSelectedPullTargets() {
+        const tbl = sofActiveOrderTable();
+        if (!tbl || typeof tbl.getSelectedData !== 'function') return [];
+        const selected = tbl.getSelectedData() || [];
+        return selected.map(function (r) {
+            return {
+                mm_slug: String(r.mm_slug || '').trim(),
+                order_id: String(r.order_id || '').trim(),
+                order_id_api: String(r.order_id_api || '').trim(),
+                order_number: String(r.order_number || '').trim(),
+                shopify_order_id: String(r.shopify_order_id || '').trim(),
+            };
+        }).filter(function (r) {
+            return r.mm_slug || r.order_id || r.order_id_api || r.order_number || r.shopify_order_id;
+        });
+    }
+
     $('#sof-pull-tracking-btn').on('click', function () {
         const $btn = $(this);
         if ($btn.prop('disabled')) return;
@@ -4329,6 +4458,12 @@
         $label.text('Pulling…');
 
         const channelFilter = sofChannelFilterValue();
+        const selected = sofSelectedPullTargets();
+        const payload = {
+            limit: selected.length ? Math.min(100, selected.length) : 40,
+            channel: channelFilter || '',
+            selected: selected,
+        };
         fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
             method: 'POST',
             headers: {
@@ -4337,14 +4472,15 @@
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                 'X-Requested-With': 'XMLHttpRequest',
             },
-            body: JSON.stringify({ limit: 40, channel: channelFilter || '' }),
+            body: JSON.stringify(payload),
         })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
             .then(function (res) {
                 const msg = (res.json && res.json.message) ? res.json.message : (res.ok ? 'Done.' : 'Pull failed.');
                 const rows = (res.json && res.json.data) ? res.json.data : [];
                 const summary = (res.json && res.json.summary) ? res.json.summary : {};
-                const summaryLine = 'Checked: ' + (summary.checked || 0)
+                const summaryLine = (summary.selected ? ('Selected: ' + summary.selected + ' · ') : '')
+                    + 'Checked: ' + (summary.checked || 0)
                     + ' · With tracking: ' + (summary.with_tracking || 0)
                     + ' · Saved: ' + (summary.updated || 0)
                     + ' · Empty: ' + (summary.empty || 0);
@@ -4365,7 +4501,8 @@
                     alert(msg + '\n' + summaryLine);
                 }
                 if (res.ok) {
-                    reloadSofTrackingTables();
+                    // Update only matching Tracking/Carrier cells — no full table reload.
+                    sofApplyPulledTrackingToTables(rows);
                 }
             })
             .catch(function (err) {

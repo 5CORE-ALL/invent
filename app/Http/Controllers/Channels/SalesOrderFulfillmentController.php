@@ -1489,6 +1489,7 @@ class SalesOrderFulfillmentController extends Controller
      * 1) Temu / Temu 2 → Temu OpenAPI only (never Shopify).
      * 2) Other channels → Shopify fulfillments first.
      * 3) If still missing → pull from that channel's own API (Newegg, Reverb, AE, Alibaba, Faire, PP, Doba).
+     * When `selected` rows are posted, only those orders are pulled.
      */
     public function pullTrackingNumbers(
         Request $request,
@@ -1510,10 +1511,69 @@ class SalesOrderFulfillmentController extends Controller
             }
         }
 
-        $pullTemu = $channel === '' || $channel === 'temu';
-        $pullTemu2 = $channel === '' || $channel === 'temu2';
-        $pullShopify = $channel === '' || ! in_array($channel, ['temu', 'temu2'], true);
-        $pullChannelApi = $channel === '' || ! in_array($channel, ['temu', 'temu2'], true);
+        $selectedRaw = $request->input('selected', []);
+        if (! is_array($selectedRaw)) {
+            $selectedRaw = [];
+        }
+        $selected = [];
+        foreach ($selectedRaw as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
+            $selected[] = [
+                'mm_slug' => $slug,
+                'order_id' => trim((string) ($row['order_id'] ?? '')),
+                'order_id_api' => trim((string) ($row['order_id_api'] ?? '')),
+                'order_number' => trim((string) ($row['order_number'] ?? '')),
+                'shopify_order_id' => trim((string) ($row['shopify_order_id'] ?? '')),
+            ];
+        }
+        $hasSelection = $selected !== [];
+        if ($hasSelection) {
+            $limit = max(1, min(100, count($selected)));
+        }
+
+        $selectedSlugs = [];
+        $temuParents = [];
+        $temu2Parents = [];
+        $shopifyIds = [];
+        $selectedKeys = [];
+        foreach ($selected as $row) {
+            $slug = $row['mm_slug'];
+            if ($slug !== '') {
+                $selectedSlugs[$slug] = true;
+            }
+            $parent = $row['order_id_api'] !== '' ? $row['order_id_api']
+                : ($row['order_id'] !== '' ? $row['order_id'] : $row['order_number']);
+            if ($slug === 'temu' && $parent !== '') {
+                $temuParents[$parent] = true;
+            }
+            if ($slug === 'temu2' && $parent !== '') {
+                $temu2Parents[$parent] = true;
+            }
+            if ($row['shopify_order_id'] !== '' && ctype_digit($row['shopify_order_id'])) {
+                $shopifyIds[$row['shopify_order_id']] = true;
+            }
+            foreach ([$row['order_id'], $row['order_id_api'], $row['order_number'], $row['shopify_order_id']] as $k) {
+                if ($k !== '') {
+                    $selectedKeys[strtolower($k)] = true;
+                }
+            }
+        }
+
+        $pullTemu = $hasSelection
+            ? ($temuParents !== [])
+            : ($channel === '' || $channel === 'temu');
+        $pullTemu2 = $hasSelection
+            ? ($temu2Parents !== [])
+            : ($channel === '' || $channel === 'temu2');
+        $pullShopify = $hasSelection
+            ? ($shopifyIds !== [] || array_diff(array_keys($selectedSlugs), ['temu', 'temu2']) !== [])
+            : ($channel === '' || ! in_array($channel, ['temu', 'temu2'], true));
+        $pullChannelApi = $hasSelection
+            ? (array_diff(array_keys($selectedSlugs), ['temu', 'temu2']) !== [])
+            : ($channel === '' || ! in_array($channel, ['temu', 'temu2'], true));
 
         try {
             $checked = 0;
@@ -1521,53 +1581,116 @@ class SalesOrderFulfillmentController extends Controller
             $withTracking = 0;
             $rows = [];
             $parts = [];
+            if ($hasSelection) {
+                $parts[] = 'Selected rows: '.count($selected).'.';
+            }
 
             if ($pullTemu) {
-                $temu = $temuPull->pullPending($limit, false);
+                $temu = $hasSelection
+                    ? $temuPull->pullForParents(array_keys($temuParents), true)
+                    : $temuPull->pullPending($limit, false);
                 $checked += (int) ($temu['checked'] ?? 0);
                 $updated += (int) ($temu['updated'] ?? 0);
                 $withTracking += (int) ($temu['updated'] ?? 0);
                 $parts[] = 'Temu API: '.((string) ($temu['message'] ?? 'done'));
-                $rows = array_merge($rows, $this->recentTemuPulledTrackingRows('temu', $limit));
+                $rows = array_merge(
+                    $rows,
+                    $hasSelection
+                        ? ($temu['rows'] ?? [])
+                        : $this->recentTemuPulledTrackingRows('temu', $limit)
+                );
             }
 
             if ($pullTemu2) {
-                $temu2 = $temu2Pull->pullPending($limit, false);
+                $temu2 = $hasSelection
+                    ? $temu2Pull->pullForParents(array_keys($temu2Parents), true)
+                    : $temu2Pull->pullPending($limit, false);
                 $checked += (int) ($temu2['checked'] ?? 0);
                 $updated += (int) ($temu2['updated'] ?? 0);
                 $withTracking += (int) ($temu2['updated'] ?? 0);
                 $parts[] = 'Temu 2 API: '.((string) ($temu2['message'] ?? 'done'));
-                $rows = array_merge($rows, $this->recentTemuPulledTrackingRows('temu2', $limit));
+                $rows = array_merge(
+                    $rows,
+                    $hasSelection
+                        ? ($temu2['rows'] ?? [])
+                        : $this->recentTemuPulledTrackingRows('temu2', $limit)
+                );
             }
 
             if ($pullShopify) {
-                $result = $this->backfillShopifyTrackingForLabelCreated($limit, true);
-                $shopChecked = (int) ($result['checked'] ?? 0);
-                $shopWith = (int) ($result['with_tracking'] ?? 0);
-                $shopUpdated = (int) ($result['updated'] ?? 0);
-                $checked += $shopChecked;
-                $updated += $shopUpdated;
-                $withTracking += $shopWith;
-                $parts[] = "Shopify: checked {$shopChecked}, found {$shopWith}, saved {$shopUpdated}.";
-                $rows = array_merge($rows, $result['rows'] ?? []);
+                $shopifyOnly = $hasSelection ? array_keys($shopifyIds) : null;
+                // With a selection, only hit Shopify when selected rows have Shopify ids.
+                if (! $hasSelection || $shopifyOnly !== []) {
+                    $result = $this->backfillShopifyTrackingForLabelCreated($limit, true, $shopifyOnly);
+                    $shopChecked = (int) ($result['checked'] ?? 0);
+                    $shopWith = (int) ($result['with_tracking'] ?? 0);
+                    $shopUpdated = (int) ($result['updated'] ?? 0);
+                    $checked += $shopChecked;
+                    $updated += $shopUpdated;
+                    $withTracking += $shopWith;
+                    $parts[] = "Shopify: checked {$shopChecked}, found {$shopWith}, saved {$shopUpdated}.";
+                    $rows = array_merge($rows, $result['rows'] ?? []);
+                }
             }
 
             // Shopify miss → channel API for Label Created / No Scan rows still without tracking.
             if ($pullChannelApi) {
                 $this->cachedLabelCreatedRows = null;
                 $missing = array_values(array_filter(
-                    $this->labelCreatedOrderRows(),
-                    static fn ($row) => is_array($row)
-                        && trim((string) ($row['tracking_number'] ?? '')) === ''
-                        && ! in_array(strtolower((string) ($row['mm_slug'] ?? '')), ['temu', 'temu2'], true)
-                        && ($channel === '' || strtolower((string) ($row['mm_slug'] ?? '')) === $channel)
+                    $hasSelection ? $selected : $this->labelCreatedOrderRows(),
+                    function ($row) use ($hasSelection, $channel, $selectedKeys) {
+                        if (! is_array($row)) {
+                            return false;
+                        }
+                        $slug = strtolower((string) ($row['mm_slug'] ?? ''));
+                        if (in_array($slug, ['temu', 'temu2'], true)) {
+                            return false;
+                        }
+                        if (! $hasSelection && trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                            return false;
+                        }
+                        if (! $hasSelection && $channel !== '' && $slug !== $channel) {
+                            return false;
+                        }
+                        if ($hasSelection) {
+                            foreach ([
+                                $row['order_id'] ?? '',
+                                $row['order_id_api'] ?? '',
+                                $row['order_number'] ?? '',
+                                $row['shopify_order_id'] ?? '',
+                            ] as $k) {
+                                $k = strtolower(trim((string) $k));
+                                if ($k !== '' && isset($selectedKeys[$k])) {
+                                    return true;
+                                }
+                            }
+
+                            return $slug !== '';
+                        }
+
+                        return true;
+                    }
                 ));
+
+                // Normalize selected rows into SOF-like shape for fallback service.
+                if ($hasSelection) {
+                    $missing = array_map(static function ($row) {
+                        return [
+                            'mm_slug' => $row['mm_slug'] ?? '',
+                            'order_id' => $row['order_id'] ?? '',
+                            'order_id_api' => $row['order_id_api'] ?? '',
+                            'order_number' => $row['order_number'] ?? '',
+                            'shopify_order_id' => $row['shopify_order_id'] ?? '',
+                            'tracking_number' => '',
+                        ];
+                    }, $missing);
+                }
 
                 if ($missing !== []) {
                     $fallback = $channelApiFallback->pullForMissingRows(
                         $missing,
                         $limit,
-                        $channel !== '' ? $channel : null
+                        $hasSelection ? null : ($channel !== '' ? $channel : null)
                     );
                     $checked += (int) ($fallback['checked'] ?? 0);
                     $updated += (int) ($fallback['updated'] ?? 0);
@@ -1583,7 +1706,9 @@ class SalesOrderFulfillmentController extends Controller
             $empty = max(0, $checked - $withTracking);
             $message = implode(' ', $parts);
             if ($message === '') {
-                $message = 'Nothing to pull for the selected channel.';
+                $message = $hasSelection
+                    ? 'Nothing to pull for the selected rows.'
+                    : 'Nothing to pull for the selected channel.';
             }
 
             return response()->json([
@@ -1595,6 +1720,7 @@ class SalesOrderFulfillmentController extends Controller
                     'updated' => $updated,
                     'empty' => $empty,
                     'channel' => $channel !== '' ? $channel : 'all',
+                    'selected' => $hasSelection ? count($selected) : 0,
                 ],
                 'data' => $rows,
             ]);
@@ -1725,11 +1851,23 @@ class SalesOrderFulfillmentController extends Controller
      * Pull latest fulfillment tracking from Shopify Admin API into shopify_raw_orders
      * for Label Created / No Scan linked orders (and Amazon Amz* Shopify orders).
      *
+     * @param  list<string|int>|null  $shopifyOrderIds  When set, only these Shopify order ids are pulled.
      * @return array{checked:int,updated:int,with_tracking:int,rows:list<array<string,mixed>>}
      */
-    protected function backfillShopifyTrackingForLabelCreated(int $limit, bool $includeSamples = false): array
+    protected function backfillShopifyTrackingForLabelCreated(int $limit, bool $includeSamples = false, ?array $shopifyOrderIds = null): array
     {
-        $orderIds = $this->labelCreatedShopifyOrderIdsForPull($limit);
+        if ($shopifyOrderIds !== null) {
+            $orderIds = [];
+            foreach ($shopifyOrderIds as $id) {
+                $id = trim((string) $id);
+                if ($id !== '' && ctype_digit($id)) {
+                    $orderIds[$id] = true;
+                }
+            }
+            $orderIds = array_slice(array_keys($orderIds), 0, max(1, min(100, $limit)));
+        } else {
+            $orderIds = $this->labelCreatedShopifyOrderIdsForPull($limit);
+        }
         if ($orderIds === [] || ! Schema::hasTable('shopify_raw_orders')) {
             return ['checked' => 0, 'updated' => 0, 'with_tracking' => 0, 'rows' => []];
         }
