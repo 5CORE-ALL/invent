@@ -492,6 +492,28 @@
         #sof-all-order-table.tabulator .tabulator-header .tabulator-col.tabulator-row-header {
             cursor: pointer;
         }
+        /* Ensure header/row tickboxes always receive clicks despite vertical-header CSS */
+        #sof-pending-table.tabulator .tabulator-header input[type="checkbox"],
+        #sof-fulfilled-table.tabulator .tabulator-header input[type="checkbox"],
+        #sof-scan-done-table.tabulator .tabulator-header input[type="checkbox"],
+        #sof-in-transit-table.tabulator .tabulator-header input[type="checkbox"],
+        #sof-in-received-table.tabulator .tabulator-header input[type="checkbox"],
+        #sof-invoiced-table.tabulator .tabulator-header input[type="checkbox"],
+        #sof-delivered-table.tabulator .tabulator-header input[type="checkbox"],
+        #sof-all-order-table.tabulator .tabulator-header input[type="checkbox"],
+        #sof-pending-table.tabulator .tabulator-cell input[type="checkbox"],
+        #sof-fulfilled-table.tabulator .tabulator-cell input[type="checkbox"],
+        #sof-scan-done-table.tabulator .tabulator-cell input[type="checkbox"],
+        #sof-in-transit-table.tabulator .tabulator-cell input[type="checkbox"],
+        #sof-in-received-table.tabulator .tabulator-cell input[type="checkbox"],
+        #sof-invoiced-table.tabulator .tabulator-cell input[type="checkbox"],
+        #sof-delivered-table.tabulator .tabulator-cell input[type="checkbox"],
+        #sof-all-order-table.tabulator .tabulator-cell input[type="checkbox"] {
+            pointer-events: auto !important;
+            transform: none !important;
+            writing-mode: horizontal-tb !important;
+            cursor: pointer;
+        }
         #sof-pending-table.tabulator .tabulator-header .tabulator-col,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col,
@@ -1599,14 +1621,76 @@
         headerSortClickElement: 'header',
     };
 
+    /** Explicit select-all (built-in header tick is broken by vertical-header CSS). */
+    function sofSelectAllTitleFormatter(cell) {
+        const table = cell.getTable();
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'sof-select-all-cb';
+        checkbox.title = 'Select all filtered rows';
+        checkbox.setAttribute('aria-label', 'Select all filtered rows');
+
+        const syncHeader = function () {
+            try {
+                const active = table.getRows('active') || [];
+                let selectedActive = 0;
+                active.forEach(function (r) {
+                    try {
+                        if (r.isSelected()) selectedActive += 1;
+                    } catch (e) {}
+                });
+                checkbox.checked = active.length > 0 && selectedActive === active.length;
+                checkbox.indeterminate = selectedActive > 0 && selectedActive < active.length;
+            } catch (e) {
+                checkbox.checked = false;
+                checkbox.indeterminate = false;
+            }
+        };
+
+        checkbox.addEventListener('click', function (e) {
+            e.stopPropagation();
+        });
+        checkbox.addEventListener('change', function (e) {
+            e.stopPropagation();
+            try {
+                if (checkbox.checked) {
+                    // Filtered/active rows only (respects search + Tracking/Carrier filters).
+                    table.selectRow('active');
+                } else {
+                    table.deselectRow();
+                }
+            } catch (err) {
+                try {
+                    const rows = table.getRows('active') || [];
+                    if (checkbox.checked) {
+                        rows.forEach(function (r) { try { r.select(); } catch (e2) {} });
+                    } else {
+                        table.deselectRow();
+                    }
+                } catch (err2) {}
+            }
+            syncHeader();
+            sofUpdateBulkEditButton();
+        });
+
+        // Keep header tick in sync with manual row clicks / filters.
+        if (!table._sofSelectAllSync) {
+            table._sofSelectAllSync = true;
+            table.on('rowSelectionChanged', syncHeader);
+            table.on('dataFiltered', syncHeader);
+            table.on('pageLoaded', syncHeader);
+        }
+        setTimeout(syncHeader, 0);
+        return checkbox;
+    }
+
     /** Order tabs: row checkboxes + Edit / bulk partial update. */
     const sofOrderTableOpts = Object.assign({}, sofLocalTableOpts, {
         selectableRows: true,
         // Tabulator 6: header tickbox belongs on rowHeader (not a normal column).
         rowHeader: {
             formatter: 'rowSelection',
-            titleFormatter: 'rowSelection',
-            titleFormatterParams: { rowRange: 'active' },
+            titleFormatter: sofSelectAllTitleFormatter,
             headerSort: false,
             resizable: false,
             frozen: true,
@@ -4547,15 +4631,23 @@
         if ($btn.prop('disabled')) return;
         const $label = $btn.find('.sof-pull-tracking-label');
         const prev = $label.text();
+        let targets = Array.isArray(selected) ? selected.slice() : [];
+        if (targets.length > 100) {
+            const proceed = window.confirm(
+                'You have ' + targets.length + ' rows selected. Pull will process the first 100 only. Continue?'
+            );
+            if (!proceed) return;
+            targets = targets.slice(0, 100);
+        }
         $btn.prop('disabled', true);
-        $label.text(selected.length ? ('Pulling ' + selected.length + '…') : 'Pulling…');
+        $label.text(targets.length ? ('Pulling ' + targets.length + '…') : 'Pulling…');
 
         const channelFilter = sofChannelFilterValue();
         const payload = {
-            limit: selected.length ? Math.min(100, selected.length) : 40,
+            limit: targets.length ? Math.min(100, targets.length) : 40,
             channel: channelFilter || '',
-            selected: selected,
-            selected_only: selected.length > 0,
+            selected: targets,
+            selected_only: targets.length > 0,
         };
         fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
             method: 'POST',
@@ -4567,11 +4659,20 @@
             },
             body: JSON.stringify(payload),
         })
-            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (r) {
+                return r.text().then(function (text) {
+                    let j = null;
+                    try { j = text ? JSON.parse(text) : null; } catch (e) { j = null; }
+                    return { ok: r.ok, status: r.status, json: j, raw: text };
+                });
+            })
             .then(function (res) {
-                const msg = (res.json && res.json.message) ? res.json.message : (res.ok ? 'Done.' : 'Pull failed.');
-                const rows = (res.json && res.json.data) ? res.json.data : [];
-                const summary = (res.json && res.json.summary) ? res.json.summary : {};
+                const j = res.json || {};
+                const ok = !!(res.ok && j.success !== false);
+                const msg = j.message
+                    || (ok ? 'Done.' : ('Pull failed' + (res.status ? (' (HTTP ' + res.status + ')') : '') + '.'));
+                const rows = Array.isArray(j.data) ? j.data : [];
+                const summary = j.summary || {};
                 const summaryLine = (summary.selected ? ('Selected: ' + summary.selected + ' · ') : '')
                     + 'Checked: ' + (summary.checked || 0)
                     + ' · With tracking: ' + (summary.with_tracking || 0)
@@ -4579,9 +4680,9 @@
                     + ' · Empty: ' + (summary.empty || 0);
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
-                        icon: res.ok ? 'success' : 'error',
-                        title: res.ok
-                            ? (selected.length ? ('Pulled ' + selected.length + ' selected') : 'Pulled tracking numbers')
+                        icon: ok ? 'success' : 'error',
+                        title: ok
+                            ? (targets.length ? ('Pulled ' + targets.length + ' selected') : 'Pulled tracking numbers')
                             : 'Pull failed',
                         width: Math.min(920, window.innerWidth - 40),
                         html: '<div style="text-align:left;font-size:0.9rem;">'
@@ -4595,7 +4696,7 @@
                 } else {
                     alert(msg + '\n' + summaryLine);
                 }
-                if (res.ok) {
+                if (ok) {
                     sofApplyPulledTrackingToTables(rows);
                 }
             })
@@ -4620,8 +4721,8 @@
                 Swal.fire({
                     icon: 'warning',
                     title: 'No rows checked',
-                    html: 'Check one or more row checkboxes first, then click <b>Pull Tracking Number</b>.<br><br>'
-                        + 'Or continue to pull a batch of 40 (not selected-only).',
+                    html: 'Use the <b>header checkbox</b> (or row checkboxes) to select orders, then click <b>Pull Tracking Number</b>.<br><br>'
+                        + 'Or continue to pull a batch of 40 orders that are still missing tracking.',
                     showCancelButton: true,
                     confirmButtonText: 'Pull batch of 40',
                     cancelButtonText: 'Cancel',

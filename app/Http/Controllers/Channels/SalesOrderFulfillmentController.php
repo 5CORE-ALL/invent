@@ -1560,6 +1560,10 @@ class SalesOrderFulfillmentController extends Controller
         $selectedKeys = [];
         foreach ($selected as $row) {
             $slug = $row['mm_slug'];
+            // When Channels filter is Temu/Temu2, accept selected rows even if mm_slug was blank.
+            if ($slug === '' && in_array($channel, ['temu', 'temu2'], true)) {
+                $slug = $channel;
+            }
             if ($slug !== '') {
                 $selectedSlugs[$slug] = true;
             }
@@ -1569,6 +1573,13 @@ class SalesOrderFulfillmentController extends Controller
                 $temuParents[$parent] = true;
             }
             if ($slug === 'temu2' && $parent !== '') {
+                $temu2Parents[$parent] = true;
+            }
+            // Channel filter Temu + selected rows: still pull even if slug was mis-tagged.
+            if ($channel === 'temu' && $parent !== '' && ($slug === '' || $slug === 'temu')) {
+                $temuParents[$parent] = true;
+            }
+            if ($channel === 'temu2' && $parent !== '' && ($slug === '' || $slug === 'temu2')) {
                 $temu2Parents[$parent] = true;
             }
             if ($row['shopify_order_id'] !== '' && ctype_digit($row['shopify_order_id'])) {
@@ -1600,6 +1611,7 @@ class SalesOrderFulfillmentController extends Controller
             $withTracking = 0;
             $rows = [];
             $parts = [];
+            $hardFail = false;
             if ($hasSelection) {
                 $parts[] = 'Selected rows: '.count($selected).'.';
             }
@@ -1612,6 +1624,9 @@ class SalesOrderFulfillmentController extends Controller
                 $updated += (int) ($temu['updated'] ?? 0);
                 $withTracking += (int) ($temu['updated'] ?? 0);
                 $parts[] = 'Temu API: '.((string) ($temu['message'] ?? 'done'));
+                if (empty($temu['success']) && (int) ($temu['checked'] ?? 0) === 0) {
+                    $hardFail = true;
+                }
                 $rows = array_merge(
                     $rows,
                     $hasSelection
@@ -1628,6 +1643,9 @@ class SalesOrderFulfillmentController extends Controller
                 $updated += (int) ($temu2['updated'] ?? 0);
                 $withTracking += (int) ($temu2['updated'] ?? 0);
                 $parts[] = 'Temu 2 API: '.((string) ($temu2['message'] ?? 'done'));
+                if (empty($temu2['success']) && (int) ($temu2['checked'] ?? 0) === 0) {
+                    $hardFail = true;
+                }
                 $rows = array_merge(
                     $rows,
                     $hasSelection
@@ -1728,10 +1746,14 @@ class SalesOrderFulfillmentController extends Controller
                 $message = $hasSelection
                     ? 'Nothing to pull for the selected rows.'
                     : 'Nothing to pull for the selected channel.';
+            } elseif ($checked === 0 && ! $hardFail) {
+                $message .= $hasSelection
+                    ? ' No matching marketplace orders were checked — verify selected rows / channel.'
+                    : ' No orders missing tracking were found for this channel (select rows to re-pull existing).';
             }
 
             return response()->json([
-                'success' => true,
+                'success' => ! $hardFail,
                 'message' => $message,
                 'summary' => [
                     'checked' => $checked,
@@ -1742,7 +1764,7 @@ class SalesOrderFulfillmentController extends Controller
                     'selected' => $hasSelection ? count($selected) : 0,
                 ],
                 'data' => $rows,
-            ]);
+            ], $hardFail ? 422 : 200);
         } catch (\Throwable $e) {
             report($e);
 
@@ -1750,6 +1772,7 @@ class SalesOrderFulfillmentController extends Controller
                 'success' => false,
                 'message' => 'Failed to pull tracking numbers: '.$e->getMessage(),
                 'data' => [],
+                'summary' => ['checked' => 0, 'with_tracking' => 0, 'updated' => 0, 'empty' => 0, 'selected' => 0],
             ], 500);
         }
     }
