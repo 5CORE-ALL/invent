@@ -921,7 +921,7 @@
                                 <button type="button"
                                         id="sof-pull-tracking-btn"
                                         class="btn btn-sm btn-outline-secondary"
-                                        title="Pull tracking for selected rows only (checkbox). If none selected, pulls a batch. Temu/Temu2 → Temu API; others → Shopify then channel API.">
+                                        title="Pull tracking for selected rows only (checkbox). If none selected, pulls a batch. Temu/Temu2 → Temu API; others → channel API (no Shopify).">
                                     <i class="mdi mdi-barcode-scan me-1"></i>
                                     <span class="sof-pull-tracking-label">Pull Tracking Number</span>
                                 </button>

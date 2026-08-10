@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * When Shopify has no tracking for an order, pull tracking from that channel's own API.
+ * Pull tracking from each channel's own API into SOF (no Shopify).
  * Temu/Temu2 are handled separately (TemuOrderTrackingPullService).
  */
 class ChannelTrackingApiFallbackService

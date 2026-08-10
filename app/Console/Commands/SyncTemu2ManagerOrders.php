@@ -15,7 +15,7 @@ class SyncTemu2ManagerOrders extends Command
                             {--import : Dispatch import jobs for new orders after fetch}
                             {--force : Run even if Fetch orders setting is Off}';
 
-    protected $description = 'Fetch Temu 2 orders via app:fetch-temu2-orders and store in temu2_orders.';
+    protected $description = 'Fetch Temu 2 orders from a date (default / schedule: 2026-07-07) into temu2_orders. Does not auto-push to Shopify unless --import and Settings allow it.';
 
     public function handle(Temu2OrderSyncService $sync): int
     {

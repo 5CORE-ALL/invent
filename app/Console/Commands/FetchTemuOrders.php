@@ -15,16 +15,22 @@ class FetchTemuOrders extends Command
     use ProcessesUpdatesInChunks;
 
     /**
-     * Always fetches the last 60 days of Temu orders and keeps the table pruned
-     * to a rolling 60-day window.
+     * Default: last 60 days + prune to that window (sales metrics cron).
+     * Marketplace Manager passes --from / --days with --no-prune so older MM rows stay.
      *
      *   php artisan app:fetch-temu-orders
+     *   php artisan app:fetch-temu-orders --from=2026-07-07 --no-prune
+     *   php artisan app:fetch-temu-orders --days=7 --no-prune
      */
-    protected $signature = 'app:fetch-temu-orders {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
+    protected $signature = 'app:fetch-temu-orders
+                            {--from= : Fetch orders created on/after this date (YYYY-MM-DD)}
+                            {--days= : Fetch orders from the last N days (ignored when --from is set)}
+                            {--no-prune : Do not delete rows older than the fetch window}
+                            {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
 
-    protected $description = 'Fetch the last 60 days of order-wise raw data from Temu (bg.order.list.v2.get) into temu_orders (rolling 60-day window)';
+    protected $description = 'Fetch Temu order-wise raw data (bg.order.list.v2.get) into temu_orders';
 
-    /** Rolling window size — always 60 days. */
+    /** Default rolling window when neither --from nor --days is set. */
     private const WINDOW_DAYS = 60;
 
     private const ORDER_STATUS_MAP = [
@@ -52,17 +58,32 @@ class FetchTemuOrders extends Command
             return self::FAILURE;
         }
 
-        // Always last 60 days (rolling window), fetching right up to the present moment.
-        // Previously the upper bound was IST "yesterday end" (Carbon::today()->subDay()),
-        // which is only ~11:29 AM Pacific of yesterday — so a full Pacific "yesterday" was
-        // never in temu_orders and Y Sales / daily figures came up short. createBefore is an
-        // epoch instant, so using now() simply means "everything up to now".
+        // Default: last 60 days (rolling window) up to now — used by sales metrics cron.
+        // MM / temu:sync-orders pass --from or --days (with --no-prune) for Shopify import prep.
         $to = Carbon::now();
-        $from = $to->copy()->subDays(self::WINDOW_DAYS - 1)->startOfDay();
-        $status = null;
-        $window = 'L'.self::WINDOW_DAYS;
+        $fromOption = trim((string) $this->option('from'));
+        $daysOption = $this->option('days');
+        if ($fromOption !== '') {
+            try {
+                $from = Carbon::parse($fromOption, 'America/Los_Angeles')->startOfDay();
+            } catch (\Throwable $e) {
+                $this->error('Invalid --from date. Use YYYY-MM-DD.');
 
-        $this->info('Window: '.$from->toDateTimeString().' → '.$to->toDateTimeString());
+                return self::FAILURE;
+            }
+            $window = 'from:'.$from->toDateString();
+        } elseif ($daysOption !== null && $daysOption !== '') {
+            $days = max(1, min(730, (int) $daysOption));
+            $from = $to->copy()->subDays($days - 1)->startOfDay();
+            $window = 'L'.$days;
+        } else {
+            $from = $to->copy()->subDays(self::WINDOW_DAYS - 1)->startOfDay();
+            $window = 'L'.self::WINDOW_DAYS;
+        }
+        $status = null;
+        $shouldPrune = ! $this->option('no-prune') && $fromOption === '' && ($daysOption === null || $daysOption === '');
+
+        $this->info('Window: '.$from->toDateTimeString().' → '.$to->toDateTimeString().($shouldPrune ? ' (prune on)' : ' (no prune)'));
 
         $pageNumber = 1;
         $hasMorePages = true;
@@ -188,20 +209,25 @@ class FetchTemuOrders extends Command
                 usleep(300000); // 0.3s to avoid rate limits
             } while ($hasMorePages);
 
-            // Keep only a rolling 60-day window: prune orders older than the start of the window.
-            $pruned = TemuOrder::where('parent_order_time', '<', $from)->delete();
+            // Default sales cron: keep only a rolling 60-day window.
+            // MM fetches (--from/--days/--no-prune) must not wipe older rows still needed elsewhere.
+            $pruned = 0;
+            if ($shouldPrune) {
+                $pruned = TemuOrder::where('parent_order_time', '<', $from)->delete();
+            }
 
             // Pull the ACTUAL order amounts (bg.order.amount.query) so reported sales use
             // Temu's real figures instead of catalog price × qty — the same principle as the
             // Amazon pipeline, which stores real per-order price from its orderItems endpoint.
             $amountStats = $this->fetchAndStoreOrderAmounts();
 
-            $this->info("✅ Done. Parent orders: {$totalParents}, sub-orders seen: {$totalSubOrders}, rows upserted: {$totalUpserted}, pruned (>60d): {$pruned}, amounts: {$amountStats['updated']} rows from {$amountStats['parents']} parent(s)");
+            $this->info("✅ Done. Parent orders: {$totalParents}, sub-orders seen: {$totalSubOrders}, rows upserted: {$totalUpserted}, pruned: {$pruned}, amounts: {$amountStats['updated']} rows from {$amountStats['parents']} parent(s)");
             Log::info('Completed FetchTemuOrders', [
                 'parents' => $totalParents,
                 'sub_orders' => $totalSubOrders,
                 'upserted' => $totalUpserted,
                 'pruned' => $pruned,
+                'window' => $window,
                 'amount_parents' => $amountStats['parents'],
                 'amount_rows' => $amountStats['updated'],
             ]);

@@ -5,7 +5,9 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'temu2') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Temu 2 Manager</a>
         @include('marketplace._page-heading', ['slug' => 'temu2', 'heading' => 'Temu Orders'])
-        <p class="text-muted mb-3">Orders stored locally from Temu 2 API. Push to Shopify manually or enable auto-import in <a href="{{ route('marketplace.settings', 'temu2') }}">Settings</a>.</p>
+        <p class="text-muted mb-3">Orders from <strong>July 7, 2026</strong> onward (same cutoff as Reverb / AliExpress). Older historical Temu 2 rows stay in the database but are hidden here. Push to Shopify manually or enable auto-import in <a href="{{ route('marketplace.settings', 'temu2') }}">Settings</a>.</p>
+
+        @include('marketplace._queue-status', ['slug' => 'temu2'])
 
         @include('marketplace.temu2._nav', ['active' => 'orders'])
 

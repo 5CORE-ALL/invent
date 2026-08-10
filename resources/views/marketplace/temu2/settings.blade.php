@@ -72,10 +72,10 @@
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? true) ? 'checked' : '' }}>
+                            <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? false) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically import Temu 2 orders to Shopify</span>
                         </label>
-                        <div class="form-text ms-4">ON by default. New Temu 2 orders are queued to Shopify on the 15‑minute schedule.</div>
+                        <div class="form-text ms-4">OFF by default (same as Reverb). Fetch stores orders locally only — push manually from Orders, or turn this on to auto-queue after fetch. Avoids duplicates for orders already entered on Shopify.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">

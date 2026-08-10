@@ -642,11 +642,15 @@ class Temu2SyncController extends Controller
         $apiError = null;
 
         if (Schema::hasTable('temu2_orders')) {
+            $cutoff = Temu2OrderSyncService::MIN_ORDER_DATE.' 00:00:00';
             // One row per parent order (Shopify import is parent-scoped).
+            // Hide pre-cutoff rows (same as Reverb) — older orders were entered on Shopify manually.
             $orders = Temu2Order::query()
-                ->whereIn('id', function ($q) {
+                ->where('parent_order_time', '>=', $cutoff)
+                ->whereIn('id', function ($q) use ($cutoff) {
                     $q->selectRaw('MAX(id)')
                         ->from('temu2_orders')
+                        ->where('parent_order_time', '>=', $cutoff)
                         ->groupBy('parent_order_sn');
                 })
                 ->orderByDesc('parent_order_time')
