@@ -5316,6 +5316,53 @@
                     width: 55
                 },
                 {
+                    title: "Std Prc",
+                    field: "amazon_standard_price",
+                    hozAlign: "center",
+                    headerTooltip: "Standard Price (Std Prc) — same as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Parent shows average of child Std Prc; (1) when children differ.",
+                    editor: "input",
+                    minWidth: 70,
+                    sorter: "number",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return d.is_parent_summary !== true && d.sku && String(d.sku).indexOf('PARENT') === -1;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = cell.getValue();
+                        const std = parseFloat(value) || 0;
+                        // Parent: show average of child Std Prc; append (1) when children have different values.
+                        // Red when any child is missing Std Prc.
+                        if (rowData.is_parent_summary) {
+                            const missing = !!rowData.amazon_standard_price_missing;
+                            const mixed = !!rowData.amazon_standard_price_mixed;
+                            const color = missing ? '#dc3545' : 'inherit';
+                            if (!value || std <= 0) {
+                                if (!missing) return '';
+                                return '<span style="font-weight:600;color:#dc3545;" title="One or more children missing Std Prc">—</span>';
+                            }
+                            let tip = 'Avg of child Std Prc $' + std.toFixed(2);
+                            if (missing) tip += ' — one or more children missing Std Prc';
+                            else if (mixed) tip += ' — children have different Std Prc';
+                            return '<span style="font-weight:600;color:' + color + ';" title="' + tip.replace(/"/g, '&quot;') + '">$'
+                                + std.toFixed(2)
+                                + (mixed ? ' <span style="font-weight:500;color:' + (missing ? '#dc3545' : '#6c757d') + ';">(1)</span>' : '')
+                                + '</span>';
+                        }
+                        const currentPrice = parseFloat(rowData.amazon_price) || 0;
+                        if (!value || std <= 0) return '';
+                        const sku = rowData.sku || '';
+                        // Hold (Std Prc = Amazon price): show price only — no yellow dot
+                        if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
+                            return '<span style="font-weight:600;" title="Hold (matches Amz price) — Std Prc">$'
+                                + std.toFixed(2) + '</span>';
+                        }
+                        const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                            dot + ('$' + std.toFixed(2)) + '</span>';
+                    }
+                },
+                {
                     title: "Avg Price",
                     field: "avg_price",
                     hozAlign: "center",
@@ -5332,6 +5379,40 @@
                             html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-sku="' + skuEscPrice + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Rolling L30)"></i>';
                         }
                         return html;
+                    },
+                    minWidth: 70
+                },
+                {
+                    title: "Avg LMP",
+                    field: "amazon_lmp_price",
+                    visible: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Amz LMP. Parent row shows average of child Amz LMPs (children with LMP > 0).",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = (rowData.sku || '').replace(/"/g, '&quot;');
+                        const skuEnc = encodeURIComponent(rowData.sku || '');
+                        if (rowData.is_parent_summary === true) {
+                            const v = cell.getValue();
+                            const price = v != null && v !== '' ? parseFloat(v) : null;
+                            if (price == null || !isFinite(price) || price <= 0) {
+                                return '<span class="text-muted">-</span>';
+                            }
+                            const avgPrice = parseFloat(rowData.avg_price || 0);
+                            const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
+                            return '<span style="font-weight:600;' + styleForCellColor(color) + '" title="Avg of child Amz LMPs">$'
+                                + price.toFixed(2) + '</span>';
+                        }
+                        const value = cell.getValue();
+                        const price = value != null && value !== '' ? parseFloat(value) : null;
+                        if (price == null || price <= 0) {
+                            const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amz repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
+                        }
+                        const avgPrice = parseFloat(rowData.avg_price || 0);
+                        const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
+                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="amazon" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
                     },
                     minWidth: 70
                 },
@@ -5790,87 +5871,6 @@
                             return '<button type="button" class="pi-temu-push-single-btn" data-sku="' + sku + '" data-price="' + pushBase + '" data-goods-id="' + goodsId + '" data-sku-id="' + skuId + '" style="border:none;background:none;color:#dc3545;cursor:pointer;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>';
                         }
                         return '<button type="button" class="pi-temu-push-single-btn" data-sku="' + sku + '" data-price="' + pushBase + '" data-goods-id="' + goodsId + '" data-sku-id="' + skuId + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;" title="Push base $' + pushBase.toFixed(2) + ' to Temu"><i class="fas fa-upload"></i></button>';
-                    }
-                },
-                {
-                    title: "Avg LMP",
-                    field: "amazon_lmp_price",
-                    visible: true,
-                    hozAlign: "center",
-                    sorter: "number",
-                    headerTooltip: "Amz LMP. Parent row shows average of child Amz LMPs (children with LMP > 0).",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sku = (rowData.sku || '').replace(/"/g, '&quot;');
-                        const skuEnc = encodeURIComponent(rowData.sku || '');
-                        if (rowData.is_parent_summary === true) {
-                            const v = cell.getValue();
-                            const price = v != null && v !== '' ? parseFloat(v) : null;
-                            if (price == null || !isFinite(price) || price <= 0) {
-                                return '<span class="text-muted">-</span>';
-                            }
-                            const avgPrice = parseFloat(rowData.avg_price || 0);
-                            const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                            return '<span style="font-weight:600;' + styleForCellColor(color) + '" title="Avg of child Amz LMPs">$'
-                                + price.toFixed(2) + '</span>';
-                        }
-                        const value = cell.getValue();
-                        const price = value != null && value !== '' ? parseFloat(value) : null;
-                        if (price == null || price <= 0) {
-                            const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amz repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
-                        }
-                        const avgPrice = parseFloat(rowData.avg_price || 0);
-                        const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="amazon" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
-                    },
-                    minWidth: 70
-                },
-                {
-                    title: "Std Prc",
-                    field: "amazon_standard_price",
-                    hozAlign: "center",
-                    headerTooltip: "Standard Price (Std Prc) — same as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Parent shows average of child Std Prc; (1) when children differ.",
-                    editor: "input",
-                    minWidth: 70,
-                    sorter: "number",
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return d.is_parent_summary !== true && d.sku && String(d.sku).indexOf('PARENT') === -1;
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const value = cell.getValue();
-                        const std = parseFloat(value) || 0;
-                        // Parent: show average of child Std Prc; append (1) when children have different values.
-                        // Red when any child is missing Std Prc.
-                        if (rowData.is_parent_summary) {
-                            const missing = !!rowData.amazon_standard_price_missing;
-                            const mixed = !!rowData.amazon_standard_price_mixed;
-                            const color = missing ? '#dc3545' : 'inherit';
-                            if (!value || std <= 0) {
-                                if (!missing) return '';
-                                return '<span style="font-weight:600;color:#dc3545;" title="One or more children missing Std Prc">—</span>';
-                            }
-                            let tip = 'Avg of child Std Prc $' + std.toFixed(2);
-                            if (missing) tip += ' — one or more children missing Std Prc';
-                            else if (mixed) tip += ' — children have different Std Prc';
-                            return '<span style="font-weight:600;color:' + color + ';" title="' + tip.replace(/"/g, '&quot;') + '">$'
-                                + std.toFixed(2)
-                                + (mixed ? ' <span style="font-weight:500;color:' + (missing ? '#dc3545' : '#6c757d') + ';">(1)</span>' : '')
-                                + '</span>';
-                        }
-                        const currentPrice = parseFloat(rowData.amazon_price) || 0;
-                        if (!value || std <= 0) return '';
-                        const sku = rowData.sku || '';
-                        // Hold (Std Prc = Amazon price): show price only — no yellow dot
-                        if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="font-weight:600;" title="Hold (matches Amz price) — Std Prc">$'
-                                + std.toFixed(2) + '</span>';
-                        }
-                        const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
-                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                            dot + ('$' + std.toFixed(2)) + '</span>';
                     }
                 },
                 {
