@@ -37,6 +37,8 @@ use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonCompetitorAsin;
 use App\Models\FbaPrice;
 use App\Models\FbaTable;
+use App\Services\AmazonCvrCpnAutoPushService;
+use App\Services\AmazonDilPrmtAutoPushService;
 use App\Services\AmazonLivePriceFetcher;
 use App\Services\FbaInventoryService;
 use App\Services\LmpSkuGroupService;
@@ -2260,6 +2262,96 @@ class OverallAmazonController extends Controller
             'success' => true,
             'message' => 'Status updated successfully',
             'status' => $status
+        ]);
+    }
+
+    /**
+     * Dil vs PRMT → save SPRICE → push Amazon Listings API (only changed prices).
+     * Body: { skus?: string[], dry_run?: bool, sleep_ms?: int }
+     * Empty/missing skus = all listed candidates (same as cron).
+     */
+    public function pushAmazonDilPrmt(Request $request, AmazonDilPrmtAutoPushService $service)
+    {
+        @ini_set('max_execution_time', '0');
+        @set_time_limit(0);
+
+        $dryRun = $request->boolean('dry_run');
+        $sleepMs = max(0, (int) $request->input('sleep_ms', 250));
+        $skusIn = $request->input('skus');
+        $onlySkus = null;
+        if (is_array($skusIn) && $skusIn !== []) {
+            $onlySkus = array_values(array_filter(array_map(
+                static fn ($s) => strtoupper(trim((string) $s)),
+                $skusIn
+            )));
+        }
+
+        $summary = $service->run(
+            dryRun: $dryRun,
+            skipPush: $dryRun,
+            limit: null,
+            sleepMs: $sleepMs,
+            onlySkus: $onlySkus,
+            logger: null
+        );
+
+        $stats = $summary['stats'] ?? [];
+
+        return response()->json([
+            'success' => true,
+            'message' => sprintf(
+                'Dil vs PRMT: applied %d, pushed %d, unchanged %d, failed %d',
+                (int) ($stats['applied'] ?? 0),
+                (int) ($stats['pushed'] ?? 0),
+                (int) ($stats['skipped_unchanged'] ?? 0),
+                (int) ($stats['push_failed'] ?? 0)
+            ),
+            'stats' => $stats,
+        ]);
+    }
+
+    /**
+     * Push CPN%: CVR vs CPN rules → snap to Amazon coupons 5%/10% (1/day) → Listings our_price.
+     * Empty/missing skus = all listed candidates (same as cron). Only changed prices are pushed.
+     */
+    public function pushAmazonCvrCpn(Request $request, AmazonCvrCpnAutoPushService $service)
+    {
+        @ini_set('max_execution_time', '0');
+        @set_time_limit(0);
+
+        $dryRun = $request->boolean('dry_run');
+        $sleepMs = max(0, (int) $request->input('sleep_ms', 250));
+        $skusIn = $request->input('skus');
+        $onlySkus = null;
+        if (is_array($skusIn) && $skusIn !== []) {
+            $onlySkus = array_values(array_filter(array_map(
+                static fn ($s) => strtoupper(trim((string) $s)),
+                $skusIn
+            )));
+        }
+
+        $summary = $service->run(
+            dryRun: $dryRun,
+            skipPush: $dryRun,
+            limit: null,
+            sleepMs: $sleepMs,
+            onlySkus: $onlySkus,
+            logger: null
+        );
+
+        $stats = $summary['stats'] ?? [];
+
+        return response()->json([
+            'success' => true,
+            'message' => sprintf(
+                'CVR vs CPN: applied %d, pushed %d, unchanged %d, 1/day skipped %d, failed %d',
+                (int) ($stats['applied'] ?? 0),
+                (int) ($stats['pushed'] ?? 0),
+                (int) ($stats['skipped_unchanged'] ?? 0),
+                (int) ($stats['skipped_one_per_day'] ?? 0),
+                (int) ($stats['push_failed'] ?? 0)
+            ),
+            'stats' => $stats,
         ]);
     }
 

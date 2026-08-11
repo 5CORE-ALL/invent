@@ -11,14 +11,32 @@ class CronExecutionLogRepository
 {
     public function createRunning(string $jobName, ?string $command = null): CronExecutionLog
     {
-        return CronExecutionLog::create([
+        $attrs = [
             'job_name' => $jobName,
             'command' => $command,
             'status' => CronExecutionLog::STATUS_RUNNING,
             'started_at' => now(),
             'execution_server' => gethostname() ?: php_uname('n'),
             'memory_usage' => $this->memoryUsage(),
-        ]);
+        ];
+
+        try {
+            return CronExecutionLog::create($attrs);
+        } catch (\Throwable $e) {
+            // Local/prod schemas sometimes lack AUTO_INCREMENT on id — assign next id.
+            if (! str_contains($e->getMessage(), "Field 'id' doesn't have a default value")) {
+                throw $e;
+            }
+
+            return DB::transaction(function () use ($attrs) {
+                $nextId = ((int) (DB::table('cron_execution_logs')->lockForUpdate()->max('id') ?? 0)) + 1;
+                $log = new CronExecutionLog($attrs);
+                $log->id = $nextId;
+                $log->save();
+
+                return $log;
+            });
+        }
     }
 
     public function find(int $id): ?CronExecutionLog

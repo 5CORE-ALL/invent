@@ -18,6 +18,8 @@
         /* Match ROI% / GPFT% inputs to the S PRC dropdown width */
         #amazon-filter-bar #sprice-filter { width: 90px !important; }
 
+        @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'css'])
+
         /* Give room between items without inflating control height */
         #amazon-filter-bar { gap: 8px 10px !important; }
         #summary-stats {
@@ -120,11 +122,22 @@
             }
         }
 
-        /* Image column hover preview */
+        /* Image column hover preview — 0.4× natural size */
         #image-hover-preview {
             transition: opacity 0.2s ease;
             pointer-events: auto;
             z-index: 10050;
+            max-width: min(40vw, 420px);
+            max-height: min(40vh, 420px);
+            overflow: hidden;
+        }
+        #image-hover-preview img {
+            display: block;
+            width: auto;
+            height: auto;
+            max-width: 100%;
+            max-height: min(40vh, 420px);
+            object-fit: contain;
         }
 
         .tabulator-col .tabulator-col-sorter {
@@ -708,6 +721,9 @@
                         </button>
                     </div>
 
+                    {{-- Dil vs PRMT / CVR vs CPN — same rules store as /pricing-errors-fix --}}
+                    @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'buttons'])
+
                     {{-- Target ROI% bulk control — back-solves S PRC so the Sroi column = Target ROI%. --}}
                     {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / 0.80  (same 0.80 take-home as Sroi / GROI%) --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
@@ -865,10 +881,6 @@
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge fs-6 p-2" id="total-qty-sold-badge" style="background-color: #20c997; color: black; font-weight: bold;" title="Total Amz units sold in the last 30 days from real Amz orders (Pacific, through yesterday) — same source as /amazon/daily-sales">Qty: {{ number_format((int) ($amazonUnitsSoldL30 ?? 0)) }}</span>
                         <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0%</span>
-
-                        <!-- Mapping / Listing Badges (Clickable filter — same logic as /map-issues) -->
-                        <span class="badge bg-secondary fs-6 p-2" id="nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter N Map (listed, REQ, INV>0, INV vs Amz stock mismatch)">N Map: <span id="nmap-count">0</span></span>
-                        <span class="badge bg-secondary fs-6 p-2" id="ml-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter ML — Missing Listing (INV>0, not listed on Amz, REQ)">ML: <span id="ml-count">0</span></span>
 
                         <!-- Sold Filter Badges (Clickable + Hover for chart) -->
                         <span class="badge bg-success fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="all" data-metric="sold_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
@@ -1592,6 +1604,8 @@
         </div>
     </div>
 
+    @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'modals'])
+
 @endsection
 
 @section('script-bottom')
@@ -1616,18 +1630,16 @@
         let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
         let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
         let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
-        let missingAmazonFilterActive = false;   // Track Missing L (all) — header dot
         let missingAmazonFbaFilterActive = false;    // Track Missing L FBA filter
         let missingAmazonNonFbaFilterActive = false; // Track Missing M FBM (non-FBA listing) filter
-        let missingLAmzFilterActive = false;         // Track Missing L (all) — same as /map-issues
-        let nMapFilterActive = false;                // Track N Map (mapping mismatch) badge filter
-        let mlFilterActive = false;                  // Track ML (Missing Listing) badge filter
 
         // Escape string for safe use in HTML attribute (fixes SKUs with " e.g. WF 8"-890 1PC)
         function escAttr(s) {
             if (s == null) return '';
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
+
+        @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'script'])
 
         /** POST to forecast_analysis via same endpoint as Forecast Analysis (column NR → nr). */
         function amazonUpdateForecastNrp(data, onSuccess, onFail) {
@@ -1694,46 +1706,6 @@
             if (fbaFlag === 1 || fbaFlag === '1' || fbaFlag === true) return true;
             const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').toUpperCase();
             return sku.indexOf('FBA') !== -1;
-        }
-
-        /** Missing L — same rule as /map-issues: not listed on Amazon, REQ, INV > 0, non-parent (FBA + FBM). */
-        function isAmazonMissingL(rowData) {
-            if (!rowData) return false;
-            if (rowData.is_parent_summary === true || rowData.is_parent_summary === 1) return false;
-            const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').trim().toUpperCase();
-            if (sku.indexOf('PARENT ') === 0 || sku === 'PARENT') return false;
-            // REQ by default — only exclude rows explicitly flagged NR/NRL (matches /map-issues isReq()).
-            const nr = String(rowData.NR || '').trim().toUpperCase();
-            if (nr === 'NR' || nr === 'NRL') return false;
-            const inv = parseFloat(rowData['INV'] || 0) || 0;
-            if (inv <= 0) return false;
-            // "Not listed on Amazon" = no live price (price <= 0), same rule as Reverb (RV Price <= 0).
-            const price = parseFloat(rowData['price'] || 0) || 0;
-            return price <= 0;
-        }
-
-        /**
-         * Missing M / N Map — same rule as /map-issues N Map (mapping mismatch):
-         * listed on Amazon (has price), REQ, INV > 0, INV_AMZ > 0, non-FBA, and INV vs INV_AMZ
-         * is OUTSIDE the map tolerance.
-         */
-        function isAmazonMissingM(rowData) {
-            if (!rowData) return false;
-            if (rowData.is_parent_summary === true || rowData.is_parent_summary === 1) return false;
-            const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').trim().toUpperCase();
-            if (sku.indexOf('PARENT ') === 0 || sku === 'PARENT') return false;
-            const nr = String(rowData.NR || '').trim().toUpperCase();
-            if (nr !== 'REQ') return false;
-            // Listed on Amazon: not flagged missing and has a live price.
-            const isMissingAmazon = rowData.is_missing_amazon || false;
-            if (isMissingAmazon) return false;
-            const price = parseFloat(rowData['price'] || 0) || 0;
-            if (price <= 0) return false;
-            const inv = parseFloat(rowData['INV'] || 0) || 0;
-            if (inv <= 0) return false;
-            const invAmz = parseFloat(rowData['INV_AMZ'] || 0) || 0;
-            if (invAmz <= 0) return false; // same as /map-issues: both sides must have stock
-            return !amazonRowIsFba(rowData) && !amazonInvWithinMapTolerance(inv, invAmz);
         }
 
         /** Parent group key: Parent/parent field, or "PARENT xxx" pseudo-SKU on summary rows (matches table filters). */
@@ -3127,6 +3099,11 @@
             // Initialize charts
             initSkuMetricsChart();
 
+            // Dil vs PRMT / CVR vs CPN — same rules store as /pricing-errors-fix
+            if (typeof initAmazonPefPromoUi === 'function') {
+                initAmazonPefPromoUi();
+            }
+
             // Sold filter badge click handlers (toggle: click again returns to "show all")
             $('.sold-filter-badge').on('click', function() {
                 const filter = $(this).data('filter');
@@ -3160,36 +3137,6 @@
                 }
                 
                 // Re-apply filters
-                applyFilters();
-            });
-
-            // Sync N Map / ML badge colors + the Miss M / Miss L columns with the active filter state.
-            // Activating a badge reveals its column (even if hidden via the Col dropdown); turning it
-            // off hides the column again.
-            function syncMapListingBadges() {
-                $('#nmap-count-badge').toggleClass('bg-secondary', !nMapFilterActive).toggleClass('bg-danger', nMapFilterActive);
-                $('#ml-count-badge').toggleClass('bg-secondary', !mlFilterActive).toggleClass('bg-danger', mlFilterActive);
-                if (table) {
-                    try { nMapFilterActive ? table.showColumn('inv_map') : table.hideColumn('inv_map'); } catch (e) {}
-                    try { mlFilterActive ? table.showColumn('is_missing') : table.hideColumn('is_missing'); } catch (e) {}
-                    // Persist so the show/hide survives a page refresh
-                    try { saveColumnVisibilityToServer(); } catch (e) {}
-                }
-            }
-
-            // N Map badge — toggle filter to mapping-mismatch rows (same logic as /map-issues N Map)
-            $('#nmap-count-badge').on('click', function() {
-                nMapFilterActive = !nMapFilterActive;
-                if (nMapFilterActive) { mlFilterActive = false; }
-                syncMapListingBadges();
-                applyFilters();
-            });
-
-            // ML badge — toggle filter to Missing Listing rows (not listed on Amazon, REQ, INV > 0)
-            $('#ml-count-badge').on('click', function() {
-                mlFilterActive = !mlFilterActive;
-                if (mlFilterActive) { nMapFilterActive = false; }
-                syncMapListingBadges();
                 applyFilters();
             });
 
@@ -6396,10 +6343,20 @@
                 wrap.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
                 wrap.style.borderRadius = '6px';
                 const big = document.createElement('img');
-                big.style.maxWidth = '350px';
-                big.style.maxHeight = '350px';
                 big.style.display = 'block';
                 big.alt = '';
+                // Size to 0.4× natural dimensions (capped so huge assets stay usable)
+                big.onload = function() {
+                    const nw = big.naturalWidth || 0;
+                    const nh = big.naturalHeight || 0;
+                    if (nw > 0 && nh > 0) {
+                        const w = Math.max(1, Math.round(nw * 0.4));
+                        const h = Math.max(1, Math.round(nh * 0.4));
+                        big.style.width = w + 'px';
+                        big.style.height = h + 'px';
+                    }
+                    amzClampPreviewPosition(wrap, clientX, clientY);
+                };
                 big.src = fullUrl;
                 wrap.appendChild(big);
                 amzEnsureImagePreviewListeners(wrap);
@@ -6780,69 +6737,6 @@
                         cellClick: function(e, cell) { e.stopPropagation(); }
                     },
                     {
-                        title: "Miss L <span class='missing-l-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (Missing L) rows'></span>",
-                        field: "is_missing",
-                        hozAlign: "center",
-                        width: 65,
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            
-                            // Empty for parent rows
-                            if (rowData.is_parent_summary) return '';
-                            
-                            // Missing L: same rule as the filter/count (REQ + INV>0 + price<=0, like Reverb)
-                            if (isAmazonMissingL(rowData)) {
-                                return `<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>`;
-                            }
-                            
-                            return '';
-                        }
-                    },
-
-                    {
-                        title: "Miss M <span class='missing-m-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (mismatched) rows'></span>",
-                        field: "inv_map",
-                        hozAlign: "center",
-                        width: 60,
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            
-                            // Empty for parent rows
-                            if (rowData.is_parent_summary) return '';
-                            
-                            const inv = parseFloat(rowData.INV) || 0;
-                            const nrValue = rowData.NR || '';
-                            const isMissingAmazon = rowData.is_missing_amazon || false;
-                            const rowPrice = parseFloat(rowData.price || 0);
-                            
-                            // Only show for INV > 0 and NR = REQ
-                            if (inv <= 0 || nrValue !== 'REQ') return '';
-                            
-                            // If item is missing from Amazon or has blank/zero price, leave Map blank
-                            if (isMissingAmazon || rowPrice <= 0) return '';
-                            
-                            const invAmz = parseFloat(rowData.INV_AMZ) || 0;
-                            // Same as /map-issues: both sides must have stock to be Map / Missing M.
-                            if (invAmz <= 0) return '';
-                            const difference = Math.abs(inv - invAmz);
-                            
-                            if (amazonInvWithinMapTolerance(inv, invAmz)) {
-                                // Within 3% of Shopify INV — treat as mapped (green)
-                                return `<span style="font-size: 20px; color: #28a745;">🟢</span>`;
-                            }
-                            // FBA: inventory mismatch vs Shopify is not shown in Missing M (excluded from badge counts)
-                            if (amazonRowIsFba(rowData)) {
-                                return '';
-                            }
-                            return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                                    <span style="font-size: 16px; color: #dc3545;">🔴</span>
-                                    <span style="font-size: 11px; color: #dc3545; font-weight: 600;">${Math.round(difference)}</span>
-                                </div>`;
-                        }
-                    },
-                    {
                         title: "Reviews",
                         field: "amz_avg_rating",
                         hozAlign: "center",
@@ -7117,6 +7011,38 @@
                     },
 
                     {
+                        title: "Std Prc",
+                        field: "STANDARD_PRICE",
+                        hozAlign: "center",
+                        headerTooltip: "Standard Price (Std Prc) — manual only (LMP modal / Std Prc editor). Blank unless filled when LMP cannot be determined. Dot vs Amz price.",
+                        editor: "input",
+                        width: 70,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const value = cell.getValue();
+                            const currentPrice = parseFloat(rowData.price) || 0;
+                            const std = parseFloat(value) || 0;
+                            // SP stays blank unless Standard Price was filled manually
+                            if (!value || std <= 0) return '';
+                            const sku = rowData['(Child) sku'] || '';
+                            const dot = amazonSpriceChangeDotHtml(std, currentPrice, sku);
+                            if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
+                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                                    dot + '</span>';
+                            }
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                                dot + ('$' + std.toFixed(2)) + '</span>';
+                        },
+                        cellClick: function(e) {
+                            if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
+                                e.stopPropagation();
+                                return false;
+                            }
+                        }
+                    },
+
+                    {
                         title: "Price",
                         field: "price",
                         hozAlign: "center",
@@ -7173,6 +7099,64 @@
                         sorter: "number",
                         width: 70
                     },
+
+                    {
+                        title: "LMP",
+                        field: "lmp_price",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+
+                            if (window.ParentExpand) {
+                                const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, {
+                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined
+                                });
+                                if (avgHtml !== null) return avgHtml;
+                            }
+                            if (rowData.is_parent_summary) return '';
+
+                            const lmpPrice = cell.getValue();
+                            const lmpEntries = rowData.lmp_entries || [];
+                            const sku = rowData['(Child) sku'];
+                            const totalCompetitors = rowData.lmp_entries_total || 0;
+                            const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
+                            const linkedSkusAttr = escAttr(JSON.stringify(linkedSkus));
+
+                            if (!lmpPrice && totalCompetitors === 0) {
+                                return '<span style="color: #999;">N/A</span>';
+                            }
+
+                            let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
+                            
+                            // Show lowest price OUTSIDE modal (incl. shipping if applied)
+                            if (lmpPrice) {
+                                const base = parseFloat(lmpPrice) || 0;
+                                const finalPrice = lmpWithShipping(rowData);
+                                const shipCost = finalPrice - base;
+                                const priceFormatted = '$' + finalPrice.toFixed(2);
+                                const currentPrice = parseFloat(rowData.price || 0);
+                                const priceColor = (finalPrice < currentPrice) ? '#dc3545' : '#28a745';
+
+                                const shipTip = shipCost > 0 ? ` title="$${base.toFixed(2)} + $${shipCost.toFixed(2)} ship"` : '';
+                                html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;"${shipTip}>${priceFormatted}</span>`;
+                            }
+                            
+                            // Show link to open modal with all competitors
+                            if (totalCompetitors > 0) {
+                                html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
+                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
+                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
+                                </a>`;
+                            }
+                            
+                            html += '</div>';
+                            return html;
+                        },
+                        width: 100
+                    },
+
+                    // PRMT % / CPN % / Appr / DSC % — same model + rules as /pricing-errors-fix
+                    ...amazonPefPromoColumns(),
 
                     {
                         title: "FBA<br> prc",
@@ -7267,91 +7251,6 @@
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
-                    },
-                    {
-                        title: "Std Prc",
-                        field: "STANDARD_PRICE",
-                        hozAlign: "center",
-                        headerTooltip: "Standard Price (Std Prc) — manual only (LMP modal / Std Prc editor). Blank unless filled when LMP cannot be determined. Dot vs Amz price.",
-                        editor: "input",
-                        width: 70,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            const value = cell.getValue();
-                            const currentPrice = parseFloat(rowData.price) || 0;
-                            const std = parseFloat(value) || 0;
-                            // SP stays blank unless Standard Price was filled manually
-                            if (!value || std <= 0) return '';
-                            const sku = rowData['(Child) sku'] || '';
-                            const dot = amazonSpriceChangeDotHtml(std, currentPrice, sku);
-                            if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
-                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                    dot + '</span>';
-                            }
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + '</span>';
-                        },
-                        cellClick: function(e) {
-                            if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
-                                e.stopPropagation();
-                                return false;
-                            }
-                        }
-                    },
-                    {
-                        title: "LMP",
-                        field: "lmp_price",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-
-                            if (window.ParentExpand) {
-                                const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, {
-                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined
-                                });
-                                if (avgHtml !== null) return avgHtml;
-                            }
-                            if (rowData.is_parent_summary) return '';
-
-                            const lmpPrice = cell.getValue();
-                            const lmpEntries = rowData.lmp_entries || [];
-                            const sku = rowData['(Child) sku'];
-                            const totalCompetitors = rowData.lmp_entries_total || 0;
-                            const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
-                            const linkedSkusAttr = escAttr(JSON.stringify(linkedSkus));
-
-                            if (!lmpPrice && totalCompetitors === 0) {
-                                return '<span style="color: #999;">N/A</span>';
-                            }
-
-                            let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
-                            
-                            // Show lowest price OUTSIDE modal (incl. shipping if applied)
-                            if (lmpPrice) {
-                                const base = parseFloat(lmpPrice) || 0;
-                                const finalPrice = lmpWithShipping(rowData);
-                                const shipCost = finalPrice - base;
-                                const priceFormatted = '$' + finalPrice.toFixed(2);
-                                const currentPrice = parseFloat(rowData.price || 0);
-                                const priceColor = (finalPrice < currentPrice) ? '#dc3545' : '#28a745';
-
-                                const shipTip = shipCost > 0 ? ` title="$${base.toFixed(2)} + $${shipCost.toFixed(2)} ship"` : '';
-                                html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;"${shipTip}>${priceFormatted}</span>`;
-                            }
-                            
-                            // Show link to open modal with all competitors
-                            if (totalCompetitors > 0) {
-                                html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
-                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
-                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
-                                </a>`;
-                            }
-                            
-                            html += '</div>';
-                            return html;
-                        },
-                        width: 100
                     },
                     {
                         title: "Sku Link LMP",
@@ -8740,33 +8639,6 @@
                         return !!(data.is_missing_amazon && !rowIsFba(data) && nr !== 'NR');
                     });
                 }
-                // Missing L filter — all (header dot): same Reverb-style rule as the column 'M' and badge (REQ + INV>0 + price<=0).
-                if (missingAmazonFilterActive) {
-                    table.addFilter(function(data) {
-                        return isAmazonMissingL(data);
-                    });
-                }
-                // Missing L (all) badge — same rule as /map-issues: not listed, REQ, INV > 0 (FBA + FBM).
-                if (missingLAmzFilterActive) {
-                    table.addFilter(function(data) {
-                        return isAmazonMissingL(data);
-                    });
-                }
-
-                // N Map badge — mapping mismatch (same as /map-issues N Map)
-                if (nMapFilterActive) {
-                    table.addFilter(function(data) {
-                        return isAmazonMissingM(data);
-                    });
-                }
-
-                // ML badge — Missing Listing (not listed on Amazon, REQ, INV > 0)
-                if (mlFilterActive) {
-                    table.addFilter(function(data) {
-                        return isAmazonMissingL(data);
-                    });
-                }
-
                 updateCalcValues();
                 updateSummary();
                 amazonTabulatorFinalizeFilterApply(sortSnapshot);
@@ -8788,57 +8660,6 @@
                 $('#nrl-filter').val(current === 'nr' ? 'all' : 'nr');
                 applyFilters();
             });
-
-            // Missing L header red dot: click to show all Missing L rows (FBA + Non-FBA); click again to show all
-            $(document).on('click', '.missing-l-header-red-dot', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                missingAmazonFilterActive = !missingAmazonFilterActive;
-                if (missingAmazonFilterActive) {
-                    missingAmazonFbaFilterActive = false;
-                    missingAmazonNonFbaFilterActive = false;
-                    mapFilterActive = 'all';
-                    $('.map-filter-badge').each(function() {
-                        var badgeFilter = $(this).data('filter');
-                        if (badgeFilter === 'mapped') $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
-                        else $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                    });
-                    $('#missing-amazon-fba-badge').removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
-                    $('#missing-amazon-nonfba-badge').removeClass('bg-info').addClass('bg-success').css('color', 'white');
-                }
-                applyFilters();
-            });
-
-            // Missing M header red dot: click to show only red (mismatched) rows; click again to show all
-            $(document).on('click', '.missing-m-header-red-dot', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                if (mapFilterActive === 'nmapped') {
-                    mapFilterActive = 'all';
-                    $('.map-filter-badge').each(function() {
-                        var badgeFilter = $(this).data('filter');
-                        if (badgeFilter === 'mapped') {
-                            $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
-                        } else {
-                            $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                        }
-                    });
-                } else {
-                    mapFilterActive = 'nmapped';
-                    $('.map-filter-badge').each(function() {
-                        var badgeFilter = $(this).data('filter');
-                        if (badgeFilter === 'nmapped') {
-                            $(this).removeClass('bg-success bg-danger').addClass('bg-warning').css('color', 'black');
-                        } else if (badgeFilter === 'mapped') {
-                            $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
-                        } else {
-                            $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                        }
-                    });
-                }
-                applyFilters();
-            });
-
 
             // Update PFT% and ROI% calc values (only for INV > 0)
             function updateCalcValues() {
@@ -9022,17 +8843,6 @@
                 }).length;
                 $('#rows-count-badge').text('Row: ' + visibleRowCount.toLocaleString());
 
-                // N Map (mapping mismatch) + ML (Missing Listing) counts — over the FULL dataset
-                // so they stay stable regardless of active filters (same as /map-issues).
-                let nMapCount = 0;
-                let mlCount = 0;
-                table.getData().forEach(function(row) {
-                    if (isAmazonMissingM(row)) nMapCount++;
-                    if (isAmazonMissingL(row)) mlCount++;
-                });
-                $('#nmap-count').text(nMapCount.toLocaleString());
-                $('#ml-count').text(mlCount.toLocaleString());
-                
                 // Ads% (from /all-marketplace-master, Amazon channel).
                 const amazonAdsPercent = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
 
@@ -9128,7 +8938,7 @@
 
                 // Basic — identity, CVR, inventory, listing links, dil/views
                 if (
-                    /^(row_select|parent|image_path|\(child\) sku|cvr_l60|cvr_l45|cvr_l30|nr|nrp|is_missing|inv_map|amz_avg_rating|asin|seller_asin_link|inv|inv_amz|fba_quantity|l30|e dil%|a_l30|a dil %|nrl|sess30)$/i.test(f) ||
+                    /^(row_select|parent|image_path|\(child\) sku|cvr_l60|cvr_l45|cvr_l30|nr|nrp|amz_avg_rating|asin|seller_asin_link|inv|inv_amz|fba_quantity|l30|e dil%|a_l30|a dil %|nrl|sess30)$/i.test(f) ||
                     /\b(parent|image|sku|cvr|nr\/?rl|nrp|miss|reviews?|buyer|seller|inv|fba|ov\s*l30|dil|a\s*l30|nrl|view)\b/i.test(t)
                 ) {
                     return 'basic';

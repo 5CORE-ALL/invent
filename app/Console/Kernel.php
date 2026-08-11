@@ -642,6 +642,26 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Amazon Dil vs PRMT → Listings our_price (4:00 AM America/New_York = EST/EDT).
+        // Uses shared pef_dil_vs_prmt rules; pushes only SKUs whose target price changed.
+        $schedule->command('amazon:dil-prmt-auto-push')
+            ->dailyAt('04:00')
+            ->timezone('America/New_York')
+            ->name('amazon-dil-prmt-auto-push-4am-et')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Amazon CVR vs CPN → 5%/10% coupons (1/day) → Listings our_price (4:05 AM ET).
+        // Uses shared pef_cvr_vs_cpn rules; pushes only SKUs whose target price/tier changed.
+        $schedule->command('amazon:cvr-cpn-auto-push')
+            ->dailyAt('04:05')
+            ->timezone('America/New_York')
+            ->name('amazon-cvr-cpn-auto-push-4am-et')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         
         $ist($schedule->command('app:fetch-ebay-table-data')
             ->dailyAt('19:25')

@@ -49,33 +49,40 @@ trait MonitorsCronExecution
             return self::FAILURE;
         }
 
-        $monitor = $this->cronMonitor();
-        $ctx = $monitor->start($jobName, $commandName);
-        $ctx->lockKey = $lockKey;
-        $ctx->cpuStart = $ctx->cpuStart ?: (microtime(true) * 1000);
-
-        if ($ctx->log && $lockKey) {
-            $ctx->log->update(['lock_key' => $lockKey, 'pid' => getmypid() ?: null]);
-        }
-
-        if ($ctx->resumeFrom) {
-            $this->warn("Resuming from offset {$ctx->resumeFrom}");
-        }
-
         try {
-            $retry = app(IntelligentRetryService::class);
-            $exitCode = (int) $retry->runWithRetry(
-                $ctx,
-                fn () => $callback($ctx),
-                $jobName
-            );
-            $log = $monitor->finish();
-            $this->renderMonitorSummary($log);
+            $monitor = $this->cronMonitor();
+            $ctx = $monitor->start($jobName, $commandName);
+            $ctx->lockKey = $lockKey;
+            $ctx->cpuStart = $ctx->cpuStart ?: (microtime(true) * 1000);
 
-            return $this->mapStatusToExitCode($log, $exitCode);
+            if ($ctx->log && $lockKey) {
+                $ctx->log->update(['lock_key' => $lockKey, 'pid' => getmypid() ?: null]);
+            }
+
+            if ($ctx->resumeFrom) {
+                $this->warn("Resuming from offset {$ctx->resumeFrom}");
+            }
+
+            try {
+                $retry = app(IntelligentRetryService::class);
+                $exitCode = (int) $retry->runWithRetry(
+                    $ctx,
+                    fn () => $callback($ctx),
+                    $jobName
+                );
+                $log = $monitor->finish();
+                $this->renderMonitorSummary($log);
+
+                return $this->mapStatusToExitCode($log, $exitCode);
+            } catch (Throwable $e) {
+                $log = $monitor->finish($e);
+                $this->renderMonitorSummary($log);
+                $this->error($e->getMessage());
+
+                return self::FAILURE;
+            }
         } catch (Throwable $e) {
-            $log = $monitor->finish($e);
-            $this->renderMonitorSummary($log);
+            // start()/createRunning failed before finish() — still free the lock
             $this->error($e->getMessage());
 
             return self::FAILURE;
