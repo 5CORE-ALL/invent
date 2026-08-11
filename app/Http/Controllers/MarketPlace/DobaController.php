@@ -30,7 +30,76 @@ class DobaController extends Controller
     /** Normalized match for doba_daily_data.order_type (case-insensitive in SQL). */
     private const DOBA_DAILY_ORDER_TYPE_PICKUP_PREPAID_LABEL = 'pickup with a prepaid label';
 
+    /** Seller-console edit URL: https://seller.doba.com/ds/goods/save?goodsId=...&catId=... */
+    private const DOBA_SELLER_GOODS_SAVE_URL = 'https://seller.doba.com/ds/goods/save';
+
     protected $apiController;
+
+    /**
+     * Build Doba seller edit URL from goodsId + catId.
+     */
+    private function buildDobaSellerLink(?string $goodsId, ?string $catId): string
+    {
+        $goodsId = trim((string) $goodsId);
+        $catId = trim((string) $catId);
+        if ($goodsId === '' || $catId === '') {
+            return '';
+        }
+
+        return self::DOBA_SELLER_GOODS_SAVE_URL
+            . '?goodsId=' . rawurlencode($goodsId)
+            . '&catId=' . rawurlencode($catId);
+    }
+
+    /**
+     * Extract goodsId / catId from a seller.doba.com goods/save URL.
+     *
+     * @return array{0:?string,1:?string}
+     */
+    private function parseDobaSellerLinkIds(?string $url): array
+    {
+        $url = trim((string) $url);
+        if ($url === '') {
+            return [null, null];
+        }
+
+        $goodsId = null;
+        $catId = null;
+        if (preg_match('/[?&]goodsId=([^&]+)/i', $url, $m)) {
+            $goodsId = rawurldecode($m[1]);
+        }
+        if (preg_match('/[?&]catId=([^&]+)/i', $url, $m)) {
+            $catId = rawurldecode($m[1]);
+        }
+
+        return [
+            ($goodsId !== null && $goodsId !== '') ? $goodsId : null,
+            ($catId !== null && $catId !== '') ? $catId : null,
+        ];
+    }
+
+    /**
+     * Persist goods_id / cat_id on doba_metrics when known (from link save or API).
+     */
+    private function persistDobaGoodsCatIds(string $sku, ?string $goodsId, ?string $catId): void
+    {
+        $goodsId = trim((string) $goodsId);
+        $catId = trim((string) $catId);
+        if ($goodsId === '' || $catId === '') {
+            return;
+        }
+
+        $metric = DobaMetric::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+            ->first();
+        if (! $metric) {
+            return;
+        }
+
+        $metric->goods_id = $goodsId;
+        $metric->cat_id = $catId;
+        $metric->save();
+    }
 
     public function __construct(ApiController $apiController)
     {
@@ -389,6 +458,9 @@ class DobaController extends Controller
             $row['SPFT'] = null;
             $row['SROI'] = null;
             $row['S_SELF_PICK'] = null;
+            $row['PROMO'] = null;
+            $row['PROMO_PCT'] = null;
+            $row['PROMO_PU'] = null;
             $row['PUSH_STATUS'] = null;
             $row['PUSH_STATUS_UPDATED_AT'] = null;
             $row['Listed'] = null;
@@ -427,14 +499,18 @@ class DobaController extends Controller
                     $row['SPFT'] = $rawSprice['SPFT'] ?? null;
                     $row['SROI'] = $rawSprice['SROI'] ?? null;
                     $row['S_SELF_PICK'] = $rawSprice['S_SELF_PICK'] ?? null;
+                    $row['PROMO'] = $rawSprice['PROMO'] ?? null;
+                    $row['PROMO_PCT'] = $rawSprice['PROMO_PCT'] ?? null;
+                    $row['PROMO_PU'] = $rawSprice['PROMO_PU'] ?? null;
                     $row['PUSH_STATUS'] = $rawSprice['PUSH_STATUS'] ?? null;
                     $row['PUSH_STATUS_UPDATED_AT'] = $rawSprice['PUSH_STATUS_UPDATED_AT'] ?? null;
                 }
             }
 
-            // Buyer / Seller links
+            // Buyer / Seller links — Seller is auto-built from goodsId+catId when available:
+            // https://seller.doba.com/ds/goods/save?goodsId={goodsId}&catId={catId}
             $bLink = '';
-            $sLink = '';
+            $storedSellerLink = '';
             if (isset($linkValues[$normSku])) {
                 $linkRaw = $linkValues[$normSku];
                 if (!is_array($linkRaw)) {
@@ -442,9 +518,27 @@ class DobaController extends Controller
                 }
                 if (is_array($linkRaw)) {
                     $bLink = $linkRaw['buyer_link'] ?? '';
-                    $sLink = $linkRaw['seller_link'] ?? '';
+                    $storedSellerLink = trim((string) ($linkRaw['seller_link'] ?? ''));
                 }
             }
+
+            $goodsId = trim((string) ($dobaMetric->goods_id ?? ''));
+            $catId = trim((string) ($dobaMetric->cat_id ?? ''));
+            if (($goodsId === '' || $catId === '') && $storedSellerLink !== '') {
+                [$parsedGoodsId, $parsedCatId] = $this->parseDobaSellerLinkIds($storedSellerLink);
+                if ($goodsId === '' && $parsedGoodsId) {
+                    $goodsId = $parsedGoodsId;
+                }
+                if ($catId === '' && $parsedCatId) {
+                    $catId = $parsedCatId;
+                }
+            }
+
+            $autoSellerLink = $this->buildDobaSellerLink($goodsId, $catId);
+            $sLink = $autoSellerLink !== '' ? $autoSellerLink : $storedSellerLink;
+
+            $row['doba_goods_id'] = $goodsId !== '' ? $goodsId : null;
+            $row['doba_cat_id'] = $catId !== '' ? $catId : null;
             $row['B Link'] = $bLink;
             $row['S Link'] = $sLink;
             $row['raw_data'] = ['B Link' => $bLink, 'S Link' => $sLink];
@@ -488,6 +582,16 @@ class DobaController extends Controller
         $existing = is_array($status->value)
             ? $status->value
             : (json_decode($status->value, true) ?: []);
+
+        // Prefer canonical auto URL when the pasted seller link carries goodsId+catId.
+        if ($sellerLink !== '') {
+            [$goodsId, $catId] = $this->parseDobaSellerLinkIds($sellerLink);
+            $autoSellerLink = $this->buildDobaSellerLink($goodsId, $catId);
+            if ($autoSellerLink !== '') {
+                $sellerLink = $autoSellerLink;
+                $this->persistDobaGoodsCatIds($sku, $goodsId, $catId);
+            }
+        }
 
         $existing['buyer_link'] = $buyerLink !== '' ? $buyerLink : null;
         $existing['seller_link'] = $sellerLink !== '' ? $sellerLink : null;
@@ -591,6 +695,35 @@ class DobaController extends Controller
     public function saveSpriceToDatabase(Request $request)
     {
         return $this->persistSpriceRow($request, DobaDataView::class);
+    }
+
+    /**
+     * Save Promo % into doba_data_view value JSON (with-ship page).
+     * PROMO_PCT is the discount percentage (e.g. 5). Legacy PROMO $ amounts are ignored for display.
+     */
+    public function savePromoToDatabase(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku || !$request->has('promo')) {
+            return response()->json(['error' => 'SKU and promo are required.'], 400);
+        }
+
+        $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
+        $existing = is_array($dataView->value)
+            ? $dataView->value
+            : (json_decode($dataView->value, true) ?: []);
+
+        $pct = $request->input('promo');
+        $merged = array_merge($existing, [
+            'PROMO_PCT' => $pct,
+            // Keep PROMO in sync as % going forward (replaces legacy dollar values)
+            'PROMO' => $pct,
+        ]);
+
+        $dataView->value = $merged;
+        $dataView->save();
+
+        return response()->json(['message' => 'Promo saved successfully.']);
     }
 
     /**

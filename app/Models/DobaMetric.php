@@ -12,6 +12,8 @@ class DobaMetric extends Model
     protected $fillable = [
         'sku',
         'item_id',
+        'goods_id',
+        'cat_id',
         'inventory',
         'quantity_l30',
         'quantity_l60',

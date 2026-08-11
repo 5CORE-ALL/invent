@@ -3381,6 +3381,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/doba/summary-metrics', [DobaController::class, 'getDobaSummaryMetrics']);
     Route::get('/doba/summary-metrics-withoutship', [DobaController::class, 'getDobaSummaryMetricsWithoutShip']);
     Route::post('/doba/save-sprice', [DobaController::class, 'saveSpriceToDatabase'])->name('doba.save-sprice');
+    Route::post('/doba/save-promo', [DobaController::class, 'savePromoToDatabase'])->name('doba.save-promo');
     Route::post('/doba/save-sprice-withoutship', [DobaController::class, 'saveSpriceWithoutShipToDatabase'])->name('doba.save-sprice.withoutship');
     Route::post('/doba/push-price', [DobaController::class, 'pushPriceToDoba'])->name('doba.push-price');
     Route::post('/update-all-doba-skus', [DobaController::class, 'updateAllDobaSkus']);

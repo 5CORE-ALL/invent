@@ -887,6 +887,11 @@ class DobaApiService
             $data = $response['businessData']['data']['dsGoodsDetailResultVOS'];
             if (empty($data)) break;
             foreach ($data as $product) {
+                $goodsId = $product['goodsId'] ?? $product['goods_id'] ?? $product['spuId'] ?? null;
+                $catId = $product['catId'] ?? $product['categoryId'] ?? $product['goodsCatId'] ?? $product['cat_id'] ?? null;
+                $goodsId = is_scalar($goodsId) ? trim((string) $goodsId) : '';
+                $catId = is_scalar($catId) ? trim((string) $catId) : '';
+
                 foreach ($product['skus'] as $sku) {
                     $item = $sku['stocks'][0] ?? null;
 
@@ -896,13 +901,20 @@ class DobaApiService
                     // SKU normalized at write time (strtoupper+trim) to match every reader.
                     $normalizedSku = strtoupper(trim((string) ($sku['skuCode'] ?? '')));
                     if ($normalizedSku === '') continue;
+                    $payload = [
+                        'item_id' => $item['itemNo'],
+                        'anticipated_income' => $item['anticipatedIncome'],
+                        'inventory' => (int) ($item['availableInventory'] ?? 0),
+                    ];
+                    if ($goodsId !== '') {
+                        $payload['goods_id'] = $goodsId;
+                    }
+                    if ($catId !== '') {
+                        $payload['cat_id'] = $catId;
+                    }
                     DobaMetric::updateOrCreate(
                         ['sku' => $normalizedSku],
-                        [
-                            'item_id' => $item['itemNo'],
-                            'anticipated_income' => $item['anticipatedIncome'],
-                            'inventory' => (int) ($item['availableInventory'] ?? 0),
-                        ]
+                        $payload
                     );
                 }
             }
@@ -940,6 +952,11 @@ class DobaApiService
             $data = $response['businessData']['data']['dsGoodsDetailResultVOS'];
             if (empty($data)) break;
             foreach ($data as $product) {
+                $goodsId = $product['goodsId'] ?? $product['goods_id'] ?? $product['spuId'] ?? null;
+                $catId = $product['catId'] ?? $product['categoryId'] ?? $product['goodsCatId'] ?? $product['cat_id'] ?? null;
+                $goodsId = is_scalar($goodsId) ? trim((string) $goodsId) : '';
+                $catId = is_scalar($catId) ? trim((string) $catId) : '';
+
                 foreach ($product['skus'] as $sku) {
                     $item = $sku['stocks'][0] ?? null;
                     if (!$item) continue;
@@ -960,13 +977,20 @@ class DobaApiService
                     // so /doba-tabulator's INV column (which reads doba_metrics.inventory) and
                     // every other consumer of doba_metrics sees fresh data even when this fetch
                     // is triggered from a controller / missing-listing job rather than the cron.
+                    $payload = [
+                        'item_id'            => $item['itemNo'] ?? null,
+                        'anticipated_income' => $item['anticipatedIncome'] ?? null,
+                        'inventory'          => $quantity,
+                    ];
+                    if ($goodsId !== '') {
+                        $payload['goods_id'] = $goodsId;
+                    }
+                    if ($catId !== '') {
+                        $payload['cat_id'] = $catId;
+                    }
                     \App\Models\DobaMetric::updateOrCreate(
                         ['sku' => $itemsku],
-                        [
-                            'item_id'            => $item['itemNo'] ?? null,
-                            'anticipated_income' => $item['anticipatedIncome'] ?? null,
-                            'inventory'          => $quantity,
-                        ]
+                        $payload
                     );
                 }
             }

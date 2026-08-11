@@ -1384,10 +1384,10 @@
                         const lp = parseFloat(rowData.LP_productmaster) || 0;
                         const ship = parseFloat(rowData.Ship_productmaster) || 0;
                         
-                        // Calculate SPFT and SROI
+                        // Calculate SPFT and SROI; S Pick = SPRICE − Ship
                         const spftValue = suggestedPrice > 0 ? ((suggestedPrice * 0.95) - ship - lp) / suggestedPrice * 100 : 0;
                         const sroiValue = lp > 0 ? (((suggestedPrice * 0.95) - ship - lp) / lp) * 100 : 0;
-                        const selfPickValue = suggestedPrice * 0.95;
+                        const selfPickValue = Math.max(0, parseFloat((suggestedPrice - ship).toFixed(2)));
                         
                         // Update row
                         row.update({
@@ -1466,7 +1466,7 @@
                         // Calculate SPFT and SROI
                         const spftValue = suggestedPrice > 0 ? ((suggestedPrice * 0.95) - ship - lp) / suggestedPrice * 100 : 0;
                         const sroiValue = lp > 0 ? (((suggestedPrice * 0.95) - ship - lp) / lp) * 100 : 0;
-                        const selfPickValue = suggestedPrice * 0.95;
+                        const selfPickValue = Math.max(0, parseFloat((suggestedPrice - ship).toFixed(2)));
                         
                         // Update row
                         row.update({
@@ -1860,16 +1860,14 @@
                             
                             // Use PFT_percentage and ROI_percentage from controller (already in percentage form)
                             const npft_pct = Number(item.PFT_percentage) || 0;
-                            const roi_pct = Number(item.ROI_percentage) || 0;
-                            const sold = Number(item['doba L30']) || 0;
-                            const promo = sold === 0 ? price * 0.90 : 0;
-                            const promo_pu = promo - ship;
-
                             // SPFT and SROI calculations using same formula as PFT and ROI
                             const sprice = Number(item.SPRICE) || 0;
                             const spft = sprice > 0 ? ((sprice * 0.95) - ship - lp) / sprice * 100 : 0;
                             const sprofit = sprice > 0 ? (sprice * 0.95) - ship - lp : 0;
                             const sroi = lp > 0 && sprice > 0 ? (((sprice * 0.95) - ship - lp) / lp) * 100 : 0;
+                            // Always: Pick Price = PRICE − Ship; S Pick Price = SPRICE − Ship
+                            const pickPrice = price > 0 ? Math.max(0, parseFloat((price - ship).toFixed(2))) : 0;
+                            const sPickPrice = sprice > 0 ? Math.max(0, parseFloat((sprice - ship).toFixed(2))) : 0;
 
                             return {
                                 sl_no: index + 1,
@@ -1906,8 +1904,6 @@
                                 'S Link': item['S Link'] || '',
                                 NR: item.NR || '',
                                 NPFT_pct: npft_pct,
-                                Promo: promo,
-                                Promo_PU: promo_pu,
                                 missing: (inv > 0 && dobaL30 === 0) ? 1 : 0, // Missing indicator: has inventory but not selling
                                 LP_productmaster: lp,
                                 Ship_productmaster: ship,
@@ -1915,9 +1911,9 @@
                                 spft: item.SPFT || spft,
                                 sprofit: sprofit,
                                 sroi: item.SROI || sroi,
-                                s_self_pick: Number(item.S_SELF_PICK) || 0, // Saved S (PP)
+                                s_self_pick: sPickPrice, // always SPRICE − Ship
                                 s_l30: Number(item.s_l30) || 0,  // S L30 from doba_daily_data
-                                self_pick_price: Number(item.self_pick_price) || 0,
+                                self_pick_price: pickPrice, // always PRICE − Ship
                                 msrp: Number(item.msrp) || 0,
                                 map: Number(item.map) || 0,
                                 push_status: item.PUSH_STATUS || null, // Saved push status from DB
@@ -2165,28 +2161,6 @@
                         }
                     },
                     {
-                        title: "PROMO",
-                        field: "Promo",
-                        width: 80,
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            return `<span style="color: #000; font-weight: bold;">$${value.toFixed(2)}</span>`;
-                        }
-                    },
-                    {
-                        title: "Promo PU",
-                        field: "Promo_PU",
-                        width: 90,
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            return `<span style="color: #000; font-weight: bold;">$${value.toFixed(2)}</span>`;
-                        }
-                    },
-                    {
                         title: "Missing",
                         field: "missing",
                         width: 70,
@@ -2231,7 +2205,11 @@
                         sorter: "number",
                         visible: true,
                         formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
+                            // Always PRICE − Ship
+                            const rd = cell.getRow().getData();
+                            const price = parseFloat(rd['doba Price']) || 0;
+                            const ship = parseFloat(rd.Ship_productmaster) || 0;
+                            const value = price > 0 ? Math.max(0, price - ship) : 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
                         }
                     },
@@ -2297,6 +2275,21 @@
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `<span style="color: #000; font-weight: 600;">$${value.toFixed(2)}</span>` : '';
+                        }
+                    },
+                    {
+                        title: "S Pick Price",
+                        field: "s_self_pick",
+                        width: 90,
+                        sorter: "number",
+                        visible: true,
+                        formatter: function(cell, formatterParams) {
+                            // Always SPRICE − Ship
+                            const rd = cell.getRow().getData();
+                            const sprice = parseFloat(rd.sprice) || 0;
+                            const ship = parseFloat(rd.Ship_productmaster) || 0;
+                            const value = sprice > 0 ? Math.max(0, sprice - ship) : 0;
+                            return value > 0 ? `$${value.toFixed(2)}` : '';
                         }
                     },
                     {
@@ -2914,8 +2907,11 @@
                         // Calculate SROI% = ((sprice * 0.95) - ship - lp) / lp * 100
                         const sroi = ((sprice * 0.95) - ship - lp) / lp * 100;
                         
-                        // Calculate S(PP) = SPRICE - SHIP
-                        const sSelfPick = sprice - ship;
+                        // Always: S Pick Price = SPRICE − Ship
+                        const sSelfPick = Math.max(0, parseFloat((sprice - ship).toFixed(2)));
+                        // Always: Pick Price = PRICE − Ship
+                        const listPrice = parseFloat(rowData['doba Price']) || 0;
+                        const pickPrice = listPrice > 0 ? Math.max(0, parseFloat((listPrice - ship).toFixed(2))) : 0;
                         
                         // Update row data with all calculated values
                         // Reset push_status to null so push button shows again (like Amazon)
@@ -2923,6 +2919,7 @@
                             spft: spft,
                             sroi: sroi,
                             s_self_pick: sSelfPick,
+                            self_pick_price: pickPrice,
                             push_status: null,
                             apply_status: null
                         });
