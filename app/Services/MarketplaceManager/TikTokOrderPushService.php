@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 class TikTokOrderPushService
 {
+    use FindsExistingShopifyOrderByChannelRef;
     use ResolvesTikTokOrderRawJson;
     use SyncsShopifyOrderAddress;
 
@@ -19,10 +20,67 @@ class TikTokOrderPushService
 
     public ?int $lastApiStatus = null;
 
+    /** Set when import linked an existing Shopify order instead of creating one. */
+    public ?string $lastDuplicateLinkMessage = null;
+
     public function importToShopify(TiktokOrder $order): ?string
     {
+        $this->lastDuplicateLinkMessage = null;
+
         if ($order->shopify_order_id) {
             return (string) $order->shopify_order_id;
+        }
+
+        $orderId = trim((string) $order->order_id);
+
+        // Local sibling already linked → copy link, never create another Shopify order.
+        if ($orderId !== '') {
+            $localLinked = TiktokOrder::query()
+                ->where('order_id', $orderId)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($localLinked) {
+                $this->linkTikTokOrderToShopify($orderId, (string) $localLinked);
+                $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+
+                return (string) $localLinked;
+            }
+        }
+
+        // Strict Shopify search — refuse to create if check cannot complete.
+        $config = $this->shopifyConfig();
+        $existing = $this->findExistingShopifyOrderByRefs(
+            $config,
+            array_values(array_filter([$orderId])),
+            ['tiktok-'],
+            ['tiktok_order_id'],
+            'TikTokOrderPushService'
+        );
+        if (($existing['error'] ?? null) !== null) {
+            $this->lastFailureReason = $existing['error'].' Push blocked to avoid duplicates.';
+
+            return null;
+        }
+        if (! empty($existing['id'])) {
+            if ($orderId !== '') {
+                $this->linkTikTokOrderToShopify($orderId, (string) $existing['id']);
+            } else {
+                $order->update([
+                    'shopify_order_id' => (string) $existing['id'],
+                    'pushed_to_shopify_at' => now(),
+                    'import_status' => 'imported',
+                ]);
+            }
+            $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$existing['id']
+                .' (matched '.$existing['matched_by'].'). No new order created.';
+            Log::info('TikTokOrderPushService: linked existing Shopify order (duplicate avoided)', [
+                'order_id' => $orderId,
+                'shopify_order_id' => $existing['id'],
+                'matched_by' => $existing['matched_by'],
+            ]);
+
+            return (string) $existing['id'];
         }
 
         $plan = $this->buildImportPlan($order);
@@ -32,7 +90,7 @@ class TikTokOrderPushService
             return null;
         }
 
-        $shopifyOrderId = $this->postOrder($this->shopifyConfig(), ['order' => $plan['payload']]);
+        $shopifyOrderId = $this->postOrder($config, ['order' => $plan['payload']]);
         if (! $shopifyOrderId) {
             return null;
         }
@@ -48,6 +106,17 @@ class TikTokOrderPushService
         $this->syncInventoryAfterPush($order);
 
         return $shopifyOrderId;
+    }
+
+    protected function linkTikTokOrderToShopify(string $orderId, string $shopifyOrderId): void
+    {
+        TiktokOrder::query()
+            ->where('order_id', $orderId)
+            ->update([
+                'shopify_order_id' => $shopifyOrderId,
+                'pushed_to_shopify_at' => now(),
+                'import_status' => 'imported',
+            ]);
     }
 
     public function syncShippingAddressToShopify(TiktokOrder $order): array
@@ -88,12 +157,42 @@ class TikTokOrderPushService
     {
         $limit = max(1, min(200, $limit));
 
+        // Prefer open orders that still have address payload (newest-only often burns the
+        // budget on rows Shopify already has, or TikTok privacy-masked with no address).
         $rows = TiktokOrder::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
+            ->whereIn('order_status', [
+                'AWAITING_SHIPMENT',
+                'PARTIALLY_SHIPPING',
+                'AWAITING_COLLECTION',
+                'ON_HOLD',
+            ])
+            ->where(function ($q) {
+                $q->where('raw_json', 'like', '%recipient_address%')
+                    ->orWhere('raw_json', 'like', '%address_line%')
+                    ->orWhere('raw_json', 'like', '%address_detail%');
+            })
             ->orderByDesc('id')
-            ->limit($limit * 10)
+            ->limit($limit * 25)
             ->get();
+
+        if ($rows->count() < $limit) {
+            $extra = TiktokOrder::query()
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->whereIn('order_status', [
+                    'AWAITING_SHIPMENT',
+                    'PARTIALLY_SHIPPING',
+                    'AWAITING_COLLECTION',
+                    'ON_HOLD',
+                ])
+                ->whereNotIn('id', $rows->pluck('id')->all() ?: [0])
+                ->orderByDesc('id')
+                ->limit(($limit - $rows->count()) * 10)
+                ->get();
+            $rows = $rows->concat($extra);
+        }
 
         $unique = [];
         foreach ($rows as $row) {
@@ -102,7 +201,7 @@ class TikTokOrderPushService
                 continue;
             }
             $unique[$ref] = $row;
-            if (count($unique) >= $limit) {
+            if (count($unique) >= $limit * 3) {
                 break;
             }
         }
@@ -113,6 +212,10 @@ class TikTokOrderPushService
         $failed = 0;
 
         foreach ($unique as $line) {
+            if ($updated + $failed >= $limit) {
+                break;
+            }
+
             $checked++;
 
             if (! $this->shopifyOrderNeedsAddress((string) $line->shopify_order_id, [['tiktok', 'customer']])) {
@@ -138,8 +241,13 @@ class TikTokOrderPushService
                     'shopify_order_id' => $line->shopify_order_id,
                     'message' => $result['message'] ?? null,
                 ]);
+                $msg = (string) ($result['message'] ?? '');
+                if (str_contains($msg, '429') || str_contains(strtolower($msg), 'exceeded 2 calls')) {
+                    usleep(2000000);
+                }
             }
-            usleep(350000);
+            // Shopify REST: stay under 2 calls/sec (needsAddress + update).
+            usleep(600000);
         }
 
         return [

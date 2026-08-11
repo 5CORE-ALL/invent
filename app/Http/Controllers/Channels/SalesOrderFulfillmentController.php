@@ -27,6 +27,7 @@ use App\Models\Temu2Order;
 use App\Models\TemuOrder;
 use App\Models\TopDawgOrderMetric;
 use App\Models\WayfairDailyData;
+use App\Jobs\SyncShipmentTrackingStatusJob;
 use App\Services\GofoExpressService;
 use App\Services\MarketplaceManager\ChannelTrackingApiFallbackService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
@@ -41,7 +42,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -696,132 +696,14 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Fill tracking_number / tracking_company / shopify_order_id from shopify_raw_orders
-     * (match by Shopify id or Amazon Amz{order} order_number) even before carrier status exists.
+     * DISABLED: SOF must not read tracking from Shopify / shopify_raw_orders.
+     * Tracking comes from channel APIs and channel order tables only.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     protected function attachShopifyTrackingToOrderRows(array $rows): array
     {
-        if ($rows === [] || ! Schema::hasTable('shopify_raw_orders')) {
-            return $rows;
-        }
-
-        $shopifyIds = [];
-        $orderNumbers = [];
-        foreach ($rows as $row) {
-            $sid = trim((string) ($row['shopify_order_id'] ?? ''));
-            if ($sid !== '' && ctype_digit($sid)) {
-                $shopifyIds[$sid] = true;
-            }
-            foreach ([(string) ($row['order_number'] ?? ''), (string) ($row['order_id'] ?? ''), (string) ($row['order_id_api'] ?? '')] as $on) {
-                $on = trim($on);
-                if ($on === '') {
-                    continue;
-                }
-                $orderNumbers[$on] = true;
-                if (! str_starts_with($on, 'Amz') && preg_match('/^\d{3}-\d+-\d+$/', $on) === 1) {
-                    $orderNumbers['Amz'.$on] = true;
-                }
-            }
-        }
-
-        if ($shopifyIds === [] && $orderNumbers === []) {
-            return $rows;
-        }
-
-        $byShopifyId = [];
-        $byOrderNumber = [];
-
-        try {
-            $query = DB::table('shopify_raw_orders')
-                ->select(['order_id', 'order_number', 'tracking_number', 'tracking_company', 'tracking_url', 'shipment_status', 'shipment_status_detail', 'fulfillment_status']);
-
-            $query->where(function ($q) use ($shopifyIds, $orderNumbers) {
-                if ($shopifyIds !== []) {
-                    $q->orWhereIn('order_id', array_map('intval', array_keys($shopifyIds)));
-                }
-                if ($orderNumbers !== []) {
-                    $q->orWhereIn('order_number', array_keys($orderNumbers));
-                }
-            });
-
-            foreach ($query->get() as $srow) {
-                $payload = [
-                    'shopify_order_id' => (string) ($srow->order_id ?? ''),
-                    'tracking_number' => trim((string) ($srow->tracking_number ?? '')),
-                    'tracking_company' => trim((string) ($srow->tracking_company ?? '')),
-                    'tracking_url' => trim((string) ($srow->tracking_url ?? '')),
-                    'shipment_status' => trim((string) ($srow->shipment_status ?? '')),
-                    'shipment_status_detail' => $srow->shipment_status_detail ?? null,
-                    'fulfillment_status' => $srow->fulfillment_status ?? null,
-                ];
-                $oid = trim((string) ($srow->order_id ?? ''));
-                if ($oid !== '') {
-                    $byShopifyId[$oid] = $payload;
-                }
-                $onum = trim((string) ($srow->order_number ?? ''));
-                if ($onum !== '') {
-                    $byOrderNumber[$onum] = $payload;
-                }
-            }
-        } catch (\Throwable) {
-            return $rows;
-        }
-
-        foreach ($rows as &$row) {
-            // Temu / Temu 2 tracking comes from Temu Sites sheets only — never Shopify.
-            $slug = (string) ($row['mm_slug'] ?? '');
-            if ($slug === 'temu' || $slug === 'temu2') {
-                continue;
-            }
-
-            $match = null;
-            $sid = trim((string) ($row['shopify_order_id'] ?? ''));
-            if ($sid !== '' && isset($byShopifyId[$sid])) {
-                $match = $byShopifyId[$sid];
-            }
-            if ($match === null) {
-                foreach ([(string) ($row['order_number'] ?? ''), (string) ($row['order_id'] ?? ''), (string) ($row['order_id_api'] ?? '')] as $candidate) {
-                    $candidate = trim($candidate);
-                    if ($candidate === '') {
-                        continue;
-                    }
-                    if (isset($byOrderNumber[$candidate])) {
-                        $match = $byOrderNumber[$candidate];
-                        break;
-                    }
-                    $amz = str_starts_with($candidate, 'Amz') ? $candidate : 'Amz'.$candidate;
-                    if (isset($byOrderNumber[$amz])) {
-                        $match = $byOrderNumber[$amz];
-                        break;
-                    }
-                }
-            }
-            if ($match === null) {
-                continue;
-            }
-
-            if (empty($row['shopify_order_id']) && $match['shopify_order_id'] !== '') {
-                $row['shopify_order_id'] = $match['shopify_order_id'];
-            }
-            if (empty($row['tracking_number']) && $match['tracking_number'] !== '') {
-                $row['tracking_number'] = $match['tracking_number'];
-            }
-            if ($match['tracking_company'] !== '') {
-                $row['tracking_company'] = $match['tracking_company'];
-            }
-            if ($match['tracking_url'] !== '') {
-                $row['tracking_url'] = $match['tracking_url'];
-            }
-            if (! empty($match['shipment_status']) && empty($row['shipment_status'])) {
-                $row['shipment_status'] = $match['shipment_status'];
-                $row['shipment_status_detail'] = $match['shipment_status_detail'];
-            }
-        }
-        unset($row);
-
         return $rows;
     }
 
@@ -878,22 +760,20 @@ class SalesOrderFulfillmentController extends Controller
 
     /**
      * Overlay carrier shipment_status onto order rows that already have a tracking number.
-     * Matches by tracking number only — never copies tracking from Shopify fulfillments.
-     * (Carrier sync currently persists status on shopify_raw_orders by tracking#.)
+     * Matches by tracking number from carrier_tracking_statuses (channel trackings — no Shopify API).
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     protected function attachShipmentStatusToOrderRows(array $rows): array
     {
-        if ($rows === [] || ! Schema::hasTable('shopify_raw_orders')) {
+        if ($rows === []) {
             return $rows;
         }
 
         $trackingKeys = [];
         foreach ($rows as $row) {
             $tn = strtoupper(preg_replace('/\s+/', '', (string) ($row['tracking_number'] ?? '')) ?? '');
-            // Ignore non-carrier values (e.g. eBay fulfillment href ids).
             if ($tn !== '' && $this->looksLikeCarrierTrackingNumber($tn)) {
                 $trackingKeys[$tn] = true;
             }
@@ -904,28 +784,62 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         $byTracking = [];
+        $keys = array_keys($trackingKeys);
 
         try {
-            $query = DB::table('shopify_raw_orders')
-                ->select(['tracking_number', 'shipment_status', 'shipment_status_detail', 'tracking_company'])
-                ->whereNotNull('shipment_status')
-                ->where('shipment_status', '!=', '')
-                ->whereIn('tracking_number', array_keys($trackingKeys));
+            if (Schema::hasTable('carrier_tracking_statuses')) {
+                foreach (array_chunk($keys, 500) as $chunk) {
+                    $query = DB::table('carrier_tracking_statuses')
+                        ->select(['tracking_number', 'shipment_status', 'shipment_status_detail', 'carrier'])
+                        ->whereNotNull('shipment_status')
+                        ->where('shipment_status', '!=', '')
+                        ->whereIn('tracking_number', $chunk);
+                    foreach ($query->get() as $srow) {
+                        $status = trim((string) ($srow->shipment_status ?? ''));
+                        if ($status === '') {
+                            continue;
+                        }
+                        $tn = strtoupper(preg_replace('/\s+/', '', (string) ($srow->tracking_number ?? '')) ?? '');
+                        if ($tn === '') {
+                            continue;
+                        }
+                        $byTracking[$tn] = [
+                            'shipment_status' => $status,
+                            'shipment_status_detail' => $srow->shipment_status_detail ?? null,
+                            'tracking_company' => $srow->carrier ?? null,
+                        ];
+                    }
+                }
+            }
 
-            foreach ($query->get() as $srow) {
-                $status = trim((string) ($srow->shipment_status ?? ''));
-                if ($status === '') {
-                    continue;
+            // Legacy fallback for statuses already on shopify_raw_orders (no Shopify API).
+            if (Schema::hasTable('shopify_raw_orders')) {
+                $missing = array_values(array_filter($keys, fn ($k) => ! isset($byTracking[$k])));
+                foreach (array_chunk($missing, 500) as $chunk) {
+                    if ($chunk === []) {
+                        break;
+                    }
+                    $query = DB::table('shopify_raw_orders')
+                        ->select(['tracking_number', 'shipment_status', 'shipment_status_detail', 'tracking_company'])
+                        ->whereNotNull('shipment_status')
+                        ->where('shipment_status', '!=', '')
+                        ->whereIn('tracking_number', $chunk);
+                    foreach ($query->get() as $srow) {
+                        $status = trim((string) ($srow->shipment_status ?? ''));
+                        if ($status === '') {
+                            continue;
+                        }
+                        $tn = strtoupper(preg_replace('/\s+/', '', (string) ($srow->tracking_number ?? '')) ?? '');
+                        if ($tn === '' || isset($byTracking[$tn])) {
+                            continue;
+                        }
+                        $byTracking[$tn] = [
+                            'shipment_status' => $status,
+                            'shipment_status_detail' => $srow->shipment_status_detail ?? null,
+                            'tracking_company' => $srow->tracking_company ?? null,
+                        ];
+                    }
                 }
-                $tn = strtoupper(preg_replace('/\s+/', '', (string) ($srow->tracking_number ?? '')) ?? '');
-                if ($tn === '') {
-                    continue;
-                }
-                $byTracking[$tn] = [
-                    'shipment_status' => $status,
-                    'shipment_status_detail' => $srow->shipment_status_detail ?? null,
-                    'tracking_company' => $srow->tracking_company ?? null,
-                ];
             }
         } catch (\Throwable) {
             return $rows;
@@ -949,7 +863,6 @@ class SalesOrderFulfillmentController extends Controller
 
             $row['shipment_status'] = $match['shipment_status'];
             $row['shipment_status_detail'] = $match['shipment_status_detail'];
-            // Do not copy tracking_number / shopify_order_id from Shopify.
 
             $carrierLabel = $this->carrierShipmentStatusLabel((string) $match['shipment_status']);
             if ($carrierLabel !== null) {
@@ -1713,8 +1626,8 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Manually refresh open shipment statuses via USPS / UPS / 17TRACK (sync, no queue).
-     * Does not pull tracking from Shopify — use Pull Tracking Number (channel APIs) for that.
+     * Queue a catch-up carrier status sync (returns immediately — does not block the browser).
+     * Processes thousands of channel tracking numbers via 17TRACK in the background.
      */
     public function refreshShipmentStatus(Request $request, ShipmentTrackingService $tracking): JsonResponse
     {
@@ -1725,47 +1638,28 @@ class SalesOrderFulfillmentController extends Controller
             ], 422);
         }
 
-        // Keep manual refresh modest so it cannot burn the whole USPS hourly quota.
-        $limit = max(1, min(120, (int) $request->input('limit', 80)));
-        $stale = max(0, (int) $request->input('stale', 30));
+        // Catch-up defaults: large batch, no stale skip — runs in queue so the UI stays fast.
+        $limit = max(1, min(5000, (int) $request->input('limit', 2000)));
+        $stale = max(0, (int) $request->input('stale', 0));
         $carrier = strtoupper(trim((string) $request->input('carrier', '')));
         $repairQuota = filter_var($request->input('repair_quota', true), FILTER_VALIDATE_BOOL);
+        $catchUp = filter_var($request->input('catch_up', true), FILTER_VALIDATE_BOOL);
 
         try {
-            $targeted = $this->syncLabelCreatedShipmentStatuses($tracking, $limit);
-
-            $params = [
-                '--only-open' => true,
-                '--stale' => $stale,
-                '--limit' => $limit,
-            ];
-            if ($carrier !== '') {
-                $params['--carrier'] = $carrier;
-            }
-            if ($repairQuota) {
-                $params['--repair-quota'] = true;
-            }
-
-            $exit = Artisan::call('tracking:sync-status', $params);
-            $output = trim(Artisan::output());
-
-            $movedHint = (int) ($targeted['updated'] ?? 0);
-            $message = $exit === 0
-                ? "Shipment status updated. Label Created packages synced: {$movedHint}."
-                    .' Open trackings continue on the paced schedule (~1–2×/day until Delivered).'
-                : 'Shipment status refresh finished with errors.';
-
-            if ($exit === 0 && $movedHint === 0) {
-                $message .= ' Rows need a carrier tracking number first (use Pull Tracking Number from the channel API). Status cannot change until tracking exists.';
-            }
+            SyncShipmentTrackingStatusJob::dispatch(
+                $limit,
+                $stale,
+                $repairQuota,
+                $catchUp,
+                $carrier
+            );
 
             return response()->json([
-                'success' => $exit === 0,
-                'message' => $message,
-                'output' => $output,
-                'label_created' => [
-                    'targeted_sync' => $targeted,
-                ],
+                'success' => true,
+                'queued' => true,
+                'message' => "Shipment status sync queued for up to {$limit} tracking numbers."
+                    .' This runs in the background (not Shopify) so the page stays responsive.'
+                    .' Refresh the Label Created / In Transit tabs in a few minutes to see updates.',
                 'providers' => [
                     'usps' => $tracking->hasUsps(),
                     'ups' => $tracking->hasUps(),
@@ -1773,192 +1667,27 @@ class SalesOrderFulfillmentController extends Controller
                     'gofo' => $tracking->hasGofo(),
                     '17track' => $tracking->has17Track(),
                 ],
-            ], $exit === 0 ? 200 : 500);
+            ]);
         } catch (\Throwable $e) {
             report($e);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to refresh shipment status: '.$e->getMessage(),
+                'message' => 'Failed to queue shipment status sync: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Pull latest fulfillment tracking from Shopify Admin API into shopify_raw_orders
-     * for Label Created / No Scan linked orders (and Amazon Amz* Shopify orders).
+     * DISABLED: SOF must not call Shopify Admin API for tracking.
+     * Use channel API pull (Temu / ChannelTrackingApiFallbackService) instead.
      *
-     * @param  list<string|int>|null  $shopifyOrderIds  When set, only these Shopify order ids are pulled.
+     * @param  list<string|int>|null  $shopifyOrderIds
      * @return array{checked:int,updated:int,with_tracking:int,rows:list<array<string,mixed>>}
      */
     protected function backfillShopifyTrackingForLabelCreated(int $limit, bool $includeSamples = false, ?array $shopifyOrderIds = null): array
     {
-        if ($shopifyOrderIds !== null) {
-            $orderIds = [];
-            foreach ($shopifyOrderIds as $id) {
-                $id = trim((string) $id);
-                if ($id !== '' && ctype_digit($id)) {
-                    $orderIds[$id] = true;
-                }
-            }
-            $orderIds = array_slice(array_keys($orderIds), 0, max(1, min(100, $limit)));
-        } else {
-            $orderIds = $this->labelCreatedShopifyOrderIdsForPull($limit);
-        }
-        if ($orderIds === [] || ! Schema::hasTable('shopify_raw_orders')) {
-            return ['checked' => 0, 'updated' => 0, 'with_tracking' => 0, 'rows' => []];
-        }
-
-        $store = preg_replace('#^https?://#i', '', trim((string) config('shopify.store_url', env('SHOPIFY_STORE_URL', ''))));
-        $store = rtrim((string) $store, '/');
-        $token = trim((string) config('shopify.access_token', env('SHOPIFY_ACCESS_TOKEN', '')));
-        $apiVersion = trim((string) (config('shopify.api_version') ?: '2024-10'));
-        if ($store === '' || $token === '') {
-            return ['checked' => 0, 'updated' => 0, 'with_tracking' => 0, 'rows' => []];
-        }
-
-        $checked = 0;
-        $updated = 0;
-        $withTracking = 0;
-        $samples = [];
-
-        foreach ($orderIds as $orderId) {
-            $checked++;
-            try {
-                $resp = Http::withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                    'Content-Type' => 'application/json',
-                ])->timeout(25)->get("https://{$store}/admin/api/{$apiVersion}/orders/{$orderId}.json");
-                if (! $resp->successful()) {
-                    if ($includeSamples) {
-                        $samples[] = [
-                            'shopify_order_id' => (string) $orderId,
-                            'order_number' => '',
-                            'tracking_number' => null,
-                            'tracking_company' => null,
-                            'fulfillment_status' => null,
-                            'shipment_status' => null,
-                            'updated' => false,
-                            'note' => 'Shopify API HTTP '.$resp->status(),
-                        ];
-                    }
-                    continue;
-                }
-                $order = $resp->json('order') ?? [];
-                $fulfillments = is_array($order['fulfillments'] ?? null) ? $order['fulfillments'] : [];
-                $fulfillment = [];
-                foreach ($fulfillments as $f) {
-                    if (! is_array($f)) {
-                        continue;
-                    }
-                    $tnProbe = '';
-                    if (! empty($f['tracking_numbers']) && is_array($f['tracking_numbers'])) {
-                        $tnProbe = trim((string) ($f['tracking_numbers'][0] ?? ''));
-                    } elseif (! empty($f['tracking_number'])) {
-                        $tnProbe = trim((string) $f['tracking_number']);
-                    }
-                    if ($tnProbe !== '') {
-                        $fulfillment = $f;
-                        break;
-                    }
-                    if ($fulfillment === []) {
-                        $fulfillment = $f;
-                    }
-                }
-                $trackingNumber = null;
-                if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
-                    $parts = array_values(array_filter(array_map(
-                        static fn ($v) => trim((string) $v),
-                        $fulfillment['tracking_numbers']
-                    )));
-                    $trackingNumber = $parts !== [] ? implode(', ', $parts) : null;
-                } elseif (! empty($fulfillment['tracking_number'])) {
-                    $trackingNumber = trim((string) $fulfillment['tracking_number']) ?: null;
-                }
-                $trackingCompany = isset($fulfillment['tracking_company'])
-                    ? trim((string) $fulfillment['tracking_company'])
-                    : null;
-                if ($trackingCompany === '') {
-                    $trackingCompany = null;
-                }
-                $trackingUrl = null;
-                if (! empty($fulfillment['tracking_urls']) && is_array($fulfillment['tracking_urls'])) {
-                    $trackingUrl = $fulfillment['tracking_urls'][0] ?? null;
-                } elseif (! empty($fulfillment['tracking_url'])) {
-                    $trackingUrl = $fulfillment['tracking_url'];
-                }
-
-                $payload = [
-                    'fulfillment_status' => $order['fulfillment_status'] ?? null,
-                    'updated_at' => now(),
-                ];
-                if ($trackingNumber !== null) {
-                    $payload['tracking_number'] = $trackingNumber;
-                    $withTracking++;
-                }
-                if ($trackingCompany !== null) {
-                    $payload['tracking_company'] = $trackingCompany;
-                }
-                if (is_string($trackingUrl) && $trackingUrl !== '') {
-                    $payload['tracking_url'] = $trackingUrl;
-                }
-
-                $affected = 0;
-                if ($trackingNumber !== null) {
-                    $affected = DB::table('shopify_raw_orders')
-                        ->where('order_id', $orderId)
-                        ->update($payload);
-                    if ($affected > 0) {
-                        $updated += $affected;
-                    }
-                } else {
-                    // Still refresh fulfillment_status / carrier label when empty.
-                    DB::table('shopify_raw_orders')
-                        ->where('order_id', $orderId)
-                        ->update($payload);
-                }
-
-                $localStatus = DB::table('shopify_raw_orders')
-                    ->where('order_id', $orderId)
-                    ->value('shipment_status');
-
-                if ($includeSamples) {
-                    $samples[] = [
-                        'shopify_order_id' => (string) $orderId,
-                        'order_number' => (string) ($order['name'] ?? ''),
-                        'tracking_number' => $trackingNumber,
-                        'tracking_company' => $trackingCompany,
-                        'fulfillment_status' => $order['fulfillment_status'] ?? null,
-                        'shipment_status' => $localStatus ? (string) $localStatus : null,
-                        'updated' => $affected > 0 && $trackingNumber !== null,
-                        'note' => $trackingNumber !== null
-                            ? ($affected > 0 ? 'Saved' : 'Unchanged')
-                            : 'No tracking on Shopify fulfillment',
-                    ];
-                }
-            } catch (\Throwable $e) {
-                if ($includeSamples) {
-                    $samples[] = [
-                        'shopify_order_id' => (string) $orderId,
-                        'order_number' => '',
-                        'tracking_number' => null,
-                        'tracking_company' => null,
-                        'fulfillment_status' => null,
-                        'shipment_status' => null,
-                        'updated' => false,
-                        'note' => 'Error: '.$e->getMessage(),
-                    ];
-                }
-                continue;
-            }
-        }
-
-        return [
-            'checked' => $checked,
-            'updated' => $updated,
-            'with_tracking' => $withTracking,
-            'rows' => $samples,
-        ];
+        return ['checked' => 0, 'updated' => 0, 'with_tracking' => 0, 'rows' => []];
     }
 
     /**
@@ -2001,84 +1730,14 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Sync carrier status for tracking numbers on Label Created-linked Shopify orders.
+     * DISABLED: SOF Update Shipment Status must not sync via Shopify order ids / shopify_raw_orders writes.
+     * Carrier status cron (tracking:sync-status) remains separate; tracking numbers come from channel APIs.
      *
      * @return array{checked:int,updated:int}
      */
     protected function syncLabelCreatedShipmentStatuses(ShipmentTrackingService $tracking, int $limit): array
     {
-        if (! Schema::hasTable('shopify_raw_orders')) {
-            return ['checked' => 0, 'updated' => 0];
-        }
-
-        $orderIds = $this->labelCreatedShopifyOrderIds(max($limit * 5, 200));
-        $amazonNumbers = $this->labelCreatedAmazonShopifyOrderNumbers($limit);
-
-        if ($orderIds === [] && $amazonNumbers === []) {
-            return ['checked' => 0, 'updated' => 0];
-        }
-
-        $query = DB::table('shopify_raw_orders')
-            ->whereNotNull('tracking_number')
-            ->where('tracking_number', '!=', '')
-            ->where(function ($q) {
-                $q->whereNull('shipment_status')
-                    ->orWhereNotIn('shipment_status', [
-                        ShipmentTrackingService::STATUS_DELIVERED,
-                        ShipmentTrackingService::STATUS_EXPIRED,
-                    ]);
-            });
-
-        $query->where(function ($q) use ($orderIds, $amazonNumbers) {
-            if ($orderIds !== []) {
-                $q->orWhereIn('order_id', $orderIds);
-            }
-            if ($amazonNumbers !== []) {
-                $q->orWhereIn('order_number', $amazonNumbers);
-            }
-        });
-
-        $rows = $query->select('tracking_number', DB::raw('MAX(tracking_company) as carrier'))
-            ->groupBy('tracking_number')
-            ->limit($limit)
-            ->get();
-
-        if ($rows->isEmpty()) {
-            return ['checked' => 0, 'updated' => 0];
-        }
-
-        $shipments = $rows->map(fn ($r) => [
-            'number' => $r->tracking_number,
-            'carrier' => $r->carrier,
-        ])->all();
-
-        try {
-            $results = $tracking->track($shipments);
-        } catch (\Throwable) {
-            return ['checked' => 0, 'updated' => 0];
-        }
-
-        $updated = 0;
-        $now = now();
-        foreach ($rows as $r) {
-            $num = $r->tracking_number;
-            $res = $results[$num] ?? null;
-            // Never persist quota/rate-limit noise as NotFound over a real status.
-            if (! ShipmentTrackingService::isPersistableResult($res)) {
-                continue;
-            }
-            $affected = DB::table('shopify_raw_orders')
-                ->where('tracking_number', $num)
-                ->update([
-                    'shipment_status' => $res['status'],
-                    'shipment_status_detail' => $res['detail'] ?? null,
-                    'shipment_checked_at' => $now,
-                    'updated_at' => $now,
-                ]);
-            $updated += $affected;
-        }
-
-        return ['checked' => $rows->count(), 'updated' => $updated];
+        return ['checked' => 0, 'updated' => 0];
     }
 
     /**

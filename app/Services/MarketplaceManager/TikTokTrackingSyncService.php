@@ -199,7 +199,8 @@ class TikTokTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('tiktok');
 
-        return (bool) ($settings['order']['push_tracking_to_tiktok'] ?? false);
+        // Match settings UI default (ON) — missing key must not silently disable cron.
+        return (bool) ($settings['order']['push_tracking_to_tiktok'] ?? true);
     }
 
     /**

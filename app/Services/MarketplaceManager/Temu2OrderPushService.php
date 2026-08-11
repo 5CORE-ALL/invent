@@ -12,11 +12,15 @@ use Illuminate\Support\Facades\Log;
 
 class Temu2OrderPushService
 {
+    use FindsExistingShopifyOrderByChannelRef;
     use SyncsShopifyOrderAddress;
 
     public ?string $lastFailureReason = null;
 
     public ?int $lastApiStatus = null;
+
+    /** Set when import linked an existing Shopify order instead of creating one. */
+    public ?string $lastDuplicateLinkMessage = null;
 
     public function __construct(
         protected Temu2OrderDetailService $orderDetailService,
@@ -219,8 +223,64 @@ class Temu2OrderPushService
 
     public function importToShopify(Temu2Order $order): ?string
     {
+        $this->lastDuplicateLinkMessage = null;
+
         if ($order->shopify_order_id) {
             return (string) $order->shopify_order_id;
+        }
+
+        $parent = trim((string) $order->parent_order_sn);
+        $orderSn = trim((string) $order->order_sn);
+
+        // Local sibling already linked → copy link, never create another Shopify order.
+        if ($parent !== '') {
+            $localLinked = Temu2Order::query()
+                ->where('parent_order_sn', $parent)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($localLinked) {
+                $this->linkTemu2ParentToShopify($parent, (string) $localLinked);
+                $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+
+                return (string) $localLinked;
+            }
+        }
+
+        // Strict Shopify search — refuse to create if check cannot complete.
+        $config = $this->shopifyConfig();
+        $existing = $this->findExistingShopifyOrderByRefs(
+            $config,
+            array_values(array_filter([$parent, $orderSn])),
+            ['temu-', 'temu2-'],
+            ['temu_order_id', 'temu2_order_id'],
+            'Temu2OrderPushService'
+        );
+        if (($existing['error'] ?? null) !== null) {
+            $this->lastFailureReason = $existing['error'].' Push blocked to avoid duplicates.';
+
+            return null;
+        }
+        if (! empty($existing['id'])) {
+            if ($parent !== '') {
+                $this->linkTemu2ParentToShopify($parent, (string) $existing['id']);
+            } else {
+                $order->update([
+                    'shopify_order_id' => (string) $existing['id'],
+                    'pushed_to_shopify_at' => now(),
+                    'import_status' => 'imported',
+                ]);
+            }
+            $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$existing['id']
+                .' (matched '.$existing['matched_by'].'). No new order created.';
+            Log::info('Temu2OrderPushService: linked existing Shopify order (duplicate avoided)', [
+                'parent_order_sn' => $parent,
+                'order_sn' => $orderSn,
+                'shopify_order_id' => $existing['id'],
+                'matched_by' => $existing['matched_by'],
+            ]);
+
+            return (string) $existing['id'];
         }
 
         $plan = $this->buildImportPlan($order);
@@ -230,7 +290,7 @@ class Temu2OrderPushService
             return null;
         }
 
-        $shopifyOrderId = $this->postOrder($this->shopifyConfig(), ['order' => $plan['payload']]);
+        $shopifyOrderId = $this->postOrder($config, ['order' => $plan['payload']]);
         if (! $shopifyOrderId) {
             return null;
         }
@@ -253,6 +313,17 @@ class Temu2OrderPushService
         $this->syncInventoryAfterPush($order);
 
         return $shopifyOrderId;
+    }
+
+    protected function linkTemu2ParentToShopify(string $parentOrderSn, string $shopifyOrderId): void
+    {
+        Temu2Order::query()
+            ->where('parent_order_sn', $parentOrderSn)
+            ->update([
+                'shopify_order_id' => $shopifyOrderId,
+                'pushed_to_shopify_at' => now(),
+                'import_status' => 'imported',
+            ]);
     }
 
     /**

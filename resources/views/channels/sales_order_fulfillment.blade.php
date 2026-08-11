@@ -5049,7 +5049,7 @@
         const $label = $btn.find('.sof-refresh-shipment-label');
         const prev = $label.text();
         $btn.prop('disabled', true);
-        $label.text('Updating…');
+        $label.text('Queuing…');
 
         fetch('{{ route("sales.order.fulfillment.refresh.shipment.status") }}', {
             method: 'POST',
@@ -5059,29 +5059,35 @@
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                 'X-Requested-With': 'XMLHttpRequest',
             },
-            // Modest batch + repair quota-poisoned rows; full open set is paced by cron (~1–2×/day).
-            body: JSON.stringify({ limit: 80, stale: 30, repair_quota: true }),
+            // Background catch-up for large backlogs (~thousands). Does not block the page.
+            body: JSON.stringify({ limit: 2000, stale: 0, repair_quota: true, catch_up: true }),
         })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
             .then(function (res) {
-                const msg = (res.json && res.json.message) ? res.json.message : (res.ok ? 'Updated.' : 'Update failed.');
-                const detail = (res.json && res.json.output) ? String(res.json.output) : '';
+                const msg = (res.json && res.json.message) ? res.json.message : (res.ok ? 'Queued.' : 'Update failed.');
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
                         icon: res.ok ? 'success' : 'error',
-                        title: res.ok ? 'Shipment status' : 'Update failed',
-                        html: '<div style="text-align:left;white-space:pre-wrap;font-size:0.9rem;">'
-                            + escapeHtml(msg)
-                            + (detail ? '<hr><code style="font-size:0.8rem;">' + escapeHtml(detail) + '</code>' : '')
+                        title: res.ok ? 'Sync queued' : 'Update failed',
+                        html: '<div style="text-align:left;font-size:0.9rem;">'
+                            + '<p class="mb-0">' + escapeHtml(msg) + '</p>'
                             + '</div>',
-                        timer: res.ok ? 4500 : undefined,
-                        showConfirmButton: !res.ok,
+                        timer: res.ok ? 5500 : undefined,
+                        showConfirmButton: true,
+                        confirmButtonText: 'OK',
                     });
                 } else {
-                    alert(msg + (detail ? '\n\n' + detail : ''));
+                    alert(msg);
                 }
+                // Soft refresh active tab shortly — full multi-tab reload is too slow with ~5k rows.
                 if (res.ok) {
-                    reloadSofTrackingTables();
+                    setTimeout(function () {
+                        try {
+                            if (fulfilledTable && typeof fulfilledTable.replaceData === 'function') {
+                                fulfilledTable.replaceData();
+                            }
+                        } catch (e) {}
+                    }, 45000);
                 }
             })
             .catch(function (err) {

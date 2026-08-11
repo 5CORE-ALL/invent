@@ -127,7 +127,7 @@ class ChannelTrackingApiFallbackService
             'with_tracking' => $withTracking,
             'message' => $parts !== []
                 ? ('Channel API fallback: '.implode(' ', $parts))
-                : 'Channel API fallback: no supported orders missing Shopify tracking.',
+                : 'Channel API fallback: no supported orders missing tracking.',
             'rows' => $outRows,
         ];
     }
@@ -474,7 +474,7 @@ class ChannelTrackingApiFallbackService
             'tracking_company' => $carrier,
             'fulfillment_status' => $source,
             'shipment_status' => '',
-            'note' => 'Pulled from channel API (Shopify had no tracking)',
+            'note' => 'Pulled from channel API',
         ];
     }
 

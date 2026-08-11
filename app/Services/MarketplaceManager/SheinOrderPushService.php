@@ -12,11 +12,15 @@ use Illuminate\Support\Facades\Log;
 
 class SheinOrderPushService
 {
+    use FindsExistingShopifyOrderByChannelRef;
     use SyncsShopifyOrderAddress;
 
     public ?string $lastFailureReason = null;
 
     public ?int $lastApiStatus = null;
+
+    /** Set when import linked an existing Shopify order instead of creating one. */
+    public ?string $lastDuplicateLinkMessage = null;
 
     public function __construct(
         protected SheinOrderDetailService $orderDetailService,
@@ -219,8 +223,64 @@ class SheinOrderPushService
 
     public function importToShopify(SheinOrderMetric $order): ?string
     {
+        $this->lastDuplicateLinkMessage = null;
+
         if ($order->shopify_order_id) {
             return (string) $order->shopify_order_id;
+        }
+
+        $orderId = trim((string) $order->order_id);
+        $orderNumber = trim((string) ($order->order_number ?? ''));
+
+        // Local sibling already linked → copy link, never create another Shopify order.
+        if ($orderId !== '') {
+            $localLinked = SheinOrderMetric::query()
+                ->where('order_id', $orderId)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($localLinked) {
+                $this->linkSheinOrderToShopify($orderId, (string) $localLinked);
+                $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+
+                return (string) $localLinked;
+            }
+        }
+
+        // Strict Shopify search — refuse to create if check cannot complete.
+        $config = $this->shopifyConfig();
+        $existing = $this->findExistingShopifyOrderByRefs(
+            $config,
+            array_values(array_filter([$orderId, $orderNumber])),
+            ['shein-'],
+            ['shein_order_id'],
+            'SheinOrderPushService'
+        );
+        if (($existing['error'] ?? null) !== null) {
+            $this->lastFailureReason = $existing['error'].' Push blocked to avoid duplicates.';
+
+            return null;
+        }
+        if (! empty($existing['id'])) {
+            if ($orderId !== '') {
+                $this->linkSheinOrderToShopify($orderId, (string) $existing['id']);
+            } else {
+                $order->update([
+                    'shopify_order_id' => (string) $existing['id'],
+                    'pushed_to_shopify_at' => now(),
+                    'import_status' => 'imported',
+                ]);
+            }
+            $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$existing['id']
+                .' (matched '.$existing['matched_by'].'). No new order created.';
+            Log::info('SheinOrderPushService: linked existing Shopify order (duplicate avoided)', [
+                'order_id' => $orderId,
+                'order_number' => $orderNumber,
+                'shopify_order_id' => $existing['id'],
+                'matched_by' => $existing['matched_by'],
+            ]);
+
+            return (string) $existing['id'];
         }
 
         $plan = $this->buildImportPlan($order);
@@ -230,7 +290,7 @@ class SheinOrderPushService
             return null;
         }
 
-        $shopifyOrderId = $this->postOrder($this->shopifyConfig(), ['order' => $plan['payload']]);
+        $shopifyOrderId = $this->postOrder($config, ['order' => $plan['payload']]);
         if (! $shopifyOrderId) {
             return null;
         }
@@ -253,6 +313,17 @@ class SheinOrderPushService
         $this->syncInventoryAfterPush($order);
 
         return $shopifyOrderId;
+    }
+
+    protected function linkSheinOrderToShopify(string $orderId, string $shopifyOrderId): void
+    {
+        SheinOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->update([
+                'shopify_order_id' => $shopifyOrderId,
+                'pushed_to_shopify_at' => now(),
+                'import_status' => 'imported',
+            ]);
     }
 
     /**

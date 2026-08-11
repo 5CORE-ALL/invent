@@ -2381,7 +2381,8 @@ class Kernel extends ConsoleKernel
         |--------------------------------------------------------------------------
         */
         // Carrier sync every 15 min, all day — each tick spends remaining hourly USPS budget.
-        $schedule->command('tracking:sync-status --only-open --repair-quota')
+        // Catch-up sized for large open backlogs (~5k trackings) via 17TRACK batches.
+        $schedule->command('tracking:sync-status --only-open --repair-quota --catch-up --limit=800')
             ->cron('*/15 * * * *')
             ->timezone('America/Los_Angeles')
             ->name('shipment-tracking-sync-status-fullday')

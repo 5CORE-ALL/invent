@@ -1918,6 +1918,13 @@ class ChannelMasterController extends Controller
             'TopDawg' => fn () => $this->getTopDawgLiveMapMissNMapFromPricingData(),
             'Temu' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData(false),
             'Temu 2' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData(true),
+            // TikTok Shop 1 — channel_master stores "Tiktok Shop"; UI may show "TikTok Shop".
+            'Tiktok Shop' => fn () => $this->getTiktokLiveMapMissNMapFromPricingData(
+                Request::create('/tiktok-data-json', 'GET')
+            ),
+            'TikTok Shop' => fn () => $this->getTiktokLiveMapMissNMapFromPricingData(
+                Request::create('/tiktok-data-json', 'GET')
+            ),
             'TikTok 2' => fn () => $this->getTiktok2LiveMapMissNMapFromPricingData(
                 Request::create('/tiktok-2-data-json', 'GET')
             ),

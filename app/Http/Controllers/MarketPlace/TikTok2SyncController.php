@@ -428,10 +428,14 @@ class TikTok2SyncController extends Controller
         $shopifyOrderId = $pushService->importToShopify($order);
 
         if ($shopifyOrderId) {
+            $message = $pushService->lastDuplicateLinkMessage
+                ?: "Imported to Shopify (order #{$shopifyOrderId}).";
+
             return response()->json([
                 'success' => true,
-                'message' => "Imported to Shopify (order #{$shopifyOrderId}).",
+                'message' => $message,
                 'shopify_order_id' => $shopifyOrderId,
+                'linked_existing' => $pushService->lastDuplicateLinkMessage !== null,
             ]);
         }
 
