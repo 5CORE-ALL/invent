@@ -12,6 +12,7 @@ use App\Models\FaireDailyData;
 use App\Models\FaireMetric;
 use App\Models\FaireListingStatus;
 use App\Models\AmazonChannelSummary;
+use App\Services\FaireApiService;
 use App\Services\MarketplaceManager\FaireLinkMapSyncService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -777,14 +778,21 @@ class FaireController extends Controller
                 }
 
                 $lp = isset($values['lp']) ? (float) $values['lp'] : ($productMaster && isset($productMaster->lp) ? (float) $productMaster->lp : 0);
+                $ship = isset($values['ship']) ? (float) $values['ship'] : ($productMaster && isset($productMaster->ship) ? (float) $productMaster->ship : 0);
 
                 $al30 = (float) ($sale->al30 ?? 0);
                 $sales = (float) ($sale->sales ?? 0);
 
                 $sprice = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
+                $pushStatus = isset($meta['PUSH_STATUS']) ? trim((string) $meta['PUSH_STATUS']) : null;
+                if ($pushStatus === '') {
+                    $pushStatus = null;
+                }
                 $metric = $metricBySku->get($normalizedSku);
                 $price = $metric ? (float) ($metric->price ?? 0) : 0;
                 $faireStock = $metric ? (int) ($metric->inventory ?? 0) : 0;
+                $productId = $metric ? trim((string) ($metric->product_id ?? '')) : '';
+                $productId = $productId !== '' ? $productId : null;
 
                 $shopifyRow = $shopifyBySku->get($normalizedSku);
                 $inv = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
@@ -846,6 +854,7 @@ class FaireController extends Controller
                     'standard_price' => isset($amazonStandardPrices[$normalizedSku])
                         ? floatval($amazonStandardPrices[$normalizedSku])
                         : 0,
+                    'product_id' => $productId,
                     'lmp' => null,
                     'lmp_link' => null,
                     'lmp_entries' => [],
@@ -861,10 +870,11 @@ class FaireController extends Controller
                     'sales' => round($sales, 2),
                     'al30' => (int) round($al30),
                     'lp' => round($lp, 2),
-                    'ship' => 0,
+                    'ship' => round($ship, 2),
                     'sprice' => round($sprice, 2),
                     'sgpft' => $sgpft,
                     'sroi' => $sroi,
+                    'push_status' => $pushStatus,
                     '_margin' => round($margin, 4),
                     'inv' => $inv,
                     'ov_l30' => $ovL30,
@@ -910,7 +920,11 @@ class FaireController extends Controller
         try {
             $updates = $request->input('updates', []);
             if (empty($updates) && $request->has('sku')) {
-                $updates = [['sku' => $request->input('sku'), 'sprice' => $request->input('sprice')]];
+                $updates = [[
+                    'sku' => $request->input('sku'),
+                    'sprice' => $request->input('sprice'),
+                    'push_status' => $request->input('push_status'),
+                ]];
             }
 
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Faire')->first();
@@ -920,38 +934,61 @@ class FaireController extends Controller
             $updatedCount = 0;
             foreach ($updates as $update) {
                 $sku = $update['sku'] ?? null;
-                $sprice = $update['sprice'] ?? null;
-                if (!$sku || $sprice === null) {
+                if (! $sku) {
                     continue;
                 }
 
-                $sprice = (float) $sprice;
+                $hasSprice = array_key_exists('sprice', $update) && $update['sprice'] !== null && $update['sprice'] !== '';
+                $hasPushStatus = array_key_exists('push_status', $update);
 
-                // Robust SKU match — exact `WHERE sku = ?` misses NBSP / multi-space variants
-                // that frequently exist between faire_data_views and product_masters.
-                $normalizedSku = $this->normalizeFaireSkuExact((string) $sku);
-                $productMaster = ProductMaster::query()
-                    ->whereNotNull('sku')->where('sku', '!=', '')
-                    ->get()
-                    ->first(fn ($r) => $this->normalizeFaireSkuExact((string) $r->sku) === $normalizedSku);
-                $lp = 0;
-                if ($productMaster) {
-                    $values = is_array($productMaster->Values)
-                        ? $productMaster->Values
-                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
-                    $lp = isset($values['lp']) ? (float) $values['lp'] : 0;
+                if (! $hasSprice && ! $hasPushStatus) {
+                    continue;
                 }
-
-                $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
-                $sroi = $lp > 0 ? (int) round((($sprice * $margin - $lp) / $lp) * 100) : 0;
 
                 $view = FaireDataView::firstOrNew(['sku' => $sku]);
                 $stored = is_array($view->value) ? $view->value
                     : (json_decode($view->value, true) ?: []);
 
-                $stored['SPRICE'] = $sprice;
-                $stored['SGPFT'] = $sgpft;
-                $stored['SROI'] = $sroi;
+                if ($hasSprice) {
+                    $sprice = (float) $update['sprice'];
+
+                    // Robust SKU match — exact `WHERE sku = ?` misses NBSP / multi-space variants
+                    // that frequently exist between faire_data_views and product_masters.
+                    $normalizedSku = $this->normalizeFaireSkuExact((string) $sku);
+                    $productMaster = ProductMaster::query()
+                        ->whereNotNull('sku')->where('sku', '!=', '')
+                        ->get()
+                        ->first(fn ($r) => $this->normalizeFaireSkuExact((string) $r->sku) === $normalizedSku);
+                    $lp = 0;
+                    if ($productMaster) {
+                        $values = is_array($productMaster->Values)
+                            ? $productMaster->Values
+                            : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                        $lp = isset($values['lp']) ? (float) $values['lp'] : 0;
+                    }
+
+                    $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp) / $sprice) * 100) : 0;
+                    $sroi = $lp > 0 ? (int) round((($sprice * $margin - $lp) / $lp) * 100) : 0;
+
+                    $stored['SPRICE'] = $sprice;
+                    $stored['SGPFT'] = $sgpft;
+                    $stored['SROI'] = $sroi;
+
+                    // New SPRICE invalidates prior push success (unless this save also sets push_status).
+                    if (! $hasPushStatus) {
+                        unset($stored['PUSH_STATUS'], $stored['PUSH_STATUS_UPDATED_AT']);
+                    }
+                }
+
+                if ($hasPushStatus) {
+                    $pushStatus = $update['push_status'];
+                    if ($pushStatus === null || $pushStatus === '') {
+                        unset($stored['PUSH_STATUS'], $stored['PUSH_STATUS_UPDATED_AT']);
+                    } else {
+                        $stored['PUSH_STATUS'] = (string) $pushStatus;
+                        $stored['PUSH_STATUS_UPDATED_AT'] = now()->format('Y-m-d H:i:s');
+                    }
+                }
 
                 $view->value = $stored;
                 $view->save();
@@ -963,6 +1000,88 @@ class FaireController extends Controller
             Log::error('Faire SPRICE save failed: ' . $e->getMessage());
 
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Push SPRICE as Faire wholesale price via External API v2 variant prices endpoint.
+     */
+    public function pushPriceToFaire(Request $request)
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        $price = $request->input('price');
+        $productId = trim((string) $request->input('product_id', ''));
+
+        if ($sku === '') {
+            return response()->json([
+                'success' => false,
+                'errors' => [['message' => 'SKU is required.']],
+            ], 400);
+        }
+
+        if (! is_numeric($price) || (float) $price <= 0) {
+            return response()->json([
+                'success' => false,
+                'errors' => [['message' => 'Price must be greater than 0.']],
+            ], 400);
+        }
+
+        try {
+            $result = app(FaireApiService::class)->updateSkuWholesalePrice(
+                $sku,
+                (float) $price,
+                $productId !== '' ? $productId : null
+            );
+
+            if (empty($result['success'])) {
+                Log::warning('Faire price push failed', [
+                    'sku' => $sku,
+                    'price' => $price,
+                    'result' => $result,
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'errors' => [['message' => $result['message'] ?? 'Faire price push failed']],
+                    'data' => $result,
+                ], 400);
+            }
+
+            // Keep local faire_metric.price in sync with what we pushed.
+            $normalizedSku = $this->normalizeFaireSkuExact($sku);
+            if (Schema::hasTable('faire_metric')) {
+                $metric = FaireMetric::query()
+                    ->whereNotNull('sku')->where('sku', '!=', '')
+                    ->get()
+                    ->first(fn ($r) => $this->normalizeFaireSkuExact((string) $r->sku) === $normalizedSku);
+                if ($metric) {
+                    $metric->price = round((float) $price, 2);
+                    $metric->save();
+                }
+            }
+
+            Log::info('Faire price push successful', [
+                'sku' => $sku,
+                'price' => $price,
+                'product_id' => $result['product_id'] ?? null,
+                'variant_id' => $result['variant_id'] ?? null,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => $result['message'] ?? 'Price pushed to Faire successfully',
+                'data' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Faire price push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'errors' => [['message' => $e->getMessage()]],
+            ], 500);
         }
     }
 
@@ -1135,6 +1254,8 @@ class FaireController extends Controller
             'sprice' => '-',
             'sgpft' => '-',
             'sroi' => '-',
+            'push_status' => null,
+            'product_id' => null,
             'inv' => (int) $sumInv,
             'ov_l30' => (int) $sumOvL30,
             'ae_stock' => (int) $sumAeStock,

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Models\MacysPriceData;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
@@ -87,6 +88,21 @@ class PurchasingPowerController extends Controller
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.65;
+
+        // STD PRC — amazon_data_view.STANDARD_PRICE (same source as /faire-pricing Rule)
+        $normalizeSku = static function ($value) {
+            $v = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', (string) $value);
+
+            return strtoupper(preg_replace('/\s+/u', ' ', trim($v)) ?? '');
+        };
+        $amazonStandardPrices = AmazonDataView::all()
+            ->keyBy(fn ($r) => $normalizeSku($r->sku))
+            ->map(function ($r) {
+                $val = is_array($r->value) ? $r->value : (json_decode((string) $r->value, true) ?: []);
+                $std = $val['STANDARD_PRICE'] ?? null;
+
+                return (is_numeric($std) && floatval($std) > 0) ? round(floatval($std), 2) : 0;
+            });
 
         $result = [];
 
@@ -176,13 +192,25 @@ class PurchasingPowerController extends Controller
                 }
             }
 
-            // LP from ProductMaster. Ship is intentionally excluded from all PP formulas.
+            // LP / Ship from ProductMaster. Ship is excluded from margin formulas,
+            // but Price Rule Apply uses Ship: SPRICE = (STD × (1 − Disc%)) − Ship.
             $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
             $lp = 0;
+            $ship = 0;
             foreach ($values as $k => $v) {
-                if (strtolower($k) === 'lp') { $lp = floatval($v); break; }
+                if (strtolower((string) $k) === 'lp') {
+                    $lp = floatval($v);
+                }
+                if (strtolower((string) $k) === 'ship') {
+                    $ship = floatval($v);
+                }
             }
-            if ($lp === 0 && isset($pm->lp)) $lp = floatval($pm->lp);
+            if ($lp === 0 && isset($pm->lp)) {
+                $lp = floatval($pm->lp);
+            }
+            if ($ship === 0 && isset($pm->ship)) {
+                $ship = floatval($pm->ship);
+            }
 
             $price           = floatval($row['PP Price'] ?? 0);
             $units_l30       = floatval($row['PP L30']   ?? 0);
@@ -200,9 +228,13 @@ class PurchasingPowerController extends Controller
 
             $row['percentage']          = $percentage;
             $row['LP_productmaster']    = $lp;
-            $row['Ship_productmaster']  = 0; // not used in PP formulas
+            $row['Ship_productmaster']  = round($ship, 2);
+            $normSku = $normalizeSku($pm->sku);
+            $row['standard_price'] = isset($amazonStandardPrices[$normSku])
+                ? floatval($amazonStandardPrices[$normSku])
+                : 0;
 
-            // SPRICE metrics (Ship excluded)
+            // SPRICE metrics (Ship excluded from margin math)
             $sprice = $row['SPRICE'] ?? 0;
             $sgpft  = round($sprice > 0 ? (($sprice * $percentage - $lp) / $sprice) * 100 : 0, 2);
             $row['SGPFT'] = $sgpft;

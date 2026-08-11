@@ -5506,6 +5506,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/faire/pricing-data', [FaireController::class, 'getFairePricingData'])->name('faire.pricing.data');
     Route::post('/faire/pricing-sync-from-api', [FaireController::class, 'syncPricingFromApi'])->name('faire.pricing.sync.api');
     Route::post('/faire/pricing-save-sprice', [FaireController::class, 'saveFaireSpriceUpdates'])->name('faire.pricing.save.sprice');
+    Route::post('/faire/push-price', [FaireController::class, 'pushPriceToFaire'])->name('faire.pricing.push.price');
     Route::post('/faire/save-links', [FaireController::class, 'saveLinks'])->name('faire.pricing.save.links');
     Route::get('/faire/badge-chart-data', [FaireController::class, 'faireBadgeChartData'])->name('faire.pricing.badge.chart');
     Route::get('/faire/pricing-column-visibility', [FaireController::class, 'getFairePricingColumnVisibility'])->name('faire.pricing.column.get');

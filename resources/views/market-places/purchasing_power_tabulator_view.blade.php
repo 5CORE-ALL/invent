@@ -129,6 +129,10 @@
                     <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
                         <i class="fas fa-equals"></i> Same Price Mode
                     </button>
+                    <button type="button" id="pp-rule-btn" class="btn btn-sm btn-outline-dark"
+                        title="Price rules: Dil %, PP sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship">
+                        <i class="fas fa-sliders-h"></i> Rule
+                    </button>
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100)) / margin   (Ship excluded for Purchasing Power; margin = $ppPercentage / 100) --}}
@@ -259,6 +263,55 @@
             </div>
         </div>
     </div>
+
+    <!-- Price Rule (PP-specific modal/table — same rule as /faire-pricing) -->
+    <div class="modal fade" id="ppPriceRuleModal" tabindex="-1" aria-labelledby="ppPriceRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="ppPriceRuleModalLabel">
+                        <i class="fas fa-sliders-h me-1"></i> Price Rule
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">
+                        Match rows by <strong>Dil %</strong> and <strong>Sold qty (PP L30)</strong>.
+                        Apply sets <strong>SPRICE = (STD prc × (1 − Discount%/100)) − Ship</strong>.
+                        Blank min/max = no limit. If SKUs are checked, only those are updated.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-2" id="pp-price-rule-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:12%">Dil % min</th>
+                                    <th style="width:12%">Dil % max</th>
+                                    <th style="width:14%">Sold min</th>
+                                    <th style="width:14%">Sold max</th>
+                                    <th style="width:14%">Discount %</th>
+                                    <th style="width:8%"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="pp-price-rule-tbody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="pp-price-rule-add-btn">
+                        <i class="fas fa-plus"></i> Add rule
+                    </button>
+                    <div id="pp-price-rule-msg" class="small mt-2 text-danger d-none"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-outline-success" id="pp-price-rule-save-btn">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="pp-price-rule-apply-btn">
+                        <i class="fas fa-check"></i> Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -270,6 +323,211 @@
     let increaseModeActive = false;
     let samePriceModeActive = false;
     let selectedSkus = new Set();
+
+    // ---- Price Rule (same logic as Faire; separate modal/table + storage) ----
+    const PP_PRICE_RULES_KEY = 'pp_price_rules_v1';
+    let ppPriceRules = [];
+
+    function ppDefaultPriceRules() {
+        return [{ dil_min: null, dil_max: null, sold_min: null, sold_max: null, discount_pct: 25 }];
+    }
+
+    function ppLoadPriceRules() {
+        try {
+            const raw = localStorage.getItem(PP_PRICE_RULES_KEY);
+            if (!raw) return ppDefaultPriceRules();
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) && parsed.length ? parsed : ppDefaultPriceRules();
+        } catch (e) {
+            return ppDefaultPriceRules();
+        }
+    }
+
+    function ppSavePriceRulesToStorage(rules) {
+        localStorage.setItem(PP_PRICE_RULES_KEY, JSON.stringify(rules || []));
+    }
+
+    function ppNumOrNull(v) {
+        if (v === null || v === undefined || v === '') return null;
+        const n = parseFloat(v);
+        return isFinite(n) ? n : null;
+    }
+
+    function ppInRange(val, min, max) {
+        if (min !== null && min !== undefined && val < min) return false;
+        if (max !== null && max !== undefined && val > max) return false;
+        return true;
+    }
+
+    function ppReadPriceRulesFromDom() {
+        const rules = [];
+        $('#pp-price-rule-tbody tr').each(function() {
+            const $tr = $(this);
+            rules.push({
+                dil_min: ppNumOrNull($tr.find('[data-field="dil_min"]').val()),
+                dil_max: ppNumOrNull($tr.find('[data-field="dil_max"]').val()),
+                sold_min: ppNumOrNull($tr.find('[data-field="sold_min"]').val()),
+                sold_max: ppNumOrNull($tr.find('[data-field="sold_max"]').val()),
+                discount_pct: ppNumOrNull($tr.find('[data-field="discount_pct"]').val()),
+            });
+        });
+        return rules;
+    }
+
+    function ppRenderPriceRules(rules) {
+        ppPriceRules = Array.isArray(rules) ? rules : [];
+        const $tb = $('#pp-price-rule-tbody');
+        $tb.empty();
+        if (!ppPriceRules.length) ppPriceRules = ppDefaultPriceRules();
+        ppPriceRules.forEach(function(rule, idx) {
+            const r = rule || {};
+            $tb.append(
+                '<tr data-idx="' + idx + '">' +
+                '<td><input type="number" class="form-control form-control-sm" data-field="dil_min" step="0.1" placeholder="—" value="' + (r.dil_min != null ? r.dil_min : '') + '"></td>' +
+                '<td><input type="number" class="form-control form-control-sm" data-field="dil_max" step="0.1" placeholder="—" value="' + (r.dil_max != null ? r.dil_max : '') + '"></td>' +
+                '<td><input type="number" class="form-control form-control-sm" data-field="sold_min" step="1" placeholder="—" title="PP L30 sold qty" value="' + (r.sold_min != null ? r.sold_min : '') + '"></td>' +
+                '<td><input type="number" class="form-control form-control-sm" data-field="sold_max" step="1" placeholder="—" title="PP L30 sold qty" value="' + (r.sold_max != null ? r.sold_max : '') + '"></td>' +
+                '<td><input type="number" class="form-control form-control-sm" data-field="discount_pct" step="0.1" placeholder="e.g. 25" value="' + (r.discount_pct != null ? r.discount_pct : '') + '"></td>' +
+                '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger pp-price-rule-del" title="Remove"><i class="fas fa-trash"></i></button></td>' +
+                '</tr>'
+            );
+        });
+    }
+
+    function ppRuleMatchesRow(rule, d) {
+        const inv = parseFloat(d.INV) || 0;
+        const ovL30 = parseFloat(d.L30) || 0;
+        const dilVal = inv > 0 ? (ovL30 / inv) * 100 : 0;
+        const soldVal = parseFloat(d['PP L30']) || 0;
+        return ppInRange(dilVal, rule.dil_min, rule.dil_max)
+            && ppInRange(soldVal, rule.sold_min, rule.sold_max);
+    }
+
+    function ppApplyPriceRules() {
+        const $msg = $('#pp-price-rule-msg');
+        $msg.addClass('d-none').text('');
+        if (!table) return;
+
+        const rules = ppReadPriceRulesFromDom().filter(function(r) {
+            return r.discount_pct !== null && isFinite(r.discount_pct);
+        });
+        if (!rules.length) {
+            $msg.removeClass('d-none').text('Add at least one rule with a Discount %.');
+            return;
+        }
+
+        const restrictSelected = selectedSkus.size > 0;
+        const updates = [];
+        let matched = 0;
+        let skippedNoStd = 0;
+        const margin = (typeof PP_MARGIN === 'number' && PP_MARGIN > 0)
+            ? PP_MARGIN
+            : {{ isset($ppPercentage) ? ((float) $ppPercentage / 100) : 0.65 }};
+
+        table.getRows().forEach(function(row) {
+            const d = row.getData();
+            const sku = d['(Child) sku'];
+            if (!sku) return;
+            if (restrictSelected && !selectedSkus.has(sku)) return;
+
+            let hit = null;
+            for (let i = 0; i < rules.length; i++) {
+                if (ppRuleMatchesRow(rules[i], d)) {
+                    hit = rules[i];
+                    break;
+                }
+            }
+            if (!hit) return;
+            matched++;
+
+            const std = parseFloat(d.standard_price);
+            if (!(std > 0)) {
+                skippedNoStd++;
+                return;
+            }
+
+            const factor = 1 - (parseFloat(hit.discount_pct) / 100);
+            const ship = parseFloat(d.Ship_productmaster) || 0;
+            // Same rule as Faire: SPRICE = (STD × (1 − Discount%/100)) − Ship
+            let raw = Math.max(0.99, (std * factor) - ship);
+            let newSprice = (typeof roundToRetailPrice === 'function')
+                ? roundToRetailPrice(raw)
+                : (raw < 20.99 ? +raw.toFixed(2) : Math.ceil(raw) - 0.01);
+            const lp = parseFloat(d.LP_productmaster) || 0;
+            const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 10000) / 100 : 0;
+            const sroi = lp > 0 ? Math.round(((newSprice * margin - lp) / lp) * 10000) / 100 : 0;
+            row.update({ SPRICE: newSprice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
+            updates.push({ sku: sku, sprice: newSprice });
+        });
+
+        if (!updates.length) {
+            $msg.removeClass('d-none').text(
+                matched
+                    ? ('Matched ' + matched + ' row(s) but none have STD prc > 0' + (skippedNoStd ? ' (' + skippedNoStd + ')' : '') + '.')
+                    : (restrictSelected
+                        ? 'No checked rows match the Dil % / Sold qty filters.'
+                        : 'No rows match the Dil % / Sold qty filters.')
+            );
+            return;
+        }
+
+        ppSavePriceRulesToStorage(ppReadPriceRulesFromDom());
+        if (typeof saveSpriceUpdates === 'function') {
+            saveSpriceUpdates(updates);
+        } else {
+            $.ajax({
+                url: '{{ route("pp.save.sprice.batch") }}',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { _token: '{{ csrf_token() }}', updates: updates }
+            });
+        }
+        const tip = 'Applied SPRICE on ' + updates.length + ' SKU(s)'
+            + (skippedNoStd ? ' (' + skippedNoStd + ' skipped — no STD)' : '')
+            + '.';
+        showToast(tip, 'success');
+    }
+
+    function ppBindPriceRuleUi() {
+        $('#pp-rule-btn').on('click', function() {
+            ppRenderPriceRules(ppLoadPriceRules());
+            $('#pp-price-rule-msg').addClass('d-none').text('');
+            const el = document.getElementById('ppPriceRuleModal');
+            if (el && window.bootstrap && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            } else {
+                $(el).modal('show');
+            }
+        });
+
+        $('#pp-price-rule-add-btn').on('click', function() {
+            ppPriceRules = ppReadPriceRulesFromDom();
+            ppPriceRules.push({ dil_min: null, dil_max: null, sold_min: null, sold_max: null, discount_pct: 25 });
+            ppRenderPriceRules(ppPriceRules);
+        });
+
+        $(document).on('click', '#pp-price-rule-tbody .pp-price-rule-del', function() {
+            const idx = parseInt($(this).closest('tr').attr('data-idx'), 10);
+            ppPriceRules = ppReadPriceRulesFromDom();
+            if (ppPriceRules.length <= 1) {
+                ppPriceRules = ppDefaultPriceRules();
+            } else {
+                ppPriceRules.splice(idx, 1);
+            }
+            ppRenderPriceRules(ppPriceRules);
+        });
+
+        $('#pp-price-rule-save-btn').on('click', function() {
+            const rules = ppReadPriceRulesFromDom();
+            ppSavePriceRulesToStorage(rules);
+            ppPriceRules = rules;
+            showToast('Price rules saved', 'success');
+        });
+
+        $('#pp-price-rule-apply-btn').on('click', function() {
+            ppApplyPriceRules();
+        });
+    }
 
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -1290,6 +1548,8 @@
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             showToast('Export downloaded!', 'success');
         });
+
+        ppBindPriceRuleUi();
     });
 </script>
 @endsection

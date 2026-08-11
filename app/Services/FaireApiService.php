@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\FaireMetric;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Faire External API v2 client.
@@ -595,20 +597,244 @@ class FaireApiService
     }
 
     /**
-     * Faire External API v2 does not expose a simple bulk price endpoint in our integration.
-     * Price sync is a no-op (inventory + local cache still update).
+     * Push wholesale prices via PATCH /products/{productId}/variants/{variantId}.
      *
-     * @param  list<array{seller_part_number?: string, sku?: string, price?: float|int|string}>  $items
-     * @return array{success: bool, pushed: int, failed: int, message?: string}
+     * @param  list<array{seller_part_number?: string, sku?: string, price?: float|int|string, product_id?: string}>  $items
+     * @return array{success: bool, pushed: int, failed: int, message?: string, error_message?: string, results?: list<array<string, mixed>>}
      */
     public function updateItemPriceBulk(array $items, string $defaultCountry = 'USA'): array
     {
+        $pushed = 0;
+        $failed = 0;
+        $results = [];
+        $country = strtoupper(trim($defaultCountry)) ?: 'USA';
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $sku = trim((string) ($item['sku'] ?? $item['seller_part_number'] ?? ''));
+            $price = $item['price'] ?? null;
+            $productId = trim((string) ($item['product_id'] ?? ''));
+            if ($sku === '' || ! is_numeric($price) || (float) $price <= 0) {
+                $failed++;
+                $results[] = ['sku' => $sku, 'success' => false, 'message' => 'SKU and price > 0 required.'];
+                continue;
+            }
+
+            $one = $this->updateSkuWholesalePrice($sku, (float) $price, $productId !== '' ? $productId : null, $country);
+            if (! empty($one['success'])) {
+                $pushed++;
+            } else {
+                $failed++;
+            }
+            $results[] = array_merge(['sku' => $sku], $one);
+        }
+
         return [
-            'success' => true,
-            'pushed' => 0,
-            'failed' => 0,
-            'message' => 'Faire price push is not implemented via External API v2; local price cache only.',
+            'success' => $failed === 0 && $pushed > 0,
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'message' => $pushed > 0
+                ? "Pushed wholesale price for {$pushed} SKU(s)".($failed ? "; {$failed} failed" : '').'.'
+                : 'No prices pushed.',
+            'error_message' => $failed > 0 ? 'One or more Faire price pushes failed.' : null,
+            'results' => $results,
         ];
+    }
+
+    /**
+     * Update a single SKU wholesale price on Faire (External API v2 variant prices).
+     *
+     * @return array{success: bool, message: string, product_id?: string, variant_id?: string, status?: int, response?: mixed}
+     */
+    public function updateSkuWholesalePrice(string $sku, float $price, ?string $productId = null, string $country = 'USA'): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+        if (! ($price > 0)) {
+            return ['success' => false, 'message' => 'Price must be greater than 0.'];
+        }
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Faire API credentials missing.'];
+        }
+
+        $amountMinor = (int) round($price * 100);
+        $country = strtoupper(trim($country)) ?: 'USA';
+
+        // Resolve product/variant so we can keep existing retail_price (API requires it).
+        $productId = trim((string) $productId);
+        if ($productId === '') {
+            try {
+                if (Schema::hasTable('faire_metric')) {
+                    $want = strtoupper(preg_replace('/\s+/u', ' ', trim(str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $sku))) ?? '');
+                    $metric = FaireMetric::query()
+                        ->whereNotNull('sku')
+                        ->where('sku', '!=', '')
+                        ->get()
+                        ->first(function ($row) use ($want) {
+                            $cand = strtoupper(preg_replace('/\s+/u', ' ', trim(str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', (string) $row->sku))) ?? '');
+
+                            return $cand === $want;
+                        });
+                    if ($metric && filled($metric->product_id)) {
+                        $productId = trim((string) $metric->product_id);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('FaireApiService: faire_metric lookup failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            }
+        }
+
+        $variant = null;
+        $variantId = '';
+        if ($productId !== '') {
+            $info = $this->getProductInfo($productId);
+            if (! empty($info['success']) && is_array($info['data'] ?? null)) {
+                $variants = $info['data']['variants'] ?? $info['data']['product_variants'] ?? [];
+                if (! is_array($variants)) {
+                    $variants = [];
+                }
+                $normalize = static function (string $v): string {
+                    $v = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $v);
+
+                    return strtoupper(preg_replace('/\s+/u', ' ', trim($v)) ?? '');
+                };
+                $want = $normalize($sku);
+                foreach ($variants as $cand) {
+                    if (! is_array($cand)) {
+                        continue;
+                    }
+                    if ($normalize((string) ($cand['sku'] ?? '')) === $want) {
+                        $variant = $cand;
+                        break;
+                    }
+                }
+                if ($variant) {
+                    $variantId = trim((string) ($variant['id'] ?? $variant['product_variant_id'] ?? ''));
+                }
+            }
+        }
+
+        // Faire requires prices[0].retail_price — keep existing retail when possible, else 2× wholesale.
+        $retailMinor = $this->extractVariantRetailMinor($variant);
+        if (! ($retailMinor > 0)) {
+            $retailMinor = max($amountMinor, (int) round($amountMinor * 2));
+        }
+        if ($retailMinor < $amountMinor) {
+            $retailMinor = $amountMinor;
+        }
+
+        $wholesaleMoney = ['amount_minor' => $amountMinor, 'currency' => 'USD'];
+        $retailMoney = ['amount_minor' => $retailMinor, 'currency' => 'USD'];
+        $priceEntryBase = [
+            'geo_constraint' => ['country' => $country],
+            'wholesale_price' => $wholesaleMoney,
+            'retail_price' => $retailMoney,
+        ];
+
+        $attempts = [
+            [
+                'path' => '/product-variant-prices/by-skus',
+                'body' => [
+                    'prices' => [array_merge(['sku' => $sku], $priceEntryBase)],
+                ],
+            ],
+        ];
+        if ($variantId !== '') {
+            $attempts[] = [
+                'path' => '/product-variant-prices/by-product-variant-ids',
+                'body' => [
+                    'prices' => [array_merge(['product_variant_id' => $variantId], $priceEntryBase)],
+                ],
+            ];
+        }
+        if ($productId !== '' && $variantId !== '') {
+            $attempts[] = [
+                'path' => '/products/'.$productId.'/variants/'.$variantId,
+                'body' => [
+                    'prices' => [$priceEntryBase],
+                    'wholesale_price_cents' => $amountMinor,
+                    'retail_price_cents' => $retailMinor,
+                ],
+            ];
+        }
+
+        if ($attempts === []) {
+            return [
+                'success' => false,
+                'message' => 'Faire product/variant not found for SKU. Sync listings from Faire API first.',
+            ];
+        }
+
+        $last = null;
+        foreach ($attempts as $attempt) {
+            $res = $this->request('PATCH', $attempt['path'], [], $attempt['body']);
+            $last = $res;
+            if (! empty($res['blocked_by_cloudflare'])) {
+                return [
+                    'success' => false,
+                    'message' => 'Blocked by Cloudflare.',
+                    'product_id' => $productId !== '' ? $productId : null,
+                    'variant_id' => $variantId !== '' ? $variantId : null,
+                ];
+            }
+            if (! empty($res['ok'])) {
+                return [
+                    'success' => true,
+                    'message' => 'Wholesale price pushed to Faire.',
+                    'product_id' => $productId !== '' ? $productId : null,
+                    'variant_id' => $variantId !== '' ? $variantId : null,
+                    'endpoint' => $attempt['path'],
+                    'status' => $res['status'] ?? 200,
+                    'response' => $res['json'] ?? null,
+                ];
+            }
+        }
+
+        return [
+            'success' => false,
+            'message' => $last['error'] ?? ('Faire price update failed HTTP '.($last['status'] ?? 0)),
+            'product_id' => $productId !== '' ? $productId : null,
+            'variant_id' => $variantId !== '' ? $variantId : null,
+            'status' => $last['status'] ?? null,
+            'response' => $last['json'] ?? $last['raw'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $variant
+     */
+    protected function extractVariantRetailMinor(?array $variant): int
+    {
+        if (! is_array($variant)) {
+            return 0;
+        }
+
+        $direct = data_get($variant, 'retail_price.amount_minor')
+            ?? data_get($variant, 'retail_price_cents');
+        if (is_numeric($direct) && (float) $direct > 0) {
+            return (int) round((float) $direct);
+        }
+
+        // prices[] may be geo-scoped
+        $prices = $variant['prices'] ?? null;
+        if (is_array($prices)) {
+            foreach ($prices as $p) {
+                if (! is_array($p)) {
+                    continue;
+                }
+                $minor = data_get($p, 'retail_price.amount_minor')
+                    ?? data_get($p, 'retail_price_cents');
+                if (is_numeric($minor) && (float) $minor > 0) {
+                    return (int) round((float) $minor);
+                }
+            }
+        }
+
+        return 0;
     }
 
     /**

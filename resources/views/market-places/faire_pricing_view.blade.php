@@ -55,17 +55,6 @@
             pointer-events: auto;
             z-index: 10050;
         }
-        /* NRP: same visual language as Forecast Analysis */
-        .nrp-dot-cell { min-height: 32px; min-width: 44px; }
-        .nrp-dot-cell .nrp-status-dot {
-            display: inline-block; width: 12px; height: 12px; border-radius: 50%;
-            border: 1px solid rgba(0,0,0,.12); flex-shrink: 0;
-        }
-        .nrp-dot-cell .nrp-nr-select {
-            opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
-        }
-        .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
-
         /* Summary badges — horizontal scroll on narrow viewports (same as eBay 2 / TikTok pricing) */
         #fr-summary-stats .ebay2-summary-badge-row {
             display: flex;
@@ -131,7 +120,7 @@
             <div class="card border-primary mb-3">
                 <div class="card-header bg-primary bg-opacity-10 py-2">
                     <strong><i class="fas fa-cloud-download-alt me-1"></i> Faire API sync</strong>
-                    <span class="text-muted small ms-2">Pulls live listings, wholesale price, and stock into <code>faire_metric</code> (API only) for Map / Miss / N Map.</span>
+                    <span class="text-muted small ms-2">Pulls live listings, wholesale price, and stock into <code>faire_metric</code> (API only).</span>
                 </div>
                 <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
                     <button type="button" class="btn btn-sm btn-primary" id="frSyncFromApiBtn">
@@ -193,11 +182,6 @@
                             <option value="0-10">1–10</option>
                             <option value="10plus">10+</option>
                         </select>
-                        <select id="fr-map-filter" class="form-select form-select-sm" style="width:120px;">
-                            <option value="all">Map</option>
-                            <option value="map">Map only</option>
-                            <option value="nmap">N Map only</option>
-                        </select>
                         <div class="fr-manual-dropdown">
                             <button class="btn btn-light btn-sm fr-dil-toggle" type="button" id="fr-dil-btn">
                                 <span class="fr-sc def"></span>DIL%
@@ -220,21 +204,28 @@
                         <button type="button" id="fr-refresh-pricing" class="btn btn-sm btn-outline-primary">
                             <i class="fa fa-refresh"></i> Refresh
                         </button>
-                        <button type="button" id="fr-export-pricing" class="btn btn-sm btn-success">
-                            <i class="fas fa-file-csv"></i> Export CSV
+                        <button type="button" id="fr-export-pricing" class="btn btn-sm btn-success" title="Export CSV" aria-label="Export CSV">
+                            <i class="fas fa-file-csv"></i>
                         </button>
                         <div class="dropdown d-inline-block">
-                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="frColumnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fa fa-eye"></i> Columns
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="frColumnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns" aria-label="Columns">
+                                <i class="fa fa-eye"></i>
                             </button>
                             <ul class="dropdown-menu py-1" aria-labelledby="frColumnVisibilityDropdown" id="fr-column-dropdown-menu" style="max-height: 400px; overflow-y: auto; min-width: 220px;">
                             </ul>
                         </div>
-                        <button type="button" id="fr-show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                            <i class="fa fa-eye"></i> Show all
+                        <button id="fr-price-mode-btn" type="button" class="btn btn-sm btn-secondary"
+                            title="Pricing mode: Off → Decrease → Increase → Same SPRICE (all rows)"
+                            aria-label="Pricing mode">
+                            <i class="fas fa-exchange-alt"></i>
                         </button>
-                        <button id="fr-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same SPRICE (all rows)">
-                            <i class="fas fa-exchange-alt"></i> Pricing mode
+                        <button type="button" id="fr-rule-btn" class="btn btn-sm btn-outline-dark"
+                            title="Price rules: Dil %, Faire sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship">
+                            <i class="fas fa-sliders-h"></i> Rule
+                        </button>
+                        <button type="button" id="fr-push-to-faire-btn" class="btn btn-sm btn-primary" style="display: none;"
+                            title="Push SPRICE for selected SKUs to Faire (or all with SPRICE if none selected)">
+                            <i class="fas fa-upload"></i> Push to Faire
                         </button>
 
                         {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
@@ -250,8 +241,9 @@
                                 placeholder="e.g. 30" step="0.1" style="width: 80px;"
                                 title="Target ROI% applied to all checked rows when you click 'Apply S PRC'">
                             <button id="fr-apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                                title="Compute & save S PRC = LP × (1 + Target ROI%/100) / margin for every checked row">
-                                <i class="fas fa-calculator"></i> Apply S PRC
+                                title="Apply S PRC = LP × (1 + Target ROI%/100) / margin for every checked row"
+                                aria-label="Apply S PRC">
+                                <i class="fas fa-calculator"></i>
                             </button>
                         </div>
 
@@ -267,8 +259,9 @@
                                 placeholder="e.g. 30" step="0.1" style="width: 80px;"
                                 title="Target GPFT% applied to all checked rows when you click 'Apply S PRC'. Must be less than the Faire take-home margin (typically < 75%).">
                             <button id="fr-apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                                title="Compute & save S PRC = LP / (margin − Target GPFT%/100) for every checked row">
-                                <i class="fas fa-calculator"></i> Apply S PRC
+                                title="Apply S PRC = LP / (margin − Target GPFT%/100) for every checked row"
+                                aria-label="Apply S PRC">
+                                <i class="fas fa-calculator"></i>
                             </button>
                         </div>
 
@@ -313,9 +306,6 @@
                             <span class="badge bg-success fs-6 p-2 d-none fr-badge-chart fr-hover-chart" id="fr-total-profit-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;" aria-hidden="true" title="View trend">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-gpft-badge" data-metric="avg_gpft" style="font-weight:700;color:#111;cursor:pointer;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty). Click or hover for trend.">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-roi-badge" data-metric="avg_roi" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover for daily trend">ROI: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-missing-badge" data-metric="missing_count" data-filter="missing" style="font-weight:700;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">Missing L: 0</span>
-                            <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-map-count-badge" data-metric="map_count" data-filter="map" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">Map: 0</span>
-                            <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-nmap-count-badge" data-metric="nmap_count" data-filter="nmap" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">N Map: 0</span>
                             <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-zero-sold-badge" data-metric="zero_sold" data-filter="zero_sold" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">0 Sold: 0</span>
                             <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-more-sold-badge" data-metric="more_sold" data-filter="more_sold" style="font-weight:700;background:#b6e0fe;color:#0f172a;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">&gt;0 Sold: 0</span>
                         </div>
@@ -408,6 +398,55 @@
             </div>
         </div>
     </div>
+
+    <!-- Price Rule: Dil % / Faire sold qty / Discount % → SPRICE from STD -->
+    <div class="modal fade" id="frPriceRuleModal" tabindex="-1" aria-labelledby="frPriceRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="frPriceRuleModalLabel">
+                        <i class="fas fa-sliders-h me-1"></i> Price Rule
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">
+                        Match rows by <strong>Dil %</strong> and <strong>Sold qty (Faire)</strong>.
+                        Apply sets <strong>SPRICE = (STD prc × (1 − Discount%/100)) − Ship</strong>.
+                        Blank min/max = no limit. If SKUs are checked, only those are updated.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-2" id="fr-price-rule-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:12%">Dil % min</th>
+                                    <th style="width:12%">Dil % max</th>
+                                    <th style="width:14%">Sold min</th>
+                                    <th style="width:14%">Sold max</th>
+                                    <th style="width:14%">Discount %</th>
+                                    <th style="width:8%"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="fr-price-rule-tbody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="fr-price-rule-add-btn">
+                        <i class="fas fa-plus"></i> Add rule
+                    </button>
+                    <div id="fr-price-rule-msg" class="small mt-2 text-danger d-none"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-outline-success" id="fr-price-rule-save-btn">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="fr-price-rule-apply-btn">
+                        <i class="fas fa-check"></i> Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -418,9 +457,6 @@
         let table = null;
         let allTableData = [];
         let summaryDataCache = [];
-        let frMissingActive = false;
-        let frMapActive = false;
-        let frNMapActive = false;
         let frZeroSoldActive = false;
         let frMoreSoldActive = false;
 
@@ -436,9 +472,6 @@
             total_pft: 'Profit',
             avg_gpft: 'PFt %',
             avg_roi: 'ROI %',
-            missing_count: 'Missing L',
-            map_count: 'Map',
-            nmap_count: 'N Map',
             zero_sold: '0 Sold',
             more_sold: '> 0 Sold',
         };
@@ -759,36 +792,8 @@
             return String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         }
 
-        function frEscHtmlAttr(val) {
-            if (val == null || val === '') return '';
-            return String(val).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-        }
-
-        /** POST to forecast_analysis via same endpoint as Forecast Analysis (column NR → nr). */
-        function frUpdateForecastNrp(data, onSuccess, onFail) {
-            onSuccess = typeof onSuccess === 'function' ? onSuccess : function() {};
-            onFail = typeof onFail === 'function' ? onFail : function() {};
-            $.post('{{ route("update.forecast.data") }}', {
-                sku: data.sku,
-                parent: data.parent != null ? String(data.parent) : '',
-                column: 'NR',
-                value: data.value,
-                _token: $('meta[name="csrf-token"]').attr('content')
-            }).done(function(res) {
-                if (res.success) {
-                    onSuccess();
-                } else {
-                    console.warn('NRP not saved:', res.message);
-                    onFail();
-                }
-            }).fail(function(err) {
-                console.error('NRP save failed:', err);
-                alert('Error saving NRP.');
-                onFail();
-            });
-        }
-
         function saveFaireSpriceUpdates(updates) {
+            frUpdatePushButtonVisibility();
             $.ajax({
                 url: '{{ route("faire.pricing.save.sprice") }}',
                 method: 'POST',
@@ -803,11 +808,477 @@
             });
         }
 
+        function frSavePushStatus(sku, pushStatus, sprice) {
+            return $.ajax({
+                url: '{{ route("faire.pricing.save.sprice") }}',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    sku: sku,
+                    sprice: sprice,
+                    push_status: pushStatus
+                }
+            });
+        }
+
+        /** Push SPRICE to Faire price API with retries (same pattern as /doba-tabulator). */
+        function frPushPriceToFaireWithRetry(sku, price, productId, maxRetries, delay) {
+            maxRetries = maxRetries || 5;
+            delay = delay || 5000;
+            return new Promise(function(resolve, reject) {
+                let attempt = 0;
+                function attemptPush() {
+                    attempt++;
+                    $.ajax({
+                        url: '{{ route("faire.pricing.push.price") }}',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            sku: sku,
+                            price: price,
+                            product_id: productId || ''
+                        },
+                        success: function(response) {
+                            if (response && response.success === false) {
+                                const errorMsg = (response.errors && response.errors[0] && response.errors[0].message) || 'Push failed';
+                                if (attempt < maxRetries) {
+                                    setTimeout(attemptPush, delay);
+                                } else {
+                                    reject({ error: true, response: response, message: errorMsg });
+                                }
+                                return;
+                            }
+                            resolve({ success: true, response: response });
+                        },
+                        error: function(xhr) {
+                            const errorMsg = (xhr.responseJSON && xhr.responseJSON.errors && xhr.responseJSON.errors[0] && xhr.responseJSON.errors[0].message)
+                                || (xhr.responseJSON && xhr.responseJSON.message)
+                                || xhr.responseText
+                                || 'Network error';
+                            if (attempt < maxRetries) {
+                                setTimeout(attemptPush, delay);
+                            } else {
+                                reject({ error: true, xhr: xhr, message: errorMsg });
+                            }
+                        }
+                    });
+                }
+                attemptPush();
+            });
+        }
+
+        /** Tabulator 6: do NOT call cell.reformat() (stub warns / throws). Rebuild Push HTML. */
+        function frRefreshPushCell(row) {
+            if (!row) return;
+            const pushCell = row.getCell('_push');
+            if (!pushCell) return;
+            try {
+                const col = pushCell.getColumn && pushCell.getColumn();
+                const def = col && col.getDefinition ? col.getDefinition() : null;
+                if (def && typeof def.formatter === 'function') {
+                    const html = def.formatter(pushCell);
+                    pushCell.getElement().innerHTML = (html == null ? '' : String(html));
+                    return;
+                }
+            } catch (e) { /* ignore */ }
+            try {
+                const d = row.getData();
+                const sprice = parseFloat(d.sprice) || 0;
+                const status = d.push_status || null;
+                const el = pushCell.getElement();
+                if (!el) return;
+                if (status === 'pushing') {
+                    el.innerHTML = '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing to Faire..."></i>';
+                } else if (status === 'pushed') {
+                    el.innerHTML = '<i class="fa-solid fa-check-double" style="color:#28a745;" title="Pushed to Faire"></i>';
+                } else if (status === 'error') {
+                    el.innerHTML = '<button type="button" class="fr-push-single-btn" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '" data-price="' + sprice + '" style="border:none;background:none;color:#dc3545;cursor:pointer;padding:4px 6px;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>';
+                } else if (sprice > 0) {
+                    el.innerHTML = '<button type="button" class="fr-push-single-btn" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '" data-price="' + sprice + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;padding:4px 6px;" title="Push SPRICE to Faire"><i class="fas fa-upload"></i></button>';
+                } else {
+                    el.innerHTML = '';
+                }
+            } catch (e2) { /* ignore */ }
+        }
+
+        function frRunPushForRow(row) {
+            if (!row) return;
+            const d = row.getData();
+            if (d.is_parent) return;
+            const sku = d.sku;
+            const price = parseFloat(d.sprice) || 0;
+            const productId = d.product_id || '';
+            if (!sku || price <= 0) {
+                if (window.toastr) toastr.warning('SPRICE must be > 0 to push');
+                else alert('SPRICE must be > 0 to push');
+                return;
+            }
+
+            row.update({ push_status: 'pushing' }, true);
+            frRefreshPushCell(row);
+
+            if (window.toastr) toastr.info('Pushing ' + sku + '…');
+            // Fewer/faster retries so failures surface quickly in the UI
+            frPushPriceToFaireWithRetry(sku, price, productId, 3, 1500)
+                .then(function() {
+                    row.update({ push_status: 'pushed', price: price }, true);
+                    frRefreshPushCell(row);
+                    frSavePushStatus(sku, 'pushed', price);
+                    if (window.toastr) toastr.success('Pushed to Faire: ' + sku);
+                    else alert('Pushed to Faire: ' + sku);
+                })
+                .catch(function(err) {
+                    row.update({ push_status: 'error' }, true);
+                    frRefreshPushCell(row);
+                    frSavePushStatus(sku, 'error', price);
+                    const msg = (err && err.message) ? err.message : 'Push failed';
+                    if (window.toastr) toastr.error(msg);
+                    else alert(msg);
+                });
+        }
+
+        function frCollectPushableRows(selectedOnly) {
+            const list = [];
+            if (!table) return list;
+            table.getRows().forEach(function(row) {
+                const d = row.getData();
+                if (d.is_parent) return;
+                const sku = d.sku;
+                const price = parseFloat(d.sprice) || 0;
+                if (!sku || price <= 0) return;
+                if (selectedOnly && !frSelectedSkus.has(sku)) return;
+                list.push({
+                    sku: sku,
+                    price: price,
+                    productId: d.product_id || '',
+                    row: row
+                });
+            });
+            return list;
+        }
+
+        function frUpdatePushButtonVisibility() {
+            const $btn = $('#fr-push-to-faire-btn');
+            if (!$btn.length || !table) return;
+            const selectedPushable = frCollectPushableRows(true);
+            const allPushable = selectedPushable.length > 0
+                ? selectedPushable
+                : frCollectPushableRows(false);
+            const count = allPushable.length;
+            if (count > 0) {
+                const label = selectedPushable.length > 0
+                    ? ('Push to Faire (' + count + ')')
+                    : ('Push all SPRICE (' + count + ')');
+                $btn.show().prop('disabled', false).html('<i class="fas fa-upload"></i> ' + label);
+            } else {
+                $btn.hide();
+            }
+        }
+
+        function frRunBulkPush(skusWithSprice) {
+            if (!skusWithSprice || !skusWithSprice.length) return;
+            const $btn = $('#fr-push-to-faire-btn');
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
+
+            let currentIndex = 0;
+            let successCount = 0;
+            let errorCount = 0;
+
+            function processNext() {
+                if (currentIndex >= skusWithSprice.length) {
+                    $btn.prop('disabled', false);
+                    frUpdatePushButtonVisibility();
+                    if (! $btn.is(':visible')) $btn.html(originalHtml);
+                    if (successCount > 0 && errorCount === 0) {
+                        if (window.toastr) toastr.success('Pushed prices for ' + successCount + ' SKU(s) to Faire');
+                        else alert('Pushed prices for ' + successCount + ' SKU(s) to Faire');
+                    } else if (successCount > 0 && errorCount > 0) {
+                        if (window.toastr) toastr.warning('Pushed ' + successCount + ' SKU(s), ' + errorCount + ' failed');
+                        else alert('Pushed ' + successCount + ' SKU(s), ' + errorCount + ' failed');
+                    } else {
+                        if (window.toastr) toastr.error('Failed to push prices for ' + errorCount + ' SKU(s)');
+                        else alert('Failed to push prices for ' + errorCount + ' SKU(s)');
+                    }
+                    return;
+                }
+
+                const item = skusWithSprice[currentIndex];
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + (currentIndex + 1) + '/' + skusWithSprice.length);
+
+                item.row.update({ push_status: 'pushing' }, true);
+                frRefreshPushCell(item.row);
+
+                frPushPriceToFaireWithRetry(item.sku, item.price, item.productId, 3, 1500)
+                    .then(function() {
+                        successCount++;
+                        item.row.update({ push_status: 'pushed', price: item.price }, true);
+                        frRefreshPushCell(item.row);
+                        frSavePushStatus(item.sku, 'pushed', item.price);
+                        currentIndex++;
+                        setTimeout(processNext, 1500);
+                    })
+                    .catch(function() {
+                        errorCount++;
+                        item.row.update({ push_status: 'error' }, true);
+                        frRefreshPushCell(item.row);
+                        frSavePushStatus(item.sku, 'error', item.price);
+                        frSelectedSkus.delete(item.sku);
+                        currentIndex++;
+                        setTimeout(processNext, 1500);
+                    });
+            }
+
+            processNext();
+        }
+
+        function frBindPushUi() {
+            // Match Doba: delegate on class (clicks on the <i> icon still bubble).
+            $(document).off('click.frPush', '.fr-push-single-btn').on('click.frPush', '.fr-push-single-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!table) return;
+                const $btn = $(this).closest('.fr-push-single-btn');
+                const sku = $btn.attr('data-sku') || $btn.data('sku');
+                if (!sku) return;
+                let row = null;
+                table.getRows().forEach(function(r) {
+                    if (row) return;
+                    const d = r.getData();
+                    if (!d.is_parent && String(d.sku) === String(sku)) row = r;
+                });
+                if (!row && typeof table.searchRows === 'function') {
+                    const found = table.searchRows('sku', '=', sku);
+                    if (found && found.length) row = found[0];
+                }
+                if (!row) {
+                    if (window.toastr) toastr.warning('Row not found for SKU ' + sku);
+                    else alert('Row not found for SKU ' + sku);
+                    return;
+                }
+                frRunPushForRow(row);
+            });
+
+            $(document).off('click.frBulkPush', '#fr-push-to-faire-btn').on('click.frBulkPush', '#fr-push-to-faire-btn', function() {
+                if (!table) return;
+                const selectedPushable = frCollectPushableRows(true);
+                const skusWithSprice = selectedPushable.length > 0
+                    ? selectedPushable
+                    : frCollectPushableRows(false);
+
+                if (!skusWithSprice.length) {
+                    if (window.toastr) toastr.warning('No SKUs with SPRICE found. Set SPRICE first.');
+                    else alert('No SKUs with SPRICE found. Set SPRICE first.');
+                    return;
+                }
+
+                const scope = selectedPushable.length > 0 ? 'selected' : 'all';
+                if (!confirm('Push SPRICE for ' + skusWithSprice.length + ' ' + scope + ' SKU(s) to Faire?')) {
+                    return;
+                }
+                frRunBulkPush(skusWithSprice);
+            });
+        }
+
         function frRoundToRetailPrice(price) {
             if (price < 20.99) {
                 return +price.toFixed(2);
             }
             return Math.ceil(price) - 0.01;
+        }
+
+        // ---- Price Rule (Dil % / Faire sold / Discount % → SPRICE from STD) ----
+        const FR_PRICE_RULES_KEY = 'faire_price_rules_v1';
+        let frPriceRules = [];
+
+        function frDefaultPriceRules() {
+            return [{ dil_min: null, dil_max: null, sold_min: null, sold_max: null, discount_pct: 25 }];
+        }
+
+        function frLoadPriceRules() {
+            try {
+                const raw = localStorage.getItem(FR_PRICE_RULES_KEY);
+                if (!raw) return frDefaultPriceRules();
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) && parsed.length ? parsed : frDefaultPriceRules();
+            } catch (e) {
+                return frDefaultPriceRules();
+            }
+        }
+
+        function frSavePriceRulesToStorage(rules) {
+            localStorage.setItem(FR_PRICE_RULES_KEY, JSON.stringify(rules || []));
+        }
+
+        function frNumOrNull(v) {
+            if (v === null || v === undefined || v === '') return null;
+            const n = parseFloat(v);
+            return isFinite(n) ? n : null;
+        }
+
+        function frInRange(val, min, max) {
+            if (min !== null && min !== undefined && val < min) return false;
+            if (max !== null && max !== undefined && val > max) return false;
+            return true;
+        }
+
+        function frReadPriceRulesFromDom() {
+            const rules = [];
+            $('#fr-price-rule-tbody tr').each(function() {
+                const $tr = $(this);
+                rules.push({
+                    dil_min: frNumOrNull($tr.find('[data-field="dil_min"]').val()),
+                    dil_max: frNumOrNull($tr.find('[data-field="dil_max"]').val()),
+                    sold_min: frNumOrNull($tr.find('[data-field="sold_min"]').val()),
+                    sold_max: frNumOrNull($tr.find('[data-field="sold_max"]').val()),
+                    discount_pct: frNumOrNull($tr.find('[data-field="discount_pct"]').val()),
+                });
+            });
+            return rules;
+        }
+
+        function frRenderPriceRules(rules) {
+            frPriceRules = Array.isArray(rules) ? rules : [];
+            const $tb = $('#fr-price-rule-tbody');
+            $tb.empty();
+            if (!frPriceRules.length) frPriceRules = frDefaultPriceRules();
+            frPriceRules.forEach(function(rule, idx) {
+                const r = rule || {};
+                $tb.append(
+                    '<tr data-idx="' + idx + '">' +
+                    '<td><input type="number" class="form-control form-control-sm" data-field="dil_min" step="0.1" placeholder="—" value="' + (r.dil_min != null ? r.dil_min : '') + '"></td>' +
+                    '<td><input type="number" class="form-control form-control-sm" data-field="dil_max" step="0.1" placeholder="—" value="' + (r.dil_max != null ? r.dil_max : '') + '"></td>' +
+                    '<td><input type="number" class="form-control form-control-sm" data-field="sold_min" step="1" placeholder="—" title="Faire sold qty (al30)" value="' + (r.sold_min != null ? r.sold_min : '') + '"></td>' +
+                    '<td><input type="number" class="form-control form-control-sm" data-field="sold_max" step="1" placeholder="—" title="Faire sold qty (al30)" value="' + (r.sold_max != null ? r.sold_max : '') + '"></td>' +
+                    '<td><input type="number" class="form-control form-control-sm" data-field="discount_pct" step="0.1" placeholder="e.g. 25" value="' + (r.discount_pct != null ? r.discount_pct : '') + '"></td>' +
+                    '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger fr-price-rule-del" title="Remove"><i class="fas fa-trash"></i></button></td>' +
+                    '</tr>'
+                );
+            });
+        }
+
+        function frRuleMatchesRow(rule, d) {
+            const dil = parseFloat(d.dil_percent);
+            const dilVal = isFinite(dil) ? dil : 0;
+            const sold = parseFloat(d.al30);
+            const soldVal = isFinite(sold) ? sold : 0;
+            return frInRange(dilVal, rule.dil_min, rule.dil_max)
+                && frInRange(soldVal, rule.sold_min, rule.sold_max);
+        }
+
+        function frApplyPriceRules() {
+            const $msg = $('#fr-price-rule-msg');
+            $msg.addClass('d-none').text('');
+            if (!table) return;
+
+            const rules = frReadPriceRulesFromDom().filter(function(r) {
+                return r.discount_pct !== null && isFinite(r.discount_pct);
+            });
+            if (!rules.length) {
+                $msg.removeClass('d-none').text('Add at least one rule with a Discount %.');
+                return;
+            }
+
+            const restrictSelected = frSelectedSkus.size > 0;
+            const updates = [];
+            let matched = 0;
+            let skippedNoStd = 0;
+
+            table.getRows().forEach(function(row) {
+                const d = row.getData();
+                if (d.is_parent) return;
+                if (restrictSelected && !frSelectedSkus.has(d.sku)) return;
+
+                let hit = null;
+                for (let i = 0; i < rules.length; i++) {
+                    if (frRuleMatchesRow(rules[i], d)) {
+                        hit = rules[i];
+                        break;
+                    }
+                }
+                if (!hit) return;
+                matched++;
+
+                const std = parseFloat(d.standard_price);
+                if (!(std > 0)) {
+                    skippedNoStd++;
+                    return;
+                }
+
+                const factor = 1 - (parseFloat(hit.discount_pct) / 100);
+                const ship = parseFloat(d.ship) || 0;
+                // SPRICE = (STD × (1 − Discount%/100)) − Ship
+                let newSprice = frRoundToRetailPrice(Math.max(0.99, (std * factor) - ship));
+                const margin = parseFloat(d._margin) || 0.75;
+                const lp = parseFloat(d.lp) || 0;
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
+                const sroi = lp > 0 ? Math.round(((newSprice * margin - lp) / lp) * 100) : 0;
+                row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi, push_status: null });
+                updates.push({ sku: d.sku, sprice: newSprice });
+            });
+
+            if (!updates.length) {
+                $msg.removeClass('d-none').text(
+                    matched
+                        ? ('Matched ' + matched + ' row(s) but none have STD prc > 0' + (skippedNoStd ? ' (' + skippedNoStd + ')' : '') + '.')
+                        : (restrictSelected
+                            ? 'No checked rows match the Dil % / Sold qty filters.'
+                            : 'No rows match the Dil % / Sold qty filters.')
+                );
+                return;
+            }
+
+            frSavePriceRulesToStorage(frReadPriceRulesFromDom());
+            saveFaireSpriceUpdates(updates);
+            const tip = 'Applied SPRICE on ' + updates.length + ' SKU(s)'
+                + (skippedNoStd ? ' (' + skippedNoStd + ' skipped — no STD)' : '')
+                + '.';
+            if (window.toastr) toastr.success(tip);
+            else alert(tip);
+        }
+
+        function frBindPriceRuleUi() {
+            $('#fr-rule-btn').on('click', function() {
+                frRenderPriceRules(frLoadPriceRules());
+                $('#fr-price-rule-msg').addClass('d-none').text('');
+                const el = document.getElementById('frPriceRuleModal');
+                if (el && window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(el).show();
+                } else {
+                    $(el).modal('show');
+                }
+            });
+
+            $('#fr-price-rule-add-btn').on('click', function() {
+                frPriceRules = frReadPriceRulesFromDom();
+                frPriceRules.push({ dil_min: null, dil_max: null, sold_min: null, sold_max: null, discount_pct: 25 });
+                frRenderPriceRules(frPriceRules);
+            });
+
+            $(document).on('click', '#fr-price-rule-tbody .fr-price-rule-del', function() {
+                const idx = parseInt($(this).closest('tr').attr('data-idx'), 10);
+                frPriceRules = frReadPriceRulesFromDom();
+                if (frPriceRules.length <= 1) {
+                    frPriceRules = frDefaultPriceRules();
+                } else {
+                    frPriceRules.splice(idx, 1);
+                }
+                frRenderPriceRules(frPriceRules);
+            });
+
+            $('#fr-price-rule-save-btn').on('click', function() {
+                const rules = frReadPriceRulesFromDom();
+                frSavePriceRulesToStorage(rules);
+                frPriceRules = rules;
+                if (window.toastr) toastr.success('Price rules saved');
+                else alert('Price rules saved');
+            });
+
+            $('#fr-price-rule-apply-btn').on('click', function() {
+                frApplyPriceRules();
+            });
         }
 
         function frSyncPriceModeUi() {
@@ -816,7 +1287,9 @@
             $('#fr-discount-type-wrap').toggle(!frUniformPriceModeActive);
             if (frUniformPriceModeActive) {
                 $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-warning')
-                    .html('<i class="fas fa-equals"></i> Same SPRICE');
+                    .attr('title', 'Same SPRICE (click to turn off)')
+                    .attr('aria-label', 'Same SPRICE')
+                    .html('<i class="fas fa-equals"></i>');
                 if (selectCol) selectCol.hide();
                 frSelectedSkus.clear();
                 $('#fr-discount-input').attr('placeholder', 'SPRICE $');
@@ -826,20 +1299,26 @@
             $('#fr-discount-input').attr('placeholder', $('#fr-discount-type').val() === 'percentage' ? 'Enter %' : 'Enter $');
             if (frDecreaseModeActive) {
                 $btn.removeClass('btn-secondary btn-primary btn-warning').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                    .attr('title', 'Decrease ON — select SKUs, then use discount panel')
+                    .attr('aria-label', 'Decrease ON')
+                    .html('<i class="fas fa-arrow-down"></i>');
                 if (selectCol) selectCol.show();
                 frUpdateSelectedCount();
                 return;
             }
             if (frIncreaseModeActive) {
                 $btn.removeClass('btn-secondary btn-danger btn-warning').addClass('btn-primary')
-                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                    .attr('title', 'Increase ON — select SKUs, then use discount panel')
+                    .attr('aria-label', 'Increase ON')
+                    .html('<i class="fas fa-arrow-up"></i>');
                 if (selectCol) selectCol.show();
                 frUpdateSelectedCount();
                 return;
             }
             $btn.removeClass('btn-danger btn-primary btn-warning').addClass('btn-secondary')
-                .html('<i class="fas fa-exchange-alt"></i> Pricing mode');
+                .attr('title', 'Pricing mode: Off → Decrease → Increase → Same SPRICE (all rows)')
+                .attr('aria-label', 'Pricing mode')
+                .html('<i class="fas fa-exchange-alt"></i>');
             if (selectCol) selectCol.hide();
             frSelectedSkus.clear();
             frUpdateSelectedCount();
@@ -855,6 +1334,7 @@
             const showPanel = frUniformPriceModeActive
                 || (frSelectedSkus.size > 0 && (frDecreaseModeActive || frIncreaseModeActive));
             $('#fr-discount-container').toggle(showPanel);
+            frUpdatePushButtonVisibility();
         }
 
         function frApplyDiscount() {
@@ -872,7 +1352,7 @@
                     const lp = parseFloat(d.lp) || 0;
                     const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
                     const sroi = lp > 0 ? Math.round(((newSprice * margin - lp) / lp) * 100) : 0;
-                    row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                    row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi, push_status: null });
                     updates.push({ sku: d.sku, sprice: newSprice });
                 });
                 if (updates.length) saveFaireSpriceUpdates(updates);
@@ -908,7 +1388,7 @@
                 const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
                 const sroi = lp > 0 ? Math.round(((newSprice * margin - lp) / lp) * 100) : 0;
 
-                row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi, push_status: null });
                 updates.push({ sku: sku, sprice: newSprice });
             });
 
@@ -923,7 +1403,7 @@
                 table.getRows().forEach(function(row) {
                     const d = row.getData();
                     if (!d.is_parent) {
-                        row.update({ sprice: 0, sgpft: 0, sroi: 0 });
+                        row.update({ sprice: 0, sgpft: 0, sroi: 0, push_status: null });
                         updates.push({ sku: d.sku, sprice: 0 });
                     }
                 });
@@ -936,7 +1416,7 @@
             table.getRows().forEach(function(row) {
                 const d = row.getData();
                 if (frSelectedSkus.has(d.sku) && !d.is_parent) {
-                    row.update({ sprice: 0, sgpft: 0, sroi: 0 });
+                    row.update({ sprice: 0, sgpft: 0, sroi: 0, push_status: null });
                     updates.push({ sku: d.sku, sprice: 0 });
                 }
             });
@@ -972,17 +1452,14 @@
             if (!rows.length) rows = normalizeRows(summaryDataCache);
 
             let totalSales = 0, totalFqty = 0, totalProfit = 0, totalCogs = 0;
-            let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
 
             rows.forEach(row => {
                 if (row.is_parent) return;
-                const isMissing = (row.missing || '').trim().toUpperCase() === 'M';
                 const fqty = parseFloat(row.al30) || 0;
                 const sales = parseFloat(row.sales) || 0;
                 const lp = parseFloat(row.lp) || 0;
                 const listProfitPerUnit = parseFloat(row.profit) || 0;
-                const mapVal = (row.map || '').trim();
 
                 totalSales += sales;
                 totalFqty += fqty;
@@ -991,15 +1468,12 @@
                 let rowOrderPft = 0;
                 if (sales > 0 && fqty > 0) {
                     rowOrderPft = FAIRE_ORDER_KEEP * sales - lp * fqty;
-                } else if (fqty > 0 && !isMissing) {
+                } else if (fqty > 0) {
                     rowOrderPft = fqty * listProfitPerUnit;
                 }
                 totalProfit += rowOrderPft;
 
                 if (fqty === 0) zeroSold++; else moreSold++;
-                if (isMissing) missingCount++;
-                else if (mapVal === 'Map') mapCount++;
-                else if (mapVal.startsWith('N Map|')) nmapCount++;
             });
 
             const pftPct = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
@@ -1010,9 +1484,6 @@
             $('#fr-total-profit-badge').text('Profit: ' + Math.round(totalProfit).toLocaleString());
             $('#fr-avg-gpft-badge').text('PFt: ' + Math.round(pftPct) + '%');
             $('#fr-avg-roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
-            $('#fr-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
-            $('#fr-map-count-badge').text('Map: ' + mapCount.toLocaleString());
-            $('#fr-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             $('#fr-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#fr-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
         }
@@ -1109,7 +1580,6 @@
             const cvrFilter = $('#fr-cvr-filter').val();
             const roiFilter = $('#fr-roi-filter').val();
             const fqtyFilter = $('#fr-fqty-filter').val();
-            const mapFilter = $('#fr-map-filter').val();
             const dilColor = $('.fr-dil-item.active').data('color') || 'all';
 
             if (skuSearch) {
@@ -1185,11 +1655,6 @@
                     return true;
                 });
             }
-            if (mapFilter === 'map') {
-                table.addFilter(d => (d.map || '') === 'Map');
-            } else if (mapFilter === 'nmap') {
-                table.addFilter(d => (d.map || '').startsWith('N Map|'));
-            }
             if (dilColor !== 'all') {
                 table.addFilter(function(d) {
                     const inv = parseFloat(d.inv) || 0;
@@ -1203,9 +1668,6 @@
                 });
             }
             frSyncFilterBadgeActiveClasses();
-            if (frMissingActive) table.addFilter(d => (d.missing || '').trim().toUpperCase() === 'M');
-            if (frMapActive) table.addFilter(d => (d.map || '') === 'Map');
-            if (frNMapActive) table.addFilter(d => (d.map || '').startsWith('N Map|'));
             if (frZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (frMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
         }
@@ -1327,10 +1789,6 @@
                         faireEditLinksRow.update({
                             seller_link: res.seller_link || '',
                             buyer_link: res.buyer_link || ''
-                        }).then(function() {
-                            faireEditLinksRow.reformat();
-                        }).catch(function() {
-                            faireEditLinksRow.reformat();
                         });
                         frLinksNotify('Links saved successfully', 'success');
                         bootstrap.Modal.getOrCreateInstance(document.getElementById('faireEditLinksModal')).hide();
@@ -1535,14 +1993,6 @@
                         }
                     },
                     {
-                        title: 'Pricing', field: 'price', sorter: 'number', hozAlign: 'right',
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return '<span style="font-weight:700;">' + money(cell.getValue()) + '</span>';
-                        }
-                    },
-                    {
                         title: 'STD prc',
                         field: 'standard_price',
                         sorter: 'number',
@@ -1558,27 +2008,11 @@
                         }
                     },
                     {
-                        title: 'Missing L', field: 'missing', hozAlign: 'center',
+                        title: 'Pricing', field: 'price', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
-                            if (d.is_parent) return '';
-                            const value = (cell.getValue() || '').toString().trim().toUpperCase();
-                            if (value === 'M') return '<span class="badge bg-danger">L</span>';
-                            return '';
-                        }
-                    },
-                    {
-                        title: 'Map', field: 'map', hozAlign: 'center', width: 90,
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return '';
-                            const val = (cell.getValue() || '').trim();
-                            if (val === 'Map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            if (val.startsWith('N Map|')) {
-                                const diff = val.split('|')[1];
-                                return '<span style="color:#dc3545;font-weight:bold;">N Map (' + diff + ')</span>';
-                            }
-                            return '';
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            return '<span style="font-weight:700;">' + money(cell.getValue()) + '</span>';
                         }
                     },
                     {
@@ -1633,7 +2067,7 @@
                         }
                     },
                     {
-                        title: 'LP', field: 'lp', sorter: 'number', hozAlign: 'right',
+                        title: 'LP', field: 'lp', sorter: 'number', hozAlign: 'right', visible: false,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -1650,7 +2084,7 @@
                         }
                     },
                     {
-                        title: 'SROI', field: 'sroi', sorter: 'number', hozAlign: 'right',
+                        title: 'SGROI', field: 'sroi', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -1676,60 +2110,43 @@
                         }
                     },
                     {
-                        title: 'NRP',
-                        field: 'nr',
-                        minWidth: 52,
-                        width: 56,
+                        title: 'Push',
+                        field: '_push',
+                        width: 52,
                         hozAlign: 'center',
-                        headerSort: true,
-                        accessor: function(value, data) {
-                            const val = data && data.nr != null ? data.nr : value;
-                            if (val === null || val === undefined) return '';
-                            return String(val).trim().toUpperCase();
-                        },
+                        headerSort: false,
+                        headerTooltip: 'Push SPRICE to Faire wholesale price API (same status UX as /doba-tabulator)',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            let value = cell.getValue();
-                            if (value === null || value === undefined || value === '') {
-                                value = d.nr;
-                            }
-                            if (value === null || value === undefined) {
-                                value = '';
-                            } else {
-                                value = String(value).trim().toUpperCase();
-                            }
-                            if (!value || value === '') {
-                                value = 'REQ';
-                            }
-                            if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
-                                value = 'REQ';
-                            }
+                            const sprice = parseFloat(d.sprice) || 0;
+                            if (sprice <= 0) return '';
+                            const pushStatus = d.push_status || null;
                             const sku = String(d.sku || '');
-                            const parent = d.parent != null ? String(d.parent) : '';
-                            let dotColor = '#22c55e';
-                            let tip = 'REQ';
-                            if (value === 'NR') {
-                                dotColor = '#dc3545';
-                                tip = '2BDC';
-                            } else if (value === 'LATER') {
-                                dotColor = '#facc15';
-                                tip = 'LATER';
+                            const productId = String(d.product_id || '');
+                            const esc = function(v) {
+                                return String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            };
+                            if (pushStatus === 'pushing') {
+                                return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing to Faire..."></i>';
                             }
-                            const skuAttr = frEscHtmlAttr(sku);
-                            const parentAttr = frEscHtmlAttr(parent);
-                            return (
-                                '<div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' +
-                                frEscHtmlAttr(tip + ' (click to change)') + '">' +
-                                '<span class="nrp-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>' +
-                                '<select class="form-select form-select-sm nrp-nr-select position-absolute top-0 start-0 w-100 h-100" ' +
-                                'data-type="NR" data-sku="' + skuAttr + '" data-parent="' + parentAttr + '" ' +
-                                'aria-label="NRP: ' + frEscHtmlAttr(tip) + '">' +
-                                '<option value="REQ"' + (value === 'REQ' ? ' selected' : '') + '>REQ</option>' +
-                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>2BDC</option>' +
-                                '<option value="LATER"' + (value === 'LATER' ? ' selected' : '') + '>LATER</option>' +
-                                '</select></div>'
-                            );
+                            if (pushStatus === 'pushed') {
+                                return '<i class="fa-solid fa-check-double" style="color:#28a745;" title="Pushed to Faire"></i>';
+                            }
+                            if (pushStatus === 'error') {
+                                return '<button type="button" class="fr-push-single-btn" data-sku="' + esc(sku) + '" data-price="' + sprice + '" data-product-id="' + esc(productId) + '" style="border:none;background:none;color:#dc3545;cursor:pointer;padding:4px 6px;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>';
+                            }
+                            return '<button type="button" class="fr-push-single-btn" data-sku="' + esc(sku) + '" data-price="' + sprice + '" data-product-id="' + esc(productId) + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;padding:4px 6px;" title="Push SPRICE to Faire"><i class="fas fa-upload"></i></button>';
+                        },
+                        // Tabulator can swallow nested button clicks — handle via cellClick too
+                        cellClick: function(e, cell) {
+                            const t = e.target;
+                            if (!t || typeof t.closest !== 'function') return;
+                            const btn = t.closest('.fr-push-single-btn');
+                            if (!btn) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            frRunPushForRow(cell.getRow());
                         }
                     },
                 ],
@@ -1739,6 +2156,7 @@
                     frResetSkuColHoverWidth();
                     frRemoveImagePreview();
                     updateSummary(data);
+                    setTimeout(frUpdatePushButtonVisibility, 50);
                 },
                 dataFiltered: function(filters, rows) { updateSummary(rows); },
                 dataProcessed: function() { updateSummary(); },
@@ -1758,9 +2176,6 @@
             }
 
             function frSyncFilterBadgeActiveClasses() {
-                $('#fr-missing-badge').toggleClass('active-filter', frMissingActive);
-                $('#fr-map-count-badge').toggleClass('active-filter', frMapActive);
-                $('#fr-nmap-count-badge').toggleClass('active-filter', frNMapActive);
                 $('#fr-zero-sold-badge').toggleClass('active-filter', frZeroSoldActive);
                 $('#fr-more-sold-badge').toggleClass('active-filter', frMoreSoldActive);
             }
@@ -1768,11 +2183,8 @@
             function frApplyBadgeFilterFromUrl() {
                 const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
                 if (!badge || !table) return;
-                frMissingActive = frMapActive = frNMapActive = frZeroSoldActive = frMoreSoldActive = false;
-                if (badge === 'missing') frMissingActive = true;
-                else if (badge === 'map') frMapActive = true;
-                else if (badge === 'nmap') frNMapActive = true;
-                else if (badge === 'zero_sold') frZeroSoldActive = true;
+                frZeroSoldActive = frMoreSoldActive = false;
+                if (badge === 'zero_sold') frZeroSoldActive = true;
                 else if (badge === 'more_sold') frMoreSoldActive = true;
                 else return;
                 frSyncFilterBadgeActiveClasses();
@@ -1918,7 +2330,7 @@
                     const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
                     const sroi  = lp > 0       ? Math.round(((newSprice * margin - lp) / lp)     * 100) : 0;
 
-                    row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                    row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi, push_status: null });
                     updates.push({ sku: sku, sprice: newSprice });
                     updatedCount++;
                 });
@@ -2012,12 +2424,14 @@
                 const lp = parseFloat(d.lp) || 0;
                 const sgpft = sprice > 0 ? Math.round(((sprice * margin - lp) / sprice) * 100) : 0;
                 const sroi = lp > 0 ? Math.round(((sprice * margin - lp) / lp) * 100) : 0;
-                cell.getRow().update({ sgpft: sgpft, sroi: sroi });
+                cell.getRow().update({ sgpft: sgpft, sroi: sroi, push_status: null });
+                frRefreshPushCell(cell.getRow());
+                frUpdatePushButtonVisibility();
                 saveFaireSpriceUpdates([{ sku: sku, sprice: sprice }]);
             });
 
             $('#fr-pricing-parent-search, #fr-pricing-sku-search').on('input', function() { applyFilters(); });
-            $('#fr-row-type-filter, #fr-inv-filter, #fr-stock-filter, #fr-gpft-filter, #fr-cvr-filter, #fr-roi-filter, #fr-fqty-filter, #fr-map-filter').on('change', function() { applyFilters(); });
+            $('#fr-row-type-filter, #fr-inv-filter, #fr-stock-filter, #fr-gpft-filter, #fr-cvr-filter, #fr-roi-filter, #fr-fqty-filter').on('change', function() { applyFilters(); });
 
             $(document).on('click', '.fr-dil-toggle', function(e) {
                 e.stopPropagation();
@@ -2035,58 +2449,15 @@
             });
             $(document).on('click', function() { $('.fr-manual-dropdown').removeClass('show'); });
 
-            $('#fr-missing-badge').on('click', function() {
-                frMissingActive = !frMissingActive;
-                frMapActive = frNMapActive = frZeroSoldActive = frMoreSoldActive = false;
-                applyFilters();
-            });
-            $('#fr-map-count-badge').on('click', function() {
-                frMapActive = !frMapActive;
-                frMissingActive = frNMapActive = frZeroSoldActive = frMoreSoldActive = false;
-                applyFilters();
-            });
-            $('#fr-nmap-count-badge').on('click', function() {
-                frNMapActive = !frNMapActive;
-                frMissingActive = frMapActive = frZeroSoldActive = frMoreSoldActive = false;
-                applyFilters();
-            });
             $('#fr-zero-sold-badge').on('click', function() {
                 frZeroSoldActive = !frZeroSoldActive;
-                frMoreSoldActive = frMissingActive = frMapActive = frNMapActive = false;
+                frMoreSoldActive = false;
                 applyFilters();
             });
             $('#fr-more-sold-badge').on('click', function() {
                 frMoreSoldActive = !frMoreSoldActive;
-                frZeroSoldActive = frMissingActive = frMapActive = frNMapActive = false;
+                frZeroSoldActive = false;
                 applyFilters();
-            });
-
-            $(document).on('change', '#faire-pricing-table .nrp-nr-select', function() {
-                const $el = $(this);
-                const newValue = String($el.val() || '').trim();
-                const sku = $el.data('sku');
-                const parent = $el.data('parent');
-                if (!sku || !table) return;
-                const rows = table.getRows().filter(function(r) {
-                    const d = r.getData();
-                    return !d.is_parent && String(d.sku) === String(sku);
-                });
-                const row = rows.length ? rows[0] : null;
-                const prevRaw = row ? String(row.getData().nr ?? '').trim().toUpperCase() : '';
-                const prevSelect = (prevRaw === 'NR' || prevRaw === 'LATER') ? prevRaw : 'REQ';
-                frUpdateForecastNrp(
-                    { sku: sku, parent: parent, value: newValue },
-                    function() {
-                        if (row) {
-                            row.update({ nr: newValue }, true);
-                            const nrCell = row.getCells().find(function(c) { return c.getField() === 'nr'; });
-                            if (nrCell) nrCell.reformat();
-                        }
-                    },
-                    function() {
-                        $el.val(prevSelect);
-                    }
-                );
             });
 
             $('#fr-refresh-pricing').on('click', function() {
@@ -2095,6 +2466,8 @@
             $('#fr-export-pricing').on('click', function() {
                 table.download('csv', 'faire_analytics_data.csv');
             });
+            frBindPriceRuleUi();
+            frBindPushUi();
 
             const frColMenu = document.getElementById('fr-column-dropdown-menu');
             if (frColMenu) {
@@ -2113,18 +2486,6 @@
                     }
                 });
             }
-            document.getElementById('fr-show-all-columns-btn')?.addEventListener('click', function() {
-                if (!table) return;
-                table.getColumns().forEach(function(col) {
-                    const f = col.getField();
-                    if (f && f !== '_fr_select') {
-                        col.show();
-                    }
-                });
-                frBuildColumnDropdown();
-                frSaveColumnVisibilityToServer();
-            });
-
             function frSyncFromApiPage(page, reset) {
                 var $btn = $('#frSyncFromApiBtn');
                 var $status = $('#frSyncFromApiStatus');
@@ -2153,7 +2514,7 @@
             $('#frSyncFromApiBtn').on('click', function () {
                 var $btn = $(this);
                 if ($btn.prop('disabled')) return;
-                if (!confirm('Pull live Faire listings, wholesale prices, and stock from the Faire products API into faire_metric?\n\nUsed by pricing, Map / Miss / N Map, and listings.')) {
+                if (!confirm('Pull live Faire listings, wholesale prices, and stock from the Faire products API into faire_metric?\n\nUsed by pricing and listings.')) {
                     return;
                 }
                 $btn.prop('disabled', true);
