@@ -2073,20 +2073,7 @@
                         }
                     },
                     {
-                        title: "SGPFT",
-                        field: "spft",
-                        width: 70,
-                        sorter: "number",
-                        visible: true,
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            if (value === 0) return '';
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', value)) || '';
-                            return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
-                        }
-                    },
-                    {
-                        title: "SGROI",
+                        title: "SGROI %",
                         field: "sroi",
                         width: 70,
                         sorter: "number",
@@ -2095,6 +2082,19 @@
                             const value = parseFloat(cell.getValue()) || 0;
                             if (value === 0) return '';
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', value)) || '';
+                            return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
+                        }
+                    },
+                    {
+                        title: "SGPFT%",
+                        field: "spft",
+                        width: 70,
+                        sorter: "number",
+                        visible: true,
+                        formatter: function(cell, formatterParams) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            if (value === 0) return '';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', value)) || '';
                             return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
                         }
                     },
