@@ -630,18 +630,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Amazon Sprice×CVR (2:00 PM IST):
-        // Command itself runs price refresh first (sync:amazon-prices + app:fetch-amazon-listings),
-        // then Clear → Apply % Sprice×CVR → Push (listing price + min seller price).
-        // Morning app:fetch-amazon-listings @ 09:25 still runs; this job refreshes again before push.
-        $ist($schedule->command('amazon:sprice-cvr-auto-push')
-            ->dailyAt('14:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-sprice-cvr-auto-push')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         // Amazon Dil vs PRMT → Listings our_price (4:00 AM America/New_York = EST/EDT).
         // Uses shared pef_dil_vs_prmt rules; pushes only SKUs whose target price changed.
         $schedule->command('amazon:dil-prmt-auto-push')

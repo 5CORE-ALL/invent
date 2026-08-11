@@ -130,7 +130,6 @@ use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\DobaController;
 use App\Http\Controllers\MarketPlace\EbayController;
 use App\Http\Controllers\MarketPlace\EbayLowVisibilityController;
-use App\Http\Controllers\MarketPlace\AmazonSpriceCvrAutoPushController;
 use App\Http\Controllers\MarketPlace\EbaySpriceCvrAutoPushController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
@@ -4231,12 +4230,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
-
-    // Amazon Sprice×CVR auto push (Clear → Apply → Push) — cron 14:00 IST
-    Route::get('/amazon-sprice-cvr-auto-push', [AmazonSpriceCvrAutoPushController::class, 'index'])
-        ->name('amazon.sprice-cvr-auto');
-    Route::post('/amazon-sprice-cvr-auto-push/run', [AmazonSpriceCvrAutoPushController::class, 'run'])
-        ->name('amazon.sprice-cvr-auto.run');
 
     // Amazon Ads Variation Verification
     Route::get('/amz-variation-verify', [AmzVariationVerifyController::class, 'index'])->name('amz.variation.verify');
