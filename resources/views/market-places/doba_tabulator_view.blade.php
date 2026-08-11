@@ -1891,6 +1891,7 @@
                                 l30_avg_price: Number(item.l30_avg_price) || 0,
                                 l60_avg_price: Number(item.l60_avg_price) || 0,
                                 'doba Price': price,
+                                standard_price: Number(item.standard_price) || 0,
                                 amazon_price: amazonPrice,
                                 disc_vs_amz: discVsAmz,
                                 Profit: item.Total_pft || item.Profit || 0,
@@ -2204,6 +2205,16 @@
                         }
                     },
                     {
+                        title: "STD Price",
+                        field: "standard_price",
+                        width: 85,
+                        sorter: "number",
+                        formatter: function(cell, formatterParams) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            return value > 0 ? `$${value.toFixed(2)}` : '';
+                        }
+                    },
+                    {
                         title: "PRICE",
                         field: "doba Price",
                         width: 80,
@@ -2214,11 +2225,11 @@
                         }
                     },
                     {
-                        title: "Self Pick",
+                        title: "PP Price",
                         field: "self_pick_price",
                         width: 85,
                         sorter: "number",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';

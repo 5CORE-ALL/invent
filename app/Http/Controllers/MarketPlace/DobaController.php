@@ -15,6 +15,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\ShopifySku;
 use App\Models\ProductMaster; // Add this at the top with other use statements
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Services\DobaApiService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -150,6 +151,16 @@ class DobaController extends Controller
         $amazonPrices = AmazonDatasheet::select('sku', 'price')->get()
             ->keyBy(fn ($r) => $normalizeSku($r->sku))
             ->map(fn ($r) => $r->price);
+
+        // STD PRC (STANDARD_PRICE) from amazon_data_view — same store as /amazon-tabulator-view SP
+        $amazonStandardPrices = AmazonDataView::all()
+            ->keyBy(fn ($r) => $normalizeSku($r->sku))
+            ->map(function ($r) {
+                $val = is_array($r->value) ? $r->value : (json_decode((string) $r->value, true) ?: []);
+                $std = $val['STANDARD_PRICE'] ?? null;
+
+                return (is_numeric($std) && floatval($std) > 0) ? round(floatval($std), 2) : 0;
+            });
 
         $applyDailyFilters = function ($query) use ($onlyPickupPrepaidLabelFromDaily) {
             $query->where(function ($q) {
@@ -294,6 +305,10 @@ class DobaController extends Controller
             
             // Amazon Price for comparison
             $row['amazon_price'] = isset($amazonPrices[$normSku]) ? floatval($amazonPrices[$normSku]) : 0;
+            // STD PRC — amazon_data_view.STANDARD_PRICE (same as /price-increase STD PRC)
+            $row['standard_price'] = isset($amazonStandardPrices[$normSku])
+                ? floatval($amazonStandardPrices[$normSku])
+                : 0;
 
             // S L30 from doba_daily_data (excluding cancelled orders)
             $sL30Data = $dobaDailyL30[$normSku] ?? null;
