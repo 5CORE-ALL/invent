@@ -1878,6 +1878,8 @@
                     const isAl30 = currentSkuChartMetric === 'al30';
                     const isOvl30 = currentSkuChartMetric === 'ovl30';
                     const isSprice = currentSkuChartMetric === 'sprice';
+                    const isPrmt = currentSkuChartMetric === 'prmt';
+                    const isCpn = currentSkuChartMetric === 'cpn';
                     const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
                     const values = isCvr ? data.map(d => Number(d.cvr_percent) || 0)
                         : isViews ? data.map(d => Number(d.views) || 0)
@@ -1890,31 +1892,41 @@
                             if (isFinite(sp) && sp > 0) return sp;
                             return Number(d.price) || 0;
                         })
+                        : isPrmt ? data.map(d => {
+                            const n = Number(d.prmt_pct);
+                            return isFinite(n) ? n : null;
+                        })
+                        : isCpn ? data.map(d => {
+                            const n = Number(d.cpn_pct);
+                            return isFinite(n) ? n : null;
+                        })
                         : data.map(d => Number(d.price) || 0);
                     const refLabelEl = document.getElementById('skuChartRefLabel');
                     const refDotEl = document.getElementById('skuChartRefDot');
-                    const refLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC' };
+                    const refLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %' };
                     const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
                     if (refLabelEl) refLabelEl.textContent = refLabelText;
-                    const refColors = { cvr: '#008000', views: '#0000FF', inv: '#6c757d', inv_amz: '#17a2b8', al30: '#e83e8c', ovl30: '#fd7e14', sprice: '#0d6efd' };
+                    const refColors = { cvr: '#008000', views: '#0000FF', inv: '#6c757d', inv_amz: '#17a2b8', al30: '#e83e8c', ovl30: '#fd7e14', sprice: '#0d6efd', prmt: '#0d6efd', cpn: '#20c997' };
                     if (refDotEl) refDotEl.style.background = refColors[currentSkuChartMetric] || '#adb5bd';
 
                     skuMetricsChart.data.labels = labels;
                     skuMetricsChart.data.datasets[0].data = values;
-                    skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isSprice) ? ' (USD)' : '');
+                    skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isSprice) ? ' (USD)' : ((isPrmt || isCpn || isCvr) ? ' (%)' : ''));
                     skuMetricsChart.data.datasets[0].borderColor = refColors[currentSkuChartMetric] || '#adb5bd';
-                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', inv: 'rgba(108,117,125,0.1)', inv_amz: 'rgba(23,162,184,0.1)', al30: 'rgba(232,62,140,0.1)', ovl30: 'rgba(253,126,20,0.1)', sprice: 'rgba(13,110,253,0.1)' };
+                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', inv: 'rgba(108,117,125,0.1)', inv_amz: 'rgba(23,162,184,0.1)', al30: 'rgba(232,62,140,0.1)', ovl30: 'rgba(253,126,20,0.1)', sprice: 'rgba(13,110,253,0.1)', prmt: 'rgba(13,110,253,0.1)', cpn: 'rgba(32,201,151,0.1)' };
                     skuMetricsChart.data.datasets[0].backgroundColor = bgColors[currentSkuChartMetric] || 'rgba(108,117,125,0.08)';
                     const cvrFmt = v => (Number(v) === v ? v.toFixed(1) : v) + '%';
                     const viewsFmt = intFmt;
-                    const refFmt = isCvr ? cvrFmt : (isViews || isInv || isInvAmz || isAl30 || isOvl30) ? intFmt : skuChartFmtVal;
+                    const refFmt = (isCvr || isPrmt || isCpn) ? cvrFmt : (isViews || isInv || isInvAmz || isAl30 || isOvl30) ? intFmt : skuChartFmtVal;
                     if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y) {
-                        if (isCvr) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return v.toFixed(0) + '%'; };
+                        if (isCvr || isPrmt || isCpn) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return v.toFixed(0) + '%'; };
                         else if (isViews || isInv || isInvAmz || isAl30 || isOvl30) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Math.round(v).toLocaleString('en-US'); };
                         else skuMetricsChart.options.scales.y.ticks.callback = function(v) { return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US')); };
                     }
                     if (skuMetricsChart.options.plugins && skuMetricsChart.options.plugins.tooltip && skuMetricsChart.options.plugins.tooltip.callbacks) {
                         if (isCvr) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'CVR%: ' + (context.parsed.y != null ? (Number(context.parsed.y).toFixed(1) + '%') : '-'); };
+                        else if (isPrmt) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'PRMT %: ' + (context.parsed.y != null ? (Number(context.parsed.y).toFixed(1) + '%') : '-'); };
+                        else if (isCpn) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'CPN %: ' + (context.parsed.y != null ? (Number(context.parsed.y).toFixed(1) + '%') : '-'); };
                         else if (isViews) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'View L30: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isInv || isInvAmz || isAl30 || isOvl30) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return refLabelText + ': ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isSprice) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'S PRC: ' + skuChartFmtVal(context.parsed.y || 0); };
@@ -4152,7 +4164,7 @@
                 const days = $(this).val();
                 const daysNum = parseInt(days, 10);
                 const rangeLabel = daysNum === 0 ? 'Lifetime' : 'L' + daysNum;
-                const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC' };
+                const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %' };
                 const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
                 $('#skuChartModalSuffix').text(metricLabel + ' (Rolling ' + rangeLabel + ')');
                 if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0);
@@ -7580,7 +7592,7 @@
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
                     $('#sku-chart-days-filter').val('30');
-                    const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC' };
+                    const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %' };
                     const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
                     $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30)');
                     $('#skuChartLoading').show();

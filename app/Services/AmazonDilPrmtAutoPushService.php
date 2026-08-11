@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\AmazonSkuDailyData;
 use App\Models\ShopifySku;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -288,6 +290,32 @@ class AmazonDilPrmtAutoPushService
 
         $view->value = $existing;
         $view->save();
+
+        $this->syncPrmtDailyHistory(strtoupper(trim($sku)), round($sprice, 2), round($prmt, 2));
+    }
+
+    /** PDT daily roll-on for PRMT% history dots. */
+    protected function syncPrmtDailyHistory(string $sku, float $sprice, float $prmt): void
+    {
+        try {
+            $today = Carbon::now('America/Los_Angeles')->toDateString();
+            $daily = AmazonSkuDailyData::firstOrNew([
+                'sku' => $sku,
+                'record_date' => $today,
+            ]);
+            $payload = is_array($daily->daily_data)
+                ? $daily->daily_data
+                : (json_decode($daily->daily_data ?? '{}', true) ?: []);
+            $payload['sprice'] = $sprice;
+            $payload['prmt_pct'] = $prmt;
+            $daily->daily_data = $payload;
+            $daily->save();
+        } catch (Throwable $e) {
+            Log::warning('[AmazonDilPrmtAutoPush] daily history sync failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function pushSprice(AmazonSpApiService $api, string $statusSku, string $sellerSku, float $sprice): bool

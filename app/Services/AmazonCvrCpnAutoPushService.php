@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\AmazonSkuDailyData;
 use App\Models\ShopifySku;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -335,6 +336,32 @@ class AmazonCvrCpnAutoPushService
 
         $view->value = $existing;
         $view->save();
+
+        $this->syncCpnDailyHistory(strtoupper(trim($sku)), round($sprice, 2), $cpn);
+    }
+
+    /** PDT daily roll-on for CPN% history dots. */
+    protected function syncCpnDailyHistory(string $sku, float $sprice, int $cpn): void
+    {
+        try {
+            $today = Carbon::now('America/Los_Angeles')->toDateString();
+            $daily = AmazonSkuDailyData::firstOrNew([
+                'sku' => $sku,
+                'record_date' => $today,
+            ]);
+            $payload = is_array($daily->daily_data)
+                ? $daily->daily_data
+                : (json_decode($daily->daily_data ?? '{}', true) ?: []);
+            $payload['sprice'] = $sprice;
+            $payload['cpn_pct'] = $cpn;
+            $daily->daily_data = $payload;
+            $daily->save();
+        } catch (Throwable $e) {
+            Log::warning('[AmazonCvrCpnAutoPush] daily history sync failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function pushSprice(AmazonSpApiService $api, string $statusSku, string $sellerSku, float $sprice, int $cpn): bool

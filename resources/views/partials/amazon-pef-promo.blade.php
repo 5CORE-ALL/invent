@@ -278,24 +278,71 @@
             }
             return '<span class="amz-pef-promo-cell has-val">' + String(value) + '</span>';
         }
-        function saveAmzSpriceFromPromo(row, sprice, silent) {
+        function amzPefEscAttr(s) {
+            if (typeof escAttr === 'function') return escAttr(s);
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+        /** Colored history dot (PDT daily roll-on) for PRMT% / CPN% columns */
+        function amzPefPromoHistoryDotHtml(sku, metric, pct) {
+            if (!sku) return '';
+            const n = Number(pct);
+            const has = isFinite(n);
+            const color = has && n > 0 ? (metric === 'cpn' ? '#20c997' : '#0d6efd') : '#adb5bd';
+            const tip = (metric === 'cpn' ? 'CPN%' : 'PRMT%')
+                + (has ? (' = ' + n + '%') : '')
+                + ' — click for daily history (PDT)';
+            return '<button type="button" class="btn btn-sm p-0 view-sku-chart amz-pef-hist-dot align-middle" '
+                + 'data-sku="' + amzPefEscAttr(sku) + '" data-metric="' + amzPefEscAttr(metric) + '" '
+                + 'title="' + amzPefEscAttr(tip) + '" '
+                + 'style="border:none;background:none;cursor:pointer;padding:0;line-height:1;vertical-align:middle;">'
+                + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;'
+                + 'background:' + color + ';flex-shrink:0;"></span></button>';
+        }
+        function saveAmzSpriceFromPromo(row, sprice, silent, extra) {
             const d = row.getData();
             const sku = amzPefSku(d);
             const val = amzPefRound2(sprice);
-            if (!sku || !(val > 0)) return;
-            row.update({ SPRICE: val });
+            extra = extra || {};
+            if (!sku) return;
+            const payload = { sku: sku, _token: amzPefCsrf() };
+            if (val > 0) {
+                payload.sprice = val;
+                row.update({ SPRICE: val });
+            }
+            if (extra.prmt_pct !== undefined && extra.prmt_pct !== null) {
+                payload.prmt_pct = Number(extra.prmt_pct) || 0;
+            }
+            if (extra.cpn_pct !== undefined && extra.cpn_pct !== null) {
+                payload.cpn_pct = Number(extra.cpn_pct) || 0;
+            }
+            if (payload.sprice === undefined && payload.prmt_pct === undefined && payload.cpn_pct === undefined) {
+                return;
+            }
             $.ajax({
                 url: '/save-amazon-sprice',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                data: { sku: sku, sprice: val },
+                data: payload,
                 success: function(response) {
-                    const updates = { SPRICE: response.data || val };
+                    const updates = {};
+                    if (response.data !== undefined) updates.SPRICE = response.data;
                     if (response.sgpft_percent !== undefined) updates.SGPFT = response.sgpft_percent;
                     if (response.spft_percent !== undefined) updates['Spft%'] = response.spft_percent;
                     if (response.sroi_percent !== undefined) updates.SROI = response.sroi_percent;
                     if (response.sgroi_percent !== undefined) updates.SGROI = response.sgroi_percent;
-                    row.update(updates);
+                    if (response.prmt_pct !== undefined && response.prmt_pct !== null) {
+                        updates.prmt_pct = String(response.prmt_pct);
+                        updates._prmt_pct_applied = Number(response.prmt_pct) || 0;
+                    }
+                    if (response.cpn_pct !== undefined && response.cpn_pct !== null) {
+                        updates.cpn_pct = String(response.cpn_pct);
+                        updates._cpn_pct_applied = Number(response.cpn_pct) || 0;
+                    }
+                    if (Object.keys(updates).length) row.update(updates);
                     if (!silent) amzPefToast('success', 'S PRC updated');
                 },
                 error: function() {
@@ -571,6 +618,7 @@
                 const prmt = amzPefInv(d) === 0 ? 0 : pefPrmtForDil(dil);
                 if (!(prmt > 0)) {
                     item.row.update({ prmt_pct: String(prmt), _prmt_pct_applied: 0 });
+                    saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, { prmt_pct: prmt });
                     skipped++;
                     continue;
                 }
@@ -583,7 +631,7 @@
                     _prmt_pct_applied: prmt,
                     SPRICE: newPrice,
                 });
-                saveAmzSpriceFromPromo(item.row, newPrice, true);
+                saveAmzSpriceFromPromo(item.row, newPrice, true, { prmt_pct: prmt });
                 ok++;
             }
             amzPefToast(
@@ -610,6 +658,7 @@
                 const cpn = amzPefInv(d) === 0 ? 0 : pefCpnForCvr(cvr);
                 if (!(cpn > 0)) {
                     item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
+                    saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, { cpn_pct: cpn });
                     skipped++;
                     continue;
                 }
@@ -622,7 +671,7 @@
                     _cpn_pct_applied: cpn,
                     SPRICE: newPrice,
                 });
-                saveAmzSpriceFromPromo(item.row, newPrice, true);
+                saveAmzSpriceFromPromo(item.row, newPrice, true, { cpn_pct: cpn });
                 ok++;
             }
             amzPefToast(
@@ -741,6 +790,11 @@
                         patch._appr_lmp = null;
                     }
                     item.row.update(patch);
+                    if (kind === 'prmt' || kind === 'cpn') {
+                        const extra = {};
+                        extra[kind === 'prmt' ? 'prmt_pct' : 'cpn_pct'] = 0;
+                        saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, extra);
+                    }
                     skipped++;
                     continue;
                 }
@@ -756,7 +810,10 @@
                     patch._appr_lmp = null;
                 }
                 item.row.update(patch);
-                saveAmzSpriceFromPromo(item.row, newPrice, true);
+                const extra = {};
+                if (kind === 'prmt') extra.prmt_pct = promo.value;
+                if (kind === 'cpn') extra.cpn_pct = promo.value;
+                saveAmzSpriceFromPromo(item.row, newPrice, true, extra);
                 ok++;
             }
             amzPefToast(
@@ -771,7 +828,7 @@
                 {
                     title: 'PRMT %',
                     field: 'prmt_pct',
-                    width: 64,
+                    width: 72,
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
@@ -779,11 +836,21 @@
                         return amzPefIsChildRow(cell.getRow().getData());
                     },
                     editor: 'input',
-                    headerTooltip: '% less on S PRC. Also filled by Dil vs PRMT (same rules as pricing-errors-fix).',
+                    headerTooltip: '% less on S PRC. Also filled by Dil vs PRMT. Dot = PDT daily history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent_summary) return '';
-                        return fmtAmzPefPromoCell(cell.getValue(), '%');
+                        const sku = amzPefSku(d);
+                        const val = cell.getValue();
+                        const dot = amzPefPromoHistoryDotHtml(sku, 'prmt', val);
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:3px;">'
+                            + dot + fmtAmzPefPromoCell(val, '%') + '</span>';
+                    },
+                    cellClick: function(e) {
+                        if (e.target.closest('.view-sku-chart') || e.target.closest('.amz-pef-hist-dot')) {
+                            e.stopPropagation();
+                            return false;
+                        }
                     },
                     cellEdited: function(cell) {
                         applyAmzPefPromoFromCell(cell, 'prmt');
@@ -792,7 +859,7 @@
                 {
                     title: 'CPN %',
                     field: 'cpn_pct',
-                    width: 62,
+                    width: 70,
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
@@ -800,11 +867,21 @@
                         return amzPefIsChildRow(cell.getRow().getData());
                     },
                     editor: 'input',
-                    headerTooltip: '% less on S PRC. Also filled by CVR vs CPN (same rules as pricing-errors-fix).',
+                    headerTooltip: '% less on S PRC. Also filled by CVR vs CPN. Dot = PDT daily history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent_summary) return '';
-                        return fmtAmzPefPromoCell(cell.getValue(), '%');
+                        const sku = amzPefSku(d);
+                        const val = cell.getValue();
+                        const dot = amzPefPromoHistoryDotHtml(sku, 'cpn', val);
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:3px;">'
+                            + dot + fmtAmzPefPromoCell(val, '%') + '</span>';
+                    },
+                    cellClick: function(e) {
+                        if (e.target.closest('.view-sku-chart') || e.target.closest('.amz-pef-hist-dot')) {
+                            e.stopPropagation();
+                            return false;
+                        }
                     },
                     cellEdited: function(cell) {
                         applyAmzPefPromoFromCell(cell, 'cpn');

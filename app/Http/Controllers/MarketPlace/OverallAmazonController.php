@@ -742,6 +742,17 @@ class OverallAmazonController extends Controller
                     $row['STANDARD_PRICE'] = (is_numeric($stdPrice) && (float) $stdPrice > 0)
                         ? round((float) $stdPrice, 2)
                         : null;
+                    // Dil vs PRMT / CVR vs CPN — persist across refresh
+                    $prmtPct = isset($raw['PEF_PRMT_PCT']) && is_numeric($raw['PEF_PRMT_PCT'])
+                        ? round((float) $raw['PEF_PRMT_PCT'], 2)
+                        : null;
+                    $cpnPct = isset($raw['PEF_CPN_PCT']) && is_numeric($raw['PEF_CPN_PCT'])
+                        ? round((float) $raw['PEF_CPN_PCT'], 2)
+                        : null;
+                    $row['prmt_pct'] = $prmtPct !== null ? (string) $prmtPct : null;
+                    $row['cpn_pct'] = $cpnPct !== null ? (string) $cpnPct : null;
+                    $row['_prmt_pct_applied'] = $prmtPct ?? 0;
+                    $row['_cpn_pct_applied'] = $cpnPct ?? 0;
                     $row['Spft%'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;
                     $row['SGPFT'] = $raw['SGPFT'] ?? null;
@@ -1364,9 +1375,16 @@ class OverallAmazonController extends Controller
         Log::info('Saving Amazon pricing data', $request->all());
         $sku = strtoupper($request->input('sku'));
         $sprice = $request->input('sprice');
+        $hasPrmt = $request->exists('prmt_pct');
+        $hasCpn = $request->exists('cpn_pct');
 
-        if (!$sku || !$sprice) {
-            return response()->json(['error' => 'SKU and sprice are required.'], 400);
+        if (! $sku || (($sprice === null || $sprice === '') && ! $hasPrmt && ! $hasCpn)) {
+            return response()->json(['error' => 'SKU and sprice (or PRMT%/CPN%) are required.'], 400);
+        }
+
+        // Persist Dil vs PRMT / CVR vs CPN percents without requiring a SPRICE rewrite.
+        if (($sprice === null || $sprice === '') && ($hasPrmt || $hasCpn)) {
+            return $this->saveAmazonPefPromoPercents($sku, $request);
         }
 
         // Manual Standard Price (SP) — filled from LMP modal when LMP cannot be determined.
@@ -1483,11 +1501,18 @@ class OverallAmazonController extends Controller
             'SGPFT' => $sgpft,
         ]);
 
+        if ($hasPrmt) {
+            $merged['PEF_PRMT_PCT'] = max(0, round((float) $request->input('prmt_pct'), 2));
+        }
+        if ($hasCpn) {
+            $merged['PEF_CPN_PCT'] = max(0, round((float) $request->input('cpn_pct'), 2));
+        }
+
         $amazonDataView->value = $merged;
         $amazonDataView->save();
         Log::info('Data saved successfully', ['sku' => $sku]);
 
-        // Keep today's SKU daily snapshot in sync so S PRC history dots stay current
+        // Keep today's SKU daily snapshot in sync so S PRC / PRMT% / CPN% history dots stay current (PDT)
         try {
             $today = Carbon::now('America/Los_Angeles')->toDateString();
             $daily = AmazonSkuDailyData::firstOrNew([
@@ -1498,6 +1523,12 @@ class OverallAmazonController extends Controller
                 ? $daily->daily_data
                 : (json_decode($daily->daily_data ?? '{}', true) ?: []);
             $dailyPayload['sprice'] = $spriceFloat;
+            if ($hasPrmt) {
+                $dailyPayload['prmt_pct'] = $merged['PEF_PRMT_PCT'];
+            }
+            if ($hasCpn) {
+                $dailyPayload['cpn_pct'] = $merged['PEF_CPN_PCT'];
+            }
             $daily->daily_data = $dailyPayload;
             $daily->save();
         } catch (\Throwable $e) {
@@ -1513,8 +1544,63 @@ class OverallAmazonController extends Controller
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
             'sgroi_percent' => $sgroi,
-            'sgpft_percent' => $sgpft
+            'sgpft_percent' => $sgpft,
+            'prmt_pct' => $merged['PEF_PRMT_PCT'] ?? null,
+            'cpn_pct' => $merged['PEF_CPN_PCT'] ?? null,
         ]);
+    }
+
+    /**
+     * Persist PEF PRMT%/CPN% on AmazonDataView + PDT daily history (no SPRICE rewrite).
+     */
+    protected function saveAmazonPefPromoPercents(string $sku, Request $request)
+    {
+        $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+        $existing = is_array($amazonDataView->value)
+            ? $amazonDataView->value
+            : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+
+        $out = [];
+        if ($request->exists('prmt_pct')) {
+            $existing['PEF_PRMT_PCT'] = max(0, round((float) $request->input('prmt_pct'), 2));
+            $out['prmt_pct'] = $existing['PEF_PRMT_PCT'];
+        }
+        if ($request->exists('cpn_pct')) {
+            $existing['PEF_CPN_PCT'] = max(0, round((float) $request->input('cpn_pct'), 2));
+            $out['cpn_pct'] = $existing['PEF_CPN_PCT'];
+        }
+
+        $amazonDataView->value = $existing;
+        $amazonDataView->save();
+
+        try {
+            $today = Carbon::now('America/Los_Angeles')->toDateString();
+            $daily = AmazonSkuDailyData::firstOrNew([
+                'sku' => $sku,
+                'record_date' => $today,
+            ]);
+            $dailyPayload = is_array($daily->daily_data)
+                ? $daily->daily_data
+                : (json_decode($daily->daily_data ?? '{}', true) ?: []);
+            if (array_key_exists('prmt_pct', $out)) {
+                $dailyPayload['prmt_pct'] = $out['prmt_pct'];
+            }
+            if (array_key_exists('cpn_pct', $out)) {
+                $dailyPayload['cpn_pct'] = $out['cpn_pct'];
+            }
+            $daily->daily_data = $dailyPayload;
+            $daily->save();
+        } catch (\Throwable $e) {
+            Log::warning('Could not sync PEF promo % to amazon_sku_daily_data', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return response()->json(array_merge([
+            'message' => 'Promo percents saved successfully.',
+            'success' => true,
+        ], $out));
     }
 
     /**
@@ -2966,6 +3052,12 @@ class OverallAmazonController extends Controller
                         ? round(($aL30 / $views) * 100, 2)
                         : round((float) ($data['cvr_percent'] ?? 0), 2);
                     $spriceHist = isset($data['sprice']) ? round((float) $data['sprice'], 2) : null;
+                    $prmtHist = isset($data['prmt_pct']) && is_numeric($data['prmt_pct'])
+                        ? round((float) $data['prmt_pct'], 2)
+                        : null;
+                    $cpnHist = isset($data['cpn_pct']) && is_numeric($data['cpn_pct'])
+                        ? round((float) $data['cpn_pct'], 2)
+                        : null;
                     $dataByDate[$dateKey] = [
                         'date' => $dateKey,
                         'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
@@ -2973,6 +3065,8 @@ class OverallAmazonController extends Controller
                         'sprice' => ($spriceHist !== null && $spriceHist > 0)
                             ? $spriceHist
                             : round((float) ($data['price'] ?? 0), 2),
+                        'prmt_pct' => $prmtHist,
+                        'cpn_pct' => $cpnHist,
                         'views' => $views,
                         'cvr_percent' => $cvr,
                         'ad_percent' => round((float) ($data['ad_percent'] ?? 0), 2),
