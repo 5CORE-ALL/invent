@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Temu2Order;
 use App\Services\MarketplaceManager\Temu2OrderPushService;
+use App\Services\MarketplaceManager\Temu2OrderSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -56,6 +57,28 @@ class ImportTemu2OrderToShopify implements ShouldQueue
         }
 
         $parent = trim((string) $order->parent_order_sn);
+
+        // Hard stop for delivered / shipped / old backlog even if a job was already queued.
+        $sync = app(Temu2OrderSyncService::class);
+        if (! $sync->isEligibleForAutoImport($order)) {
+            if ($parent !== '') {
+                Temu2Order::query()
+                    ->where('parent_order_sn', $parent)
+                    ->whereNull('shopify_order_id')
+                    ->update(['import_status' => 'skipped_closed']);
+            } else {
+                $order->update(['import_status' => 'skipped_closed']);
+            }
+            Log::info('ImportTemu2OrderToShopify: skipped ineligible order', [
+                'id' => $this->temuOrderId,
+                'parent_order_sn' => $parent,
+                'status' => Temu2OrderSyncService::resolveOrderStatus($order),
+                'parent_order_time' => $order->parent_order_time,
+            ]);
+
+            return;
+        }
+
         $sibling = $parent !== ''
             ? Temu2Order::query()
                 ->where('parent_order_sn', $parent)

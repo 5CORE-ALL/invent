@@ -31,6 +31,17 @@ class Temu2OrderSyncService
      */
     public const AUTO_IMPORT_MAX_AGE_DAYS = 3;
 
+    /**
+     * Only these open statuses may auto-import. Prefer allowlist over skip-list so unknown
+     * / null / shipped-like statuses never flood Shopify.
+     *
+     * @var list<string>
+     */
+    public const AUTO_IMPORT_ALLOWED_STATUSES = [
+        'UN_SHIPPING',
+        'PENDING',
+    ];
+
     /** @var list<string> */
     public const SKIP_AUTO_IMPORT_STATUSES = [
         'DELIVERED',
@@ -48,6 +59,59 @@ class Temu2OrderSyncService
     public function minOrderDate(): Carbon
     {
         return Carbon::parse(self::MIN_ORDER_DATE, 'America/Los_Angeles')->startOfDay();
+    }
+
+    public function autoImportFromDate(): Carbon
+    {
+        $importFrom = Carbon::now('America/Los_Angeles')
+            ->subDays(max(1, self::AUTO_IMPORT_MAX_AGE_DAYS))
+            ->startOfDay();
+        $min = $this->minOrderDate();
+
+        return $importFrom->lt($min) ? $min->copy() : $importFrom;
+    }
+
+    public static function resolveOrderStatus(?object $row): string
+    {
+        return strtoupper(trim((string) (
+            ($row->parent_order_status_text ?? null)
+            ?: ($row->order_status_text ?? null)
+            ?: ''
+        )));
+    }
+
+    public static function isAllowedAutoImportStatus(string $status): bool
+    {
+        return $status !== '' && in_array($status, self::AUTO_IMPORT_ALLOWED_STATUSES, true);
+    }
+
+    /**
+     * Final safety check used by the queue job (and dispatch) so already-queued jobs
+     * cannot create Shopify orders for delivered / old backlog.
+     */
+    public function isEligibleForAutoImport(Temu2Order $order): bool
+    {
+        if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
+            return false;
+        }
+
+        $status = self::resolveOrderStatus($order);
+        if (! self::isAllowedAutoImportStatus($status)) {
+            return false;
+        }
+
+        $parentTime = trim((string) ($order->parent_order_time ?? ''));
+        if ($parentTime === '') {
+            return false;
+        }
+
+        try {
+            $created = Carbon::parse($parentTime, 'America/Los_Angeles');
+        } catch (\Throwable $e) {
+            return false;
+        }
+
+        return $created->gte($this->autoImportFromDate());
     }
 
     /**
@@ -204,29 +268,23 @@ class Temu2OrderSyncService
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('temu2');
         $this->markClosedOrdersSkippedForImport();
 
-        // Only NEW open orders (last N days) — never the old shipped/delivered backlog.
-        $importFrom = Carbon::now('America/Los_Angeles')
-            ->subDays(max(1, self::AUTO_IMPORT_MAX_AGE_DAYS))
-            ->startOfDay();
-        $min = $this->minOrderDate();
-        if ($importFrom->lt($min)) {
-            $importFrom = $min->copy();
-        }
-
-        $skipStatuses = self::SKIP_AUTO_IMPORT_STATUSES;
-        $placeholders = implode(', ', array_fill(0, count($skipStatuses), '?'));
+        // Only NEW open orders (last N days + allowlisted statuses).
+        $importFrom = $this->autoImportFromDate();
+        $allowedStatuses = self::AUTO_IMPORT_ALLOWED_STATUSES;
+        $placeholders = implode(', ', array_fill(0, count($allowedStatuses), '?'));
 
         $query = Temu2Order::query()
             ->whereNull('shopify_order_id')
+            ->whereNotNull('parent_order_time')
             ->where('parent_order_time', '>=', $importFrom->format('Y-m-d H:i:s'))
             ->where(function ($q) {
                 $q->whereNull('import_status')
                     ->orWhereNotIn('import_status', ['queued', 'imported', 'skipped_pre_july7', 'skipped_closed']);
             })
-            ->where(function ($q) use ($skipStatuses, $placeholders) {
-                $q->whereNull('parent_order_status_text')
-                    ->orWhereRaw("UPPER(TRIM(parent_order_status_text)) NOT IN ({$placeholders})", $skipStatuses);
-            })
+            ->whereRaw(
+                "UPPER(TRIM(COALESCE(NULLIF(parent_order_status_text, ''), order_status_text, ''))) IN ({$placeholders})",
+                $allowedStatuses
+            )
             ->orderByDesc('id')
             ->limit(300);
 
@@ -241,8 +299,7 @@ class Temu2OrderSyncService
             if ($parent === '' || isset($seenParents[$parent])) {
                 continue;
             }
-            $status = strtoupper(trim((string) ($row->parent_order_status_text ?: $row->order_status_text ?: '')));
-            if (in_array($status, self::SKIP_AUTO_IMPORT_STATUSES, true)) {
+            if (! $this->isEligibleForAutoImport($row)) {
                 Temu2Order::query()
                     ->where('parent_order_sn', $parent)
                     ->whereNull('shopify_order_id')
@@ -265,7 +322,7 @@ class Temu2OrderSyncService
     }
 
     /**
-     * Mark already-closed Temu 2 parents so they never enter the Shopify import queue again.
+     * Mark closed / stale Temu 2 parents so they never enter the Shopify import queue again.
      */
     protected function markClosedOrdersSkippedForImport(): void
     {
@@ -273,17 +330,32 @@ class Temu2OrderSyncService
             return;
         }
 
-        $skipStatuses = self::SKIP_AUTO_IMPORT_STATUSES;
-        $placeholders = implode(', ', array_fill(0, count($skipStatuses), '?'));
+        $allowedStatuses = self::AUTO_IMPORT_ALLOWED_STATUSES;
+        $allowedPlaceholders = implode(', ', array_fill(0, count($allowedStatuses), '?'));
+        $importFrom = $this->autoImportFromDate()->format('Y-m-d H:i:s');
 
         try {
-            Temu2Order::query()
+            $base = Temu2Order::query()
                 ->whereNull('shopify_order_id')
                 ->where(function ($q) {
                     $q->whereNull('import_status')
                         ->orWhereNotIn('import_status', ['imported', 'skipped_pre_july7', 'skipped_closed']);
+                });
+
+            // Closed / shipped / delivered / unknown statuses.
+            (clone $base)
+                ->whereRaw(
+                    "UPPER(TRIM(COALESCE(NULLIF(parent_order_status_text, ''), order_status_text, ''))) NOT IN ({$allowedPlaceholders})",
+                    $allowedStatuses
+                )
+                ->update(['import_status' => 'skipped_closed']);
+
+            // Older than auto-import window (even if still UN_SHIPPING).
+            (clone $base)
+                ->where(function ($q) use ($importFrom) {
+                    $q->whereNull('parent_order_time')
+                        ->orWhere('parent_order_time', '<', $importFrom);
                 })
-                ->whereRaw("UPPER(TRIM(COALESCE(parent_order_status_text, ''))) IN ({$placeholders})", $skipStatuses)
                 ->update(['import_status' => 'skipped_closed']);
         } catch (\Throwable $e) {
             Log::warning('Temu2OrderSyncService: markClosedOrdersSkippedForImport failed', [
