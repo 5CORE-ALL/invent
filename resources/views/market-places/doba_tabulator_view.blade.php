@@ -2225,7 +2225,7 @@
                         }
                     },
                     {
-                        title: "PP Price",
+                        title: "Pick Price",
                         field: "self_pick_price",
                         width: 85,
                         sorter: "number",
