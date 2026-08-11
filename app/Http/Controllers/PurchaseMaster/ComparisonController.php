@@ -9,8 +9,10 @@ use App\Models\AmazonSkuCompetitor;
 use App\Models\Category;
 use App\Models\ComparisonData;
 use App\Models\ComparisonHistory;
+use App\Models\EbayMetric;
 use App\Models\EbaySkuCompetitor;
 use App\Models\ForecastAnalysisHistory;
+use App\Models\GoogleSkuCompetitor;
 use App\Models\InstructionsItemPkg;
 use App\Models\JungleScoutProductData;
 use App\Models\ProductCategory;
@@ -19,6 +21,8 @@ use App\Models\QcMastersEntry;
 use App\Models\RfqForm;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
+use App\Models\TemuLmp;
+use App\Models\TemuPricing;
 use App\Services\ComparisonSheetService;
 use App\Services\ComparisonSheetStorage;
 use App\Services\ComparisonSkuLinkService;
@@ -29,6 +33,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class ComparisonController extends Controller
 {
@@ -2260,11 +2265,163 @@ class ComparisonController extends Controller
             ? (float) $ebayLowest->total_price
             : null;
 
+        $temuLmp = $this->resolveTemuLmpPriceForSku($sku);
+        $shopifyLmp = $this->resolveShopifyLmpPriceForSku($sku);
+        $channelPrices = $this->resolveChannelPricesForSku($sku);
+
         return response()->json([
             'success' => true,
             'amazon_lmp' => $amazonLmp,
             'ebay_lmp' => $ebayLmp,
+            'temu_lmp' => $temuLmp,
+            'shopify_lmp' => $shopifyLmp,
+            'amazon_price' => $channelPrices['amazon'],
+            'ebay_price' => $channelPrices['ebay'],
+            'temu_price' => $channelPrices['temu'],
+            'shopify_price' => $channelPrices['shopify'],
         ]);
+    }
+
+    /**
+     * Current listing price on each marketplace for the cost-calculator "Price" column.
+     *
+     * @return array{amazon: ?float, ebay: ?float, temu: ?float, shopify: ?float}
+     */
+    protected function resolveChannelPricesForSku(string $sku): array
+    {
+        $empty = ['amazon' => null, 'ebay' => null, 'temu' => null, 'shopify' => null];
+        $sku = trim($sku);
+        if ($sku === '') {
+            return $empty;
+        }
+        $skuUpper = strtoupper($sku);
+
+        $amazon = null;
+        if (Schema::hasTable('amazon_datsheets')) {
+            $price = AmazonDatasheet::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])
+                ->value('price');
+            if (is_numeric($price) && (float) $price > 0) {
+                $amazon = round((float) $price, 2);
+            }
+        }
+
+        $ebay = null;
+        if (Schema::hasTable('ebay_metrics')) {
+            $price = EbayMetric::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])
+                ->value('ebay_price');
+            if (is_numeric($price) && (float) $price > 0) {
+                $ebay = round((float) $price, 2);
+            }
+        }
+
+        $temu = null;
+        if (Schema::hasTable('temu_pricing')) {
+            $price = TemuPricing::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])
+                ->orderByDesc('id')
+                ->value('base_price');
+            if (is_numeric($price) && (float) $price > 0) {
+                $temu = round((float) $price, 2);
+            }
+        }
+
+        $shopify = null;
+        if (Schema::hasTable('shopify_skus')) {
+            $row = ShopifySku::firstForProductSku($sku);
+            if ($row) {
+                foreach (['b2c_price', 'price', 'b2b_price'] as $field) {
+                    $price = $row->{$field} ?? null;
+                    if (is_numeric($price) && (float) $price > 0) {
+                        $shopify = round((float) $price, 2);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return [
+            'amazon' => $amazon,
+            'ebay' => $ebay,
+            'temu' => $temu,
+            'shopify' => $shopify,
+        ];
+    }
+
+    /**
+     * Shopify row uses Google Shopping LMP (same source as Shopify B2C/B2B views).
+     */
+    protected function resolveShopifyLmpPriceForSku(string $sku): ?float
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! Schema::hasTable('google_sku_competitors')) {
+            return null;
+        }
+
+        try {
+            $competitors = GoogleSkuCompetitor::getCompetitorsForSku($sku, 'google');
+            $lowest = $competitors
+                ->filter(fn ($c) => empty($c->ignored) && is_numeric($c->price) && (float) $c->price > 0)
+                ->sortBy(fn ($c) => (float) $c->price)
+                ->first();
+
+            return $lowest ? round((float) $lowest->price, 2) : null;
+        } catch (\Throwable $e) {
+            Log::warning('Shopify/Google LMP lookup failed: '.$e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Lowest Temu LMP for a SKU from temu_lmp (price + delivery when available).
+     */
+    protected function resolveTemuLmpPriceForSku(string $sku): ?float
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! Schema::hasTable('temu_lmp')) {
+            return null;
+        }
+
+        $row = TemuLmp::query()
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower($sku)])
+            ->first();
+        if (! $row) {
+            return null;
+        }
+
+        $prices = [];
+        $entries = $row->lmp_entries;
+        if (is_array($entries)) {
+            foreach ($entries as $entry) {
+                if (! is_array($entry) || ! empty($entry['ignored'])) {
+                    continue;
+                }
+                $price = isset($entry['price']) && is_numeric($entry['price']) ? (float) $entry['price'] : 0.0;
+                if ($price <= 0) {
+                    continue;
+                }
+                $delivery = isset($entry['delivery']) && is_numeric($entry['delivery'])
+                    ? (float) $entry['delivery']
+                    : 0.0;
+                if ($delivery <= 0 && $price < 27) {
+                    $delivery = 2.99;
+                }
+                $prices[] = $price + $delivery;
+            }
+        }
+
+        if ($prices === []) {
+            if ($row->lmp !== null && is_numeric($row->lmp) && (float) $row->lmp > 0) {
+                $prices[] = (float) $row->lmp;
+            }
+            if ($row->lmp_2 !== null && is_numeric($row->lmp_2) && (float) $row->lmp_2 > 0) {
+                $prices[] = (float) $row->lmp_2;
+            }
+        }
+
+        return $prices !== [] ? round(min($prices), 2) : null;
     }
 
     public function saveRoiCell(Request $request)
@@ -2276,7 +2433,7 @@ class ComparisonController extends Controller
             'linked_skus.*' => 'string',
             'bulk_edit_skus' => 'nullable|array',
             'bulk_edit_skus.*' => 'string',
-            'channel' => 'required|string|in:Amazon,Ebay,amazon,ebay',
+            'channel' => 'required|string|in:Amazon,Ebay,Temu,Shopify,Overall,Amz,amazon,ebay,temu,shopify,overall,amz',
             'field' => 'required|string|in:cp,cbm,freight,gw,shipping,sale',
             'old_value' => 'nullable|string',
             'new_value' => 'nullable|string',
@@ -2287,10 +2444,14 @@ class ComparisonController extends Controller
         $parent = trim((string) ($validated['parent'] ?? ''));
         $linkedSkus = is_array($validated['linked_skus'] ?? null) ? $validated['linked_skus'] : [];
         $bulkEditSkus = is_array($validated['bulk_edit_skus'] ?? null) ? $validated['bulk_edit_skus'] : [];
-        $channel = ucfirst(strtolower(trim($validated['channel'])));
-        if ($channel !== 'Ebay') {
-            $channel = 'Amazon';
-        }
+        $channelKey = strtolower(trim($validated['channel']));
+        $channel = match (true) {
+            $channelKey === 'ebay' => 'Ebay',
+            $channelKey === 'temu' => 'Temu',
+            $channelKey === 'shopify' => 'Shopify',
+            $channelKey === 'overall' => 'Overall',
+            default => 'Amazon',
+        };
         $user = Auth::user()?->name ?? 'N/A';
 
         $this->linkedSkuGroupService->reset();

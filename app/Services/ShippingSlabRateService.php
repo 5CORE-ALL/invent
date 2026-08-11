@@ -14,11 +14,11 @@ class ShippingSlabRateService
 
     private const WT_ACT_OZ_LB_UPPER = [0.06, 0.13, 0.19, 0.25, 0.31, 0.38, 0.44, 0.50, 0.56, 0.63, 0.69, 0.75, 0.81, 0.88, 0.94];
 
-    private const WT_ACT_OZ_FILTER_OPTIONS = [2, 4, 6, 12];
+    private const WT_ACT_OZ_FILTER_OPTIONS = [4, 6, 12];
 
     private const WT_ACT_OZ_FILTER_SLABS = [
-        2 => ['ozMin' => 0.01, 'ozMax' => 2, 'label' => '0.01–2 oz (0.01 – 0.125 lb)'],
-        4 => ['ozMin' => 2.01, 'ozMax' => 4, 'label' => '2.01–4 oz (0.126 – 0.25 lb)'],
+        // Merged former 0.01–2 oz + 2.01–4 oz into one band
+        4 => ['ozMin' => 0.01, 'ozMax' => 4, 'label' => '0.01–4 oz (0.01 – 0.25 lb)'],
         6 => ['ozMin' => 4.01, 'ozMax' => 8, 'label' => '4.01–8 oz (0.251 – 0.5 lb)'],
         12 => ['ozMin' => 8.01, 'ozMax' => 12, 'label' => '8.01–12 oz (0.51 – 0.75 lb)'],
     ];
@@ -37,16 +37,10 @@ class ShippingSlabRateService
         ['key' => 'lb_201_3', 'lbMin' => 2.01, 'lbMax' => 3, 'label' => '2.01 lb – 3 lb'],
         ['key' => 'lb_301_4', 'lbMin' => 3.01, 'lbMax' => 4, 'label' => '3.01 lb – 4 lb'],
         ['key' => 'lb_401_5', 'lbMin' => 4.01, 'lbMax' => 5, 'label' => '4.01 lb – 5 lb'],
-        ['key' => 'lb_501_6', 'lbMin' => 5.01, 'lbMax' => 6, 'label' => '5.01 lb – 6 lb'],
-        ['key' => 'lb_601_7', 'lbMin' => 6.01, 'lbMax' => 7, 'label' => '6.01 lb – 7 lb'],
-        ['key' => 'lb_701_8', 'lbMin' => 7.01, 'lbMax' => 8, 'label' => '7.01 lb – 8 lb'],
-        ['key' => 'lb_801_9', 'lbMin' => 8.01, 'lbMax' => 9, 'label' => '8.01 lb – 9 lb'],
-        ['key' => 'lb_901_10', 'lbMin' => 9.01, 'lbMax' => 10, 'label' => '9.01 lb – 10 lb'],
-        ['key' => 'lb_1001_11', 'lbMin' => 10.01, 'lbMax' => 11, 'label' => '10.01 lb – 11 lb'],
-        ['key' => 'lb_1101_12', 'lbMin' => 11.01, 'lbMax' => 12, 'label' => '11.01 lb – 12 lb'],
-        ['key' => 'lb_1201_13', 'lbMin' => 12.01, 'lbMax' => 13, 'label' => '12.01 lb – 13 lb'],
-        ['key' => 'lb_1301_14', 'lbMin' => 13.01, 'lbMax' => 14, 'label' => '13.01 lb – 14 lb'],
-        ['key' => 'lb_1401_20', 'lbMin' => 14.01, 'lbMax' => 20, 'label' => '14.01 lb – 20 lb'],
+        // Merged former 5.01–6 through 9.01–10 into one band
+        ['key' => 'lb_501_10', 'lbMin' => 5.01, 'lbMax' => 10, 'label' => '5.01 lb – 10 lb'],
+        // Merged former 10.01–11 through 14.01–20 into one band
+        ['key' => 'lb_1001_20', 'lbMin' => 10.01, 'lbMax' => 20, 'label' => '10.01 lb – 20 lb'],
         ['key' => 'lb_20_30', 'lbMin' => 20.01, 'lbMax' => 25, 'label' => '20.01 lb – 25 lb'],
         ['key' => 'lb_2501_30', 'lbMin' => 25.01, 'lbMax' => 30, 'label' => '25.01 lb – 30 lb'],
         ['key' => 'lb_30_40', 'lbMin' => 30.01, 'lbMax' => 40, 'label' => '30.01 lb – 40 lb'],

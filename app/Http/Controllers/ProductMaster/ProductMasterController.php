@@ -520,7 +520,14 @@ class ProductMasterController extends Controller
                 $values['image_path'] = 'storage/'.$imagePath;
             }
 
-            if ($operation === 'update' && ($originalId || $originalSku)) {
+            if ($operation === 'update') {
+                if (! $originalId && ! $originalSku) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Update requires the existing product id or SKU.',
+                    ], 422);
+                }
+
                 // Prefer id (stable). Fall back to SKU; parent filter only when needed.
                 $product = null;
                 if ($originalId) {

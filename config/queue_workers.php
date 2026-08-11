@@ -63,6 +63,13 @@ return [
             'timeout' => 1800,
             'max_time' => 7200,
         ],
+        // SOF "Update Shipment Status" (SyncShipmentTrackingStatusJob) — do not use default queue
+        'shipment-tracking' => [
+            'timeout' => 1800,
+            'max_time' => 7200,
+        ],
+
+        
         // Shopify webhook ingress (ProcessShopifyInventoryWebhook / ResolveInventoryItemSkuJob)
         'mm-ingress' => [
             'timeout' => 180,

@@ -21,10 +21,26 @@ use Illuminate\Support\Facades\Schema;
 class TemuOrderSyncService
 {
     /**
-     * Hard cutoff: never fetch/store/auto-import Temu orders created before this date (America/Los_Angeles).
+     * Hard cutoff: never fetch/store Temu orders created before this date (America/Los_Angeles).
      * Older orders were already entered on Shopify manually.
      */
     public const MIN_ORDER_DATE = '2026-07-07';
+
+    /**
+     * Auto-import to Shopify only for recent open orders (not the full July+ backlog).
+     */
+    public const AUTO_IMPORT_MAX_AGE_DAYS = 3;
+
+    /** @var list<string> */
+    public const SKIP_AUTO_IMPORT_STATUSES = [
+        'DELIVERED',
+        'PARTIALLY_DELIVERED',
+        'CANCELLED',
+        'CANCELED',
+        'CLOSED',
+        'SHIPPED',
+        'PARTIALLY_SHIPPED',
+    ];
 
     /**
      * Earliest allowed order create time (start of day, Temu reporting timezone).
@@ -186,36 +202,93 @@ class TemuOrderSyncService
         }
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('temu');
+        $this->markClosedOrdersSkippedForImport();
+
+        // Only NEW open orders (last N days) — never the old shipped/delivered backlog.
+        $importFrom = Carbon::now('America/Los_Angeles')
+            ->subDays(max(1, self::AUTO_IMPORT_MAX_AGE_DAYS))
+            ->startOfDay();
+        $min = $this->minOrderDate();
+        if ($importFrom->lt($min)) {
+            $importFrom = $min->copy();
+        }
+
+        $skipStatuses = self::SKIP_AUTO_IMPORT_STATUSES;
+        $placeholders = implode(', ', array_fill(0, count($skipStatuses), '?'));
+
         $query = TemuOrder::query()
             ->whereNull('shopify_order_id')
-            ->where('parent_order_time', '>=', self::MIN_ORDER_DATE.' 00:00:00')
+            ->where('parent_order_time', '>=', $importFrom->format('Y-m-d H:i:s'))
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereNotIn('import_status', ['queued', 'imported', 'skipped_pre_july7']);
+                    ->orWhereNotIn('import_status', ['queued', 'imported', 'skipped_pre_july7', 'skipped_closed']);
             })
-            ->orderBy('id');
+            ->where(function ($q) use ($skipStatuses, $placeholders) {
+                $q->whereNull('parent_order_status_text')
+                    ->orWhereRaw("UPPER(TRIM(parent_order_status_text)) NOT IN ({$placeholders})", $skipStatuses);
+            })
+            ->orderByDesc('id')
+            ->limit(300);
 
         $dispatched = 0;
         $seenParents = [];
-        $query->chunkById(50, function ($rows) use (&$dispatched, $paidOnly, &$seenParents) {
-            foreach ($rows as $row) {
-                $parent = trim((string) ($row->parent_order_sn ?? ''));
-                if ($parent === '' || isset($seenParents[$parent])) {
-                    continue;
-                }
-                if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('temu', $row)) {
-                    continue;
-                }
-                $seenParents[$parent] = true;
+        $maxDispatch = 40;
+        foreach ($query->get() as $row) {
+            if ($dispatched >= $maxDispatch) {
+                break;
+            }
+            $parent = trim((string) ($row->parent_order_sn ?? ''));
+            if ($parent === '' || isset($seenParents[$parent])) {
+                continue;
+            }
+            $status = strtoupper(trim((string) ($row->parent_order_status_text ?: $row->order_status_text ?: '')));
+            if (in_array($status, self::SKIP_AUTO_IMPORT_STATUSES, true)) {
                 TemuOrder::query()
                     ->where('parent_order_sn', $parent)
                     ->whereNull('shopify_order_id')
-                    ->update(['import_status' => 'queued']);
-                ImportTemuOrderToShopify::dispatch((int) $row->id);
-                $dispatched++;
+                    ->update(['import_status' => 'skipped_closed']);
+                continue;
             }
-        });
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('temu', $row)) {
+                continue;
+            }
+            $seenParents[$parent] = true;
+            TemuOrder::query()
+                ->where('parent_order_sn', $parent)
+                ->whereNull('shopify_order_id')
+                ->update(['import_status' => 'queued']);
+            ImportTemuOrderToShopify::dispatch((int) $row->id);
+            $dispatched++;
+        }
 
         return $dispatched;
+    }
+
+    /**
+     * Mark already-closed Temu parents so they never enter the Shopify import queue again.
+     */
+    protected function markClosedOrdersSkippedForImport(): void
+    {
+        if (! Schema::hasColumn('temu_orders', 'import_status')) {
+            return;
+        }
+
+        $skipStatuses = self::SKIP_AUTO_IMPORT_STATUSES;
+        $placeholders = implode(', ', array_fill(0, count($skipStatuses), '?'));
+
+        try {
+            TemuOrder::query()
+                ->whereNull('shopify_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('import_status')
+                        ->orWhereNotIn('import_status', ['imported', 'skipped_pre_july7', 'skipped_closed']);
+                })
+                ->whereRaw("UPPER(TRIM(COALESCE(parent_order_status_text, ''))) IN ({$placeholders})", $skipStatuses)
+                ->update(['import_status' => 'skipped_closed']);
+        } catch (\Throwable $e) {
+            Log::warning('TemuOrderSyncService: markClosedOrdersSkippedForImport failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

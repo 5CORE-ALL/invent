@@ -1657,9 +1657,10 @@ class SalesOrderFulfillmentController extends Controller
             return response()->json([
                 'success' => true,
                 'queued' => true,
+                'queue' => 'shipment-tracking',
                 'message' => "Shipment status sync queued for up to {$limit} tracking numbers."
-                    .' This runs in the background (not Shopify) so the page stays responsive.'
-                    .' Refresh the Label Created / In Transit tabs in a few minutes to see updates.',
+                    .' Running in the background on the shipment-tracking queue.'
+                    .' Refresh Label Created / In Transit in a few minutes.',
                 'providers' => [
                     'usps' => $tracking->hasUsps(),
                     'ups' => $tracking->hasUps(),

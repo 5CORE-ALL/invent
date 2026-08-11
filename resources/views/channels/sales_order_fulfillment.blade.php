@@ -5043,6 +5043,31 @@
             });
     });
 
+    function sofShowShipmentSyncNotice(ok, msg) {
+        let $banner = $('#sof-shipment-sync-banner');
+        if (!$banner.length) {
+            $banner = $('<div id="sof-shipment-sync-banner" class="alert py-2 px-3 mb-2 small" role="status" style="display:none;"></div>');
+            const $btn = $('#sof-refresh-shipment-btn');
+            if ($btn.length) {
+                $btn.closest('.d-flex').before($banner);
+            } else {
+                $('body').prepend($banner);
+            }
+        }
+        $banner
+            .removeClass('alert-success alert-danger alert-warning')
+            .addClass(ok ? 'alert-success' : 'alert-danger')
+            .html(escapeHtml(msg))
+            .stop(true, true)
+            .fadeIn(150);
+        if (ok) {
+            clearTimeout(window.__sofShipmentSyncBannerTimer);
+            window.__sofShipmentSyncBannerTimer = setTimeout(function () {
+                $banner.fadeOut(300);
+            }, 8000);
+        }
+    }
+
     $('#sof-refresh-shipment-btn').on('click', function () {
         const $btn = $(this);
         if ($btn.prop('disabled')) return;
@@ -5065,6 +5090,7 @@
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
             .then(function (res) {
                 const msg = (res.json && res.json.message) ? res.json.message : (res.ok ? 'Queued.' : 'Update failed.');
+                // Inline banner only — avoid native alert() (blocks the page every click).
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
                         icon: res.ok ? 'success' : 'error',
@@ -5077,7 +5103,7 @@
                         confirmButtonText: 'OK',
                     });
                 } else {
-                    alert(msg);
+                    sofShowShipmentSyncNotice(!!res.ok, msg);
                 }
                 // Soft refresh active tab shortly — full multi-tab reload is too slow with ~5k rows.
                 if (res.ok) {
@@ -5095,7 +5121,7 @@
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({ icon: 'error', title: 'Update failed', text: msg });
                 } else {
-                    alert(msg);
+                    sofShowShipmentSyncNotice(false, msg);
                 }
             })
             .finally(function () {

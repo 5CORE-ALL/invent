@@ -19,6 +19,7 @@ use App\Models\QcMastersEntry;
 use App\Models\RfqForm;
 use App\Models\Supplier;
 use App\Models\ShippingMasterHistory;
+use App\Models\ShippingSlabRateHistory;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use App\Services\LinkedSkuGroupService;
@@ -1007,6 +1008,7 @@ class CategoryController extends Controller
                 'uni' => 'nullable|numeric',
                 'label_qty' => 'nullable|integer',
                 'label_type' => 'nullable|string|in:ENV,STD,O-Size,Pallet',
+                'handling_charge' => 'nullable|string|max:3',
                 'fba_ship_calculation' => 'nullable|numeric',
                 'fba_manual_ship' => 'nullable|numeric',
             ]);
@@ -1113,6 +1115,14 @@ class CategoryController extends Controller
             if (array_key_exists('label_type', $validated)) {
                 $v = $validated['label_type'];
                 $values['label_type'] = ($v !== null && $v !== '') ? (string) $v : 'STD';
+            }
+            if (array_key_exists('handling_charge', $validated)) {
+                $v = $validated['handling_charge'];
+                if ($v === null || $v === '') {
+                    $values['handling_charge'] = null;
+                } else {
+                    $values['handling_charge'] = mb_substr(trim((string) $v), 0, 3);
+                }
             }
 
             // Snapshot of the OLD Values (before save) for change tracking
@@ -1239,6 +1249,7 @@ class CategoryController extends Controller
             'ctn_gwt' => 'CTN GWT',
             'label_qty' => 'Label Qty',
             'label_type' => 'Label Type',
+            'handling_charge' => 'Handling Charge',
         ];
     }
 
@@ -1267,6 +1278,7 @@ class CategoryController extends Controller
             'ctn_weight_kg', 'ctn_weight_lb', 'ctn_instructions',
             'label_qty',
             'label_type',
+            'handling_charge',
             'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship',
             'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni',
         ];
@@ -1395,7 +1407,7 @@ class CategoryController extends Controller
                     'new_value' => $h->new_value,
                     'updated_by' => $h->updated_by ?: 'N/A',
                     'updated_at' => $h->updated_at
-                        ? Carbon::parse($h->updated_at)->timezone('America/New_York')->format('m-d-Y H:i')
+                        ? Carbon::parse($h->updated_at)->timezone('EST')->format('j M Y H:i T')
                         : null,
                 ];
             })
@@ -1406,6 +1418,126 @@ class CategoryController extends Controller
             'success' => true,
             'sku' => $product->sku,
             'product_id' => $product->id,
+            'history' => $history,
+        ]);
+    }
+
+    /**
+     * POST /shipping-master/slab-history
+     * Log one history row per (slab × carrier) change from the Slab Rates modal Apply.
+     */
+    public function storeShippingSlabRateHistory(Request $request)
+    {
+        $validated = $request->validate([
+            'changes' => 'required|array|min:1',
+            'changes.*.slab_key' => 'required|string|max:64',
+            'changes.*.slab_label' => 'nullable|string|max:191',
+            'changes.*.field' => 'required|string|max:64',
+            'changes.*.old_value' => 'nullable',
+            'changes.*.new_value' => 'nullable',
+            'changes.*.skus_updated' => 'nullable|integer|min:0',
+            'changes.*.scope' => 'nullable|string|max:32',
+        ]);
+
+        $labels = self::shippingHistoryFieldLabels();
+        $user = Auth::user()?->name ?? 'N/A';
+        $now = Carbon::now();
+        $rows = [];
+
+        foreach ($validated['changes'] as $change) {
+            $field = (string) $change['field'];
+            $old = array_key_exists('old_value', $change) && $change['old_value'] !== ''
+                ? (string) $change['old_value']
+                : null;
+            $new = array_key_exists('new_value', $change) && $change['new_value'] !== ''
+                ? (string) $change['new_value']
+                : null;
+            if ($old === $new) {
+                continue;
+            }
+            $rows[] = [
+                'slab_key' => (string) $change['slab_key'],
+                'slab_label' => isset($change['slab_label']) ? (string) $change['slab_label'] : null,
+                'field' => $field,
+                'old_value' => $old,
+                'new_value' => $new,
+                'skus_updated' => (int) ($change['skus_updated'] ?? 0),
+                'scope' => isset($change['scope']) ? (string) $change['scope'] : null,
+                'updated_by' => $user,
+                'updated_at' => $now,
+            ];
+        }
+
+        if ($rows === []) {
+            return response()->json([
+                'success' => true,
+                'message' => 'No slab rate changes to record.',
+                'recorded' => 0,
+            ]);
+        }
+
+        try {
+            ShippingSlabRateHistory::insert($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to record shipping slab rate history: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to record slab history.',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'recorded' => count($rows),
+            'field_labels' => $labels,
+        ]);
+    }
+
+    /**
+     * GET /shipping-master/slab-history/{slabKey}
+     * Returns Apply-history for one weight slab, newest first.
+     */
+    public function getShippingSlabRateHistory(string $slabKey)
+    {
+        $slabKey = trim($slabKey);
+        if ($slabKey === '') {
+            return response()->json(['success' => false, 'message' => 'Slab key is required.'], 422);
+        }
+
+        $labels = self::shippingHistoryFieldLabels();
+
+        $history = ShippingSlabRateHistory::where('slab_key', $slabKey)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->limit(300)
+            ->get()
+            ->map(function ($h) use ($labels) {
+                return [
+                    'id' => $h->id,
+                    'slab_key' => $h->slab_key,
+                    'slab_label' => $h->slab_label,
+                    'field' => $h->field,
+                    'field_label' => $labels[$h->field] ?? $h->field,
+                    'old_value' => $h->old_value,
+                    'new_value' => $h->new_value,
+                    'skus_updated' => (int) $h->skus_updated,
+                    'scope' => $h->scope,
+                    'updated_by' => $h->updated_by ?: 'N/A',
+                    'updated_at' => $h->updated_at
+                        ? Carbon::parse($h->updated_at)->timezone('EST')->format('j M Y H:i T')
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $slabLabel = $history[0]['slab_label'] ?? $slabKey;
+
+        return response()->json([
+            'success' => true,
+            'slab_key' => $slabKey,
+            'slab_label' => $slabLabel,
             'history' => $history,
         ]);
     }
@@ -1856,6 +1988,13 @@ class CategoryController extends Controller
 
     public function importShippingMaster(Request $request)
     {
+        if (! $this->canImportShippingMaster()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not authorized to import Shipping Master data.',
+            ], 403);
+        }
+
         $request->validate([
             'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
@@ -6757,8 +6896,26 @@ PROMPT;
         ]);
     }
 
+    /**
+     * Shipping Master Import is limited to these accounts only.
+     */
+    private function canImportShippingMaster(): bool
+    {
+        $email = strtolower(trim((string) (Auth::user()->email ?? '')));
+
+        return in_array($email, ['ecomm5@5core.com', 'shipping@5core.com'], true);
+    }
+
     public function importDimWtMaster(Request $request)
     {
+        // Shipping Master posts here with import_context=shipping_master.
+        if ($request->input('import_context') === 'shipping_master' && ! $this->canImportShippingMaster()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not authorized to import Shipping Master data.',
+            ], 403);
+        }
+
         $request->validate([
             'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
@@ -6886,6 +7043,8 @@ PROMPT;
                 'ups' => 'ups',
                 'usps' => 'usps',
                 'uni' => 'uni',
+                'handling_charge' => 'handling_charge',
+                'handling__charge' => 'handling_charge',
             ];
 
             // Find column indices
@@ -6953,6 +7112,8 @@ PROMPT;
                                 }
                             } elseif ($field === 'ctn_instructions') {
                                 $value = mb_substr($value, 0, 100);
+                            } elseif ($field === 'handling_charge') {
+                                $value = mb_substr($value, 0, 3);
                             } elseif ($field === 'verified_data') {
                                 // Sheet supplies 0/1 (or yes/true); store the real value as int 0/1.
                                 // 0/blank means "no change" — keep the old verified value.

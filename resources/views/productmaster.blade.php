@@ -1661,29 +1661,56 @@
                 });
             }
 
-            function upsertProductMasterRow(row) {
+            function upsertProductMasterRow(row, options = {}) {
                 if (!row) return;
                 const sku = row.SKU || row.sku;
-                if (!sku) return;
-                const i = tableData.findIndex(p => (p.SKU || p.sku) === sku);
+                const id = row.id != null && row.id !== '' ? String(row.id) : '';
+                const previousSku = options.previousSku || null;
+                const previousId = options.previousId != null && options.previousId !== ''
+                    ? String(options.previousId)
+                    : '';
+
+                let i = -1;
+                if (id) {
+                    i = tableData.findIndex(p => p.id != null && String(p.id) === id);
+                }
+                if (i < 0 && previousId) {
+                    i = tableData.findIndex(p => p.id != null && String(p.id) === previousId);
+                }
+                if (i < 0 && previousSku) {
+                    i = tableData.findIndex(p => (p.SKU || p.sku) === previousSku);
+                }
+                if (i < 0 && sku) {
+                    i = tableData.findIndex(p => (p.SKU || p.sku) === sku);
+                }
+
                 if (i >= 0) {
+                    const oldSku = tableData[i].SKU || tableData[i].sku;
                     Object.assign(tableData[i], row);
-                    tableData[i].SKU = sku;
-                    tableData[i].sku = sku;
-                    productMap.set(sku, tableData[i]);
-                } else {
+                    if (sku) {
+                        tableData[i].SKU = sku;
+                        tableData[i].sku = sku;
+                    }
+                    if (id) tableData[i].id = row.id;
+                    if (oldSku && sku && oldSku !== sku) {
+                        productMap.delete(oldSku);
+                    }
+                    if (sku) productMap.set(sku, tableData[i]);
+                } else if (sku) {
+                    // Create only — never invent a second row during edit/update.
+                    if (options.updateOnly) return;
                     tableData.push(row);
                     productMap.set(sku, tableData[tableData.length - 1]);
                 }
             }
 
             /** After create/update store JSON: merge rows, re-sort, refresh counts and table without refetching */
-            function patchTableDataAfterStore(serverJson) {
+            function patchTableDataAfterStore(serverJson, options = {}) {
                 if (serverJson.parent_row) {
                     upsertProductMasterRow(serverJson.parent_row);
                 }
                 if (serverJson.data) {
-                    upsertProductMasterRow(serverJson.data);
+                    upsertProductMasterRow(serverJson.data, options);
                 }
                 sortTableDataLikeServer();
                 const parentSet = new Set();
@@ -4594,6 +4621,125 @@
                 });
             }
 
+            function setProductModalMode(mode, product = null) {
+                const titleEl = document.getElementById('addProductModalLabel');
+                const saveBtn = document.getElementById('saveProductBtn');
+                if (!saveBtn) return;
+
+                saveBtn.setAttribute('data-mode', mode === 'edit' ? 'edit' : 'create');
+
+                if (mode === 'edit' && product) {
+                    if (titleEl) {
+                        titleEl.innerHTML = '<i class="fas fa-edit me-2"></i>EDIT PRODUCT LISTING';
+                    }
+                    saveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Update Product';
+                    saveBtn.setAttribute('data-original-id', product.id != null ? String(product.id) : '');
+                    saveBtn.setAttribute('data-original-sku', product.SKU || product.sku || '');
+                    saveBtn.setAttribute('data-original-parent', product.Parent ?? product.parent ?? '');
+                } else {
+                    if (titleEl) {
+                        titleEl.innerHTML = '<i class="fas fa-plus-circle me-2"></i>ADD NEW PRODUCT LISTING';
+                    }
+                    saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Product';
+                    saveBtn.removeAttribute('data-original-id');
+                    saveBtn.removeAttribute('data-original-sku');
+                    saveBtn.removeAttribute('data-original-parent');
+                }
+            }
+
+            async function saveProductFromModal() {
+                const modal = document.getElementById('addProductModal');
+                const saveBtn = document.getElementById('saveProductBtn');
+                if (!saveBtn) return;
+
+                const isEdit = saveBtn.getAttribute('data-mode') === 'edit';
+                if (!validateProductForm(isEdit)) return;
+
+                const formData = getFormData();
+                const originalId = saveBtn.getAttribute('data-original-id') || '';
+                const originalSku = saveBtn.getAttribute('data-original-sku') || '';
+                const originalParent = saveBtn.getAttribute('data-original-parent') || '';
+
+                if (isEdit) {
+                    formData.append('operation', 'update');
+                    formData.append('original_id', originalId);
+                    formData.append('original_sku', originalSku);
+                    formData.append('original_parent', originalParent);
+                } else {
+                    formData.append('operation', 'create');
+                }
+
+                const originalBtnHtml = saveBtn.innerHTML;
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving…';
+
+                try {
+                    const response = await fetch('/product_master/store', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: formData
+                    });
+                    const data = await response.json().catch(() => ({}));
+
+                    if (!response.ok) {
+                        if (response.status === 409 ||
+                            (data.message && data.message.includes('already exists')) ||
+                            (data.message && data.message.includes('Duplicate entry'))) {
+                            showToast('warning', data.message || (isEdit
+                                ? 'Another product with this SKU already exists!'
+                                : 'This SKU already exists in the database!'));
+                            const skuField = document.getElementById('sku');
+                            if (skuField) {
+                                skuField.classList.add('is-invalid');
+                                let feedback = skuField.nextElementSibling;
+                                if (!feedback || !feedback.classList.contains('invalid-feedback')) {
+                                    feedback = document.createElement('div');
+                                    feedback.className = 'invalid-feedback';
+                                    skuField.parentNode.appendChild(feedback);
+                                }
+                                feedback.textContent = 'This SKU already exists. Please use a different SKU.';
+                            }
+                            return;
+                        }
+                        throw new Error(data.message || `Server returned status ${response.status}`);
+                    }
+
+                    if (isEdit) {
+                        showToast('success', `Product ${formData.get('sku')} updated successfully!`);
+                        // Update existing row only (by id) — never insert a second row.
+                        patchTableDataAfterStore(data, {
+                            previousId: originalId,
+                            previousSku: originalSku,
+                            updateOnly: true
+                        });
+
+                        const selectedSkus = Object.keys(selectedItems || {});
+                        if (selectedSkus.length > 1 && data.data) {
+                            try {
+                                const editedProduct = productMap.get(formData.get('sku')) || data.data;
+                                await bulkApplyChangedFieldsToSelected(editedProduct, selectedSkus);
+                            } catch (bulkErr) {
+                                console.error('Bulk apply error:', bulkErr);
+                            }
+                        }
+                    } else {
+                        showToast('success', 'Product successfully added to database!');
+                        patchTableDataAfterStore(data);
+                    }
+
+                    const modalInstance = bootstrap.Modal.getInstance(modal);
+                    if (modalInstance) modalInstance.hide();
+                    resetProductForm();
+                } catch (error) {
+                    showAlert('danger', error.message || 'Failed to save product');
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = originalBtnHtml;
+                }
+            }
+
             // Initialize the add product modal
             function setupAddProductModal() {
                 const modal = document.getElementById('addProductModal');
@@ -4610,8 +4756,8 @@
                 document.getElementById('sku')?.addEventListener('input', function() {
                     const skuField = this;
                     const sku = skuField.value.trim();
-                    const saveBtn = document.getElementById('saveProductBtn');
-                    const originalSku = saveBtn.getAttribute('data-original-sku') || null;
+                    const btn = document.getElementById('saveProductBtn');
+                    const originalSku = btn ? (btn.getAttribute('data-original-sku') || null) : null;
                     
                     // Only validate if SKU has actual content and isn't a PARENT
                     if (sku && !sku.toUpperCase().includes('PARENT')) {
@@ -4625,59 +4771,16 @@
 
                 if (refreshParentsBtn) refreshParentsBtn.addEventListener('click', updateParentOptions);
 
-                saveBtn.addEventListener('click', async function() {
-                    if (!validateProductForm(false)) return;
-
-                    const formData = getFormData();
-                    formData.append('operation', 'create');
-
-                    try {
-                        const response = await fetch('/product_master/store', {
-                            method: 'POST',
-                            // Do NOT set Content-Type when using FormData!
-                            headers: {
-                                'X-CSRF-TOKEN': csrfToken
-                            },
-                            body: formData
-                        });
-                        const data = await response.json();
-
-                        if (!response.ok) {
-                            // Check if it's a duplicate entry error
-                            if (response.status === 409 || 
-                                (data.message && data.message.includes('already exists')) ||
-                                (data.message && data.message.includes('Duplicate entry'))) {
-                                
-                                // Show clear error message with SKU information
-                                showToast('warning', data.message || 'This SKU already exists in the database!');
-                                
-                                // Highlight the SKU field to draw attention
-                                const skuField = document.getElementById('sku');
-                                skuField.classList.add('is-invalid');
-                                
-                                // Create a feedback div if it doesn't exist
-                                let feedback = skuField.nextElementSibling;
-                                if (!feedback || !feedback.classList.contains('invalid-feedback')) {
-                                    feedback = document.createElement('div');
-                                    feedback.className = 'invalid-feedback';
-                                    skuField.parentNode.appendChild(feedback);
-                                }
-                                feedback.textContent = 'This SKU already exists. Please use a different SKU.';
-                                
-                                return;
-                            }
-                            throw new Error(data.message || `Server returned status ${response.status}`);
-                        }
-                        
-                        // Show success message
-                        showToast('success', 'Product successfully added to database!');
-                        bootstrap.Modal.getInstance(modal).hide();
-                        patchTableDataAfterStore(data);
-                        resetProductForm();
-                    } catch (error) {
-                        showAlert('danger', error.message);
-                    }
+                // Add button opens create mode
+                document.querySelectorAll('[data-bs-target="#addProductModal"]').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        setProductModalMode('create');
+                    });
                 });
+
+                if (saveBtn) {
+                    saveBtn.addEventListener('click', saveProductFromModal);
+                }
 
                 modal.addEventListener('hidden.bs.modal', resetProductForm);
             }
@@ -5062,226 +5165,10 @@
 
             // Edit product
             function editProduct(product) {
-                const modal = new bootstrap.Modal(document.getElementById('addProductModal'));
-                const saveBtn = document.getElementById('saveProductBtn');
+                const modalEl = document.getElementById('addProductModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
 
-                // Clone and replace the save button to prevent multiple event listeners
-                const newSaveBtn = saveBtn.cloneNode(true);
-                saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-
-                newSaveBtn.setAttribute('data-original-id', product.id || '');
-                newSaveBtn.setAttribute('data-original-sku', product.SKU || '');
-                newSaveBtn.setAttribute('data-original-parent', product.Parent || '');
-                newSaveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Update Product';
-
-                newSaveBtn.addEventListener('click', async function() {
-                    if (!validateProductForm(true)) return;
-
-                    const formData = getFormData();
-                    formData.append('operation', 'update');
-                    formData.append('original_id', this.getAttribute('data-original-id') || '');
-                    formData.append('original_sku', this.getAttribute('data-original-sku'));
-                    formData.append('original_parent', this.getAttribute('data-original-parent'));
-
-                    try {
-                        const response = await fetch('/product_master/store', {
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': csrfToken
-                            },
-                            body: formData
-                        });
-                        const data = await response.json();
-
-                        if (!response.ok) {
-                            // Check if it's a duplicate entry error
-                            if (response.status === 409 || 
-                                (data.message && data.message.includes('already exists')) ||
-                                (data.message && data.message.includes('Duplicate entry'))) {
-                                
-                                // Show clear error message with SKU information
-                                showToast('warning', data.message || 'Another product with this SKU already exists!');
-                                
-                                // Highlight the SKU field to draw attention
-                                const skuField = document.getElementById('sku');
-                                skuField.classList.add('is-invalid');
-                                
-                                // Create a feedback div if it doesn't exist
-                                let feedback = skuField.nextElementSibling;
-                                if (!feedback || !feedback.classList.contains('invalid-feedback')) {
-                                    feedback = document.createElement('div');
-                                    feedback.className = 'invalid-feedback';
-                                    skuField.parentNode.appendChild(feedback);
-                                }
-                                feedback.textContent = 'This SKU already exists. Please use a different SKU.';
-                                
-                                return;
-                            }
-                            throw new Error(data.message ||
-                                `Server returned status ${response.status}`);
-                        }
-
-                        // Show specific success message for update
-                        showToast('success', `Product ${formData.get('sku')} updated successfully!`);
-                        modal.hide();
-                        
-                        // Update local data and visible cells without reloading
-                        const sku = formData.get('sku');
-                        if (data.data) {
-                            const updatedProduct = data.data;
-                            
-                            // Extract Values JSON and flatten to top level for table rendering
-                            let valuesObj = {};
-                            if (updatedProduct.Values) {
-                                if (typeof updatedProduct.Values === 'string') {
-                                    try {
-                                        valuesObj = JSON.parse(updatedProduct.Values);
-                                    } catch (e) {
-                                        valuesObj = {};
-                                    }
-                                } else if (typeof updatedProduct.Values === 'object' && updatedProduct.Values !== null) {
-                                    valuesObj = updatedProduct.Values;
-                                }
-                            }
-                            
-                            // Merge Values JSON fields into top level for easier access
-                            const flattenedProduct = {...updatedProduct};
-                            
-                            // Process all Values fields
-                            Object.keys(valuesObj).forEach(key => {
-                                if (valuesObj[key] !== null && valuesObj[key] !== undefined && valuesObj[key] !== '') {
-                                    // Special handling for image_path - ensure proper path format
-                                    if (key === 'image_path') {
-                                        let imagePath = valuesObj[key];
-                                        // Ensure path starts with / if it's a local path (not URL)
-                                        if (imagePath && typeof imagePath === 'string') {
-                                            // Remove any existing leading slash to avoid double slashes
-                                            imagePath = imagePath.trim();
-                                            if (!imagePath.startsWith('http://') && !imagePath.startsWith('https://') && !imagePath.startsWith('/')) {
-                                                imagePath = '/' + imagePath;
-                                            } else if (imagePath.startsWith('storage/')) {
-                                                // If it starts with storage/, ensure it has leading slash
-                                                imagePath = '/' + imagePath;
-                                            }
-                                        }
-                                        flattenedProduct[key] = imagePath;
-                                    } else {
-                                        flattenedProduct[key] = valuesObj[key];
-                                    }
-                                }
-                            });
-                            
-                            // Also ensure image_path is at top level if it exists in Values but wasn't set above
-                            if (valuesObj.image_path && (!flattenedProduct.image_path || flattenedProduct.image_path === updatedProduct.image_path)) {
-                                let imagePath = valuesObj.image_path;
-                                if (imagePath && typeof imagePath === 'string') {
-                                    imagePath = imagePath.trim();
-                                    if (!imagePath.startsWith('http://') && !imagePath.startsWith('https://') && !imagePath.startsWith('/')) {
-                                        imagePath = '/' + imagePath;
-                                    } else if (imagePath.startsWith('storage/')) {
-                                        imagePath = '/' + imagePath;
-                                    }
-                                }
-                                flattenedProduct.image_path = imagePath;
-                            }
-                            
-                            // If image_path is already at top level, ensure it has proper format
-                            if (flattenedProduct.image_path && typeof flattenedProduct.image_path === 'string') {
-                                let imagePath = flattenedProduct.image_path.trim();
-                                if (!imagePath.startsWith('http://') && !imagePath.startsWith('https://') && !imagePath.startsWith('/')) {
-                                    flattenedProduct.image_path = '/' + imagePath;
-                                } else if (imagePath.startsWith('storage/')) {
-                                    flattenedProduct.image_path = '/' + imagePath;
-                                }
-                            }
-                            
-                            // Update tableData - ensure all fields are properly updated
-                            const existingIndex = tableData.findIndex(p => {
-                                const pSku = p.SKU || p.sku || '';
-                                return pSku === sku || pSku.toLowerCase() === sku.toLowerCase();
-                            });
-                            
-                            if (existingIndex !== -1) {
-                                // Preserve SKU and Parent as they might be case-sensitive
-                                const originalSku = tableData[existingIndex].SKU || tableData[existingIndex].sku;
-                                const originalParent = tableData[existingIndex].Parent || tableData[existingIndex].parent;
-                                
-                                // Update all fields from the flattened product
-                                Object.keys(flattenedProduct).forEach(key => {
-                                    if (key !== 'SKU' && key !== 'sku' && key !== 'Parent' && key !== 'parent' && key !== 'id') {
-                                        if (key === 'Values') {
-                                            // Store Values JSON as is
-                                            tableData[existingIndex].Values = updatedProduct.Values;
-                                        } else {
-                                            // Update direct property (including flattened Values fields like cp, lp, etc.)
-                                            tableData[existingIndex][key] = flattenedProduct[key];
-                                        }
-                                    }
-                                });
-                                
-                                // Also update Values JSON structure
-                                if (updatedProduct.Values) {
-                                    tableData[existingIndex].Values = updatedProduct.Values;
-                                }
-                                
-                                // Ensure SKU and Parent are preserved with correct casing
-                                if (originalSku) {
-                                    tableData[existingIndex].SKU = originalSku;
-                                    tableData[existingIndex].sku = originalSku;
-                                }
-                                if (originalParent) {
-                                    tableData[existingIndex].Parent = originalParent;
-                                    tableData[existingIndex].parent = originalParent;
-                                }
-                            } else {
-                                // If not found, add it (shouldn't happen but handle it)
-                                tableData.push(flattenedProduct);
-                            }
-                            
-                            // Update productMap with flattened data
-                            const existing = productMap.get(sku);
-                            if (existing) {
-                                Object.keys(flattenedProduct).forEach(key => {
-                                    if (key !== 'SKU' && key !== 'sku' && key !== 'Parent' && key !== 'parent' && key !== 'id') {
-                                        if (key === 'Values') {
-                                            existing.Values = updatedProduct.Values;
-                                        } else {
-                                            existing[key] = flattenedProduct[key];
-                                        }
-                                    }
-                                });
-                            } else {
-                                productMap.set(sku, flattenedProduct);
-                            }
-                            
-                            // Re-render from local tableData (store response already includes formatted image_path)
-                            applyFilters();
-                            setTimeout(() => {
-                                setupEditButtons();
-                                setupDuplicateButtons();
-                                setupDeleteButtons();
-                            }, 100);
-
-                            // Bulk apply: if more than one row is selected, apply the
-                            // changed (shared) fields to all the selected rows too.
-                            try {
-                                const selectedSkus = Object.keys(selectedItems);
-                                if (selectedSkus.length > 1) {
-                                    await bulkApplyChangedFieldsToSelected(product, selectedSkus);
-                                }
-                            } catch (bulkErr) {
-                                console.error('Bulk apply error:', bulkErr);
-                            }
-                        } else {
-                            // If no data returned, reload with filters preserved
-                            loadData();
-                        }
-                        
-                        resetProductForm();
-                    } catch (error) {
-                        showAlert('danger', error.message);
-                    }
-                });
+                setProductModalMode('edit', product);
 
                 // Normalize status value to match select options exactly
                 let normalizedStatus = '';
@@ -5327,7 +5214,6 @@
                     h1: product.h1 || '',
                     upc: product.upc || '',
                     unit: product.unit || '',
-                 
                     status: normalizedStatus,
                     dc: product.dc || '',
                     weight: product.weight || '',
@@ -5357,10 +5243,15 @@
 
             // Reset the product form
             function resetProductForm() {
-                document.getElementById('addProductForm').reset();
+                const form = document.getElementById('addProductForm');
+                if (form) form.reset();
                 document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
                 document.querySelectorAll('.invalid-feedback').forEach(el => el.textContent = '');
-                document.getElementById('form-errors').innerHTML = '';
+                const formErrors = document.getElementById('form-errors');
+                if (formErrors) formErrors.innerHTML = '';
+                const imagePreview = document.getElementById('imagePreview');
+                if (imagePreview) imagePreview.innerHTML = '<span class="text-muted">No image</span>';
+                setProductModalMode('create');
             }
 
             // Initialize progress modal

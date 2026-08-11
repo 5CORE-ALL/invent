@@ -5986,8 +5986,9 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Per-channel Price history for OV L30 modal Price dots.
+     * Per-channel Price / NPFT% / NROI% history for OV L30 + cost-calculator dots.
      * Uses each channel's SKU daily snapshot (not blended avg_price).
+     * NPFT/NROI series are derived from historical listing prices × current LP/ship/margin/Ads%.
      */
     public function getChannelPriceChartData(Request $request)
     {
@@ -5995,6 +5996,11 @@ class CvrMasterController extends Controller
         $marketplace = strtolower(preg_replace('/\s+/', '', (string) $request->input('marketplace', '')));
         $days = (int) $request->input('days', 30);
         $currentPrice = $request->input('current_price');
+        $metric = strtolower(trim((string) $request->input('metric', 'price')));
+        if (! in_array($metric, ['price', 'npft', 'nroi'], true)) {
+            $metric = 'price';
+        }
+        $currentMetricValue = $request->input('current_value');
 
         if ($sku === '' || $marketplace === '') {
             return response()->json(['success' => false, 'message' => 'SKU and marketplace are required'], 400);
@@ -6019,38 +6025,270 @@ class CvrMasterController extends Controller
 
         $byDateKey = $this->loadChannelPriceHistoryByDate($sku, $marketplace, $days);
 
-        // Temu / Temu2 modal Price cells show base × 1.1765 — convert history to displayed Price
-        if (in_array($marketplace, ['temu', 'temu2'], true)) {
-            foreach ($byDateKey as $k => $v) {
-                if ((float) $v > 0) {
-                    $byDateKey[$k] = round((float) $v * 1.1765, 2);
+        if ($metric === 'price') {
+            // Temu / Temu2 modal Price cells show base × 1.1765 — convert history to displayed Price
+            if (in_array($marketplace, ['temu', 'temu2'], true)) {
+                foreach ($byDateKey as $k => $v) {
+                    if ((float) $v > 0) {
+                        $byDateKey[$k] = round((float) $v * 1.1765, 2);
+                    }
                 }
             }
-        }
 
-        // Overlay today's live / displayed channel price so chart matches the Price cell
-        $live = null;
-        if (is_numeric($currentPrice) && (float) $currentPrice > 0) {
-            $live = round((float) $currentPrice, 2);
-        } else {
-            $live = $this->resolveLiveChannelPriceForChart($sku, $marketplace);
-            if ($live !== null && in_array($marketplace, ['temu', 'temu2'], true)) {
-                $live = round($live * 1.1765, 2);
+            // Overlay today's live / displayed channel price so chart matches the Price cell
+            $live = null;
+            if (is_numeric($currentPrice) && (float) $currentPrice > 0) {
+                $live = round((float) $currentPrice, 2);
+            } else {
+                $live = $this->resolveLiveChannelPriceForChart($sku, $marketplace);
+                if ($live !== null && in_array($marketplace, ['temu', 'temu2'], true)) {
+                    $live = round($live * 1.1765, 2);
+                }
             }
-        }
-        if ($live !== null && $live > 0) {
-            $byDateKey[now('America/Los_Angeles')->toDateString()] = $live;
+            if ($live !== null && $live > 0) {
+                $byDateKey[now('America/Los_Angeles')->toDateString()] = $live;
+            }
+        } else {
+            // NPFT% / NROI%: convert raw listing prices using OV L30 formulas
+            $inputs = $this->resolveChannelCalcInputsForMetricChart($sku, $marketplace);
+            $converted = [];
+            foreach ($byDateKey as $date => $rawPrice) {
+                $calcPrice = $this->channelPriceForProfitCalc($marketplace, (float) $rawPrice);
+                $val = $this->computeNpftOrNroiFromPrice($calcPrice, $inputs, $metric);
+                if ($val !== null) {
+                    $converted[$date] = $val;
+                }
+            }
+            $byDateKey = $converted;
+
+            $liveMetric = null;
+            if (is_numeric($currentMetricValue)) {
+                $liveMetric = round((float) $currentMetricValue, 2);
+            } else {
+                $liveRaw = null;
+                if (is_numeric($currentPrice) && (float) $currentPrice > 0) {
+                    // current_price for Temu cost-calculator is base; convert to FB for calc
+                    $liveRaw = in_array($marketplace, ['temu', 'temu2'], true)
+                        ? (float) $currentPrice
+                        : (float) $currentPrice;
+                } else {
+                    $liveRaw = $this->resolveLiveChannelPriceForChart($sku, $marketplace);
+                }
+                if ($liveRaw !== null && $liveRaw > 0) {
+                    $calcPrice = $this->channelPriceForProfitCalc($marketplace, (float) $liveRaw);
+                    $liveMetric = $this->computeNpftOrNroiFromPrice($calcPrice, $inputs, $metric);
+                }
+            }
+            if ($liveMetric !== null) {
+                $byDateKey[now('America/Los_Angeles')->toDateString()] = $liveMetric;
+            }
         }
 
         if (empty($byDateKey)) {
-            return response()->json(['success' => true, 'data' => [], 'marketplace' => $marketplace]);
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'marketplace' => $marketplace,
+                'metric' => $metric,
+            ]);
         }
 
         return response()->json([
             'success' => true,
             'data' => $this->fillDailyChartSeries($byDateKey, $days),
             'marketplace' => $marketplace,
+            'metric' => $metric,
         ]);
+    }
+
+    /**
+     * Listing price used in GPFT/NPFT/NROI formulas (Temu uses FB price from base).
+     */
+    private function channelPriceForProfitCalc(string $marketplace, float $rawPrice): float
+    {
+        if ($rawPrice <= 0) {
+            return 0.0;
+        }
+        if (in_array($marketplace, ['temu', 'temu2'], true)) {
+            try {
+                return (float) TemuShopifySalesService::computeFbPrice($rawPrice, 1);
+            } catch (\Throwable $e) {
+                return $rawPrice;
+            }
+        }
+
+        return $rawPrice;
+    }
+
+    /**
+     * @param  array{lp: float, ship: float, margin: float, ads: float}  $inputs
+     */
+    private function computeNpftOrNroiFromPrice(float $price, array $inputs, string $metric): ?float
+    {
+        if ($price <= 0) {
+            return null;
+        }
+        $lp = (float) ($inputs['lp'] ?? 0);
+        $ship = (float) ($inputs['ship'] ?? 0);
+        $margin = (float) ($inputs['margin'] ?? 0);
+        $ads = (float) ($inputs['ads'] ?? 0);
+        if ($margin <= 0) {
+            return null;
+        }
+
+        $gpft = (($price * $margin - $ship - $lp) / $price) * 100;
+        $npft = ($ads == 100.0) ? $gpft : ($gpft - $ads);
+
+        if ($metric === 'npft') {
+            return round($npft, 2);
+        }
+
+        if ($lp <= 0) {
+            return null;
+        }
+        $grossProfit = $price * $margin - $lp - $ship;
+        $groi = ($grossProfit / $lp) * 100;
+        if ($ads == 100.0) {
+            $nroi = $groi;
+        } else {
+            // Match OV L30: Temu uses GROI − Ads%; others use dollar-ads / LP
+            $isTemuStyle = ! empty($inputs['temu_style']);
+            $nroi = $isTemuStyle
+                ? ($groi - $ads)
+                : ((($grossProfit - ($price * ($ads / 100))) / $lp) * 100);
+        }
+
+        return round($nroi, 2);
+    }
+
+    /**
+     * LP / ship / margin / Ads% for deriving NPFT/NROI from historical prices.
+     *
+     * @return array{lp: float, ship: float, margin: float, ads: float, temu_style?: bool}
+     */
+    private function resolveChannelCalcInputsForMetricChart(string $sku, string $marketplace): array
+    {
+        $lp = 0.0;
+        $ship = 0.0;
+        $temuShip = 0.0;
+        $product = ProductMaster::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+            ->first();
+        $values = $product ? ($product->Values ?: []) : [];
+        if (is_array($values)) {
+            foreach ($values as $k => $v) {
+                $key = strtolower((string) $k);
+                if ($key === 'lp') {
+                    $lp = (float) $v;
+                }
+                if ($key === 'ship') {
+                    $ship = (float) $v;
+                }
+                if ($key === 'temu_ship') {
+                    $temuShip = (float) $v;
+                }
+            }
+        }
+
+        $margin = 0.80;
+        $ads = 0.0;
+        $useShip = $ship;
+        $temuStyle = false;
+
+        try {
+            $cmc = app(ChannelMasterController::class);
+            switch ($marketplace) {
+                case 'amazon':
+                case 'fba':
+                    $margin = 0.80;
+                    $ads = $this->resolveChannelAdsPercentForChart('amazon');
+                    break;
+                case 'ebay1':
+                    $mp = MarketplacePercentage::where('marketplace', 'Ebay1')->first()
+                        ?? MarketplacePercentage::where('marketplace', 'Ebay')->first();
+                    $margin = $mp ? ((float) $mp->percentage / 100) : 0.85;
+                    $ads = (float) $cmc->getEbayMasterAdsPercent();
+                    break;
+                case 'ebay2':
+                    $mp = MarketplacePercentage::where('marketplace', 'Ebay2')->first();
+                    $margin = $mp ? ((float) $mp->percentage / 100) : 0.85;
+                    $ads = (float) $cmc->getEbaytwoMasterAdsPercent();
+                    break;
+                case 'temu':
+                case 'temu2':
+                    $margin = $marketplace === 'temu2'
+                        ? (float) TemuShopifySalesService::temu2MarginDecimal()
+                        : (float) TemuShopifySalesService::temuMarginDecimal();
+                    $useShip = $temuShip;
+                    $temuStyle = true;
+                    $ads = $marketplace === 'temu2'
+                        ? 0.0
+                        : (float) $this->resolveTemuAggregateAdsPercent('L30');
+                    break;
+                case 'shopify':
+                    $mp = MarketplacePercentage::where('marketplace', 'ShopifyB2C')->first();
+                    $margin = $mp ? ((float) $mp->percentage / 100) : 0.95;
+                    try {
+                        $snap = $cmc->getShopifyDirectL30Snapshot();
+                        $ads = round((float) ($snap['tcos_pct'] ?? 0), 2);
+                    } catch (\Throwable $e) {
+                        $ads = $this->resolveChannelAdsPercentForChart('shopify');
+                    }
+                    break;
+                default:
+                    $ads = $this->resolveChannelAdsPercentForChart($marketplace);
+                    break;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('resolveChannelCalcInputsForMetricChart failed: ' . $e->getMessage());
+        }
+
+        return [
+            'lp' => $lp,
+            'ship' => $useShip,
+            'margin' => $margin,
+            'ads' => $ads,
+            'temu_style' => $temuStyle,
+        ];
+    }
+
+    private function resolveChannelAdsPercentForChart(string $channelKey): float
+    {
+        $aliases = match (strtolower($channelKey)) {
+            'amazon', 'fba' => ['amazon'],
+            'ebay', 'ebay1' => ['ebay'],
+            'shopify', 'shopifyb2c', 'sb2c' => ['shopify', 'shopify b2c', 'shopifyb2c'],
+            'temu' => ['temu'],
+            default => [strtolower($channelKey)],
+        };
+
+        foreach (ChannelMasterCalculatedData::select('channel', 'ads_percentage', 'tacos_percentage')->get() as $row) {
+            $key = strtolower(trim((string) $row->channel));
+            if (in_array($key, $aliases, true)) {
+                if ($row->ads_percentage !== null && $row->ads_percentage !== '') {
+                    return round((float) $row->ads_percentage, 2);
+                }
+                if ($row->tacos_percentage !== null && $row->tacos_percentage !== '') {
+                    return round((float) $row->tacos_percentage, 2);
+                }
+            }
+        }
+
+        foreach ($aliases as $alias) {
+            $metric = MarketplaceDailyMetric::whereRaw('LOWER(TRIM(channel)) = ?', [$alias])
+                ->orderByDesc('date')
+                ->first();
+            if ($metric) {
+                if ($metric->ads_percentage !== null && $metric->ads_percentage !== '') {
+                    return round((float) $metric->ads_percentage, 2);
+                }
+                if ($metric->tacos_percentage !== null && $metric->tacos_percentage !== '') {
+                    return round((float) $metric->tacos_percentage, 2);
+                }
+            }
+        }
+
+        return 0.0;
     }
 
     /**

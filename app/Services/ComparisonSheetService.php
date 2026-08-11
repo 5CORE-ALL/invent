@@ -2088,10 +2088,18 @@ class ComparisonSheetService
             6,
             ...array_map(fn ($row) => is_array($row) ? count($row) : 0, $cells),
         );
+        $channelKey = strtolower(trim($channel));
+        $sheetChannel = match (true) {
+            $channelKey === 'ebay' => 'Ebay',
+            $channelKey === 'temu' => 'Temu',
+            $channelKey === 'shopify' => 'Shopify',
+            $channelKey === 'overall' => 'Overall',
+            default => 'Amazon',
+        };
 
         if ($rowIndex === null) {
             $newRow = array_fill(0, $colCount, '');
-            $newRow[$specCol] = ucfirst(strtolower(trim($channel))) === 'Ebay' ? 'Ebay' : 'Amazon';
+            $newRow[$specCol] = $sheetChannel;
             $cells[] = $newRow;
             $rowIndex = count($cells) - 1;
         }
@@ -2112,7 +2120,14 @@ class ComparisonSheetService
             'roi' => 9,
         ];
 
+        // Spec+1 / Spec+2 are Critical / QC — never overwrite with CP/CBM.
+        // CP is sourced from the CD USD price column at calculation time.
+        $skipSheetFields = ['cp' => true, 'cbm' => true];
+
         foreach ($offsets as $key => $offset) {
+            if (isset($skipSheetFields[$key])) {
+                continue;
+            }
             $value = $rowData[$key] ?? '';
             if (in_array($key, ['pPct', 'roi'], true) && $value !== '') {
                 $value = str_replace('%', '', (string) $value);
@@ -2129,12 +2144,22 @@ class ComparisonSheetService
     public function findCostCalculatorChannelRow(array $cells, string $channel, ?int $specCol = null): ?int
     {
         $specCol ??= $this->detectSpecColumnIndex($cells);
-        $needle = strtolower(trim($channel));
+        $key = strtolower(trim($channel));
+        $needles = match (true) {
+            in_array($key, ['amz', 'amazon'], true) => ['amz', 'amazon'],
+            $key === 'ebay' => ['ebay'],
+            $key === 'temu' => ['temu'],
+            $key === 'shopify' => ['shopify'],
+            $key === 'overall' => ['overall'],
+            default => $key !== '' ? [$key] : [],
+        };
 
         for ($rowIndex = 0; $rowIndex < count($cells); $rowIndex++) {
             $label = strtolower(trim((string) ($cells[$rowIndex][$specCol] ?? '')));
-            if ($label === $needle || str_starts_with($label, $needle.' ')) {
-                return $rowIndex;
+            foreach ($needles as $needle) {
+                if ($label === $needle || str_starts_with($label, $needle.' ')) {
+                    return $rowIndex;
+                }
             }
         }
 

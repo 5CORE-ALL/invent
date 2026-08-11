@@ -1416,7 +1416,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Temu Marketplace Manager: inventory/price from Shopify, orders to Shopify
+     
         $schedule->job(new \App\Jobs\SyncInventoryToTemu)
             ->everyFourHours()
             ->timezone('Asia/Kolkata')
@@ -1431,8 +1431,8 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        // Fetch only — do NOT auto-push Temu orders to Shopify (manual push from MM Orders).
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '2026-07-07', false))
+        
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '2026-07-07', true))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('temu-sync-orders')
@@ -1477,8 +1477,8 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        // Fetch only — do NOT auto-push Temu 2 orders to Shopify (manual push from MM Orders).
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '2026-07-07', false))
+        // Fetch + import NEW open Temu 2 orders only (service skips shipped/delivered backlog; last 3 days).
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '2026-07-07', true))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('temu2-sync-orders')

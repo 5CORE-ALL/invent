@@ -27,26 +27,29 @@
             background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
         }
-        .fr-manual-dropdown { position: relative; display: inline-block; }
-        .fr-manual-dropdown .dropdown-menu {
-            position: absolute; top: 100%; left: 0; z-index: 1050;
-            display: none; min-width: 200px; padding: .5rem 0; margin: 0;
-            background: #fff; border: 1px solid #dee2e6; border-radius: .375rem;
-            box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
+        /* Toolbar: compact controls (matches /ebay2-tabulator-view) */
+        .fr-toolbar-row {
+            row-gap: 4px;
         }
-        .fr-manual-dropdown.show .dropdown-menu { display: block; }
-        .fr-dropdown-item {
-            display: block; width: 100%; padding: .5rem 1rem; clear: both;
-            font-weight: 400; color: #212529; text-decoration: none;
-            background: transparent; border: 0; cursor: pointer; white-space: nowrap;
+        .fr-toolbar-row > .form-select,
+        .fr-toolbar-row .form-select.pricing-filter-item,
+        .fr-toolbar-row > .btn,
+        .fr-toolbar-row > .dropdown > .btn,
+        .fr-toolbar-row > .btn-group > .btn {
+            padding: 3px 10px;
+            font-size: 0.8125rem;
+            line-height: 1.3;
+            min-height: 30px;
         }
-        .fr-dropdown-item:hover { background: #e9ecef; }
-        .fr-sc { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px; border:1px solid #ddd; }
-        .fr-sc.def { background:#6c757d; }
-        .fr-sc.red { background:#dc3545; }
-        .fr-sc.yellow { background:#ffc107; }
-        .fr-sc.green { background:#28a745; }
-        .fr-sc.pink { background:#e83e8c; }
+        .fr-toolbar-row .form-select {
+            padding-right: 24px;
+            background-position: right 6px center;
+            width: auto;
+            display: inline-block;
+        }
+        .fr-toolbar-row .dropdown-menu {
+            font-size: 0.8125rem;
+        }
         #faire-pricing-table .tabulator-col[tabulator-field="sku"],
         #faire-pricing-table .tabulator-cell[tabulator-field="sku"] {
             transition: width 0.2s ease, min-width 0.2s ease;
@@ -55,7 +58,13 @@
             pointer-events: auto;
             z-index: 10050;
         }
-        /* Summary badges — horizontal scroll on narrow viewports (same as eBay 2 / TikTok pricing) */
+        /* Badges above the filter controls (matches /ebay2-tabulator-view) */
+        #fr-summary-stats {
+            order: -1;
+            padding: 0.5rem 0.7rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0.5rem !important;
+        }
         #fr-summary-stats .ebay2-summary-badge-row {
             display: flex;
             flex-wrap: nowrap;
@@ -112,118 +121,93 @@
 
     <div class="row">
         <div class="col-12">
-            <div class="alert alert-info py-2 mb-3">
-                <strong>Sales data</strong> is aggregated from <a href="{{ route('faire.tabulator.view') }}" class="alert-link">Faire Sales Data</a>.
-                <strong>Pricing / Faire stock / listed</strong> come only from the <strong>Faire products API</strong> (<code>faire_metric</code>) — no sheet or pricing-table fallback.
-            </div>
+            <div class="card shadow-sm">
+                <div class="card-body py-2 d-flex flex-column">
+                    {{-- Filter toolbar (compact UI matches /ebay2-tabulator-view) --}}
+                    <div class="d-flex align-items-center flex-wrap gap-2 fr-toolbar-row">
+                        <input type="text" id="fr-pricing-parent-search" class="form-control form-control-sm"
+                            style="width:160px; display:inline-block;" placeholder="Search Parent..." title="Filter by Parent column">
+                        <input type="text" id="fr-pricing-sku-search" class="form-control form-control-sm"
+                            style="width:160px; display:inline-block;" placeholder="Search SKU...">
 
-            <div class="card border-primary mb-3">
-                <div class="card-header bg-primary bg-opacity-10 py-2">
-                    <strong><i class="fas fa-cloud-download-alt me-1"></i> Faire API sync</strong>
-                    <span class="text-muted small ms-2">Pulls live listings, wholesale price, and stock into <code>faire_metric</code> (API only).</span>
-                </div>
-                <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
-                    <button type="button" class="btn btn-sm btn-primary" id="frSyncFromApiBtn">
-                        <i class="fas fa-sync"></i> Sync from Faire API
-                    </button>
-                    <span id="frSyncFromApiStatus" class="small text-muted"></span>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-body">
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <select id="fr-row-type-filter" class="form-select form-select-sm" style="width:120px;">
+                        <select id="fr-row-type-filter" class="form-select form-select-sm pricing-filter-item">
                             <option value="all" selected>All Rows</option>
                             <option value="parents">Parents</option>
                             <option value="skus">SKUs</option>
                         </select>
-                        <select id="fr-inv-filter" class="form-select form-select-sm" style="width:140px;">
-                            <option value="all">All Inventory</option>
-                            <option value="zero">0 Inventory</option>
-                            <option value="more" selected>More than 0</option>
+                        <select id="fr-inv-filter" class="form-select form-select-sm pricing-filter-item">
+                            <option value="all">INV</option>
+                            <option value="zero">0 INV</option>
+                            <option value="more" selected>INV &gt; 0</option>
                         </select>
-                        <select id="fr-stock-filter" class="form-select form-select-sm" style="width:150px;">
+                        <select id="fr-stock-filter" class="form-select form-select-sm pricing-filter-item">
                             <option value="all">Faire stock</option>
                             <option value="zero">0 Faire stock</option>
                             <option value="more">Faire stock &gt; 0</option>
                         </select>
-                        <div class="d-flex flex-column gap-1" style="width:130px;" title="CVR = sold (al30) ÷ OV L30">
-                            <select id="fr-gpft-filter" class="form-select form-select-sm">
-                                <option value="all">GPFT%</option>
-                                <option value="negative">Negative</option>
-                                <option value="0-10">0–10%</option>
-                                <option value="10-20">10–20%</option>
-                                <option value="20-30">20–30%</option>
-                                <option value="30-40">30–40%</option>
-                                <option value="40-50">40–50%</option>
-                                <option value="50plus">Above 50%</option>
-                            </select>
-                            <select id="fr-cvr-filter" class="form-select form-select-sm">
-                                <option value="all">All CVR%</option>
-                                <option value="0-0">0%</option>
-                                <option value="0-2">0-2%</option>
-                                <option value="2-4">2-4%</option>
-                                <option value="4-7">4-7%</option>
-                                <option value="7-13">7-13%</option>
-                                <option value="13plus">13%+</option>
-                            </select>
-                        </div>
-                        <select id="fr-roi-filter" class="form-select form-select-sm" style="width:130px;">
+                        <select id="fr-gpft-filter" class="form-select form-select-sm pricing-filter-item">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0–10%</option>
+                            <option value="10-20">10–20%</option>
+                            <option value="20-30">20–30%</option>
+                            <option value="30-40">30–40%</option>
+                            <option value="40-50">40–50%</option>
+                            <option value="50plus">Above 50%</option>
+                        </select>
+                        <select id="fr-cvr-filter" class="form-select form-select-sm pricing-filter-item" title="CVR = sold (al30) ÷ OV L30">
+                            <option value="all">CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0-2">0-2%</option>
+                            <option value="2-4">2-4%</option>
+                            <option value="4-7">4-7%</option>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
+                        </select>
+                        <select id="fr-roi-filter" class="form-select form-select-sm pricing-filter-item">
                             <option value="all">ROI%</option>
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
                             <option value="75-125">75–125%</option>
                             <option value="gt125">125%+</option>
                         </select>
-                        <select id="fr-fqty-filter" class="form-select form-select-sm" style="width:130px;" title="Units sold (Faire daily data)">
+                        <select id="fr-fqty-filter" class="form-select form-select-sm pricing-filter-item" title="Units sold (Faire daily data)">
                             <option value="all">Sold</option>
                             <option value="0">0</option>
                             <option value="0-10">1–10</option>
                             <option value="10plus">10+</option>
                         </select>
-                        <div class="fr-manual-dropdown">
-                            <button class="btn btn-light btn-sm fr-dil-toggle" type="button" id="fr-dil-btn">
-                                <span class="fr-sc def"></span>DIL%
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="fr-dropdown-item fr-dil-item active" href="#" data-color="all">
-                                    <span class="fr-sc def"></span>All DIL</a></li>
-                                <li><a class="fr-dropdown-item fr-dil-item" href="#" data-color="red">
-                                    <span class="fr-sc red"></span>Red (&lt;16.7%)</a></li>
-                                <li><a class="fr-dropdown-item fr-dil-item" href="#" data-color="yellow">
-                                    <span class="fr-sc yellow"></span>Yellow (16.7–25%)</a></li>
-                                <li><a class="fr-dropdown-item fr-dil-item" href="#" data-color="green">
-                                    <span class="fr-sc green"></span>Green (25–50%)</a></li>
-                                <li><a class="fr-dropdown-item fr-dil-item" href="#" data-color="pink">
-                                    <span class="fr-sc pink"></span>Pink (50%+)</a></li>
-                            </ul>
-                        </div>
-                        <input type="text" id="fr-pricing-parent-search" class="form-control form-control-sm" style="max-width:200px;" placeholder="Search parent..." title="Filter by Parent column">
-                        <input type="text" id="fr-pricing-sku-search" class="form-control form-control-sm" style="max-width:220px;" placeholder="Search SKU...">
-                        <button type="button" id="fr-refresh-pricing" class="btn btn-sm btn-outline-primary">
-                            <i class="fa fa-refresh"></i> Refresh
+                        <select id="fr-dil-filter" class="form-select form-select-sm pricing-filter-item">
+                            <option value="all">DIL%</option>
+                            <option value="red">Red &lt;16.7%</option>
+                            <option value="yellow">Yellow 16.7–25%</option>
+                            <option value="green">Green 25–50%</option>
+                            <option value="pink">Pink 50%+</option>
+                        </select>
+
+                        <button type="button" id="fr-refresh-pricing" class="btn btn-sm btn-outline-primary pricing-filter-item" title="Reload table">
+                            <i class="fa fa-refresh"></i>
                         </button>
-                        <button type="button" id="fr-export-pricing" class="btn btn-sm btn-success" title="Export CSV" aria-label="Export CSV">
+                        <button type="button" id="fr-export-pricing" class="btn btn-sm btn-success pricing-filter-item" title="Export CSV" aria-label="Export CSV">
                             <i class="fas fa-file-csv"></i>
                         </button>
-                        <div class="dropdown d-inline-block">
+                        <div class="dropdown d-inline-block pricing-filter-item">
                             <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="frColumnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns" aria-label="Columns">
                                 <i class="fa fa-eye"></i>
                             </button>
                             <ul class="dropdown-menu py-1" aria-labelledby="frColumnVisibilityDropdown" id="fr-column-dropdown-menu" style="max-height: 400px; overflow-y: auto; min-width: 220px;">
                             </ul>
                         </div>
-                        <button id="fr-price-mode-btn" type="button" class="btn btn-sm btn-secondary"
+                        <button id="fr-price-mode-btn" type="button" class="btn btn-sm btn-secondary pricing-filter-item"
                             title="Pricing mode: Off → Decrease → Increase → Same SPRICE (all rows)"
                             aria-label="Pricing mode">
                             <i class="fas fa-exchange-alt"></i>
                         </button>
-                        <button type="button" id="fr-rule-btn" class="btn btn-sm btn-outline-dark"
+                        <button type="button" id="fr-rule-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
                             title="Price rules: Dil %, Faire sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship">
                             <i class="fas fa-sliders-h"></i> Rule
                         </button>
-                        <button type="button" id="fr-push-to-faire-btn" class="btn btn-sm btn-primary" style="display: none;"
+                        <button type="button" id="fr-push-to-faire-btn" class="btn btn-sm btn-primary pricing-filter-item" style="display: none;"
                             title="Push SPRICE for selected SKUs to Faire (or all with SPRICE if none selected)">
                             <i class="fas fa-upload"></i> Push to Faire
                         </button>
@@ -231,14 +215,14 @@
                         {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                              Faire's server-side SGPFT / SROI formula does NOT include shipping (matches FaireController::saveFaireSpriceUpdates lines 1060-1061).
                              Formula: sprice = LP × (1 + ROI%/100) / margin   (margin = per-row `_margin`, default 0.75 for Faire) --}}
-                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                             id="fr-target-roi-controls"
                             title="Target ROI% — sets S PRC = LP × (1 + Target ROI%/100) / margin on every checked row (back-solves so SROI column equals the target)">
                             <label for="fr-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                                Target ROI%:
+                                <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                             </label>
                             <input type="number" id="fr-target-roi-input" class="form-control form-control-sm text-end"
-                                placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                                placeholder="30" step="0.1" style="width: 56px;"
                                 title="Target ROI% applied to all checked rows when you click 'Apply S PRC'">
                             <button id="fr-apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                                 title="Apply S PRC = LP × (1 + Target ROI%/100) / margin for every checked row"
@@ -249,14 +233,14 @@
 
                         {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
                              Formula: sprice = LP / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                             id="fr-target-gpft-controls"
                             title="Target GPFT% — sets S PRC = LP / (margin − Target GPFT%/100) on every checked row (back-solves so SGPFT column equals the target)">
                             <label for="fr-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                                Target GPFT%:
+                                <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                             </label>
                             <input type="number" id="fr-target-gpft-input" class="form-control form-control-sm text-end"
-                                placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                                placeholder="30" step="0.1" style="width: 56px;"
                                 title="Target GPFT% applied to all checked rows when you click 'Apply S PRC'. Must be less than the Faire take-home margin (typically < 75%).">
                             <button id="fr-apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                                 title="Apply S PRC = LP / (margin − Target GPFT%/100) for every checked row"
@@ -266,17 +250,17 @@
                         </div>
 
                         <!-- Play / Pause parent navigation -->
-                        <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
-                            <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                        <div class="btn-group align-items-center pricing-filter-item" role="group" aria-label="Parent navigation">
+                            <button type="button" id="play-backward" class="btn btn-sm btn-light" title="Previous parent" disabled>
                                 <i class="fas fa-step-backward"></i>
                             </button>
-                            <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                            <button type="button" id="play-auto" class="btn btn-sm btn-primary" title="Start parent navigation">
                                 <i class="fas fa-play"></i>
                             </button>
-                            <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                            <button type="button" id="play-pause" class="btn btn-sm btn-warning" style="display: none;" title="Stop navigation and show all">
                                 <i class="fas fa-pause"></i>
                             </button>
-                            <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                            <button type="button" id="play-forward" class="btn btn-sm btn-light" title="Next parent" disabled>
                                 <i class="fas fa-step-forward"></i>
                             </button>
                         </div>
@@ -299,8 +283,14 @@
                         </div>
                     </div>
 
-                    <div id="fr-summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
-                        <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                    <div id="fr-summary-stats" class="mt-2 p-3 bg-light rounded">
+                        <div class="ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                            <button type="button" class="badge bg-warning text-dark fs-6 p-2 border-0 fr-sync-badge" id="frSyncFromApiBtn"
+                                style="font-weight:700;cursor:pointer;flex:0 0 auto;"
+                                title="Pulls live listings, wholesale price, and stock into faire_metric (API only)">
+                                <i class="fas fa-cloud-download-alt me-1"></i>Sync API
+                            </button>
+                            <span id="frSyncFromApiStatus" class="small text-muted align-self-center text-nowrap" style="flex:0 0 auto;"></span>
                             <span class="badge bg-primary fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;" title="Click or hover (½s) for daily trend">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-total-fqty-badge" data-metric="total_al30" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover for daily trend (units)">Sold: 0</span>
                             <span class="badge bg-success fs-6 p-2 d-none fr-badge-chart fr-hover-chart" id="fr-total-profit-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;" aria-hidden="true" title="View trend">Profit: 0</span>
@@ -1580,7 +1570,7 @@
             const cvrFilter = $('#fr-cvr-filter').val();
             const roiFilter = $('#fr-roi-filter').val();
             const fqtyFilter = $('#fr-fqty-filter').val();
-            const dilColor = $('.fr-dil-item.active').data('color') || 'all';
+            const dilColor = $('#fr-dil-filter').val() || 'all';
 
             if (skuSearch) {
                 table.addFilter(d => (d.sku || '').toLowerCase().includes(skuSearch));
@@ -2431,23 +2421,7 @@
             });
 
             $('#fr-pricing-parent-search, #fr-pricing-sku-search').on('input', function() { applyFilters(); });
-            $('#fr-row-type-filter, #fr-inv-filter, #fr-stock-filter, #fr-gpft-filter, #fr-cvr-filter, #fr-roi-filter, #fr-fqty-filter').on('change', function() { applyFilters(); });
-
-            $(document).on('click', '.fr-dil-toggle', function(e) {
-                e.stopPropagation();
-                $(this).closest('.fr-manual-dropdown').toggleClass('show');
-            });
-            $(document).on('click', '.fr-dil-item', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                $('.fr-dil-item').removeClass('active');
-                $(this).addClass('active');
-                const circle = $(this).find('.fr-sc').clone();
-                $('#fr-dil-btn').html('').append(circle).append('DIL%');
-                $(this).closest('.fr-manual-dropdown').removeClass('show');
-                applyFilters();
-            });
-            $(document).on('click', function() { $('.fr-manual-dropdown').removeClass('show'); });
+            $('#fr-row-type-filter, #fr-inv-filter, #fr-stock-filter, #fr-gpft-filter, #fr-cvr-filter, #fr-roi-filter, #fr-fqty-filter, #fr-dil-filter').on('change', function() { applyFilters(); });
 
             $('#fr-zero-sold-badge').on('click', function() {
                 frZeroSoldActive = !frZeroSoldActive;

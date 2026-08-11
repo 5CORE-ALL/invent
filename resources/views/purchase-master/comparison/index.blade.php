@@ -1444,39 +1444,85 @@
         text-align: center;
     }
 
+    /* Cost Calculator modal — top dialog, 1.5× size, light header, bordered shell */
+    #comparisonRoiModal .modal-dialog {
+        max-width: min(1200px, 96vw); /* modal-lg 800px × 1.5 */
+        width: min(1200px, 96vw);
+        margin: 1rem auto 0;
+        align-items: flex-start;
+    }
+
+    #comparisonRoiModal.modal.show .modal-dialog {
+        transform: none;
+    }
+
+    #comparisonRoiModal .modal-content {
+        border: 1.5px solid #64748b;
+        border-radius: 12px;
+        box-shadow: 0 14px 42px rgba(15, 23, 42, 0.22);
+        overflow: hidden;
+    }
+
+    #comparisonRoiModal .modal-header {
+        background: #e8f1fb;
+        border-bottom: 1px solid #b6c9e0;
+        padding: 0.9rem 1.25rem;
+    }
+
+    #comparisonRoiModal .modal-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+
+    #comparisonRoiModal .modal-body {
+        padding: 1.35rem !important;
+    }
+
+    #comparisonRoiModal #comparison-roi-manual-lmp-wrap {
+        padding: 0.85rem 1rem !important;
+    }
+
+    #comparisonRoiModal #comparison-roi-manual-lmp {
+        width: 160px !important;
+        font-size: 14px;
+    }
+
     .comparison-roi-table thead th {
         background: #fde047;
-        font-size: 12px;
+        font-size: 14px;
         text-align: center;
         vertical-align: middle;
         white-space: nowrap;
+        padding: 0.55rem 0.65rem;
     }
 
     .comparison-roi-table tbody td {
-        font-size: 12px;
+        font-size: 14px;
         text-align: center;
         vertical-align: middle;
-        padding: 4px 6px;
+        padding: 0.45rem 0.55rem;
     }
 
     .comparison-roi-table .comparison-roi-channel {
         font-weight: 600;
         background: #fff;
         text-align: left;
+        font-size: 15px;
     }
 
     .comparison-roi-table .comparison-roi-input-cell {
         background: #fdba74;
-        padding: 2px;
+        padding: 3px;
     }
 
     .comparison-roi-table .comparison-roi-input-cell input {
         width: 100%;
-        min-width: 58px;
+        min-width: 72px;
         border: 1px solid #f97316;
         border-radius: 4px;
-        padding: 2px 4px;
-        font-size: 12px;
+        padding: 4px 6px;
+        font-size: 14px;
         text-align: center;
         background: #fff7ed;
     }
@@ -1491,6 +1537,7 @@
     .comparison-roi-table .comparison-roi-calc-cell {
         background: #e5e7eb;
         font-weight: 600;
+        font-size: 14px;
     }
 
     .comparison-roi-table .comparison-roi-calc-cell.comparison-roi-tier-green {
@@ -1537,7 +1584,7 @@
 
     .comparison-roi-table .comparison-roi-lmp-header-btn,
     .comparison-roi-table .comparison-roi-lmp-link {
-        font-size: 12px;
+        font-size: 14px;
         font-weight: 600;
         text-decoration: underline;
         color: #1d4ed8;
@@ -1552,6 +1599,84 @@
     .comparison-roi-table .comparison-roi-lmp-cell {
         background: #fff;
         font-weight: 600;
+    }
+
+    .comparison-roi-table .comparison-roi-lmp-add-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 1.5px solid #16a34a;
+        border-radius: 6px;
+        background: #ecfdf5;
+        color: #15803d;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .comparison-roi-table .comparison-roi-lmp-add-btn:hover {
+        background: #16a34a;
+        color: #fff;
+    }
+
+    .comparison-roi-table tr.comparison-roi-overall-row td.comparison-roi-channel {
+        background: #dbeafe;
+        font-weight: 700;
+    }
+
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-lmp-cell {
+        background: #eff6ff;
+    }
+
+    .comparison-roi-table .comparison-roi-price-after-lmp-cell {
+        background: #ecfdf5;
+        font-weight: 600;
+        color: #166534;
+        min-width: 72px;
+        white-space: nowrap;
+    }
+
+    .comparison-roi-table .comparison-roi-price-history-dot,
+    .comparison-roi-table .comparison-roi-metric-history-dot {
+        cursor: pointer;
+        font-size: 8px;
+        vertical-align: middle;
+        margin-left: 4px;
+    }
+
+    .comparison-roi-table .comparison-roi-price-history-dot {
+        color: #e83e8c;
+    }
+
+    .comparison-roi-table .comparison-roi-price-history-dot:hover {
+        color: #c2185b;
+    }
+
+    .comparison-roi-table .comparison-roi-npft-cell,
+    .comparison-roi-table .comparison-roi-nroi-cell {
+        font-weight: 600;
+        white-space: nowrap;
+        min-width: 64px;
+    }
+
+    .comparison-roi-table .comparison-roi-metric-history-dot[data-metric="npft"] {
+        color: #28a745;
+    }
+
+    .comparison-roi-table .comparison-roi-metric-history-dot[data-metric="npft"]:hover {
+        color: #1e7e34;
+    }
+
+    .comparison-roi-table .comparison-roi-metric-history-dot[data-metric="nroi"] {
+        color: #17a2b8;
+    }
+
+    .comparison-roi-table .comparison-roi-metric-history-dot[data-metric="nroi"]:hover {
+        color: #117a8b;
     }
 
     #comparisonRoiModal.comparison-roi-modal-stacked {
@@ -1975,28 +2100,45 @@
             </div>
             <div class="modal-body">
                 <div id="comparison-lmp-add-wrap" class="card mb-3 border-success">
-                    <div class="card-header bg-success text-white">
-                        <strong><i class="fa fa-plus-circle"></i> Add New Competitor</strong>
+                    <div class="card-header bg-success text-white d-flex flex-wrap align-items-center justify-content-between gap-2">
+                        <strong><i class="fa fa-plus-circle"></i> Add <span id="comparison-lmp-add-platform-label">Amz</span> LMP</strong>
+                        <a id="comparison-lmp-site-search-link" href="#" target="_blank" rel="noopener"
+                            class="btn btn-sm btn-light text-success fw-semibold">
+                            <i class="fa fa-external-link"></i> Search on <span id="comparison-lmp-site-name">Amazon</span>
+                        </a>
                     </div>
                     <div class="card-body">
                         <form id="comparison-lmp-add-form" class="row g-3">
+                            <input type="hidden" id="comparison-lmp-add-platform" value="amazon">
                             <div class="col-md-3">
                                 <label class="form-label"><strong>SKU</strong></label>
                                 <input type="text" class="form-control" id="comparison-lmp-add-comp-sku" readonly>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-2 comparison-lmp-field-amazon">
                                 <label class="form-label"><strong>ASIN</strong> <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="comparison-lmp-add-comp-asin" placeholder="B07ABC123" required>
+                                <input type="text" class="form-control" id="comparison-lmp-add-comp-asin" placeholder="B07ABC123">
+                            </div>
+                            <div class="col-md-2 comparison-lmp-field-ebay d-none">
+                                <label class="form-label"><strong>Item ID</strong> <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="comparison-lmp-add-comp-item-id" placeholder="123456789012">
+                            </div>
+                            <div class="col-md-2 comparison-lmp-field-shopify d-none">
+                                <label class="form-label"><strong>Product ID</strong> <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="comparison-lmp-add-comp-product-id" placeholder="google-product-id">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
-                                <input type="number" class="form-control" id="comparison-lmp-add-comp-price" placeholder="29.99" step="0.01" min="0.01" required>
+                                <input type="number" class="form-control" id="comparison-lmp-add-comp-price" placeholder="29.99" step="0.01" min="0.01">
+                            </div>
+                            <div class="col-md-2 comparison-lmp-field-ebay comparison-lmp-field-temu d-none">
+                                <label class="form-label"><strong>Shipping / Del</strong></label>
+                                <input type="number" class="form-control" id="comparison-lmp-add-comp-shipping" placeholder="0.00" step="0.01" min="0">
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label"><strong>Product Link</strong></label>
-                                <input type="url" class="form-control" id="comparison-lmp-add-comp-link" placeholder="https://amazon.com/dp/...">
+                                <input type="url" class="form-control" id="comparison-lmp-add-comp-link" placeholder="https://...">
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-2 comparison-lmp-field-amazon">
                                 <label class="form-label"><strong>Marketplace</strong></label>
                                 <select class="form-select" id="comparison-lmp-add-comp-marketplace">
                                     <option value="amazon" selected>Amz</option>
@@ -2005,7 +2147,7 @@
                             </div>
                             <div class="col-12">
                                 <button type="submit" class="btn btn-success">
-                                    <i class="fa fa-plus"></i> Add Competitor
+                                    <i class="fa fa-plus"></i> Add LMP
                                 </button>
                                 <button type="reset" class="btn btn-secondary">
                                     <i class="fa fa-undo"></i> Clear
@@ -2081,6 +2223,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const amazonLmpAddUrl = @json(route('amazon.lmp.add'));
     const amazonLmpDeleteUrl = @json(route('amazon.lmp.delete.post'));
     const ebayLmpDataUrl = @json(route('ebay.lmp.data'));
+    const ebayLmpAddUrl = @json(route('ebay.lmp.add'));
+    const temuLmpDataUrl = @json(route('cvr.master.temu.lmp'));
+    const temuLmpSaveUrl = @json(route('temu.lmp.save'));
+    const googleLmpDataUrl = @json(route('google.lmp.data'));
+    const googleLmpAddUrl = @json(route('google.lmp.add'));
     const updateLinkUrl = @json(route('update.rfq.link'));
     const groupMasterCategoriesUrl = @json(route('group.master.categories'));
     const groupMasterUpdateFieldUrl = @json(route('group.master.update.field'));
@@ -2098,6 +2245,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const comparisonSheetPageUrl = @json(route('comparison.sheet.page'));
     const reviewsIntelligenceUrl = @json(route('reviews.index'));
     const cvrMasterChartDataUrl = @json(route('cvr.master.chart.data'));
+    const channelPriceChartDataUrl = @json(route('cvr.master.channel.price.chart'));
+    const cvrMasterBreakdownUrl = @json(route('cvr.master.breakdown'));
     // When set, this page is the dedicated full-page CD editor for one SKU.
     const COMPARISON_CD_PAGE_SKU = @json($cdPageSku ?? null);
     const cdHoverPreview = document.getElementById('cd-hover-preview');
@@ -2145,7 +2294,8 @@ document.addEventListener('DOMContentLoaded', function () {
         '1688': '#e65100',
     };
 
-    const ROI_CHANNELS = ['Amz', 'Ebay'];
+    const ROI_CHANNELS = ['Amz', 'Ebay', 'Temu', 'Shopify'];
+    const ROI_OVERALL_CHANNEL = 'Overall';
     const ROI_LMP_SALE_FACTOR = 0.9;
     const ROI_SALE_NET_FACTOR = 0.7;
     const ROI_FIELD_OFFSETS = {
@@ -2177,6 +2327,9 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentAmazonLmpSku = null;
     let currentAmazonLmpListEl = null;
     let currentAmazonLmpFormPrefix = null;
+    let currentComparisonLmpPlatform = 'amazon';
+    let currentComparisonLmpSku = null;
+    let comparisonLmpOpenedFromRoi = false;
     let table;
 
     const SPEC_COLUMN_COLOR = '#fed7aa';
@@ -4805,7 +4958,10 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById(`${fieldPrefix}-add-comp-link`).value = '';
             clearTimeout(tableRefreshTimer);
             tableRefreshTimer = setTimeout(() => table?.replaceData(), 500);
-            return reloadCurrentAmazonLmp();
+            const reloadPromise = fieldPrefix === 'comparison-lmp'
+                ? reloadCurrentComparisonLmpList()
+                : reloadCurrentAmazonLmp();
+            return reloadPromise;
         })
         .catch(err => {
             showComparisonToast('error', err.message || 'Failed to add competitor');
@@ -4939,13 +5095,131 @@ document.addEventListener('DOMContentLoaded', function () {
         return html;
     }
 
-    function loadComparisonLmpModal(sku, platform) {
+    function comparisonLmpSiteMeta(platform, sku) {
+        const key = channelLmpKey(platform);
+        const q = encodeURIComponent(String(sku || '').trim());
+        if (key === 'ebay') {
+            return {
+                key: 'ebay',
+                label: 'eBay',
+                siteName: 'eBay',
+                searchUrl: `https://www.ebay.com/sch/i.html?_nkw=${q}`,
+                linkPlaceholder: 'https://www.ebay.com/itm/...',
+            };
+        }
+        if (key === 'temu') {
+            return {
+                key: 'temu',
+                label: 'Temu',
+                siteName: 'Temu',
+                searchUrl: `https://www.temu.com/search_result.html?search_key=${q}`,
+                linkPlaceholder: 'https://www.temu.com/...',
+            };
+        }
+        if (key === 'shopify') {
+            return {
+                key: 'shopify',
+                label: 'Shopify',
+                siteName: 'Google Shopping',
+                searchUrl: `https://www.google.com/search?tbm=shop&q=${q}`,
+                linkPlaceholder: 'https://...',
+            };
+        }
+        return {
+            key: 'amazon',
+            label: 'Amz',
+            siteName: 'Amazon',
+            searchUrl: `https://www.amazon.com/s?k=${q}`,
+            linkPlaceholder: 'https://www.amazon.com/dp/...',
+        };
+    }
+
+    function configureComparisonLmpAddForm(platform, sku) {
+        const meta = comparisonLmpSiteMeta(platform, sku);
+        currentComparisonLmpPlatform = meta.key;
+        currentComparisonLmpSku = sku || '';
+
+        const platformInput = document.getElementById('comparison-lmp-add-platform');
+        if (platformInput) {
+            platformInput.value = meta.key;
+        }
+        const platformLabel = document.getElementById('comparison-lmp-add-platform-label');
+        if (platformLabel) {
+            platformLabel.textContent = meta.label;
+        }
+        const siteName = document.getElementById('comparison-lmp-site-name');
+        if (siteName) {
+            siteName.textContent = meta.siteName;
+        }
+        const siteLink = document.getElementById('comparison-lmp-site-search-link');
+        if (siteLink) {
+            siteLink.href = meta.searchUrl;
+            siteLink.classList.toggle('disabled', !sku);
+        }
+
+        document.querySelectorAll('.comparison-lmp-field-amazon').forEach(el => {
+            el.classList.toggle('d-none', meta.key !== 'amazon');
+        });
+        // Item ID (ebay only)
+        document.querySelectorAll('.comparison-lmp-field-ebay:not(.comparison-lmp-field-temu)').forEach(el => {
+            el.classList.toggle('d-none', meta.key !== 'ebay');
+        });
+        // Shipping / Delivery (ebay + temu)
+        document.querySelectorAll('.comparison-lmp-field-ebay.comparison-lmp-field-temu').forEach(el => {
+            el.classList.toggle('d-none', meta.key !== 'ebay' && meta.key !== 'temu');
+        });
+        document.querySelectorAll('.comparison-lmp-field-shopify').forEach(el => {
+            el.classList.toggle('d-none', meta.key !== 'shopify');
+        });
+
+        const skuInput = document.getElementById('comparison-lmp-add-comp-sku');
+        if (skuInput) {
+            skuInput.value = sku || '';
+        }
+        const asinInput = document.getElementById('comparison-lmp-add-comp-asin');
+        if (asinInput) {
+            asinInput.value = '';
+        }
+        const itemIdInput = document.getElementById('comparison-lmp-add-comp-item-id');
+        if (itemIdInput) {
+            itemIdInput.value = '';
+        }
+        const productIdInput = document.getElementById('comparison-lmp-add-comp-product-id');
+        if (productIdInput) {
+            productIdInput.value = '';
+        }
+        const priceInput = document.getElementById('comparison-lmp-add-comp-price');
+        if (priceInput) {
+            priceInput.value = '';
+        }
+        const shippingInput = document.getElementById('comparison-lmp-add-comp-shipping');
+        if (shippingInput) {
+            shippingInput.value = '';
+        }
+        const linkInput = document.getElementById('comparison-lmp-add-comp-link');
+        if (linkInput) {
+            linkInput.value = '';
+            linkInput.placeholder = meta.linkPlaceholder;
+        }
+        const marketplaceInput = document.getElementById('comparison-lmp-add-comp-marketplace');
+        if (marketplaceInput) {
+            marketplaceInput.value = 'amazon';
+        }
+
+        const addWrap = document.getElementById('comparison-lmp-add-wrap');
+        if (addWrap) {
+            addWrap.classList.remove('d-none');
+        }
+    }
+
+    function loadComparisonLmpModal(sku, platform, fromRoi) {
         if (!sku) {
             return;
         }
 
-        platform = String(platform || 'amazon').toLowerCase();
-        const platformLabel = platform === 'ebay' ? 'eBay' : 'Amz';
+        platform = channelLmpKey(platform || 'amazon');
+        comparisonLmpOpenedFromRoi = !!fromRoi;
+        const meta = comparisonLmpSiteMeta(platform, sku);
 
         const lmpModalEl = document.getElementById('comparisonLmpModal');
         if (!lmpModalEl || !window.bootstrap?.Modal) {
@@ -4957,10 +5231,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         document.getElementById('comparison-lmp-modal-sku').textContent = sku;
-        const addWrap = document.getElementById('comparison-lmp-add-wrap');
-        if (addWrap) {
-            addWrap.classList.toggle('d-none', platform === 'ebay');
-        }
+        configureComparisonLmpAddForm(platform, sku);
 
         const listEl = document.getElementById('comparison-lmp-data-list');
         listEl.innerHTML = amazonLmpLoadingHtml();
@@ -4977,25 +5248,352 @@ document.addEventListener('DOMContentLoaded', function () {
         }, { once: true });
         lmpModalInstance.show();
 
-        if (platform === 'ebay') {
-            fetch(`${ebayLmpDataUrl}?sku=${encodeURIComponent(sku)}`, {
+        if (platform === 'ebay' || platform === 'temu' || platform === 'shopify') {
+            const dataUrl = platform === 'temu'
+                ? temuLmpDataUrl
+                : (platform === 'shopify' ? googleLmpDataUrl : ebayLmpDataUrl);
+            fetch(`${dataUrl}?sku=${encodeURIComponent(sku)}`, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    listEl.innerHTML = renderEbayCompetitorsList(data.competitors || [], data.lowest_price);
+                    const lowest = data.lowest_price != null ? data.lowest_price : data.lmp;
+                    listEl.innerHTML = renderEbayCompetitorsList(data.competitors || [], lowest);
                 } else {
-                    listEl.innerHTML = `<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> No ${platformLabel} competitors found for this SKU.</div>`;
+                    listEl.innerHTML = `<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No ${meta.label} LMP yet. Add one above from ${meta.siteName}.</div>`;
                 }
             })
             .catch(() => {
-                listEl.innerHTML = '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> Could not load competitor data.</div>';
+                listEl.innerHTML = `<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No ${meta.label} LMP yet. Add one above from ${meta.siteName}.</div>`;
             });
             return;
         }
 
         loadAmazonCompetitors(sku, listEl, 'comparison-lmp');
+    }
+
+    async function refreshRoiModalAfterLmpChange(platform) {
+        const tbody = document.getElementById('comparison-roi-tbody');
+        const sku = (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim();
+        if (!tbody?.roiRows || !sku) {
+            return;
+        }
+
+        const lmpRates = await fetchPlatformLmpRates(sku);
+        updateManualLmpSection(lmpRates);
+        const target = channelLmpKey(platform);
+
+        tbody.roiRows.forEach(function (row) {
+            if (row.isOverall || channelLmpKey(row.channel) !== target) {
+                return;
+            }
+            row.lmp = getChannelRawLmp(row.channel, lmpRates);
+            row.priceAfterLmp = getChannelPriceAfterLmp(row.channel, lmpRates);
+            const saleFromLmp = getChannelLmpSale(row.channel, lmpRates);
+            if (saleFromLmp) {
+                // Prefer live LMP-derived sale when this row had no sale yet.
+                if (!row.sale || parseSheetNumber(row.sale) == null) {
+                    row.sale = saleFromLmp;
+                }
+            }
+            const calc = calculateRoiMetrics(row);
+            row.profit = calc.profit != null ? formatRoiNumber(calc.profit) : '';
+            row.pPct = calc.pPct != null ? `${formatRoiNumber(calc.pPct, 0)}%` : '';
+            row.roi = calc.roi != null ? `${formatRoiNumber(calc.roi, 0)}%` : '';
+        });
+
+        const withOverall = appendOverallRoiRow(tbody.roiRows.filter(r => !r.isOverall), currentSheetCells);
+        renderRoiModalTable(withOverall);
+    }
+
+    function reloadCurrentComparisonLmpList() {
+        const sku = currentComparisonLmpSku;
+        const platform = currentComparisonLmpPlatform || 'amazon';
+        const listEl = document.getElementById('comparison-lmp-data-list');
+        if (!sku || !listEl) {
+            return Promise.resolve();
+        }
+        if (platform === 'ebay' || platform === 'temu' || platform === 'shopify') {
+            const dataUrl = platform === 'temu'
+                ? temuLmpDataUrl
+                : (platform === 'shopify' ? googleLmpDataUrl : ebayLmpDataUrl);
+            const meta = comparisonLmpSiteMeta(platform, sku);
+            listEl.innerHTML = amazonLmpLoadingHtml();
+            return fetch(`${dataUrl}?sku=${encodeURIComponent(sku)}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const lowest = data.lowest_price != null ? data.lowest_price : data.lmp;
+                    listEl.innerHTML = renderEbayCompetitorsList(data.competitors || [], lowest);
+                } else {
+                    listEl.innerHTML = `<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No ${meta.label} LMP yet. Add one above from ${meta.siteName}.</div>`;
+                }
+            })
+            .catch(() => {
+                listEl.innerHTML = `<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No ${meta.label} LMP yet. Add one above from ${meta.siteName}.</div>`;
+            });
+        }
+        return loadAmazonCompetitors(sku, listEl, 'comparison-lmp');
+    }
+
+    function submitEbayLmpAdd() {
+        const sku = document.getElementById('comparison-lmp-add-comp-sku')?.value.trim();
+        const itemId = document.getElementById('comparison-lmp-add-comp-item-id')?.value.trim();
+        const price = parseFloat(document.getElementById('comparison-lmp-add-comp-price')?.value);
+        const shipping = parseFloat(document.getElementById('comparison-lmp-add-comp-shipping')?.value) || 0;
+        const link = document.getElementById('comparison-lmp-add-comp-link')?.value.trim();
+        const form = document.getElementById('comparison-lmp-add-form');
+
+        if (!sku) {
+            showComparisonToast('error', 'SKU is required');
+            return Promise.resolve();
+        }
+        if (!itemId && !link) {
+            showComparisonToast('error', 'eBay Item ID or product link is required');
+            return Promise.resolve();
+        }
+        if (!price || price <= 0) {
+            showComparisonToast('error', 'Valid price is required');
+            return Promise.resolve();
+        }
+
+        const submitBtn = form?.querySelector('button[type="submit"]');
+        const originalHtml = submitBtn?.innerHTML || '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Adding...';
+        }
+
+        return fetch(ebayLmpAddUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                sku,
+                item_id: itemId || 'from-link',
+                price,
+                shipping_cost: shipping,
+                product_link: link || null,
+            }),
+        })
+        .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+        .then(({ ok, status, data }) => {
+            if (!ok) {
+                let errorMsg = data?.error || data?.message || 'Failed to add eBay LMP';
+                if (status === 409) {
+                    errorMsg = 'This eBay item is already saved for this SKU';
+                }
+                throw new Error(errorMsg);
+            }
+            showComparisonToast('success', 'eBay LMP added');
+            document.getElementById('comparison-lmp-add-comp-item-id').value = '';
+            document.getElementById('comparison-lmp-add-comp-price').value = '';
+            document.getElementById('comparison-lmp-add-comp-shipping').value = '';
+            document.getElementById('comparison-lmp-add-comp-link').value = '';
+            return reloadCurrentComparisonLmpList().then(function () {
+                if (comparisonLmpOpenedFromRoi || document.getElementById('comparisonRoiModal')?.classList.contains('show')) {
+                    return refreshRoiModalAfterLmpChange('ebay');
+                }
+            });
+        })
+        .catch(err => {
+            showComparisonToast('error', err.message || 'Failed to add eBay LMP');
+        })
+        .finally(() => {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    function submitTemuLmpAdd() {
+        const sku = document.getElementById('comparison-lmp-add-comp-sku')?.value.trim();
+        const price = parseFloat(document.getElementById('comparison-lmp-add-comp-price')?.value);
+        const deliveryRaw = document.getElementById('comparison-lmp-add-comp-shipping')?.value;
+        const delivery = deliveryRaw !== '' && deliveryRaw != null ? parseFloat(deliveryRaw) : 0;
+        const link = document.getElementById('comparison-lmp-add-comp-link')?.value.trim();
+        const form = document.getElementById('comparison-lmp-add-form');
+
+        if (!sku) {
+            showComparisonToast('error', 'SKU is required');
+            return Promise.resolve();
+        }
+        if (!price || price <= 0) {
+            showComparisonToast('error', 'Valid price is required');
+            return Promise.resolve();
+        }
+
+        const submitBtn = form?.querySelector('button[type="submit"]');
+        const originalHtml = submitBtn?.innerHTML || '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Adding...';
+        }
+
+        // temu-lmp/save replaces entries — merge with existing competitors first.
+        return fetch(`${temuLmpDataUrl}?sku=${encodeURIComponent(sku)}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        })
+        .then(response => response.json())
+        .then(data => {
+            const existing = Array.isArray(data?.competitors) ? data.competitors : [];
+            const lmpEntries = existing.map(function (c) {
+                return {
+                    price: c.base_price != null ? c.base_price : c.price,
+                    delivery: c.delivery != null ? c.delivery : (c.shipping_cost || 0),
+                    link: c.product_link || c.link || null,
+                    ignored: !!c.ignored,
+                    source_sku: c.source_sku || sku,
+                };
+            });
+            lmpEntries.push({
+                price,
+                delivery: Number.isFinite(delivery) && delivery > 0 ? delivery : 0,
+                link: link || null,
+                ignored: false,
+                source_sku: sku,
+            });
+
+            return fetch(temuLmpSaveUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ sku, lmp_entries: lmpEntries }),
+            });
+        })
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok || data?.success === false) {
+                throw new Error(data?.message || data?.error || 'Failed to add Temu LMP');
+            }
+            showComparisonToast('success', 'Temu LMP added');
+            document.getElementById('comparison-lmp-add-comp-price').value = '';
+            document.getElementById('comparison-lmp-add-comp-shipping').value = '';
+            document.getElementById('comparison-lmp-add-comp-link').value = '';
+            return reloadCurrentComparisonLmpList().then(function () {
+                if (comparisonLmpOpenedFromRoi || document.getElementById('comparisonRoiModal')?.classList.contains('show')) {
+                    return refreshRoiModalAfterLmpChange('temu');
+                }
+            });
+        })
+        .catch(err => {
+            showComparisonToast('error', err.message || 'Failed to add Temu LMP');
+        })
+        .finally(() => {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    function submitShopifyLmpAdd() {
+        const sku = document.getElementById('comparison-lmp-add-comp-sku')?.value.trim();
+        let productId = document.getElementById('comparison-lmp-add-comp-product-id')?.value.trim();
+        const price = parseFloat(document.getElementById('comparison-lmp-add-comp-price')?.value);
+        const link = document.getElementById('comparison-lmp-add-comp-link')?.value.trim();
+        const form = document.getElementById('comparison-lmp-add-form');
+
+        if (!sku) {
+            showComparisonToast('error', 'SKU is required');
+            return Promise.resolve();
+        }
+        if (!price || price <= 0) {
+            showComparisonToast('error', 'Valid price is required');
+            return Promise.resolve();
+        }
+        if (!productId) {
+            // Allow link-only adds with a generated product id.
+            productId = link
+                ? ('manual-' + String(link).replace(/[^a-zA-Z0-9]/g, '').slice(-24))
+                : ('manual-' + Date.now());
+        }
+
+        const submitBtn = form?.querySelector('button[type="submit"]');
+        const originalHtml = submitBtn?.innerHTML || '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Adding...';
+        }
+
+        return fetch(googleLmpAddUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                sku,
+                product_id: productId,
+                source: 'manual',
+                price,
+                product_link: link || null,
+            }),
+        })
+        .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+        .then(({ ok, status, data }) => {
+            if (!ok) {
+                let errorMsg = data?.error || data?.message || 'Failed to add Shopify LMP';
+                if (status === 409) {
+                    errorMsg = 'This Google offer is already saved for this SKU';
+                }
+                throw new Error(errorMsg);
+            }
+            showComparisonToast('success', 'Shopify (Google) LMP added');
+            document.getElementById('comparison-lmp-add-comp-product-id').value = '';
+            document.getElementById('comparison-lmp-add-comp-price').value = '';
+            document.getElementById('comparison-lmp-add-comp-link').value = '';
+            return reloadCurrentComparisonLmpList().then(function () {
+                if (comparisonLmpOpenedFromRoi || document.getElementById('comparisonRoiModal')?.classList.contains('show')) {
+                    return refreshRoiModalAfterLmpChange('shopify');
+                }
+            });
+        })
+        .catch(err => {
+            showComparisonToast('error', err.message || 'Failed to add Shopify LMP');
+        })
+        .finally(() => {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    function submitComparisonLmpAddForm() {
+        const platform = channelLmpKey(
+            document.getElementById('comparison-lmp-add-platform')?.value
+            || currentComparisonLmpPlatform
+            || 'amazon'
+        );
+        if (platform === 'ebay') {
+            return submitEbayLmpAdd();
+        }
+        if (platform === 'temu') {
+            return submitTemuLmpAdd();
+        }
+        if (platform === 'shopify') {
+            return submitShopifyLmpAdd();
+        }
+        return submitAmazonLmpAddForm('comparison-lmp', 'comparison-lmp-add-form').then(function () {
+            if (comparisonLmpOpenedFromRoi || document.getElementById('comparisonRoiModal')?.classList.contains('show')) {
+                return refreshRoiModalAfterLmpChange('amazon');
+            }
+        });
     }
 
     function columnLetter(index) {
@@ -6944,8 +7542,17 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     async function fetchPlatformLmpRates(sku) {
+        const empty = {
+            amazon: null,
+            ebay: null,
+            temu: null,
+            shopify: null,
+            prices: { amazon: null, ebay: null, temu: null, shopify: null },
+            npft: { amazon: null, ebay: null, temu: null, shopify: null },
+            nroi: { amazon: null, ebay: null, temu: null, shopify: null },
+        };
         if (!sku) {
-            return { amazon: null, ebay: null };
+            return empty;
         }
 
         try {
@@ -6954,26 +7561,173 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             const data = await res.json();
             if (!data.success) {
-                return { amazon: null, ebay: null };
+                return empty;
             }
             return {
                 amazon: data.amazon_lmp != null ? data.amazon_lmp : null,
                 ebay: data.ebay_lmp != null ? data.ebay_lmp : null,
+                temu: data.temu_lmp != null ? data.temu_lmp : null,
+                shopify: data.shopify_lmp != null ? data.shopify_lmp : null,
+                prices: {
+                    amazon: data.amazon_price != null ? data.amazon_price : null,
+                    ebay: data.ebay_price != null ? data.ebay_price : null,
+                    temu: data.temu_price != null ? data.temu_price : null,
+                    shopify: data.shopify_price != null ? data.shopify_price : null,
+                },
+                npft: { amazon: null, ebay: null, temu: null, shopify: null },
+                nroi: { amazon: null, ebay: null, temu: null, shopify: null },
             };
         } catch (e) {
-            return { amazon: null, ebay: null };
+            return empty;
         }
     }
 
+    function computeNroiFromBreakdownRow(item) {
+        const price = parseFloat(item?.price);
+        const lp = parseFloat(item?.lp);
+        const ship = parseFloat(item?.ship) || 0;
+        const margin = parseFloat(item?.margin);
+        const ads = parseFloat(item?.tacos_ch != null ? item.tacos_ch : item?.ad) || 0;
+        const mp = String(item?.marketplace || '').toLowerCase().replace(/\s+/g, '');
+        if (!(price > 0) || !(lp > 0) || !(margin > 0)) {
+            return null;
+        }
+        const grossProfit = price * margin - lp - ship;
+        const groi = (grossProfit / lp) * 100;
+        if (mp === 'temu') {
+            return ads === 100 ? groi : (groi - ads);
+        }
+        return ((grossProfit - (price * (ads / 100))) / lp) * 100;
+    }
+
+    function mapBreakdownMarketplaceKey(marketplace) {
+        const mp = String(marketplace || '').toLowerCase().replace(/\s+/g, '');
+        if (mp === 'amazon' || mp === 'fba') return 'amazon';
+        if (mp === 'ebay' || mp === 'ebay1') return 'ebay';
+        if (mp === 'temu') return 'temu';
+        if (mp === 'shopify' || mp === 'sb2c' || mp === 'shopifyb2c') return 'shopify';
+        return '';
+    }
+
+    async function fetchChannelNpftNroi(sku) {
+        const empty = {
+            npft: { amazon: null, ebay: null, temu: null, shopify: null },
+            nroi: { amazon: null, ebay: null, temu: null, shopify: null },
+        };
+        if (!sku) {
+            return empty;
+        }
+        try {
+            const res = await fetch(`${cvrMasterBreakdownUrl}?sku=${encodeURIComponent(sku)}`, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const rows = await res.json();
+            if (!Array.isArray(rows)) {
+                return empty;
+            }
+            const out = {
+                npft: { amazon: null, ebay: null, temu: null, shopify: null },
+                nroi: { amazon: null, ebay: null, temu: null, shopify: null },
+            };
+            rows.forEach((item) => {
+                const key = mapBreakdownMarketplaceKey(item?.marketplace);
+                if (!key || item?.is_listed === false) {
+                    return;
+                }
+                const price = parseFloat(item?.price);
+                if (!(price > 0)) {
+                    return;
+                }
+                const npft = parseFloat(item?.npft);
+                if (Number.isFinite(npft)) {
+                    out.npft[key] = Math.round(npft);
+                }
+                const nroi = computeNroiFromBreakdownRow(item);
+                if (nroi != null && Number.isFinite(nroi)) {
+                    out.nroi[key] = Math.round(nroi);
+                }
+            });
+            return out;
+        } catch (e) {
+            return empty;
+        }
+    }
+
+    function getChannelNpftDisplay(channel, lmpRates) {
+        const key = channelLmpKey(channel);
+        if (key === 'overall') {
+            const vals = Object.values(lmpRates?.npft || {})
+                .map(v => (v != null && Number.isFinite(Number(v)) ? Number(v) : null))
+                .filter(v => v != null);
+            if (!vals.length) return '';
+            return `${Math.round(vals.reduce((s, n) => s + n, 0) / vals.length)}%`;
+        }
+        const v = lmpRates?.npft?.[key];
+        return v != null && Number.isFinite(Number(v)) ? `${Math.round(Number(v))}%` : '';
+    }
+
+    function getChannelNroiDisplay(channel, lmpRates) {
+        const key = channelLmpKey(channel);
+        if (key === 'overall') {
+            const vals = Object.values(lmpRates?.nroi || {})
+                .map(v => (v != null && Number.isFinite(Number(v)) ? Number(v) : null))
+                .filter(v => v != null);
+            if (!vals.length) return '';
+            return `${Math.round(vals.reduce((s, n) => s + n, 0) / vals.length)}%`;
+        }
+        const v = lmpRates?.nroi?.[key];
+        return v != null && Number.isFinite(Number(v)) ? `${Math.round(Number(v))}%` : '';
+    }
+
+    function getChannelPriceAfterLmp(channel, lmpRates) {
+        const key = channelLmpKey(channel);
+        if (key === 'overall') {
+            const prices = Object.values(lmpRates?.prices || {})
+                .map(v => (v != null && Number.isFinite(Number(v)) ? Number(v) : null))
+                .filter(v => v != null && v > 0);
+            if (!prices.length) {
+                return '';
+            }
+            const avg = prices.reduce((sum, n) => sum + n, 0) / prices.length;
+            return formatRoiNumber(avg);
+        }
+        const price = lmpRates?.prices?.[key];
+        return price != null ? formatRoiNumber(price) : '';
+    }
+
+    function channelLmpKey(channel) {
+        const key = String(channel || '').trim().toLowerCase();
+        if (key === 'amz' || key === 'amazon') {
+            return 'amazon';
+        }
+        if (key === 'ebay') {
+            return 'ebay';
+        }
+        if (key === 'temu') {
+            return 'temu';
+        }
+        if (key === 'shopify') {
+            return 'shopify';
+        }
+        if (key === 'overall') {
+            return 'overall';
+        }
+        return key;
+    }
+
+    function isRoiOverallChannel(channel) {
+        return channelLmpKey(channel) === 'overall';
+    }
+
     function getChannelRawLmp(channel, lmpRates) {
-        const key = String(channel || '').toLowerCase();
-        const lmp = key === 'amazon' ? lmpRates?.amazon : (key === 'ebay' ? lmpRates?.ebay : null);
+        const key = channelLmpKey(channel);
+        const lmp = lmpRates?.[key];
         return lmp != null ? formatRoiNumber(lmp) : '';
     }
 
     function getChannelLmpSale(channel, lmpRates) {
-        const key = String(channel || '').toLowerCase();
-        const lmp = key === 'amazon' ? lmpRates?.amazon : (key === 'ebay' ? lmpRates?.ebay : null);
+        const key = channelLmpKey(channel);
+        const lmp = lmpRates?.[key];
         if (lmp == null) {
             return '';
         }
@@ -6989,7 +7743,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const missingAmazon = lmpRates?.amazon == null;
         const missingEbay = lmpRates?.ebay == null;
-        const show = missingAmazon || missingEbay;
+        const missingTemu = lmpRates?.temu == null;
+        const missingShopify = lmpRates?.shopify == null;
+        const show = missingAmazon || missingEbay || missingTemu || missingShopify;
         wrap.classList.toggle('d-none', !show);
 
         if (hint) {
@@ -7000,8 +7756,17 @@ document.addEventListener('DOMContentLoaded', function () {
             if (missingEbay) {
                 parts.push('Ebay');
             }
+            if (missingTemu) {
+                parts.push('Temu');
+            }
+            if (missingShopify) {
+                parts.push('Shopify');
+            }
+            const joined = parts.length <= 1
+                ? (parts[0] || '')
+                : (parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1]);
             hint.textContent = parts.length
-                ? `No LMP found for ${parts.join(' and ')}. Enter manual LMP (sale = LMP × ${ROI_LMP_SALE_FACTOR}) for both platforms.`
+                ? `No LMP found for ${joined}. Enter manual LMP (sale = LMP × ${ROI_LMP_SALE_FACTOR}) for all platforms.`
                 : '';
         }
     }
@@ -7020,6 +7785,9 @@ document.addEventListener('DOMContentLoaded', function () {
             : String(input.value || '').trim();
 
         tbody.roiRows.forEach(function (row, rowIndex) {
+            if (row.isOverall) {
+                return;
+            }
             row.sale = sale;
             row.lmp = rawLmp;
             const tr = tbody.children[rowIndex];
@@ -7035,6 +7803,9 @@ document.addEventListener('DOMContentLoaded', function () {
             refreshRoiRowCalculations(tr, tbody, rowIndex);
             saveRoiCellEdit(rowIndex, 'sale', '', sale, sale);
         });
+
+        const withOverall = appendOverallRoiRow(tbody.roiRows.filter(r => !r.isOverall), currentSheetCells);
+        renderRoiModalTable(withOverall);
     }
 
     function setRoiSaveStatus(message, isError) {
@@ -7051,10 +7822,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const specCol = detectSpecColumnIndex(cells);
         let rowIndex = findCostCalculatorChannelRow(cells, channel, specCol);
         const colCount = Math.max(...cells.map(row => row.length), specCol + 10, 6);
+        const sheetChannel = normalizeRoiSaveChannel(channel);
 
         if (rowIndex === null) {
             const newRow = Array.from({ length: colCount }, () => '');
-            newRow[specCol] = channel;
+            newRow[specCol] = sheetChannel;
             cells.push(newRow);
             rowIndex = cells.length - 1;
         }
@@ -7063,7 +7835,13 @@ document.addEventListener('DOMContentLoaded', function () {
             cells[rowIndex].push('');
         }
 
+        // Spec+1 / Spec+2 are Critical / QC priority columns — never write CP/CBM there.
+        // CP is sourced from the CD USD price column; CBM from the sheet CBM row.
+        const skipSheetFields = new Set(['cp', 'cbm']);
         Object.entries(ROI_FIELD_OFFSETS).forEach(([key, offset]) => {
+            if (skipSheetFields.has(key)) {
+                return;
+            }
             let value = rowData[key] ?? '';
             if ((key === 'pPct' || key === 'roi') && value) {
                 value = String(value).replace('%', '');
@@ -7082,6 +7860,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const tbody = document.getElementById('comparison-roi-tbody');
         const row = tbody?.roiRows?.[rowIndex];
         if (!row || !field) {
+            return Promise.resolve();
+        }
+
+        // CP is always derived from CD PRICE USD — do not persist into the channel row
+        // (Spec+1 is Critical priority). Overall is computed from platform rows.
+        if (field === 'cp' || field === 'cbm' || row.isOverall) {
             return Promise.resolve();
         }
 
@@ -7110,7 +7894,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 parent: currentCdRow.parent || '',
                 linked_skus: sheetSaveTargetSkus(currentCdRow),
                 bulk_edit_skus: comparisonBulkEditPayload(),
-                channel: row.channel,
+                channel: normalizeRoiSaveChannel(row.channel),
                 field,
                 old_value: normalizedOld,
                 new_value: normalizedNew,
@@ -7180,24 +7964,77 @@ document.addEventListener('DOMContentLoaded', function () {
         row.pPct = calc.pPct != null ? `${formatRoiNumber(calc.pPct, 0)}%` : '';
         row.roi = calc.roi != null ? `${formatRoiNumber(calc.roi, 0)}%` : '';
 
+        if (tr) {
+            const pPctCell = tr.querySelector('[data-calc="pPct"]');
+            const profitCell = tr.querySelector('[data-calc="profit"]');
+            const roiCell = tr.querySelector('[data-calc="roi"]');
+            if (pPctCell) {
+                pPctCell.textContent = row.pPct;
+                applyRoiCalcCellTier(pPctCell, 'pPct', row.pPct);
+            }
+            if (profitCell) {
+                profitCell.textContent = row.profit;
+            }
+            if (roiCell) {
+                roiCell.textContent = row.roi;
+                applyRoiCalcCellTier(roiCell, 'roi', row.roi);
+            }
+        }
+
+        if (!row.isOverall) {
+            syncOverallRoiRowInTable(tbody);
+        }
+    }
+
+    function syncOverallRoiRowInTable(tbody) {
+        if (!tbody?.roiRows) {
+            return;
+        }
+        const platformRows = tbody.roiRows.filter(r => !r.isOverall);
+        const overallIndex = tbody.roiRows.findIndex(r => r.isOverall);
+        if (overallIndex < 0) {
+            return;
+        }
+        const rebuilt = buildOverallRoiRow(platformRows, currentSheetCells, {
+            specCol: detectSpecColumnIndex(currentSheetCells || []),
+            cp: parseSheetNumber(platformRows[0]?.cp),
+        });
+        tbody.roiRows[overallIndex] = rebuilt;
+        const tr = tbody.children[overallIndex];
         if (!tr) {
             return;
         }
-
-        const pPctCell = tr.querySelector('[data-calc="pPct"]');
-        const profitCell = tr.querySelector('[data-calc="profit"]');
-        const roiCell = tr.querySelector('[data-calc="roi"]');
-        if (pPctCell) {
-            pPctCell.textContent = row.pPct;
-            applyRoiCalcCellTier(pPctCell, 'pPct', row.pPct);
+        ['cp', 'cbm', 'gw', 'shipping', 'sale'].forEach(function (field) {
+            const input = tr.querySelector(`[data-field="${field}"]`);
+            if (input) {
+                input.value = rebuilt[field] || '';
+            }
+        });
+        const freightCell = tr.querySelector('[data-calc="freight"]');
+        if (freightCell) {
+            freightCell.textContent = rebuilt.freight || '';
         }
-        if (profitCell) {
-            profitCell.textContent = row.profit;
+        const lmpCell = tr.querySelector('.comparison-roi-lmp-cell');
+        if (lmpCell) {
+            lmpCell.textContent = rebuilt.lmp || '—';
+            lmpCell.classList.toggle('text-muted', !rebuilt.lmp);
         }
-        if (roiCell) {
-            roiCell.textContent = row.roi;
-            applyRoiCalcCellTier(roiCell, 'roi', row.roi);
+        const priceAfterCell = tr.querySelector('.comparison-roi-price-after-lmp-cell');
+        if (priceAfterCell) {
+            priceAfterCell.textContent = rebuilt.priceAfterLmp || '—';
+            priceAfterCell.classList.toggle('text-muted', !rebuilt.priceAfterLmp);
         }
+        const npftCell = tr.querySelector('.comparison-roi-npft-cell');
+        if (npftCell) {
+            npftCell.textContent = rebuilt.npft || '—';
+            npftCell.classList.toggle('text-muted', !rebuilt.npft);
+        }
+        const nroiCell = tr.querySelector('.comparison-roi-nroi-cell');
+        if (nroiCell) {
+            nroiCell.textContent = rebuilt.nroi || '—';
+            nroiCell.classList.toggle('text-muted', !rebuilt.nroi);
+        }
+        refreshRoiRowCalculations(tr, tbody, overallIndex);
     }
 
     function parseRoiPercentValue(value) {
@@ -7260,12 +8097,68 @@ document.addEventListener('DOMContentLoaded', function () {
         return String((cells[rowIndex] || [])[colIndex] ?? '').trim();
     }
 
+    function costCalculatorChannelNeedles(channel) {
+        const key = String(channel || '').trim().toLowerCase();
+        if (key === 'amz' || key === 'amazon') {
+            return ['amz', 'amazon'];
+        }
+        if (key === 'ebay') {
+            return ['ebay'];
+        }
+        if (key === 'temu') {
+            return ['temu'];
+        }
+        if (key === 'shopify') {
+            return ['shopify'];
+        }
+        if (key === 'overall') {
+            return ['overall'];
+        }
+        return key ? [key] : [];
+    }
+
+    function normalizeRoiSaveChannel(channel) {
+        const key = String(channel || '').trim().toLowerCase();
+        if (key === 'ebay') {
+            return 'Ebay';
+        }
+        if (key === 'temu') {
+            return 'Temu';
+        }
+        if (key === 'shopify') {
+            return 'Shopify';
+        }
+        if (key === 'overall') {
+            return 'Overall';
+        }
+        return 'Amazon';
+    }
+
+    function roiChannelDisplayLabel(channel) {
+        const key = channelLmpKey(channel);
+        if (key === 'ebay') {
+            return 'eBay';
+        }
+        if (key === 'temu') {
+            return 'Temu';
+        }
+        if (key === 'shopify') {
+            return 'Shopify';
+        }
+        if (key === 'overall') {
+            return 'Overall';
+        }
+        return 'Amz';
+    }
+
     function findCostCalculatorChannelRow(cells, channel, specCol) {
-        const needle = channel.toLowerCase();
+        const needles = costCalculatorChannelNeedles(channel);
         for (let rowIndex = 0; rowIndex < cells.length; rowIndex++) {
             const label = getSheetCellText(cells, rowIndex, specCol).toLowerCase();
-            if (label === needle || label === needle + ' ' || label.startsWith(needle + ' ')) {
-                return rowIndex;
+            for (const needle of needles) {
+                if (label === needle || label.startsWith(needle + ' ')) {
+                    return rowIndex;
+                }
             }
         }
         return null;
@@ -7286,18 +8179,23 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function extractLowestPriceColumnMetrics(cells) {
         const specCol = detectSpecColumnIndex(cells);
+        // Cost-calculator CP must come from the CD PRICE USD row (lowest supplier col).
+        // RMB is only a fallback when no USD price exists on the sheet.
         let priceLabel = 'usd';
         let lowestCol = findLowestSupplierColumn(cells, specCol, priceLabel);
-        if (lowestCol === null) {
+        let priceRow = findRowIndexByLabel(cells, 'usd', specCol)
+            ?? findRowIndexByLabel(cells, 'price usd', specCol)
+            ?? findRowIndexByLabel(cells, 'supplier price', specCol);
+        if (lowestCol === null || priceRow === null) {
             priceLabel = 'rmb';
             lowestCol = findLowestSupplierColumn(cells, specCol, priceLabel);
+            priceRow = findRowIndexByLabel(cells, 'rmb', specCol)
+                ?? findRowIndexByLabel(cells, 'supplier price', specCol);
         }
         if (lowestCol === null) {
-            lowestCol = FIRST_SUPPLIER_COLUMN;
+            lowestCol = getFirstSupplierColumnIndex(cells, specCol);
         }
 
-        const priceRow = findRowIndexByLabel(cells, priceLabel, specCol)
-            ?? findRowIndexByLabel(cells, 'supplier price', specCol);
         // Sheet label is often "GW /Unit (LB)" (no space after /).
         const gwRow = findRowIndexByLabel(cells, 'gw /unit', specCol)
             ?? findRowIndexByLabel(cells, 'gw / unit', specCol)
@@ -7356,6 +8254,7 @@ document.addEventListener('DOMContentLoaded', function () {
             : (fromSheet.cbm ? formatRoiCbm(fromSheet.cbm) : '');
         const lmpSale = getChannelLmpSale(channel, lmpRates);
         const rawLmp = getChannelRawLmp(channel, lmpRates);
+        const priceAfterLmp = getChannelPriceAfterLmp(channel, lmpRates);
         // GW must use the sheet's "GW / Unit (LB)" spec row (metrics.gw), same as CBM —
         // not a stale/empty cost-calculator cell that would blank the ROI GW LB field.
         const gw = metrics.gw != null
@@ -7363,7 +8262,9 @@ document.addEventListener('DOMContentLoaded', function () {
             : (fromSheet.gw ? formatRoiNumber(fromSheet.gw) : '');
         const row = {
             channel,
-            cp: fromSheet.cp || (metrics.cp != null ? formatRoiNumber(metrics.cp) : ''),
+            // CP always from CD PRICE USD (lowest supplier column) — never from the
+            // Amz/Ebay channel row, where Spec+1 is the Critical priority cell ("Normal").
+            cp: metrics.cp != null ? formatRoiNumber(metrics.cp) : '',
             cbm,
             freight: computeFreightFromCbm(metrics.cbm != null ? metrics.cbm : (fromSheet.cbm || cbm)),
             gw,
@@ -7373,8 +8274,64 @@ document.addEventListener('DOMContentLoaded', function () {
             shipping: (slabShipping != null && slabShipping !== '')
                 ? formatRoiNumber(slabShipping)
                 : '',
+            // Sale prefers sheet/manual, then LMP×0.9. Channel listing price is shown separately.
             sale: fromSheet.sale || lmpSale || '',
             lmp: rawLmp,
+            // Current listing price from the respective marketplace channel.
+            priceAfterLmp,
+            npft: getChannelNpftDisplay(channel, lmpRates),
+            nroi: getChannelNroiDisplay(channel, lmpRates),
+        };
+
+        const calc = calculateRoiMetrics(row);
+        row.profit = calc.profit != null ? formatRoiNumber(calc.profit) : (fromSheet.profit || '');
+        row.pPct = calc.pPct != null ? `${formatRoiNumber(calc.pPct, 0)}%` : (fromSheet.pPct || '');
+        row.roi = calc.roi != null ? `${formatRoiNumber(calc.roi, 0)}%` : (fromSheet.roi || '');
+        row.isOverall = false;
+
+        return row;
+    }
+
+    function buildOverallRoiRow(platformRows, cells, metrics, lmpRates) {
+        const fromSheet = readCostCalculatorRowFromSheet(cells || [], ROI_OVERALL_CHANNEL, metrics?.specCol ?? 0);
+        const template = (platformRows || [])[0] || {};
+        const lmps = (platformRows || [])
+            .map(r => parseSheetNumber(r.lmp))
+            .filter(n => n != null);
+        const sales = (platformRows || [])
+            .map(r => parseSheetNumber(r.sale))
+            .filter(n => n != null);
+        const overallLmp = lmps.length ? Math.min(...lmps) : null;
+        const avgSale = sales.length
+            ? (sales.reduce((sum, n) => sum + n, 0) / sales.length)
+            : null;
+        const sale = avgSale != null
+            ? formatRoiNumber(avgSale)
+            : (fromSheet.sale || (overallLmp != null ? formatRoiNumber(overallLmp * ROI_LMP_SALE_FACTOR) : ''));
+        const priceAfterVals = (platformRows || [])
+            .map(r => parseSheetNumber(r.priceAfterLmp))
+            .filter(n => n != null);
+        const priceAfterLmp = priceAfterVals.length
+            ? formatRoiNumber(priceAfterVals.reduce((sum, n) => sum + n, 0) / priceAfterVals.length)
+            : '';
+
+        const row = {
+            channel: ROI_OVERALL_CHANNEL,
+            isOverall: true,
+            cp: template.cp || (metrics?.cp != null ? formatRoiNumber(metrics.cp) : ''),
+            cbm: template.cbm || '',
+            freight: template.freight || '',
+            gw: template.gw || '',
+            shipping: template.shipping || '',
+            sale,
+            lmp: overallLmp != null ? formatRoiNumber(overallLmp) : '',
+            priceAfterLmp,
+            npft: getChannelNpftDisplay(ROI_OVERALL_CHANNEL, lmpRates || {
+                npft: Object.fromEntries((platformRows || []).map(r => [channelLmpKey(r.channel), parseRoiPercentValue(r.npft)])),
+            }),
+            nroi: getChannelNroiDisplay(ROI_OVERALL_CHANNEL, lmpRates || {
+                nroi: Object.fromEntries((platformRows || []).map(r => [channelLmpKey(r.channel), parseRoiPercentValue(r.nroi)])),
+            }),
         };
 
         const calc = calculateRoiMetrics(row);
@@ -7385,19 +8342,105 @@ document.addEventListener('DOMContentLoaded', function () {
         return row;
     }
 
+    function appendOverallRoiRow(platformRows, cells, lmpRates) {
+        const rows = (platformRows || []).filter(r => !r.isOverall);
+        const metrics = {
+            specCol: detectSpecColumnIndex(cells || currentSheetCells || []),
+            cp: parseSheetNumber(rows[0]?.cp),
+        };
+        return rows.concat([buildOverallRoiRow(rows, cells || currentSheetCells, metrics, lmpRates)]);
+    }
+
+    function buildAllRoiRows(cells, metrics, slabShipping, lmpRates) {
+        const platformRows = ROI_CHANNELS.map(channel => buildRoiChannelRow(
+            channel,
+            cells,
+            metrics,
+            slabShipping,
+            lmpRates
+        ));
+        return appendOverallRoiRow(platformRows, cells, lmpRates);
+    }
+
     function roiLmpCellHtml(rowIndex, row) {
-        const platform = String(row.channel || 'amazon').toLowerCase();
+        const platform = channelLmpKey(row.channel || 'amazon');
+        const label = roiChannelDisplayLabel(platform);
         const display = row.lmp || '';
+        if (row.isOverall || platform === 'overall') {
+            return display
+                ? `<td class="comparison-roi-lmp-cell" title="Lowest LMP across Amz / Ebay / Temu / Shopify">${escapeHtml(display)}</td>`
+                : `<td class="comparison-roi-lmp-cell text-muted" title="No platform LMP yet">—</td>`;
+        }
         if (!display) {
-            return `<td class="comparison-roi-lmp-cell text-muted">—</td>`;
+            return `<td class="comparison-roi-lmp-cell">
+                <button type="button" class="comparison-roi-lmp-add-btn"
+                    data-row="${rowIndex}" data-platform="${escapeHtmlAttr(platform)}"
+                    title="Add ${escapeHtml(label)} LMP">+</button>
+            </td>`;
         }
         return `<td class="comparison-roi-lmp-cell">
             <button type="button" class="btn btn-link comparison-roi-lmp-link p-0 border-0"
                 data-row="${rowIndex}" data-platform="${escapeHtmlAttr(platform)}"
-                title="View ${escapeHtml(platform === 'ebay' ? 'eBay' : 'Amz')} LMP competitors">
+                title="View / add ${escapeHtml(label)} LMP competitors">
                 ${escapeHtml(display)}
             </button>
         </td>`;
+    }
+
+    function roiChannelMarketplaceKey(channel) {
+        const key = channelLmpKey(channel);
+        if (key === 'amazon') return 'amazon';
+        if (key === 'ebay') return 'ebay1';
+        if (key === 'temu') return 'temu';
+        if (key === 'shopify') return 'shopify';
+        return '';
+    }
+
+    function roiPriceAfterLmpCellHtml(row) {
+        const display = row.priceAfterLmp || '';
+        const platform = roiChannelDisplayLabel(row.channel);
+        const marketplace = roiChannelMarketplaceKey(row.channel);
+        if (!display) {
+            return `<td class="comparison-roi-price-after-lmp-cell text-muted" title="No ${escapeHtmlAttr(platform)} listing price found">—</td>`;
+        }
+        const title = row.isOverall
+            ? 'Average listing price across channels'
+            : `Current ${platform} listing price`;
+        const historyDot = (!row.isOverall && marketplace)
+            ? ` <i class="fas fa-circle comparison-roi-price-history-dot"
+                data-sku="${escapeHtmlAttr((currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim())}"
+                data-marketplace="${escapeHtmlAttr(marketplace)}"
+                data-metric="price"
+                data-current-price="${escapeHtmlAttr(display)}"
+                data-platform-label="${escapeHtmlAttr(platform)}"
+                title="View ${escapeHtmlAttr(platform)} Price history (Rolling L30)"></i>`
+            : '';
+        return `<td class="comparison-roi-price-after-lmp-cell" title="${escapeHtmlAttr(title)}">${escapeHtml(display)}${historyDot}</td>`;
+    }
+
+    function roiMetricPctCellHtml(row, metric) {
+        const key = metric === 'nroi' ? 'nroi' : 'npft';
+        const display = row[key] || '';
+        const platform = roiChannelDisplayLabel(row.channel);
+        const marketplace = roiChannelMarketplaceKey(row.channel);
+        const label = key.toUpperCase();
+        const cellClass = key === 'nroi' ? 'comparison-roi-nroi-cell' : 'comparison-roi-npft-cell';
+        if (!display) {
+            return `<td class="${cellClass} text-muted" title="No ${escapeHtmlAttr(platform)} ${label} available">—</td>`;
+        }
+        const title = row.isOverall
+            ? `Average ${label} across channels`
+            : `${platform} ${label} (Pricing Master / OV L30)`;
+        const historyDot = (!row.isOverall && marketplace)
+            ? ` <i class="fas fa-circle comparison-roi-metric-history-dot"
+                data-sku="${escapeHtmlAttr((currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim())}"
+                data-marketplace="${escapeHtmlAttr(marketplace)}"
+                data-metric="${escapeHtmlAttr(key)}"
+                data-current-value="${escapeHtmlAttr(String(display).replace('%', ''))}"
+                data-platform-label="${escapeHtmlAttr(platform)}"
+                title="View ${escapeHtmlAttr(platform)} ${label} history (Rolling L30)"></i>`
+            : '';
+        return `<td class="${cellClass}" title="${escapeHtmlAttr(title)}">${escapeHtml(display)}${historyDot}</td>`;
     }
 
     function renderRoiModalTable(rows) {
@@ -7407,42 +8450,231 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         tbody.innerHTML = rows.map((row, rowIndex) => {
-            const inputCell = (field, value) =>
-                `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}"></td>`;
+            const inputCell = (field, value, readonly) => {
+                if (readonly) {
+                    return `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input comparison-roi-input-readonly" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}" readonly tabindex="-1" title="Overall uses average Sale / lowest LMP across platforms."></td>`;
+                }
+                return `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}"></td>`;
+            };
             const readonlyInputCell = (field, value) =>
                 `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input comparison-roi-input-readonly" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}" readonly tabindex="-1" title="Auto from Product Master (ship). Not editable."></td>`;
+            const overall = !!row.isOverall;
+            const rowClass = overall ? ' class="comparison-roi-overall-row"' : '';
 
-            return `<tr>
+            return `<tr${rowClass}>
                 <td class="comparison-roi-channel">${escapeHtml(row.channel)}</td>
-                ${inputCell('cp', row.cp)}
-                ${inputCell('cbm', row.cbm)}
+                ${inputCell('cp', row.cp, overall)}
+                ${inputCell('cbm', row.cbm, overall)}
                 ${roiCalcCellHtml(rowIndex, 'freight', row.freight)}
-                ${inputCell('gw', row.gw)}
+                ${inputCell('gw', row.gw, overall)}
                 ${readonlyInputCell('shipping', row.shipping)}
-                ${inputCell('sale', row.sale)}
+                ${inputCell('sale', row.sale, overall)}
                 ${roiLmpCellHtml(rowIndex, row)}
+                ${roiPriceAfterLmpCellHtml(row)}
+                ${roiMetricPctCellHtml(row, 'npft')}
+                ${roiMetricPctCellHtml(row, 'nroi')}
                 ${roiCalcCellHtml(rowIndex, 'pPct', row.pPct)}
-                ${roiCalcCellHtml(rowIndex, 'profit', row.profit)}
                 ${roiCalcCellHtml(rowIndex, 'roi', row.roi)}
+                ${roiCalcCellHtml(rowIndex, 'profit', row.profit)}
             </tr>`;
         }).join('');
 
-        tbody.querySelectorAll('.comparison-roi-input').forEach(input => {
+        tbody.querySelectorAll('.comparison-roi-input:not([readonly])').forEach(input => {
             input.addEventListener('input', handleRoiInputChange);
             input.addEventListener('focus', handleRoiInputFocus);
             input.addEventListener('blur', handleRoiInputBlur);
         });
-        tbody.querySelectorAll('.comparison-roi-lmp-link').forEach(btn => {
+        tbody.querySelectorAll('.comparison-roi-lmp-link, .comparison-roi-lmp-add-btn').forEach(btn => {
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
-                const sku = currentCdRow?.sku || '';
+                const sku = (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim();
                 const platform = btn.dataset.platform || 'amazon';
-                if (sku) {
-                    loadComparisonLmpModal(sku, platform);
+                if (sku && platform !== 'overall') {
+                    loadComparisonLmpModal(sku, platform, true);
                 }
             });
         });
+        tbody.querySelectorAll('.comparison-roi-price-history-dot, .comparison-roi-metric-history-dot').forEach(dot => {
+            dot.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openComparisonRoiPriceHistoryChart({
+                    sku: dot.dataset.sku || (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim(),
+                    marketplace: dot.dataset.marketplace || '',
+                    metric: dot.dataset.metric || 'price',
+                    currentPrice: dot.dataset.currentPrice || '',
+                    currentValue: dot.dataset.currentValue || '',
+                    platformLabel: dot.dataset.platformLabel || '',
+                });
+            });
+        });
         tbody.roiRows = rows;
+    }
+
+    let comparisonRoiPriceChart = null;
+    let comparisonRoiPriceChartDays = 30;
+    let comparisonRoiPriceChartContext = null;
+
+    function comparisonRoiMetricLabel(metric) {
+        if (metric === 'npft') return 'NPFT';
+        if (metric === 'nroi') return 'NROI';
+        return 'Price';
+    }
+
+    function openComparisonRoiPriceHistoryChart(ctx) {
+        const sku = String(ctx?.sku || '').trim();
+        const marketplace = String(ctx?.marketplace || '').trim();
+        const metric = String(ctx?.metric || 'price').toLowerCase();
+        if (!sku || !marketplace) {
+            showComparisonToast('error', 'SKU / marketplace missing for history chart');
+            return;
+        }
+
+        comparisonRoiPriceChartContext = {
+            sku,
+            marketplace,
+            metric: ['npft', 'nroi'].includes(metric) ? metric : 'price',
+            currentPrice: ctx?.currentPrice || '',
+            currentValue: ctx?.currentValue || '',
+            platformLabel: ctx?.platformLabel || marketplace,
+        };
+        comparisonRoiPriceChartDays = 30;
+        const rangeEl = document.getElementById('comparison-roi-price-chart-range');
+        if (rangeEl) {
+            rangeEl.value = '30';
+        }
+
+        const metricLabel = comparisonRoiMetricLabel(comparisonRoiPriceChartContext.metric);
+        const titleEl = document.getElementById('comparisonRoiPriceChartModalLabel');
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="fas fa-chart-line me-1"></i> ${escapeHtml(comparisonRoiPriceChartContext.platformLabel)} ${escapeHtml(metricLabel)} — ${escapeHtml(sku)} · Rolling L30`;
+        }
+        const loadingEl = document.getElementById('comparison-roi-price-chart-loading');
+        if (loadingEl) {
+            loadingEl.textContent = '';
+            loadingEl.innerHTML = `<div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading ${escapeHtml(metricLabel)} history…`;
+        }
+        const noDataEl = document.getElementById('comparison-roi-price-chart-nodata');
+        if (noDataEl) {
+            noDataEl.textContent = `No ${metricLabel} history for this channel / SKU yet.`;
+        }
+
+        const modalEl = document.getElementById('comparisonRoiPriceChartModal');
+        if (!modalEl || !window.bootstrap?.Modal) {
+            return;
+        }
+        if (modalEl.parentElement !== document.body) {
+            document.body.appendChild(modalEl);
+        }
+        modalEl.addEventListener('shown.bs.modal', function () {
+            const openModals = document.querySelectorAll('.modal.show');
+            const baseZ = 1050 + (openModals.length * 20);
+            modalEl.style.zIndex = String(baseZ + 10);
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            if (backdrops.length) {
+                backdrops[backdrops.length - 1].style.zIndex = String(baseZ);
+            }
+        }, { once: true });
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        loadComparisonRoiPriceHistoryChart();
+    }
+
+    function loadComparisonRoiPriceHistoryChart() {
+        const loading = document.getElementById('comparison-roi-price-chart-loading');
+        const container = document.getElementById('comparison-roi-price-chart-container');
+        const noData = document.getElementById('comparison-roi-price-chart-nodata');
+        if (loading) loading.style.display = '';
+        if (container) container.style.display = 'none';
+        if (noData) noData.style.display = 'none';
+
+        const ctx = comparisonRoiPriceChartContext;
+        if (!ctx?.sku || !ctx?.marketplace) {
+            if (loading) loading.style.display = 'none';
+            if (noData) noData.style.display = '';
+            return;
+        }
+
+        const params = new URLSearchParams({
+            sku: ctx.sku,
+            marketplace: ctx.marketplace,
+            days: String(comparisonRoiPriceChartDays || 30),
+            metric: ctx.metric || 'price',
+        });
+        if (ctx.currentPrice) {
+            params.set('current_price', String(ctx.currentPrice).replace(/[$,]/g, ''));
+        }
+        if (ctx.currentValue !== '' && ctx.currentValue != null) {
+            params.set('current_value', String(ctx.currentValue).replace('%', ''));
+        }
+
+        fetch(`${channelPriceChartDataUrl}?${params.toString()}`, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(r => r.json())
+            .then(response => {
+                if (loading) loading.style.display = 'none';
+                const points = response && response.success && Array.isArray(response.data) ? response.data : [];
+                if (!points.length) {
+                    if (noData) noData.style.display = '';
+                    return;
+                }
+                if (container) container.style.display = '';
+                renderComparisonRoiPriceHistoryChart(points);
+            })
+            .catch(() => {
+                if (loading) loading.style.display = 'none';
+                if (noData) noData.style.display = '';
+            });
+    }
+
+    function renderComparisonRoiPriceHistoryChart(points) {
+        const el = document.getElementById('comparison-roi-price-chart');
+        if (!el || typeof Highcharts === 'undefined') {
+            return;
+        }
+        const metric = comparisonRoiPriceChartContext?.metric || 'price';
+        const metricLabel = comparisonRoiMetricLabel(metric);
+        const isPct = metric === 'npft' || metric === 'nroi';
+        const categories = points.map(p => p.date);
+        const values = points.map(p => {
+            const v = parseFloat(p.value);
+            if (!Number.isFinite(v)) return null;
+            return isPct ? Math.round(v * 100) / 100 : Math.round(v * 100) / 100;
+        });
+
+        if (comparisonRoiPriceChart) {
+            try { comparisonRoiPriceChart.destroy(); } catch (e) {}
+            comparisonRoiPriceChart = null;
+        }
+
+        const color = metric === 'npft' ? '#28a745' : (metric === 'nroi' ? '#17a2b8' : '#e83e8c');
+
+        comparisonRoiPriceChart = Highcharts.chart(el, {
+            chart: { type: 'line', height: 260, backgroundColor: 'transparent' },
+            title: { text: null },
+            credits: { enabled: false },
+            xAxis: { categories, tickInterval: Math.max(1, Math.floor(categories.length / 8)) },
+            yAxis: {
+                title: { text: isPct ? `${metricLabel} (%)` : 'Price ($)' },
+            },
+            legend: { enabled: false },
+            tooltip: {
+                pointFormatter: function () {
+                    if (isPct) {
+                        return `<b>${Number(this.y).toFixed(1)}%</b>`;
+                    }
+                    return `<b>$${Number(this.y).toFixed(2)}</b>`;
+                },
+            },
+            plotOptions: {
+                line: {
+                    marker: { enabled: true, radius: 3 },
+                    color,
+                    lineWidth: 2,
+                },
+            },
+            series: [{ name: metricLabel, data: values }],
+        });
     }
 
     function handleRoiCbmBlur(event) {
@@ -7592,7 +8824,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         const sku = (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim();
-        const emptyLmp = { amazon: null, ebay: null };
+        const emptyLmp = {
+            amazon: null,
+            ebay: null,
+            temu: null,
+            shopify: null,
+            prices: { amazon: null, ebay: null, temu: null, shopify: null },
+            npft: { amazon: null, ebay: null, temu: null, shopify: null },
+            nroi: { amazon: null, ebay: null, temu: null, shopify: null },
+        };
         const manualLmpInput = document.getElementById('comparison-roi-manual-lmp');
         if (manualLmpInput) {
             manualLmpInput.value = '';
@@ -7611,10 +8851,30 @@ document.addEventListener('DOMContentLoaded', function () {
             shipping: '',
             sale: '',
             lmp: '',
+            priceAfterLmp: '',
+            npft: '',
+            nroi: '',
             profit: '',
             pPct: '',
             roi: '',
-        }));
+            isOverall: false,
+        })).concat([{
+            channel: ROI_OVERALL_CHANNEL,
+            cp: '',
+            cbm: '',
+            freight: '',
+            gw: '',
+            shipping: '',
+            sale: '',
+            lmp: '',
+            priceAfterLmp: '',
+            npft: '',
+            nroi: '',
+            profit: '',
+            pPct: '',
+            roi: '',
+            isOverall: true,
+        }]);
         renderRoiModalTable(placeholderRows);
 
         const roiModalEl = getRoiModalElement();
@@ -7642,20 +8902,17 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         const metrics = extractLowestPriceColumnMetrics(currentSheetCells);
-        const rows = ROI_CHANNELS.map(channel => buildRoiChannelRow(
-            channel,
-            currentSheetCells,
-            metrics,
-            null,
-            emptyLmp
-        ));
-        renderRoiModalTable(rows);
+        renderRoiModalTable(buildAllRoiRows(currentSheetCells, metrics, null, emptyLmp));
 
         // Prefer Product Master ship for SKU; GW is used only for slab fallback when PM ship is empty.
-        const [slabInfo, lmpRates] = await Promise.all([
+        // NPFT/NROI come from Pricing Master breakdown (same as OV L30).
+        const [slabInfo, lmpRates, npftNroi] = await Promise.all([
             fetchShippingSlabRate(metrics.gw, sku),
             fetchPlatformLmpRates(sku),
+            fetchChannelNpftNroi(sku),
         ]);
+        lmpRates.npft = npftNroi.npft || emptyLmp.npft;
+        lmpRates.nroi = npftNroi.nroi || emptyLmp.nroi;
 
         // Ignore stale responses if the user closed/reopened for another SKU.
         const stillSameSku = (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim() === sku;
@@ -7663,14 +8920,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const hydratedRows = ROI_CHANNELS.map(channel => buildRoiChannelRow(
-            channel,
-            currentSheetCells,
-            metrics,
-            slabInfo?.rate,
-            lmpRates
-        ));
-        renderRoiModalTable(hydratedRows);
+        renderRoiModalTable(buildAllRoiRows(currentSheetCells, metrics, slabInfo?.rate, lmpRates));
         updateManualLmpSection(lmpRates);
         setRoiSaveStatus('', false);
     }
@@ -9556,6 +10806,20 @@ document.addEventListener('DOMContentLoaded', function () {
             applyManualLmpToBoth();
         }
     });
+    document.getElementById('comparison-roi-price-chart-range')?.addEventListener('change', function () {
+        const days = parseInt(this.value, 10);
+        comparisonRoiPriceChartDays = Number.isFinite(days) ? days : 30;
+        const ctx = comparisonRoiPriceChartContext;
+        if (!ctx) {
+            return;
+        }
+        const metricLabel = comparisonRoiMetricLabel(ctx.metric || 'price');
+        const titleEl = document.getElementById('comparisonRoiPriceChartModalLabel');
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="fas fa-chart-line me-1"></i> ${escapeHtml(ctx.platformLabel)} ${escapeHtml(metricLabel)} — ${escapeHtml(ctx.sku)} · Rolling L${comparisonRoiPriceChartDays}`;
+        }
+        loadComparisonRoiPriceHistoryChart();
+    });
     document.getElementById('comparison-cd-copy-specs-btn')?.addEventListener('click', copySpecsToMemory);
     document.getElementById('comparison-cd-qc-issues-btn')?.addEventListener('click', openComparisonQcIssuesModal);
 
@@ -10125,7 +11389,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('comparison-lmp-add-form')?.addEventListener('submit', function (e) {
         e.preventDefault();
-        submitAmazonLmpAddForm('comparison-lmp', 'comparison-lmp-add-form');
+        submitComparisonLmpAddForm();
     });
 
     document.addEventListener('click', function (e) {
@@ -10313,6 +11577,39 @@ document.addEventListener('DOMContentLoaded', function () {
     </div>
 </div>
 
+<div class="modal fade" id="comparisonRoiPriceChartModal" tabindex="-1" aria-labelledby="comparisonRoiPriceChartModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0" id="comparisonRoiPriceChartModalLabel">
+                    <i class="fas fa-chart-line me-1"></i> Price history
+                </h6>
+                <div class="d-flex align-items-center gap-2 ms-auto me-2">
+                    <select id="comparison-roi-price-chart-range" class="form-select form-select-sm" style="width: 110px;">
+                        <option value="90">L90</option>
+                        <option value="60">L60</option>
+                        <option value="30" selected>L30</option>
+                        <option value="7">L7</option>
+                    </select>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body p-3">
+                <div id="comparison-roi-price-chart-loading" class="text-center py-4 text-muted" style="display:none;">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Loading price history…
+                </div>
+                <div id="comparison-roi-price-chart-nodata" class="text-center py-4 text-muted" style="display:none;">
+                    No price history for this channel / SKU yet.
+                </div>
+                <div id="comparison-roi-price-chart-container" style="display:none;">
+                    <div id="comparison-roi-price-chart" style="min-height: 260px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="comparisonQcIssuesModal" tabindex="-1" aria-labelledby="comparisonQcIssuesModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
@@ -10367,22 +11664,22 @@ document.addEventListener('DOMContentLoaded', function () {
 </div>
 
 <div class="modal fade" id="comparisonRoiModal" tabindex="-1" aria-labelledby="comparisonRoiModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-dialog comparison-roi-modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header py-2">
-                <h6 class="modal-title mb-0" id="comparisonRoiModalLabel">
+            <div class="modal-header">
+                <h5 class="modal-title mb-0" id="comparisonRoiModalLabel">
                     <i class="mdi mdi-percent"></i> Cost Calculator — ROI%
-                </h6>
+                </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body p-3">
+            <div class="modal-body">
                 <div id="comparison-roi-manual-lmp-wrap" class="d-none border rounded p-2 mb-2 bg-light">
                     <div class="small text-muted mb-2" id="comparison-roi-manual-lmp-hint"></div>
                     <div class="d-flex flex-wrap align-items-center gap-2">
-                        <label class="small mb-0 fw-semibold" for="comparison-roi-manual-lmp">Manual LMP (both):</label>
+                        <label class="small mb-0 fw-semibold" for="comparison-roi-manual-lmp">Manual LMP (all):</label>
                         <input type="text" id="comparison-roi-manual-lmp" class="form-control form-control-sm" style="width: 120px;" placeholder="LMP $">
                         <button type="button" class="btn btn-sm btn-outline-primary" id="comparison-roi-apply-manual-lmp">
-                            Apply LMP × 0.9 to both
+                            Apply LMP × 0.9 to all
                         </button>
                     </div>
                 </div>
@@ -10398,10 +11695,13 @@ document.addEventListener('DOMContentLoaded', function () {
                                 <th>GW LB</th>
                                 <th>Shipping</th>
                                 <th>Sale</th>
-                                <th>lmp</th>
+                                <th>LMP</th>
+                                <th title="Current listing price from each marketplace">Price</th>
+                                <th title="NPFT% = GPFT% − Ads% (same as Pricing Master / OV L30)">NPFT</th>
+                                <th title="NROI% = (Gross Profit − Ads $) ÷ LP × 100 (same as Pricing Master / OV L30)">NROI</th>
                                 <th>P%</th>
-                                <th>Profit</th>
                                 <th>ROI (G)</th>
+                                <th>Profit</th>
                             </tr>
                         </thead>
                         <tbody id="comparison-roi-tbody"></tbody>

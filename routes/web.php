@@ -4877,6 +4877,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shipping-master/update', [CategoryController::class, 'updateShippingMaster'])->name('shipping.master.update');
     Route::post('/shipping-master/import', [CategoryController::class, 'importShippingMaster'])->name('shipping.master.import');
     Route::get('/shipping-master/history/{id}', [CategoryController::class, 'getShippingMasterHistory'])->whereNumber('id')->name('shipping.master.history');
+    Route::get('/shipping-master/slab-history/{slabKey}', [CategoryController::class, 'getShippingSlabRateHistory'])->name('shipping.master.slab.history');
+    Route::post('/shipping-master/slab-history', [CategoryController::class, 'storeShippingSlabRateHistory'])->name('shipping.master.slab.history.store');
     Route::get('/general-specific-master', [CategoryController::class, 'generalSpecificMaster'])->name('general.specific.master');
     Route::get('/general-specific-master-data-view', [CategoryController::class, 'getGeneralSpecificMasterData'])->name('general.specific.master.data');
     Route::get('/general-specific-master/skus', [CategoryController::class, 'getSkusForDropdown'])->name('general.specific.master.skus');

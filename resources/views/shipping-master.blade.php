@@ -863,6 +863,37 @@
             background-color: #fff;
             border-color: #86b7fe;
         }
+        #slabRatesTable th.slab-rates-history-col,
+        #slabRatesTable td.slab-rates-history-cell {
+            width: 56px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        #slabRatesTable .slab-history-btn {
+            border: none;
+            background: transparent;
+            color: #0d6efd;
+            padding: 2px 6px;
+            line-height: 1;
+            border-radius: 4px;
+        }
+        #slabRatesTable .slab-history-btn:hover {
+            background: rgba(13, 110, 253, 0.12);
+            color: #0a58ca;
+        }
+        /* Nested History modals must sit above Edit / Slab Rates. */
+        #slabRatesModal,
+        #editDimWtModal {
+            z-index: 1055;
+        }
+        #slabRatesHistoryModal,
+        #shippingHistoryModal {
+            z-index: 1080 !important;
+        }
+        .modal-backdrop.slab-rates-history-backdrop,
+        .modal-backdrop.shipping-history-backdrop {
+            z-index: 1070 !important;
+        }
         #slabRatesTable input.slab-rate-input.slab-rate-mixed {
             background-color: #fffbeb;
             border-color: #fde68a;
@@ -994,9 +1025,19 @@
                                 <button type="button" class="btn btn-dark" id="slabRatesBtn" title="Slab — apply rates by weight slab">
                                     <i class="fas fa-layer-group me-1"></i> Slab
                                 </button>
-                                <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
-                                    <i class="fas fa-file-upload me-1"></i> Import
-                                </button>
+                                @php
+                                    $__shippingImportEmails = ['ecomm5@5core.com', 'shipping@5core.com'];
+                                    $__canImportShippingMaster = in_array(
+                                        strtolower(trim((string) (auth()->user()->email ?? ''))),
+                                        $__shippingImportEmails,
+                                        true
+                                    );
+                                @endphp
+                                @if ($__canImportShippingMaster)
+                                    <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
+                                        <i class="fas fa-file-upload me-1"></i> Import
+                                    </button>
+                                @endif
                                 <button type="button" class="btn btn-success" id="downloadExcel" title="Download" aria-label="Download">
                                     <i class="fas fa-download"></i>
                                 </button>
@@ -1053,6 +1094,9 @@
                                             <option value="O-Size">O-Size</option>
                                             <option value="Pallet">Pallet</option>
                                         </select>
+                                    </th>
+                                    <th data-col-key="handling_charge" data-col-label="Handling Charge" class="shipping-rate-header" title="Handling Charge (up to 3 characters)">
+                                        <span class="th-vertical-label">Handling<br>Charge</span>
                                     </th>
                                     <th data-col-key="inv" data-col-label="INV" class="shipping-rate-header"><span class="th-vertical-label">INV</span></th>
                                     <th data-col-key="ship" data-col-label="Ship" class="th-has-filter shipping-rate-header shipping-ship-col" data-pm-ship-col="ship">
@@ -1166,6 +1210,9 @@
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
+                                    <th data-col-key="wt_oz" data-col-label="OZ" class="item-dim-header" title="Autofilled from LB when weight is under 1 lb; blank otherwise">
+                                        <span class="th-vertical-label">OZ</span>
+                                    </th>
                                     <th data-col-key="l" data-col-label="Item Length (inch)" class="th-has-filter item-dim-header">
                                         <div class="th-vertical-label" style="font-size: 9px;">Item Length<br>(inch)</div>
                                         <select id="filterL" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
@@ -1277,6 +1324,11 @@
                                     <option value="O-Size">O-Size</option>
                                     <option value="Pallet">Pallet</option>
                                 </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editHandlingCharge" class="form-label fw-bold" title="Up to 3 characters">Handling Charge</label>
+                                <input type="text" class="form-control fw-bold" id="editHandlingCharge" name="handling_charge"
+                                    maxlength="3" placeholder="e.g. HC" title="Handling Charge (max 3 characters)" autocomplete="off">
                             </div>
                         </div>
                         
@@ -1465,16 +1517,22 @@
                         </div>
                     </form>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveDimWtBtn">
-                        <i class="fas fa-save me-2"></i> Save Changes
+                <div class="modal-footer justify-content-between">
+                    <button type="button" class="btn btn-outline-info" id="editDimWtHistoryBtn" title="View change history for this SKU">
+                        <i class="bi bi-clock-history me-1"></i> History
                     </button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" id="saveDimWtBtn">
+                            <i class="fas fa-save me-2"></i> Save Changes
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    @if (!empty($__canImportShippingMaster))
     <!-- Import Excel Modal -->
     <div class="modal fade" id="importExcelModal" tabindex="-1" aria-labelledby="importExcelModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -1524,6 +1582,7 @@
             </div>
         </div>
     </div>
+    @endif
 
     <!-- Shipping Master History Modal -->
     <div class="modal fade" id="shippingHistoryModal" tabindex="-1" aria-labelledby="shippingHistoryModalLabel" aria-hidden="true">
@@ -1555,6 +1614,46 @@
                                 </tr>
                             </thead>
                             <tbody id="shippingHistoryTbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slab Rates History Modal -->
+    <div class="modal fade" id="slabRatesHistoryModal" tabindex="-1" aria-labelledby="slabRatesHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white;">
+                    <h5 class="modal-title" id="slabRatesHistoryModalLabel">
+                        <i class="bi bi-clock-history me-2"></i>Slab History — <span id="slabRatesHistoryLabel" class="fw-bold"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="slabRatesHistoryLoading" class="text-center py-4" style="display:none;">
+                        <div class="spinner-border text-info" role="status"></div>
+                        <p class="mt-2 text-muted small mb-0">Loading history…</p>
+                    </div>
+                    <div id="slabRatesHistoryEmpty" class="alert alert-info mb-0" style="display:none;">
+                        <i class="fas fa-info-circle me-2"></i> No slab rate changes recorded for this weight slab yet.
+                    </div>
+                    <div id="slabRatesHistoryError" class="alert alert-danger mb-0" style="display:none;"></div>
+                    <div class="table-responsive" id="slabRatesHistoryTableWrap" style="display:none; max-height: 65vh;">
+                        <table class="table table-sm table-hover mb-0 align-middle shipping-history-table">
+                            <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                                <tr>
+                                    <th style="white-space:nowrap; width: 20%;">Field</th>
+                                    <th style="white-space:nowrap; width: 18%;">When (EST)</th>
+                                    <th style="white-space:nowrap; width: 14%;">Who</th>
+                                    <th>Change (old → new)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="slabRatesHistoryTbody"></tbody>
                         </table>
                     </div>
                 </div>
@@ -1686,6 +1785,7 @@
                                 <tr id="slabRatesHeadRow">
                                     <th class="slab-rates-sticky-col" style="font-size: 12px; min-width: 220px;">Weight Slab</th>
                                     <th class="text-center" style="font-size: 12px; width: 70px;"># SKUs</th>
+                                    <th class="text-center slab-rates-history-col" style="font-size: 12px;" title="Slab rate change history">History</th>
                                     <!-- carrier <th>s injected here -->
                                 </tr>
                             </thead>
@@ -1872,6 +1972,13 @@
             function normalizeLabelType(raw) {
                 const v = String(raw == null ? '' : raw).trim();
                 return LABEL_TYPE_OPTIONS.includes(v) ? v : 'STD';
+            }
+
+            /** Handling Charge: optional free text, max 3 characters. */
+            function normalizeHandlingCharge(raw) {
+                const v = String(raw == null ? '' : raw).trim();
+                if (!v) return '';
+                return v.slice(0, 3);
             }
 
             function applyLabelTypeColor(dropdown, labelType) {
@@ -2121,7 +2228,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="41" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="43" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -2279,6 +2386,20 @@
                     }
                     row.appendChild(labelTypeCell);
 
+                    // Handling Charge — optional text, max 3 chars
+                    const handlingChargeCell = document.createElement('td');
+                    handlingChargeCell.className = 'text-center shipping-rate-cell';
+                    if (isParentRow) {
+                        handlingChargeCell.textContent = '--';
+                    } else {
+                        const hcVal = normalizeHandlingCharge(
+                            pkg.isExtraPackage ? item.handling_charge : sourceItem.handling_charge
+                        );
+                        handlingChargeCell.textContent = hcVal || '';
+                        if (hcVal) handlingChargeCell.title = hcVal;
+                    }
+                    row.appendChild(handlingChargeCell);
+
                     // INV column (bold; child 0 / missing = red)
                     const invCell = document.createElement('td');
                     invCell.className = 'text-center shipping-rate-cell';
@@ -2398,6 +2519,12 @@
                     wtActCell.className = 'text-center';
                     wtActCell.textContent = itemWeightActDisplay(item, isParentRow);
                     row.appendChild(wtActCell);
+
+                    // OZ — only when LB < 1; otherwise blank
+                    const wtOzCell = document.createElement('td');
+                    wtOzCell.className = 'text-center';
+                    wtOzCell.textContent = itemWeightOzColumnDisplay(item, isParentRow);
+                    row.appendChild(wtOzCell);
 
                     // L column (inch) - round to whole number
                     const lCell = document.createElement('td');
@@ -2543,9 +2670,6 @@
                             <button type="button" class="btn btn-sm btn-outline-warning edit-btn" data-id="${editTarget.id != null ? String(editTarget.id) : ''}" data-sku="${escapeHtml(editTarget.SKU)}" title="${escapeHtml(editTitle)}">
                                 <i class="bi bi-pencil-square"></i>
                             </button>
-                            <button type="button" class="btn btn-sm btn-outline-info history-btn" data-id="${editTarget.id != null ? String(editTarget.id) : ''}" data-sku="${escapeHtml(editTarget.SKU)}" title="History — see who changed what">
-                                <i class="bi bi-clock-history"></i>
-                            </button>
                             ${showDelete ? `
                             <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(sourceItem.id)}" data-sku="${escapeHtml(sourceItem.SKU)}" title="Delete">
                                 <i class="bi bi-archive"></i>
@@ -2582,16 +2706,6 @@
                         editDimWt(product);
                     });
 
-                    // Add event listener for history button
-                    const historyBtn = actionCell.querySelector('.history-btn');
-                    if (historyBtn) {
-                        historyBtn.addEventListener('click', function() {
-                            const id = this.getAttribute('data-id');
-                            const sku = this.getAttribute('data-sku');
-                            openShippingHistoryModal(id, sku);
-                        });
-                    }
-
                     if (!isParentRow) convertMissingDashesToIndicator(row);
                     tbody.appendChild(row);
                     }); // end packageRows.forEach
@@ -2606,36 +2720,38 @@
             const SHIPPING_COLUMN_INDEX_TO_FIELD = {
                 5:  'label_qty',
                 6:  'label_type',
-                7:  'inv',
-                8:  'ship',
-                9:  'ship_bb',
-                10: 'tt_ship',
-                11: 'temu_ship',
-                12: 'temu_gofo',
-                13: 'gofo',
-                14: 'fedex',
-                15: 'ups',
-                16: 'usps',
-                17: 'uni',
-                18: 'fba_sku',
-                19: 'fba_ship',
-                20: 'fba_manual_ship',
-                21: 'wt_act_kg',
-                22: 'wt_act',
-                23: 'l',
-                24: 'w',
-                25: 'h',
-                26: 'wt_decl',
-                27: 'l_decl',
-                28: 'w_decl',
-                29: 'h_decl',
-                30: 'l_cm',
-                31: 'w_cm',
-                32: 'h_cm',
-                33: 'ctn_l',
-                34: 'ctn_w',
-                35: 'ctn_h',
-                37: 'ctn_qty'
+                7:  'handling_charge',
+                8:  'inv',
+                9:  'ship',
+                10: 'ship_bb',
+                11: 'tt_ship',
+                12: 'temu_ship',
+                13: 'temu_gofo',
+                14: 'gofo',
+                15: 'fedex',
+                16: 'ups',
+                17: 'usps',
+                18: 'uni',
+                19: 'fba_sku',
+                20: 'fba_ship',
+                21: 'fba_manual_ship',
+                22: 'wt_act_kg',
+                23: 'wt_act',
+                // 24: wt_oz (computed; not editable)
+                25: 'l',
+                26: 'w',
+                27: 'h',
+                28: 'wt_decl',
+                29: 'l_decl',
+                30: 'w_decl',
+                31: 'h_decl',
+                32: 'l_cm',
+                33: 'w_cm',
+                34: 'h_cm',
+                35: 'ctn_l',
+                36: 'ctn_w',
+                37: 'ctn_h',
+                39: 'ctn_qty'
             };
 
             /** Human-readable field labels used by the small "Enter Missing
@@ -2643,6 +2759,7 @@
             const SHIPPING_FIELD_LABELS = {
                 label_qty:       'Label Qty',
                 label_type:      'Label Type',
+                handling_charge: 'Handling Charge',
                 wt_act_kg:       'Item Weight ACT (Kg)',
                 wt_act:          'Item WT ACT (LB)',
                 wt_decl:         'Itm wt GW Decl',
@@ -2992,9 +3109,9 @@
                 uni: false,
             };
             const SHIPPING_COL_CATEGORIES = {
-                basic: ['select', 'image', 'parent', 'sku', 'status', 'label_qty', 'label_type', 'inv', 'verified', 'action'],
+                basic: ['select', 'image', 'parent', 'sku', 'status', 'label_qty', 'label_type', 'handling_charge', 'inv', 'verified', 'action'],
                 ship_rates: ['ship', 'ship_bb', 'tt_ship', 'temu_ship', 'temu_gofo', 'gofo', 'fedex', 'ups', 'usps', 'uni', 'fba_sku', 'fba_ship', 'fba_manual_ship'],
-                wt: ['wt_act_kg', 'wt_act', 'wt_decl'],
+                wt: ['wt_act_kg', 'wt_act', 'wt_oz', 'wt_decl'],
                 dimensions: ['l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each'],
                 other: [],
             };
@@ -3536,6 +3653,15 @@
                 return `${formatNumber(lb, 1)} LB`;
             }
 
+            /** Dedicated OZ column: fill only when LB < 1; otherwise blank. */
+            function itemWeightOzColumnDisplay(item, isParentRow) {
+                if (isParentRow) return '--';
+                const lb = itemWeightActLbResolved(item);
+                if (lb === null || !Number.isFinite(lb) || lb >= 1) return '';
+                const oz = itemWeightActOzFromLb(lb);
+                return oz === null ? '' : formatNumber(oz, 1);
+            }
+
             /** Decl field value, falling back to ACT when Decl is empty (first-time copy). */
             function itemDeclValue(item, declKey, actKey) {
                 if (!isMissing(item[declKey])) return item[declKey];
@@ -3553,13 +3679,13 @@
             /** 1–15 oz upper limits (lb) from conversion table. */
             const WT_ACT_OZ_LB_UPPER = [0.06, 0.13, 0.19, 0.25, 0.31, 0.38, 0.44, 0.50, 0.56, 0.63, 0.69, 0.75, 0.81, 0.88, 0.94];
 
-            /** Oz bands shown in Item WT ACT (LB) filter dropdown. */
-            const WT_ACT_OZ_FILTER_OPTIONS = [2, 4, 6, 12];
+            /** Oz bands shown in Item WT ACT (LB) filter dropdown / Slab Rates. */
+            const WT_ACT_OZ_FILTER_OPTIONS = [4, 6, 12];
 
             /** Custom oz slab ranges (oz min/max); others use adjacent table limits. */
             const WT_ACT_OZ_FILTER_SLABS = {
-                2: { ozMin: 0.01, ozMax: 2, label: '0.01–2 oz (0.01 – 0.125 lb)' },
-                4: { ozMin: 2.01, ozMax: 4, label: '2.01–4 oz (0.126 – 0.25 lb)' },
+                // Merged former 0.01–2 oz + 2.01–4 oz into one band
+                4: { ozMin: 0.01, ozMax: 4, label: '0.01–4 oz (0.01 – 0.25 lb)' },
                 6: { ozMin: 4.01, ozMax: 8, label: '4.01–8 oz (0.251 – 0.5 lb)' },
                 12: { ozMin: 8.01, ozMax: 12, label: '8.01–12 oz (0.51 – 0.75 lb)' },
             };
@@ -3606,16 +3732,10 @@
                 { key: 'lb_201_3', lbMin: 2.01, lbMax: 3, label: '2.01 lb – 3 lb' },
                 { key: 'lb_301_4', lbMin: 3.01, lbMax: 4, label: '3.01 lb – 4 lb' },
                 { key: 'lb_401_5', lbMin: 4.01, lbMax: 5, label: '4.01 lb – 5 lb' },
-                { key: 'lb_501_6', lbMin: 5.01, lbMax: 6, label: '5.01 lb – 6 lb' },
-                { key: 'lb_601_7', lbMin: 6.01, lbMax: 7, label: '6.01 lb – 7 lb' },
-                { key: 'lb_701_8', lbMin: 7.01, lbMax: 8, label: '7.01 lb – 8 lb' },
-                { key: 'lb_801_9', lbMin: 8.01, lbMax: 9, label: '8.01 lb – 9 lb' },
-                { key: 'lb_901_10', lbMin: 9.01, lbMax: 10, label: '9.01 lb – 10 lb' },
-                { key: 'lb_1001_11', lbMin: 10.01, lbMax: 11, label: '10.01 lb – 11 lb' },
-                { key: 'lb_1101_12', lbMin: 11.01, lbMax: 12, label: '11.01 lb – 12 lb' },
-                { key: 'lb_1201_13', lbMin: 12.01, lbMax: 13, label: '12.01 lb – 13 lb' },
-                { key: 'lb_1301_14', lbMin: 13.01, lbMax: 14, label: '13.01 lb – 14 lb' },
-                { key: 'lb_1401_20', lbMin: 14.01, lbMax: 20, label: '14.01 lb – 20 lb' },
+                // Merged former 5.01–6 through 9.01–10 into one band
+                { key: 'lb_501_10', lbMin: 5.01, lbMax: 10, label: '5.01 lb – 10 lb' },
+                // Merged former 10.01–11 through 14.01–20 into one band
+                { key: 'lb_1001_20', lbMin: 10.01, lbMax: 20, label: '10.01 lb – 20 lb' },
                 { key: 'lb_20_30', lbMin: 20.01, lbMax: 25, label: '20.01 lb – 25 lb' },
                 { key: 'lb_2501_30', lbMin: 25.01, lbMax: 30, label: '25.01 lb – 30 lb' },
                 { key: 'lb_30_40', lbMin: 30.01, lbMax: 40, label: '30.01 lb – 40 lb' },
@@ -4023,11 +4143,19 @@
                 if (key === 'label_type') {
                     return normalizeLabelType(item.label_type);
                 }
+                if (key === 'handling_charge') {
+                    return normalizeHandlingCharge(item.handling_charge);
+                }
                 if (key === 'shopify_inv') {
                     return item.shopify_inv;
                 }
                 if (key === 'wt_act_lb') {
                     return itemWeightActLbResolved(item);
+                }
+                if (key === 'wt_oz') {
+                    const lb = itemWeightActLbResolved(item);
+                    if (lb === null || !Number.isFinite(lb) || lb >= 1) return null;
+                    return itemWeightActOzFromLb(lb);
                 }
                 if (key === 'wt_decl_lb') {
                     return itemWeightDeclLbRounded(item);
@@ -4077,14 +4205,21 @@
                 const key = currentSortKey;
                 const type = currentSortType;
                 const dir = currentSortDir;
+                // OZ is sparse (only LB < 1) — keep blank rows at the end in both directions.
+                const blanksLast = (key === 'wt_oz');
                 filteredData.sort((a, b) => {
                     let av = getShippingSortValue(a, key);
                     let bv = getShippingSortValue(b, key);
                     if (type === 'num') {
                         av = parseFloat(av);
                         bv = parseFloat(bv);
-                        if (isNaN(av)) av = -Infinity;
-                        if (isNaN(bv)) bv = -Infinity;
+                        const aBlank = isNaN(av);
+                        const bBlank = isNaN(bv);
+                        if (blanksLast && aBlank !== bBlank) {
+                            return aBlank ? 1 : -1;
+                        }
+                        if (aBlank) av = -Infinity;
+                        if (bBlank) bv = -Infinity;
                         return (av - bv) * dir;
                     }
                     av = String(av || '').toLowerCase();
@@ -4096,54 +4231,58 @@
             function setupSort() {
                 const table = document.getElementById('dim-wt-master-datatable');
                 if (!table) return;
-                const ths = table.querySelectorAll('thead th');
-                // Column index -> { key, type }. null / missing = not sortable.
-                const sortMap = {
-                    2: { key: 'Parent', type: 'text' },
-                    3: { key: 'SKU', type: 'text' },
-                    4: { key: 'status', type: 'text' },
-                    5: { key: 'label_qty', type: 'num' },
-                    6: { key: 'label_type', type: 'text' },
-                    7: { key: 'shopify_inv', type: 'num' },
-                    8: { key: 'ship', type: 'num' },
-                    9: { key: 'ship_bb', type: 'num' },
-                    10: { key: 'tt_ship', type: 'num' },
-                    11: { key: 'temu_ship', type: 'num' },
-                    12: { key: 'temu_gofo', type: 'num' },
-                    13: { key: 'gofo', type: 'num' },
-                    14: { key: 'fedex', type: 'num' },
-                    15: { key: 'ups', type: 'num' },
-                    16: { key: 'usps', type: 'num' },
-                    17: { key: 'uni', type: 'num' },
-                    18: { key: 'fba_sku', type: 'text' },
-                    19: { key: 'fba_ship', type: 'num' },
-                    20: { key: 'fba_manual_ship', type: 'num' },
-                    21: { key: 'wt_act_kg', type: 'num' },
-                    22: { key: 'wt_act_lb', type: 'num' },
-                    23: { key: 'l', type: 'num' },
-                    24: { key: 'w', type: 'num' },
-                    25: { key: 'h', type: 'num' },
-                    26: { key: 'wt_decl_lb', type: 'num' },
-                    27: { key: 'l_decl', type: 'num' },
-                    28: { key: 'w_decl', type: 'num' },
-                    29: { key: 'h_decl', type: 'num' },
-                    30: { key: 'l_cm', type: 'num' },
-                    31: { key: 'w_cm', type: 'num' },
-                    32: { key: 'h_cm', type: 'num' },
-                    33: { key: 'ctn_l', type: 'num' },
-                    34: { key: 'ctn_w', type: 'num' },
-                    35: { key: 'ctn_h', type: 'num' },
-                    36: { key: 'ctn_cbm', type: 'num' },
-                    37: { key: 'ctn_qty', type: 'num' },
-                    38: { key: 'ctn_cbm_each', type: 'num' },
-                    39: { key: 'verified_data', type: 'num' },
+                // Prefer data-col-key so new columns (e.g. OZ) stay sortable if header order shifts.
+                const sortByColKey = {
+                    parent: { key: 'Parent', type: 'text' },
+                    sku: { key: 'SKU', type: 'text' },
+                    status: { key: 'status', type: 'text' },
+                    label_qty: { key: 'label_qty', type: 'num' },
+                    label_type: { key: 'label_type', type: 'text' },
+                    handling_charge: { key: 'handling_charge', type: 'text' },
+                    inv: { key: 'shopify_inv', type: 'num' },
+                    ship: { key: 'ship', type: 'num' },
+                    ship_bb: { key: 'ship_bb', type: 'num' },
+                    tt_ship: { key: 'tt_ship', type: 'num' },
+                    temu_ship: { key: 'temu_ship', type: 'num' },
+                    temu_gofo: { key: 'temu_gofo', type: 'num' },
+                    gofo: { key: 'gofo', type: 'num' },
+                    fedex: { key: 'fedex', type: 'num' },
+                    ups: { key: 'ups', type: 'num' },
+                    usps: { key: 'usps', type: 'num' },
+                    uni: { key: 'uni', type: 'num' },
+                    fba_sku: { key: 'fba_sku', type: 'text' },
+                    fba_ship: { key: 'fba_ship', type: 'num' },
+                    fba_manual_ship: { key: 'fba_manual_ship', type: 'num' },
+                    wt_act_kg: { key: 'wt_act_kg', type: 'num' },
+                    wt_act: { key: 'wt_act_lb', type: 'num' },
+                    wt_oz: { key: 'wt_oz', type: 'num' },
+                    l: { key: 'l', type: 'num' },
+                    w: { key: 'w', type: 'num' },
+                    h: { key: 'h', type: 'num' },
+                    wt_decl: { key: 'wt_decl_lb', type: 'num' },
+                    l_decl: { key: 'l_decl', type: 'num' },
+                    w_decl: { key: 'w_decl', type: 'num' },
+                    h_decl: { key: 'h_decl', type: 'num' },
+                    l_cm: { key: 'l_cm', type: 'num' },
+                    w_cm: { key: 'w_cm', type: 'num' },
+                    h_cm: { key: 'h_cm', type: 'num' },
+                    ctn_l: { key: 'ctn_l', type: 'num' },
+                    ctn_w: { key: 'ctn_w', type: 'num' },
+                    ctn_h: { key: 'ctn_h', type: 'num' },
+                    ctn_cbm: { key: 'ctn_cbm', type: 'num' },
+                    ctn_qty: { key: 'ctn_qty', type: 'num' },
+                    ctn_cbm_each: { key: 'ctn_cbm_each', type: 'num' },
+                    verified: { key: 'verified_data', type: 'num' },
                 };
 
-                ths.forEach((th, idx) => {
-                    const cfg = sortMap[idx];
+                table.querySelectorAll('thead th[data-col-key]').forEach((th) => {
+                    const colKey = th.getAttribute('data-col-key');
+                    const cfg = sortByColKey[colKey];
                     if (!cfg) return;
                     th.style.cursor = 'pointer';
-                    th.title = (th.title ? th.title + ' — ' : '') + 'Click to sort';
+                    if (!/\bClick to sort\b/.test(th.title || '')) {
+                        th.title = (th.title ? th.title + ' — ' : '') + 'Click to sort';
+                    }
                     th.addEventListener('click', function(e) {
                         // Don't sort when interacting with header filters / controls
                         if (e.target.closest('input, select, button, a, textarea, label')) return;
@@ -4225,7 +4364,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "Label Qty", "Type", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "Label Qty", "Type", "Handling Charge", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "OZ", "Length (inch)", "Width (inch)", "Height (Inch)", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -4237,6 +4376,9 @@
                         },
                         "Type": {
                             key: "label_type"
+                        },
+                        "Handling Charge": {
+                            key: "handling_charge"
                         },
                         "Status": {
                             key: "status"
@@ -4288,6 +4430,9 @@
                         },
                         "Item WT ACT (OZ / LB)": {
                             computed: "item_weight_act"
+                        },
+                        "OZ": {
+                            computed: "wt_oz"
                         },
                         "Length (inch)": {
                             key: "l"
@@ -4372,6 +4517,10 @@
                                             row.push(display === '-' ? '' : display);
                                             return;
                                         }
+                                        if (colDef.computed === 'wt_oz') {
+                                            row.push(itemWeightOzColumnDisplay(item, false));
+                                            return;
+                                        }
                                         if (colDef.computed === 'item_weight_decl') {
                                             const display = itemWeightDeclDisplay(item, false);
                                             row.push(display === '-' ? '' : display);
@@ -4388,6 +4537,9 @@
 
                                         if (key === 'label_type') {
                                             value = normalizeLabelType(value);
+                                        }
+                                        if (key === 'handling_charge') {
+                                            value = normalizeHandlingCharge(value);
                                         }
                                         // CTN CBM: calculated as CTN L * CTN W * CTN H / 1000000
                                         if (key === 'ctn_cbm') {
@@ -4439,7 +4591,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["FBA SKU", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "Itm wt GW Decl", "Length (inch)", "Width (inch)", "Height (Inch)", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA ship", "FBA manual ship"].includes(col)) {
+                                } else if (["FBA SKU", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "OZ", "Itm wt GW Decl", "Length (inch)", "Width (inch)", "Height (Inch)", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA ship", "FBA manual ship"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -4505,6 +4657,11 @@
                 const fileError = document.getElementById('fileError');
                 const importProgress = document.getElementById('importProgress');
                 const importResult = document.getElementById('importResult');
+
+                // Import UI is only rendered for allowed users.
+                if (!importFile || !importBtn || !downloadSampleBtn || !importModal) {
+                    return;
+                }
 
                 // Enable/disable import button based on file selection
                 importFile.addEventListener('change', function() {
@@ -4605,6 +4762,7 @@
                     const formData = new FormData();
                     formData.append('excel_file', file);
                     formData.append('_token', csrfToken);
+                    formData.append('import_context', 'shipping_master');
 
                     try {
                         const response = await fetch('/dim-wt-master/import', {
@@ -4916,6 +5074,7 @@
             const BULK_EDIT_TRACKED_FIELDS = [
                 { id: 'editLabelQty', key: 'label_qty', type: 'int' },
                 { id: 'editLabelType', key: 'label_type', type: 'label_type' },
+                { id: 'editHandlingCharge', key: 'handling_charge', type: 'handling_charge' },
                 { id: 'editWtActKg', key: 'wt_act_kg', type: 'num' },
                 { id: 'editWtAct', key: 'wt_act', type: 'num' },
                 { id: 'editWtDecl', key: 'wt_decl', type: 'wt_decl' },
@@ -4950,6 +5109,10 @@
                 const t = String(raw ?? '').trim();
                 if (field.type === 'label_type') {
                     return normalizeLabelType(t);
+                }
+                if (field.type === 'handling_charge') {
+                    const hc = normalizeHandlingCharge(t);
+                    return hc === '' ? null : hc;
                 }
                 if (field.type === 'wt_decl') {
                     if (t === '') return null;
@@ -5011,6 +5174,11 @@
                     : 'Edit Shipping Master';
                 const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
                 if (bulkHint) bulkHint.style.display = isBulk ? 'block' : 'none';
+                const historyBtn = document.getElementById('editDimWtHistoryBtn');
+                if (historyBtn) {
+                    // History is available for single-SKU edit only
+                    historyBtn.style.display = isBulk ? 'none' : 'inline-block';
+                }
 
                 // Multi-package Combo (Label Qty 2+ with A + B components) → one panel per package
                 clearEditPackageModeUi();
@@ -5032,6 +5200,7 @@
                 document.getElementById('editLabelQty').value =
                     (labelQtyVal !== null && labelQtyVal !== undefined && labelQtyVal !== '') ? labelQtyVal : '';
                 document.getElementById('editLabelType').value = normalizeLabelType(product.label_type);
+                document.getElementById('editHandlingCharge').value = normalizeHandlingCharge(product.handling_charge);
                 document.getElementById('editWtActKg').value = product.wt_act_kg || '';
                 document.getElementById('editWtAct').value = product.wt_act || '';
                 // Decl: show saved wt_decl when present; otherwise seed from ACT (no slab round-up)
@@ -5166,6 +5335,8 @@
                     };
                     addNumericIfPresent('editLabelQty', 'label_qty');
                     baseFormData.label_type = normalizeLabelType(document.getElementById('editLabelType').value);
+                    const handlingChargeVal = normalizeHandlingCharge(document.getElementById('editHandlingCharge').value);
+                    baseFormData.handling_charge = handlingChargeVal === '' ? null : handlingChargeVal;
                     // Marketplace ship fields are read-only in Edit — only Slab Rates may change them.
 
                     const fbaShipStr = document.getElementById('editFbaShip').value.trim();
@@ -5269,7 +5440,8 @@
                             ctn_cbm_each: baseFormData.ctn_cbm_each,
                             ctn_weight_kg: baseFormData.ctn_weight_kg,
                             ctn_weight_lb: baseFormData.ctn_weight_lb,
-                            label_type: baseFormData.label_type
+                            label_type: baseFormData.label_type,
+                            handling_charge: baseFormData.handling_charge
                         };
                         if (baseFormData.label_qty !== undefined) comboPayload.label_qty = baseFormData.label_qty;
                         if (baseFormData.fba_ship_calculation !== undefined) {
@@ -5348,6 +5520,9 @@
                             });
                             if (baseFormData.label_type) target.label_type = baseFormData.label_type;
                             if (baseFormData.label_qty !== undefined) target.label_qty = baseFormData.label_qty;
+                            if (baseFormData.handling_charge !== undefined) {
+                                target.handling_charge = baseFormData.handling_charge;
+                            }
                         }
                     }
 
@@ -5380,6 +5555,18 @@
                 return escapeHtml(String(v));
             }
 
+            function bringShippingHistoryModalToFront() {
+                const modalEl = document.getElementById('shippingHistoryModal');
+                if (!modalEl) return;
+                modalEl.style.zIndex = '1080';
+                const backdrops = document.querySelectorAll('.modal-backdrop');
+                const topBackdrop = backdrops[backdrops.length - 1];
+                if (topBackdrop) {
+                    topBackdrop.classList.add('shipping-history-backdrop');
+                    topBackdrop.style.zIndex = '1070';
+                }
+            }
+
             async function openShippingHistoryModal(productId, sku) {
                 const modalEl = document.getElementById('shippingHistoryModal');
                 if (!modalEl) return;
@@ -5397,8 +5584,15 @@
                 if (tableWrap) tableWrap.style.display = 'none';
                 if (tbody) tbody.innerHTML = '';
 
+                if (modalEl.parentElement !== document.body) {
+                    document.body.appendChild(modalEl);
+                }
+                modalEl.removeEventListener('shown.bs.modal', bringShippingHistoryModalToFront);
+                modalEl.addEventListener('shown.bs.modal', bringShippingHistoryModalToFront, { once: true });
+
                 const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
                 modal.show();
+                bringShippingHistoryModalToFront();
 
                 if (productId == null || productId === '') {
                     if (loadingEl) loadingEl.style.display = 'none';
@@ -5583,6 +5777,17 @@
             setupPushData();
             setupSlabRates();
             setupMissingIndicatorClicks();
+
+            // History lives in the Edit modal (not a table column)
+            const editHistoryBtn = document.getElementById('editDimWtHistoryBtn');
+            if (editHistoryBtn) {
+                editHistoryBtn.addEventListener('click', function() {
+                    const productId = document.getElementById('editProductId')?.value || '';
+                    const sku = document.getElementById('editSku')?.value || '';
+                    openShippingHistoryModal(productId, sku);
+                });
+            }
+
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
@@ -5831,8 +6036,8 @@
             function buildSlabRatesTableHead() {
                 const headRow = document.getElementById('slabRatesHeadRow');
                 if (!headRow) return;
-                // Remove any previously injected carrier headers (keep first two columns)
-                while (headRow.children.length > 2) headRow.removeChild(headRow.lastChild);
+                // Keep Weight Slab, # SKUs, History — remove previously injected carrier headers
+                while (headRow.children.length > 3) headRow.removeChild(headRow.lastChild);
                 SLAB_RATE_CARRIERS.forEach(c => {
                     const th = document.createElement('th');
                     th.className = 'text-center slab-rates-carrier-col';
@@ -5881,6 +6086,17 @@
                     tdCount.style.fontSize = '12px';
                     tdCount.innerHTML = `<span class="badge bg-secondary" title="${total} non-parent SKU(s) match this slab">${total}</span>`;
                     tr.appendChild(tdCount);
+
+                    const tdHistory = document.createElement('td');
+                    tdHistory.className = 'slab-rates-history-cell';
+                    tdHistory.innerHTML = `
+                        <button type="button" class="slab-history-btn" title="View slab rate history"
+                            data-slab-key="${escapeHtml(slab.key)}"
+                            data-slab-label="${escapeHtml(slab.label)}">
+                            <i class="bi bi-clock-history"></i>
+                        </button>
+                    `;
+                    tr.appendChild(tdHistory);
 
                     SLAB_RATE_CARRIERS.forEach(c => {
                         const td = document.createElement('td');
@@ -5961,9 +6177,125 @@
                     body.appendChild(tr);
                 });
 
-                // Adjust the loading-placeholder colspan (now 2 + N carriers)
+                // Adjust the loading-placeholder colspan (Weight + #SKUs + History + N carriers)
                 const placeholder = body.querySelector('td[colspan]');
-                if (placeholder) placeholder.setAttribute('colspan', String(2 + carrierCols));
+                if (placeholder) placeholder.setAttribute('colspan', String(3 + carrierCols));
+            }
+
+            function bringSlabHistoryModalToFront() {
+                const modalEl = document.getElementById('slabRatesHistoryModal');
+                if (!modalEl) return;
+                modalEl.style.zIndex = '1080';
+                // Mark the newest backdrop so it sits between Slab Rates and History.
+                const backdrops = document.querySelectorAll('.modal-backdrop');
+                const topBackdrop = backdrops[backdrops.length - 1];
+                if (topBackdrop) {
+                    topBackdrop.classList.add('slab-rates-history-backdrop');
+                    topBackdrop.style.zIndex = '1070';
+                }
+            }
+
+            async function openSlabRatesHistoryModal(slabKey, slabLabel) {
+                const modalEl = document.getElementById('slabRatesHistoryModal');
+                if (!modalEl || !slabKey) return;
+
+                const labelEl = document.getElementById('slabRatesHistoryLabel');
+                const loadingEl = document.getElementById('slabRatesHistoryLoading');
+                const emptyEl = document.getElementById('slabRatesHistoryEmpty');
+                const errorEl = document.getElementById('slabRatesHistoryError');
+                const tableWrap = document.getElementById('slabRatesHistoryTableWrap');
+                const tbody = document.getElementById('slabRatesHistoryTbody');
+
+                if (labelEl) labelEl.textContent = slabLabel || slabKey;
+                if (loadingEl) loadingEl.style.display = 'block';
+                if (emptyEl) emptyEl.style.display = 'none';
+                if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+                if (tableWrap) tableWrap.style.display = 'none';
+                if (tbody) tbody.innerHTML = '';
+
+                // Ensure History is a direct body child so it is not trapped under
+                // Slab Rates' stacking context.
+                if (modalEl.parentElement !== document.body) {
+                    document.body.appendChild(modalEl);
+                }
+
+                modalEl.removeEventListener('shown.bs.modal', bringSlabHistoryModalToFront);
+                modalEl.addEventListener('shown.bs.modal', bringSlabHistoryModalToFront, { once: true });
+
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+                bringSlabHistoryModalToFront();
+
+                try {
+                    const response = await fetch(`/shipping-master/slab-history/${encodeURIComponent(slabKey)}`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.message || 'Failed to load slab history.');
+                    }
+                    if (labelEl && data.slab_label) labelEl.textContent = data.slab_label;
+
+                    const rows = Array.isArray(data.history) ? data.history : [];
+                    if (rows.length === 0) {
+                        if (emptyEl) emptyEl.style.display = 'block';
+                        return;
+                    }
+
+                    const parts = [];
+                    rows.forEach((r, idx) => {
+                        const skusNote = r.skus_updated
+                            ? ` <span class="text-muted small">(${escapeHtml(String(r.skus_updated))} SKU${Number(r.skus_updated) === 1 ? '' : 's'})</span>`
+                            : '';
+                        parts.push(`
+                            <tr class="${idx === 0 ? 'shm-field-first' : ''}">
+                                <td class="shm-field-cell">
+                                    <i class="bi bi-tag-fill shm-field-icon"></i>${escapeHtml(r.field_label || r.field || '')}${skusNote}
+                                </td>
+                                <td class="shm-when">${idx === 0 ? '<span class="shm-latest-dot" title="latest"></span>' : ''}${escapeHtml(r.updated_at || '')}</td>
+                                <td class="shm-who"><span class="badge bg-secondary">${escapeHtml(r.updated_by || 'N/A')}</span></td>
+                                <td>
+                                    <span class="shm-old">${shippingHistoryFmtValue(r.old_value)}</span>
+                                    <i class="bi bi-arrow-right shm-arrow"></i>
+                                    <span class="shm-new">${shippingHistoryFmtValue(r.new_value)}</span>
+                                </td>
+                            </tr>
+                        `);
+                    });
+                    if (tbody) tbody.innerHTML = parts.join('');
+                    if (tableWrap) tableWrap.style.display = 'block';
+                } catch (err) {
+                    console.error('Slab history load error:', err);
+                    if (errorEl) {
+                        errorEl.textContent = err.message || 'Failed to load slab history.';
+                        errorEl.style.display = 'block';
+                    }
+                } finally {
+                    if (loadingEl) loadingEl.style.display = 'none';
+                }
+            }
+
+            async function logSlabRatesHistory(changes) {
+                if (!Array.isArray(changes) || changes.length === 0) return;
+                try {
+                    await fetch('/shipping-master/slab-history', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify({ changes })
+                    });
+                } catch (e) {
+                    console.warn('Failed to log slab rate history', e);
+                }
             }
 
             function openSlabRatesModal() {
@@ -5982,6 +6314,9 @@
             async function applySlabRates() {
                 const inputs = document.querySelectorAll('#slabRatesBody .slab-rate-input');
                 const scope = (document.getElementById('slabRatesScope') || {}).value || 'all';
+                const slabDefs = getSlabDefinitions();
+                const slabLabelByKey = {};
+                slabDefs.forEach(s => { slabLabelByKey[s.key] = s.label; });
 
                 // Group writes by SKU so each SKU is sent once with every relevant carrier.
                 // perSku[id] = { item, fields: { carrierKey: rate, ... } }
@@ -5990,6 +6325,7 @@
                 let totalWritesPlanned = 0;
                 const carriersTouched = new Set();
                 const slabsTouched = new Set();
+                const historyChanges = [];
 
                 inputs.forEach(inp => {
                     // Apply writes:
@@ -6029,6 +6365,25 @@
                     totalCellsApplied++;
                     carriersTouched.add(carrierKey);
                     slabsTouched.add(slabKey);
+
+                    const orig = String(inp.getAttribute('data-original') || '').trim();
+                    const maj = String(inp.getAttribute('data-majority') || '').trim();
+                    let oldValue = null;
+                    if (orig !== '') oldValue = orig;
+                    else if (maj !== '') oldValue = maj;
+                    else if (isMixed) oldValue = 'mixed';
+                    const newValue = formatSlabRate(rate);
+                    if (oldValue !== newValue) {
+                        historyChanges.push({
+                            slab_key: slabKey,
+                            slab_label: slabLabelByKey[slabKey] || slabKey,
+                            field: carrierKey,
+                            old_value: oldValue,
+                            new_value: newValue,
+                            skus_updated: items.length,
+                            scope: scope
+                        });
+                    }
 
                     items.forEach(item => {
                         const id = String(item.id);
@@ -6104,6 +6459,10 @@
 
                 if (applyBtn) { applyBtn.disabled = false; applyBtn.innerHTML = originalText; }
 
+                if (success > 0 && historyChanges.length > 0) {
+                    await logSlabRatesHistory(historyChanges);
+                }
+
                 if (failed === 0) {
                     showToast('success', `Applied to ${success} SKU(s) across ${slabsTouched.size} slab(s).`);
                 } else {
@@ -6163,6 +6522,20 @@
 
                 const fillBtn = document.getElementById('slabRatesFillRowBtn');
                 if (fillBtn) fillBtn.addEventListener('click', fillSlabRow);
+
+                const slabTable = document.getElementById('slabRatesTable');
+                if (slabTable) {
+                    slabTable.addEventListener('click', function (e) {
+                        const btn = e.target.closest('.slab-history-btn');
+                        if (!btn) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openSlabRatesHistoryModal(
+                            btn.getAttribute('data-slab-key') || '',
+                            btn.getAttribute('data-slab-label') || ''
+                        );
+                    });
+                }
             }
         });
     </script>

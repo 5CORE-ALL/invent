@@ -32,7 +32,8 @@ class SyncShipmentTrackingStatusJob implements ShouldQueue, ShouldBeUnique
         public bool $catchUp = true,
         public string $carrier = '',
     ) {
-        $this->onQueue('default');
+        // Dedicated queue — never use `default` (watchdog intentionally skips it; millions of stale jobs).
+        $this->onQueue('shipment-tracking');
     }
 
     public function uniqueId(): string
