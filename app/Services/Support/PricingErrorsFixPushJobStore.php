@@ -47,8 +47,9 @@ class PricingErrorsFixPushJobStore
 
     /**
      * @param  list<array<string, mixed>>  $tasks
+     * @param  array{skip_mp_on_call_limit?: bool}  $options
      */
-    public function create(array $tasks): array
+    public function create(array $tasks, array $options = []): array
     {
         $normalized = [];
         foreach ($tasks as $task) {
@@ -75,15 +76,19 @@ class PricingErrorsFixPushJobStore
                 'error' => null,
                 'message' => null,
                 'result' => null,
+                'deferred_until' => null,
             ];
         }
 
         // Queue marketplace-wise: all Amazon → then eBay1 → … (never interleave channels)
         $normalized = $this->sortTasksMarketplaceWise($normalized);
 
+        $skipMpOnCallLimit = ! empty($options['skip_mp_on_call_limit']);
         $mpCount = count(array_unique(array_column($normalized, 'marketplace')));
         $queueMsg = 'Price push queued ('.count($normalized).' row(s), '.$mpCount
-            .' marketplace(s) — one channel at a time).';
+            .' marketplace(s) — one channel at a time)'
+            .($skipMpOnCallLimit ? '; call-limit → next marketplace, retry after revive' : '')
+            .'.';
 
         $state = array_merge($this->defaultState(), [
             'id' => date('YmdHis').'_'.bin2hex(random_bytes(4)),
@@ -96,6 +101,10 @@ class PricingErrorsFixPushJobStore
             'ok_count' => 0,
             'fail_count' => 0,
             'results' => [],
+            'options' => [
+                'skip_mp_on_call_limit' => $skipMpOnCallLimit,
+            ],
+            'mp_defer_rounds' => [],
             'started_at' => now()->toDateTimeString(),
             'updated_at' => now()->toDateTimeString(),
             'last_message' => $queueMsg,
@@ -223,10 +232,11 @@ class PricingErrorsFixPushJobStore
                     continue;
                 }
                 $st = (string) ($task['status'] ?? 'pending');
-                if (in_array($st, ['pending', 'pushing', 'retrying', 'queued'], true)) {
+                if (in_array($st, ['pending', 'pushing', 'retrying', 'queued', 'deferred'], true)) {
                     $state['tasks'][$i]['status'] = 'failed';
                     $state['tasks'][$i]['error'] = $message;
                     $state['tasks'][$i]['message'] = $message;
+                    $state['tasks'][$i]['deferred_until'] = null;
                     $state['fail_count'] = ((int) ($state['fail_count'] ?? 0)) + 1;
                     $rowId = (string) ($task['row_id'] ?? '');
                     if ($rowId !== '') {
@@ -273,9 +283,13 @@ class PricingErrorsFixPushJobStore
         $done = in_array($status, ['completed', 'failed', 'stopped'], true);
 
         $failedTasks = [];
+        $deferredCount = 0;
         foreach ($state['tasks'] ?? [] as $task) {
             if (! is_array($task)) {
                 continue;
+            }
+            if (($task['status'] ?? '') === 'deferred') {
+                $deferredCount++;
             }
             if (($task['status'] ?? '') === 'failed') {
                 $failedTasks[] = [
@@ -297,7 +311,9 @@ class PricingErrorsFixPushJobStore
             'done_count' => min($index, $total),
             'ok_count' => $ok,
             'fail_count' => $fail,
+            'deferred_count' => $deferredCount,
             'failed_tasks' => $failedTasks,
+            'options' => $state['options'] ?? [],
             'message' => $done
                 ? "Push done: {$ok} ok, {$fail} failed."
                 : ($state['last_message'] ?? 'Push in progress…'),
@@ -317,6 +333,10 @@ class PricingErrorsFixPushJobStore
             'ok_count' => 0,
             'fail_count' => 0,
             'results' => [],
+            'options' => [
+                'skip_mp_on_call_limit' => false,
+            ],
+            'mp_defer_rounds' => [],
             'started_at' => null,
             'finished_at' => null,
             'updated_at' => null,

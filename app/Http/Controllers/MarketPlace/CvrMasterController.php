@@ -608,7 +608,14 @@ class CvrMasterController extends Controller
             ];
         }
 
-        $job = $store->create($tasks);
+        $skipMpOnCallLimit = filter_var(
+            $request->input('skip_mp_on_call_limit', true),
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        $job = $store->create($tasks, [
+            'skip_mp_on_call_limit' => $skipMpOnCallLimit,
+        ]);
         if ((int) ($job['total'] ?? 0) === 0) {
             return response()->json(['success' => false, 'message' => 'No valid push items (need SKU + price > 0)'], 400);
         }

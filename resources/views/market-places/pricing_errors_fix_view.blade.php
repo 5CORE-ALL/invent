@@ -734,6 +734,12 @@
                             title="Queue SPRICE push in background (auto-retry until done)">
                             <i class="fas fa-upload"></i> Push (<span id="pef-push-count">0</span>)
                         </button>
+                        <label class="d-inline-flex align-items-center gap-1 small mb-0 ms-1 px-2 py-1 border rounded bg-light"
+                            id="pef-skip-mp-call-limit-wrap"
+                            title="When eBay #518 / call usage limit hits: skip that marketplace, push other channels, then retry after ~5 min when quota revives">
+                            <input type="checkbox" id="pef-skip-mp-call-limit" class="form-check-input m-0" checked>
+                            <span>Skip MP on call limit → retry later</span>
+                        </label>
                         <button type="button" class="btn btn-sm btn-outline-danger" id="pef-push-cancel-btn"
                             style="display:none;" title="Cancel background push">
                             <i class="fas fa-stop"></i> Cancel
@@ -3820,7 +3826,7 @@
         if (idx >= 0) pulledRows[idx] = Object.assign({}, pulledRows[idx], patch);
     }
 
-    function setPushProgressUi(active, msg, done, total, ok, fail, failedTasks) {
+    function setPushProgressUi(active, msg, done, total, ok, fail, failedTasks, deferred) {
         const $box = $('#pef-push-progress');
         // Only keep banner open while push is running (or caller explicitly shows a result once).
         // Do not leave failed history stuck on screen forever across reloads.
@@ -3831,8 +3837,10 @@
         const d = done || 0;
         const pct = t > 0 ? Math.min(100, Math.round((d / t) * 100)) : 0;
         $('#pef-push-progress-bar').css('width', pct + '%');
+        const def = Number(deferred || 0);
         $('#pef-push-progress-counts').text(
-            t ? (d + '/' + t + ' · ' + (ok || 0) + ' ok · ' + (fail || 0) + ' failed') : ''
+            t ? (d + '/' + t + ' · ' + (ok || 0) + ' ok · ' + (fail || 0) + ' failed'
+                + (def > 0 ? (' · ' + def + ' deferred') : '')) : ''
         );
         const $fail = $('#pef-push-fail-list').empty();
         if (active || (fail > 0 && pefPushInFlight)) {
@@ -3905,6 +3913,12 @@
                 patchRowAfterPush(row, d, pushPrice);
             } else if (st === 'failed' || st === 'error' || t.success === false) {
                 patchRowPushFailed(row, t.error || t.message || 'Push failed');
+            } else if (st === 'deferred') {
+                row.update({
+                    success: 'pending',
+                    push_error: t.error || null,
+                    push_message: t.message || 'deferred — retry after call/token revive',
+                });
             } else if (st === 'pushing' || st === 'retrying' || st === 'pending' || st === 'queued') {
                 row.update({
                     success: st === 'retrying' ? 'retrying' : 'pushing',
@@ -3930,6 +3944,7 @@
             const done = Number(resp.done_count != null ? resp.done_count : job.current_index || 0);
             const ok = Number(resp.ok_count || job.ok_count || 0);
             const fail = Number(resp.fail_count || job.fail_count || 0);
+            const deferred = Number(resp.deferred_count || 0);
             let msg = resp.message || job.last_message || '';
             // Surface stall clearly (server with no queue worker used to sit at 0/N forever)
             if (active && done === 0 && total > 0 && /queued|waiting for worker|stalled/i.test(String(msg))) {
@@ -3946,7 +3961,8 @@
                 total,
                 ok,
                 fail,
-                resp.failed_tasks || []
+                resp.failed_tasks || [],
+                deferred
             );
             applyPushJobToRows(resp);
             try { table && table.redraw(true); } catch (e) { /* ignore */ }
@@ -4023,6 +4039,7 @@
                 data: {
                     _token: csrf,
                     items: items.map(function(it) { return it.queueItem; }),
+                    skip_mp_on_call_limit: $('#pef-skip-mp-call-limit').is(':checked') ? 1 : 0,
                 },
                 dataType: 'json',
                 timeout: 60000,
@@ -4064,10 +4081,14 @@
         const siteSummary = Object.keys(byMp).map(function(k) {
             return k + ': ' + byMp[k];
         }).join(', ');
+        const skipMp = $('#pef-skip-mp-call-limit').is(':checked');
         if (!confirm(
             'Queue SPRICE push for ' + n + ' row(s) in background?\n'
             + 'Sites: ' + siteSummary + '\n'
             + 'Worker will retry until each push succeeds (or fails with a reason).'
+            + (skipMp
+                ? '\n\nCall limit (#518): skip that marketplace, continue others, retry after ~5 min.'
+                : '\n\nCall limit (#518): keep retrying the same marketplace (old behavior).')
         )) return;
         await queuePushItems(collected);
     }
@@ -4696,6 +4717,23 @@
     $('#pef-clear-sprice-btn').on('click', clearSelectedSprice);
     $('#pef-std-to-sprice-btn').on('click', applyStdPriceToSprice);
     $('#pef-reload-btn').on('click', loadFromCache);
+
+    (function initSkipMpCallLimitOption() {
+        const key = 'pef_skip_mp_on_call_limit';
+        try {
+            const saved = localStorage.getItem(key);
+            if (saved === '0' || saved === 'false') {
+                $('#pef-skip-mp-call-limit').prop('checked', false);
+            } else {
+                $('#pef-skip-mp-call-limit').prop('checked', true);
+            }
+        } catch (e) { /* ignore */ }
+        $('#pef-skip-mp-call-limit').on('change', function() {
+            try {
+                localStorage.setItem(key, $(this).is(':checked') ? '1' : '0');
+            } catch (e2) { /* ignore */ }
+        });
+    })();
 
     // Target ROI% / GPFT% — same as /amazon-tabulator-view
     $('#pef-apply-target-roi-btn').on('click', applyTargetRoi);
