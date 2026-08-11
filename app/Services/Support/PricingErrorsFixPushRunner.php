@@ -155,6 +155,9 @@ class PricingErrorsFixPushRunner
                 if (! empty($task['sku_id'])) {
                     $payload['sku_id'] = $task['sku_id'];
                 }
+                if (! empty($task['product_id'])) {
+                    $payload['product_id'] = $task['product_id'];
+                }
 
                 // Free MySQL slots during long marketplace API calls (XAMPP max_connections is low).
                 $this->releaseDbConnections();

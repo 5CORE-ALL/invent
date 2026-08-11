@@ -69,6 +69,7 @@ class PricingErrorsFixPushJobStore
                 'self_pick_price' => isset($task['self_pick_price']) ? round((float) $task['self_pick_price'], 2) : null,
                 'goods_id' => isset($task['goods_id']) && $task['goods_id'] !== '' ? (string) $task['goods_id'] : null,
                 'sku_id' => isset($task['sku_id']) && $task['sku_id'] !== '' ? (string) $task['sku_id'] : null,
+                'product_id' => isset($task['product_id']) && $task['product_id'] !== '' ? (string) $task['product_id'] : null,
                 'status' => 'pending',
                 'attempts' => 0,
                 'error' => null,

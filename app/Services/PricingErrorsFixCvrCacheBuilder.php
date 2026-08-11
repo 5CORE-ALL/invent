@@ -386,6 +386,7 @@ class PricingErrorsFixCvrCacheBuilder
 
         $goodsId = $item['goods_id'] ?? $item['temu_goods_id'] ?? null;
         $skuId = $item['sku_id'] ?? $item['temu_sku_id'] ?? null;
+        $productId = $item['product_id'] ?? $item['faire_product_id'] ?? null;
         if (is_scalar($goodsId)) {
             $goodsId = trim((string) $goodsId);
             if ($goodsId === '') {
@@ -401,6 +402,14 @@ class PricingErrorsFixCvrCacheBuilder
             }
         } else {
             $skuId = null;
+        }
+        if (is_scalar($productId)) {
+            $productId = trim((string) $productId);
+            if ($productId === '') {
+                $productId = null;
+            }
+        } else {
+            $productId = null;
         }
 
         return [
@@ -439,6 +448,7 @@ class PricingErrorsFixCvrCacheBuilder
             'ads_pct' => $tacosCh,
             'goods_id' => $goodsId,
             'sku_id' => $skuId,
+            'product_id' => $productId,
             '_selected' => false,
         ];
     }

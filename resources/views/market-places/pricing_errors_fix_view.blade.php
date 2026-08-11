@@ -1084,7 +1084,8 @@
         'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
         'bestbuy', 'bestbuyusa', 'macy', 'macys',
         'ppower', 'purchasingpower', 'purchase',
-        'reverb', 'fba', 'topdawg', 'temu', 'temu2',
+        'reverb', 'fba', 'topdawg', 'faire',
+        'temu', 'temu2',
         'tiktok', 'tiktok1', 'tiktok2',
     ];
 
@@ -3592,6 +3593,12 @@
             if (skuId) payload.sku_id = skuId;
         }
 
+        // Faire: optional product_id speeds up API resolve (same as /faire-pricing)
+        if (mp === 'faire') {
+            const productId = String(d.product_id || d.faire_product_id || '').trim();
+            if (productId) payload.product_id = productId;
+        }
+
         return { payload: payload, pushPrice: pushPrice, mp: mp, sprice: sprice };
     }
 
@@ -3626,6 +3633,7 @@
                     self_pick_price: built.payload.self_pick_price,
                     goods_id: built.payload.goods_id || null,
                     sku_id: built.payload.sku_id || null,
+                    product_id: built.payload.product_id || null,
                 },
             });
         });

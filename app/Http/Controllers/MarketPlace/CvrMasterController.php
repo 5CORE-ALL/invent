@@ -114,6 +114,7 @@ use App\Services\DobaApiService;
 use App\Services\WalmartService;
 use App\Services\ReverbApiService;
 use App\Services\TopDawgApiService;
+use App\Services\FaireApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
 use App\Services\EbayApiService;
@@ -603,6 +604,7 @@ class CvrMasterController extends Controller
                 'self_pick_price' => $item['self_pick_price'] ?? null,
                 'goods_id' => $item['goods_id'] ?? null,
                 'sku_id' => $item['sku_id'] ?? null,
+                'product_id' => $item['product_id'] ?? null,
             ];
         }
 
@@ -2722,7 +2724,7 @@ class CvrMasterController extends Controller
                         ['marketplace' => 'Shopify', 'price' => $sb2cPrice, 'sprice' => $sb2cSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $shopifyB2CPercentage, 'ad' => $sb2cAdsPef, 'tacos_ch' => $sb2cAdsPef, 'l30' => 0, 'views' => $sb2cViews, 'cvr' => $pefCvr(0.0, (float) $sb2cViews), 'push_status' => $sb2cSt],
                         ['marketplace' => 'SB2B', 'price' => $sb2bPricePef, 'sprice' => $sb2bSp, 'lp' => $lp, 'ship' => 0, 'margin' => $sb2bPercentagePef, 'ad' => $sb2bAdsPef, 'tacos_ch' => $sb2bAdsPef, 'l30' => 0, 'views' => 0, 'cvr' => 0, 'push_status' => $sb2bSt],
                         ['marketplace' => 'Shein', 'price' => $sheinPrice, 'sprice' => 0, 'lp' => $lp, 'ship' => $ship, 'margin' => $sheinPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $sheinL30, 'views' => $sheinViews, 'cvr' => $pefCvr((float) $sheinL30, (float) $sheinViews), 'push_status' => null],
-                        ['marketplace' => 'Faire', 'price' => $fairePrice, 'sprice' => $faireSp, 'lp' => $lp, 'ship' => 0, 'margin' => $fairePercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $faireL30, 'views' => $faireViews, 'cvr' => $pefCvr((float) $faireL30, (float) $faireViews), 'push_status' => $faireSt],
+                        ['marketplace' => 'Faire', 'price' => $fairePrice, 'sprice' => $faireSp, 'lp' => $lp, 'ship' => 0, 'margin' => $fairePercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $faireL30, 'views' => $faireViews, 'cvr' => $pefCvr((float) $faireL30, (float) $faireViews), 'push_status' => $faireSt, 'product_id' => $faireMetric ? ($faireMetric->product_id ?? null) : null],
                         ['marketplace' => 'AliExpress', 'price' => $aePrice, 'sprice' => $aeSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $aePercentage, 'ad' => $aeAdsPef, 'tacos_ch' => $aeAdsPef, 'l30' => $aeL30, 'views' => $aeViewsPef, 'cvr' => $pefCvr((float) $aeL30, (float) $aeViewsPef), 'push_status' => $aeSt],
                         ['marketplace' => 'PPower', 'price' => $ppPrice, 'sprice' => $ppSp, 'lp' => $lp, 'ship' => 0, 'margin' => $ppPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $ppL30, 'views' => 0, 'cvr' => 0, 'push_status' => $ppSt],
                         ['marketplace' => 'TopDawg', 'price' => $tdPrice, 'sprice' => $tdSp, 'lp' => $lp, 'ship' => 0, 'margin' => $tdPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $tdL30, 'views' => $tdViews, 'cvr' => $pefCvr((float) $tdL30, (float) $tdViews), 'push_status' => $tdSt],
@@ -5086,6 +5088,7 @@ class CvrMasterController extends Controller
                 'pushed_at'   => null,
                 'buyer_link'  => $faireBuyerLink,
                 'seller_link' => $faireSellerLink,
+                'product_id'  => $faireMetricRowBd ? ($faireMetricRowBd->product_id ?? null) : null,
             ];
 
             // Add AliExpress
@@ -7268,6 +7271,13 @@ class CvrMasterController extends Controller
                 $response = $this->pushToPurchasingPower($sku, $price);
             } elseif ($marketplace === 'topdawg') {
                 $response = $this->pushToTopDawg($sku, $price);
+            } elseif ($marketplace === 'faire') {
+                // Keep original SKU case/spacing for Faire metric + API lookup
+                $response = $this->pushToFaire(
+                    $skuRaw !== '' ? $skuRaw : $sku,
+                    $price,
+                    $request->input('product_id')
+                );
             } elseif ($marketplace === 'temu') {
                 // Keep original SKU case for Temu metric lookup; resolve goods_id/sku_id when omitted (PEF)
                 [$temuGoodsId, $temuSkuId] = $this->resolveTemuPushIds(
@@ -7302,7 +7312,7 @@ class CvrMasterController extends Controller
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Reverb, TopDawg, Temu, Temu2, TikTok, TikTok 2, FBA."
+                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Reverb, TopDawg, Faire, Temu, Temu2, TikTok, TikTok 2, FBA."
                 ], 400);
             }
 
@@ -8626,6 +8636,78 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Push wholesale price to Faire (same API as /faire-pricing → FaireApiService::updateSkuWholesalePrice).
+     */
+    private function pushToFaire($sku, $price, $productId = null)
+    {
+        try {
+            if (! ($price > 0)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid Faire price (must be > 0)',
+                ], 400);
+            }
+
+            $sku = trim((string) $sku);
+            $productId = trim((string) ($productId ?? ''));
+            $productId = $productId !== '' ? $productId : null;
+
+            $result = app(FaireApiService::class)->updateSkuWholesalePrice($sku, (float) $price, $productId);
+            if (! empty($result['success'])) {
+                // Keep local faire_metric.price in sync (same as FaireController::pushPriceToFaire)
+                try {
+                    if (Schema::hasTable('faire_metric')) {
+                        $norm = $this->normalizeFaireSkuForCvr($sku);
+                        $metric = FaireMetric::query()
+                            ->whereNotNull('sku')->where('sku', '!=', '')
+                            ->get()
+                            ->first(fn ($r) => $this->normalizeFaireSkuForCvr((string) $r->sku) === $norm);
+                        if ($metric) {
+                            $metric->price = round((float) $price, 2);
+                            $metric->save();
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('CVR Master - Faire metric sync after push failed', [
+                        'sku' => $sku,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
+                $this->savePricePushStatus($sku, 'faire', 'pushed', $price);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $result['message']
+                        ?? ('Price $'.number_format((float) $price, 2)." pushed to Faire for SKU: {$sku}"),
+                    'data' => $result,
+                ]);
+            }
+
+            $this->savePricePushStatus($sku, 'faire', 'error', $price);
+            $errMsg = (string) ($result['message'] ?? 'Failed to push price to Faire');
+
+            return response()->json([
+                'success' => false,
+                'message' => $errMsg,
+                'status' => $result['status'] ?? 0,
+                'data' => $result,
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'faire', 'error', $price);
+            Log::error('CVR Master - Faire push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Faire API error: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Push price to FBA (Amazon Fulfillment). Resolves base SKU to FBA seller SKU and calls SP API.
      */
     private function pushToFba($sku, $price)
@@ -8770,6 +8852,9 @@ class CvrMasterController extends Controller
             } elseif ($marketplace === 'topdawg' && Schema::hasTable('topdawg_data_views')) {
                 $dataView = TopDawgDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
                     ?: TopDawgDataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'faire' && Schema::hasTable('faire_data_views')) {
+                $dataView = FaireDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: FaireDataView::where('sku', $sku)->first();
             } elseif ($marketplace === 'temu') {
                 $dataView = TemuDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
                     ?: TemuDataView::where('sku', $sku)->first();
@@ -8955,6 +9040,11 @@ class CvrMasterController extends Controller
                 if (Schema::hasTable('topdawg_data_views')) {
                     $dataView = TopDawgDataView::firstOrNew(['sku' => $sku]);
                 }
+            } elseif ($marketplace === 'faire') {
+                if (Schema::hasTable('faire_data_views')) {
+                    $existingFaire = FaireDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+                    $dataView = $existingFaire ?: new FaireDataView(['sku' => $sku]);
+                }
             } elseif ($marketplace === 'temu') {
                 $dataView = TemuDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'temu2' && Schema::hasTable('temu2_data_view')) {
@@ -8980,7 +9070,12 @@ class CvrMasterController extends Controller
                 // Save status
                 $existing['SPRICE_STATUS'] = $status;
                 $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
-                
+                // /faire-pricing reads PUSH_STATUS; keep both in sync for Faire rows
+                if ($marketplace === 'faire') {
+                    $existing['PUSH_STATUS'] = $status;
+                    $existing['PUSH_STATUS_UPDATED_AT'] = now()->format('Y-m-d H:i:s');
+                }
+
                 // Save pushed by information
                 $pushedBy = null;
                 if (auth()->check()) {
