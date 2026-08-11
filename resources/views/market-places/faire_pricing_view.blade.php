@@ -1543,6 +1543,21 @@
                         }
                     },
                     {
+                        title: 'STD prc',
+                        field: 'standard_price',
+                        sorter: 'number',
+                        hozAlign: 'right',
+                        width: 78,
+                        headerTooltip: 'Standard Price (STD PRC) — same as /pricing-errors-form (amazon_data_view.STANDARD_PRICE)',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = parseFloat(cell.getValue());
+                            if (!isFinite(v) || !(v > 0)) return '<span style="color:#6c757d;">–</span>';
+                            return '<span style="font-weight:600;">' + money(v) + '</span>';
+                        }
+                    },
+                    {
                         title: 'Missing L', field: 'missing', hozAlign: 'center',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();

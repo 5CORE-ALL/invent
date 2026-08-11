@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Models\ProductMaster;
+use App\Models\AmazonDataView;
 use App\Models\ShopifySku;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -751,6 +752,16 @@ class FaireController extends Controller
             $percentage = $marketplaceData ? (float) ($marketplaceData->percentage ?? 75) : 75;
             $margin = $percentage / 100;
 
+            // STD PRC — amazon_data_view.STANDARD_PRICE (same as /pricing-errors-form)
+            $amazonStandardPrices = AmazonDataView::all()
+                ->keyBy(fn ($r) => $normalizeSku($r->sku))
+                ->map(function ($r) {
+                    $val = is_array($r->value) ? $r->value : (json_decode((string) $r->value, true) ?: []);
+                    $std = $val['STANDARD_PRICE'] ?? null;
+
+                    return (is_numeric($std) && floatval($std) > 0) ? round(floatval($std), 2) : 0;
+                });
+
             $rows = [];
             foreach ($allNormalizedSkus as $normalizedSku) {
                 $sale = $salesBySku->get($normalizedSku);
@@ -832,6 +843,9 @@ class FaireController extends Controller
                     'is_parent' => false,
                     'image' => $imageSrc,
                     'price' => round($price, 2),
+                    'standard_price' => isset($amazonStandardPrices[$normalizedSku])
+                        ? floatval($amazonStandardPrices[$normalizedSku])
+                        : 0,
                     'lmp' => null,
                     'lmp_link' => null,
                     'lmp_entries' => [],
@@ -1106,6 +1120,7 @@ class FaireController extends Controller
             'is_parent' => true,
             'image' => null,
             'price' => '-',
+            'standard_price' => '-',
             'missing' => '-',
             'map' => '-',
             'buyer_link' => null,

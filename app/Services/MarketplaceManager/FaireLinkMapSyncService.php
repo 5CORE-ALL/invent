@@ -179,10 +179,9 @@ class FaireLinkMapSyncService
             $qty = data_get($variant, 'available_quantity')
                 ?? data_get($variant, 'on_hand_quantity')
                 ?? data_get($variant, 'inventory');
+            // Wholesale only — no retail_price fallback
             $priceMinor = data_get($variant, 'wholesale_price.amount_minor')
-                ?? data_get($variant, 'wholesale_price_cents')
-                ?? data_get($variant, 'retail_price.amount_minor')
-                ?? data_get($variant, 'retail_price_cents');
+                ?? data_get($variant, 'wholesale_price_cents');
             $price = is_numeric($priceMinor) ? round(((float) $priceMinor) / 100, 2) : null;
 
             $payload = [
