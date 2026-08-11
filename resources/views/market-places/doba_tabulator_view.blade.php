@@ -2689,7 +2689,8 @@
                 applyFilters();
             });
 
-            // Fetch and display summary metrics from marketplace_daily_metrics table
+            // L30 GPFT%/ROI from doba_daily_data (same source as /doba/daily-sales),
+            // excluding "Pickup with a prepaid label".
             function fetchDobaSummaryMetrics() {
                 fetch('/doba/summary-metrics')
                     .then(response => response.json())

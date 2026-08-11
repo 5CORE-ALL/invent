@@ -124,6 +124,7 @@ use App\Services\MacysApiService;
 use App\Services\PurchasingPowerApiService;
 use App\Support\TemuGoodsIdHelper;
 use App\Jobs\RunPricingErrorsFixPushJob;
+use App\Models\BadgeData;
 use App\Services\PricingErrorsFixCvrCacheBuilder;
 use App\Services\Support\PricingErrorsFixPushJobStore;
 use Illuminate\Http\JsonResponse;
@@ -546,6 +547,26 @@ class CvrMasterController extends Controller
         }
 
         return response()->json($list);
+    }
+
+    /**
+     * Persist PEF toolbar badge counts into badges_data (+ daily history) for status dots / charts.
+     */
+    public function pricingErrorsFixBadgeSnapshot(Request $request): JsonResponse
+    {
+        $groiLt40 = $request->input('groi_lt40');
+        $npftLt10 = $request->input('npft_lt10');
+        if (! is_numeric($groiLt40) || ! is_numeric($npftLt10)) {
+            return response()->json(['success' => false, 'message' => 'groi_lt40 and npft_lt10 are required'], 422);
+        }
+
+        $data = [
+            'groi_lt40' => (int) $groiLt40,
+            'npft_lt10' => (int) $npftLt10,
+        ];
+        BadgeData::saveForPage('pricing-errors-fix', $data);
+
+        return response()->json(['success' => true, 'data' => $data]);
     }
 
     public function pricingErrorsFixQueuePush(Request $request, PricingErrorsFixPushJobStore $store): JsonResponse

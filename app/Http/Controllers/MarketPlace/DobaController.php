@@ -96,6 +96,13 @@ class DobaController extends Controller
         return $this->buildViewDobaListingData($request, true);
     }
 
+    /**
+     * Build /doba-tabulator (and withoutship) listing rows.
+     *
+     * Sold quantities and averages always come from doba_daily_data (same source as /doba/daily-sales):
+     * - regular page: excludes order_type "Pickup with a prepaid label"
+     * - withoutship page: only that order_type
+     */
     private function buildViewDobaListingData(Request $request, bool $onlyPickupPrepaidLabelFromDaily): \Illuminate\Http\JsonResponse
     {
         // Normalized SKU matcher (case/whitespace-insensitive), same approach as other marketplaces
@@ -154,6 +161,13 @@ class DobaController extends Controller
                     'LOWER(TRIM(COALESCE(order_type, ?))) = ?',
                     ['', self::DOBA_DAILY_ORDER_TYPE_PICKUP_PREPAID_LABEL]
                 );
+            } else {
+                // /doba-tabulator: daily-sales orders minus pickup + prepaid label
+                // (those belong on /doba-tabulator-withoutship).
+                $query->whereRaw(
+                    'LOWER(TRIM(COALESCE(order_type, ?))) <> ?',
+                    ['', self::DOBA_DAILY_ORDER_TYPE_PICKUP_PREPAID_LABEL]
+                );
             }
         };
 
@@ -207,31 +221,26 @@ class DobaController extends Controller
             ->get()
             ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
-        $pickupDailyL7 = null;
-        $pickupDailyL7Prev = null;
+        $l7End = $yesterday->copy()->endOfDay();
+        $l7Start = $yesterday->copy()->subDays(6)->startOfDay();
+        $l7prevEnd = $yesterday->copy()->subDays(7)->endOfDay();
+        $l7prevStart = $yesterday->copy()->subDays(13)->startOfDay();
 
-        if ($onlyPickupPrepaidLabelFromDaily) {
-            $l7End = $yesterday->copy()->endOfDay();
-            $l7Start = $yesterday->copy()->subDays(6)->startOfDay();
-            $l7prevEnd = $yesterday->copy()->subDays(7)->endOfDay();
-            $l7prevStart = $yesterday->copy()->subDays(13)->startOfDay();
+        $dailyL7 = DB::table('doba_daily_data')
+            ->select('sku', DB::raw('SUM(quantity) as total_quantity'))
+            ->whereBetween('order_time', [$l7Start, $l7End])
+            ->tap($applyDailyFilters)
+            ->groupBy('sku')
+            ->get()
+            ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
-            $pickupDailyL7 = DB::table('doba_daily_data')
-                ->select('sku', DB::raw('SUM(quantity) as total_quantity'))
-                ->whereBetween('order_time', [$l7Start, $l7End])
-                ->tap($applyDailyFilters)
-                ->groupBy('sku')
-                ->get()
-                ->keyBy(fn ($r) => $normalizeSku($r->sku));
-
-            $pickupDailyL7Prev = DB::table('doba_daily_data')
-                ->select('sku', DB::raw('SUM(quantity) as total_quantity'))
-                ->whereBetween('order_time', [$l7prevStart, $l7prevEnd])
-                ->tap($applyDailyFilters)
-                ->groupBy('sku')
-                ->get()
-                ->keyBy(fn ($r) => $normalizeSku($r->sku));
-        }
+        $dailyL7Prev = DB::table('doba_daily_data')
+            ->select('sku', DB::raw('SUM(quantity) as total_quantity'))
+            ->whereBetween('order_time', [$l7prevStart, $l7prevEnd])
+            ->tap($applyDailyFilters)
+            ->groupBy('sku')
+            ->get()
+            ->keyBy(fn ($r) => $normalizeSku($r->sku));
 
         // 6. Get marketplace percentage (no cache)
         $percentage = (MarketplacePercentage::where("marketplace", "Doba")->value("percentage") ?? 100) / 100;
@@ -259,20 +268,14 @@ class DobaController extends Controller
             // L30 (overall) still from Shopify
             $row["L30"] = $shopify->quantity ?? 0;
 
-            // Doba sold quantities: from DobaMetric, or from doba_daily_data when filtering by pickup + prepaid label
-            if ($onlyPickupPrepaidLabelFromDaily) {
-                $l30Daily = $dobaDailyL30[$normSku] ?? null;
-                $l60Daily = $l60AvgPrice[$normSku] ?? null;
-                $row["doba L30"] = $l30Daily ? (int) $l30Daily->s_l30_count : 0;
-                $row["doba L60"] = (int) ($l60Daily?->total_quantity ?? 0);
-                $row["quantity_l7"] = (int) ($pickupDailyL7[$normSku]->total_quantity ?? 0);
-                $row["quantity_l7_prev"] = (int) ($pickupDailyL7Prev[$normSku]->total_quantity ?? 0);
-            } else {
-                $row["doba L30"] = $dobaMetric->quantity_l30 ?? 0;
-                $row["doba L60"] = $dobaMetric->quantity_l60 ?? 0;
-                $row["quantity_l7"] = $dobaMetric->quantity_l7 ?? 0;
-                $row["quantity_l7_prev"] = $dobaMetric->quantity_l7_prev ?? 0;
-            }
+            // Doba sold quantities from doba_daily_data (same source as /doba/daily-sales),
+            // filtered by order_type via $applyDailyFilters above.
+            $l30Daily = $dobaDailyL30[$normSku] ?? null;
+            $l60Daily = $l60AvgPrice[$normSku] ?? null;
+            $row["doba L30"] = $l30Daily ? (int) $l30Daily->s_l30_count : 0;
+            $row["doba L60"] = (int) ($l60Daily?->total_quantity ?? 0);
+            $row["quantity_l7"] = (int) ($dailyL7[$normSku]->total_quantity ?? 0);
+            $row["quantity_l7_prev"] = (int) ($dailyL7Prev[$normSku]->total_quantity ?? 0);
             $row['doba L45'] = (int) ($dobaDailyL45[$normSku]->total_quantity ?? 0);
             $listPrice = floatval($dobaMetric->anticipated_income ?? 0);
             $selfPickMetric = floatval($dobaMetric->self_pick_price ?? 0);
@@ -987,34 +990,133 @@ class DobaController extends Controller
     }
 
     /**
-     * Get Doba summary metrics from marketplace_daily_metrics table
+     * L30 summary badges for /doba-tabulator.
+     * Same source as /doba/daily-sales (doba_daily_data period L30), excluding
+     * cancelled orders and order_type "Pickup with a prepaid label".
      */
     public function getDobaSummaryMetrics()
     {
-        $metrics = DB::table('marketplace_daily_metrics')
-            ->where('channel', 'Doba')
-            ->orderBy('date', 'desc')
-            ->first();
+        return $this->buildDobaDailySalesSummaryMetrics(false);
+    }
 
-        if (!$metrics) {
+    /**
+     * L30 summary badges for /doba_withoutship.
+     * Same source as /doba/daily-sales, counting ONLY order_type
+     * "Pickup with a prepaid label" (ship omitted from PFT, matching daily-sales).
+     */
+    public function getDobaSummaryMetricsWithoutShip()
+    {
+        return $this->buildDobaDailySalesSummaryMetrics(true);
+    }
+
+    /**
+     * Aggregate L30 sales / PFT / ROI from doba_daily_data.
+     *
+     * @param  bool  $onlyPickupPrepaidLabel  true = pickup only (withoutship); false = exclude pickup (regular)
+     */
+    private function buildDobaDailySalesSummaryMetrics(bool $onlyPickupPrepaidLabel): \Illuminate\Http\JsonResponse
+    {
+        $ordersQuery = DobaDailyData::whereRaw('LOWER(period) = ?', ['l30'])
+            ->where(function ($q) {
+                $q->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
+                    ->orWhereNull('order_status');
+            });
+
+        if ($onlyPickupPrepaidLabel) {
+            $ordersQuery->whereRaw(
+                'LOWER(TRIM(COALESCE(order_type, ?))) = ?',
+                ['', self::DOBA_DAILY_ORDER_TYPE_PICKUP_PREPAID_LABEL]
+            );
+        } else {
+            $ordersQuery->whereRaw(
+                'LOWER(TRIM(COALESCE(order_type, ?))) <> ?',
+                ['', self::DOBA_DAILY_ORDER_TYPE_PICKUP_PREPAID_LABEL]
+            );
+        }
+
+        $orders = $ordersQuery->get();
+
+        if ($orders->isEmpty()) {
             return response()->json([
                 'success' => false,
-                'message' => 'No metrics found for Doba'
+                'message' => $onlyPickupPrepaidLabel
+                    ? 'No Pickup with a prepaid label metrics found for Doba'
+                    : 'No metrics found for Doba',
             ], 404);
         }
+
+        $skus = $orders->pluck('sku')->filter()->unique()->values()->toArray();
+        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+        $margin = 0.95;
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0.0;
+        $totalCogs = 0.0;
+        $totalPft = 0.0;
+        $totalWeightedPrice = 0.0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($orders as $order) {
+            if (!$order->sku || $order->sku === '') {
+                continue;
+            }
+
+            $totalOrders++;
+            $quantity = (int) ($order->quantity ?? 1);
+            $itemPrice = (float) ($order->item_price ?? 0);
+            $totalPrice = (float) ($order->total_price ?? 0);
+
+            $totalQuantity += $quantity;
+            $totalRevenue += $totalPrice;
+
+            if ($quantity > 0 && $itemPrice > 0) {
+                $totalWeightedPrice += $itemPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            $lp = 0.0;
+            $ship = 0.0;
+            if (isset($productMasters[$order->sku])) {
+                $pm = $productMasters[$order->sku];
+                $values = is_array($pm->Values) ? $pm->Values
+                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                if (isset($values['lp'])) {
+                    $lp = floatval($values['lp']);
+                }
+                if (isset($values['ship'])) {
+                    $ship = floatval($values['ship']);
+                }
+            }
+
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            // Match DobaSalesController: pickup prepaid omits ship from PFT.
+            if ($onlyPickupPrepaidLabel) {
+                $pftEach = ($itemPrice * $margin) - $lp;
+            } else {
+                $pftEach = ($itemPrice * $margin) - $ship - $lp;
+            }
+            $totalPft += $pftEach * $quantity;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
         return response()->json([
             'success' => true,
             'data' => [
-                'date' => $metrics->date,
-                'total_orders' => $metrics->total_orders,
-                'total_quantity' => $metrics->total_quantity,
-                'total_sales' => $metrics->total_sales,
-                'total_cogs' => $metrics->total_cogs,
-                'total_pft' => $metrics->total_pft,
-                'pft_percentage' => $metrics->pft_percentage,
-                'roi_percentage' => $metrics->roi_percentage,
-                'avg_price' => $metrics->avg_price,
+                'date' => Carbon::today()->toDateString(),
+                'total_orders' => $totalOrders,
+                'total_quantity' => $totalQuantity,
+                'total_sales' => $totalRevenue,
+                'total_cogs' => $totalCogs,
+                'total_pft' => $totalPft,
+                'pft_percentage' => round($pftPercentage, 1),
+                'roi_percentage' => round($roiPercentage, 1),
+                'avg_price' => $avgPrice,
             ]
         ]);
     }

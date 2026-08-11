@@ -8502,11 +8502,20 @@ class ChannelMasterController extends Controller
      */
     private function computeDobaL60SummaryFromDailyData(): array
     {
+        // Same order_type split as /doba-tabulator: exclude pickup + prepaid label.
+        $excludePickupPrepaid = static function ($query) {
+            $query->whereRaw(
+                'LOWER(TRIM(COALESCE(order_type, ?))) <> ?',
+                ['', 'pickup with a prepaid label']
+            );
+        };
+
         $activeSkus = \App\Models\DobaDailyData::whereRaw('LOWER(period) = ?', ['l30'])
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->whereNotNull('order_no')
             ->where('order_no', '!=', '')
+            ->tap($excludePickupPrepaid)
             ->pluck('sku')
             ->map(fn ($s) => strtolower(trim((string) $s)))
             ->filter()
@@ -8521,6 +8530,7 @@ class ChannelMasterController extends Controller
         $activeSkuSet = array_flip($activeSkus);
 
         $orders = \App\Models\DobaDailyData::whereRaw('LOWER(period) = ?', ['l60'])
+            ->tap($excludePickupPrepaid)
             ->get();
 
         if ($orders->isEmpty()) {
@@ -8568,12 +8578,7 @@ class ChannelMasterController extends Controller
             $cogs += $lp * $quantity;
 
             $shipCost = $quantity > 0 ? ($quantity === 1 ? $ship : $ship / $quantity) : $ship;
-
-            if (strtolower($order->order_type ?? '') === 'pickup with a prepaid label') {
-                $pftEach = ($itemPrice * $margin) - $lp;
-            } else {
-                $pftEach = ($itemPrice * $margin) - $shipCost - $lp;
-            }
+            $pftEach = ($itemPrice * $margin) - $shipCost - $lp;
             $pft += $pftEach * $quantity;
         }
 

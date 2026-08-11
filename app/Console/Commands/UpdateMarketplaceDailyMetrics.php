@@ -2418,9 +2418,12 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateDobaMetrics($date)
     {
-        // L30 from doba_daily_data (period stored lowercase by doba:daily), cancelled excluded
+        // L30 from doba_daily_data (period stored lowercase by doba:daily), cancelled excluded.
+        // Exclude "Pickup with a prepaid label" — those belong on /doba-tabulator-withoutship;
+        // /doba-tabulator and channel Doba metrics use the remaining daily-sales orders.
         $orders = DobaDailyData::whereRaw('LOWER(period) = ?', ['l30'])
             ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
+            ->whereRaw('LOWER(TRIM(COALESCE(order_type, ?))) <> ?', ['', 'pickup with a prepaid label'])
             ->get();
 
         if ($orders->isEmpty()) {

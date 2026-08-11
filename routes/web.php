@@ -3379,6 +3379,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/doba-tabulator-withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship.tabulator');
     Route::get('/doba_withoutship', [DobaController::class, 'dobaTabulatorViewWithoutShip'])->name('doba.withoutship');
     Route::get('/doba/summary-metrics', [DobaController::class, 'getDobaSummaryMetrics']);
+    Route::get('/doba/summary-metrics-withoutship', [DobaController::class, 'getDobaSummaryMetricsWithoutShip']);
     Route::post('/doba/save-sprice', [DobaController::class, 'saveSpriceToDatabase'])->name('doba.save-sprice');
     Route::post('/doba/save-sprice-withoutship', [DobaController::class, 'saveSpriceWithoutShipToDatabase'])->name('doba.save-sprice.withoutship');
     Route::post('/doba/push-price', [DobaController::class, 'pushPriceToDoba'])->name('doba.push-price');
@@ -3713,6 +3714,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/pricing-errors-fix-push', [CvrMasterController::class, 'pricingErrorsFixQueuePush'])->name('pricing.errors.fix.push');
     Route::get('/pricing-errors-fix-push-status', [CvrMasterController::class, 'pricingErrorsFixPushJobStatus'])->name('pricing.errors.fix.push.status');
     Route::post('/pricing-errors-fix-push-cancel', [CvrMasterController::class, 'pricingErrorsFixCancelPush'])->name('pricing.errors.fix.push.cancel');
+    Route::post('/pricing-errors-fix-badge-snapshot', [CvrMasterController::class, 'pricingErrorsFixBadgeSnapshot'])->name('pricing.errors.fix.badge.snapshot');
 
     // WMPNM Dil (copy of price-increase; same datatable /cvr-master-data-json)
     Route::get('/wmpnm-dil', [CvrMasterController::class, 'wmpnmDilView'])->name('wmpnm.dil');

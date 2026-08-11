@@ -210,10 +210,65 @@
         #pef-groi-filter-btn .status-circle { margin-right: 6px; }
         #pef-table-wrapper { height: calc(100vh - 200px); display: flex; flex-direction: column; }
         #pef-loading {
-            position: absolute; inset: 0; background: rgba(255,255,255,.75);
-            display: flex; align-items: center; justify-content: center; z-index: 20;
+            position: absolute; inset: 0; background: rgba(255,255,255,.82);
+            display: none; align-items: center; justify-content: center; z-index: 20;
             font-weight: 600; color: #334155;
         }
+        #pef-loading.active {
+            display: flex;
+        }
+        #pef-loading .pef-load-box {
+            width: min(420px, 86vw);
+            padding: 18px 20px;
+            border-radius: 10px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, .08);
+            text-align: center;
+        }
+        #pef-loading .pef-load-msg {
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+        #pef-loading .pef-load-pct {
+            font-variant-numeric: tabular-nums;
+            color: #0d6efd;
+            font-weight: 700;
+        }
+        #pef-loading .pef-load-bar {
+            height: 10px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            overflow: hidden;
+        }
+        #pef-loading .pef-load-bar > span {
+            display: block;
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #0dcaf0, #0d6efd);
+            transition: width .15s ease;
+        }
+        .pef-metric-badge {
+            display: inline-flex !important;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+        .pef-kpi-dot {
+            display: inline-block;
+            width: 0.65rem;
+            height: 0.65rem;
+            border-radius: 50%;
+            flex: 0 0 auto;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.55);
+            position: relative;
+            z-index: 2;
+        }
+        .pef-kpi-dot:hover { transform: scale(1.25); }
+        .pef-kpi-dot--green { background: #22c55e; }
+        .pef-kpi-dot--red { background: #ef4444; }
+        .pef-kpi-dot--gray { background: #9ca3af; }
         /* Exactly 2 toolbar lines — overflow visible so dropdown menus are not clipped */
         .pef-toolbar {
             display: flex;
@@ -523,6 +578,24 @@
                         <span class="badge text-bg-danger" id="pef-sku-groi-badge"
                             title="Unique SKUs with GROI &lt; 60% — click to filter">SKU: 0</span>
 
+                        <span class="badge text-bg-danger pef-metric-badge" id="pef-groi-lt40-badge"
+                            data-kpi-key="badge:pricing-errors-fix|groi_lt40"
+                            data-kpi-label="GROI <40%"
+                            data-kpi-value="0"
+                            title="Rows with GROI &lt; 40% — click badge to filter; click dot for rolling history">
+                            <span class="pef-kpi-dot pef-kpi-dot--gray" data-pef-kpi-dot role="button" tabindex="0" title="Rolling history graph"></span>
+                            <span class="pef-metric-badge-text">GROI&lt;40%: 0</span>
+                        </span>
+
+                        <span class="badge text-bg-danger pef-metric-badge" id="pef-npft-lt10-badge"
+                            data-kpi-key="badge:pricing-errors-fix|npft_lt10"
+                            data-kpi-label="NPFT <10%"
+                            data-kpi-value="0"
+                            title="Rows with NPFT &lt; 10% — click badge to filter; click dot for rolling history">
+                            <span class="pef-kpi-dot pef-kpi-dot--gray" data-pef-kpi-dot role="button" tabindex="0" title="Rolling history graph"></span>
+                            <span class="pef-metric-badge-text">NPFT&lt;10%: 0</span>
+                        </span>
+
                         <div class="dropdown">
                             <button class="btn btn-sm btn-light dropdown-toggle border" type="button"
                                 id="pef-dil-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
@@ -581,6 +654,7 @@
                             </ul>
                         </div>
                         <input type="hidden" id="pef-groi-filter" value="all">
+                        <input type="hidden" id="pef-npft-filter" value="all">
 
                         <div class="form-check form-check-inline mb-0 me-0">
                             <input class="form-check-input" type="checkbox" id="pef-listed-only" checked>
@@ -676,7 +750,16 @@
                     <div class="pef-push-bar mt-1"><span id="pef-push-progress-bar"></span></div>
                     <div id="pef-push-fail-list"></div>
                 </div>
-                <div id="pef-loading" style="display:none;"><i class="fas fa-spinner fa-spin me-2"></i> Pull Data to load…</div>
+                <div id="pef-loading" aria-live="polite">
+                    <div class="pef-load-box">
+                        <div class="pef-load-msg">
+                            <i class="fas fa-spinner fa-spin me-2"></i>
+                            <span id="pef-load-msg-text">Loading…</span>
+                            <span class="pef-load-pct ms-1" id="pef-load-pct">0%</span>
+                        </div>
+                        <div class="pef-load-bar"><span id="pef-load-bar"></span></div>
+                    </div>
+                </div>
                 <div id="pef-table-wrapper">
                     {{-- Shown only when Prc Mode Decrease/Increase/Same is active --}}
                     <div id="pef-discount-input-container" class="p-2 bg-light border-bottom" style="display:none;">
@@ -807,9 +890,54 @@
             </div>
         </div>
     </div>
+
+    {{-- GROI/NPFT badge rolling history (dashboard KPI style) --}}
+    <div class="modal fade" id="pefKpiChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size:13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="pefKpiChartTitle">KPI — Rolling history</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="pefKpiChartRange" class="form-select form-select-sm" style="width:auto;font-size:11px;">
+                            <option value="7">L7</option>
+                            <option value="14">L14</option>
+                            <option value="30" selected>L30</option>
+                            <option value="60">L60</option>
+                            <option value="90">L90</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body py-2 px-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2 small">
+                        <span id="pefKpiChartSub" class="text-muted"></span>
+                        <span id="pefKpiChartTone" class="badge bg-secondary">—</span>
+                    </div>
+                    <div id="pefKpiChartLoading" class="text-center py-3" style="display:none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    </div>
+                    <div id="pefKpiChartNoData" class="text-center py-3 text-muted small" style="display:none;">
+                        No history yet — open this page on separate days to build the graph.
+                    </div>
+                    <div id="pefKpiChartWrap" style="display:none;height:280px;">
+                        <canvas id="pefKpiChartCanvas"></canvas>
+                    </div>
+                    <div class="d-flex justify-content-around small mt-2" id="pefKpiChartStats" style="display:none;">
+                        <div class="text-center"><div class="text-muted" style="font-size:10px;">Highest</div><div id="pefKpiHi" class="fw-bold">—</div></div>
+                        <div class="text-center"><div class="text-muted" style="font-size:10px;">Median</div><div id="pefKpiMed" class="fw-bold">—</div></div>
+                        <div class="text-center"><div class="text-muted" style="font-size:10px;">Lowest</div><div id="pefKpiLo" class="fw-bold">—</div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function() {
     const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -823,6 +951,8 @@
     let pulledRows = Array.isArray(PEF_INITIAL_ROWS) ? PEF_INITIAL_ROWS.slice() : [];
     let dataLoaded = pulledRows.length > 0;
     let pullInProgress = false;
+    let pefLoadPct = 0;
+    let pefLoadFakeTimer = null;
     // % Prc Mode flags — same as /amazon-tabulator-view
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -842,6 +972,51 @@
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
         $('.toast-container').append(html);
         setTimeout(() => $('#' + id).fadeOut(200, function() { $(this).remove(); }), 4000);
+    }
+
+    function stopLoadFakeProgress() {
+        if (pefLoadFakeTimer) {
+            clearInterval(pefLoadFakeTimer);
+            pefLoadFakeTimer = null;
+        }
+    }
+
+    function setLoadProgress(pct, msg) {
+        const n = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+        if (n < pefLoadPct && n < 100) return; // never jump backwards while loading
+        pefLoadPct = n;
+        $('#pef-load-pct').text(pefLoadPct + '%');
+        $('#pef-load-bar').css('width', pefLoadPct + '%');
+        if (msg) $('#pef-load-msg-text').text(msg);
+    }
+
+    function showLoadProgress(msg) {
+        stopLoadFakeProgress();
+        pefLoadPct = 0;
+        $('#pef-load-pct').text('0%');
+        $('#pef-load-bar').css('width', '0%');
+        $('#pef-load-msg-text').text(msg || 'Loading…');
+        $('#pef-loading').addClass('active');
+    }
+
+    function hideLoadProgress() {
+        stopLoadFakeProgress();
+        setLoadProgress(100, 'Done');
+        $('#pef-loading').removeClass('active');
+        pefLoadPct = 0;
+    }
+
+    /** When Content-Length is missing, ease the bar toward ~85% so load feels tracked. */
+    function startLoadFakeProgress() {
+        stopLoadFakeProgress();
+        pefLoadFakeTimer = setInterval(function() {
+            if (pefLoadPct >= 85) {
+                stopLoadFakeProgress();
+                return;
+            }
+            const step = pefLoadPct < 40 ? 3 : (pefLoadPct < 70 ? 2 : 1);
+            setLoadProgress(pefLoadPct + step, 'Loading…');
+        }, 220);
     }
 
     /** PEF field → metric kind (sroi column is SGROI% / gross). */
@@ -1430,16 +1605,24 @@
         if (!range || range === 'all') return true;
         const n = Number(d.groi);
         if (!isFinite(n)) return false;
+        if (range === 'lt-40') return n < 40;
         if (range === 'lt-60') return n < 60;
         if (range === '60-90') return n >= 60 && n < 90;
         if (range === '90-150') return n >= 90 && n < 150;
         if (range === 'gte-150') return n >= 150;
         // legacy saved filters
-        if (range === 'lt-40') return n < 60;
         if (range === '40-60') return n >= 40 && n < 60;
         if (range === '60-80') return n >= 60 && n < 90;
         if (range === '80-100') return n >= 90 && n < 150;
         if (range === 'gte-100') return n >= 150;
+        return true;
+    }
+
+    function matchesNpftFilter(d, range) {
+        if (!range || range === 'all') return true;
+        const n = Number(d.npft);
+        if (!isFinite(n)) return false;
+        if (range === 'lt-10') return n < 10;
         return true;
     }
 
@@ -1467,6 +1650,193 @@
             if (matchesGroiFilter(d, 'lt-60')) skus.add(String(d.sku));
         });
         $('#pef-sku-groi-badge').text('SKU: ' + skus.size);
+    }
+
+    const PEF_KPI_HISTORY_URL = @json(route('dashboard.kpi.history'));
+    const PEF_KPI_TONES_URL = @json(route('dashboard.kpi.tones'));
+    const PEF_KPI_SNAPSHOT_URL = @json(route('pricing.errors.fix.badge.snapshot'));
+    const PEF_KPI_TONE_COLORS = { green: '#22c55e', red: '#ef4444', gray: '#9ca3af' };
+    let pefKpiChartInstance = null;
+    let pefKpiChartAjax = null;
+    let pefKpiActive = { key: '', label: '', value: null, days: 30 };
+
+    function setPefKpiDotTone($badge, tone) {
+        const t = (tone === 'green' || tone === 'red') ? tone : 'gray';
+        $badge.attr('data-kpi-tone', t);
+        $badge.find('[data-pef-kpi-dot]')
+            .removeClass('pef-kpi-dot--green pef-kpi-dot--red pef-kpi-dot--gray')
+            .addClass('pef-kpi-dot--' + t);
+    }
+
+    function pefKpiFmt(v) {
+        const n = Number(v || 0);
+        if (!isFinite(n)) return '—';
+        return Math.round(n).toLocaleString('en-US');
+    }
+
+    function persistPefKpiSnapshot(groiLt40, npftLt10) {
+        $.ajax({
+            url: PEF_KPI_SNAPSHOT_URL,
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
+            data: { groi_lt40: groiLt40, npft_lt10: npftLt10, _token: csrf },
+        }).always(function() {
+            refreshPefKpiDotTones();
+        });
+    }
+
+    function refreshPefKpiDotTones() {
+        const keys = [];
+        $('.pef-metric-badge[data-kpi-key]').each(function() {
+            const k = $(this).attr('data-kpi-key');
+            if (k) keys.push(k);
+        });
+        if (!keys.length) return;
+        $.ajax({
+            url: PEF_KPI_TONES_URL,
+            method: 'POST',
+            contentType: 'application/json',
+            headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
+            data: JSON.stringify({ keys: keys }),
+        }).done(function(res) {
+            const tones = (res && res.tones) || {};
+            $('.pef-metric-badge[data-kpi-key]').each(function() {
+                const key = $(this).attr('data-kpi-key');
+                const tone = (tones[key] && tones[key].tone) || 'gray';
+                setPefKpiDotTone($(this), tone);
+            });
+        });
+    }
+
+    function openPefKpiChart($badge) {
+        pefKpiActive.key = $badge.attr('data-kpi-key') || '';
+        pefKpiActive.label = $badge.attr('data-kpi-label') || ($badge.find('.pef-metric-badge-text').text() || '').trim();
+        const raw = $badge.attr('data-kpi-value');
+        pefKpiActive.value = (raw !== null && raw !== '' && isFinite(Number(raw))) ? Number(raw) : null;
+        pefKpiActive.days = parseInt($('#pefKpiChartRange').val(), 10) || 30;
+
+        $('#pefKpiChartTitle').text(pefKpiActive.label + ' — Rolling L' + pefKpiActive.days);
+        $('#pefKpiChartSub').text(pefKpiActive.key);
+        const tone = $badge.attr('data-kpi-tone') || 'gray';
+        $('#pefKpiChartTone').text(String(tone).toUpperCase())
+            .css({ background: PEF_KPI_TONE_COLORS[tone] || PEF_KPI_TONE_COLORS.gray, color: '#fff' });
+
+        const modalEl = document.getElementById('pefKpiChartModal');
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        } else {
+            $(modalEl).modal('show');
+        }
+        loadPefKpiChart();
+    }
+
+    function loadPefKpiChart() {
+        if (!pefKpiActive.key) return;
+        if (pefKpiChartAjax) pefKpiChartAjax.abort();
+        $('#pefKpiChartLoading').show();
+        $('#pefKpiChartNoData').hide();
+        $('#pefKpiChartWrap').hide();
+        $('#pefKpiChartStats').hide();
+
+        const params = { key: pefKpiActive.key, days: pefKpiActive.days };
+        if (pefKpiActive.value !== null) params.badge_value = pefKpiActive.value;
+
+        pefKpiChartAjax = $.ajax({
+            url: PEF_KPI_HISTORY_URL,
+            method: 'GET',
+            data: params,
+        }).done(function(payload) {
+            pefKpiChartAjax = null;
+            $('#pefKpiChartLoading').hide();
+            if (!payload || !payload.success || !payload.data || !payload.data.length) {
+                $('#pefKpiChartNoData').show();
+                return;
+            }
+            if (payload.tone) {
+                $('#pefKpiChartTone').text(String(payload.tone).toUpperCase())
+                    .css({ background: PEF_KPI_TONE_COLORS[payload.tone] || PEF_KPI_TONE_COLORS.gray, color: '#fff' });
+            }
+            $('#pefKpiChartWrap').show();
+            $('#pefKpiChartStats').css('display', 'flex');
+            renderPefKpiChart(payload.data, payload.label || pefKpiActive.label);
+        }).fail(function(_xhr, status) {
+            pefKpiChartAjax = null;
+            if (status === 'abort') return;
+            $('#pefKpiChartLoading').hide();
+            $('#pefKpiChartNoData').show();
+        });
+    }
+
+    function renderPefKpiChart(data, label) {
+        if (typeof Chart === 'undefined') return;
+        const canvas = document.getElementById('pefKpiChartCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (pefKpiChartInstance) pefKpiChartInstance.destroy();
+
+        const labels = data.map(function(d) { return d.date; });
+        const values = data.map(function(d) { return Number(d.value || 0); });
+        const colors = data.map(function(d) { return PEF_KPI_TONE_COLORS[d.tone] || PEF_KPI_TONE_COLORS.gray; });
+        const dataMin = Math.min.apply(null, values);
+        const dataMax = Math.max.apply(null, values);
+        const sorted = values.slice().sort(function(a, b) { return a - b; });
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        const range = dataMax - dataMin || 1;
+
+        $('#pefKpiHi').text(pefKpiFmt(dataMax));
+        $('#pefKpiMed').text(pefKpiFmt(median));
+        $('#pefKpiLo').text(pefKpiFmt(dataMin));
+
+        pefKpiChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label,
+                    data: values,
+                    borderColor: '#94a3b8',
+                    backgroundColor: 'rgba(148,163,184,0.12)',
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 1.5,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: colors,
+                    pointBorderColor: colors,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        min: Math.min(0, dataMin - range * 0.08),
+                        max: dataMax + range * 0.08,
+                        ticks: { font: { size: 9 }, callback: function(v) { return pefKpiFmt(v); } },
+                    },
+                    x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                },
+            },
+        });
+    }
+
+    /** Row counts for low GROI / NPFT badges */
+    function updateLowMetricBadges() {
+        let groiLt40 = 0;
+        let npftLt10 = 0;
+        pulledRows.forEach(function(d) {
+            if (matchesGroiFilter(d, 'lt-40')) groiLt40++;
+            if (matchesNpftFilter(d, 'lt-10')) npftLt10++;
+        });
+        $('#pef-groi-lt40-badge')
+            .attr('data-kpi-value', String(groiLt40))
+            .find('.pef-metric-badge-text').text('GROI<40%: ' + groiLt40);
+        $('#pef-npft-lt10-badge')
+            .attr('data-kpi-value', String(npftLt10))
+            .find('.pef-metric-badge-text').text('NPFT<10%: ' + npftLt10);
+        persistPefKpiSnapshot(groiLt40, npftLt10);
     }
 
     /** Snapshot current column sort so filters can re-apply across ALL pages. */
@@ -1525,6 +1895,7 @@
         const dilColor = $('#pef-dil-filter').val() || 'all';
         const gpftRange = $('#pef-gpft-filter').val() || 'all';
         const groiRange = $('#pef-groi-filter').val() || 'all';
+        const npftRange = $('#pef-npft-filter').val() || 'all';
         const priceFilter = $('#pef-price-filter').val() || 'all';
         const channelKeys = getSelectedChannelKeys();
 
@@ -1570,6 +1941,9 @@
         }
         if (groiRange !== 'all') {
             table.addFilter(function(data) { return matchesGroiFilter(data, groiRange); });
+        }
+        if (npftRange !== 'all') {
+            table.addFilter(function(data) { return matchesNpftFilter(data, npftRange); });
         }
         finalizeFilterSort(sortSnapshot);
     }
@@ -2235,12 +2609,12 @@
     function setGroiFilterUI(range) {
         const map = {
             all: { label: 'GROI%', dot: 'default' },
+            'lt-40': { label: 'GROI <40%', dot: 'red' },
             'lt-60': { label: 'GROI <60%', dot: 'red' },
             '60-90': { label: 'GROI 60–90%', dot: 'yellow' },
             '90-150': { label: 'GROI 90–150%', dot: 'green' },
             'gte-150': { label: 'GROI ≥150%', dot: 'pink' },
             // legacy
-            'lt-40': { label: 'GROI <60%', dot: 'red' },
             '40-60': { label: 'GROI <60%', dot: 'red' },
             '60-80': { label: 'GROI 60–90%', dot: 'yellow' },
             '80-100': { label: 'GROI 90–150%', dot: 'green' },
@@ -2252,6 +2626,10 @@
         $('#pef-groi-filter-dot').attr('class', 'status-circle ' + m.dot);
         $('.pef-groi-filter-item').removeClass('active');
         $('.pef-groi-filter-item[data-range="' + range + '"]').addClass('active');
+    }
+
+    function setNpftFilterUI(range) {
+        $('#pef-npft-filter').val(range || 'all');
     }
 
     function pctFormatter(cell) { return fmtPct(cell); }
@@ -2851,6 +3229,8 @@
         selectedIds.clear();
         updatePushBtn();
         if (!table) initTable([]);
+        showLoadProgress('Loading…');
+        startLoadFakeProgress();
 
         try {
             const resp = await $.ajax({
@@ -2858,7 +3238,22 @@
                 method: 'GET',
                 dataType: 'json',
                 timeout: 60000,
+                xhr: function() {
+                    const xhr = $.ajaxSettings.xhr();
+                    if (xhr && xhr.addEventListener) {
+                        xhr.addEventListener('progress', function(e) {
+                            if (!e.lengthComputable || !(e.total > 0)) return;
+                            stopLoadFakeProgress();
+                            // Reserve last ~10% for table paint / filters
+                            const pct = Math.min(90, Math.round((e.loaded / e.total) * 90));
+                            setLoadProgress(pct, 'Downloading…');
+                        });
+                    }
+                    return xhr;
+                },
             });
+            stopLoadFakeProgress();
+            setLoadProgress(92, 'Building table…');
             const rows = Array.isArray(resp) ? resp : (resp.data || []);
             const meta = resp.meta || {};
             pulledRows = rows;
@@ -2872,11 +3267,13 @@
                 await table.replaceData(pulledRows);
                 table.setSort([{ column: 'groi', dir: 'asc' }]);
             }
+            setLoadProgress(98, 'Applying filters…');
             // Defer non-critical UI so table paints first
             requestAnimationFrame(function() {
                 rebuildParentDatalist();
                 updateMissingBadge();
                 updateSkuGroiBadge();
+                updateLowMetricBadges();
                 applyStatusFilter();
                 updatePushBtn();
             });
@@ -2898,11 +3295,12 @@
             } else if (!rows.length) {
                 toast('No rows in cache (or Listed filter hid all)', 'error');
             }
+            setLoadProgress(100, 'Done');
         } catch (xhr) {
             toast('Load failed: ' + ((xhr && xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error)) || 'error'), 'error');
         }
 
-        $('#pef-loading').hide();
+        hideLoadProgress();
         $('#pef-reload-btn').prop('disabled', false);
         pullInProgress = false;
     }
@@ -4385,6 +4783,40 @@
         applyStatusFilter();
     }).css('cursor', 'pointer');
 
+    $('#pef-groi-lt40-badge').on('click', function(e) {
+        if ($(e.target).closest('[data-pef-kpi-dot]').length) return;
+        if (!dataLoaded) return;
+        setNpftFilterUI('all');
+        setGroiFilterUI('lt-40');
+        applyStatusFilter();
+    }).css('cursor', 'pointer');
+
+    $('#pef-npft-lt10-badge').on('click', function(e) {
+        if ($(e.target).closest('[data-pef-kpi-dot]').length) return;
+        if (!dataLoaded) return;
+        setGroiFilterUI('all');
+        setNpftFilterUI('lt-10');
+        applyStatusFilter();
+    }).css('cursor', 'pointer');
+
+    $(document).on('click', '.pef-metric-badge [data-pef-kpi-dot]', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        openPefKpiChart($(this).closest('.pef-metric-badge'));
+    });
+    $(document).on('keydown', '.pef-metric-badge [data-pef-kpi-dot]', function(e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        e.stopPropagation();
+        openPefKpiChart($(this).closest('.pef-metric-badge'));
+    });
+    $('#pefKpiChartRange').on('change', function() {
+        pefKpiActive.days = parseInt($(this).val(), 10) || 30;
+        $('#pefKpiChartTitle').text(pefKpiActive.label + ' — Rolling L' + pefKpiActive.days);
+        loadPefKpiChart();
+    });
+
     // Data already in HTML from DB — paint immediately (no Ajax load)
     initTable(pulledRows);
     if (dataLoaded) {
@@ -4394,6 +4826,7 @@
             rebuildParentDatalist();
             updateMissingBadge();
             updateSkuGroiBadge();
+            updateLowMetricBadges();
             applyStatusFilter();
             updatePushBtn();
         });

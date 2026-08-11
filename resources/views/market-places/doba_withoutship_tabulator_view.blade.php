@@ -2354,8 +2354,42 @@
                 applyFilters();
             });
 
-            // Fetch and display summary metrics from marketplace_daily_metrics table
-            // Update summary badges for SKU counts
+            // Sales / GPFT / ROI from /doba/daily-sales rows with order_type
+            // "Pickup with a prepaid label" only (not qty × current self-pick price).
+            function fetchDobaWithoutShipSummaryMetrics() {
+                fetch('/doba/summary-metrics-withoutship')
+                    .then(response => response.json())
+                    .then(result => {
+                        if (!(result.success && result.data)) return;
+                        const data = result.data;
+                        $('#dws-total-sales-badge').text(
+                            'Sales: $' + Math.round(parseFloat(data.total_sales) || 0).toLocaleString()
+                        );
+                        $('#pft-percentage-badge').text(
+                            'GPFT: ' + (parseFloat(data.pft_percentage) || 0).toFixed(1) + '%'
+                        );
+                        $('#pft-total-badge').text(
+                            'L30 GPFT: $' + Math.round(parseFloat(data.total_pft) || 0).toLocaleString()
+                        );
+                        const roiVal = parseFloat(data.roi_percentage) || 0;
+                        let roiBadgeBg;
+                        if      (roiVal < 40)  roiBadgeBg = '#a00211';
+                        else if (roiVal < 75)  roiBadgeBg = '#ffc107';
+                        else if (roiVal < 125) roiBadgeBg = '#28a745';
+                        else                   roiBadgeBg = '#e83e8c';
+                        $('#roi-percentage-badge')
+                            .css('background-color', roiBadgeBg)
+                            .text('ROI: ' + Math.round(roiVal) + '%');
+                        $('#total-cogs-badge').text(
+                            'Total COGS: $' + Math.round(parseFloat(data.total_cogs) || 0).toLocaleString()
+                        );
+                    })
+                    .catch(error => {
+                        console.error('Error fetching Doba withoutship metrics:', error);
+                    });
+            }
+
+            // Update filter-dependent summary badges (Rows / Missing / etc.)
             function updateSummary() {
                 const tableData = table.getData("active");
                 const filteredData = tableData.filter(row => !row.is_parent);
@@ -2370,9 +2404,6 @@
                 let missing = 0;
                 let nmap = 0;
                 let discVsAmzCount = 0;
-                let totalL30Sales = 0;
-                let totalL30COGS = 0;
-                let totalL30Shipping = 0;
 
                 allNonParentData.forEach(row => {
                     if (dobaInvMismatch(row)) nmap++;
@@ -2381,22 +2412,13 @@
                 filteredData.forEach(row => {
                     const inv = parseFloat(row.INV) || 0;
                     const dobaL30 = parseFloat(row['doba L30']) || 0;
-                    const dobaPrice = parseFloat(row.self_pick_price) || 0;
-                    const lp = parseFloat(row.LP_productmaster) || 0;
-                    const ship = FORMULA_SHIP;
 
                     if (dobaL30 === 0 && inv > 0) l30ZeroSold++;
                     if (dobaL30 > 0) sold++;
-
-                    totalL30Sales += dobaL30 * dobaPrice;
-                    totalL30COGS += dobaL30 * lp;
-                    totalL30Shipping += dobaL30 * ship;
                 });
 
                 // Calculate missing and disc vs amz from all data (not filtered)
                 allNonParentData.forEach(row => {
-                    const inv = parseFloat(row.INV) || 0;
-                    const dobaL30 = parseFloat(row['doba L30']) || 0;
                     const dobaPrice = parseFloat(row.self_pick_price) || 0;
                     const amazonPrice = parseFloat(row.amazon_price) || 0;
                     
@@ -2410,39 +2432,11 @@
                     }
                 });
 
-                // L30 GPFT and L30 GPFT % (period-over-period growth badges removed —
-                // see HTML comment above the badge bar for why L60 was unreliable).
-                const l30Profit = totalL30Sales - totalL30COGS - totalL30Shipping;
-                let l30GpftPercent = 0;
-                if (totalL30Sales > 0) {
-                    l30GpftPercent = (l30Profit / totalL30Sales) * 100;
-                }
-
-                $('#dws-total-sales-badge').text('Sales: $' + Math.round(totalL30Sales).toLocaleString());
                 $('#total-skus').text('Rows: ' + totalSkus.toLocaleString());
                 $('#zero-sold-count').text('0 Sold: ' + l30ZeroSold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
                 $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
-
-                $('#pft-percentage-badge').text('GPFT: ' + l30GpftPercent.toFixed(1) + '%');
-                $('#pft-total-badge').text('L30 GPFT: $' + Math.round(l30Profit).toLocaleString());
-
-                const l30RoiAgg = totalL30COGS > 0 ? (l30Profit / totalL30COGS) * 100 : 0;
-                // Color the ROI badge by the same 4-bucket slabs the ROI filter dropdown uses:
-                //   red    < 40
-                //   yellow 40–75
-                //   green  75–125
-                //   pink   ≥ 125
-                let roiBadgeBg;
-                if      (l30RoiAgg < 40)  roiBadgeBg = '#a00211';
-                else if (l30RoiAgg < 75)  roiBadgeBg = '#ffc107';
-                else if (l30RoiAgg < 125) roiBadgeBg = '#28a745';
-                else                       roiBadgeBg = '#e83e8c';
-                $('#roi-percentage-badge')
-                    .css('background-color', roiBadgeBg)
-                    .text('ROI: ' + Math.round(l30RoiAgg) + '%');
-                $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalL30COGS).toLocaleString());
             }
 
             /**
@@ -2593,6 +2587,7 @@
                     buildColumnDropdown();
                 });
                 updateSummary();
+                fetchDobaWithoutShipSummaryMetrics();
                 applyFilters(); // Default: > 0 inventory
                 updateVisibleRowsCount();
             });

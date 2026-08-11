@@ -25,6 +25,7 @@ class BadgeDataCatalog
             'account-health' => 'Account Health',
             'verify-adjust' => 'Verify / Adjust',
             'purchase-contract' => 'Purchase Contract',
+            'pricing-errors-fix' => 'Pricing Errors Fix',
         ];
     }
 
@@ -134,6 +135,10 @@ class BadgeDataCatalog
                 'balance' => 'Balance',
                 'po_count' => 'PO count',
             ],
+            'pricing-errors-fix' => [
+                'groi_lt40' => 'GROI <40%',
+                'npft_lt10' => 'NPFT <10%',
+            ],
         ];
     }
 
@@ -183,6 +188,12 @@ class BadgeDataCatalog
     public static function isLowerBetter(string $pageName, string $field): bool
     {
         $f = strtolower($field);
+
+        // Pricing Errors Fix — lower count of weak-margin rows is better
+        if ($pageName === 'pricing-errors-fix' && in_array($f, ['groi_lt40', 'npft_lt10'], true)) {
+            return true;
+        }
+
         $lowerNeedles = [
             'missing', 'unverified', 'due', 'pending', 'issue', 'red',
             'zero_stock', 'unrated', 'acos', 'tcos', 'ads_pct', 'loss',
