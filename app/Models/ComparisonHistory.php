@@ -59,7 +59,7 @@ class ComparisonHistory extends Model
             'freight' => 'Freight',
             'gw' => 'GW LB',
             'shipping' => 'Shipping',
-            'sale' => 'Sale',
+            'sale' => 'Proposed PRC',
         ];
 
         return 'ROI '.$channelLabel.' '.($fieldNames[$field] ?? ucfirst($field));

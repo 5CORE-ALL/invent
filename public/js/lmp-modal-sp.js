@@ -25,6 +25,16 @@
             '</div>' +
         '</div>';
 
+    // Compact SP control for Comparison LMP modal header (centered, saves vertical space)
+    var SP_HEADER_HTML =
+        '<div class="lmp-modal-sp-header-wrap" title="Standard Price (manual). Saves to SP for this SKU and Sku Link LMP siblings.">' +
+            '<label class="lmp-modal-sp-header-label mb-0" for="comparison-lmp-modal-sp-input">SP</label>' +
+            '<input type="number" id="comparison-lmp-modal-sp-input" ' +
+                'class="form-control form-control-sm text-end fw-bold lmp-modal-sp-input" ' +
+                'step="0.01" min="0.01" placeholder="0.00" ' +
+                'title="Manual Standard Price — use when LMP cannot be determined. Saves to SP / STD PRC.">' +
+        '</div>';
+
     var SP_TH_HTML =
         '<th class="text-center lmp-sp-col-th" style="width:70px;" ' +
         'title="Standard Price (SP) — from SP input above. Blank unless filled when LMP cannot be determined.">SP</th>';
@@ -152,6 +162,32 @@
         if (modal.querySelector('#lmpModalSpInput')) {
             return modal.querySelector('#lmpModalSpInput');
         }
+
+        var isComparisonLmp = modal.id === 'comparisonLmpModal';
+
+        // Comparison page: keep SP in the modal header center (remove legacy body card if present)
+        if (isComparisonLmp) {
+            var bodyBox = modal.querySelector('.modal-body .lmp-modal-sp-box');
+            if (bodyBox) {
+                bodyBox.remove();
+            }
+            var headerExisting = modal.querySelector('.lmp-modal-sp-header-wrap .lmp-modal-sp-input');
+            if (headerExisting) {
+                return headerExisting;
+            }
+            var header = modal.querySelector('.modal-header');
+            if (!header) {
+                return null;
+            }
+            var closeBtn = header.querySelector('.btn-close');
+            if (closeBtn) {
+                closeBtn.insertAdjacentHTML('beforebegin', SP_HEADER_HTML);
+            } else {
+                header.insertAdjacentHTML('beforeend', SP_HEADER_HTML);
+            }
+            return modal.querySelector('.lmp-modal-sp-header-wrap .lmp-modal-sp-input');
+        }
+
         var existing = modal.querySelector('.lmp-modal-sp-input');
         if (existing) return existing;
         var body = modal.querySelector('.modal-body');

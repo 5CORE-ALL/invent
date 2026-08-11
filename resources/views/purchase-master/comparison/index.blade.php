@@ -1444,11 +1444,19 @@
         text-align: center;
     }
 
-    /* Cost Calculator modal — top dialog, 1.5× size, light header, bordered shell */
-    #comparisonRoiModal .modal-dialog {
-        max-width: min(1200px, 96vw); /* modal-lg 800px × 1.5 */
-        width: min(1200px, 96vw);
-        margin: 1rem auto 0;
+    /* Profit Calculator modal — full-width end-to-end (comparison page only) */
+    #comparisonRoiModal.modal {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    #comparisonRoiModal .modal-dialog.comparison-roi-modal-dialog {
+        max-width: 100vw;
+        width: 100vw;
+        height: auto;
+        max-height: none;
+        margin: 0;
+        margin-top: 0;
         align-items: flex-start;
     }
 
@@ -1457,39 +1465,74 @@
     }
 
     #comparisonRoiModal .modal-content {
-        border: 1.5px solid #64748b;
-        border-radius: 12px;
-        box-shadow: 0 14px 42px rgba(15, 23, 42, 0.22);
-        overflow: hidden;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+        overflow: visible;
+        height: auto;
+        min-height: 0;
+        max-height: none;
     }
 
     #comparisonRoiModal .modal-header {
         background: #e8f1fb;
         border-bottom: 1px solid #b6c9e0;
         padding: 0.9rem 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
     }
 
     #comparisonRoiModal .modal-title {
         font-size: 1.2rem;
         font-weight: 700;
         color: #1e293b;
+        margin-right: auto;
+    }
+
+    #comparisonRoiModal .comparison-roi-header-image-wrap {
+        display: inline-flex;
+        align-items: center;
+        margin-right: 0.55rem;
+        vertical-align: middle;
+        flex-shrink: 0;
+    }
+
+    #comparisonRoiModal .comparison-roi-header-image {
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+        border-radius: 6px;
+        border: 1px solid #94a3b8;
+        background: #fff;
+        cursor: zoom-in;
+        vertical-align: middle;
+    }
+
+    #comparison-roi-amz-reviews-slot {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        margin-right: 0.35rem;
+        min-height: 2.1rem;
+    }
+
+    #comparison-roi-amz-reviews-slot .comparison-roi-amz-reviews-badge {
+        transform: scale(1.5);
+        transform-origin: center right;
+        border-radius: 999px;
+        padding: 3px 8px;
     }
 
     #comparisonRoiModal .modal-body {
-        padding: 1.35rem !important;
-    }
-
-    #comparisonRoiModal #comparison-roi-manual-lmp-wrap {
-        padding: 0.85rem 1rem !important;
-    }
-
-    #comparisonRoiModal #comparison-roi-manual-lmp {
-        width: 160px !important;
-        font-size: 14px;
+        padding: 0.85rem 1.25rem 1rem !important;
+        height: auto;
+        max-height: none;
+        overflow: visible;
     }
 
     .comparison-roi-table thead th {
-        background: #fde047;
+        background: #e8f1fb;
         font-size: 14px;
         text-align: center;
         vertical-align: middle;
@@ -1509,6 +1552,85 @@
         background: #fff;
         text-align: left;
         font-size: 15px;
+        white-space: nowrap;
+    }
+
+    .comparison-roi-table .comparison-roi-channel-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: nowrap;
+    }
+
+    .comparison-roi-amz-reviews-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 6px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        line-height: 1.1;
+        cursor: default;
+        vertical-align: middle;
+    }
+
+    .comparison-roi-amz-reviews-badge.cd-reviews-hot {
+        background: #fce7f3;
+        border-color: #f9a8d4;
+    }
+
+    .comparison-roi-amz-reviews-badge .cd-reviews-badge-inner {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .comparison-roi-amz-reviews-badge .cd-reviews-rating-line {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .comparison-roi-amz-reviews-badge .cd-reviews-count-line {
+        font-size: 0.68rem;
+        font-weight: 500;
+        color: #5c5c5c;
+        white-space: nowrap;
+    }
+
+    .comparison-roi-amz-reviews-badge .cd-reviews-action-dots {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding-left: 4px;
+        border-left: 1px solid #e2e8f0;
+    }
+
+    .comparison-roi-amz-reviews-badge .cd-reviews-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        display: inline-block;
+        cursor: pointer;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        flex-shrink: 0;
+    }
+
+    .comparison-roi-amz-reviews-badge .cd-reviews-dot:hover {
+        transform: scale(1.25);
+    }
+
+    .comparison-roi-amz-reviews-badge .cd-reviews-dot-graph { background: #e83e8c; }
+    .comparison-roi-amz-reviews-badge .cd-reviews-dot-intel { background: #0d6efd; }
+    .comparison-roi-amz-reviews-badge .cd-reviews-dot-amazon { background: #ff9900; }
+    .comparison-roi-amz-reviews-badge .cd-reviews-dot.is-disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        transform: none;
     }
 
     .comparison-roi-table .comparison-roi-input-cell {
@@ -1525,6 +1647,33 @@
         font-size: 14px;
         text-align: center;
         background: #fff7ed;
+    }
+
+    /* CP + CBM + GW LB + Shipping — half width */
+    .comparison-roi-table th:nth-child(2),
+    .comparison-roi-table th:nth-child(3),
+    .comparison-roi-table th:nth-child(5),
+    .comparison-roi-table th:nth-child(6),
+    .comparison-roi-table td:nth-child(2),
+    .comparison-roi-table td:nth-child(3),
+    .comparison-roi-table td:nth-child(5),
+    .comparison-roi-table td:nth-child(6) {
+        width: 48px;
+        max-width: 52px;
+        padding-left: 2px;
+        padding-right: 2px;
+    }
+
+    .comparison-roi-table .comparison-roi-input-cell input[data-field="cp"],
+    .comparison-roi-table .comparison-roi-input-cell input[data-field="cbm"],
+    .comparison-roi-table .comparison-roi-input-cell input[data-field="gw"],
+    .comparison-roi-table .comparison-roi-input-cell input[data-field="shipping"] {
+        min-width: 36px;
+        width: 100%;
+        max-width: 44px;
+        padding: 4px 2px;
+        margin: 0 auto;
+        display: block;
     }
 
     .comparison-roi-table .comparison-roi-input-cell input.comparison-roi-input-readonly {
@@ -1582,6 +1731,36 @@
         color: #701a75;
     }
 
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="npft"].comparison-roi-tier-green,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="nroi"].comparison-roi-tier-green,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGpft"].comparison-roi-tier-green,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGroi"].comparison-roi-tier-green,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNroi"].comparison-roi-tier-green,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNpft"].comparison-roi-tier-green {
+        background: #4ade80;
+        color: #14532d;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="npft"].comparison-roi-tier-red,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="nroi"].comparison-roi-tier-red,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGpft"].comparison-roi-tier-red,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGroi"].comparison-roi-tier-red,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNroi"].comparison-roi-tier-red,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNpft"].comparison-roi-tier-red {
+        background: #f87171;
+        color: #7f1d1d;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="npft"].comparison-roi-tier-magenta,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="nroi"].comparison-roi-tier-magenta,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGpft"].comparison-roi-tier-magenta,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGroi"].comparison-roi-tier-magenta,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNroi"].comparison-roi-tier-magenta,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNpft"].comparison-roi-tier-magenta {
+        background: #e879f9;
+        color: #701a75;
+    }
+
     .comparison-roi-table .comparison-roi-lmp-header-btn,
     .comparison-roi-table .comparison-roi-lmp-link {
         font-size: 14px;
@@ -1632,20 +1811,52 @@
         background: #eff6ff;
     }
 
+    .comparison-roi-table th.comparison-roi-proposed-metrics-th,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="profit"],
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="roi"],
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="pPct"],
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="nroi"],
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="npft"] {
+        background: #fef9c3;
+    }
+
+    .comparison-roi-table th.comparison-roi-proposed-metrics-th {
+        background: #fdba74 !important;
+        color: #9a3412;
+    }
+
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-calc-cell[data-calc="profit"],
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-calc-cell[data-calc="roi"],
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-calc-cell[data-calc="pPct"],
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-calc-cell[data-calc="nroi"],
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-calc-cell[data-calc="npft"] {
+        background: #fef08a;
+    }
+
+    .comparison-roi-table th.comparison-roi-c-price-th,
+    .comparison-roi-table th.comparison-roi-site-metrics-th {
+        background: #86efac !important;
+        color: #14532d;
+    }
+
     .comparison-roi-table .comparison-roi-price-after-lmp-cell {
-        background: #ecfdf5;
+        background: #86efac;
         font-weight: 600;
-        color: #166534;
+        color: #14532d;
         min-width: 72px;
         white-space: nowrap;
+    }
+
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-price-after-lmp-cell {
+        background: #4ade80;
     }
 
     .comparison-roi-table .comparison-roi-price-history-dot,
     .comparison-roi-table .comparison-roi-metric-history-dot {
         cursor: pointer;
-        font-size: 8px;
+        font-size: 9px;
         vertical-align: middle;
-        margin-left: 4px;
+        margin-left: 5px;
     }
 
     .comparison-roi-table .comparison-roi-price-history-dot {
@@ -1654,6 +1865,46 @@
 
     .comparison-roi-table .comparison-roi-price-history-dot:hover {
         color: #c2185b;
+        transform: scale(1.25);
+    }
+
+    /* Comparison page only: Price history chart as bottom modal dialog */
+    #comparisonRoiPriceChartModal.modal {
+        padding-right: 0 !important;
+    }
+
+    #comparisonRoiPriceChartModal .comparison-roi-price-chart-bottom-dialog.modal-bottom {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        top: auto;
+        margin: 0 auto;
+        width: min(960px, 100%);
+        max-width: 100%;
+        height: auto;
+        max-height: 78vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        transform: translateY(100%);
+        transition: transform 0.3s ease-out;
+    }
+
+    #comparisonRoiPriceChartModal.show .comparison-roi-price-chart-bottom-dialog.modal-bottom {
+        transform: translateY(0);
+    }
+
+    #comparisonRoiPriceChartModal .comparison-roi-price-chart-bottom-dialog .modal-content {
+        border-radius: 16px 16px 0 0;
+        max-height: 78vh;
+        overflow: hidden;
+        box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.22);
+    }
+
+    #comparisonRoiPriceChartModal .comparison-roi-price-chart-bottom-dialog .modal-body {
+        overflow-y: auto;
+        max-height: calc(78vh - 58px);
     }
 
     .comparison-roi-table .comparison-roi-npft-cell,
@@ -1681,6 +1932,88 @@
 
     #comparisonRoiModal.comparison-roi-modal-stacked {
         z-index: 1075;
+    }
+
+    /* Comparison page only: Competitors LMP opens as a bottom modal dialog */
+    #comparisonLmpModal.modal {
+        padding-right: 0 !important;
+    }
+
+    /* Comparison page only: SP box centered in LMP modal header */
+    #comparisonLmpModal .modal-header {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    #comparisonLmpModal .modal-title {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding-right: 8.5rem;
+    }
+
+    #comparisonLmpModal .lmp-modal-sp-header-wrap {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        z-index: 2;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 8px;
+        padding: 4px 10px;
+    }
+
+    #comparisonLmpModal .lmp-modal-sp-header-label {
+        color: #fff;
+        font-size: 0.85rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+    }
+
+    #comparisonLmpModal .lmp-modal-sp-header-wrap .lmp-modal-sp-input {
+        width: 5.5rem;
+        background: #fff;
+        border: 1px solid #cbd5e1;
+        color: #0f172a;
+    }
+
+    #comparisonLmpModal .comparison-lmp-bottom-dialog.modal-bottom {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        top: auto;
+        margin: 0 auto;
+        width: min(1200px, 100%);
+        max-width: 100%;
+        height: auto;
+        max-height: 88vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        transform: translateY(100%);
+        transition: transform 0.3s ease-out;
+    }
+
+    #comparisonLmpModal.show .comparison-lmp-bottom-dialog.modal-bottom {
+        transform: translateY(0);
+    }
+
+    #comparisonLmpModal .comparison-lmp-bottom-dialog .modal-content {
+        border-radius: 16px 16px 0 0;
+        max-height: 88vh;
+        overflow: hidden;
+        box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.22);
+    }
+
+    #comparisonLmpModal .comparison-lmp-bottom-dialog .modal-body {
+        overflow-y: auto;
+        max-height: calc(88vh - 58px);
     }
 
     .cd-sheet-table .cd-label-cell:focus {
@@ -1876,8 +2209,8 @@
                                     <i class="mdi mdi-account-multiple-plus"></i> Suppliers
                                     <span class="badge rounded-pill bg-light text-dark ms-1" id="comparison-cd-supplier-count">0</span>
                                 </button>
-                                <button type="button" class="btn btn-sm btn-warning text-dark" id="comparison-cd-roi-btn" title="Open cost calculator ROI from lowest supplier price column">
-                                    <i class="mdi mdi-percent"></i> ROI%
+                                <button type="button" class="btn btn-sm btn-warning text-dark" id="comparison-cd-roi-btn" title="Open Profit Calculator">
+                                    <i class="mdi mdi-percent"></i> Profit Calculator
                                 </button>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-copy-specs-btn" title="Copy Spec column labels to memory and clipboard">
                                     <i class="mdi mdi-content-copy"></i> Copy Specs
@@ -2090,7 +2423,7 @@
 </div>
 
 <div class="modal fade" id="comparisonLmpModal" tabindex="-1" aria-labelledby="comparisonLmpModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-bottom modal-dialog-scrollable comparison-lmp-bottom-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title" id="comparisonLmpModalLabel">
@@ -2297,7 +2630,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const ROI_CHANNELS = ['Amz', 'Ebay', 'Temu', 'Shopify'];
     const ROI_OVERALL_CHANNEL = 'Overall';
     const ROI_LMP_SALE_FACTOR = 0.9;
-    const ROI_SALE_NET_FACTOR = 0.7;
+    // Marketplace take-home margins — same as Pricing Master / OV L30 GROI% & GPFT%.
+    const ROI_CHANNEL_MARGINS = {
+        amazon: 0.80,
+        ebay: 0.83,
+        temu: 1.00,
+        shopify: 0.95,
+    };
     const ROI_FIELD_OFFSETS = {
         cp: 1,
         cbm: 2,
@@ -4230,6 +4569,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? 'Open Amz buyer reviews'
                 : 'No Amz buyer/ASIN link for this SKU';
         }
+
+        updateRoiAmzReviewsBadge();
     }
 
     let comparisonReviewsChart = null;
@@ -5281,7 +5622,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         const lmpRates = await fetchPlatformLmpRates(sku);
-        updateManualLmpSection(lmpRates);
         const target = channelLmpKey(platform);
 
         tbody.roiRows.forEach(function (row) {
@@ -5297,10 +5637,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     row.sale = saleFromLmp;
                 }
             }
-            const calc = calculateRoiMetrics(row);
-            row.profit = calc.profit != null ? formatRoiNumber(calc.profit) : '';
-            row.pPct = calc.pPct != null ? `${formatRoiNumber(calc.pPct, 0)}%` : '';
-            row.roi = calc.roi != null ? `${formatRoiNumber(calc.roi, 0)}%` : '';
+            applyRoiCalcToRow(row);
         });
 
         const withOverall = appendOverallRoiRow(tbody.roiRows.filter(r => !r.isOverall), currentSheetCells);
@@ -7582,24 +7919,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    function computeNroiFromBreakdownRow(item) {
-        const price = parseFloat(item?.price);
-        const lp = parseFloat(item?.lp);
-        const ship = parseFloat(item?.ship) || 0;
-        const margin = parseFloat(item?.margin);
-        const ads = parseFloat(item?.tacos_ch != null ? item.tacos_ch : item?.ad) || 0;
-        const mp = String(item?.marketplace || '').toLowerCase().replace(/\s+/g, '');
-        if (!(price > 0) || !(lp > 0) || !(margin > 0)) {
-            return null;
-        }
-        const grossProfit = price * margin - lp - ship;
-        const groi = (grossProfit / lp) * 100;
-        if (mp === 'temu') {
-            return ads === 100 ? groi : (groi - ads);
-        }
-        return ((grossProfit - (price * (ads / 100))) / lp) * 100;
-    }
-
     function mapBreakdownMarketplaceKey(marketplace) {
         const mp = String(marketplace || '').toLowerCase().replace(/\s+/g, '');
         if (mp === 'amazon' || mp === 'fba') return 'amazon';
@@ -7609,10 +7928,29 @@ document.addEventListener('DOMContentLoaded', function () {
         return '';
     }
 
-    async function fetchChannelNpftNroi(sku) {
+    function channelRoiMargin(channel, lmpRates) {
+        const key = channelLmpKey(channel);
+        const fromRates = lmpRates?.margin?.[key];
+        if (fromRates != null && Number.isFinite(Number(fromRates)) && Number(fromRates) > 0) {
+            return Number(fromRates);
+        }
+        return ROI_CHANNEL_MARGINS[key] ?? ROI_CHANNEL_MARGINS.amazon;
+    }
+
+    function channelRoiAdsPct(channel, lmpRates) {
+        const key = channelLmpKey(channel);
+        const fromRates = lmpRates?.ads?.[key];
+        if (fromRates != null && Number.isFinite(Number(fromRates)) && Number(fromRates) >= 0) {
+            return Number(fromRates);
+        }
+        return 0;
+    }
+
+    /** Read Ads% + margin from OV L30 / Pricing Master breakdown (per channel). */
+    async function fetchChannelFeeMeta(sku) {
         const empty = {
-            npft: { amazon: null, ebay: null, temu: null, shopify: null },
-            nroi: { amazon: null, ebay: null, temu: null, shopify: null },
+            ads: { amazon: null, ebay: null, temu: null, shopify: null },
+            margin: { amazon: null, ebay: null, temu: null, shopify: null },
         };
         if (!sku) {
             return empty;
@@ -7626,25 +7964,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 return empty;
             }
             const out = {
-                npft: { amazon: null, ebay: null, temu: null, shopify: null },
-                nroi: { amazon: null, ebay: null, temu: null, shopify: null },
+                ads: { amazon: null, ebay: null, temu: null, shopify: null },
+                margin: { amazon: null, ebay: null, temu: null, shopify: null },
             };
             rows.forEach((item) => {
                 const key = mapBreakdownMarketplaceKey(item?.marketplace);
-                if (!key || item?.is_listed === false) {
+                if (!key) {
                     return;
                 }
-                const price = parseFloat(item?.price);
-                if (!(price > 0)) {
-                    return;
+                const margin = parseFloat(item?.margin);
+                if (Number.isFinite(margin) && margin > 0) {
+                    out.margin[key] = margin;
                 }
-                const npft = parseFloat(item?.npft);
-                if (Number.isFinite(npft)) {
-                    out.npft[key] = Math.round(npft);
-                }
-                const nroi = computeNroiFromBreakdownRow(item);
-                if (nroi != null && Number.isFinite(nroi)) {
-                    out.nroi[key] = Math.round(nroi);
+                const ads = parseFloat(item?.tacos_ch != null ? item.tacos_ch : item?.ad);
+                if (Number.isFinite(ads) && ads >= 0) {
+                    out.ads[key] = ads;
                 }
             });
             return out;
@@ -7653,30 +7987,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    function getChannelNpftDisplay(channel, lmpRates) {
-        const key = channelLmpKey(channel);
-        if (key === 'overall') {
-            const vals = Object.values(lmpRates?.npft || {})
-                .map(v => (v != null && Number.isFinite(Number(v)) ? Number(v) : null))
-                .filter(v => v != null);
-            if (!vals.length) return '';
-            return `${Math.round(vals.reduce((s, n) => s + n, 0) / vals.length)}%`;
-        }
-        const v = lmpRates?.npft?.[key];
-        return v != null && Number.isFinite(Number(v)) ? `${Math.round(Number(v))}%` : '';
-    }
-
-    function getChannelNroiDisplay(channel, lmpRates) {
-        const key = channelLmpKey(channel);
-        if (key === 'overall') {
-            const vals = Object.values(lmpRates?.nroi || {})
-                .map(v => (v != null && Number.isFinite(Number(v)) ? Number(v) : null))
-                .filter(v => v != null);
-            if (!vals.length) return '';
-            return `${Math.round(vals.reduce((s, n) => s + n, 0) / vals.length)}%`;
-        }
-        const v = lmpRates?.nroi?.[key];
-        return v != null && Number.isFinite(Number(v)) ? `${Math.round(Number(v))}%` : '';
+    // Back-compat alias used by older call sites.
+    async function fetchChannelNpftNroi(sku) {
+        return fetchChannelFeeMeta(sku);
     }
 
     function getChannelPriceAfterLmp(channel, lmpRates) {
@@ -7734,80 +8047,6 @@ document.addEventListener('DOMContentLoaded', function () {
         return formatRoiNumber(lmp * ROI_LMP_SALE_FACTOR);
     }
 
-    function updateManualLmpSection(lmpRates) {
-        const wrap = document.getElementById('comparison-roi-manual-lmp-wrap');
-        const hint = document.getElementById('comparison-roi-manual-lmp-hint');
-        if (!wrap) {
-            return;
-        }
-
-        const missingAmazon = lmpRates?.amazon == null;
-        const missingEbay = lmpRates?.ebay == null;
-        const missingTemu = lmpRates?.temu == null;
-        const missingShopify = lmpRates?.shopify == null;
-        const show = missingAmazon || missingEbay || missingTemu || missingShopify;
-        wrap.classList.toggle('d-none', !show);
-
-        if (hint) {
-            const parts = [];
-            if (missingAmazon) {
-                parts.push('Amz');
-            }
-            if (missingEbay) {
-                parts.push('Ebay');
-            }
-            if (missingTemu) {
-                parts.push('Temu');
-            }
-            if (missingShopify) {
-                parts.push('Shopify');
-            }
-            const joined = parts.length <= 1
-                ? (parts[0] || '')
-                : (parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1]);
-            hint.textContent = parts.length
-                ? `No LMP found for ${joined}. Enter manual LMP (sale = LMP × ${ROI_LMP_SALE_FACTOR}) for all platforms.`
-                : '';
-        }
-    }
-
-    function applyManualLmpToBoth() {
-        const input = document.getElementById('comparison-roi-manual-lmp');
-        const tbody = document.getElementById('comparison-roi-tbody');
-        if (!input || !tbody || !tbody.roiRows) {
-            return;
-        }
-
-        const parsed = parseSheetNumber(input.value);
-        const rawLmp = parsed != null ? formatRoiNumber(parsed) : '';
-        const sale = parsed != null
-            ? formatRoiNumber(parsed * ROI_LMP_SALE_FACTOR)
-            : String(input.value || '').trim();
-
-        tbody.roiRows.forEach(function (row, rowIndex) {
-            if (row.isOverall) {
-                return;
-            }
-            row.sale = sale;
-            row.lmp = rawLmp;
-            const tr = tbody.children[rowIndex];
-            const saleInput = tr?.querySelector('[data-field="sale"]');
-            if (saleInput) {
-                saleInput.value = sale;
-            }
-            const lmpBtn = tr?.querySelector('.comparison-roi-lmp-link');
-            if (lmpBtn) {
-                lmpBtn.textContent = rawLmp || '—';
-                lmpBtn.disabled = !rawLmp;
-            }
-            refreshRoiRowCalculations(tr, tbody, rowIndex);
-            saveRoiCellEdit(rowIndex, 'sale', '', sale, sale);
-        });
-
-        const withOverall = appendOverallRoiRow(tbody.roiRows.filter(r => !r.isOverall), currentSheetCells);
-        renderRoiModalTable(withOverall);
-    }
-
     function setRoiSaveStatus(message, isError) {
         const el = document.getElementById('comparison-roi-save-status');
         if (!el) {
@@ -7816,6 +8055,44 @@ document.addEventListener('DOMContentLoaded', function () {
         el.textContent = message;
         el.classList.toggle('text-danger', !!isError);
         el.classList.toggle('text-success', !isError && !!message);
+    }
+
+    function applyProposedPrcFromLmp() {
+        const tbody = document.getElementById('comparison-roi-tbody');
+        if (!tbody || !Array.isArray(tbody.roiRows)) {
+            return;
+        }
+
+        let applied = 0;
+        tbody.roiRows.forEach(function (row, rowIndex) {
+            if (row.isOverall) {
+                return;
+            }
+            const lmp = parseSheetNumber(row.lmp);
+            if (lmp == null) {
+                return;
+            }
+            const oldSale = String(row.sale || '').trim();
+            const sale = formatRoiNumber(lmp * ROI_LMP_SALE_FACTOR);
+            row.sale = sale;
+            const tr = tbody.children[rowIndex];
+            const saleInput = tr?.querySelector('[data-field="sale"]');
+            if (saleInput) {
+                saleInput.value = sale;
+            }
+            refreshRoiRowCalculations(tr, tbody, rowIndex);
+            saveRoiCellEdit(rowIndex, 'sale', oldSale, sale, sale);
+            applied += 1;
+        });
+
+        const withOverall = appendOverallRoiRow(tbody.roiRows.filter(r => !r.isOverall), currentSheetCells);
+        renderRoiModalTable(withOverall);
+
+        if (!applied) {
+            setRoiSaveStatus('No LMP available to apply Proposed PRC (LMP × 90%).', true);
+            return;
+        }
+        setRoiSaveStatus(`Proposed PRC applied = LMP × 90% on ${applied} platform(s).`, false);
     }
 
     function writeRoiChannelToSheet(cells, channel, rowData) {
@@ -7959,25 +8236,44 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const calc = calculateRoiMetrics(row);
-        row.profit = calc.profit != null ? formatRoiNumber(calc.profit) : '';
-        row.pPct = calc.pPct != null ? `${formatRoiNumber(calc.pPct, 0)}%` : '';
-        row.roi = calc.roi != null ? `${formatRoiNumber(calc.roi, 0)}%` : '';
+        applyRoiCalcToRow(row);
 
         if (tr) {
             const pPctCell = tr.querySelector('[data-calc="pPct"]');
             const profitCell = tr.querySelector('[data-calc="profit"]');
             const roiCell = tr.querySelector('[data-calc="roi"]');
+            const siteGroiCell = tr.querySelector('[data-calc="siteGroi"]');
+            const siteGpftCell = tr.querySelector('[data-calc="siteGpft"]');
+            const siteNroiCell = tr.querySelector('[data-calc="siteNroi"]');
+            const siteNpftCell = tr.querySelector('[data-calc="siteNpft"]');
+            const npftCell = tr.querySelector('[data-calc="npft"]');
+            const nroiCell = tr.querySelector('[data-calc="nroi"]');
             if (pPctCell) {
-                pPctCell.textContent = row.pPct;
                 applyRoiCalcCellTier(pPctCell, 'pPct', row.pPct);
             }
             if (profitCell) {
                 profitCell.textContent = row.profit;
             }
             if (roiCell) {
-                roiCell.textContent = row.roi;
                 applyRoiCalcCellTier(roiCell, 'roi', row.roi);
+            }
+            if (siteGroiCell) {
+                applyRoiCalcCellTier(siteGroiCell, 'siteGroi', row.siteGroi);
+            }
+            if (siteGpftCell) {
+                applyRoiCalcCellTier(siteGpftCell, 'siteGpft', row.siteGpft);
+            }
+            if (siteNroiCell) {
+                applyRoiCalcCellTier(siteNroiCell, 'siteNroi', row.siteNroi);
+            }
+            if (siteNpftCell) {
+                applyRoiCalcCellTier(siteNpftCell, 'siteNpft', row.siteNpft);
+            }
+            if (npftCell) {
+                applyRoiCalcCellTier(npftCell, 'npft', row.npft);
+            }
+            if (nroiCell) {
+                applyRoiCalcCellTier(nroiCell, 'nroi', row.nroi);
             }
         }
 
@@ -8024,16 +8320,6 @@ document.addEventListener('DOMContentLoaded', function () {
             priceAfterCell.textContent = rebuilt.priceAfterLmp || '—';
             priceAfterCell.classList.toggle('text-muted', !rebuilt.priceAfterLmp);
         }
-        const npftCell = tr.querySelector('.comparison-roi-npft-cell');
-        if (npftCell) {
-            npftCell.textContent = rebuilt.npft || '—';
-            npftCell.classList.toggle('text-muted', !rebuilt.npft);
-        }
-        const nroiCell = tr.querySelector('.comparison-roi-nroi-cell');
-        if (nroiCell) {
-            nroiCell.textContent = rebuilt.nroi || '—';
-            nroiCell.classList.toggle('text-muted', !rebuilt.nroi);
-        }
         refreshRoiRowCalculations(tr, tbody, overallIndex);
     }
 
@@ -8042,30 +8328,26 @@ document.addEventListener('DOMContentLoaded', function () {
         return Number.isFinite(num) ? num : null;
     }
 
-    function getPPctTierClass(pct) {
-        if (pct == null) {
-            return '';
-        }
-        if (pct > 33) {
-            return 'comparison-roi-tier-magenta';
-        }
-        if (pct >= 20 && pct <= 33) {
-            return 'comparison-roi-tier-green';
-        }
-        return 'comparison-roi-tier-red';
+    function metricKindForRoiCalcField(field) {
+        if (field === 'roi' || field === 'siteGroi') return 'groi';
+        if (field === 'pPct' || field === 'siteGpft') return 'gpft';
+        if (field === 'nroi' || field === 'siteNroi') return 'nroi';
+        if (field === 'npft' || field === 'siteNpft') return 'npft';
+        return null;
     }
 
-    function getRoiPctTierClass(pct) {
-        if (pct == null) {
+    /** Pricing Master / MetricPctColors bands for GROI · GPFT · NROI · NPFT. */
+    function roiMetricColoredHtml(field, displayValue) {
+        const text = String(displayValue || '').trim();
+        if (!text) {
             return '';
         }
-        if (pct > 100) {
-            return 'comparison-roi-tier-magenta';
+        const kind = metricKindForRoiCalcField(field);
+        const pct = parseRoiPercentValue(text);
+        if (kind && pct != null && window.MetricPctColors && typeof MetricPctColors.htmlFor === 'function') {
+            return MetricPctColors.htmlFor(kind, pct, { decimals: 0, empty: '' }) || escapeHtml(text);
         }
-        if (pct >= 40 && pct <= 100) {
-            return 'comparison-roi-tier-green';
-        }
-        return 'comparison-roi-tier-red';
+        return escapeHtml(text);
     }
 
     function applyRoiCalcCellTier(cell, field, displayValue) {
@@ -8073,21 +8355,18 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         cell.classList.remove('comparison-roi-tier-red', 'comparison-roi-tier-green', 'comparison-roi-tier-magenta');
-        const pct = parseRoiPercentValue(displayValue);
-        const tier = field === 'pPct'
-            ? getPPctTierClass(pct)
-            : (field === 'roi' ? getRoiPctTierClass(pct) : '');
-        if (tier) {
-            cell.classList.add(tier);
+        if (metricKindForRoiCalcField(field)) {
+            cell.innerHTML = roiMetricColoredHtml(field, displayValue);
+            return;
         }
+        cell.textContent = displayValue || '';
     }
 
     function roiCalcCellHtml(rowIndex, field, value) {
-        const tier = field === 'pPct'
-            ? getPPctTierClass(parseRoiPercentValue(value))
-            : (field === 'roi' ? getRoiPctTierClass(parseRoiPercentValue(value)) : '');
-        const tierClass = tier ? ` ${tier}` : '';
-        return `<td class="comparison-roi-calc-cell${tierClass}" data-row="${rowIndex}" data-calc="${field}">${escapeHtml(value || '')}</td>`;
+        const inner = metricKindForRoiCalcField(field)
+            ? roiMetricColoredHtml(field, value)
+            : escapeHtml(value || '');
+        return `<td class="comparison-roi-calc-cell" data-row="${rowIndex}" data-calc="${field}">${inner}</td>`;
     }
 
     function getSheetCellText(cells, rowIndex, colIndex) {
@@ -8223,25 +8502,112 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
+    /**
+     * Proposed PRC metrics (same formulas as Pricing Master / site GROI · GPFT · NROI · NPFT):
+     *   gross$  = ProposedPRC × margin − CP − Shipping
+     *   PGROI%  = gross$ / CP × 100
+     *   PGPFT%  = gross$ / ProposedPRC × 100
+     *   PNPFT%  = PGPFT% − Ads%
+     *   PNROI%  = (gross$ − ProposedPRC×Ads%/100) / CP × 100
+     *             (Temu: PGROI% − Ads%, skip subtract when Ads%=100)
+     * Margins: Amz 80%, Ebay 83%, Temu 100%, Shopify 95%.
+     */
     function calculateRoiMetrics(row) {
         const cp = parseSheetNumber(row.cp) ?? 0;
-        const freight = parseSheetNumber(row.freight) ?? 0;
         const shipping = parseSheetNumber(row.shipping) ?? 0;
         const sale = parseSheetNumber(row.sale) ?? 0;
+        const key = channelLmpKey(row.channel);
+        const margin = (row.margin != null && Number.isFinite(Number(row.margin)) && Number(row.margin) > 0)
+            ? Number(row.margin)
+            : channelRoiMargin(row.channel);
+        const adsRaw = row.adsPct != null ? Number(row.adsPct) : 0;
+        const adsPct = Number.isFinite(adsRaw) && adsRaw >= 0 ? adsRaw : 0;
+        const hasInputs = sale > 0 || cp > 0 || shipping > 0;
 
-        // Shipping is added to the Sale (revenue) rather than treated as a cost, so the
-        // effective sale = Sale + Shipping is used everywhere the calc references sale.
-        const effectiveSale = sale + shipping;
-        const profit = (effectiveSale * ROI_SALE_NET_FACTOR) - cp - freight;
-        const hasInputs = sale > 0 || cp > 0 || freight > 0 || shipping > 0;
-        const pPct = effectiveSale > 0 ? (profit / effectiveSale) * 100 : null;
-        const roi = (cp + freight) > 0 ? (profit / (cp + freight)) * 100 : null;
+        if (!hasInputs || !(sale > 0)) {
+            return { profit: null, pPct: null, roi: null, npft: null, nroi: null };
+        }
+
+        const grossProfit = (sale * margin) - cp - shipping;
+        const pPct = (grossProfit / sale) * 100;
+        const roi = cp > 0 ? (grossProfit / cp) * 100 : null;
+        const npft = pPct - adsPct;
+        let nroi = null;
+        if (cp > 0) {
+            if (key === 'temu') {
+                nroi = adsPct === 100 ? roi : (roi - adsPct);
+            } else {
+                nroi = ((grossProfit - (sale * (adsPct / 100))) / cp) * 100;
+            }
+        }
 
         return {
-            profit: hasInputs ? profit : null,
+            profit: grossProfit,
             pPct,
             roi,
+            npft,
+            nroi,
         };
+    }
+
+    function applyRoiCalcToRow(row) {
+        const calc = calculateRoiMetrics(row);
+        row.profit = calc.profit != null ? formatRoiNumber(calc.profit) : '';
+        row.pPct = calc.pPct != null ? `${formatRoiNumber(calc.pPct, 0)}%` : '';
+        row.roi = calc.roi != null ? `${formatRoiNumber(calc.roi, 0)}%` : '';
+        row.npft = calc.npft != null ? `${formatRoiNumber(calc.npft, 0)}%` : '';
+        row.nroi = calc.nroi != null ? `${formatRoiNumber(calc.nroi, 0)}%` : '';
+        applySiteRoiMetricsToRow(row);
+        return row;
+    }
+
+    /**
+     * Current listing price (C Price) metrics — same formulas as Pricing Master / site:
+     *   gross$  = C Price × margin − CP − Shipping
+     *   GROI%   = gross$ / CP × 100
+     *   GPFT%   = gross$ / C Price × 100
+     *   NPFT%   = GPFT% − Ads%
+     *   NROI%   = (gross$ − C Price×Ads%/100) / CP × 100
+     *             (Temu: GROI% − Ads%, skip subtract when Ads%=100)
+     */
+    function calculateSiteRoiMetrics(row) {
+        const cp = parseSheetNumber(row.cp) ?? 0;
+        const shipping = parseSheetNumber(row.shipping) ?? 0;
+        const price = parseSheetNumber(row.priceAfterLmp) ?? 0;
+        const key = channelLmpKey(row.channel);
+        const margin = (row.margin != null && Number.isFinite(Number(row.margin)) && Number(row.margin) > 0)
+            ? Number(row.margin)
+            : channelRoiMargin(row.channel);
+        const adsRaw = row.adsPct != null ? Number(row.adsPct) : 0;
+        const adsPct = Number.isFinite(adsRaw) && adsRaw >= 0 ? adsRaw : 0;
+
+        if (!(price > 0)) {
+            return { siteGroi: null, siteGpft: null, siteNroi: null, siteNpft: null };
+        }
+
+        const grossProfit = (price * margin) - cp - shipping;
+        const siteGpft = (grossProfit / price) * 100;
+        const siteGroi = cp > 0 ? (grossProfit / cp) * 100 : null;
+        const siteNpft = siteGpft - adsPct;
+        let siteNroi = null;
+        if (cp > 0 && siteGroi != null) {
+            if (key === 'temu') {
+                siteNroi = adsPct === 100 ? siteGroi : (siteGroi - adsPct);
+            } else {
+                siteNroi = ((grossProfit - (price * (adsPct / 100))) / cp) * 100;
+            }
+        }
+
+        return { siteGroi, siteGpft, siteNroi, siteNpft };
+    }
+
+    function applySiteRoiMetricsToRow(row) {
+        const calc = calculateSiteRoiMetrics(row);
+        row.siteGroi = calc.siteGroi != null ? `${formatRoiNumber(calc.siteGroi, 0)}%` : '';
+        row.siteGpft = calc.siteGpft != null ? `${formatRoiNumber(calc.siteGpft, 0)}%` : '';
+        row.siteNroi = calc.siteNroi != null ? `${formatRoiNumber(calc.siteNroi, 0)}%` : '';
+        row.siteNpft = calc.siteNpft != null ? `${formatRoiNumber(calc.siteNpft, 0)}%` : '';
+        return row;
     }
 
     function buildRoiChannelRow(channel, cells, metrics, slabShipping, lmpRates) {
@@ -8279,16 +8645,12 @@ document.addEventListener('DOMContentLoaded', function () {
             lmp: rawLmp,
             // Current listing price from the respective marketplace channel.
             priceAfterLmp,
-            npft: getChannelNpftDisplay(channel, lmpRates),
-            nroi: getChannelNroiDisplay(channel, lmpRates),
+            margin: channelRoiMargin(channel, lmpRates),
+            adsPct: channelRoiAdsPct(channel, lmpRates),
+            isOverall: false,
         };
 
-        const calc = calculateRoiMetrics(row);
-        row.profit = calc.profit != null ? formatRoiNumber(calc.profit) : (fromSheet.profit || '');
-        row.pPct = calc.pPct != null ? `${formatRoiNumber(calc.pPct, 0)}%` : (fromSheet.pPct || '');
-        row.roi = calc.roi != null ? `${formatRoiNumber(calc.roi, 0)}%` : (fromSheet.roi || '');
-        row.isOverall = false;
-
+        applyRoiCalcToRow(row);
         return row;
     }
 
@@ -8315,6 +8677,14 @@ document.addEventListener('DOMContentLoaded', function () {
             ? formatRoiNumber(priceAfterVals.reduce((sum, n) => sum + n, 0) / priceAfterVals.length)
             : '';
 
+        const avgPct = (getter) => {
+            const vals = (platformRows || []).map(getter).filter(n => n != null && Number.isFinite(n));
+            if (!vals.length) return null;
+            return vals.reduce((sum, n) => sum + n, 0) / vals.length;
+        };
+        const avgMargin = avgPct(r => (r.margin != null ? Number(r.margin) : null));
+        const avgAds = avgPct(r => (r.adsPct != null ? Number(r.adsPct) : null));
+
         const row = {
             channel: ROI_OVERALL_CHANNEL,
             isOverall: true,
@@ -8326,19 +8696,11 @@ document.addEventListener('DOMContentLoaded', function () {
             sale,
             lmp: overallLmp != null ? formatRoiNumber(overallLmp) : '',
             priceAfterLmp,
-            npft: getChannelNpftDisplay(ROI_OVERALL_CHANNEL, lmpRates || {
-                npft: Object.fromEntries((platformRows || []).map(r => [channelLmpKey(r.channel), parseRoiPercentValue(r.npft)])),
-            }),
-            nroi: getChannelNroiDisplay(ROI_OVERALL_CHANNEL, lmpRates || {
-                nroi: Object.fromEntries((platformRows || []).map(r => [channelLmpKey(r.channel), parseRoiPercentValue(r.nroi)])),
-            }),
+            margin: avgMargin != null ? avgMargin : channelRoiMargin('amazon', lmpRates),
+            adsPct: avgAds != null ? avgAds : 0,
         };
 
-        const calc = calculateRoiMetrics(row);
-        row.profit = calc.profit != null ? formatRoiNumber(calc.profit) : (fromSheet.profit || '');
-        row.pPct = calc.pPct != null ? `${formatRoiNumber(calc.pPct, 0)}%` : (fromSheet.pPct || '');
-        row.roi = calc.roi != null ? `${formatRoiNumber(calc.roi, 0)}%` : (fromSheet.roi || '');
-
+        applyRoiCalcToRow(row);
         return row;
     }
 
@@ -8400,12 +8762,6 @@ document.addEventListener('DOMContentLoaded', function () {
         const display = row.priceAfterLmp || '';
         const platform = roiChannelDisplayLabel(row.channel);
         const marketplace = roiChannelMarketplaceKey(row.channel);
-        if (!display) {
-            return `<td class="comparison-roi-price-after-lmp-cell text-muted" title="No ${escapeHtmlAttr(platform)} listing price found">—</td>`;
-        }
-        const title = row.isOverall
-            ? 'Average listing price across channels'
-            : `Current ${platform} listing price`;
         const historyDot = (!row.isOverall && marketplace)
             ? ` <i class="fas fa-circle comparison-roi-price-history-dot"
                 data-sku="${escapeHtmlAttr((currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim())}"
@@ -8413,8 +8769,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 data-metric="price"
                 data-current-price="${escapeHtmlAttr(display)}"
                 data-platform-label="${escapeHtmlAttr(platform)}"
+                role="button" tabindex="0"
                 title="View ${escapeHtmlAttr(platform)} Price history (Rolling L30)"></i>`
             : '';
+        if (!display) {
+            return `<td class="comparison-roi-price-after-lmp-cell text-muted" title="No ${escapeHtmlAttr(platform)} listing price found">—${historyDot}</td>`;
+        }
+        const title = row.isOverall
+            ? 'Average listing price across channels'
+            : `Current ${platform} listing price`;
         return `<td class="comparison-roi-price-after-lmp-cell" title="${escapeHtmlAttr(title)}">${escapeHtml(display)}${historyDot}</td>`;
     }
 
@@ -8443,6 +8806,80 @@ document.addEventListener('DOMContentLoaded', function () {
         return `<td class="${cellClass}" title="${escapeHtmlAttr(title)}">${escapeHtml(display)}${historyDot}</td>`;
     }
 
+    function roiAmzReviewsBadgeHtml() {
+        const data = currentReviewsData && typeof currentReviewsData === 'object' ? currentReviewsData : {};
+        const rawR = data.rating;
+        const rawRev = data.reviews;
+        const rVal = parseFloat(rawR);
+        const hasRating = rawR !== null && rawR !== undefined && String(rawR).trim() !== '' && Number.isFinite(rVal);
+        const revParsed = parseInt(String(rawRev == null ? '' : rawRev).replace(/,/g, ''), 10);
+        const hasReviews = Number.isFinite(revParsed) && revParsed >= 0 && String(rawRev).trim() !== '';
+
+        const parent = String(data.parent || currentCdRow?.parent || '').trim();
+        const sku = String(data.sku || currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim();
+        const amazonUrl = String(data.amazon_reviews_url || data.amazon_buyer_url || '').trim();
+
+        let hotClass = '';
+        let title = 'Amazon rating & reviews from Jungle Scout';
+        let innerHtml = '<span class="cd-reviews-rating-line text-muted"><i class="bi bi-star"></i> Reviews</span>';
+
+        if (hasRating || hasReviews) {
+            let starColor = '#dc2626';
+            if (hasRating) {
+                if (rVal >= 4.5) {
+                    starColor = '#9d174d';
+                    hotClass = ' cd-reviews-hot';
+                } else if (rVal >= 4) {
+                    starColor = '#15803d';
+                } else if (rVal >= 3.5) {
+                    starColor = '#a16207';
+                } else {
+                    starColor = '#dc2626';
+                }
+            }
+            const ratingLine = hasRating
+                ? (Number.isInteger(rVal) ? String(rVal) : rVal.toFixed(1))
+                : '—';
+            const revLine = hasReviews
+                ? `(${revParsed.toLocaleString('en-US')})`
+                : (hasRating ? '(0)' : '');
+            const revMuted = hasRating && rVal >= 4.5 ? '#861657' : '#5c5c5c';
+            innerHtml =
+                `<span class="cd-reviews-rating-line" style="color:${starColor};">` +
+                `<i class="bi bi-star-fill" style="font-size:0.68rem;"></i>` +
+                `<span>${ratingLine}</span></span>` +
+                (revLine ? `<span class="cd-reviews-count-line" style="color:${revMuted};">${revLine}</span>` : '');
+            title = `Amz Rating ${hasRating ? ratingLine : '—'} · Reviews ${hasReviews ? revParsed.toLocaleString('en-US') : '—'} (Jungle Scout)`;
+        }
+
+        const graphDisabled = !(sku || parent) ? ' is-disabled' : '';
+        const intelDisabled = !parent ? ' is-disabled' : '';
+        const amazonDisabled = !amazonUrl ? ' is-disabled' : '';
+        const graphTitle = (sku || parent)
+            ? `Lifetime rating graph${parent ? ' (parent)' : ' (SKU)'}`
+            : 'No SKU/parent for graph';
+        const intelTitle = parent
+            ? `Open Review Intelligence for parent ${parent}`
+            : 'No parent available for Review Intelligence';
+        const amazonTitle = amazonUrl ? 'Open Amz buyer reviews' : 'No Amz buyer/ASIN link for this SKU';
+
+        return `<span class="comparison-roi-amz-reviews-badge${hotClass}" title="${escapeHtmlAttr(title)}">` +
+            `<span class="cd-reviews-badge-inner">${innerHtml}</span>` +
+            `<span class="cd-reviews-action-dots">` +
+            `<span class="cd-reviews-dot cd-reviews-dot-graph${graphDisabled}" data-reviews-action="graph" title="${escapeHtmlAttr(graphTitle)}" role="button" tabindex="0" aria-label="Lifetime rating graph"></span>` +
+            `<span class="cd-reviews-dot cd-reviews-dot-intel${intelDisabled}" data-reviews-action="intel" title="${escapeHtmlAttr(intelTitle)}" role="button" tabindex="0" aria-label="Open Review Intelligence"></span>` +
+            `<span class="cd-reviews-dot cd-reviews-dot-amazon${amazonDisabled}" data-reviews-action="amazon" title="${escapeHtmlAttr(amazonTitle)}" role="button" tabindex="0" aria-label="Open Amz reviews"></span>` +
+            `</span></span>`;
+    }
+
+    function updateRoiAmzReviewsBadge() {
+        const slot = document.getElementById('comparison-roi-amz-reviews-slot');
+        if (!slot) {
+            return;
+        }
+        slot.innerHTML = roiAmzReviewsBadgeHtml();
+    }
+
     function renderRoiModalTable(rows) {
         const tbody = document.getElementById('comparison-roi-tbody');
         if (!tbody) {
@@ -8452,7 +8889,7 @@ document.addEventListener('DOMContentLoaded', function () {
         tbody.innerHTML = rows.map((row, rowIndex) => {
             const inputCell = (field, value, readonly) => {
                 if (readonly) {
-                    return `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input comparison-roi-input-readonly" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}" readonly tabindex="-1" title="Overall uses average Sale / lowest LMP across platforms."></td>`;
+                    return `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input comparison-roi-input-readonly" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}" readonly tabindex="-1" title="Overall uses average Proposed PRC / lowest LMP across platforms."></td>`;
                 }
                 return `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}"></td>`;
             };
@@ -8470,12 +8907,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 ${readonlyInputCell('shipping', row.shipping)}
                 ${inputCell('sale', row.sale, overall)}
                 ${roiLmpCellHtml(rowIndex, row)}
-                ${roiPriceAfterLmpCellHtml(row)}
-                ${roiMetricPctCellHtml(row, 'npft')}
-                ${roiMetricPctCellHtml(row, 'nroi')}
-                ${roiCalcCellHtml(rowIndex, 'pPct', row.pPct)}
-                ${roiCalcCellHtml(rowIndex, 'roi', row.roi)}
                 ${roiCalcCellHtml(rowIndex, 'profit', row.profit)}
+                ${roiCalcCellHtml(rowIndex, 'roi', row.roi)}
+                ${roiCalcCellHtml(rowIndex, 'pPct', row.pPct)}
+                ${roiCalcCellHtml(rowIndex, 'nroi', row.nroi)}
+                ${roiCalcCellHtml(rowIndex, 'npft', row.npft)}
+                ${roiPriceAfterLmpCellHtml(row)}
+                ${roiCalcCellHtml(rowIndex, 'siteGroi', row.siteGroi)}
+                ${roiCalcCellHtml(rowIndex, 'siteGpft', row.siteGpft)}
+                ${roiCalcCellHtml(rowIndex, 'siteNroi', row.siteNroi)}
+                ${roiCalcCellHtml(rowIndex, 'siteNpft', row.siteNpft)}
             </tr>`;
         }).join('');
 
@@ -8509,6 +8950,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
         tbody.roiRows = rows;
+        updateRoiAmzReviewsBadge();
     }
 
     let comparisonRoiPriceChart = null;
@@ -8573,6 +9015,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const backdrops = document.querySelectorAll('.modal-backdrop');
             if (backdrops.length) {
                 backdrops[backdrops.length - 1].style.zIndex = String(baseZ);
+            }
+            if (comparisonRoiPriceChart && typeof comparisonRoiPriceChart.reflow === 'function') {
+                try { comparisonRoiPriceChart.reflow(); } catch (e) {}
             }
         }, { once: true });
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -8816,6 +9261,35 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    function updateRoiModalSkuHeader(rowOrSku) {
+        const row = (rowOrSku && typeof rowOrSku === 'object')
+            ? rowOrSku
+            : (currentCdRow || { sku: rowOrSku || '' });
+        const sku = String(row?.sku || rowOrSku || COMPARISON_CD_PAGE_SKU || '').trim();
+        const el = document.getElementById('comparison-roi-modal-sku');
+        if (el) {
+            el.textContent = sku ? `— ${sku}` : '';
+            el.title = sku ? `SKU: ${sku}` : '';
+        }
+
+        const wrap = document.getElementById('comparison-roi-modal-image-wrap');
+        const img = document.getElementById('comparison-roi-modal-image');
+        if (!wrap || !img) {
+            return;
+        }
+        const url = getComparisonSkuImageUrl(row, false);
+        if (!url) {
+            img.removeAttribute('src');
+            img.dataset.fullSrc = '';
+            wrap.classList.add('d-none');
+            return;
+        }
+        img.dataset.fullSrc = String(row?.image || '').trim();
+        img.src = url;
+        img.alt = (sku || 'SKU') + ' image';
+        wrap.classList.remove('d-none');
+    }
+
     async function openRoiModal() {
         const roiModal = getRoiModalInstance();
         if (!roiModal) {
@@ -8824,21 +9298,17 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         const sku = (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim();
+        updateRoiModalSkuHeader(currentCdRow || { sku });
         const emptyLmp = {
             amazon: null,
             ebay: null,
             temu: null,
             shopify: null,
             prices: { amazon: null, ebay: null, temu: null, shopify: null },
-            npft: { amazon: null, ebay: null, temu: null, shopify: null },
-            nroi: { amazon: null, ebay: null, temu: null, shopify: null },
+            ads: { amazon: null, ebay: null, temu: null, shopify: null },
+            margin: { amazon: null, ebay: null, temu: null, shopify: null },
         };
-        const manualLmpInput = document.getElementById('comparison-roi-manual-lmp');
-        if (manualLmpInput) {
-            manualLmpInput.value = '';
-        }
         setRoiSaveStatus('', false);
-        updateManualLmpSection(emptyLmp);
 
         // Paint the modal on this click — do NOT scan the sheet first.
         // Product-photo cells hold huge data: URLs; reading them blocked the UI ~5s.
@@ -8857,6 +9327,8 @@ document.addEventListener('DOMContentLoaded', function () {
             profit: '',
             pPct: '',
             roi: '',
+            margin: channelRoiMargin(channel),
+            adsPct: 0,
             isOverall: false,
         })).concat([{
             channel: ROI_OVERALL_CHANNEL,
@@ -8873,6 +9345,8 @@ document.addEventListener('DOMContentLoaded', function () {
             profit: '',
             pPct: '',
             roi: '',
+            margin: ROI_CHANNEL_MARGINS.amazon,
+            adsPct: 0,
             isOverall: true,
         }]);
         renderRoiModalTable(placeholderRows);
@@ -8905,14 +9379,14 @@ document.addEventListener('DOMContentLoaded', function () {
         renderRoiModalTable(buildAllRoiRows(currentSheetCells, metrics, null, emptyLmp));
 
         // Prefer Product Master ship for SKU; GW is used only for slab fallback when PM ship is empty.
-        // NPFT/NROI come from Pricing Master breakdown (same as OV L30).
-        const [slabInfo, lmpRates, npftNroi] = await Promise.all([
+        // Ads%/margin from Pricing Master breakdown drive NPFT%/NROI% on Proposed PRC.
+        const [slabInfo, lmpRates, feeMeta] = await Promise.all([
             fetchShippingSlabRate(metrics.gw, sku),
             fetchPlatformLmpRates(sku),
-            fetchChannelNpftNroi(sku),
+            fetchChannelFeeMeta(sku),
         ]);
-        lmpRates.npft = npftNroi.npft || emptyLmp.npft;
-        lmpRates.nroi = npftNroi.nroi || emptyLmp.nroi;
+        lmpRates.ads = feeMeta.ads || emptyLmp.ads;
+        lmpRates.margin = feeMeta.margin || emptyLmp.margin;
 
         // Ignore stale responses if the user closed/reopened for another SKU.
         const stillSameSku = (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim() === sku;
@@ -8921,7 +9395,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         renderRoiModalTable(buildAllRoiRows(currentSheetCells, metrics, slabInfo?.rate, lmpRates));
-        updateManualLmpSection(lmpRates);
         setRoiSaveStatus('', false);
     }
 
@@ -10761,19 +11234,21 @@ document.addEventListener('DOMContentLoaded', function () {
         setComparisonHeaderSkuImage(currentCdRow, { bustCache: true });
         showComparisonToast('success', 'SKU image refreshed.');
     });
-    const headerSkuImg = document.getElementById('comparison-cd-modal-image');
-    if (headerSkuImg) {
-        headerSkuImg.addEventListener('mouseenter', function (e) {
+    function bindComparisonSkuImageHover(img) {
+        if (!img) return;
+        img.addEventListener('mouseenter', function (e) {
             const url = this.dataset.fullSrc || this.getAttribute('src') || '';
             showComparisonImageHover(url, e.clientX, e.clientY);
         });
-        headerSkuImg.addEventListener('mousemove', function (e) {
+        img.addEventListener('mousemove', function (e) {
             const url = this.dataset.fullSrc || this.getAttribute('src') || '';
             if (!url) return;
             showComparisonImageHover(url, e.clientX, e.clientY);
         });
-        headerSkuImg.addEventListener('mouseleave', hideComparisonImageHover);
+        img.addEventListener('mouseleave', hideComparisonImageHover);
     }
+    bindComparisonSkuImageHover(document.getElementById('comparison-cd-modal-image'));
+    bindComparisonSkuImageHover(document.getElementById('comparison-roi-modal-image'));
     document.addEventListener('mouseover', function (e) {
         const img = e.target.closest?.('.comparison-table-sku-image');
         if (!img) return;
@@ -10799,12 +11274,15 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('comparisonCdModal')?.addEventListener('hidden.bs.modal', hideComparisonImageHover);
     document.getElementById('comparison-cd-autopopulate-suppliers-btn')?.addEventListener('click', autopopulateSupplierNamesFromList);
     document.getElementById('comparison-cd-roi-btn')?.addEventListener('click', openRoiModal);
-    document.getElementById('comparison-roi-apply-manual-lmp')?.addEventListener('click', applyManualLmpToBoth);
-    document.getElementById('comparison-roi-manual-lmp')?.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            applyManualLmpToBoth();
+    document.getElementById('comparison-roi-apply-proposed-prc')?.addEventListener('click', applyProposedPrcFromLmp);
+    document.getElementById('comparison-roi-amz-reviews-slot')?.addEventListener('click', function (e) {
+        const dot = e.target.closest('[data-reviews-action]');
+        if (!dot || dot.classList.contains('is-disabled')) {
+            return;
         }
+        e.preventDefault();
+        e.stopPropagation();
+        handleReviewsBadgeAction(dot.getAttribute('data-reviews-action'));
     });
     document.getElementById('comparison-roi-price-chart-range')?.addEventListener('change', function () {
         const days = parseInt(this.value, 10);
@@ -11578,14 +12056,14 @@ document.addEventListener('DOMContentLoaded', function () {
 </div>
 
 <div class="modal fade" id="comparisonRoiPriceChartModal" tabindex="-1" aria-labelledby="comparisonRoiPriceChartModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-dialog modal-lg modal-bottom comparison-roi-price-chart-bottom-dialog">
         <div class="modal-content">
             <div class="modal-header py-2">
                 <h6 class="modal-title mb-0" id="comparisonRoiPriceChartModalLabel">
                     <i class="fas fa-chart-line me-1"></i> Price history
                 </h6>
                 <div class="d-flex align-items-center gap-2 ms-auto me-2">
-                    <select id="comparison-roi-price-chart-range" class="form-select form-select-sm" style="width: 110px;">
+                    <select id="comparison-roi-price-chart-range" class="form-select form-select-sm" style="width: 110px;" title="Rolling window">
                         <option value="90">L90</option>
                         <option value="60">L60</option>
                         <option value="30" selected>L30</option>
@@ -11603,7 +12081,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     No price history for this channel / SKU yet.
                 </div>
                 <div id="comparison-roi-price-chart-container" style="display:none;">
-                    <div id="comparison-roi-price-chart" style="min-height: 260px;"></div>
+                    <div id="comparison-roi-price-chart" style="min-height: 300px;"></div>
                 </div>
             </div>
         </div>
@@ -11664,44 +12142,51 @@ document.addEventListener('DOMContentLoaded', function () {
 </div>
 
 <div class="modal fade" id="comparisonRoiModal" tabindex="-1" aria-labelledby="comparisonRoiModalLabel" aria-hidden="true">
-    <div class="modal-dialog comparison-roi-modal-dialog modal-dialog-scrollable">
+    <div class="modal-dialog comparison-roi-modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title mb-0" id="comparisonRoiModalLabel">
-                    <i class="mdi mdi-percent"></i> Cost Calculator — ROI%
+                <h5 class="modal-title mb-0 d-flex align-items-center flex-wrap" id="comparisonRoiModalLabel">
+                    <span class="comparison-roi-header-image-wrap d-none" id="comparison-roi-modal-image-wrap">
+                        <img id="comparison-roi-modal-image" class="comparison-roi-header-image" src="" alt="SKU image" title="Hover to enlarge">
+                    </span>
+                    <span>
+                        <i class="mdi mdi-percent"></i> Profit Calculator
+                        <span class="ms-2 fw-semibold" id="comparison-roi-modal-sku"></span>
+                    </span>
                 </h5>
+                <div id="comparison-roi-amz-reviews-slot" aria-label="Amazon reviews from Jungle Scout"></div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div id="comparison-roi-manual-lmp-wrap" class="d-none border rounded p-2 mb-2 bg-light">
-                    <div class="small text-muted mb-2" id="comparison-roi-manual-lmp-hint"></div>
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <label class="small mb-0 fw-semibold" for="comparison-roi-manual-lmp">Manual LMP (all):</label>
-                        <input type="text" id="comparison-roi-manual-lmp" class="form-control form-control-sm" style="width: 120px;" placeholder="LMP $">
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="comparison-roi-apply-manual-lmp">
-                            Apply LMP × 0.9 to all
-                        </button>
-                    </div>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="comparison-roi-apply-proposed-prc"
+                        title="Set Proposed PRC = LMP × 90% for each platform that has LMP">
+                        Proposed Prc Apply
+                    </button>
+                    <div class="small text-end ms-auto" id="comparison-roi-save-status"></div>
                 </div>
-                <div class="small text-end mb-2" id="comparison-roi-save-status"></div>
                 <div class="table-responsive">
                     <table class="table table-bordered comparison-roi-table mb-0">
                         <thead>
                             <tr>
-                                <th>cost calculator</th>
+                                <th>profit calculator</th>
                                 <th>CP</th>
                                 <th>CBM</th>
                                 <th>Freight</th>
                                 <th>GW LB</th>
                                 <th>Shipping</th>
-                                <th>Sale</th>
+                                <th>Proposed PRC</th>
                                 <th>LMP</th>
-                                <th title="Current listing price from each marketplace">Price</th>
-                                <th title="NPFT% = GPFT% − Ads% (same as Pricing Master / OV L30)">NPFT</th>
-                                <th title="NROI% = (Gross Profit − Ads $) ÷ LP × 100 (same as Pricing Master / OV L30)">NROI</th>
-                                <th>P%</th>
-                                <th>ROI (G)</th>
-                                <th>Profit</th>
+                                <th class="comparison-roi-proposed-metrics-th" title="Gross $ = Proposed PRC × margin − CP − Shipping">Profit</th>
+                                <th class="comparison-roi-proposed-metrics-th" title="PGROI% (Proposed PRC) = (Proposed PRC × margin − CP − Shipping) ÷ CP × 100 · Amz 80% / Ebay 83% / Temu 100% / Shopify 95%">PGROI%</th>
+                                <th class="comparison-roi-proposed-metrics-th" title="PGPFT% (Proposed PRC) = (Proposed PRC × margin − CP − Shipping) ÷ Proposed PRC × 100">PGPFT%</th>
+                                <th class="comparison-roi-proposed-metrics-th" title="PNROI% (Proposed PRC) = (Gross $ − Proposed PRC × Ads%/100) ÷ CP × 100 (Temu: PGROI% − Ads%)">PNROI%</th>
+                                <th class="comparison-roi-proposed-metrics-th" title="PNPFT% (Proposed PRC) = PGPFT% − Ads% (Ads% from Pricing Master / OV L30)">PNPFT%</th>
+                                <th class="comparison-roi-c-price-th" title="Current listing price from each marketplace">C Price</th>
+                                <th class="comparison-roi-site-metrics-th" title="GROI% (C Price) = (C Price × margin − CP − Shipping) ÷ CP × 100 · Amz 80% / Ebay 83% / Temu 100% / Shopify 95%">GROI%</th>
+                                <th class="comparison-roi-site-metrics-th" title="GPFT% (C Price) = (C Price × margin − CP − Shipping) ÷ C Price × 100">GPFT%</th>
+                                <th class="comparison-roi-site-metrics-th" title="NROI% (C Price) = (Gross $ − C Price × Ads%/100) ÷ CP × 100 (Temu: GROI% − Ads%)">NROI%</th>
+                                <th class="comparison-roi-site-metrics-th" title="NPFT% (C Price) = GPFT% − Ads% (Ads% from Pricing Master / OV L30)">NPFT%</th>
                             </tr>
                         </thead>
                         <tbody id="comparison-roi-tbody"></tbody>

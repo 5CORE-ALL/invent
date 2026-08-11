@@ -5499,53 +5499,6 @@
                     }
                 },
                 {
-                    title: "SP",
-                    field: "amazon_standard_price",
-                    hozAlign: "center",
-                    headerTooltip: "Standard Price — same as /amazon-tabulator-view SP (amazon_data_view.STANDARD_PRICE). Parent shows average of child SPs; (1) when children differ.",
-                    editor: "input",
-                    minWidth: 70,
-                    sorter: "number",
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return d.is_parent_summary !== true && d.sku && String(d.sku).indexOf('PARENT') === -1;
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const value = cell.getValue();
-                        const std = parseFloat(value) || 0;
-                        // Parent: show average of child SPs; append (1) when children have different SPs.
-                        // Red when any child is missing SP.
-                        if (rowData.is_parent_summary) {
-                            const missing = !!rowData.amazon_standard_price_missing;
-                            const mixed = !!rowData.amazon_standard_price_mixed;
-                            const color = missing ? '#dc3545' : 'inherit';
-                            if (!value || std <= 0) {
-                                if (!missing) return '';
-                                return '<span style="font-weight:600;color:#dc3545;" title="One or more children missing SP">—</span>';
-                            }
-                            let tip = 'Avg of child SPs $' + std.toFixed(2);
-                            if (missing) tip += ' — one or more children missing SP';
-                            else if (mixed) tip += ' — children have different SPs';
-                            return '<span style="font-weight:600;color:' + color + ';" title="' + tip.replace(/"/g, '&quot;') + '">$'
-                                + std.toFixed(2)
-                                + (mixed ? ' <span style="font-weight:500;color:' + (missing ? '#dc3545' : '#6c757d') + ';">(1)</span>' : '')
-                                + '</span>';
-                        }
-                        const currentPrice = parseFloat(rowData.amazon_price) || 0;
-                        if (!value || std <= 0) return '';
-                        const sku = rowData.sku || '';
-                        // Hold (SP = Amazon price): show price only — no yellow dot
-                        if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="font-weight:600;" title="Hold (matches Amz price) — SP">$'
-                                + std.toFixed(2) + '</span>';
-                        }
-                        const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
-                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                            dot + ('$' + std.toFixed(2)) + '</span>';
-                    }
-                },
-                {
                     title: "Audit",
                     field: "audit",
                     hozAlign: "center",
@@ -5872,6 +5825,53 @@
                         return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="amazon" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
                     },
                     minWidth: 70
+                },
+                {
+                    title: "Std Prc",
+                    field: "amazon_standard_price",
+                    hozAlign: "center",
+                    headerTooltip: "Standard Price (Std Prc) — same as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Parent shows average of child Std Prc; (1) when children differ.",
+                    editor: "input",
+                    minWidth: 70,
+                    sorter: "number",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return d.is_parent_summary !== true && d.sku && String(d.sku).indexOf('PARENT') === -1;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = cell.getValue();
+                        const std = parseFloat(value) || 0;
+                        // Parent: show average of child Std Prc; append (1) when children have different values.
+                        // Red when any child is missing Std Prc.
+                        if (rowData.is_parent_summary) {
+                            const missing = !!rowData.amazon_standard_price_missing;
+                            const mixed = !!rowData.amazon_standard_price_mixed;
+                            const color = missing ? '#dc3545' : 'inherit';
+                            if (!value || std <= 0) {
+                                if (!missing) return '';
+                                return '<span style="font-weight:600;color:#dc3545;" title="One or more children missing Std Prc">—</span>';
+                            }
+                            let tip = 'Avg of child Std Prc $' + std.toFixed(2);
+                            if (missing) tip += ' — one or more children missing Std Prc';
+                            else if (mixed) tip += ' — children have different Std Prc';
+                            return '<span style="font-weight:600;color:' + color + ';" title="' + tip.replace(/"/g, '&quot;') + '">$'
+                                + std.toFixed(2)
+                                + (mixed ? ' <span style="font-weight:500;color:' + (missing ? '#dc3545' : '#6c757d') + ';">(1)</span>' : '')
+                                + '</span>';
+                        }
+                        const currentPrice = parseFloat(rowData.amazon_price) || 0;
+                        if (!value || std <= 0) return '';
+                        const sku = rowData.sku || '';
+                        // Hold (Std Prc = Amazon price): show price only — no yellow dot
+                        if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
+                            return '<span style="font-weight:600;" title="Hold (matches Amz price) — Std Prc">$'
+                                + std.toFixed(2) + '</span>';
+                        }
+                        const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                            dot + ('$' + std.toFixed(2)) + '</span>';
+                    }
                 },
                 {
                     title: "eBay LMP",

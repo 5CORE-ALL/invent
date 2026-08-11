@@ -966,10 +966,10 @@
                         <div class="card-body py-2">
                             <div class="row g-2 align-items-end">
                                 <div class="col-auto">
-                                    <label class="form-label mb-0 small fw-bold" for="lmpModalSpInput">SP</label>
+                                    <label class="form-label mb-0 small fw-bold" for="lmpModalSpInput">Std Prc</label>
                                     <input type="number" class="form-control form-control-sm text-end fw-bold"
                                         id="lmpModalSpInput" step="0.01" min="0.01" placeholder="0.00"
-                                        style="width: 7rem;" title="Manual Standard Price — use when LMP cannot be determined. Saves to SP column only.">
+                                        style="width: 7rem;" title="Manual Standard Price — use when LMP cannot be determined. Saves to Std Prc column only.">
                                 </div>
                                 <div class="col-auto">
                                     <div class="small text-muted mb-0">GROI %</div>
@@ -980,7 +980,7 @@
                                     <div id="lmpModalNroiPct" class="fs-5 fw-bold" style="min-width: 3.5rem;">—</div>
                                 </div>
                                 <div class="col-auto small text-muted pb-1">
-                                    Standard Price (manual). Saves to <strong>SP</strong> for this SKU and all
+                                    Standard Price (manual). Saves to <strong>Std Prc</strong> for this SKU and all
                                     <strong>Sku Link LMP</strong> siblings. Use when LMP cannot be determined.
                                 </div>
                             </div>
@@ -2745,13 +2745,13 @@
                     const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
                     if (typeof showToast === 'function') {
                         showToast('success', n > 1
-                            ? ('Standard Price (SP) saved for ' + n + ' linked SKUs')
-                            : 'Standard Price (SP) saved');
+                            ? ('Std Prc saved for ' + n + ' linked SKUs')
+                            : 'Std Prc saved');
                     }
                 },
                 error: function() {
                     if (typeof showToast === 'function') {
-                        showToast('error', 'Failed to save SP');
+                        showToast('error', 'Failed to save Std Prc');
                     }
                 }
             });
@@ -7269,10 +7269,10 @@
                         width: 50
                     },
                     {
-                        title: "SP",
+                        title: "Std Prc",
                         field: "STANDARD_PRICE",
                         hozAlign: "center",
-                        headerTooltip: "Standard Price — manual only (LMP modal / SP editor). Blank unless filled when LMP cannot be determined. Dot vs Amz price.",
+                        headerTooltip: "Standard Price (Std Prc) — manual only (LMP modal / Std Prc editor). Blank unless filled when LMP cannot be determined. Dot vs Amz price.",
                         editor: "input",
                         width: 70,
                         formatter: function(cell) {
@@ -8181,11 +8181,11 @@
                             applyStandardPriceToLinkedRows(sku, saved, response.applied_skus);
                             const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
                             showToast('success', n > 1
-                                ? ('Standard Price (SP) saved for ' + n + ' linked SKUs')
-                                : 'Standard Price (SP) saved');
+                                ? ('Std Prc saved for ' + n + ' linked SKUs')
+                                : 'Std Prc saved');
                         },
                         error: function() {
-                            showToast('error', 'Failed to save Standard Price');
+                            showToast('error', 'Failed to save Std Prc');
                         }
                     });
                 } else if (field === 'SPRICE') {
@@ -10148,7 +10148,7 @@
                             <th style="width: 250px;">Product Title</th>
                             <th>Seller</th>
                             <th style="width: 80px;">Price</th>
-                            <th style="width: 70px;" title="SP from top input (SPRICE)">SP</th>
+                            <th style="width: 70px;" title="Std Prc from top input">Std Prc</th>
                             <th style="width: 70px;" title="GROI% at top SP — same formula as Sroi">GROI %</th>
                             <th style="width: 70px;" title="NROI% at top SP — same formula as SNROI / NROI badge">NROI %</th>
                             <th style="width: 90px;">Revenue<br><small>(30d)</small></th>
