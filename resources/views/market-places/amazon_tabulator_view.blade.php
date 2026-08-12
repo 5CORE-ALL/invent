@@ -6730,6 +6730,9 @@
                 if (field === 'row_select') return 'Row Select';
                 if (field === '_accept') return 'Push Prices';
                 if (field === 'push_prc') return 'Push Prc';
+                if (field === 'cvr_discount') return 'CVR Disc.';
+                if (field === 'cpn_pct') return 'CPN %';
+                if (field === 'prmt_pct') return 'PRMT %';
                 const raw = (def && def.title != null) ? def.title : field;
                 const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
                 return t || field;
@@ -6750,7 +6753,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|_accept|push_prc|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|_accept|push_prc|prmt_pct|cpn_pct|cvr_discount|dsc|appr|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|s\s*st|pls|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';

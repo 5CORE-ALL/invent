@@ -23,6 +23,7 @@ use App\Models\AmazonProductReview;
 use App\Models\AmazonSkuDailyData;
 use App\Models\ADVMastersData;
 use App\Models\ChannelMaster;
+use App\Models\ChannelTabulatorColumnSetting;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use App\Services\AmazonDataService;
@@ -1815,9 +1816,31 @@ class OverallAmazonController extends Controller
         // Round price to 2 decimal places
         $priceFloat = round($priceFloat, 2);
 
+        // Optional Push Prc extras: Sale (discounted_price) + explicit min seller floor
+        $extras = [];
+        $saleRaw = $request->input('sale_price');
+        if ($saleRaw !== null && $saleRaw !== '' && is_numeric($saleRaw)) {
+            $saleFloat = round((float) $saleRaw, 2);
+            if ($saleFloat > 0 && $saleFloat < $priceFloat) {
+                $extras['sale_price'] = $saleFloat;
+            }
+        }
+        $minRaw = $request->input('min_price');
+        if ($minRaw !== null && $minRaw !== '' && is_numeric($minRaw)) {
+            $minFloat = round((float) $minRaw, 2);
+            if ($minFloat > 0) {
+                $extras['min_price'] = $minFloat;
+            }
+        }
+
         try {
             $service = new AmazonSpApiService();
-            $result = $service->updateAmazonPriceUS($skuForAmazon, $priceFloat);
+            $result = $service->updateAmazonPriceUS(
+                $skuForAmazon,
+                $priceFloat,
+                3,
+                $extras !== [] ? $extras : null
+            );
 
             // Check if the response indicates errors
             if (isset($result['errors']) && !empty($result['errors'])) {
@@ -1830,6 +1853,8 @@ class OverallAmazonController extends Controller
                     'amazon_api_sku' => $skuForAmazon,
                     'asin_param' => $asinParam,
                     'price' => $priceFloat,
+                    'sale_price' => $extras['sale_price'] ?? null,
+                    'min_price' => $extras['min_price'] ?? null,
                     'errors' => $result['errors']
                 ]);
                 
@@ -1845,11 +1870,17 @@ class OverallAmazonController extends Controller
                 'raw_param' => $request->input('update_amazon_min_price'),
                 'sku' => $skuForAmazon,
                 'price' => $priceFloat,
+                'sale_price' => $extras['sale_price'] ?? null,
+                'min_price' => $extras['min_price'] ?? null,
             ]);
 
             if ($updateMinPriceConstraint) {
-                // Keep backup min-price PATCH aligned with updateAmazonPriceUS (our_price × 0.95).
-                $minFloor = $service->minSellerAllowedPriceFromOurPrice($priceFloat);
+                // Prefer explicit min / sale; else default our_price × 0.95.
+                $minFloor = isset($extras['min_price'])
+                    ? (float) $extras['min_price']
+                    : (isset($extras['sale_price'])
+                        ? (float) $extras['sale_price']
+                        : $service->minSellerAllowedPriceFromOurPrice($priceFloat));
                 Log::info('Updating Amazon minimum price constraint', [
                     'sku' => $skuForAmazon,
                     'our_price' => $priceFloat,
@@ -1899,6 +1930,10 @@ class OverallAmazonController extends Controller
             $responseData = array_merge(is_array($result) ? $result : [], [
                 'amazon_api_sku' => $skuForAmazon,
                 'asin_used' => $asinParam !== '' ? strtoupper(str_replace([' ', "\xc2\xa0"], '', $asinParam)) : null,
+                'our_price' => $priceFloat,
+                'sale_price' => $extras['sale_price'] ?? null,
+                'min_price' => $extras['min_price']
+                    ?? ($extras['sale_price'] ?? $service->minSellerAllowedPriceFromOurPrice($priceFloat)),
             ]);
 
             if ($minPriceResult !== null) {
@@ -2453,6 +2488,123 @@ class OverallAmazonController extends Controller
             ),
             'stats' => $stats,
         ]);
+    }
+
+    /**
+     * Default CVR% slabs → Disc% for Amazon tabulator CVR Disc. column.
+     * Separate store from PEF / Cpn% (pef_cvr_vs_cpn).
+     *
+     * @return list<array{key:string,label:string,disc:float|int}>
+     */
+    private function amazonDefaultCvrDiscRules(): array
+    {
+        return [
+            ['key' => 'eq-0', 'label' => '0%', 'disc' => 10],
+            ['key' => '0.01-1', 'label' => '0.01–1%', 'disc' => 9],
+            ['key' => '1-1.5', 'label' => '1–1.5%', 'disc' => 8],
+            ['key' => '1.5-2', 'label' => '1.5–2%', 'disc' => 7],
+            ['key' => '2-3', 'label' => '2–3%', 'disc' => 6],
+            ['key' => '3-4', 'label' => '3–4%', 'disc' => 5],
+            ['key' => '4-5', 'label' => '4–5%', 'disc' => 4],
+            ['key' => '5-6', 'label' => '5–6%', 'disc' => 3],
+            ['key' => '6-6.5', 'label' => '6–6.5%', 'disc' => 2],
+            ['key' => '6.5-7', 'label' => '6.5–7%', 'disc' => 1],
+            ['key' => 'gt-7', 'label' => '> 7%', 'disc' => 0],
+        ];
+    }
+
+    /**
+     * Load Amazon CVR Disc rules (channel amazon_cvr_vs_disc) — independent of Cpn% / pef_cvr_vs_cpn.
+     */
+    public function amazonCvrDiscRules()
+    {
+        $defaults = $this->amazonDefaultCvrDiscRules();
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'amazon_cvr_vs_disc')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($saved) || $saved === []) {
+            return response()->json([
+                'success' => true,
+                'is_default' => true,
+                'rules' => $defaults,
+            ]);
+        }
+
+        $byKey = [];
+        foreach ($saved as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $k = (string) ($item['key'] ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $byKey[$k] = $item;
+        }
+        $rules = [];
+        foreach ($defaults as $def) {
+            $k = $def['key'];
+            $raw = $byKey[$k]['disc'] ?? $byKey[$k]['cpn'] ?? null;
+            $disc = is_numeric($raw) ? (float) $raw : $def['disc'];
+            $rules[] = [
+                'key' => $k,
+                'label' => $def['label'],
+                'disc' => $disc,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_default' => false,
+            'rules' => $rules,
+        ]);
+    }
+
+    /**
+     * Persist Amazon CVR Disc rules (does not touch Cpn% / pef_cvr_vs_cpn).
+     */
+    public function amazonCvrDiscSaveRules(Request $request)
+    {
+        $defaults = $this->amazonDefaultCvrDiscRules();
+        $incoming = $request->input('rules');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+        }
+
+        $byKey = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $k = (string) ($item['key'] ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $byKey[$k] = $item;
+        }
+
+        $rules = [];
+        foreach ($defaults as $def) {
+            $k = $def['key'];
+            $raw = $byKey[$k]['disc'] ?? $byKey[$k]['cpn'] ?? null;
+            $disc = is_numeric($raw) ? round((float) $raw, 2) : (float) $def['disc'];
+            if ($disc < 0) {
+                $disc = 0;
+            }
+            $rules[] = [
+                'key' => $k,
+                'label' => $def['label'],
+                'disc' => $disc,
+            ];
+        }
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'amazon_cvr_vs_disc'],
+            ['visibility' => $rules, 'column_order' => array_column($rules, 'key')]
+        );
+
+        return response()->json(['success' => true, 'rules' => $rules]);
     }
 
     public function amazonPriceIncreaseDecrease(Request $request)

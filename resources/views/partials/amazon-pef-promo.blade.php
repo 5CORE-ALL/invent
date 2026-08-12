@@ -15,56 +15,83 @@
         .amz-pef-promo-cell.has-val { color: #0f172a; }
         .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"],
         .tabulator-row .tabulator-cell[tabulator-field="cpn_pct"],
+        .tabulator-row .tabulator-cell[tabulator-field="cvr_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="dsc"],
         .tabulator-row .tabulator-cell[tabulator-field="appr"] {
             padding: 2px 4px !important;
         }
+        /* Badge style aligned with CVR vs CPN menu (mint %) */
+        .amz-cvr-discount-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            color: #20c997;
+            font-weight: 700;
+            font-size: 12px;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .amz-cvr-discount-badge i {
+            color: #20c997 !important;
+            font-size: 11px !important;
+        }
+        .amz-cvr-discount-badge.is-zero {
+            color: #adb5bd;
+            font-weight: 600;
+        }
+        .amz-cvr-discount-badge.is-zero i {
+            color: #adb5bd !important;
+        }
         #pef-dil-prmt-table .pef-dil-prmt-input,
-        #pef-cvr-cpn-table .pef-cvr-cpn-input {
+        #pef-cvr-cpn-table .pef-cvr-cpn-input,
+        #amz-cvr-disc-table .amz-cvr-disc-input {
             max-width: 90px;
             margin-left: auto;
             text-align: right;
             font-weight: 600;
         }
-        #amz-dil-vs-prmt-btn {
-            background: #20c997;
-            border-color: #20c997;
-            color: #fff;
-        }
-        #amz-dil-vs-prmt-btn:hover {
-            background: #1aa179;
-            border-color: #1aa179;
-            color: #fff;
-        }
-        #amz-push-prmt-btn {
+        #amz-prmt-menu-btn {
             background: #198754;
             border-color: #198754;
             color: #fff;
         }
-        #amz-push-prmt-btn:hover {
+        #amz-prmt-menu-btn:hover,
+        #amz-prmt-menu-btn:focus,
+        #amz-prmt-menu-btn.show {
             background: #157347;
             border-color: #146c43;
             color: #fff;
         }
-        #amz-cvr-vs-cpn-btn {
-            color: #20c997;
-            border-color: #20c997;
-            background: #fff;
-        }
-        #amz-cvr-vs-cpn-btn:hover {
-            background: rgba(32, 201, 151, 0.08);
-            color: #1aa179;
-            border-color: #1aa179;
-        }
-        #amz-push-cpn-btn {
-            color: #fff;
-            border-color: #20c997;
+        #amz-cpn-menu-btn,
+        #amz-cvr-disc-menu-btn {
             background: #20c997;
+            border-color: #20c997;
+            color: #fff;
         }
-        #amz-push-cpn-btn:hover {
+        #amz-cpn-menu-btn:hover,
+        #amz-cpn-menu-btn:focus,
+        #amz-cpn-menu-btn.show,
+        #amz-cvr-disc-menu-btn:hover,
+        #amz-cvr-disc-menu-btn:focus,
+        #amz-cvr-disc-menu-btn.show {
             background: #1aa179;
             border-color: #1aa179;
             color: #fff;
+        }
+        #amz-bulk-push-prc-btn {
+            background: #FF9900;
+            border-color: #FF9900;
+            color: #fff;
+        }
+        #amz-bulk-push-prc-btn:hover,
+        #amz-bulk-push-prc-btn:focus {
+            background: #e68a00;
+            border-color: #e68a00;
+            color: #fff;
+        }
+        #amz-bulk-push-prc-btn:disabled {
+            opacity: 0.65;
         }
         /* CVR vs CPN modal — light purple background */
         #pefCvrVsCpnModal .modal-content {
@@ -88,36 +115,117 @@
 @endif
 
 @if($amazonPefPromoPart === 'buttons' || $amazonPefPromoPart === 'all')
-                    <button type="button" class="btn btn-sm" id="amz-dil-vs-prmt-btn"
-                        title="Dil% slabs vs PRMT% rules — edit and apply as PRMT % (same store as pricing-errors-fix)">
-                        <i class="fas fa-sliders-h"></i> Dil vs PRMT
-                    </button>
-                    <button type="button" class="btn btn-sm btn-success" id="amz-push-prmt-btn"
-                        title="Apply Dil→PRMT rules, then push changed prices to Amazon via Listings API. Selected rows if checked; otherwise all visible. Skips unchanged prices.">
-                        <i class="fas fa-upload"></i> Push Prmt%
-                    </button>
-                    <button type="button" class="btn btn-sm" id="amz-cvr-vs-cpn-btn"
-                        title="CVR% slabs vs CPN% rules — edit and apply as CPN % (same store as pricing-errors-fix)">
-                        CVR vs CPN
-                    </button>
-                    <button type="button" class="btn btn-sm" id="amz-push-cpn-btn"
-                        title="Apply CVR→CPN rules (snap to Amazon coupons 5% / 10%, 1 coupon per day), then push changed prices via Amazon Listings API. Selected if checked; else all visible. Skips unchanged.">
-                        <i class="fas fa-upload"></i> Push CPN%
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm dropdown-toggle" id="amz-prmt-menu-btn"
+                            data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Dil vs PRMT rules + Push Prmt% to Amazon">
+                            <i class="fas fa-sliders-h"></i> Prmt%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="amz-prmt-menu-btn">
+                            <li>
+                                <a class="dropdown-item" href="#" id="amz-dil-vs-prmt-btn">
+                                    <i class="fas fa-sliders-h me-1 text-success"></i> Dil vs PRMT…
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" id="amz-push-prmt-btn">
+                                    <i class="fas fa-upload me-1 text-success"></i> Push Prmt%
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm dropdown-toggle" id="amz-cvr-disc-menu-btn"
+                            data-bs-toggle="dropdown" aria-expanded="false"
+                            title="CVR Disc. column rules (separate from Cpn%)">
+                            CVR Disc
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="amz-cvr-disc-menu-btn">
+                            <li>
+                                <a class="dropdown-item" href="#" id="amz-cvr-disc-rules-btn">
+                                    Edit CVR Disc rules…
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm dropdown-toggle" id="amz-cpn-menu-btn"
+                            data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Cpn% column — CVR vs CPN rules + Push CPN% (separate from CVR Disc)">
+                            Cpn%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="amz-cpn-menu-btn">
+                            <li>
+                                <a class="dropdown-item" href="#" id="amz-cvr-vs-cpn-btn">
+                                    CVR vs CPN…
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" id="amz-push-cpn-btn">
+                                    <i class="fas fa-upload me-1" style="color:#20c997;"></i> Push CPN%
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                    <button type="button" class="btn btn-sm" id="amz-bulk-push-prc-btn"
+                        title="Bulk Push Prc for selected SKUs — Std → Your Price; Sale = Std × (1 − (PRMT% + CVR Discount%)/100); Min = Sale">
+                        <i class="fas fa-upload"></i> Push Prc
                     </button>
 @endif
 
 @if($amazonPefPromoPart === 'modals' || $amazonPefPromoPart === 'all')
-    {{-- CVR vs CPN: same model/datasource as /pricing-errors-fix --}}
+    {{-- CVR Disc: Amazon-only rules store amazon_cvr_vs_disc (NOT shared with Cpn%) --}}
+    <div class="modal fade" id="amzCvrDiscModal" tabindex="-1" aria-labelledby="amzCvrDiscModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="amzCvrDiscModalLabel">
+                        CVR Disc rules
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Map CVR% slabs to <strong>CVR Disc.</strong> %. Separate from <strong>Cpn%</strong> / CVR vs CPN.
+                        Used by the CVR Disc. column and Push Prc Sale discount.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="amz-cvr-disc-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">CVR%</th>
+                                    <th style="width:45%;" class="text-end">Disc %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="amz-cvr-disc-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="amz-cvr-disc-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-primary" id="amz-cvr-disc-apply-btn"
+                        title="Save CVR Disc rules and refresh the CVR Disc. column">
+                        Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- CVR vs CPN: same model/datasource as /pricing-errors-fix (Cpn% column only) --}}
     <div class="modal fade" id="pefCvrVsCpnModal" tabindex="-1" aria-labelledby="pefCvrVsCpnModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-md">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="pefCvrVsCpnModalLabel">
-                        <i class="fas fa-percentage me-1"></i> CVR vs CPN
+                        CVR vs CPN
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Map CVR% slabs to <strong>CPN %</strong>. Separate from <strong>CVR Disc</strong> rules.
+                    </p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="pef-cvr-cpn-table">
                             <thead class="table-light">
@@ -210,9 +318,24 @@
             { key: '6.5-7', label: '6.5–7%', cpn: 1 },
             { key: 'gt-7', label: '> 7%', cpn: 0 },
         ];
+        // Amazon CVR Disc. column — separate defaults/store from Cpn% (pef_cvr_vs_cpn)
+        const AMZ_CVR_DISC_DEFAULTS = [
+            { key: 'eq-0', label: '0%', disc: 10 },
+            { key: '0.01-1', label: '0.01–1%', disc: 9 },
+            { key: '1-1.5', label: '1–1.5%', disc: 8 },
+            { key: '1.5-2', label: '1.5–2%', disc: 7 },
+            { key: '2-3', label: '2–3%', disc: 6 },
+            { key: '3-4', label: '3–4%', disc: 5 },
+            { key: '4-5', label: '4–5%', disc: 4 },
+            { key: '5-6', label: '5–6%', disc: 3 },
+            { key: '6-6.5', label: '6–6.5%', disc: 2 },
+            { key: '6.5-7', label: '6.5–7%', disc: 1 },
+            { key: 'gt-7', label: '> 7%', disc: 0 },
+        ];
 
         let pefDilPrmtRules = PEF_DIL_PRMT_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let pefCvrCpnRules = PEF_CVR_CPN_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        let amzCvrDiscRules = AMZ_CVR_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
 
         function amzPefCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -418,6 +541,110 @@
             if (!rule) return 0;
             const n = Number(rule.cpn);
             return isFinite(n) && n >= 0 ? n : 0;
+        }
+        /** CVR → Disc% from amazon_cvr_vs_disc (CVR Disc column / Push Prc). Not Cpn%. */
+        function amzDiscForCvr(cvr) {
+            const key = pefCvrSlabKey(cvr);
+            const rule = amzCvrDiscRules.find(function(r) { return r.key === key; });
+            if (!rule) return 0;
+            const n = Number(rule.disc);
+            return isFinite(n) && n >= 0 ? n : 0;
+        }
+        /** CVR → CVR Disc. % (INV=0 → 0). Uses amazon_cvr_vs_disc rules only. */
+        function computeAmzCvrDiscountPct(d) {
+            if (!amzPefIsChildRow(d)) return null;
+            if (amzPefInv(d) === 0) return 0;
+            return amzDiscForCvr(amzPefCvr(d));
+        }
+        function fmtAmzCvrDiscountBadge(pct) {
+            const n = Number(pct);
+            if (!isFinite(n) || n <= 0) {
+                return '<span class="amz-cvr-discount-badge is-zero" title="No CVR Disc">—</span>';
+            }
+            return '<span class="amz-cvr-discount-badge" title="CVR Disc rule → ' + n + '%">'
+                + n + '%</span>';
+        }
+
+        function renderAmzCvrDiscModalTable() {
+            const $tb = $('#amz-cvr-disc-tbody').empty();
+            amzCvrDiscRules.forEach(function(r, idx) {
+                const disc = isFinite(Number(r.disc)) ? Number(r.disc) : 0;
+                $tb.append(
+                    '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                    + '<td>' + String(r.label || r.key) + '</td>'
+                    + '<td class="text-end">'
+                    + '<input type="number" class="form-control form-control-sm amz-cvr-disc-input" '
+                    + 'min="0" step="0.1" value="' + disc + '" data-idx="' + idx + '">'
+                    + '</td></tr>'
+                );
+            });
+        }
+        function readAmzCvrDiscRulesFromModal() {
+            $('#amz-cvr-disc-tbody tr').each(function() {
+                const key = String($(this).attr('data-key') || '');
+                const val = parseFloat($(this).find('.amz-cvr-disc-input').val());
+                const rule = amzCvrDiscRules.find(function(r) { return r.key === key; });
+                if (!rule) return;
+                rule.disc = (isFinite(val) && val >= 0) ? val : 0;
+            });
+            return amzCvrDiscRules.map(function(r) {
+                return { key: r.key, label: r.label, disc: Number(r.disc) || 0 };
+            });
+        }
+        async function loadAmzCvrDiscRules() {
+            $('#amz-cvr-disc-status').text('Loading…');
+            try {
+                const res = await $.ajax({
+                    url: '/amazon-cvr-disc',
+                    method: 'GET',
+                    dataType: 'json',
+                });
+                if (res && Array.isArray(res.rules) && res.rules.length) {
+                    amzCvrDiscRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                }
+                renderAmzCvrDiscModalTable();
+                $('#amz-cvr-disc-status').text(res && res.is_default
+                    ? 'Using defaults (not saved yet).'
+                    : 'Loaded saved CVR Disc rules (separate from Cpn%).');
+            } catch (e) {
+                renderAmzCvrDiscModalTable();
+                $('#amz-cvr-disc-status').text('Could not load saved rules — using defaults.');
+            }
+        }
+        function saveAmzCvrDiscRules() {
+            const rules = readAmzCvrDiscRulesFromModal();
+            return $.ajax({
+                url: '/amazon-cvr-disc',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: { rules: rules, _token: amzPefCsrf() },
+            }).then(function(res) {
+                if (res && Array.isArray(res.rules)) {
+                    amzCvrDiscRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                    renderAmzCvrDiscModalTable();
+                }
+                return res;
+            });
+        }
+        async function saveAndApplyAmzCvrDisc() {
+            const $btn = $('#amz-cvr-disc-apply-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            try {
+                await saveAmzCvrDiscRules();
+                $('#amz-cvr-disc-status').text('Saved. CVR Disc. column updated.');
+                amzPefToast('success', 'CVR Disc rules saved');
+                if (table) {
+                    try { table.getColumn('cvr_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                }
+                const modalEl = document.getElementById('amzCvrDiscModal');
+                if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            } catch (e) {
+                amzPefToast('error', 'Failed to save CVR Disc rules');
+                $('#amz-cvr-disc-status').text('Save failed.');
+            } finally {
+                $btn.prop('disabled', false).html(html);
+            }
         }
 
         function renderDilPrmtModalTable() {
@@ -888,6 +1115,36 @@
                     },
                 },
                 {
+                    title: 'CVR Disc.',
+                    field: 'cvr_discount',
+                    width: 64,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    headerTooltip: 'CVR Disc. — from CVR vs CPN rules. INV=0 → 0%. Read-only.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = computeAmzCvrDiscountPct(aRow.getData()) || 0;
+                        const bv = computeAmzCvrDiscountPct(bRow.getData()) || 0;
+                        return av - bv;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent_summary) return '';
+                        if (!amzPefIsChildRow(d)) return '';
+                        const pct = computeAmzCvrDiscountPct(d);
+                        const cvr = amzPefCvr(d);
+                        const base = Number(d.STANDARD_PRICE) > 0
+                            ? Number(d.STANDARD_PRICE)
+                            : (Number(d.price) || 0);
+                        const dollars = (pct > 0 && base > 0) ? amzPefRound2(base * (pct / 100)) : 0;
+                        const tip = 'CVR ' + (isFinite(cvr) ? cvr.toFixed(1) : '0') + '%'
+                            + ' → discount ' + (pct || 0) + '%'
+                            + (dollars > 0 ? (' ≈ $' + dollars.toFixed(2) + ' off Std/Price') : '');
+                        return '<span title="' + amzPefEscAttr(tip) + '">'
+                            + fmtAmzCvrDiscountBadge(pct) + '</span>';
+                    },
+                },
+                {
                     title: 'Appr',
                     field: 'appr',
                     width: 48,
@@ -932,26 +1189,32 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
-                    headerTooltip: 'Push Std Prc to Amazon with PRMT% + CPN% applied. Dot = PDT push history.',
+                    headerTooltip: 'Push Prc: (1) Std → Your Price (2) Sale = Std × (1 − (PRMT% + CVR Discount%)/100); Min = Sale. Coupon skipped. Dot = PDT history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (!amzPefIsChildRow(d)) return '';
                         const sku = amzPefSku(d);
-                        const pushPrice = computeAmzPushPrcFromStd(d);
+                        const plan = computeAmzPushPrcPlan(d);
                         const status = String(d.PUSH_PRC_STATUS || '');
-                        const histVal = d.PUSH_PRC_VALUE != null ? d.PUSH_PRC_VALUE : pushPrice;
+                        const histVal = d.PUSH_PRC_VALUE != null ? d.PUSH_PRC_VALUE : (plan ? plan.effective : null);
                         const dot = amzPefPromoHistoryDotHtml(sku, 'push_prc', histVal);
-                        if (!(pushPrice > 0)) {
+                        if (!plan || !(plan.std > 0)) {
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
                                 + dot + '<span style="color:#adb5bd;" title="Set Std Prc first">—</span></span>';
                         }
                         let icon = '<i class="fas fa-upload"></i>';
                         let color = '#FF9900';
-                        let tip = 'Push Std $' + pushPrice.toFixed(2) + ' to Amazon (with PRMT% + CPN%)';
+                        let tip = 'Your Price $' + plan.std.toFixed(2)
+                            + (plan.sale != null
+                                ? ('; Sale $' + plan.sale.toFixed(2)
+                                    + ' [PRMT ' + plan.prmt + '% + CVR Disc ' + plan.cvrDisc + '% = ' + plan.totalDisc + '%]'
+                                    + '; Min $' + plan.min.toFixed(2))
+                                : ('; Min $' + plan.min.toFixed(2)));
                         if (status === 'pushed') {
                             icon = '<i class="fa-solid fa-check-double"></i>';
                             color = '#28a745';
-                            tip = 'Pushed $' + (Number(d.PUSH_PRC_VALUE) || pushPrice).toFixed(2) + ' — click to push again';
+                            tip = 'Pushed — click to push again. Last effective $'
+                                + (Number(d.PUSH_PRC_VALUE) || plan.effective).toFixed(2);
                         } else if (status === 'error') {
                             icon = '<i class="fa-solid fa-xmark"></i>';
                             color = '#dc3545';
@@ -967,7 +1230,7 @@
                             + dot
                             + '<button type="button" class="btn btn-sm p-0 amz-push-prc-btn" '
                             + 'data-sku="' + amzPefEscAttr(sku) + '" data-asin="' + asin + '" '
-                            + 'data-price="' + pushPrice.toFixed(2) + '" '
+                            + 'data-price="' + plan.effective.toFixed(2) + '" '
                             + 'title="' + amzPefEscAttr(tip) + '" '
                             + 'style="border:none;background:none;cursor:pointer;color:' + color
                             + ';padding:0;line-height:1;vertical-align:middle;">'
@@ -994,120 +1257,258 @@
             ];
         }
 
-        /** Std Prc × (1 − PRMT%/100) × (1 − CPN%/100) */
-        function computeAmzPushPrcFromStd(d) {
+        /**
+         * Push Prc plan:
+         *  1) Std → Amazon Your Price (our_price)
+         *  2) Sale = Std × (1 − (PRMT% + CVR Discount%)/100); Min Seller Allowed = Sale
+         *  3) Coupon API — not available via SP-API (skipped)
+         */
+        function computeAmzPushPrcPlan(d) {
             const std = Number(d.STANDARD_PRICE) || 0;
             if (!(std > 0)) return null;
             const prmt = Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
             const cpn = Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
-            let price = std;
-            if (prmt > 0 && prmt < 100) price = price * (1 - (prmt / 100));
-            if (cpn > 0 && cpn < 100) price = price * (1 - (cpn / 100));
-            price = amzPefRound2(price);
-            return price >= 0.01 ? price : null;
+            const cvrDiscRaw = computeAmzCvrDiscountPct(d);
+            const cvrDisc = Math.max(0, Number(cvrDiscRaw) || 0);
+            const totalDisc = Math.min(99.99, prmt + cvrDisc);
+            let sale = null;
+            if (totalDisc > 0 && totalDisc < 100) {
+                sale = amzPefRound2(std * (1 - (totalDisc / 100)));
+                if (!(sale >= 0.01) || sale >= std) sale = null;
+            }
+            const min = sale != null ? sale : amzPefRound2(Math.max(0.01, std * 0.95));
+            const effective = sale != null ? sale : std;
+            return {
+                std: amzPefRound2(std),
+                sale: sale,
+                min: min,
+                prmt: prmt,
+                cvrDisc: cvrDisc,
+                totalDisc: totalDisc,
+                cpn: cpn,
+                effective: effective,
+            };
+        }
+        /** @deprecated use computeAmzPushPrcPlan — kept for any leftover callers */
+        function computeAmzPushPrcFromStd(d) {
+            const plan = computeAmzPushPrcPlan(d);
+            return plan ? plan.effective : null;
+        }
+
+        /** Apply result price to S PRC + margin columns (SGPFT / SGROI / SROI / Spft%). */
+        function applyAmzPushPrcToSpriceRow(row, plan, saveRes) {
+            const updates = {
+                SPRICE: plan.effective,
+                has_custom_sprice: true,
+                PUSH_PRC_VALUE: plan.effective,
+                prmt_pct: String(plan.prmt),
+                cpn_pct: String(plan.cpn),
+                _prmt_pct_applied: plan.prmt,
+                _cpn_pct_applied: plan.cpn,
+            };
+            if (saveRes && saveRes.sgpft_percent !== undefined) updates.SGPFT = saveRes.sgpft_percent;
+            if (saveRes && saveRes.spft_percent !== undefined) updates['Spft%'] = saveRes.spft_percent;
+            if (saveRes && saveRes.sroi_percent !== undefined) updates.SROI = saveRes.sroi_percent;
+            if (saveRes && saveRes.sgroi_percent !== undefined) updates.SGROI = saveRes.sgroi_percent;
+            row.update(updates);
+            try { row.reformat(); } catch (e) { /* ignore */ }
+        }
+
+        function saveAmzPushPrcSprice(sku, plan) {
+            return $.ajax({
+                url: '/save-amazon-sprice',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: {
+                    sku: sku,
+                    sprice: plan.effective,
+                    prmt_pct: plan.prmt,
+                    cpn_pct: plan.cpn,
+                    record_push_prc: 1,
+                    _token: amzPefCsrf(),
+                },
+            });
+        }
+
+        /** Push one row (Amazon Listings + write result into S PRC for margins). Resolves { ok, sku, error? }. */
+        function pushAmzPrcRow(row, opts) {
+            opts = opts || {};
+            const silent = !!opts.silent;
+            const d = row.getData();
+            const sku = amzPefSku(d);
+            const plan = computeAmzPushPrcPlan(d);
+            const asin = (d.asin && String(d.asin).trim() !== '') ? String(d.asin).trim() : '';
+            if (!sku || !plan || !(plan.std > 0)) {
+                return Promise.resolve({ ok: false, sku: sku || '?', error: 'Missing Std Prc' });
+            }
+            row.update({ PUSH_PRC_STATUS: 'processing' });
+            const payload = {
+                sku: sku,
+                price: plan.std,
+                asin: asin || null,
+                push_shopify: false,
+                update_amazon_min_price: true,
+                min_price: plan.min,
+                _token: amzPefCsrf(),
+            };
+            if (plan.sale != null) payload.sale_price = plan.sale;
+
+            return new Promise(function(resolve) {
+                // 1) Persist result price → S PRC (+ margins) so profit columns update
+                saveAmzPushPrcSprice(sku, plan).done(function(saveRes) {
+                    applyAmzPushPrcToSpriceRow(row, plan, saveRes);
+                }).fail(function() {
+                    // Still show planned S PRC in grid even if local save fails
+                    applyAmzPushPrcToSpriceRow(row, plan, null);
+                }).always(function() {
+                    // 2) Push Std/Sale/Min to Amazon Listings
+                    $.ajax({
+                        url: '/apply-amazon-price',
+                        method: 'POST',
+                        timeout: 120000,
+                        headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                        data: payload,
+                    }).done(function(response) {
+                        if (response && response.errors && response.errors.length) {
+                            row.update({ PUSH_PRC_STATUS: 'error' });
+                            try { row.reformat(); } catch (e) { /* ignore */ }
+                            const err = (response.errors[0] && response.errors[0].message) || 'Push failed';
+                            if (!silent) amzPefToast('error', err);
+                            resolve({ ok: false, sku: sku, error: err, spriceSaved: true });
+                            return;
+                        }
+                        row.update({
+                            SPRICE_STATUS: 'pushed',
+                            PUSH_PRC_STATUS: 'pushed',
+                            PUSH_PRC_VALUE: plan.effective,
+                        });
+                        try { row.reformat(); } catch (e) { /* ignore */ }
+                        if (!silent) {
+                            amzPefToast(
+                                'success',
+                                'Pushed Your $' + plan.std.toFixed(2)
+                                    + (plan.sale != null ? (' + Sale $' + plan.sale.toFixed(2)) : '')
+                                    + ' · S PRC $' + plan.effective.toFixed(2)
+                                    + ' for ' + sku
+                            );
+                        }
+                        resolve({ ok: true, sku: sku, plan: plan });
+                    }).fail(function(xhr) {
+                        row.update({ PUSH_PRC_STATUS: 'error' });
+                        try { row.reformat(); } catch (e) { /* ignore */ }
+                        const err = (xhr.responseJSON && xhr.responseJSON.errors && xhr.responseJSON.errors[0]
+                                && xhr.responseJSON.errors[0].message)
+                            || (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                            || 'error';
+                        if (!silent) amzPefToast('error', 'Push Prc failed: ' + err + ' (S PRC still updated)');
+                        resolve({ ok: false, sku: sku, error: err, spriceSaved: true });
+                    });
+                });
+            });
         }
 
         function pushAmzStdPrcWithPromos($btn, row) {
             const d = row.getData();
             const sku = amzPefSku(d);
-            const price = computeAmzPushPrcFromStd(d);
-            const asin = (d.asin && String(d.asin).trim() !== '') ? String(d.asin).trim() : '';
-            if (!sku || !(price > 0)) {
-                amzPefToast('error', 'Set Std Prc first (and optional PRMT%/CPN%)');
+            const plan = computeAmzPushPrcPlan(d);
+            if (!sku || !plan || !(plan.std > 0)) {
+                amzPefToast('error', 'Set Std Prc first (optional PRMT% / CVR Discount for Sale)');
                 return;
             }
-            const prmt = Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
-            const cpn = Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
             if (!confirm(
-                'Push Std Prc to Amazon for ' + sku + '?\n\n'
-                + 'Std: $' + Number(d.STANDARD_PRICE).toFixed(2) + '\n'
-                + 'PRMT%: ' + prmt + '\n'
-                + 'CPN%: ' + cpn + '\n'
-                + '→ Push price: $' + price.toFixed(2)
+                'Push Prc for ' + sku + '?\n\n'
+                + 'Your $' + plan.std.toFixed(2)
+                + (plan.sale != null
+                    ? (' · Sale $' + plan.sale.toFixed(2) + ' (PRMT ' + plan.prmt + '% + CVR Disc ' + plan.cvrDisc + '%)')
+                    : '')
             )) return;
 
             const html = $btn.html();
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-            row.update({ PUSH_PRC_STATUS: 'processing' });
-
-            $.ajax({
-                url: '/apply-amazon-price',
-                method: 'POST',
-                timeout: 120000,
-                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                data: {
-                    sku: sku,
-                    price: price,
-                    asin: asin || null,
-                    push_shopify: false,
-                    update_amazon_min_price: true,
-                    _token: amzPefCsrf(),
-                },
-            }).done(function(response) {
-                if (response && response.errors && response.errors.length) {
-                    row.update({ PUSH_PRC_STATUS: 'error' });
-                    amzPefToast('error', (response.errors[0] && response.errors[0].message) || 'Push failed');
-                    $btn.prop('disabled', false).html(html);
-                    if (table) table.redraw(true);
-                    return;
+            pushAmzPrcRow(row, { silent: true }).then(function(res) {
+                if (res && res.ok) {
+                    amzPefToast(
+                        'success',
+                        'Pushed Your $' + plan.std.toFixed(2)
+                            + (plan.sale != null ? (' + Sale $' + plan.sale.toFixed(2)) : '')
+                            + ' for ' + sku
+                    );
+                } else {
+                    amzPefToast('error', (res && res.error) || 'Push Prc failed');
                 }
-                // Persist SPRICE + Push Prc daily history (PDT)
-                $.ajax({
-                    url: '/save-amazon-sprice',
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                    data: {
-                        sku: sku,
-                        sprice: price,
-                        prmt_pct: prmt,
-                        cpn_pct: cpn,
-                        record_push_prc: 1,
-                        _token: amzPefCsrf(),
-                    },
-                }).done(function(saveRes) {
-                    const updates = {
-                        SPRICE: price,
-                        SPRICE_STATUS: 'pushed',
-                        PUSH_PRC_STATUS: 'pushed',
-                        PUSH_PRC_VALUE: price,
-                        prmt_pct: String(prmt),
-                        cpn_pct: String(cpn),
-                        _prmt_pct_applied: prmt,
-                        _cpn_pct_applied: cpn,
-                    };
-                    if (saveRes && saveRes.sgpft_percent !== undefined) updates.SGPFT = saveRes.sgpft_percent;
-                    if (saveRes && saveRes.spft_percent !== undefined) updates['Spft%'] = saveRes.spft_percent;
-                    if (saveRes && saveRes.sroi_percent !== undefined) updates.SROI = saveRes.sroi_percent;
-                    if (saveRes && saveRes.sgroi_percent !== undefined) updates.SGROI = saveRes.sgroi_percent;
-                    row.update(updates);
-                    amzPefToast('success', 'Pushed $' + price.toFixed(2) + ' (Std + PRMT/CPN) for ' + sku);
-                }).fail(function() {
-                    row.update({
-                        SPRICE: price,
-                        SPRICE_STATUS: 'pushed',
-                        PUSH_PRC_STATUS: 'pushed',
-                        PUSH_PRC_VALUE: price,
-                    });
-                    amzPefToast('success', 'Pushed $' + price.toFixed(2) + ' to Amazon (local save pending)');
-                }).always(function() {
-                    $btn.prop('disabled', false);
-                    if (table) table.redraw(true);
-                });
-            }).fail(function(xhr) {
-                row.update({ PUSH_PRC_STATUS: 'error' });
-                amzPefToast('error', 'Push Prc failed: ' + (
-                    (xhr.responseJSON && xhr.responseJSON.errors && xhr.responseJSON.errors[0]
-                        && xhr.responseJSON.errors[0].message)
-                    || (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
-                    || 'error'
-                ));
+            }).finally(function() {
                 $btn.prop('disabled', false).html(html);
                 if (table) table.redraw(true);
             });
         }
 
+        function bulkPushAmzPrcSelected() {
+            if (!table) {
+                amzPefToast('error', 'Load data first');
+                return;
+            }
+            const targets = collectAmzPefSelectedRows();
+            if (!targets.length) {
+                amzPefToast('error', 'Select one or more SKUs first');
+                return;
+            }
+            const ready = targets.filter(function(t) {
+                const plan = computeAmzPushPrcPlan(t.d);
+                return plan && plan.std > 0;
+            });
+            if (!ready.length) {
+                amzPefToast('error', 'Selected SKUs need Std Prc set');
+                return;
+            }
+            if (!confirm(
+                'Bulk Push Prc for ' + ready.length + ' selected SKU(s)?\n\n'
+                + 'Your Price = Std; Sale = Std − (PRMT% + CVR Discount%); Min = Sale.'
+            )) return;
+
+            const $btn = $('#amz-bulk-push-prc-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing…');
+
+            let ok = 0;
+            let fail = 0;
+            let i = 0;
+            function next() {
+                if (i >= ready.length) {
+                    $btn.prop('disabled', false).html(html);
+                    if (table) table.redraw(true);
+                    amzPefToast(
+                        fail && !ok ? 'error' : 'success',
+                        'Bulk Push Prc: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : '')
+                    );
+                    return;
+                }
+                const item = ready[i++];
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
+                pushAmzPrcRow(item.row, { silent: true }).then(function(res) {
+                    if (res && res.ok) ok++;
+                    else fail++;
+                    next();
+                });
+            }
+            next();
+        }
+
         function initAmazonPefPromoUi() {
-            $('#amz-dil-vs-prmt-btn').off('click.amzpef').on('click.amzpef', function() {
+            // Prefetch Dil / Cpn / CVR Disc rules (CVR Disc store is separate from Cpn%)
+            if (typeof loadDilPrmtRules === 'function') loadDilPrmtRules();
+            if (typeof loadCvrCpnRules === 'function') {
+                Promise.resolve(loadCvrCpnRules()).catch(function() { /* defaults */ });
+            }
+            if (typeof loadAmzCvrDiscRules === 'function') {
+                Promise.resolve(loadAmzCvrDiscRules()).then(function() {
+                    if (table) {
+                        try { table.getColumn('cvr_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                    }
+                }).catch(function() { /* defaults still work */ });
+            }
+
+            $('#amz-dil-vs-prmt-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
                 const modalEl = document.getElementById('pefDilVsPrmtModal');
                 if (!modalEl) return;
                 renderDilPrmtModalTable();
@@ -1116,7 +1517,8 @@
             });
 
             // Push Prmt% → Dil rules → Amazon Listings API (only changed prices)
-            $('#amz-push-prmt-btn').off('click.amzpef').on('click.amzpef', function() {
+            $('#amz-push-prmt-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
                 if (!table) {
                     amzPefToast('error', 'Load data first');
                     return;
@@ -1138,7 +1540,7 @@
                     + 'Unchanged prices are skipped.'
                 )) return;
 
-                const $btn = $('#amz-push-prmt-btn');
+                const $btn = $('#amz-prmt-menu-btn');
                 const html = $btn.html();
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing…');
                 $.ajax({
@@ -1178,7 +1580,20 @@
             });
             $('#pef-dil-prmt-apply-btn').off('click.amzpef').on('click.amzpef', saveAndApplyDilPrmt);
 
-            $('#amz-cvr-vs-cpn-btn').off('click.amzpef').on('click.amzpef', function() {
+            // CVR Disc badge → amazon_cvr_vs_disc rules (column CVR Disc.)
+            $('#amz-cvr-disc-rules-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
+                const modalEl = document.getElementById('amzCvrDiscModal');
+                if (!modalEl) return;
+                renderAmzCvrDiscModalTable();
+                loadAmzCvrDiscRules();
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+            $('#amz-cvr-disc-apply-btn').off('click.amzpef').on('click.amzpef', saveAndApplyAmzCvrDisc);
+
+            // Cpn% badge → pef_cvr_vs_cpn rules (column CPN %)
+            $('#amz-cvr-vs-cpn-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
                 const modalEl = document.getElementById('pefCvrVsCpnModal');
                 if (!modalEl) return;
                 renderCvrCpnModalTable();
@@ -1186,8 +1601,9 @@
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
             });
 
-            // Push CPN% → CVR rules → 5%/10% coupons (1/day) → Amazon Listings API (only changed)
-            $('#amz-push-cpn-btn').off('click.amzpef').on('click.amzpef', function() {
+            // Push CPN% → CVR vs CPN rules only (not CVR Disc)
+            $('#amz-push-cpn-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
                 if (!table) {
                     amzPefToast('error', 'Load data first');
                     return;
@@ -1210,7 +1626,7 @@
                     + 'Unchanged prices are skipped.'
                 )) return;
 
-                const $btn = $('#amz-push-cpn-btn');
+                const $btn = $('#amz-cpn-menu-btn');
                 const html = $btn.html();
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing…');
                 $.ajax({
@@ -1268,7 +1684,7 @@
                 }
             });
 
-            // Push Prc — Std + PRMT% + CPN% → Amazon Listings our_price
+            // Push Prc — Std + PRMT% + CVR Discount → Amazon Listings
             $(document).off('click.amzpef', '.amz-push-prc-btn').on('click.amzpef', '.amz-push-prc-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1284,6 +1700,12 @@
                     return;
                 }
                 pushAmzStdPrcWithPromos($btn, row);
+            });
+
+            // Bulk Push Prc — selected SKUs only
+            $('#amz-bulk-push-prc-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
+                bulkPushAmzPrcSelected();
             });
         }
 @endif

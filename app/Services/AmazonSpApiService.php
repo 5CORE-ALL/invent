@@ -227,7 +227,17 @@ class AmazonSpApiService
         return max(0.01, round($ourPrice * 0.95, 2));
     }
 
-    public function updateAmazonPriceUS($sku, $price, $maxRetries = 3)
+    /**
+     * Update Amazon US listing prices via Listings Items PATCH.
+     *
+     * @param  string  $sku
+     * @param  float|int|string  $price  Your Price (our_price)
+     * @param  int  $maxRetries
+     * @param  array|null  $extras  Optional:
+     *   - sale_price (float): Sale / discounted_price (Std − Promotion %)
+     *   - min_price (float): minimum_seller_allowed_price (defaults to our_price × 0.95)
+     */
+    public function updateAmazonPriceUS($sku, $price, $maxRetries = 3, ?array $extras = null)
     {
         // Validate inputs
         $sku = $this->normalizeListingsSellerSku(trim((string) $sku));
@@ -255,7 +265,26 @@ class AmazonSpApiService
 
         // Round price to 2 decimal places (Amazon requirement)
         $price = round($price, 2);
-        $minPrice = $this->minSellerAllowedPriceFromOurPrice($price);
+        $extras = is_array($extras) ? $extras : [];
+        $salePrice = isset($extras['sale_price']) && is_numeric($extras['sale_price'])
+            ? round((float) $extras['sale_price'], 2)
+            : null;
+        if ($salePrice !== null && ($salePrice <= 0 || $salePrice >= $price)) {
+            // Sale must be a positive discount below Your Price
+            $salePrice = null;
+        }
+        $minPrice = isset($extras['min_price']) && is_numeric($extras['min_price']) && (float) $extras['min_price'] > 0
+            ? round((float) $extras['min_price'], 2)
+            : ($salePrice !== null
+                ? $salePrice
+                : $this->minSellerAllowedPriceFromOurPrice($price));
+        // Amazon requires min ≤ our_price (and ≤ sale when sale is set)
+        if ($minPrice > $price) {
+            $minPrice = $this->minSellerAllowedPriceFromOurPrice($price);
+        }
+        if ($salePrice !== null && $minPrice > $salePrice) {
+            $minPrice = $salePrice;
+        }
 
         $sellerId = config('services.amazon_sp.seller_id');
         if (empty($sellerId)) {
@@ -355,8 +384,7 @@ class AmazonSpApiService
                 $encodedSku = rawurlencode($amazonSku);
                 $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
 
-                // Listing price + minimum seller allowed price (price floor) in one PATCH.
-                // Min floor = our_price × 0.95 (5% less).
+                // Your Price (our_price) + optional Sale (discounted_price) + min seller floor.
                 $priceSchedule = [
                     [
                         "schedule" => [
@@ -375,19 +403,36 @@ class AmazonSpApiService
                         ]
                     ]
                 ];
+                $offerValue = [
+                    "marketplaceId" => "ATVPDKIKX0DER",
+                    "marketplace_id" => "ATVPDKIKX0DER",
+                    "currency" => "USD",
+                    "audience" => "ALL",
+                    "our_price" => $priceSchedule,
+                    "minimum_seller_allowed_price" => $minPriceSchedule,
+                ];
+                // Part 2: Amazon Sale Price = Std − Promotion % (temporary discounted_price)
+                if ($salePrice !== null) {
+                    $startAt = now('America/Los_Angeles')->format('Y-m-d');
+                    $endAt = now('America/Los_Angeles')->addYear()->format('Y-m-d');
+                    $offerValue['discounted_price'] = [
+                        [
+                            "schedule" => [
+                                [
+                                    "value_with_tax" => $salePrice,
+                                    "start_at" => $startAt,
+                                    "end_at" => $endAt,
+                                ]
+                            ]
+                        ]
+                    ];
+                }
                 $body = [
                     "productType" => $productType,
                     "patches" => [[
                         "op" => "replace",
                         "path" => "/attributes/purchasable_offer",
-                        "value" => [[
-                            "marketplaceId" => "ATVPDKIKX0DER",
-                            "marketplace_id" => "ATVPDKIKX0DER",
-                            "currency" => "USD",
-                            "audience" => "ALL",
-                            "our_price" => $priceSchedule,
-                            "minimum_seller_allowed_price" => $minPriceSchedule,
-                        ]]
+                        "value" => [$offerValue]
                     ]]
                 ];
 
@@ -396,6 +441,7 @@ class AmazonSpApiService
                     "original_sku" => $sku,
                     "amazon_sku" => $amazonSku,
                     "price" => $price,
+                    "sale_price" => $salePrice,
                     "min_price" => $minPrice,
                     "productType" => $productType,
                     "token_fresh" => true
