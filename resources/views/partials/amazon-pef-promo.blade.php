@@ -356,14 +356,10 @@
         }
         function collectAmzPefSelectedRows() {
             if (!table) return [];
-            const effective = new Set();
-            if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.forEach) {
-                selectedSkus.forEach(function(s) { if (s) effective.add(String(s)); });
-            }
-            if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.forEach) {
-                selectedRows.forEach(function(s) { if (s) effective.add(String(s)); });
-            }
-            if (!effective.size) return [];
+            const effective = (typeof selectedRows !== 'undefined' && selectedRows)
+                ? selectedRows
+                : ((typeof selectedSkus !== 'undefined' && selectedSkus) ? selectedSkus : null);
+            if (!effective || !effective.size) return [];
             return table.getRows().filter(function(row) {
                 const d = row.getData();
                 return amzPefIsChildRow(d) && effective.has(amzPefSku(d));
@@ -977,9 +973,19 @@
                             + ';padding:0;line-height:1;vertical-align:middle;">'
                             + icon + '</button></span>';
                     },
-                    cellClick: function(e) {
-                        if (e.target.closest('.view-sku-chart') || e.target.closest('.amz-pef-hist-dot')
-                            || e.target.closest('.amz-push-prc-btn')) {
+                    cellClick: function(e, cell) {
+                        // Tabulator cellClick runs before document bubble; stopPropagation
+                        // would block the delegated .amz-push-prc-btn handler — run push here.
+                        const btn = e.target.closest('.amz-push-prc-btn');
+                        if (btn) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (btn.disabled) return false;
+                            const $btn = $(btn);
+                            pushAmzStdPrcWithPromos($btn, cell.getRow());
+                            return false;
+                        }
+                        if (e.target.closest('.view-sku-chart') || e.target.closest('.amz-pef-hist-dot')) {
                             e.stopPropagation();
                             return false;
                         }

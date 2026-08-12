@@ -20,10 +20,23 @@
 
         @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'css'])
 
-        /* Uniform body-cell font size across all Amazon tabulator columns */
+        /* Uniform body-cell font + fixed row height (prevents tall/short rows from wrap) */
+        #amazon-table .tabulator-row {
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+        }
         #amazon-table .tabulator-row .tabulator-cell {
             font-size: 13px !important;
-            line-height: 1.25 !important;
+            line-height: 1.2 !important;
+            height: 36px !important;
+            max-height: 36px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            vertical-align: middle !important;
         }
         #amazon-table .tabulator-row .tabulator-cell span,
         #amazon-table .tabulator-row .tabulator-cell a,
@@ -34,6 +47,20 @@
         #amazon-table .tabulator-row .tabulator-cell select,
         #amazon-table .tabulator-row .tabulator-cell i {
             font-size: 13px !important;
+        }
+        #amazon-table .tabulator-row .tabulator-cell img.hover-thumb {
+            width: 28px !important;
+            height: 28px !important;
+            max-width: 28px !important;
+            max-height: 28px !important;
+            object-fit: cover !important;
+            display: block !important;
+            flex-shrink: 0 !important;
+        }
+        #amazon-table .tabulator-row .tabulator-cell > div {
+            flex-wrap: nowrap !important;
+            max-width: 100%;
+            overflow: hidden;
         }
 
         /* Give room between items without inflating control height */
@@ -171,22 +198,24 @@
         .parent-row {
             background-color: #fffef2 !important;
             font-weight: bold !important;
-            min-height: 48px !important;
         }
 
         .tabulator-row.parent-row {
             background-color: #fffef2 !important;
             font-weight: bold !important;
-            min-height: 48px !important;
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
         }
 
-        /* Parent row cells: enough height so toggles/dots are not clipped */
+        /* Parent row cells: same fixed height as child rows */
         .tabulator-row.parent-row .tabulator-cell {
-            min-height: 48px !important;
-            height: 48px !important;
-            padding-top: 8px !important;
-            padding-bottom: 8px !important;
-            overflow: visible !important;
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+            overflow: hidden !important;
             vertical-align: middle !important;
         }
 
@@ -236,13 +265,13 @@
         #play-backward:hover, #play-forward:hover { background-color: #007bff !important; color: white !important; }
         .time-navigation-group button:focus { outline: none; box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25); }
 
-        /* Vertical column headers */
+        /* Vertical column headers (0.8× of prior 80px) */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
             text-orientation: mixed;
             white-space: nowrap;
             transform: rotate(180deg);
-            height: 80px;
+            height: 64px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -263,7 +292,7 @@
         }
         
         .tabulator .tabulator-header .tabulator-col {
-            height: 80px !important;
+            height: 64px !important;
         }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -378,7 +407,7 @@
         }
 
         /* Forecast NRP (REQ / 2BDC / LATER) — shared with Forecast Analysis */
-        .nrp-dot-cell { min-height: 32px; min-width: 44px; }
+        .nrp-dot-cell { min-height: 0; min-width: 44px; }
         .nrp-dot-cell .nrp-status-dot {
             display: inline-block; width: 12px; height: 12px; border-radius: 50%;
             border: 1px solid rgba(0,0,0,.12); flex-shrink: 0;
@@ -660,7 +689,7 @@
                     </div>
 
                     <button id="clear-sprice-btn" class="btn btn-sm btn-danger"
-                        title="Clear SPRICE for selected SKUs (turn on Prc Mode to select)">
+                        title="Clear SPRICE for selected SKUs (use the left checkbox column)">
                         <i class="fas fa-eraser"></i> Clear SPRICE
                     </button>
 
@@ -1016,7 +1045,9 @@
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
         let samePriceModeActive = false; // Track Same Price mode (one price for all selected rows)
-        let selectedSkus = new Set(); // Track selected SKUs across all pages
+        // Single selection set for the leftmost row_select column (Prc Mode + bulk actions)
+        let selectedRows = new Set();
+        let selectedSkus = selectedRows; // alias — keep older call sites working
         let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
         let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
         let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
@@ -2562,18 +2593,11 @@
                 }
             });
 
-            // Price % (Decrease / Increase / Same Price) — single dropdown
+            // Price % (Decrease / Increase / Same Price) — uses leftmost row_select column
             function exitPricePctMode() {
                 decreaseModeActive = false;
                 increaseModeActive = false;
                 samePriceModeActive = false;
-                if (table) {
-                    const col = table.getColumn('_select');
-                    if (col) col.hide();
-                }
-                selectedSkus.clear();
-                $('.sku-select-checkbox').prop('checked', false);
-                if ($('#select-all-checkbox').length) $('#select-all-checkbox').prop('checked', false);
                 $('#discount-input-container').hide();
                 $('#price-pct-btn').removeClass('btn-danger btn-warning btn-success btn-info').addClass('btn-primary')
                     .html('<i class="fas fa-percent"></i> Prc Mode');
@@ -2583,13 +2607,10 @@
                 $('#discount-percentage-input')
                     .attr('placeholder', 'e.g. 10 or 2.50')
                     .attr('title', 'Enter % or $ amount to decrease/increase price');
+                updateSelectedCount();
             }
 
             function setPricePctMode(mode) {
-                if (!table) return;
-                const selectColumn = table.getColumn('_select');
-                if (!selectColumn) return;
-
                 if (mode === 'cancel') {
                     exitPricePctMode();
                     return;
@@ -2598,7 +2619,6 @@
                 decreaseModeActive = (mode === 'decrease');
                 increaseModeActive = (mode === 'increase');
                 samePriceModeActive  = (mode === 'same');
-                selectColumn.show();
                 $('#discount-input-container').show();
                 $('#discount-percentage-input').val('');
 
@@ -2630,6 +2650,7 @@
                         .html('<i class="fas fa-equals"></i> Same Price');
                     $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
                 }
+                updateSelectedCount();
             }
 
             $(document).on('click', '#price-pct-dropdown a[data-mode]', function(e) {
@@ -2638,29 +2659,26 @@
                 setPricePctMode(mode);
             });
 
-            // Checkbox change handler - track selected SKUs
-            $(document).on('change', '.sku-select-checkbox', function() {
-                const sku = $(this).data('sku');
-                const isChecked = $(this).prop('checked');
-                
-                if (isChecked) {
-                    selectedSkus.add(sku);
-                } else {
-                    selectedSkus.delete(sku);
-                }
-                
-                updateSelectedCount();
-                updateSelectAllCheckbox();
-            });
-
-            // Update selected count and discount input visibility
+            // Single updateSelectedCount — bulk badge + Prc Mode label (merged select column)
             function updateSelectedCount() {
-                const selectedCount = selectedSkus.size;
-                // Keep input container visible when in Price % mode; only hide when exiting mode
+                const selectedCount = selectedRows.size;
+                if (selectedCount > 0) {
+                    $('#selected-rows-count').text(selectedCount + ' selected').show();
+                    $('#clear-selection-btn').show();
+                    $('#bulk-actions-container').show();
+                } else {
+                    $('#selected-rows-count').hide();
+                    $('#clear-selection-btn').hide();
+                    $('#bulk-actions-container').hide();
+                }
                 if (decreaseModeActive || increaseModeActive || samePriceModeActive) {
                     $('#discount-input-container').show();
                 }
-                $('#selected-skus-count').text(selectedCount > 0 ? `(${selectedCount} SKU${selectedCount > 1 ? 's' : ''} selected)` : '(select SKUs in table)');
+                $('#selected-skus-count').text(
+                    selectedCount > 0
+                        ? '(' + selectedCount + ' SKU' + (selectedCount > 1 ? 's' : '') + ' selected)'
+                        : '(select SKUs in table)'
+                );
                 updateApplyAllButton();
             }
 
@@ -3119,56 +3137,6 @@
                 processNextSku();
             };
 
-            // Update select all checkbox state based on current selections
-            function updateSelectAllCheckbox() {
-                if (!table) return;
-                
-                // Get all filtered data (excluding parent rows)
-                const filteredData = table.getData('active').filter(row => !row.is_parent_summary);
-                
-                if (filteredData.length === 0) {
-                    $('#select-all-checkbox').prop('checked', false);
-                    return;
-                }
-                
-                // Get all filtered SKUs
-                const filteredSkus = new Set(filteredData.map(row => row['(Child) sku']).filter(sku => sku));
-                
-                // Check if all filtered SKUs are selected
-                const allFilteredSelected = filteredSkus.size > 0 && 
-                    Array.from(filteredSkus).every(sku => selectedSkus.has(sku));
-                
-                $('#select-all-checkbox').prop('checked', allFilteredSelected);
-            }
-
-            // Select All checkbox handler
-            $(document).on('change', '#select-all-checkbox', function() {
-                const isChecked = $(this).prop('checked');
-                
-                // Get all filtered data (excluding parent rows)
-                const filteredData = table.getData('active').filter(row => !row.is_parent_summary);
-                
-                // Add or remove all filtered SKUs from the selected set
-                filteredData.forEach(row => {
-                    const sku = row['(Child) sku'];
-                    if (sku) {
-                        if (isChecked) {
-                            selectedSkus.add(sku);
-                        } else {
-                            selectedSkus.delete(sku);
-                        }
-                    }
-                });
-                
-                // Update all visible checkboxes
-                $('.sku-select-checkbox').each(function() {
-                    const sku = $(this).data('sku');
-                    $(this).prop('checked', selectedSkus.has(sku));
-                });
-                
-                updateSelectedCount();
-            });
-
             // Clear SPRICE button
             $('#clear-sprice-btn').on('click', function() {
                 clearSpriceForSelected();
@@ -3478,17 +3446,7 @@
                     return;
                 }
 
-                // This view tracks selections in TWO parallel Sets:
-                //   - selectedSkus  ← .sku-select-checkbox (Apply Discount / Clear SPRICE flow)
-                //   - selectedRows  ← .row-select-checkbox (leftmost header checkbox / Bulk Actions)
-                // Honor the union so the Target-ROI button works regardless of which checkbox the user clicked.
-                const effectiveSelected = new Set();
-                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.forEach) {
-                    selectedSkus.forEach(function(s) { if (s) effectiveSelected.add(s); });
-                }
-                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.forEach) {
-                    selectedRows.forEach(function(s) { if (s) effectiveSelected.add(s); });
-                }
+                const effectiveSelected = selectedRows;
 
                 if (effectiveSelected.size === 0) {
                     showToast('error', 'Please select at least one SKU');
@@ -3563,21 +3521,9 @@
                                     showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
                                 }
 
-                                // Clear BOTH selection systems + every visible checkbox so the
-                                // next batch starts fresh. Without this, the previous run's SKUs
-                                // stay in the Sets (Tabulator re-renders checkboxes on paging /
-                                // filter changes, so the UI looked unchecked but the underlying
-                                // Set still held them — re-running the button would re-apply to
-                                // the old rows too).
-                                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.clear) {
-                                    selectedSkus.clear();
-                                }
-                                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.clear) {
-                                    selectedRows.clear();
-                                }
-                                $('.sku-select-checkbox').prop('checked', false);
+                                // Clear shared selection so the next batch starts fresh.
+                                selectedRows.clear();
                                 $('.row-select-checkbox').prop('checked', false);
-                                $('#select-all-checkbox').prop('checked', false);
                                 $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
                                 if (typeof updateSelectedCount === 'function') {
                                     updateSelectedCount();
@@ -3616,14 +3562,7 @@
                     return;
                 }
 
-                // Honor BOTH selection systems (same union as the Target-ROI handler).
-                const effectiveSelected = new Set();
-                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.forEach) {
-                    selectedSkus.forEach(function(s) { if (s) effectiveSelected.add(s); });
-                }
-                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.forEach) {
-                    selectedRows.forEach(function(s) { if (s) effectiveSelected.add(s); });
-                }
+                const effectiveSelected = selectedRows;
 
                 if (effectiveSelected.size === 0) {
                     showToast('error', 'Please select at least one SKU');
@@ -3700,17 +3639,9 @@
                                     showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
                                 }
 
-                                // Same cleanup as the Target-ROI handler: wipe BOTH selection
-                                // Sets and every visible checkbox so the next batch starts clean.
-                                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.clear) {
-                                    selectedSkus.clear();
-                                }
-                                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.clear) {
-                                    selectedRows.clear();
-                                }
-                                $('.sku-select-checkbox').prop('checked', false);
+                                // Clear shared selection so the next batch starts fresh.
+                                selectedRows.clear();
                                 $('.row-select-checkbox').prop('checked', false);
-                                $('#select-all-checkbox').prop('checked', false);
                                 $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
                                 if (typeof updateSelectedCount === 'function') {
                                     updateSelectedCount();
@@ -4290,6 +4221,7 @@
                 ajaxSorting: false,
                 layout: "fitDataStretch",
                 movableColumns: true,
+                rowHeight: 36,
                 pagination: true,
                 paginationSize: 100,
                 columnCalcs: "both",
@@ -4386,7 +4318,8 @@
                             const imagePath = cell.getValue();
                             if (imagePath) {
                                 const u = String(imagePath).replace(/"/g, '&quot;');
-                                return `<img src="${u}" data-full="${u}" class="hover-thumb" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px; cursor: zoom-in;" />`;
+                                // no-img-hover: skip global layout preview (js/image-hover-preview.js) — local preview only
+                                return `<img src="${u}" data-full="${u}" class="hover-thumb no-img-hover" data-no-img-hover style="width: 28px; height: 28px; object-fit: cover; border-radius: 4px; cursor: zoom-in;" />`;
                             }
                             return '';
                         },
@@ -4433,9 +4366,9 @@
 
                             const isListed = !rowData.is_missing_amazon;
                             const chartBtn = (sku && isListed) ? `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${escAttr(sku)}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>` : '';
-                            return `<div style="display: flex; align-items: center; gap: 5px;">
-                                <span>${sku}</span>
-                                <button class="btn btn-sm btn-link copy-sku-btn p-0" data-sku="${escAttr(sku)}" title="Copy SKU">
+                            return `<div style="display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; min-width: 0; max-width: 100%;">
+                                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;" title="${escAttr(sku)}">${sku}</span>
+                                <button class="btn btn-sm btn-link copy-sku-btn p-0 flex-shrink-0" data-sku="${escAttr(sku)}" title="Copy SKU">
                                     <i class="fas fa-copy"></i>
                                 </button>
                                 ${chartBtn}
@@ -4691,7 +4624,7 @@
                         title: "Buyer Link",
                         field: "asin",
                         frozen: true,
-                        width: 90,
+                        width: 50,
                         hozAlign: "center",
                         visible: false,
                         headerTooltip: "Dynamic buyer link (same as /listing-amazon): https://www.amazon.com/dp/{asin}",
@@ -4707,7 +4640,7 @@
                                 title="Buyer link — Amz ASIN ${escapeHtmlAttr(itemId)}"
                                 style="font-weight:600;color:#0d6efd;text-decoration:none;"
                                 onclick="event.stopPropagation();">
-                                <i class="fas fa-external-link-alt me-1"></i>Buyer
+                                <i class="fas fa-external-link-alt"></i>
                             </a>`;
                         },
                         headerSort: false
@@ -5246,37 +5179,6 @@
                             return `<span style="color: ${color}; font-weight: 600;">${diff.toFixed(1)}%</span>`;
                         }
                     },
-                    {
-                        title: "Select",
-                        field: "_select",
-                        hozAlign: "center",
-                        headerSort: false,
-                        visible: false,
-                        titleFormatter: function(column) {
-                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
-                                <span>Select</span>
-                                <input type="checkbox" id="select-all-checkbox" style="cursor: pointer;" title="Select All Visible">
-                            </div>`;
-                        },
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            
-                            // Empty for parent rows
-                            if (rowData.is_parent_summary) return '';
-                            
-                            const sku = rowData['(Child) sku'];
-                            const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${escAttr(sku)}" ${isChecked} style="cursor: pointer;">`;
-                        },
-                        width: 60
-                    },
-
-                
-
-
-
-
-
                     {
                         title: "S PRC",
                         field: "SPRICE",
@@ -6561,9 +6463,8 @@
                 updateCalcValues();
                 updateSummary();
                 amazonTabulatorFinalizeFilterApply(sortSnapshot);
-                // Update select all checkbox after filter is applied
                 setTimeout(function() {
-                    updateSelectAllCheckbox();
+                    updateRowSelectAllCheckbox();
                 }, 100);
             }
 
@@ -6827,7 +6728,6 @@
             function amazonColVisPlainTitle(def) {
                 const field = def && def.field ? String(def.field) : '';
                 if (field === 'row_select') return 'Row Select';
-                if (field === '_select') return 'Select';
                 if (field === '_accept') return 'Push Prices';
                 if (field === 'push_prc') return 'Push Prc';
                 const raw = (def && def.title != null) ? def.title : field;
@@ -6850,7 +6750,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|_select|sprice|s_status|pls_status|_accept|push_prc|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|_accept|push_prc|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|s\s*st|pls|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';
@@ -7152,11 +7052,12 @@
                 updateSummary();
                 requestAnimationFrame(function() {
                     $('[data-bs-toggle="tooltip"]').tooltip();
-                    $('.sku-select-checkbox').each(function() {
-                        const sku = $(this).data('sku');
-                        $(this).prop('checked', selectedSkus.has(sku));
+                    $('.row-select-checkbox').each(function() {
+                        var sku = $(this).data('sku');
+                        $(this).prop('checked', selectedRows.has(sku));
                     });
-                    updateSelectAllCheckbox();
+                    updateRowSelectAllCheckbox();
+                    updateSelectedCount();
                     updateApplyAllButton();
                 });
 
@@ -7179,13 +7080,6 @@
 
                 setTimeout(function() {
                     $('[data-bs-toggle="tooltip"]').tooltip();
-                    // Refresh checkboxes to reflect selectedSkus set
-                    $('.sku-select-checkbox').each(function() {
-                        const sku = $(this).data('sku');
-                        $(this).prop('checked', selectedSkus.has(sku));
-                    });
-                    updateSelectAllCheckbox();
-                    // Refresh row selection checkboxes to reflect selectedRows set
                     $('.row-select-checkbox').each(function() {
                         var sku = $(this).data('sku');
                         $(this).prop('checked', selectedRows.has(sku));
@@ -7194,9 +7088,6 @@
                     updateSelectedCount();
                 }, 100);
             });
-
-            // Row selection - track selected rows
-            var selectedRows = new Set();
 
             // Select all rows — all filtered data across every page (not just current 100)
             $(document).on('change', '#select-all-rows', function() {
@@ -7264,20 +7155,6 @@
                     $('#select-all-rows').prop('checked', true).prop('indeterminate', false);
                 } else {
                     $('#select-all-rows').prop('checked', false).prop('indeterminate', true);
-                }
-            }
-
-            // Update selected count display
-            function updateSelectedCount() {
-                var count = selectedRows.size;
-                if (count > 0) {
-                    $('#selected-rows-count').text(count + ' selected').show();
-                    $('#clear-selection-btn').show();
-                    $('#bulk-actions-container').show();
-                } else {
-                    $('#selected-rows-count').hide();
-                    $('#clear-selection-btn').hide();
-                    $('#bulk-actions-container').hide();
                 }
             }
 
