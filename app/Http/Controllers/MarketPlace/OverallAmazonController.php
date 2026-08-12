@@ -1816,7 +1816,7 @@ class OverallAmazonController extends Controller
         // Round price to 2 decimal places
         $priceFloat = round($priceFloat, 2);
 
-        // Optional Push Prc extras: Sale (discounted_price) + explicit min seller floor
+        // Optional Push Prc extras: Sale + Min/Max seller floors + Business (B2B)
         $extras = [];
         $saleRaw = $request->input('sale_price');
         if ($saleRaw !== null && $saleRaw !== '' && is_numeric($saleRaw)) {
@@ -1830,6 +1830,20 @@ class OverallAmazonController extends Controller
             $minFloat = round((float) $minRaw, 2);
             if ($minFloat > 0) {
                 $extras['min_price'] = $minFloat;
+            }
+        }
+        $maxRaw = $request->input('max_price');
+        if ($maxRaw !== null && $maxRaw !== '' && is_numeric($maxRaw)) {
+            $maxFloat = round((float) $maxRaw, 2);
+            if ($maxFloat > 0) {
+                $extras['max_price'] = $maxFloat;
+            }
+        }
+        $businessRaw = $request->input('business_price');
+        if ($businessRaw !== null && $businessRaw !== '' && is_numeric($businessRaw)) {
+            $businessFloat = round((float) $businessRaw, 2);
+            if ($businessFloat > 0) {
+                $extras['business_price'] = $businessFloat;
             }
         }
 
@@ -1855,6 +1869,8 @@ class OverallAmazonController extends Controller
                     'price' => $priceFloat,
                     'sale_price' => $extras['sale_price'] ?? null,
                     'min_price' => $extras['min_price'] ?? null,
+                    'max_price' => $extras['max_price'] ?? null,
+                    'business_price' => $extras['business_price'] ?? null,
                     'errors' => $result['errors']
                 ]);
                 
@@ -1875,12 +1891,13 @@ class OverallAmazonController extends Controller
             ]);
 
             if ($updateMinPriceConstraint) {
-                // Prefer explicit min / sale; else default our_price × 0.95.
+                // Prefer explicit min; else Sale×0.95; else Std×0.95.
+                $saleBase = isset($extras['sale_price'])
+                    ? (float) $extras['sale_price']
+                    : $priceFloat;
                 $minFloor = isset($extras['min_price'])
                     ? (float) $extras['min_price']
-                    : (isset($extras['sale_price'])
-                        ? (float) $extras['sale_price']
-                        : $service->minSellerAllowedPriceFromOurPrice($priceFloat));
+                    : max(0.01, round($saleBase * 0.95, 2));
                 Log::info('Updating Amazon minimum price constraint', [
                     'sku' => $skuForAmazon,
                     'our_price' => $priceFloat,
@@ -1927,13 +1944,20 @@ class OverallAmazonController extends Controller
             // Check if we should push to Shopify (default true for backward compatibility)
             $pushShopify = $request->input('push_shopify', true);
             
+            $saleBaseForDefaults = isset($extras['sale_price'])
+                ? (float) $extras['sale_price']
+                : $priceFloat;
             $responseData = array_merge(is_array($result) ? $result : [], [
                 'amazon_api_sku' => $skuForAmazon,
                 'asin_used' => $asinParam !== '' ? strtoupper(str_replace([' ', "\xc2\xa0"], '', $asinParam)) : null,
                 'our_price' => $priceFloat,
                 'sale_price' => $extras['sale_price'] ?? null,
                 'min_price' => $extras['min_price']
-                    ?? ($extras['sale_price'] ?? $service->minSellerAllowedPriceFromOurPrice($priceFloat)),
+                    ?? max(0.01, round($saleBaseForDefaults * 0.95, 2)),
+                'max_price' => $extras['max_price']
+                    ?? round($priceFloat * 1.10, 2),
+                'business_price' => $extras['business_price']
+                    ?? max(0.01, round($saleBaseForDefaults * 0.95, 2)),
             ]);
 
             if ($minPriceResult !== null) {

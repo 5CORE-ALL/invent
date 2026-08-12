@@ -107,6 +107,72 @@
         #amz-sprice-recalc-btn:disabled {
             opacity: 0.65;
         }
+        /* Push Prc job progress — yellow while running, green at 100% */
+        #amz-push-prc-progress {
+            display: none;
+            width: 100%;
+            min-width: 220px;
+            max-width: 420px;
+            margin: 4px 0 0;
+            padding: 6px 10px;
+            border: 1px solid #ffe08a;
+            border-radius: 8px;
+            background: #fffbeb;
+        }
+        #amz-push-prc-progress.active { display: block; }
+        #amz-push-prc-progress.done {
+            border-color: #86efac;
+            background: #f0fdf4;
+        }
+        #amz-push-prc-progress .amz-push-prc-progress-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 4px;
+            font-size: 12px;
+            line-height: 1.2;
+        }
+        #amz-push-prc-progress-pct {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: #b45309;
+            min-width: 2.5em;
+        }
+        #amz-push-prc-progress.done #amz-push-prc-progress-pct {
+            color: #15803d;
+        }
+        #amz-push-prc-progress-msg {
+            color: #64748b;
+            flex: 1;
+            text-align: right;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #amz-push-prc-progress .amz-push-prc-bar {
+            height: 10px;
+            border-radius: 999px;
+            background: #fde68a;
+            overflow: hidden;
+        }
+        #amz-push-prc-progress.done .amz-push-prc-bar {
+            background: #bbf7d0;
+        }
+        #amz-push-prc-progress .amz-push-prc-bar > span {
+            display: block;
+            height: 100%;
+            width: 0%;
+            background: #f59e0b; /* yellow — in progress */
+            transition: width 0.2s ease, background 0.25s ease;
+            border-radius: 999px;
+        }
+        #amz-push-prc-progress.done .amz-push-prc-bar > span {
+            background: #22c55e; /* green — complete */
+        }
+        #amz-push-prc-progress.has-fail.done .amz-push-prc-bar > span {
+            background: linear-gradient(90deg, #22c55e 70%, #f59e0b 100%);
+        }
         /* CVR vs CPN modal — light purple background */
         #pefCvrVsCpnModal .modal-content {
             background: #f3e8ff;
@@ -182,13 +248,20 @@
                         </ul>
                     </div>
                     <button type="button" class="btn btn-sm" id="amz-bulk-push-prc-btn"
-                        title="Push Prc for all selected SKUs (or click a row Push icon while multiple are selected). Std → Your Price; Sale = Std × (1 − (PRMT% + CVR Disc%)/100); Min = Sale">
+                        title="Push Prc for selected SKUs: Your=Std; Sale=Std−(PRMT%+CVR Disc%); Max=Std×1.10; Min=Sale×0.95; Business=Sale×0.95">
                         <i class="fas fa-upload"></i> Push Prc
                     </button>
                     <button type="button" class="btn btn-sm" id="amz-sprice-recalc-btn"
                         title="Clear S PRC, then refill using Push Prc formula (Std − (PRMT% + CVR Disc%)) — no Amazon push. Skips INV = 0. Selected SKUs if checked; otherwise all visible.">
                         sprice ?
                     </button>
+                    <div id="amz-push-prc-progress" aria-live="polite" title="Push Prc job progress">
+                        <div class="amz-push-prc-progress-meta">
+                            <span id="amz-push-prc-progress-pct">0%</span>
+                            <span id="amz-push-prc-progress-msg">Ready</span>
+                        </div>
+                        <div class="amz-push-prc-bar"><span id="amz-push-prc-progress-bar"></span></div>
+                    </div>
 @endif
 
 @if($amazonPefPromoPart === 'modals' || $amazonPefPromoPart === 'all')
@@ -1207,7 +1280,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
-                    headerTooltip: 'Push Prc: (1) Std → Your Price (2) Sale = Std × (1 − (PRMT% + CVR Discount%)/100); Min = Sale. Coupon skipped. Dot = PDT history.',
+                    headerTooltip: 'Push Prc: Your=Std; Sale=Std−(PRMT%+CVR Disc%); Max=Std×1.10; Min=Sale×0.95; Business=Sale×0.95. Dot = PDT history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (!amzPefIsChildRow(d)) return '';
@@ -1222,12 +1295,14 @@
                         }
                         let icon = '<i class="fas fa-upload"></i>';
                         let color = '#FF9900';
-                        let tip = 'Your Price $' + plan.std.toFixed(2)
+                        let tip = 'Your $' + plan.std.toFixed(2)
                             + (plan.sale != null
-                                ? ('; Sale $' + plan.sale.toFixed(2)
-                                    + ' [PRMT ' + plan.prmt + '% + CVR Disc ' + plan.cvrDisc + '% = ' + plan.totalDisc + '%]'
-                                    + '; Min $' + plan.min.toFixed(2))
-                                : ('; Min $' + plan.min.toFixed(2)));
+                                ? ('; · Sale $' + plan.sale.toFixed(2)
+                                    + ' [PRMT ' + plan.prmt + '% + CVR Disc ' + plan.cvrDisc + '%]')
+                                : '')
+                            + ' · Max $' + plan.max.toFixed(2)
+                            + ' · Min $' + plan.min.toFixed(2)
+                            + ' · Biz $' + plan.business.toFixed(2);
                         if (status === 'pushed') {
                             icon = '<i class="fa-solid fa-check-double"></i>';
                             color = '#28a745';
@@ -1286,8 +1361,11 @@
         /**
          * Push Prc plan:
          *  1) Std → Amazon Your Price (our_price)
-         *  2) Sale = Std × (1 − (PRMT% + CVR Discount%)/100); Min Seller Allowed = Sale
-         *  3) Coupon API — not available via SP-API (skipped)
+         *  2) Sale = Std × (1 − (PRMT% + CVR Discount%)/100)
+         *  3) Maximum = Std × 1.10
+         *  4) Minimum = Sale × 0.95  (if no Sale → Std × 0.95)
+         *  5) Business = Sale × 0.95 (if no Sale → Std × 0.95) — B2B our_price
+         *  6) Coupon API — not available via SP-API (skipped)
          */
         function computeAmzPushPrcPlan(d) {
             const std = Number(d.STANDARD_PRICE) || 0;
@@ -1302,12 +1380,17 @@
                 sale = amzPefRound2(std * (1 - (totalDisc / 100)));
                 if (!(sale >= 0.01) || sale >= std) sale = null;
             }
-            const min = sale != null ? sale : amzPefRound2(Math.max(0.01, std * 0.95));
+            const saleBase = sale != null ? sale : amzPefRound2(std);
+            const max = amzPefRound2(std * 1.10);
+            const min = amzPefRound2(Math.max(0.01, saleBase * 0.95));
+            const business = amzPefRound2(Math.max(0.01, saleBase * 0.95));
             const effective = sale != null ? sale : std;
             return {
                 std: amzPefRound2(std),
                 sale: sale,
+                max: max,
                 min: min,
+                business: business,
                 prmt: prmt,
                 cvrDisc: cvrDisc,
                 totalDisc: totalDisc,
@@ -1472,7 +1555,10 @@
                 asin: asin || null,
                 push_shopify: false,
                 update_amazon_min_price: true,
+                // Max = Std × 1.10; Min = Sale × 0.95; Business = Sale × 0.95
+                max_price: plan.max,
                 min_price: plan.min,
+                business_price: plan.business,
                 _token: amzPefCsrf(),
             };
             if (plan.sale != null) payload.sale_price = plan.sale;
@@ -1577,6 +1663,48 @@
             });
         }
 
+        /** Push Prc progress bar — yellow while jobs run, green at 100%. */
+        function setAmzPushPrcProgress(opts) {
+            opts = opts || {};
+            const $box = $('#amz-push-prc-progress');
+            if (!$box.length) return;
+            const total = Number(opts.total) || 0;
+            const done = Number(opts.done) || 0;
+            const ok = Number(opts.ok) || 0;
+            const fail = Number(opts.fail) || 0;
+            const active = !!opts.active;
+            const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+            const finished = !active && total > 0 && done >= total;
+
+            if (active || finished) $box.addClass('active');
+            else $box.removeClass('active');
+
+            $box.toggleClass('done', finished || pct >= 100);
+            $box.toggleClass('has-fail', fail > 0);
+
+            $('#amz-push-prc-progress-pct').text(pct + '%');
+            $('#amz-push-prc-progress-bar').css('width', pct + '%');
+
+            let msg = opts.msg || '';
+            if (!msg && total) {
+                msg = done + '/' + total + ' jobs · ' + ok + ' ok'
+                    + (fail ? (' · ' + fail + ' failed') : '');
+            }
+            $('#amz-push-prc-progress-msg').text(msg || 'Ready');
+
+            // Auto-hide a few seconds after green 100%
+            if (finished) {
+                clearTimeout(setAmzPushPrcProgress._hideTimer);
+                setAmzPushPrcProgress._hideTimer = setTimeout(function() {
+                    if (!$box.hasClass('done')) return;
+                    $box.removeClass('active done has-fail');
+                    $('#amz-push-prc-progress-bar').css('width', '0%');
+                    $('#amz-push-prc-progress-pct').text('0%');
+                    $('#amz-push-prc-progress-msg').text('Ready');
+                }, 5000);
+            }
+        }
+
         function bulkPushAmzPrcSelected() {
             if (!table) {
                 amzPefToast('error', 'Load data first');
@@ -1609,27 +1737,70 @@
             // Disable all row push icons while bulk runs
             $('.amz-push-prc-btn').prop('disabled', true);
 
+            const total = ready.length;
             let ok = 0;
             let fail = 0;
             let i = 0;
+            clearTimeout(setAmzPushPrcProgress._hideTimer);
+            setAmzPushPrcProgress({
+                active: true,
+                done: 0,
+                total: total,
+                ok: 0,
+                fail: 0,
+                msg: 'Pushing 0/' + total + '…',
+            });
+
             function next() {
                 if (i >= ready.length) {
                     $toolbarBtn.prop('disabled', false).html(toolbarHtml);
                     $('.amz-push-prc-btn').prop('disabled', false);
                     if (table) table.redraw(true);
+                    setAmzPushPrcProgress({
+                        active: false,
+                        done: total,
+                        total: total,
+                        ok: ok,
+                        fail: fail,
+                        msg: 'Done — ' + ok + ' ok'
+                            + (fail ? (', ' + fail + ' failed') : '')
+                            + (skipped ? (', ' + skipped + ' skipped') : ''),
+                    });
                     amzPefToast(
                         fail && !ok ? 'error' : 'success',
                         'Bulk Push Prc: ' + ok + ' ok'
                             + (fail ? (', ' + fail + ' failed') : '')
                             + (skipped ? (', ' + skipped + ' skipped') : '')
+                            + ' (' + (total ? 100 : 0) + '%)'
                     );
                     return;
                 }
                 const item = ready[i++];
-                $toolbarBtn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
+                const pct = Math.round(((i - 1) / total) * 100);
+                $toolbarBtn.html('<i class="fas fa-spinner fa-spin"></i> ' + pct + '%');
+                setAmzPushPrcProgress({
+                    active: true,
+                    done: i - 1,
+                    total: total,
+                    ok: ok,
+                    fail: fail,
+                    msg: 'Pushing ' + i + '/' + total + '…',
+                });
                 pushAmzPrcRow(item.row, { silent: true }).then(function(res) {
                     if (res && res.ok) ok++;
                     else fail++;
+                    setAmzPushPrcProgress({
+                        active: true,
+                        done: i,
+                        total: total,
+                        ok: ok,
+                        fail: fail,
+                        msg: 'Pushing ' + i + '/' + total + '…',
+                    });
+                    $toolbarBtn.html(
+                        '<i class="fas fa-spinner fa-spin"></i> '
+                        + Math.min(100, Math.round((i / total) * 100)) + '%'
+                    );
                     next();
                 });
             }

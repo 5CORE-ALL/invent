@@ -235,7 +235,9 @@ class AmazonSpApiService
      * @param  int  $maxRetries
      * @param  array|null  $extras  Optional:
      *   - sale_price (float): Sale / discounted_price (Std − Promotion %)
-     *   - min_price (float): minimum_seller_allowed_price (defaults to our_price × 0.95)
+     *   - min_price (float): minimum_seller_allowed_price (defaults to sale×0.95 or our_price×0.95)
+     *   - max_price (float): maximum_seller_allowed_price (defaults to our_price × 1.10)
+     *   - business_price (float): B2B audience our_price (defaults to sale×0.95 or our_price×0.95)
      */
     public function updateAmazonPriceUS($sku, $price, $maxRetries = 3, ?array $extras = null)
     {
@@ -273,17 +275,36 @@ class AmazonSpApiService
             // Sale must be a positive discount below Your Price
             $salePrice = null;
         }
+        $saleBase = $salePrice !== null ? $salePrice : $price;
+
         $minPrice = isset($extras['min_price']) && is_numeric($extras['min_price']) && (float) $extras['min_price'] > 0
             ? round((float) $extras['min_price'], 2)
-            : ($salePrice !== null
-                ? $salePrice
-                : $this->minSellerAllowedPriceFromOurPrice($price));
+            : max(0.01, round($saleBase * 0.95, 2));
         // Amazon requires min ≤ our_price (and ≤ sale when sale is set)
         if ($minPrice > $price) {
             $minPrice = $this->minSellerAllowedPriceFromOurPrice($price);
         }
         if ($salePrice !== null && $minPrice > $salePrice) {
-            $minPrice = $salePrice;
+            $minPrice = max(0.01, round($salePrice * 0.95, 2));
+        }
+
+        $maxPrice = isset($extras['max_price']) && is_numeric($extras['max_price']) && (float) $extras['max_price'] > 0
+            ? round((float) $extras['max_price'], 2)
+            : round($price * 1.10, 2);
+        // Ceiling must be at least Your Price
+        if ($maxPrice < $price) {
+            $maxPrice = round($price * 1.10, 2);
+        }
+
+        $businessPrice = isset($extras['business_price']) && is_numeric($extras['business_price']) && (float) $extras['business_price'] > 0
+            ? round((float) $extras['business_price'], 2)
+            : max(0.01, round($saleBase * 0.95, 2));
+        // Business price should not exceed consumer Your Price
+        if ($businessPrice > $price) {
+            $businessPrice = max(0.01, round($saleBase * 0.95, 2));
+        }
+        if ($businessPrice > $price) {
+            $businessPrice = $price;
         }
 
         $sellerId = config('services.amazon_sp.seller_id');
@@ -384,7 +405,7 @@ class AmazonSpApiService
                 $encodedSku = rawurlencode($amazonSku);
                 $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
 
-                // Your Price (our_price) + optional Sale (discounted_price) + min seller floor.
+                // Your Price + Sale + Min/Max seller floors + Business (B2B our_price).
                 $priceSchedule = [
                     [
                         "schedule" => [
@@ -403,6 +424,24 @@ class AmazonSpApiService
                         ]
                     ]
                 ];
+                $maxPriceSchedule = [
+                    [
+                        "schedule" => [
+                            [
+                                "value_with_tax" => $maxPrice
+                            ]
+                        ]
+                    ]
+                ];
+                $businessPriceSchedule = [
+                    [
+                        "schedule" => [
+                            [
+                                "value_with_tax" => $businessPrice
+                            ]
+                        ]
+                    ]
+                ];
                 $offerValue = [
                     "marketplaceId" => "ATVPDKIKX0DER",
                     "marketplace_id" => "ATVPDKIKX0DER",
@@ -410,6 +449,7 @@ class AmazonSpApiService
                     "audience" => "ALL",
                     "our_price" => $priceSchedule,
                     "minimum_seller_allowed_price" => $minPriceSchedule,
+                    "maximum_seller_allowed_price" => $maxPriceSchedule,
                 ];
                 // Part 2: Amazon Sale Price = Std − Promotion % (temporary discounted_price)
                 if ($salePrice !== null) {
@@ -427,12 +467,22 @@ class AmazonSpApiService
                         ]
                     ];
                 }
+                // Business Price → separate B2B audience offer (Listings API has no "business_price" field)
+                $b2bOfferValue = [
+                    "marketplaceId" => "ATVPDKIKX0DER",
+                    "marketplace_id" => "ATVPDKIKX0DER",
+                    "currency" => "USD",
+                    "audience" => "B2B",
+                    "our_price" => $businessPriceSchedule,
+                ];
+                $offerValues = [$offerValue, $b2bOfferValue];
+                $includedB2b = true;
                 $body = [
                     "productType" => $productType,
                     "patches" => [[
                         "op" => "replace",
                         "path" => "/attributes/purchasable_offer",
-                        "value" => [$offerValue]
+                        "value" => $offerValues
                     ]]
                 ];
 
@@ -443,6 +493,8 @@ class AmazonSpApiService
                     "price" => $price,
                     "sale_price" => $salePrice,
                     "min_price" => $minPrice,
+                    "max_price" => $maxPrice,
+                    "business_price" => $businessPrice,
                     "productType" => $productType,
                     "token_fresh" => true
                 ]);
@@ -459,6 +511,44 @@ class AmazonSpApiService
                 $responseData = $response->json();
                 if (!is_array($responseData)) {
                     $responseData = [];
+                }
+
+                // If B2B audience is rejected, retry once without business price (keep Your/Sale/Min/Max)
+                $patchFailurePreview = (! $response->failed())
+                    ? $this->listingsPatchFailureFromResponseBody($responseData)
+                    : null;
+                $b2bRejected = $includedB2b && (
+                    $response->failed()
+                    || (isset($responseData['errors']) && ! empty($responseData['errors']))
+                    || $patchFailurePreview !== null
+                );
+                if ($b2bRejected) {
+                    $errBlob = strtolower(json_encode($responseData) ?: '');
+                    $looksLikeB2bIssue = str_contains($errBlob, 'b2b')
+                        || str_contains($errBlob, 'audience')
+                        || str_contains($errBlob, 'business');
+                    // Also retry without B2B on generic 400 validation — business offer often blocks the whole replace
+                    if ($looksLikeB2bIssue || $response->status() === 400 || $patchFailurePreview !== null) {
+                        Log::warning('Amazon Price Update: retrying without B2B business price', [
+                            'sku' => $sku,
+                            'amazon_sku' => $amazonSku,
+                            'status' => $response->status(),
+                        ]);
+                        $includedB2b = false;
+                        $body['patches'][0]['value'] = [$offerValue];
+                        $response = Http::withToken($accessToken)
+                            ->withHeaders([
+                                'x-amz-access-token' => $accessToken,
+                                'content-type' => 'application/json',
+                                'accept' => 'application/json',
+                            ])
+                            ->timeout(30)
+                            ->patch($endpoint, $body);
+                        $responseData = $response->json();
+                        if (! is_array($responseData)) {
+                            $responseData = [];
+                        }
+                    }
                 }
 
                 // Check for errors in response
