@@ -182,7 +182,7 @@
                         </ul>
                     </div>
                     <button type="button" class="btn btn-sm" id="amz-bulk-push-prc-btn"
-                        title="Bulk Push Prc for selected SKUs — Std → Your Price; Sale = Std × (1 − (PRMT% + CVR Discount%)/100); Min = Sale">
+                        title="Push Prc for all selected SKUs (or click a row Push icon while multiple are selected). Std → Your Price; Sale = Std × (1 − (PRMT% + CVR Disc%)/100); Min = Sale">
                         <i class="fas fa-upload"></i> Push Prc
                     </button>
                     <button type="button" class="btn btn-sm" id="amz-sprice-recalc-btn"
@@ -1262,8 +1262,16 @@
                             e.stopPropagation();
                             e.preventDefault();
                             if (btn.disabled) return false;
-                            const $btn = $(btn);
-                            pushAmzStdPrcWithPromos($btn, cell.getRow());
+                            // Multi-select → bulk push all selected (same as toolbar Push Prc)
+                            const selected = collectAmzPefSelectedRows();
+                            const clickedSku = amzPefSku(cell.getRow().getData());
+                            if (selected.length > 1 && selected.some(function(t) {
+                                return amzPefSku(t.d) === clickedSku;
+                            })) {
+                                bulkPushAmzPrcSelected();
+                                return false;
+                            }
+                            pushAmzStdPrcWithPromos($(btn), cell.getRow());
                             return false;
                         }
                         if (e.target.closest('.view-sku-chart') || e.target.closest('.amz-pef-hist-dot')) {
@@ -1524,6 +1532,17 @@
         }
 
         function pushAmzStdPrcWithPromos($btn, row) {
+            // Multi-select → push every selected SKU (clicked row must be in the selection)
+            const selected = collectAmzPefSelectedRows();
+            const clickedSku = amzPefSku(row.getData());
+            const clickedSelected = selected.some(function(t) {
+                return amzPefSku(t.d) === clickedSku;
+            });
+            if (selected.length > 1 && clickedSelected) {
+                bulkPushAmzPrcSelected();
+                return;
+            }
+
             const d = row.getData();
             const sku = amzPefSku(d);
             const plan = computeAmzPushPrcPlan(d);
@@ -1568,38 +1587,46 @@
                 amzPefToast('error', 'Select one or more SKUs first');
                 return;
             }
+            // Refresh plan from live row data (selection may span pages)
             const ready = targets.filter(function(t) {
-                const plan = computeAmzPushPrcPlan(t.d);
+                const plan = computeAmzPushPrcPlan(t.row.getData());
                 return plan && plan.std > 0;
             });
+            const skipped = targets.length - ready.length;
             if (!ready.length) {
                 amzPefToast('error', 'Selected SKUs need Std Prc set');
                 return;
             }
             if (!confirm(
-                'Bulk Push Prc for ' + ready.length + ' selected SKU(s)?\n\n'
-                + 'Your Price = Std; Sale = Std − (PRMT% + CVR Discount%); Min = Sale.'
+                'Bulk Push Prc for ' + ready.length + ' selected SKU(s)?'
+                + (skipped ? ('\n(' + skipped + ' skipped — no Std Prc)') : '')
+                + '\n\nYour Price = Std; Sale = Std − (PRMT% + CVR Discount%); Min = Sale.'
             )) return;
 
-            const $btn = $('#amz-bulk-push-prc-btn');
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing…');
+            const $toolbarBtn = $('#amz-bulk-push-prc-btn');
+            const toolbarHtml = $toolbarBtn.html();
+            $toolbarBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing…');
+            // Disable all row push icons while bulk runs
+            $('.amz-push-prc-btn').prop('disabled', true);
 
             let ok = 0;
             let fail = 0;
             let i = 0;
             function next() {
                 if (i >= ready.length) {
-                    $btn.prop('disabled', false).html(html);
+                    $toolbarBtn.prop('disabled', false).html(toolbarHtml);
+                    $('.amz-push-prc-btn').prop('disabled', false);
                     if (table) table.redraw(true);
                     amzPefToast(
                         fail && !ok ? 'error' : 'success',
-                        'Bulk Push Prc: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : '')
+                        'Bulk Push Prc: ' + ok + ' ok'
+                            + (fail ? (', ' + fail + ' failed') : '')
+                            + (skipped ? (', ' + skipped + ' skipped') : '')
                     );
                     return;
                 }
                 const item = ready[i++];
-                $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
+                $toolbarBtn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
                 pushAmzPrcRow(item.row, { silent: true }).then(function(res) {
                     if (res && res.ok) ok++;
                     else fail++;
