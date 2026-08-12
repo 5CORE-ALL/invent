@@ -4224,6 +4224,7 @@
                 rowHeight: 36,
                 pagination: true,
                 paginationSize: 100,
+                paginationSizeSelector: [25, 50, 100, 200, 500, 1000, true], // true = All
                 columnCalcs: "both",
                 initialSort: [{
                     column: "Parent",
@@ -4270,7 +4271,7 @@
                 columns: [
                     // Row selection checkbox column
                     {
-                        title: "<div style='transform: rotate(0deg) !important; display: flex; justify-content: center; align-items: center;'><input type='checkbox' id='select-all-rows' title='Select all filtered rows (all pages)' style='transform: rotate(0deg) !important; width: 16px; height: 16px; cursor: pointer;'></div>",
+                        title: "<div style='transform: rotate(0deg) !important; display: flex; justify-content: center; align-items: center;'><input type='checkbox' id='select-all-rows' title='Select / clear all SKUs on this page' style='transform: rotate(0deg) !important; width: 16px; height: 16px; cursor: pointer;'></div>",
                         field: "row_select",
                         hozAlign: "center",
                         headerSort: false,
@@ -7089,12 +7090,17 @@
                 try {
                     var totalRows = table.getDataCount('active');
                     var pageSize = table.getPageSize();
-                    var currentPage = table.getPage();
-                    var start = (currentPage - 1) * pageSize + 1;
-                    var end = Math.min(currentPage * pageSize, totalRows);
+                    // Tabulator "All" option uses true (or a size >= total)
+                    var showAll = pageSize === true || pageSize === 'true'
+                        || (typeof pageSize === 'number' && pageSize >= totalRows && totalRows > 0);
                     if (totalRows === 0) {
                         $('#table-row-counter').text('No rows');
+                    } else if (showAll) {
+                        $('#table-row-counter').text('Showing all ' + totalRows + ' rows');
                     } else {
+                        var currentPage = table.getPage() || 1;
+                        var start = (currentPage - 1) * pageSize + 1;
+                        var end = Math.min(currentPage * pageSize, totalRows);
                         $('#table-row-counter').text('Showing ' + start + '-' + end + ' of ' + totalRows + ' rows');
                     }
                 } catch(e) {}
@@ -7110,22 +7116,44 @@
                 }, 100);
             });
 
-            // Select all rows — all filtered data across every page (not just current 100)
+            /**
+             * Child rows on the *current pagination page* only.
+             * Do not use getRows('visible') — that is the virtual-scroll window, not the page.
+             * Selections on other pages stay in selectedRows when paging.
+             */
+            function getCurrentPageChildRows() {
+                if (!table) return [];
+                var allActive = (table.getRows('active') || []).filter(function(row) {
+                    var rd = row.getData() || {};
+                    return !rd.is_parent_summary;
+                });
+                var pageSize = (typeof table.getPageSize === 'function' ? table.getPageSize() : 0) || 100;
+                var currentPage = (typeof table.getPage === 'function' ? table.getPage() : 1) || 1;
+                // Tabulator "All" option → pageSize is true (or >= total)
+                if (pageSize === true || pageSize === 'true') {
+                    return allActive;
+                }
+                pageSize = Number(pageSize) || 100;
+                if (pageSize >= allActive.length && allActive.length > 0) {
+                    return allActive;
+                }
+                var start = (currentPage - 1) * pageSize;
+                return allActive.slice(start, start + pageSize);
+            }
+
+            // Select all — current pagination page only (other-page selections kept)
             $(document).on('change', '#select-all-rows', function() {
                 var isChecked = $(this).prop('checked');
                 if (!table) return;
 
-                var filteredRows = table.getRows('active') || [];
-                filteredRows.forEach(function(row) {
+                getCurrentPageChildRows().forEach(function(row) {
                     var rd = row.getData() || {};
-                    if (rd.is_parent_summary) return;
                     var sku = rd['(Child) sku'] || '';
                     if (!sku) return;
                     if (isChecked) selectedRows.add(sku);
                     else selectedRows.delete(sku);
                 });
 
-                // Sync visible page checkboxes from the full selection set
                 $('.row-select-checkbox').each(function() {
                     var sku = $(this).data('sku');
                     $(this).prop('checked', selectedRows.has(sku));
@@ -7146,33 +7174,27 @@
                 updateSelectedCount();
             });
 
-            // Header checkbox reflects selection across all filtered pages
+            // Header checkbox reflects selection on the current page only
             function updateRowSelectAllCheckbox() {
                 if (!table) {
                     $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
                     return;
                 }
-                var filteredSkus = [];
-                (table.getRows('active') || []).forEach(function(row) {
-                    var rd = row.getData() || {};
-                    if (rd.is_parent_summary) return;
-                    var sku = rd['(Child) sku'] || '';
-                    if (sku) filteredSkus.push(sku);
-                });
-
-                if (filteredSkus.length === 0) {
+                var pageRows = getCurrentPageChildRows();
+                if (pageRows.length === 0) {
                     $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
                     return;
                 }
 
                 var selectedCount = 0;
-                filteredSkus.forEach(function(sku) {
-                    if (selectedRows.has(sku)) selectedCount++;
+                pageRows.forEach(function(row) {
+                    var sku = (row.getData() || {})['(Child) sku'] || '';
+                    if (sku && selectedRows.has(sku)) selectedCount++;
                 });
 
                 if (selectedCount === 0) {
                     $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
-                } else if (selectedCount === filteredSkus.length) {
+                } else if (selectedCount === pageRows.length) {
                     $('#select-all-rows').prop('checked', true).prop('indeterminate', false);
                 } else {
                     $('#select-all-rows').prop('checked', false).prop('indeterminate', true);
