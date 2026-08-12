@@ -5036,6 +5036,24 @@
                     },
 
                     {
+                        title: "LP",
+                        field: "LP_productmaster",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerTooltip: "Landed price (product master)",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const value = parseFloat(val);
+                            if (!Number.isFinite(value)) return '';
+                            return `<span>$${value.toFixed(2)}</span>`;
+                        },
+                        width: 60
+                    },
+
+                    {
                         title: "Ship",
                         field: "Ship_productmaster",
                         hozAlign: "center",
