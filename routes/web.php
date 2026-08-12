@@ -4301,6 +4301,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-standard-price', [OverallAmazonController::class, 'getAmazonStandardPrice']);
     Route::post('/amazon-clear-sprice', [OverallAmazonController::class, 'clearAmazonSprice']);
     Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice'])->name('apply.amazon.price');
+    Route::post('/amazon-push-prc', [OverallAmazonController::class, 'queueAmazonPushPrc'])->name('amazon.push-prc.queue');
+    Route::get('/amazon-push-prc-status', [OverallAmazonController::class, 'amazonPushPrcJobStatus'])->name('amazon.push-prc.status');
+    Route::post('/amazon-push-prc-cancel', [OverallAmazonController::class, 'cancelAmazonPushPrc'])->name('amazon.push-prc.cancel');
     Route::post('/amazon-dil-prmt-push', [OverallAmazonController::class, 'pushAmazonDilPrmt'])->name('amazon.dil-prmt.push');
     Route::post('/amazon-cvr-cpn-push', [OverallAmazonController::class, 'pushAmazonCvrCpn'])->name('amazon.cvr-cpn.push');
     Route::get('/amazon-cvr-disc', [OverallAmazonController::class, 'amazonCvrDiscRules'])->name('amazon.cvr-disc');

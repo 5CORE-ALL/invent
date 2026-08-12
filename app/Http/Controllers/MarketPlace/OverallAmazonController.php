@@ -12,7 +12,10 @@ use App\Models\AmazonBidCap;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use App\Services\AmazonSpApiService;
+use App\Jobs\RunAmazonPushPrcJob;
+use App\Services\Support\AmazonPushPrcJobStore;
 use App\Models\MarketplacePercentage;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use App\Models\JungleScoutProductData;
 use App\Http\Controllers\ApiController;
@@ -2026,6 +2029,196 @@ class OverallAmazonController extends Controller
                     'message' => 'An error occurred: ' . $e->getMessage()
                 ]]
             ], 500);
+        }
+    }
+
+    /**
+     * Queue Amazon Push Prc jobs (background). Appends if a job is already running.
+     */
+    public function queueAmazonPushPrc(Request $request, AmazonPushPrcJobStore $store): JsonResponse
+    {
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'No items to push'], 400);
+        }
+
+        $tasks = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $tasks[] = [
+                'sku' => $item['sku'] ?? null,
+                'asin' => $item['asin'] ?? null,
+                'std' => $item['std'] ?? $item['price'] ?? null,
+                'sale' => $item['sale'] ?? $item['sale_price'] ?? null,
+                'max' => $item['max'] ?? $item['max_price'] ?? null,
+                'min' => $item['min'] ?? $item['min_price'] ?? null,
+                'business' => $item['business'] ?? $item['business_price'] ?? null,
+                'effective' => $item['effective'] ?? null,
+                'prmt' => $item['prmt'] ?? $item['prmt_pct'] ?? 0,
+                'cpn' => $item['cpn'] ?? $item['cpn_pct'] ?? 0,
+                'cvr_disc' => $item['cvr_disc'] ?? $item['cvrDisc'] ?? 0,
+            ];
+        }
+
+        $result = $store->createOrAppend($tasks);
+        $state = $result['state'];
+        $mode = $result['mode'];
+        if ((int) ($state['total'] ?? 0) === 0) {
+            return response()->json(['success' => false, 'message' => 'No valid push items (need SKU + Std > 0)'], 400);
+        }
+
+        $this->amazonPushPrcReleaseUniqueJobLock();
+        $spawned = $this->spawnAmazonPushPrcWorker();
+        if (! $spawned) {
+            try {
+                RunAmazonPushPrcJob::dispatch();
+                Log::warning('Amazon Push Prc sync spawn failed — fell back to queue dispatch');
+            } catch (\Throwable $e) {
+                Log::error('Amazon Push Prc queue dispatch also failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $store->update(function (array $s) use ($spawned, $mode) {
+            $s['worker_spawned_at'] = now()->toDateTimeString();
+            if ($mode === 'append') {
+                $s['last_message'] = $spawned
+                    ? ('Appended — worker continuing ('.$s['total'].' total)…')
+                    : ('Appended — waiting for worker ('.$s['total'].' total)');
+            } else {
+                $s['last_message'] = $spawned
+                    ? ('Worker started — pushing '.$s['total'].' SKU(s)…')
+                    : ('Queued — waiting for worker (run: php artisan amazon:push-prc-run --sync)');
+            }
+
+            return $s;
+        });
+
+        $api = $store->toApiResponse($store->load());
+
+        return response()->json(array_merge($api, [
+            'success' => true,
+            'mode' => $mode,
+            'worker_spawned' => $spawned,
+            'message' => $mode === 'append'
+                ? ('Added to running Push Prc queue ('.$api['total'].' total).')
+                : ('Push Prc started in background ('.$api['total'].' SKU(s)). You can refresh or queue more.'),
+        ]));
+    }
+
+    public function amazonPushPrcJobStatus(AmazonPushPrcJobStore $store): JsonResponse
+    {
+        $state = $store->load();
+
+        if ($store->isActive($state) && $this->amazonPushPrcLooksStuck($state) && ! $this->amazonPushPrcRunnerLockHeld()) {
+            $this->amazonPushPrcReleaseUniqueJobLock();
+            $kicked = $this->spawnAmazonPushPrcWorker();
+            $store->update(function (array $s) use ($kicked) {
+                $s['last_message'] = $kicked
+                    ? 'Worker re-started after stall — continuing Push Prc…'
+                    : 'Push Prc stalled — could not start worker. Cancel and retry, or run: php artisan amazon:push-prc-run --sync';
+                $s['worker_spawned_at'] = now()->toDateTimeString();
+
+                return $s;
+            });
+            $state = $store->load();
+        }
+
+        return response()->json($store->toApiResponse($state));
+    }
+
+    public function cancelAmazonPushPrc(AmazonPushPrcJobStore $store): JsonResponse
+    {
+        $job = $store->forceStop('Cancelled by user.');
+        $this->amazonPushPrcReleaseUniqueJobLock();
+
+        return response()->json(array_merge($store->toApiResponse($job), [
+            'success' => true,
+            'message' => 'Push Prc cancelled.',
+        ]));
+    }
+
+    private function spawnAmazonPushPrcWorker(): bool
+    {
+        try {
+            if ($this->amazonPushPrcRunnerLockHeld()) {
+                return true;
+            }
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/amazon-push-prc.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') === 0) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' amazon:push-prc-run --sync', 'r'));
+
+                return true;
+            }
+
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' amazon:push-prc-run --sync >> '.escapeshellarg($log).' 2>&1 &';
+            exec($cmd);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Amazon Push Prc spawn failed', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    private function amazonPushPrcRunnerLockHeld(): bool
+    {
+        $lockPath = storage_path('app/amazon-push-prc/runner.lock');
+        if (! is_file($lockPath)) {
+            return false;
+        }
+        $handle = @fopen($lockPath, 'c+');
+        if (! $handle) {
+            return false;
+        }
+        $held = ! flock($handle, LOCK_EX | LOCK_NB);
+        if (! $held) {
+            flock($handle, LOCK_UN);
+        }
+        fclose($handle);
+
+        return $held;
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     */
+    private function amazonPushPrcLooksStuck(array $state): bool
+    {
+        if ((int) ($state['current_index'] ?? 0) > 0) {
+            return false;
+        }
+        if (($state['current_sku'] ?? null) !== null) {
+            return false;
+        }
+        $updatedAt = $state['worker_spawned_at'] ?? $state['updated_at'] ?? $state['started_at'] ?? null;
+        if (! is_string($updatedAt) || $updatedAt === '') {
+            return true;
+        }
+        try {
+            return abs(now()->diffInSeconds(Carbon::parse($updatedAt))) >= 45;
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    private function amazonPushPrcReleaseUniqueJobLock(): void
+    {
+        try {
+            Cache::lock('laravel_unique_job:'.RunAmazonPushPrcJob::class.':amazon-push-prc')->forceRelease();
+        } catch (\Throwable) {
+            // best-effort
         }
     }
 

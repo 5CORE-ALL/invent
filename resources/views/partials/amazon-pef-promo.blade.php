@@ -255,10 +255,14 @@
                         title="Clear S PRC, then refill using Push Prc formula (Std − (PRMT% + CVR Disc%)) — no Amazon push. Skips INV = 0. Selected SKUs if checked; otherwise all visible.">
                         sprice ?
                     </button>
-                    <div id="amz-push-prc-progress" aria-live="polite" title="Push Prc job progress">
+                    <div id="amz-push-prc-progress" aria-live="polite" title="Push Prc background job — survives refresh; you can queue more SKUs anytime">
                         <div class="amz-push-prc-progress-meta">
                             <span id="amz-push-prc-progress-pct">0%</span>
                             <span id="amz-push-prc-progress-msg">Ready</span>
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" id="amz-push-prc-cancel-btn"
+                                style="display:none;font-size:11px;line-height:1.2;" title="Cancel remaining Push Prc jobs">
+                                Cancel
+                            </button>
                         </div>
                         <div class="amz-push-prc-bar"><span id="amz-push-prc-progress-bar"></span></div>
                     </div>
@@ -1537,88 +1541,215 @@
             next();
         }
 
-        /** Push one row (Amazon Listings + write result into S PRC for margins). Resolves { ok, sku, error? }. */
-        function pushAmzPrcRow(row, opts) {
-            opts = opts || {};
-            const silent = !!opts.silent;
-            const d = row.getData();
-            const sku = amzPefSku(d);
-            const plan = computeAmzPushPrcPlan(d);
-            const asin = (d.asin && String(d.asin).trim() !== '') ? String(d.asin).trim() : '';
-            if (!sku || !plan || !(plan.std > 0)) {
-                return Promise.resolve({ ok: false, sku: sku || '?', error: 'Missing Std Prc' });
-            }
-            row.update({ PUSH_PRC_STATUS: 'processing' });
-            const payload = {
-                sku: sku,
-                price: plan.std,
-                asin: asin || null,
-                push_shopify: false,
-                update_amazon_min_price: true,
-                // Max = Std × 1.10; Min = Sale × 0.95; Business = Sale × 0.95
-                max_price: plan.max,
-                min_price: plan.min,
-                business_price: plan.business,
-                _token: amzPefCsrf(),
-            };
-            if (plan.sale != null) payload.sale_price = plan.sale;
+        let amzPushPrcPollTimer = null;
+        let amzPushPrcLastToastKey = '';
 
-            return new Promise(function(resolve) {
-                // 1) Persist result price → S PRC (+ margins) so profit columns update
-                saveAmzPushPrcSprice(sku, plan, { recordPushPrc: true }).done(function(saveRes) {
-                    applyAmzPushPrcToSpriceRow(row, plan, saveRes);
-                }).fail(function() {
-                    // Still show planned S PRC in grid even if local save fails
-                    applyAmzPushPrcToSpriceRow(row, plan, null);
-                }).always(function() {
-                    // 2) Push Std/Sale/Min to Amazon Listings
-                    $.ajax({
-                        url: '/apply-amazon-price',
-                        method: 'POST',
-                        timeout: 120000,
-                        headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                        data: payload,
-                    }).done(function(response) {
-                        if (response && response.errors && response.errors.length) {
-                            row.update({ PUSH_PRC_STATUS: 'error' });
-                            try { row.reformat(); } catch (e) { /* ignore */ }
-                            const err = (response.errors[0] && response.errors[0].message) || 'Push failed';
-                            if (!silent) amzPefToast('error', err);
-                            resolve({ ok: false, sku: sku, error: err, spriceSaved: true });
-                            return;
-                        }
-                        row.update({
-                            SPRICE_STATUS: 'pushed',
-                            PUSH_PRC_STATUS: 'pushed',
-                            PUSH_PRC_VALUE: plan.effective,
-                        });
-                        try { row.reformat(); } catch (e) { /* ignore */ }
-                        if (!silent) {
-                            amzPefToast(
-                                'success',
-                                'Pushed Your $' + plan.std.toFixed(2)
-                                    + (plan.sale != null ? (' + Sale $' + plan.sale.toFixed(2)) : '')
-                                    + ' · S PRC $' + plan.effective.toFixed(2)
-                                    + ' for ' + sku
-                            );
-                        }
-                        resolve({ ok: true, sku: sku, plan: plan });
-                    }).fail(function(xhr) {
-                        row.update({ PUSH_PRC_STATUS: 'error' });
-                        try { row.reformat(); } catch (e) { /* ignore */ }
-                        const err = (xhr.responseJSON && xhr.responseJSON.errors && xhr.responseJSON.errors[0]
-                                && xhr.responseJSON.errors[0].message)
-                            || (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
-                            || 'error';
-                        if (!silent) amzPefToast('error', 'Push Prc failed: ' + err + ' (S PRC still updated)');
-                        resolve({ ok: false, sku: sku, error: err, spriceSaved: true });
+        function planToAmzPushPrcQueueItem(d, plan) {
+            const asin = (d.asin && String(d.asin).trim() !== '') ? String(d.asin).trim() : null;
+            return {
+                sku: amzPefSku(d),
+                asin: asin,
+                std: plan.std,
+                sale: plan.sale,
+                max: plan.max,
+                min: plan.min,
+                business: plan.business,
+                effective: plan.effective,
+                prmt: plan.prmt,
+                cpn: plan.cpn,
+                cvr_disc: plan.cvrDisc,
+            };
+        }
+
+        /** Push Prc progress bar — yellow while jobs run, green at 100%. Survives refresh via server poll. */
+        function setAmzPushPrcProgress(opts) {
+            opts = opts || {};
+            const $box = $('#amz-push-prc-progress');
+            if (!$box.length) return;
+            const total = Number(opts.total) || 0;
+            const done = Number(opts.done) || 0;
+            const ok = Number(opts.ok) || 0;
+            const fail = Number(opts.fail) || 0;
+            const active = !!opts.active;
+            const pct = (opts.pct != null)
+                ? Math.min(100, Number(opts.pct) || 0)
+                : (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
+            const finished = !active && total > 0 && (done >= total || pct >= 100);
+
+            if (active || finished) $box.addClass('active');
+            else $box.removeClass('active');
+
+            $box.toggleClass('done', finished || (!active && pct >= 100));
+            $box.toggleClass('has-fail', fail > 0);
+
+            $('#amz-push-prc-progress-pct').text(pct + '%');
+            $('#amz-push-prc-progress-bar').css('width', pct + '%');
+            $('#amz-push-prc-cancel-btn').toggle(!!active);
+
+            let msg = opts.msg || '';
+            if (!msg && total) {
+                msg = done + '/' + total + ' jobs · ' + ok + ' ok'
+                    + (fail ? (' · ' + fail + ' failed') : '');
+            }
+            $('#amz-push-prc-progress-msg').text(msg || 'Ready');
+
+            if (finished) {
+                clearTimeout(setAmzPushPrcProgress._hideTimer);
+                setAmzPushPrcProgress._hideTimer = setTimeout(function() {
+                    if (!$box.hasClass('done')) return;
+                    $box.removeClass('active done has-fail');
+                    $('#amz-push-prc-progress-bar').css('width', '0%');
+                    $('#amz-push-prc-progress-pct').text('0%');
+                    $('#amz-push-prc-progress-msg').text('Ready');
+                    $('#amz-push-prc-cancel-btn').hide();
+                }, 8000);
+            }
+        }
+
+        function applyAmzPushPrcTaskStatusesToTable(tasks) {
+            if (!table || !Array.isArray(tasks)) return;
+            const bySku = {};
+            tasks.forEach(function(t) {
+                if (t && t.sku) bySku[String(t.sku).toUpperCase()] = t;
+            });
+            table.getRows().forEach(function(row) {
+                const d = row.getData();
+                if (!amzPefIsChildRow(d)) return;
+                const sku = amzPefSku(d).toUpperCase();
+                const t = bySku[sku];
+                if (!t) return;
+                const st = String(t.status || '');
+                if (st === 'ok') {
+                    row.update({
+                        PUSH_PRC_STATUS: 'pushed',
+                        PUSH_PRC_VALUE: t.effective != null ? t.effective : d.PUSH_PRC_VALUE,
+                        SPRICE: t.effective != null ? t.effective : d.SPRICE,
+                        has_custom_sprice: true,
                     });
-                });
+                } else if (st === 'failed') {
+                    row.update({ PUSH_PRC_STATUS: 'error' });
+                } else if (st === 'pushing') {
+                    row.update({ PUSH_PRC_STATUS: 'processing' });
+                } else if (st === 'pending' || st === 'queued') {
+                    row.update({ PUSH_PRC_STATUS: 'processing' });
+                }
+            });
+            try { table.redraw(true); } catch (e) { /* ignore */ }
+        }
+
+        function stopAmzPushPrcPoll() {
+            if (amzPushPrcPollTimer) {
+                clearInterval(amzPushPrcPollTimer);
+                amzPushPrcPollTimer = null;
+            }
+        }
+
+        function pollAmzPushPrcStatus() {
+            $.ajax({
+                url: '/amazon-push-prc-status',
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                timeout: 20000,
+            }).done(function(resp) {
+                if (!resp) return;
+                const active = !!resp.active;
+                const total = Number(resp.total) || 0;
+                const done = Number(resp.done_count) || 0;
+                const ok = Number(resp.ok_count) || 0;
+                const fail = Number(resp.fail_count) || 0;
+                const pct = Number(resp.pct) || 0;
+                const jobStatus = resp.job && resp.job.status ? String(resp.job.status) : 'idle';
+
+                if (total > 0 || active) {
+                    setAmzPushPrcProgress({
+                        active: active,
+                        done: done,
+                        total: total,
+                        ok: ok,
+                        fail: fail,
+                        pct: pct,
+                        msg: resp.message || (resp.job && resp.job.last_message) || '',
+                    });
+                }
+                applyAmzPushPrcTaskStatusesToTable(resp.tasks || []);
+
+                if (!active) {
+                    stopAmzPushPrcPoll();
+                    const toastKey = jobStatus + '|' + ok + '|' + fail + '|' + total;
+                    if (total > 0 && toastKey !== amzPushPrcLastToastKey
+                        && (jobStatus === 'completed' || jobStatus === 'failed')) {
+                        amzPushPrcLastToastKey = toastKey;
+                        amzPefToast(
+                            fail && !ok ? 'error' : 'success',
+                            resp.message || ('Push Prc: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : ''))
+                        );
+                    }
+                }
+            }).fail(function() {
+                // Keep polling — worker may still be fine
+            });
+        }
+
+        function startAmzPushPrcPoll() {
+            stopAmzPushPrcPoll();
+            amzPushPrcPollTimer = setInterval(pollAmzPushPrcStatus, 3000);
+            pollAmzPushPrcStatus();
+        }
+
+        /** Queue SKUs for background Push Prc (append-safe while a job is running). */
+        function queueAmzPushPrcItems(items, opts) {
+            opts = opts || {};
+            if (!items || !items.length) {
+                amzPefToast('error', 'Nothing to queue');
+                return Promise.resolve(null);
+            }
+            clearTimeout(setAmzPushPrcProgress._hideTimer);
+            setAmzPushPrcProgress({
+                active: true,
+                done: 0,
+                total: items.length,
+                ok: 0,
+                fail: 0,
+                msg: 'Queuing ' + items.length + ' SKU(s)…',
+            });
+
+            return $.ajax({
+                url: '/amazon-push-prc',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: {
+                    _token: amzPefCsrf(),
+                    items: items,
+                },
+                timeout: 60000,
+            }).done(function(resp) {
+                amzPefToast(
+                    'success',
+                    (resp && resp.message)
+                        || ('Queued ' + items.length + ' Push Prc job(s) — safe to refresh')
+                );
+                if (resp) {
+                    setAmzPushPrcProgress({
+                        active: !!resp.active,
+                        done: Number(resp.done_count) || 0,
+                        total: Number(resp.total) || items.length,
+                        ok: Number(resp.ok_count) || 0,
+                        fail: Number(resp.fail_count) || 0,
+                        pct: Number(resp.pct) || 0,
+                        msg: resp.message || '',
+                    });
+                }
+                startAmzPushPrcPoll();
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                    || 'Could not queue Push Prc';
+                amzPefToast('error', msg);
+                setAmzPushPrcProgress({ active: false, done: 0, total: 0, msg: msg });
             });
         }
 
         function pushAmzStdPrcWithPromos($btn, row) {
-            // Multi-select → push every selected SKU (clicked row must be in the selection)
+            // Multi-select → queue every selected SKU
             const selected = collectAmzPefSelectedRows();
             const clickedSku = amzPefSku(row.getData());
             const clickedSelected = selected.some(function(t) {
@@ -1637,72 +1768,20 @@
                 return;
             }
             if (!confirm(
-                'Push Prc for ' + sku + '?\n\n'
+                'Queue Push Prc for ' + sku + ' in background?\n\n'
                 + 'Your $' + plan.std.toFixed(2)
                 + (plan.sale != null
                     ? (' · Sale $' + plan.sale.toFixed(2) + ' (PRMT ' + plan.prmt + '% + CVR Disc ' + plan.cvrDisc + '%)')
                     : '')
+                + '\nMax $' + plan.max.toFixed(2)
+                + ' · Min $' + plan.min.toFixed(2)
+                + ' · Biz $' + plan.business.toFixed(2)
+                + '\n\nYou can refresh or queue more SKUs while it runs.'
             )) return;
 
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-            pushAmzPrcRow(row, { silent: true }).then(function(res) {
-                if (res && res.ok) {
-                    amzPefToast(
-                        'success',
-                        'Pushed Your $' + plan.std.toFixed(2)
-                            + (plan.sale != null ? (' + Sale $' + plan.sale.toFixed(2)) : '')
-                            + ' for ' + sku
-                    );
-                } else {
-                    amzPefToast('error', (res && res.error) || 'Push Prc failed');
-                }
-            }).finally(function() {
-                $btn.prop('disabled', false).html(html);
-                if (table) table.redraw(true);
-            });
-        }
-
-        /** Push Prc progress bar — yellow while jobs run, green at 100%. */
-        function setAmzPushPrcProgress(opts) {
-            opts = opts || {};
-            const $box = $('#amz-push-prc-progress');
-            if (!$box.length) return;
-            const total = Number(opts.total) || 0;
-            const done = Number(opts.done) || 0;
-            const ok = Number(opts.ok) || 0;
-            const fail = Number(opts.fail) || 0;
-            const active = !!opts.active;
-            const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-            const finished = !active && total > 0 && done >= total;
-
-            if (active || finished) $box.addClass('active');
-            else $box.removeClass('active');
-
-            $box.toggleClass('done', finished || pct >= 100);
-            $box.toggleClass('has-fail', fail > 0);
-
-            $('#amz-push-prc-progress-pct').text(pct + '%');
-            $('#amz-push-prc-progress-bar').css('width', pct + '%');
-
-            let msg = opts.msg || '';
-            if (!msg && total) {
-                msg = done + '/' + total + ' jobs · ' + ok + ' ok'
-                    + (fail ? (' · ' + fail + ' failed') : '');
-            }
-            $('#amz-push-prc-progress-msg').text(msg || 'Ready');
-
-            // Auto-hide a few seconds after green 100%
-            if (finished) {
-                clearTimeout(setAmzPushPrcProgress._hideTimer);
-                setAmzPushPrcProgress._hideTimer = setTimeout(function() {
-                    if (!$box.hasClass('done')) return;
-                    $box.removeClass('active done has-fail');
-                    $('#amz-push-prc-progress-bar').css('width', '0%');
-                    $('#amz-push-prc-progress-pct').text('0%');
-                    $('#amz-push-prc-progress-msg').text('Ready');
-                }, 5000);
-            }
+            row.update({ PUSH_PRC_STATUS: 'processing' });
+            applyAmzPushPrcToSpriceRow(row, plan, null);
+            queueAmzPushPrcItems([planToAmzPushPrcQueueItem(d, plan)]);
         }
 
         function bulkPushAmzPrcSelected() {
@@ -1715,10 +1794,13 @@
                 amzPefToast('error', 'Select one or more SKUs first');
                 return;
             }
-            // Refresh plan from live row data (selection may span pages)
-            const ready = targets.filter(function(t) {
-                const plan = computeAmzPushPrcPlan(t.row.getData());
-                return plan && plan.std > 0;
+            const ready = [];
+            targets.forEach(function(t) {
+                const d = t.row.getData();
+                const plan = computeAmzPushPrcPlan(d);
+                if (plan && plan.std > 0) {
+                    ready.push({ row: t.row, d: d, plan: plan });
+                }
             });
             const skipped = targets.length - ready.length;
             if (!ready.length) {
@@ -1726,85 +1808,40 @@
                 return;
             }
             if (!confirm(
-                'Bulk Push Prc for ' + ready.length + ' selected SKU(s)?'
+                'Queue Push Prc for ' + ready.length + ' selected SKU(s) in background?'
                 + (skipped ? ('\n(' + skipped + ' skipped — no Std Prc)') : '')
-                + '\n\nYour Price = Std; Sale = Std − (PRMT% + CVR Discount%); Min = Sale.'
+                + '\n\nYour=Std; Sale=Std−(PRMT%+CVR Disc%); Max=Std×1.10; Min/Biz=Sale×0.95'
+                + '\n\nSafe to refresh — progress continues. You can select more and queue again.'
             )) return;
+
+            const items = ready.map(function(r) {
+                r.row.update({ PUSH_PRC_STATUS: 'processing' });
+                applyAmzPushPrcToSpriceRow(r.row, r.plan, null);
+                return planToAmzPushPrcQueueItem(r.d, r.plan);
+            });
+            if (table) table.redraw(true);
 
             const $toolbarBtn = $('#amz-bulk-push-prc-btn');
             const toolbarHtml = $toolbarBtn.html();
-            $toolbarBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing…');
-            // Disable all row push icons while bulk runs
-            $('.amz-push-prc-btn').prop('disabled', true);
-
-            const total = ready.length;
-            let ok = 0;
-            let fail = 0;
-            let i = 0;
-            clearTimeout(setAmzPushPrcProgress._hideTimer);
-            setAmzPushPrcProgress({
-                active: true,
-                done: 0,
-                total: total,
-                ok: 0,
-                fail: 0,
-                msg: 'Pushing 0/' + total + '…',
+            $toolbarBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Queuing…');
+            queueAmzPushPrcItems(items).always(function() {
+                $toolbarBtn.prop('disabled', false).html(toolbarHtml);
             });
+        }
 
-            function next() {
-                if (i >= ready.length) {
-                    $toolbarBtn.prop('disabled', false).html(toolbarHtml);
-                    $('.amz-push-prc-btn').prop('disabled', false);
-                    if (table) table.redraw(true);
-                    setAmzPushPrcProgress({
-                        active: false,
-                        done: total,
-                        total: total,
-                        ok: ok,
-                        fail: fail,
-                        msg: 'Done — ' + ok + ' ok'
-                            + (fail ? (', ' + fail + ' failed') : '')
-                            + (skipped ? (', ' + skipped + ' skipped') : ''),
-                    });
-                    amzPefToast(
-                        fail && !ok ? 'error' : 'success',
-                        'Bulk Push Prc: ' + ok + ' ok'
-                            + (fail ? (', ' + fail + ' failed') : '')
-                            + (skipped ? (', ' + skipped + ' skipped') : '')
-                            + ' (' + (total ? 100 : 0) + '%)'
-                    );
-                    return;
-                }
-                const item = ready[i++];
-                const pct = Math.round(((i - 1) / total) * 100);
-                $toolbarBtn.html('<i class="fas fa-spinner fa-spin"></i> ' + pct + '%');
-                setAmzPushPrcProgress({
-                    active: true,
-                    done: i - 1,
-                    total: total,
-                    ok: ok,
-                    fail: fail,
-                    msg: 'Pushing ' + i + '/' + total + '…',
-                });
-                pushAmzPrcRow(item.row, { silent: true }).then(function(res) {
-                    if (res && res.ok) ok++;
-                    else fail++;
-                    setAmzPushPrcProgress({
-                        active: true,
-                        done: i,
-                        total: total,
-                        ok: ok,
-                        fail: fail,
-                        msg: 'Pushing ' + i + '/' + total + '…',
-                    });
-                    $toolbarBtn.html(
-                        '<i class="fas fa-spinner fa-spin"></i> '
-                        + Math.min(100, Math.round((i / total) * 100)) + '%'
-                    );
-                    next();
-                });
-            }
-            next();
+        function cancelAmzPushPrcJob() {
+            if (!confirm('Cancel remaining Push Prc jobs?')) return;
+            $.ajax({
+                url: '/amazon-push-prc-cancel',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: { _token: amzPefCsrf() },
+            }).done(function(resp) {
+                amzPefToast('success', (resp && resp.message) || 'Push Prc cancelled');
+                pollAmzPushPrcStatus();
+            }).fail(function(xhr) {
+                amzPefToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Cancel failed');
+            });
         }
 
         function initAmazonPefPromoUi() {
@@ -1820,6 +1857,22 @@
                     }
                 }).catch(function() { /* defaults still work */ });
             }
+
+            // Resume background Push Prc progress after refresh
+            $('#amz-push-prc-cancel-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
+                cancelAmzPushPrcJob();
+            });
+            pollAmzPushPrcStatus();
+            // If a job is still active, keep polling (pollAmzPushPrcStatus starts interval when active)
+            $.ajax({
+                url: '/amazon-push-prc-status',
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                timeout: 15000,
+            }).done(function(resp) {
+                if (resp && resp.active) startAmzPushPrcPoll();
+            });
 
             $('#amz-dil-vs-prmt-btn').off('click.amzpef').on('click.amzpef', function(e) {
                 e.preventDefault();

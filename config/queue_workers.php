@@ -59,6 +59,10 @@ return [
             'timeout' => 14400,
             'max_time' => 14400,
         ],
+        'amazon-push-prc' => [
+            'timeout' => 14400,
+            'max_time' => 14400,
+        ],
         'marketplace-manager' => [
             'timeout' => 1800,
             'max_time' => 7200,
