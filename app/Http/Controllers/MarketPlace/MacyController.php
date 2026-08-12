@@ -11,12 +11,14 @@ use App\Models\MacyProduct;
 use App\Models\MacysListingStatus;
 use App\Models\MacysPriceData;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Models\MarketplacePercentage;
 use App\Models\MiraklDailyData;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\MacySkuCompetitor;
 use App\Models\LmpCompetitorHistory;
+use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -131,6 +133,21 @@ class MacyController extends Controller
             ->keyBy(function($item) {
                 return strtoupper($item->sku);
             });
+
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
+
+        // PRMT%/CPN%/DSC%/Appr/Push Prc — macys_promo_pricing (site-specific)
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('macys', $skus);
 
         // Listing status data
         $listingStatusData = MacysListingStatus::whereIn("sku", $skus)
@@ -331,6 +348,25 @@ class MacyController extends Controller
             // LMP — lowest total_price from macy_sku_competitors across Sku Link LMP group
             $linkedLmpSkus = $this->linkedLmpSkusForProduct((string) $pm->sku);
             $row['linked_lmp_skus'] = $linkedLmpSkus;
+
+            // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
+            $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $pm->sku))] ?? null;
+            if ($stdPrc === null && ! empty($linkedLmpSkus)) {
+                foreach ($linkedLmpSkus as $linkedSku) {
+                    $linkedKey = strtoupper(trim((string) $linkedSku));
+                    if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                        $stdPrc = $amazonStandardPrices[$linkedKey];
+                        break;
+                    }
+                }
+            }
+            $row['STANDARD_PRICE'] = $stdPrc;
+
+            // CVR% = MC L30 ÷ OV L30 (same as CVR% filter on this page)
+            $ovL30 = (float) ($row['L30'] ?? 0);
+            $mcL30 = (float) ($row['MC L30'] ?? 0);
+            $row['CVR%'] = $ovL30 > 0 ? round(($mcL30 / $ovL30) * 100, 2) : 0;
+            $row = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $pm->sku);
 
             $allLmpEntries = collect();
             foreach ($linkedLmpSkus as $linkedSku) {

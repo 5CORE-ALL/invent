@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Services\TikTok2ShopService;
 use App\Models\AmazonChannelSummary;
+use App\Models\AmazonDataView;
 
 class TikTokPricingController extends Controller
 {
@@ -373,6 +374,18 @@ class TikTokPricingController extends Controller
 
         // Get all unique SKUs from product master
         $skus = $productMasterRows->pluck("sku")->toArray();
+
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
         
         // Create uppercase version for TikTok products lookup
         $skusUpper = array_map('strtoupper', $skus);
@@ -848,6 +861,19 @@ class TikTokPricingController extends Controller
                 ? []
                 : $this->tiktokLinkedLmpSkusFor($lmpGroupService, (string) $sku);
             $processedItem['linked_lmp_skus'] = $linkedLmpSkus;
+
+            // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
+            $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
+            if ($stdPrc === null && ! empty($linkedLmpSkus)) {
+                foreach ($linkedLmpSkus as $linkedSku) {
+                    $linkedKey = strtoupper(trim((string) $linkedSku));
+                    if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                        $stdPrc = $amazonStandardPrices[$linkedKey];
+                        break;
+                    }
+                }
+            }
+            $processedItem['STANDARD_PRICE'] = $stdPrc;
 
             $mergedLmpEntries = collect();
             $seenLmp = [];

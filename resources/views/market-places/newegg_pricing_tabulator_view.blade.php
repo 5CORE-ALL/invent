@@ -485,6 +485,65 @@
             }
         }
 
+        /** Std Prc vs Amz/channel price: reduce / hold / increase → red / yellow / green. */
+        function neStdPrcChangeDotMeta(stdPrc, comparePrice) {
+            const sp = parseFloat(stdPrc);
+            const ap = parseFloat(comparePrice);
+            if (!isFinite(sp) || sp <= 0 || !isFinite(ap) || ap <= 0) return null;
+            const sp2 = sp.toFixed(2);
+            const ap2 = ap.toFixed(2);
+            if (parseFloat(sp2) < parseFloat(ap2)) {
+                return { kind: 'reduce', color: '#dc3545', title: 'Reduce vs Amz price' };
+            }
+            if (parseFloat(sp2) > parseFloat(ap2)) {
+                return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
+            }
+            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+        }
+
+        function neStdPrcChangeDotHtml(stdPrc, comparePrice) {
+            const meta = neStdPrcChangeDotMeta(stdPrc, comparePrice);
+            if (!meta) return '';
+            return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;' +
+                'background:' + meta.color + ';flex-shrink:0;" title="' + meta.title + ' — Std Prc (shared with Amazon)"></span>';
+        }
+
+        function applyNeStandardPriceToLinkedRows(sku, std, appliedSkus) {
+            if (typeof table === 'undefined' || !table) return null;
+            const target = String(sku || '').trim().toUpperCase();
+            const appliedSet = new Set(
+                (Array.isArray(appliedSkus) ? appliedSkus : [])
+                    .map(function(s) { return String(s || '').trim().toUpperCase(); })
+                    .filter(Boolean)
+            );
+            if (target) appliedSet.add(target);
+
+            let primaryRow = null;
+            (table.getRows('all') || table.getRows() || []).forEach(function(r) {
+                const d = r.getData();
+                if (!d) return;
+                const rowSku = String(d.sku || d['(Child) sku'] || d.SKU || '').trim();
+                if (!rowSku) return;
+                const rowKey = rowSku.toUpperCase();
+                const linked = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus : [];
+                const inGroup = appliedSet.has(rowKey)
+                    || linked.some(function(s) { return String(s || '').trim().toUpperCase() === target; })
+                    || (target && rowKey === target);
+                if (!inGroup) return;
+                r.update({ STANDARD_PRICE: std });
+                if (rowKey === target) primaryRow = r;
+            });
+            return primaryRow;
+        }
+
+        document.addEventListener('lmp-modal-sp-saved', function(e) {
+            const detail = (e && e.detail) || {};
+            const sku = detail.sku;
+            const saved = parseFloat(detail.standard_price);
+            if (!sku || !isFinite(saved) || saved <= 0) return;
+            applyNeStandardPriceToLinkedRows(sku, saved, detail.applied_skus);
+        });
+
         // Bootstrap-toast helper — same UX as reverb-pricing.
         function showToast(message, type = 'info') {
             const toastContainer = document.querySelector('.toast-container');
@@ -989,6 +1048,36 @@
                     { title: "N INV", field: "available_quantity", hozAlign: "center", sorter: "number" },
                     { title: "OVL30", field: "ovl30", hozAlign: "center", sorter: "number" },
                     { title: "DIL %", field: "dil", hozAlign: "center", sorter: "number", formatter: dilFormatter },
+                    {
+                        title: "Std Prc",
+                        field: "STANDARD_PRICE",
+                        hozAlign: "center",
+                        headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view. Editable; saves to all Sku Link LMP siblings. Dot vs Amz/Newegg price.",
+                        editor: "input",
+                        width: 70,
+                        sorter: "number",
+                        editable: function(cell) {
+                            const d = cell.getRow().getData();
+                            const sku = String(d.sku || d['(Child) sku'] || d.SKU || '');
+                            return !!sku;
+                        },
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const value = cell.getValue();
+                            const std = parseFloat(value) || 0;
+                            if (!value || std <= 0) return '';
+                            const amzPrice = parseFloat(d.a_price || d['A Price'] || d.amazon_price || 0) || 0;
+                            const channelPrice = parseFloat(d.price || d['Price'] || 0) || 0;
+                            const comparePrice = amzPrice > 0 ? amzPrice : channelPrice;
+                            const dot = neStdPrcChangeDotHtml(std, comparePrice);
+                            if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
+                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                                    dot + '</span>';
+                            }
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                                dot + ('$' + std.toFixed(2)) + '</span>';
+                        }
+                    },
                     moneyCol("Price", "price"),
                     {
                         title: "A Prc", field: "a_price", hozAlign: "right", sorter: "number",
@@ -1291,6 +1380,40 @@
                 const field = cell.getField();
                 const row = cell.getRow();
                 const data = row.getData();
+                const value = cell.getValue();
+
+                if (field === "STANDARD_PRICE") {
+                    const sku = data.sku || data['(Child) sku'] || data.SKU;
+                    const std = parseFloat(value);
+                    if (!sku || !isFinite(std) || std <= 0) {
+                        row.update({ STANDARD_PRICE: null });
+                        return;
+                    }
+                    $.ajax({
+                        url: '/save-amazon-sprice',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            sku: sku,
+                            sprice: std,
+                            is_standard_price: 1
+                        },
+                        success: function(response) {
+                            const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
+                            applyNeStandardPriceToLinkedRows(sku, saved, response.applied_skus);
+                            const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                            showToast(n > 1
+                                ? ('Std Prc saved for ' + n + ' linked SKUs')
+                                : 'Std Prc saved', 'success');
+                        },
+                        error: function() {
+                            showToast('Failed to save Std Prc', 'error');
+                        }
+                    });
+                    return;
+                }
 
                 if (field === "sprice") {
                     fetch("{{ route('newegg.pricing.save.sprice') }}", {

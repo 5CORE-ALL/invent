@@ -4,12 +4,14 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Models\GoogleSkuCompetitor;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifyB2BDailyData;
 use App\Models\ShopifyB2BDataView;
 use App\Models\ShopifySku;
+use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -164,6 +166,21 @@ class Shopifyb2bController extends Controller
             ->keyBy('sku');
 
         $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
+
+        // PRMT%/CPN%/DSC%/Appr/Push Prc — shopify_b2b_promo_pricing (site-specific)
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('shopify_b2b', $skus);
 
         // SPRICE / NR from shopifyb2b_data_view (same store as /pricing-master-cvr sb2b)
         $shopifyB2bViewData = ShopifyB2BDataView::whereIn('sku', $skus)
@@ -322,6 +339,20 @@ class Shopifyb2bController extends Controller
 
             $linkedLmpSkus = $this->shopifyB2bLinkedLmpSkusFor($lmpGroupService, (string) $sku);
             $processedItem['linked_lmp_skus'] = $linkedLmpSkus;
+
+            // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
+            $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
+            if ($stdPrc === null) {
+                foreach ($linkedLmpSkus as $linkedSku) {
+                    $linkedKey = strtoupper(trim((string) $linkedSku));
+                    if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                        $stdPrc = $amazonStandardPrices[$linkedKey];
+                        break;
+                    }
+                }
+            }
+            $processedItem['STANDARD_PRICE'] = $stdPrc;
+            $processedItem = app(ChannelPromoPricingService::class)->applyToRow($processedItem, $promoMap, (string) $sku);
 
             $mergedLmpEntries = collect();
             $seenLmp = [];

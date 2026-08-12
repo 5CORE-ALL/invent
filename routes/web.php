@@ -129,7 +129,6 @@ use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\DobaController;
 use App\Http\Controllers\MarketPlace\EbayController;
 use App\Http\Controllers\MarketPlace\EbayLowVisibilityController;
-use App\Http\Controllers\MarketPlace\EbaySpriceCvrAutoPushController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
 use App\Http\Controllers\MarketPlace\EbayViewsController;
@@ -206,6 +205,7 @@ use App\Http\Controllers\MarketPlace\WayfairListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\PurchasingPowerListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\PlsListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\NeweggListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\ChannelPromoPricingController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\OverallAmazonFbaController;
 use App\Http\Controllers\MarketPlace\PlsController;
@@ -4292,8 +4292,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-badge-stats-save', [OverallAmazonController::class, 'saveAmazonBadgeStats']);
     Route::get('/amazon-badge-chart-data', [OverallAmazonController::class, 'getAmazonBadgeChartData']);
     Route::get('/amazon-badge-prev-day', [OverallAmazonController::class, 'getAmazonBadgePrevDay']);
-    Route::post('/amazon-sprice-cvr-stats-save', [OverallAmazonController::class, 'saveAmazonSpriceCvrDailyStats']);
-    Route::get('/amazon-sprice-cvr-history', [OverallAmazonController::class, 'getAmazonSpriceCvrHistory']);
     Route::get('/amazon-kw-last-sbid-chart-data', [OverallAmazonController::class, 'getAmazonKwLastSbidChartData']);
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
     Route::get('/amazon-campaign-data-by-sku', action: [OverallAmazonController::class, 'getCampaignDataBySku'])->name('amazon.campaign.data.by.sku');
@@ -4474,12 +4472,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Listing Audit ebay
     Route::get('/ebay', [EbayController::class, 'ebayView'])->name('ebay');
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
-
-    // eBay Sprice×CVR auto push (Clear → Apply → Push) — cron 14:00 IST
-    Route::get('/ebay-sprice-cvr-auto-push', [EbaySpriceCvrAutoPushController::class, 'index'])
-        ->name('ebay.sprice-cvr-auto');
-    Route::post('/ebay-sprice-cvr-auto-push/run', [EbaySpriceCvrAutoPushController::class, 'run'])
-        ->name('ebay.sprice-cvr-auto.run');
 
     // Ebay Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
     Route::get('/ebay-listing-variation-verify', [EbayListingVariationVerifyController::class, 'index'])->name('ebay.listing.variation.verify');
@@ -5274,18 +5266,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ads-pricing-analysis-data-views', [AdsMasterController::class, 'getViewPricingAnalysisData']);
     Route::post('/pricing-master/save', [AdsMasterController::class, 'save']);
 
+    // Per-channel PRMT%/CPN%/DSC%/Appr/Push Prc (not amazon_data_view)
+    Route::post('/channel-promo-pricing/save', [ChannelPromoPricingController::class, 'save'])->name('channel.promo.pricing.save');
+    Route::get('/channel-promo-pricing/{channel}/dil-prmt', [ChannelPromoPricingController::class, 'dilPrmtRules'])->name('channel.promo.dil-prmt.get');
+    Route::post('/channel-promo-pricing/{channel}/dil-prmt', [ChannelPromoPricingController::class, 'saveDilPrmtRules'])->name('channel.promo.dil-prmt.save');
+    Route::get('/channel-promo-pricing/{channel}/cvr-cpn', [ChannelPromoPricingController::class, 'cvrCpnRules'])->name('channel.promo.cvr-cpn.get');
+    Route::post('/channel-promo-pricing/{channel}/cvr-cpn', [ChannelPromoPricingController::class, 'saveCvrCpnRules'])->name('channel.promo.cvr-cpn.save');
+    Route::post('/channel-push-prc/{channel}', [ChannelPromoPricingController::class, 'queuePushPrc'])->name('channel.push-prc.queue');
+    Route::get('/channel-push-prc/{channel}/status', [ChannelPromoPricingController::class, 'pushPrcJobStatus'])->name('channel.push-prc.status');
+    Route::post('/channel-push-prc/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushPrc'])->name('channel.push-prc.cancel');
+
     // ebay db save routes
     Route::post('/ebay/save-nr', [EbayController::class, 'saveNrToDatabase']);
     Route::post('/ebay/update-listed-live', [EbayController::class, 'updateListedLive']);
     Route::post('/ebay-one/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay-one.save-sprice');
-    Route::get('/ebay-one/sprice-rule', [EbayController::class, 'getSpriceRule'])->name('ebay-one.sprice-rule.get');
-    Route::post('/ebay-one/sprice-rule', [EbayController::class, 'saveSpriceRule'])->name('ebay-one.sprice-rule.save');
     Route::get('/ebay-one/sbid-slab-rule', [EbayController::class, 'getSbidSlabRule'])->name('ebay-one.sbid-slab-rule.get');
     Route::post('/ebay-one/sbid-slab-rule', [EbayController::class, 'saveSbidSlabRule'])->name('ebay-one.sbid-slab-rule.save');
-    Route::get('/ebay-one/lmp-mult-rule', [EbayController::class, 'getLmpMultRule'])->name('ebay-one.lmp-mult-rule.get');
-    Route::post('/ebay-one/lmp-mult-rule', [EbayController::class, 'saveLmpMultRule'])->name('ebay-one.lmp-mult-rule.save');
-    Route::get('/ebay/sprice-cvr-rule', [EbayController::class, 'getSpriceCvrMultRule'])->name('ebay.sprice-cvr-rule.get');
-    Route::post('/ebay/sprice-cvr-rule', [EbayController::class, 'saveSpriceCvrMultRule'])->name('ebay.sprice-cvr-rule.save');
     Route::post('/ebay-clear-sprice', [EbayController::class, 'clearEbaySprice']);
     Route::post('/ebay/save-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
 

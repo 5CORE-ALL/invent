@@ -16,6 +16,7 @@ use App\Models\AliexpressMetric;
 use App\Models\ChannelMaster;
 use App\Services\AliExpressApiService;
 use App\Models\AmazonChannelSummary;
+use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -1449,6 +1450,18 @@ class AliexpressController extends Controller
 
             $productMastersBySku = $productMasters->keyBy(fn ($row) => $normalizeSku($row->sku));
 
+            $pmSkus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            $amazonStandardPrices = [];
+            foreach (AmazonDataView::whereIn('sku', $pmSkus)->get(['sku', 'value']) as $adv) {
+                $val = is_array($adv->value)
+                    ? $adv->value
+                    : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                $std = $val['STANDARD_PRICE'] ?? null;
+                if (is_numeric($std) && (float) $std > 0) {
+                    $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+                }
+            }
+
             $uploadedPriceBySku = collect();
             if (Schema::hasTable('aliexpress_pricing_prices')) {
                 $uploadedPriceBySku = AliexpressPricingPrice::all()
@@ -1607,6 +1620,7 @@ class AliexpressController extends Controller
                     'ov_l30'      => $ovL30,
                     'ae_stock'    => $aeStock,
                     'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
+                    'STANDARD_PRICE' => $amazonStandardPrices[strtoupper(trim((string) $displaySku))] ?? null,
                 ];
             }
 

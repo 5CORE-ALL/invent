@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Models\MarketplacePercentage;
 use App\Models\NeweggDataView;
 use App\Models\NeweggItem;
@@ -88,6 +89,18 @@ class NeweggPricingController extends Controller
         $amazonBySku = AmazonDatasheet::whereIn('sku', $skus)
             ->get()
             ->keyBy(fn ($r) => strtoupper((string) $r->sku));
+
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
 
         // 8) LMP competitors (manual) — same pattern as /tiktok-pricing.
         $lmpDetailsLookup = collect();
@@ -191,6 +204,18 @@ class NeweggPricingController extends Controller
                 ? (float) $lowestLmp->shipping_cost
                 : 0.0;
 
+            // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
+            $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
+            if ($stdPrc === null && ! empty($linkedLmpSkus)) {
+                foreach ($linkedLmpSkus as $linkedSku) {
+                    $linkedKey = strtoupper(trim((string) $linkedSku));
+                    if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                        $stdPrc = $amazonStandardPrices[$linkedKey];
+                        break;
+                    }
+                }
+            }
+
             $data[] = [
                 'sku'                => $sku,
                 'image'              => $image ?: null,
@@ -223,6 +248,7 @@ class NeweggPricingController extends Controller
                 // to compute SPFT/SROI optimistically before the server response lands.
                 'factor'             => round($factor, 4),
                 'linked_lmp_skus'    => $linkedLmpSkus,
+                'STANDARD_PRICE'     => $stdPrc,
                 'lmp_price'          => $lmpBase !== null ? round($lmpBase + $lmpShip, 2) : null,
                 'lmp_base_price'     => $lmpBase,
                 'lmp_shipping'       => $lmpShip,

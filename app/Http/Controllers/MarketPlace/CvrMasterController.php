@@ -439,8 +439,9 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * PEF CPN % → eBay1 Sell Marketing coupon membership (item_price_markdown).
-     * percent > 0 adds SKU to an existing coupon at that %; 0 removes SKU (never creates coupons).
+     * PEF / channel CPN % → eBay1 public coded coupon (item_promotion / CODED_COUPON).
+     * percent > 0: create campaign for that % (code SAVE{nn}PCT) or add SKU to existing same-% campaign.
+     * percent = 0: remove SKU from coded coupon campaign(s).
      */
     public function pricingErrorsFixEbay1Coupon(Request $request): JsonResponse
     {

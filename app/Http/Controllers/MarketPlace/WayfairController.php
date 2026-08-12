@@ -14,6 +14,8 @@ use App\Models\WayfairDailyData;
 use App\Models\WayfairPricingPrice;
 use App\Models\WayfairListingStatus;
 use App\Models\AmazonChannelSummary;
+use App\Models\AmazonDataView;
+use App\Services\ChannelPromoPricingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -685,6 +687,21 @@ class WayfairController extends Controller
                 return response()->json([], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
             }
 
+            // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+            $amazonStandardPrices = [];
+            foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+                $val = is_array($adv->value)
+                    ? $adv->value
+                    : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                $std = $val['STANDARD_PRICE'] ?? null;
+                if (is_numeric($std) && (float) $std > 0) {
+                    $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+                }
+            }
+
+            // PRMT%/CPN%/DSC%/Appr/Push Prc — wayfair_promo_pricing (site-specific)
+            $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('wayfair', $skus);
+
             // 3. Normalizer — NBSP → space, trim, uppercase (matches ShopifySku keying).
             $normalizeSku = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
 
@@ -790,12 +807,13 @@ class WayfairController extends Controller
                 $buyerLink      = $buyerLink !== '' ? $buyerLink : null;
                 $sellerLink     = $sellerLink !== '' ? $sellerLink : null;
 
-                $rows[] = [
+                $row = [
                     'sku'         => trim((string) $productMaster->sku),
                     'parent'      => trim((string) ($productMaster->parent ?? '')) ?: null,
                     'is_parent'   => false,
                     'image'       => $imageSrc,
                     'price'       => round($price, 2),
+                    'STANDARD_PRICE' => $amazonStandardPrices[strtoupper(trim((string) $productMaster->sku))] ?? null,
                     'lmp'         => null,
                     'lmp_link'    => null,
                     'lmp_entries' => [],
@@ -819,7 +837,13 @@ class WayfairController extends Controller
                     'ae_stock'    => $wfStock,
                     'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
                     'nr'          => $nrOut,
+                    'cvr'         => $ovL30 > 0 ? round(($al30 / $ovL30) * 100, 2) : 0,
                 ];
+                $rows[] = app(ChannelPromoPricingService::class)->applyToRow(
+                    $row,
+                    $promoMap,
+                    trim((string) $productMaster->sku)
+                );
             }
 
             $rows = $this->insertWayfairParentRows($rows);

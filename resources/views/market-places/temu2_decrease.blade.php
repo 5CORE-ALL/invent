@@ -320,6 +320,7 @@
             width: 100%;
             max-width: 100%;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'temu2'])
     </style>
 @endsection
 
@@ -1111,9 +1112,11 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'temu2'])
 @endsection
 
 @section('script-bottom')
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu2'])
 <script>
     // Same margin as /temu-decrease — marketplace_percentages.Temu (TEMU_MARGIN)
     const TEMU_MARGIN = {{ (float) ($temuMargin ?? \App\Services\TemuShopifySalesService::temuMarginDecimal()) }};
@@ -1681,6 +1684,65 @@
             });
     }
     
+
+    /** Std Prc vs Amz/channel price: reduce / hold / increase → red / yellow / green. */
+    function temu2StdPrcChangeDotMeta(stdPrc, comparePrice) {
+        const sp = parseFloat(stdPrc);
+        const ap = parseFloat(comparePrice);
+        if (!isFinite(sp) || sp <= 0 || !isFinite(ap) || ap <= 0) return null;
+        const sp2 = sp.toFixed(2);
+        const ap2 = ap.toFixed(2);
+        if (parseFloat(sp2) < parseFloat(ap2)) {
+            return { kind: 'reduce', color: '#dc3545', title: 'Reduce vs Amz price' };
+        }
+        if (parseFloat(sp2) > parseFloat(ap2)) {
+            return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
+        }
+        return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+    }
+
+    function temu2StdPrcChangeDotHtml(stdPrc, comparePrice) {
+        const meta = temu2StdPrcChangeDotMeta(stdPrc, comparePrice);
+        if (!meta) return '';
+        return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;' +
+            'background:' + meta.color + ';flex-shrink:0;" title="' + meta.title + ' — Std Prc (shared with Amazon)"></span>';
+    }
+
+    function applyTemu2StandardPriceToLinkedRows(sku, std, appliedSkus) {
+        if (typeof table === 'undefined' || !table) return null;
+        const target = String(sku || '').trim().toUpperCase();
+        const appliedSet = new Set(
+            (Array.isArray(appliedSkus) ? appliedSkus : [])
+                .map(function(s) { return String(s || '').trim().toUpperCase(); })
+                .filter(Boolean)
+        );
+        if (target) appliedSet.add(target);
+        let primaryRow = null;
+        (table.getRows('all') || table.getRows() || []).forEach(function(r) {
+            const d = r.getData();
+            if (!d || d.is_parent) return;
+            const rowSku = String(d.sku || d['(Child) sku'] || d.SKU || '').trim();
+            if (!rowSku) return;
+            const rowKey = rowSku.toUpperCase();
+            const linked = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus : [];
+            const inGroup = appliedSet.has(rowKey)
+                || linked.some(function(s) { return String(s || '').trim().toUpperCase() === target; })
+                || (target && rowKey === target);
+            if (!inGroup) return;
+            r.update({ STANDARD_PRICE: std });
+            if (rowKey === target) primaryRow = r;
+        });
+        return primaryRow;
+    }
+
+    document.addEventListener('lmp-modal-sp-saved', function(e) {
+        const detail = (e && e.detail) || {};
+        const sku = detail.sku;
+        const saved = parseFloat(detail.standard_price);
+        if (!sku || !isFinite(saved) || saved <= 0) return;
+        applyTemu2StandardPriceToLinkedRows(sku, saved, detail.applied_skus);
+    });
+
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
         if (!toastContainer) return;
@@ -3497,6 +3559,39 @@
                 //     width: 80
                 // },
                 {
+                    title: "Std Prc",
+                    field: "STANDARD_PRICE",
+                    hozAlign: "center",
+                    headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view. Editable; saves to all Sku Link LMP siblings. Dot vs Amz/Temu price.",
+                    editor: "input",
+                    width: 70,
+                    sorter: "number",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent) return false;
+                        const sku = String(d.sku || d['(Child) sku'] || d.SKU || '');
+                        return !!sku;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent) return '';
+                        const value = cell.getValue();
+                        const std = parseFloat(value) || 0;
+                        if (!value || std <= 0) return '';
+                        const amzPrice = parseFloat(rowData.a_price || rowData['A Price'] || rowData.amazon_price || 0) || 0;
+                        const basePrice = parseFloat(rowData.base_price || 0) || 0;
+                        const temuDisplay = basePrice > 0 && typeof temu2FullPriceFromBase === 'function'
+                            ? temu2FullPriceFromBase(basePrice)
+                            : (parseFloat(rowData.temu_price_display || rowData.temu_price || 0) || 0);
+                        const channelPrice = amzPrice > 0 ? amzPrice : temuDisplay;
+                        const dot = temu2StdPrcChangeDotHtml(std, channelPrice);
+                        if (channelPrice > 0 && channelPrice.toFixed(2) === std.toFixed(2)) {
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + '</span>';
+                        }
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
+                    }
+                },
+                {
                     title: "Temu Price",
                     field: "temu_price_display",
                     hozAlign: "center",
@@ -3771,6 +3866,9 @@
                         e.stopPropagation();
                     }
                 },
+                // PRMT % / CPN % / Appr / DSC % / Push Prc — temu2_promo_pricing
+                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
+
                 {
                     title: "S PRC",
                     field: "sprice",
@@ -4712,7 +4810,40 @@
             const row = cell.getRow();
             const data = row.getData();
             const field = cell.getColumn().getField();
-            
+            const value = cell.getValue();
+
+            if (field === 'STANDARD_PRICE') {
+                if (data.is_parent) return;
+                const sku = data.sku || data['(Child) sku'] || data.SKU;
+                const std = parseFloat(value);
+                if (!sku || !isFinite(std) || std <= 0) {
+                    row.update({ STANDARD_PRICE: null });
+                    return;
+                }
+                $.ajax({
+                    url: '/save-amazon-sprice',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        sprice: std,
+                        is_standard_price: 1
+                    },
+                    success: function(response) {
+                        const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
+                        applyTemu2StandardPriceToLinkedRows(sku, saved, response.applied_skus);
+                        const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                        showToast(n > 1 ? ('Std Prc saved for ' + n + ' linked SKUs') : 'Std Prc saved', 'success');
+                    },
+                    error: function() {
+                        showToast('Failed to save Std Prc', 'error');
+                    }
+                });
+                return;
+            }
+
             if (field === 'base_price') {
                 const newPrice = parseFloat(cell.getValue());
                 if (newPrice < 0) {
@@ -4912,8 +5043,8 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|temu1_price|temu1_base_price|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|s_recovery|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship)$/i.test(f) ||
-                /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|recovery)\b/i.test(tl)
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|temu1_price|temu1_base_price|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|s_recovery|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|dsc|appr|push_prc)$/i.test(f) ||
+                /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|recovery|prmt|cpn|dsc|appr|push\s*prc)\b/i.test(tl)
             ) {
                 return 'pricing';
             }

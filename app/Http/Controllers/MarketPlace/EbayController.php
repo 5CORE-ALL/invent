@@ -18,6 +18,7 @@ use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
 use App\Models\EbaySkuDailyData;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
@@ -33,6 +34,7 @@ use Carbon\Carbon;
 use Exception;
 use App\Models\AmazonChannelSummary;
 use App\Http\Controllers\Channels\ChannelMasterController;
+use App\Services\ChannelPromoPricingService;
 
 class EbayController extends Controller
 {
@@ -172,62 +174,6 @@ class EbayController extends Controller
         }
     }
 
-    /**
-     * SPRICE Rule — a list of rules the /ebay-tabulator-view page uses to
-     * auto-populate the SPRICE column. Each rule is a set of min/max ranges on
-     * five factors (Dil, El30, CVR, Groi, LMP) plus a method + value describing
-     * how SPRICE is computed when the row matches. Rules are evaluated top to
-     * bottom — the first rule whose ranges all match a row wins.
-     *
-     * Stored (shared across users) under key `ebay1_sprice` in ebay_sbid_rules,
-     * same storage pattern as the SBID / Dil rules.
-     */
-    public function getSpriceRule()
-    {
-        $row = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sprice')->first();
-        return response()->json($row ? json_decode($row->rule, true) : $this->defaultSpriceRule());
-    }
-
-    public function saveSpriceRule(Request $request)
-    {
-        $rules = $request->input('rules', []);
-
-        if (!is_array($rules)) {
-            return response()->json(['error' => 'Invalid rule data'], 422);
-        }
-
-        $allowedMethods = ['groi', 'groi_lmp98', 'gpft', 'lmp', 'fixed'];
-        $clean = [];
-        foreach ($rules as $r) {
-            if (!is_array($r)) continue;
-            $method = in_array(($r['method'] ?? 'groi'), $allowedMethods, true) ? $r['method'] : 'groi';
-            $clean[] = [
-                'label'    => isset($r['label']) ? (string) $r['label'] : '',
-                'dil_min'  => $this->numOrNull($r['dil_min']  ?? null),
-                'dil_max'  => $this->numOrNull($r['dil_max']  ?? null),
-                'el30_min' => $this->numOrNull($r['el30_min'] ?? null),
-                'el30_max' => $this->numOrNull($r['el30_max'] ?? null),
-                'cvr_min'  => $this->numOrNull($r['cvr_min']  ?? null),
-                'cvr_max'  => $this->numOrNull($r['cvr_max']  ?? null),
-                'groi_min' => $this->numOrNull($r['groi_min'] ?? null),
-                'groi_max' => $this->numOrNull($r['groi_max'] ?? null),
-                'lmp_min'  => $this->numOrNull($r['lmp_min']  ?? null),
-                'lmp_max'  => $this->numOrNull($r['lmp_max']  ?? null),
-                'method'   => $method,
-                'value'    => $this->numOrNull($r['value'] ?? null) ?? 0,
-            ];
-        }
-
-        $rule = ['rules' => $clean];
-
-        DB::table('ebay_sbid_rules')->updateOrInsert(
-            ['key' => 'ebay1_sprice'],
-            ['rule' => json_encode($rule), 'updated_at' => now()]
-        );
-
-        return response()->json(['success' => true, 'rule' => $rule]);
-    }
-
     /** Cast a request value to float, treating blanks/nulls as "no bound". */
     private function numOrNull($v)
     {
@@ -322,11 +268,6 @@ class EbayController extends Controller
         return $out;
     }
 
-    private function defaultSpriceRule(): array
-    {
-        return ['rules' => []];
-    }
-
     /**
      * SBID Rule (slab builder) — a list of rules that decide the S Bid column on
      * /ebay-tabulator-view. Each rule is a set of min/max ranges on For L7 Views
@@ -415,49 +356,6 @@ class EbayController extends Controller
                 'sbid' => 5,
             ],
         ];
-    }
-
-    /**
-     * LMP × factor — shared setting for SPRICE = LMP × mult.
-     * Stored under key `ebay1_lmp_mult` in ebay_sbid_rules.
-     */
-    public function getLmpMultRule()
-    {
-        return response()->json(\App\Support\LmpMultRule::settings());
-    }
-
-    public function saveLmpMultRule(Request $request)
-    {
-        $settings = \App\Support\LmpMultRule::sanitize($request->all());
-
-        DB::table('ebay_sbid_rules')->updateOrInsert(
-            ['key' => \App\Support\LmpMultRule::KEY],
-            ['rule' => json_encode($settings), 'updated_at' => now()]
-        );
-
-        return response()->json(['success' => true, 'rule' => $settings]);
-    }
-
-    /**
-     * CVR-trend SPRICE multipliers — shared (Amazon + ebay 1/2/3 + others).
-     * Stored under key `ebay_sprice_cvr` in ebay_sbid_rules.
-     * See App\Support\SpriceCvrMultRule for trend + ROI floor rules.
-     */
-    public function getSpriceCvrMultRule()
-    {
-        return response()->json(\App\Support\SpriceCvrMultRule::settings());
-    }
-
-    public function saveSpriceCvrMultRule(Request $request)
-    {
-        $settings = \App\Support\SpriceCvrMultRule::sanitize($request->all());
-
-        DB::table('ebay_sbid_rules')->updateOrInsert(
-            ['key' => \App\Support\SpriceCvrMultRule::KEY],
-            ['rule' => json_encode($settings), 'updated_at' => now()]
-        );
-
-        return response()->json(['success' => true, 'rule' => $settings]);
     }
 
        public function ebayViewData(Request $request)
@@ -748,6 +646,21 @@ class EbayController extends Controller
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)
             ->pluck('price', 'sku');
+
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
+
+        // PRMT%/CPN%/DSC%/Appr/Push Prc — ebay_data_view.value (Amazon-format PEF_* / PUSH_PRC_* keys)
+        $ebay1PromoMap = app(ChannelPromoPricingService::class)->mapForSkus('ebay1', $skus);
 
         // Prioritize COST_PER_SALE rows for bid_percentage (matching PMP Ads controller)
         $campaignListings = [];
@@ -1138,6 +1051,22 @@ class EbayController extends Controller
             }
             $row['linked_lmp_skus'] = $linkedLmpSkus;
 
+            // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
+            $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $pm->sku))] ?? null;
+            if ($stdPrc === null) {
+                foreach ($linkedLmpSkus as $linkedSku) {
+                    $linkedKey = strtoupper(trim((string) $linkedSku));
+                    if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                        $stdPrc = $amazonStandardPrices[$linkedKey];
+                        break;
+                    }
+                }
+            }
+            $row['STANDARD_PRICE'] = $stdPrc;
+
+            // Site-specific promo columns from ebay_data_view (PEF_PRMT_PCT / PEF_CPN_PCT / PUSH_PRC_*)
+            $row = app(ChannelPromoPricingService::class)->applyToRow($row, $ebay1PromoMap, (string) $pm->sku);
+
             $lmpEntries = collect();
             foreach ($linkedLmpSkus as $linkedSku) {
                 $key = strtoupper(preg_replace('/\s+/', ' ', trim($linkedSku)));
@@ -1461,12 +1390,20 @@ class EbayController extends Controller
                     $sprice = 0;
                 }
                 
-                // Calculate SGPFT/SPFT/SGROI/SROI only when we have a SPRICE to show
-                $sgpft = $sprice > 0 ? round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2) : 0;
-                $row['SGPFT'] = $sprice > 0 ? $sgpft : null;
-                $row['SPFT'] = $sprice > 0 ? $sgpft : null;
-                $row['SGROI'] = $sprice > 0 ? round($lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
-                $row['SROI'] = $sprice > 0 ? round($lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
+                // Calculate SGPFT/SPFT/SGROI/SROI from Sprc CPN (S PRC − CPN%), not raw SPRICE
+                $cpnPct = is_numeric($row['cpn_pct'] ?? null) ? (float) $row['cpn_pct'] : 0;
+                $metricPrice = $sprice;
+                if ($sprice > 0 && $cpnPct > 0 && $cpnPct < 100) {
+                    $metricPrice = round($sprice * (1 - ($cpnPct / 100)), 2);
+                    if ($metricPrice < 0.01) {
+                        $metricPrice = $sprice;
+                    }
+                }
+                $sgpft = $metricPrice > 0 ? round((($metricPrice * $percentage - $ship - $lp) / $metricPrice) * 100, 2) : 0;
+                $row['SGPFT'] = $metricPrice > 0 ? $sgpft : null;
+                $row['SPFT'] = $metricPrice > 0 ? $sgpft : null;
+                $row['SGROI'] = $metricPrice > 0 ? round($lp > 0 ? (($metricPrice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
+                $row['SROI'] = $metricPrice > 0 ? round($lp > 0 ? (($metricPrice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
             } else {
                 // If price is 0, set all to null/0
                 $row['SPRICE'] = null;
@@ -1504,13 +1441,21 @@ class EbayController extends Controller
             if (isset($r->SGPFT) && $r->SGPFT !== null && $r->SGPFT !== '') {
                 $r->SPFT = round((float) $r->SGPFT - $channelAdsPct, 2);
                 $sprice = (float) ($r->SPRICE ?? 0);
+                $cpnPct = is_numeric($r->cpn_pct ?? null) ? (float) $r->cpn_pct : 0;
+                $metricPrice = $sprice;
+                if ($sprice > 0 && $cpnPct > 0 && $cpnPct < 100) {
+                    $metricPrice = round($sprice * (1 - ($cpnPct / 100)), 2);
+                    if ($metricPrice < 0.01) {
+                        $metricPrice = $sprice;
+                    }
+                }
                 $lp = (float) ($r->LP_productmaster ?? 0);
                 $ship = (float) ($r->Ship_productmaster ?? 0);
                 $pct = (float) ($r->percentage ?? 1);
-                if ($sprice > 0 && $lp > 0) {
-                    // SNROI = (gross PFT$ − SPRICE×Ads%/100) / LP × 100 (Amazon NROI shape)
-                    $grossPft = ($sprice * $pct) - $ship - $lp;
-                    $adSpend = $sprice * ($channelAdsPct / 100);
+                if ($metricPrice > 0 && $lp > 0) {
+                    // SNROI from Sprc CPN (not raw SPRICE)
+                    $grossPft = ($metricPrice * $pct) - $ship - $lp;
+                    $adSpend = $metricPrice * ($channelAdsPct / 100);
                     $r->SROI = round((($grossPft - $adSpend) / $lp) * 100, 2);
                 }
             }
@@ -1884,11 +1829,24 @@ class EbayController extends Controller
         $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
         Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship]);
 
-        // Calculate profit (spriceFloat already set above for non-clear case)
-        $profit = ($spriceFloat * $percentage - $lp - $ship);
+        $cpnPct = 0;
+        $peekDv = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim($sku))])->first();
+        if ($peekDv) {
+            $peekVal = is_array($peekDv->value) ? $peekDv->value : (json_decode($peekDv->value, true) ?: []);
+            if (is_numeric($peekVal['PEF_CPN_PCT'] ?? null)) {
+                $cpnPct = (float) $peekVal['PEF_CPN_PCT'];
+            }
+        }
+        $metricPrice = $spriceFloat;
+        if ($spriceFloat > 0 && $cpnPct > 0 && $cpnPct < 100) {
+            $metricPrice = round($spriceFloat * (1 - ($cpnPct / 100)), 2);
+            if ($metricPrice < 0.01) {
+                $metricPrice = $spriceFloat;
+            }
+        }
 
-        // Calculate SGPFT first - use marketplace percentage instead of hardcoded 0.86
-        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
+        // Metrics from Sprc CPN (S PRC − CPN%), not raw SPRICE
+        $sgpft = $metricPrice > 0 ? round((($metricPrice * $percentage - $ship - $lp) / $metricPrice) * 100, 2) : 0;
         
         // Channel Ads% (TACOS) — same source as /ebay-tabulator-view Ads badge /
         // /all-marketplace-master eBay Ads% (not per-SKU ACOS).
@@ -1896,40 +1854,41 @@ class EbayController extends Controller
         
         // SPFT = SGPFT − Ads%
         $spft = round($sgpft - $adPercent, 2);
-        // SGROI = gross ROI on suggested price (same as GROI% but using SPRICE)
-        $sgroi = round($lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
-        // SNROI = (gross PFT$ − ad spend$) / LP × 100 — same shape as Amazon NROI badge
-        // where ad spend$ = SPRICE × Ads%/100.
+        $sgroi = round($lp > 0 ? (($metricPrice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
         $adDecimal = $adPercent / 100;
         $sroi = round(
-            $lp > 0 ? ((($spriceFloat * $percentage - $ship - $lp) - ($spriceFloat * $adDecimal)) / $lp) * 100 : 0,
+            $lp > 0 ? ((($metricPrice * $percentage - $ship - $lp) - ($metricPrice * $adDecimal)) / $lp) * 100 : 0,
             2
         );
-        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'sgroi' => $sgroi, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
+        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sprc_cpn' => $metricPrice, 'sgpft' => $sgpft, 'sgroi' => $sgroi, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
 
-        // Find by case-insensitive SKU so we update the same row that has Listed, Live, NRL, etc.
-        $ebayDataView = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim($sku))])->first();
-        if (!$ebayDataView) {
-            $ebayDataView = new EbayDataView();
-            $ebayDataView->sku = $sku;
-        }
+        // Lock + merge so concurrent Dil/CPN promo saves cannot wipe PEF_* / other keys.
+        $saved = DB::transaction(function () use ($sku, $spriceFloat, $spft, $sroi, $sgroi, $sgpft) {
+            $ebayDataView = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim($sku))])
+                ->lockForUpdate()
+                ->first();
+            if (! $ebayDataView) {
+                $ebayDataView = new EbayDataView();
+                $ebayDataView->sku = $sku;
+            }
 
-        // Decode value column safely
-        $existing = is_array($ebayDataView->value)
-            ? $ebayDataView->value
-            : (json_decode($ebayDataView->value, true) ?: []);
+            $existing = is_array($ebayDataView->value)
+                ? $ebayDataView->value
+                : (json_decode($ebayDataView->value, true) ?: []);
 
-        // Merge new sprice data (keeps existing Listed, Live, NRL, buyer_link, etc.)
-        $merged = array_merge($existing, [
-            'SPRICE' => $spriceFloat,
-            'SPFT' => $spft,
-            'SROI' => $sroi,
-            'SGROI' => $sgroi,
-            'SGPFT' => $sgpft,
-        ]);
+            $merged = array_merge($existing, [
+                'SPRICE' => $spriceFloat,
+                'SPFT' => $spft,
+                'SROI' => $sroi,
+                'SGROI' => $sgroi,
+                'SGPFT' => $sgpft,
+            ]);
 
-        $ebayDataView->value = $merged;
-        $ebayDataView->save();
+            $ebayDataView->value = $merged;
+            $ebayDataView->save();
+
+            return $merged;
+        });
         Log::info('Data saved successfully', ['sku' => $sku]);
 
         return response()->json([

@@ -13,7 +13,9 @@ use App\Models\WalmartListingStatus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductMaster;
+use App\Models\AmazonDataView;
 use App\Models\ShopifySku;
+use App\Services\ChannelPromoPricingService;
 use App\Models\WalmartPricingSales;
 use App\Models\WalmartProductSheet;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -818,6 +820,21 @@ class WalmartControllerMarket extends Controller
         // Fetch NR values from WalmartListingStatus (same table as Listing Walmart)
         $walmartListingStatuses = WalmartListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $nonParentSkus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
+
+        // PRMT%/CPN%/DSC%/Appr/Push Prc — walmart_promo_pricing (site-specific)
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('walmart', $skus);
+
         // Fetch ad spend data from WalmartCampaignReport (L30) - only Live campaigns, not paused
         $normalizeSku = fn($sku) => strtoupper(trim($sku));
         $walmartCampaignReportsL30 = WalmartCampaignReport::where('report_range', 'L30')
@@ -1050,6 +1067,9 @@ class WalmartControllerMarket extends Controller
 
             // SALES AMT = Price * W_L30
             $item['sales_amt'] = $price * $w_l30;
+
+            $item['STANDARD_PRICE'] = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
+            $item = app(ChannelPromoPricingService::class)->applyToRow($item, $promoMap, (string) $sku);
 
             $result[] = (object) $item;
         }

@@ -291,6 +291,7 @@
         .dws-sc.yellow { background: #ffc107; }
         .dws-sc.green { background: #28a745; }
         .dws-sc.pink { background: #e83e8c; }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'doba_withoutship'])
     </style>
 @endsection
 
@@ -598,9 +599,11 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'doba_withoutship'])
 @endsection
 
 @section('script-bottom')
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba_withoutship'])
     <script>
         const COLUMN_VIS_KEY = "doba_withoutship_tabulator_column_visibility";
         /**
@@ -1596,6 +1599,65 @@
                 }
             });
 
+
+            /** Std Prc vs Amz price: reduce / hold / increase → red / yellow / green. */
+            function dwsStdPrcChangeDotMeta(stdPrc, comparePrice) {
+                const sp = parseFloat(stdPrc);
+                const ap = parseFloat(comparePrice);
+                if (!isFinite(sp) || sp <= 0 || !isFinite(ap) || ap <= 0) return null;
+                const sp2 = sp.toFixed(2);
+                const ap2 = ap.toFixed(2);
+                if (parseFloat(sp2) < parseFloat(ap2)) {
+                    return { kind: 'reduce', color: '#dc3545', title: 'Reduce vs Amz price' };
+                }
+                if (parseFloat(sp2) > parseFloat(ap2)) {
+                    return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
+                }
+                return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+            }
+
+            function dwsStdPrcChangeDotHtml(stdPrc, comparePrice) {
+                const meta = dwsStdPrcChangeDotMeta(stdPrc, comparePrice);
+                if (!meta) return '';
+                return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;' +
+                    'background:' + meta.color + ';flex-shrink:0;" title="' + meta.title + ' — STD Price (shared with Amazon)"></span>';
+            }
+
+            function applyDwsStandardPriceToLinkedRows(sku, std, appliedSkus) {
+                if (typeof table === 'undefined' || !table) return null;
+                const target = String(sku || '').trim().toUpperCase();
+                const appliedSet = new Set(
+                    (Array.isArray(appliedSkus) ? appliedSkus : [])
+                        .map(function(s) { return String(s || '').trim().toUpperCase(); })
+                        .filter(Boolean)
+                );
+                if (target) appliedSet.add(target);
+                let primaryRow = null;
+                (table.getRows('all') || table.getRows() || []).forEach(function(r) {
+                    const d = r.getData();
+                    if (!d || d.is_parent) return;
+                    const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+                    if (!rowSku) return;
+                    const rowKey = rowSku.toUpperCase();
+                    const linked = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus : [];
+                    const inGroup = appliedSet.has(rowKey)
+                        || linked.some(function(s) { return String(s || '').trim().toUpperCase() === target; })
+                        || (target && rowKey === target);
+                    if (!inGroup) return;
+                    r.update({ standard_price: std, STANDARD_PRICE: std });
+                    if (rowKey === target) primaryRow = r;
+                });
+                return primaryRow;
+            }
+
+            document.addEventListener('lmp-modal-sp-saved', function(e) {
+                const detail = (e && e.detail) || {};
+                const sku = detail.sku;
+                const saved = parseFloat(detail.standard_price);
+                if (!sku || !isFinite(saved) || saved <= 0) return;
+                applyDwsStandardPriceToLinkedRows(sku, saved, detail.applied_skus);
+            });
+
             table = new Tabulator("#doba-withoutship-table", {
                 ajaxURL: "/doba-data-view-withoutship",
                 ajaxConfig: "GET",
@@ -1659,6 +1721,8 @@
                                 quantity_l7_prev: quantityL7Prev,
                                 growth_percent: 0, // Calculated in formatter
                                 self_pick_price: selfPickPriceVal,
+                                standard_price: Number(item.standard_price || item.STANDARD_PRICE) || 0,
+                                STANDARD_PRICE: Number(item.STANDARD_PRICE || item.standard_price) || 0,
                                 amazon_price: amazonPrice,
                                 disc_vs_amz: discVsAmz,
                                 Profit: item.Total_pft || item.Profit || 0,
@@ -2012,6 +2076,35 @@
                         }
                     },
                     {
+                        title: "STD Price",
+                        field: "standard_price",
+                        width: 85,
+                        sorter: "number",
+                        editor: "input",
+                        headerTooltip: "Standard Price (STD Price) — same shared value as /amazon-tabulator-view. Editable; saves to all Sku Link LMP siblings. Dot vs Amz price.",
+                        editable: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return false;
+                            const sku = String(d['(Child) sku'] || d.sku || d.SKU || '');
+                            return !!sku;
+                        },
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const value = cell.getValue();
+                            const std = parseFloat(value) || 0;
+                            if (!value || std <= 0) return '';
+                            const amzPrice = parseFloat(d.amazon_price || d['A Price'] || d.a_price || 0) || 0;
+                            const channelPrice = parseFloat(d.self_pick_price || d.price || 0) || 0;
+                            const comparePrice = amzPrice > 0 ? amzPrice : channelPrice;
+                            const dot = dwsStdPrcChangeDotHtml(std, comparePrice);
+                            if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
+                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + '</span>';
+                            }
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
+                        }
+                    },
+                    {
                         title: "Price",
                         field: "self_pick_price",
                         width: 80,
@@ -2056,6 +2149,9 @@
                             return value > 0 ? `$${value.toFixed(2)}` : '';
                         }
                     },
+                    // PRMT % / CPN % / Appr / DSC % / Push Prc — doba_withoutship_promo_pricing
+                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
+
                     {
                         title: "SPRICE",
                         field: "sprice",
@@ -2525,7 +2621,41 @@
             // Handle SPRICE cell edit
             table.on('cellEdited', function(cell) {
                 const field = cell.getColumn().getField();
-                
+                const row = cell.getRow();
+                const data = row.getData();
+                const value = cell.getValue();
+
+                if (field === 'standard_price') {
+                    const sku = data['(Child) sku'] || data.sku || data.SKU;
+                    const std = parseFloat(value);
+                    if (!sku || !isFinite(std) || std <= 0) {
+                        row.update({ standard_price: null, STANDARD_PRICE: null });
+                        return;
+                    }
+                    $.ajax({
+                        url: '/save-amazon-sprice',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            sku: sku,
+                            sprice: std,
+                            is_standard_price: 1
+                        },
+                        success: function(response) {
+                            const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
+                            applyDwsStandardPriceToLinkedRows(sku, saved, response.applied_skus);
+                            const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                            showToast('success', n > 1 ? ('STD Price saved for ' + n + ' linked SKUs') : 'STD Price saved');
+                        },
+                        error: function() {
+                            showToast('danger', 'Failed to save STD Price');
+                        }
+                    });
+                    return;
+                }
+
                 if (field === 'sprice') {
                     const rowData = cell.getRow().getData();
                     const sprice = parseFloat(cell.getValue()) || 0;

@@ -15,6 +15,7 @@ use App\Services\SheinShopifySalesService;
 use App\Services\SheinApiService;
 use App\Services\LmpSkuGroupService;
 use App\Models\AmazonChannelSummary;
+use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -512,6 +513,23 @@ class SheinController extends Controller
                 $productMasterBySku->keys()->all()
             ))->unique()->values();
 
+            $sheinPmSkus = collect($productMasterBySku->map(fn ($pm) => $pm->sku ?? '')->all())
+                ->merge($pricingBySku->map(fn ($pr) => $pr->sku ?? '')->all())
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+            $amazonStandardPrices = [];
+            foreach (AmazonDataView::whereIn('sku', $sheinPmSkus)->get(['sku', 'value']) as $adv) {
+                $val = is_array($adv->value)
+                    ? $adv->value
+                    : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                $std = $val['STANDARD_PRICE'] ?? null;
+                if (is_numeric($std) && (float) $std > 0) {
+                    $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+                }
+            }
+
             // Sku Link LMP — same shared lmp_sku_links groups as /ebay-tabulator-view
             $lmpGroupService = new LmpSkuGroupService();
             try {
@@ -630,6 +648,18 @@ class SheinController extends Controller
                     }
                 }
 
+                // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
+                $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $displaySku))] ?? null;
+                if ($stdPrc === null && ! empty($linkedLmpSkus)) {
+                    foreach ($linkedLmpSkus as $linkedSku) {
+                        $linkedKey = strtoupper(trim((string) $linkedSku));
+                        if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                            $stdPrc = $amazonStandardPrices[$linkedKey];
+                            break;
+                        }
+                    }
+                }
+
                 $rows[] = [
                     'sku'          => trim((string) $displaySku),
                     'parent'       => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
@@ -664,6 +694,7 @@ class SheinController extends Controller
                     'lmp_link'     => $lmpLink,
                     'lmp_entries'  => $lmpEntries,
                     'linked_lmp_skus' => $linkedLmpSkus,
+                    'STANDARD_PRICE' => $stdPrc,
                 ];
             }
 

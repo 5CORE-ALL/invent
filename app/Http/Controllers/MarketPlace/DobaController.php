@@ -16,6 +16,7 @@ use App\Models\ShopifySku;
 use App\Models\ProductMaster; // Add this at the top with other use statements
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Services\ChannelPromoPricingService;
 use App\Services\DobaApiService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -325,6 +326,10 @@ class DobaController extends Controller
         // 6. Get marketplace percentage (no cache)
         $percentage = (MarketplacePercentage::where("marketplace", "Doba")->value("percentage") ?? 100) / 100;
 
+        // PRMT%/CPN%/DSC%/Appr/Push Prc — doba / doba_withoutship_promo_pricing (site-specific)
+        $promoChannel = $onlyPickupPrepaidLabelFromDaily ? 'doba_withoutship' : 'doba';
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus($promoChannel, $skus);
+
         // 7. Build Result
         $result = [];
 
@@ -547,6 +552,12 @@ class DobaController extends Controller
             $row["image_path"] =
                 $shopify->image_src ??
                 ($values["image_path"] ?? ($pm->image_path ?? null));
+
+            // CVR% = Doba L30 ÷ OV L30 (same as CVR filter on this page)
+            $ovL30 = (float) ($row['L30'] ?? 0);
+            $dobaL30 = (float) ($row['doba L30'] ?? 0);
+            $row['CVR%'] = $ovL30 > 0 ? round(($dobaL30 / $ovL30) * 100, 2) : 0;
+            $row = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $pm->sku);
 
             $result[] = (object) $row;
         }

@@ -9,32 +9,35 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * eBay1 coupon / markdown sync via Sell Marketing API (item_price_markdown).
+ * eBay1 public coded coupons via Sell Marketing API (item_promotion / CODED_COUPON).
  *
- * PEF CPN % never creates coupons. It only:
- * - percent > 0 → add SKU to an existing markdown coupon at that %
- * - percent = 0 → remove SKU from markdown coupon(s) it belongs to
- *
- * Note: eBay allows shrinking inventory on SCHEDULED markdowns; RUNNING markdowns
- * only accept additive inventoryItems updates (remove must be done while SCHEDULED
- * or manually in Seller Hub).
+ * Rules (product):
+ * - All coupons are PUBLIC_SINGLE_SELLER_COUPON
+ * - Coupon code auto-generated from % (e.g. 5 → SAVE05PCT)
+ * - Starts immediately; duration = 30 days from creation
+ * - Same CPN % → add SKU to the existing campaign for that % (do not create a second one)
+ * - percent = 0 → remove SKU from coupon campaign(s)
  */
 class Ebay1CouponService
 {
     private const MARKETPLACE = 'EBAY_US';
 
+    private const DURATION_DAYS = 30;
+
     private const DV_PROMO_ID = 'PEF_COUPON_PROMOTION_ID';
 
     private const DV_COUPON_PCT = 'PEF_COUPON_PCT';
+
+    private const DV_COUPON_CODE = 'PEF_COUPON_CODE';
 
     public function __construct(
         private readonly EbayApiService $ebay
     ) {}
 
     /**
-     * Sync CPN % to eBay1 coupon membership for a SKU.
+     * Sync CPN % to eBay1 public coded coupon for a SKU.
      *
-     * @return array{success:bool,message:string,promotion_id:?string,paused?:bool,percent?:float}
+     * @return array{success:bool,message:string,promotion_id:?string,coupon_code?:?string,paused?:bool,percent?:float}
      */
     public function syncSkuCouponPercent(string $sku, float $percent): array
     {
@@ -64,7 +67,7 @@ class Ebay1CouponService
         }
 
         if ($percent <= 0) {
-            return $this->removeSkuFromCoupons($token, $apiSku, $itemId, $dv, $val, $storedPromoId);
+            return $this->removeSkuFromCodedCoupons($token, $apiSku, $itemId, $dv, $val, $storedPromoId);
         }
 
         $pctInt = (int) round($percent);
@@ -76,8 +79,26 @@ class Ebay1CouponService
             ];
         }
 
-        // Leave any other %-tier coupons first, then add to the matching tier.
-        $pre = $this->removeSkuFromCoupons($token, $apiSku, $itemId, $dv, $val, $storedPromoId, keepPercent: $pctInt, persist: false);
+        $imageUrl = $this->resolvePromotionImageUrl($itemId);
+        if ($imageUrl === '') {
+            return [
+                'success' => false,
+                'message' => 'eBay listing image required for coded coupon (promotionImageUrl)',
+                'promotion_id' => $storedPromoId ?: null,
+            ];
+        }
+
+        // Leave other %-tier coded coupons first (keep target %)
+        $pre = $this->removeSkuFromCodedCoupons(
+            $token,
+            $apiSku,
+            $itemId,
+            $dv,
+            $val,
+            $storedPromoId,
+            keepPercent: $pctInt,
+            persist: false
+        );
         if (empty($pre['success'])) {
             return [
                 'success' => false,
@@ -86,53 +107,85 @@ class Ebay1CouponService
             ];
         }
 
-        $target = $this->findCouponForPercent($token, $pctInt, $apiSku, $itemId, $storedPromoId);
-        if ($target === null) {
-            return [
-                'success' => false,
-                'message' => 'No existing eBay1 coupon at '.$pctInt.'% — create/maintain the coupon in Seller Hub, then retry to add this SKU',
-                'promotion_id' => null,
-            ];
-        }
+        $existing = $this->findCodedCouponForPercent($token, $pctInt, $apiSku, $itemId);
+        if ($existing !== null) {
+            $promoId = (string) $existing['promotion_id'];
+            $code = (string) ($existing['coupon_code'] ?? $this->couponCodeForPercent($pctInt));
 
-        $promoId = (string) $target['promotion_id'];
-        if (! empty($target['already_has_sku'])) {
-            $this->persistDv($dv, $val, $promoId, $pctInt);
+            if (! empty($existing['already_has_sku'])) {
+                $this->persistDv($dv, $val, $promoId, $pctInt, $code);
+
+                return [
+                    'success' => true,
+                    'message' => 'SKU already on public '.$pctInt.'% coupon ('.$code.')',
+                    'promotion_id' => $promoId,
+                    'coupon_code' => $code,
+                    'percent' => (float) $pctInt,
+                ];
+            }
+
+            $added = $this->addSkuToCodedCoupon($token, $promoId, $apiSku, $itemId, $imageUrl);
+            if (! $added['success']) {
+                return [
+                    'success' => false,
+                    'message' => $added['message'],
+                    'promotion_id' => $promoId,
+                    'coupon_code' => $code,
+                ];
+            }
+
+            $this->persistDv($dv, $val, $promoId, $pctInt, $code);
 
             return [
                 'success' => true,
-                'message' => 'SKU already on eBay1 '.$pctInt.'% coupon',
+                'message' => 'SKU added to existing public '.$pctInt.'% coupon ('.$code.')',
                 'promotion_id' => $promoId,
+                'coupon_code' => $code,
                 'percent' => (float) $pctInt,
             ];
         }
 
-        $added = $this->addSkuToCoupon($token, $promoId, $apiSku, $itemId);
-        if (! $added['success']) {
-            return [
-                'success' => false,
-                'message' => $added['message'],
-                'promotion_id' => $promoId,
-            ];
+        $created = $this->createCodedCoupon($token, $apiSku, $itemId, $pctInt, $imageUrl);
+        if (! $created['success']) {
+            return $created;
         }
 
-        $this->persistDv($dv, $val, $promoId, $pctInt);
+        $promoId = (string) ($created['promotion_id'] ?? '');
+        $code = (string) ($created['coupon_code'] ?? $this->couponCodeForPercent($pctInt));
+        $this->persistDv($dv, $val, $promoId, $pctInt, $code);
 
         return [
             'success' => true,
-            'message' => 'SKU added to eBay1 '.$pctInt.'% coupon',
+            'message' => 'Created public '.$pctInt.'% coupon '.$code.' and added SKU',
             'promotion_id' => $promoId,
+            'coupon_code' => $code,
             'percent' => (float) $pctInt,
         ];
     }
 
     /**
-     * Remove SKU from markdown coupons (all, or all except keepPercent).
-     *
+     * Autogenerate public coupon code from percent: 5 → SAVE05PCT (8–15 chars).
+     */
+    public function couponCodeForPercent(int $percent): string
+    {
+        $pct = max(1, min(99, $percent));
+
+        return 'SAVE'.str_pad((string) $pct, 2, '0', STR_PAD_LEFT).'PCT';
+    }
+
+    /**
+     * Campaign display name (stable per %) so we can recognize our campaigns.
+     */
+    public function campaignNameForPercent(int $percent): string
+    {
+        return 'PEF CPN '.$percent.'%';
+    }
+
+    /**
      * @param  array<string, mixed>  $val
      * @return array{success:bool,message:string,promotion_id:?string,paused?:bool}
      */
-    private function removeSkuFromCoupons(
+    private function removeSkuFromCodedCoupons(
         string $token,
         string $sku,
         string $itemId,
@@ -142,7 +195,7 @@ class Ebay1CouponService
         ?int $keepPercent = null,
         bool $persist = true
     ): array {
-        $candidates = $this->listActiveMarkdownIds($token);
+        $candidates = $this->listCodedCouponIds($token);
         if ($storedPromoId !== '' && ! in_array($storedPromoId, $candidates, true)) {
             array_unshift($candidates, $storedPromoId);
         }
@@ -152,8 +205,13 @@ class Ebay1CouponService
         $foundOn = 0;
 
         foreach ($candidates as $promoId) {
-            $detail = $this->getMarkdown($token, $promoId);
+            $detail = $this->getItemPromotion($token, $promoId);
             if ($detail === null) {
+                continue;
+            }
+            $type = strtoupper((string) ($detail['promotionType'] ?? ''));
+            $hasCouponCfg = isset($detail['couponConfiguration']) || isset($detail['coupon_configuration']);
+            if ($type !== 'CODED_COUPON' && ! $hasCouponCfg) {
                 continue;
             }
             $status = (string) ($detail['promotionStatus'] ?? '');
@@ -169,7 +227,7 @@ class Ebay1CouponService
             }
 
             $foundOn++;
-            $rm = $this->removeSkuFromCoupon($token, $promoId, $sku, $itemId, $detail);
+            $rm = $this->removeSkuFromCodedCoupon($token, $promoId, $sku, $itemId, $detail);
             if ($rm['success']) {
                 $removedFrom[] = $promoId;
             } else {
@@ -178,55 +236,44 @@ class Ebay1CouponService
         }
 
         if ($errors !== []) {
-            $uniq = array_values(array_unique($errors));
-
             return [
                 'success' => false,
-                'message' => implode(' | ', $uniq),
+                'message' => implode(' | ', array_values(array_unique($errors))),
                 'promotion_id' => $storedPromoId ?: null,
             ];
         }
 
         if ($persist) {
-            $this->persistDv($dv, $val, '', 0);
+            $this->persistDv($dv, $val, '', 0, '');
         }
 
         if (! $persist) {
-            return [
-                'success' => true,
-                'message' => 'pre-remove done',
-                'promotion_id' => null,
-            ];
+            return ['success' => true, 'message' => 'pre-remove done', 'promotion_id' => null];
         }
 
         return [
             'success' => true,
             'message' => $foundOn === 0
-                ? 'SKU not on any active eBay1 coupon'
-                : 'SKU removed from eBay1 coupon'.($foundOn > 1 ? 's' : ''),
+                ? 'SKU not on any active eBay1 coded coupon'
+                : 'SKU removed from eBay1 coded coupon'.($foundOn > 1 ? 's' : ''),
             'promotion_id' => $removedFrom[0] ?? null,
             'paused' => true,
         ];
     }
 
     /**
-     * Prefer a RUNNING coupon (live discount), then SCHEDULED/PAUSED at the same %.
-     *
-     * @return array{promotion_id:string,already_has_sku:bool}|null
+     * @return array{promotion_id:string,coupon_code:string,already_has_sku:bool}|null
      */
-    private function findCouponForPercent(string $token, int $pctInt, string $sku, string $itemId, string $preferredId): ?array
+    private function findCodedCouponForPercent(string $token, int $pctInt, string $sku, string $itemId): ?array
     {
-        $ids = $this->listActiveMarkdownIds($token);
-        if ($preferredId !== '' && ! in_array($preferredId, $ids, true)) {
-            array_unshift($ids, $preferredId);
-        }
-
+        $ids = $this->listCodedCouponIds($token);
         $matchRunning = null;
         $matchOther = null;
         $matchWithSku = null;
+        $wantName = strtoupper($this->campaignNameForPercent($pctInt));
 
         foreach ($ids as $promoId) {
-            $detail = $this->getMarkdown($token, $promoId);
+            $detail = $this->getItemPromotion($token, $promoId);
             if ($detail === null) {
                 continue;
             }
@@ -238,13 +285,33 @@ class Ebay1CouponService
                 continue;
             }
 
+            // Prefer our PEF CPN {n}% campaigns when multiple exist at same %
+            $name = strtoupper(trim((string) ($detail['name'] ?? '')));
+            $isOurs = $name === $wantName || str_starts_with($name, 'PEF CPN '.$pctInt);
+
+            $code = trim((string) ($detail['couponConfiguration']['couponCode']
+                ?? $detail['couponConfiguration']['coupon_code']
+                ?? ''));
+            if ($code === '') {
+                $code = $this->couponCodeForPercent($pctInt);
+            }
+
             $has = $this->couponContainsSku($detail, $sku, $itemId);
-            $entry = ['promotion_id' => $promoId, 'already_has_sku' => $has];
+            $entry = [
+                'promotion_id' => $promoId,
+                'coupon_code' => $code,
+                'already_has_sku' => $has,
+            ];
+
             if ($has) {
                 $matchWithSku = $entry;
                 break;
             }
-            if ($status === 'RUNNING') {
+            if ($isOurs && $status === 'RUNNING') {
+                $matchRunning ??= $entry;
+            } elseif ($isOurs) {
+                $matchOther ??= $entry;
+            } elseif ($status === 'RUNNING') {
                 $matchRunning ??= $entry;
             } else {
                 $matchOther ??= $entry;
@@ -257,21 +324,21 @@ class Ebay1CouponService
     /**
      * @return list<string>
      */
-    private function listActiveMarkdownIds(string $token): array
+    private function listCodedCouponIds(string $token): array
     {
         $ids = [];
         $offset = 0;
         $limit = 50;
 
-        for ($page = 0; $page < 10; $page++) {
+        for ($page = 0; $page < 20; $page++) {
             $resp = $this->http($token)->get('https://api.ebay.com/sell/marketing/v1/promotion', [
                 'marketplace_id' => self::MARKETPLACE,
-                'promotion_type' => 'MARKDOWN_SALE',
+                'promotion_type' => 'CODED_COUPON',
                 'limit' => $limit,
                 'offset' => $offset,
             ]);
             if (! $resp->successful()) {
-                Log::warning('eBay1 coupon list failed', [
+                Log::warning('eBay1 coded coupon list failed', [
                     'status' => $resp->status(),
                     'body' => mb_substr($resp->body(), 0, 400),
                 ]);
@@ -287,7 +354,7 @@ class Ebay1CouponService
                     continue;
                 }
                 $status = (string) ($p['promotionStatus'] ?? '');
-                if (! in_array($status, ['RUNNING', 'SCHEDULED', 'PAUSED'], true)) {
+                if (! in_array($status, ['RUNNING', 'SCHEDULED', 'PAUSED', 'DRAFT'], true)) {
                     continue;
                 }
                 $id = trim((string) ($p['promotionId'] ?? ''));
@@ -308,10 +375,10 @@ class Ebay1CouponService
     /**
      * @return array<string, mixed>|null
      */
-    private function getMarkdown(string $token, string $promoId): ?array
+    private function getItemPromotion(string $token, string $promoId): ?array
     {
         $resp = $this->http($token)
-            ->get('https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($promoId));
+            ->get('https://api.ebay.com/sell/marketing/v1/item_promotion/'.rawurlencode($promoId));
         if (! $resp->successful()) {
             return null;
         }
@@ -325,11 +392,13 @@ class Ebay1CouponService
      */
     private function couponPercent(array $detail): ?int
     {
-        $disc = $detail['selectedInventoryDiscounts'][0]['discountBenefit'] ?? null;
-        if (! is_array($disc)) {
+        $rule = $detail['discountRules'][0]['discountBenefit']
+            ?? $detail['selectedInventoryDiscounts'][0]['discountBenefit']
+            ?? null;
+        if (! is_array($rule)) {
             return null;
         }
-        $raw = $disc['percentageOffItem'] ?? null;
+        $raw = $rule['percentageOffOrder'] ?? $rule['percentageOffItem'] ?? null;
         if ($raw === null || $raw === '') {
             return null;
         }
@@ -343,7 +412,9 @@ class Ebay1CouponService
     private function couponContainsSku(array $detail, string $sku, string $itemId = ''): bool
     {
         $want = strtoupper(trim($sku));
-        $crit = $detail['selectedInventoryDiscounts'][0]['inventoryCriterion'] ?? [];
+        $crit = $detail['inventoryCriterion']
+            ?? $detail['selectedInventoryDiscounts'][0]['inventoryCriterion']
+            ?? [];
         if (! is_array($crit)) {
             return false;
         }
@@ -374,68 +445,189 @@ class Ebay1CouponService
     }
 
     /**
+     * @return array{success:bool,message:string,promotion_id:?string,coupon_code?:string}
+     */
+    private function createCodedCoupon(
+        string $token,
+        string $sku,
+        string $itemId,
+        int $pctInt,
+        string $imageUrl
+    ): array {
+        $code = $this->couponCodeForPercent($pctInt);
+        $lastMsg = 'unknown';
+
+        for ($attempt = 1; $attempt <= 4; $attempt++) {
+            $tryCode = $attempt === 1
+                ? $code
+                : $this->couponCodeWithSuffix($pctInt);
+
+            $payload = $this->codedCouponPayload(
+                $sku,
+                $itemId,
+                $pctInt,
+                $imageUrl,
+                $tryCode,
+                inventoryItems: [['inventoryReferenceId' => $sku]],
+                startDate: null,
+                endDate: null,
+                existingDetail: null
+            );
+
+            $resp = $this->http($token)
+                ->post('https://api.ebay.com/sell/marketing/v1/item_promotion', $payload);
+
+            if ($resp->successful() || $resp->status() === 201) {
+                $promoId = $this->extractPromotionId($resp);
+                if ($promoId === '') {
+                    return [
+                        'success' => false,
+                        'message' => 'Create ok but promotion id missing',
+                        'promotion_id' => null,
+                    ];
+                }
+
+                return [
+                    'success' => true,
+                    'message' => 'created',
+                    'promotion_id' => $promoId,
+                    'coupon_code' => $tryCode,
+                ];
+            }
+
+            $lastMsg = $this->ebayErrorMessage($resp);
+            $body = strtolower($lastMsg.' '.$resp->body());
+            // Code already used → retry with suffix
+            if (str_contains($body, 'coupon') && (str_contains($body, 'unique') || str_contains($body, 'already') || str_contains($body, 'exist'))) {
+                continue;
+            }
+
+            Log::error('eBay1 coded coupon create failed', [
+                'sku' => $sku,
+                'percent' => $pctInt,
+                'code' => $tryCode,
+                'status' => $resp->status(),
+                'body' => mb_substr($resp->body(), 0, 500),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Create failed: '.$lastMsg,
+                'promotion_id' => null,
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => 'Create failed after code retries: '.$lastMsg,
+            'promotion_id' => null,
+        ];
+    }
+
+    private function couponCodeWithSuffix(int $percent): string
+    {
+        $base = 'SAVE'.str_pad((string) max(1, min(99, $percent)), 2, '0', STR_PAD_LEFT);
+        $suffix = strtoupper(substr(bin2hex(random_bytes(3)), 0, 5));
+
+        // Keep 8–15 chars: SAVE05 + 5 = 10
+        return substr($base.$suffix, 0, 15);
+    }
+
+    /**
      * @return array{success:bool,message:string}
      */
-    private function addSkuToCoupon(string $token, string $promoId, string $sku, string $itemId): array
-    {
-        $detail = $this->getMarkdown($token, $promoId);
+    private function addSkuToCodedCoupon(
+        string $token,
+        string $promoId,
+        string $sku,
+        string $itemId,
+        string $imageUrl
+    ): array {
+        $detail = $this->getItemPromotion($token, $promoId);
         if ($detail === null) {
-            return ['success' => false, 'message' => 'Coupon not found: '.$promoId];
+            return ['success' => false, 'message' => 'Coupon campaign not found: '.$promoId];
         }
         if ($this->couponContainsSku($detail, $sku, $itemId)) {
             return ['success' => true, 'message' => 'already present'];
         }
 
-        $disc = $detail['selectedInventoryDiscounts'][0] ?? null;
-        if (! is_array($disc)) {
-            return ['success' => false, 'message' => 'Coupon has no discount tier'];
+        $pct = $this->couponPercent($detail);
+        if ($pct === null) {
+            return ['success' => false, 'message' => 'Campaign has no discount %'];
         }
 
-        $crit = is_array($disc['inventoryCriterion'] ?? null) ? $disc['inventoryCriterion'] : [];
+        $crit = is_array($detail['inventoryCriterion'] ?? null) ? $detail['inventoryCriterion'] : [];
         $listingIds = $crit['listingIds'] ?? null;
         $usesListingIds = is_array($listingIds) && $listingIds !== [];
 
         if ($usesListingIds) {
             if ($itemId === '') {
-                return ['success' => false, 'message' => 'Listing id required to add SKU to listingIds coupon'];
+                return ['success' => false, 'message' => 'Listing id required to add SKU'];
             }
             $listingIds[] = $itemId;
-            $payload = $this->baseUpdatePayload($detail, $disc, inventoryItems: null, listingIds: array_values(array_unique(array_map('strval', $listingIds))));
+            $items = null;
+            $listings = array_values(array_unique(array_map('strval', $listingIds)));
         } else {
             $items = $crit['inventoryItems'] ?? [];
             if (! is_array($items)) {
                 $items = [];
             }
             $items[] = ['inventoryReferenceId' => $sku];
-            $payload = $this->baseUpdatePayload($detail, $disc, inventoryItems: $items, listingIds: null);
+            $listings = null;
         }
 
-        $put = $this->putMarkdownWithRetry($token, $promoId, $payload, 'add SKU');
-        if (! $put['success']) {
-            return $put;
+        $code = trim((string) ($detail['couponConfiguration']['couponCode']
+            ?? $detail['couponConfiguration']['coupon_code']
+            ?? $this->couponCodeForPercent($pct)));
+
+        $img = trim((string) ($detail['promotionImageUrl'] ?? ''));
+        if ($img === '' || ! filter_var($img, FILTER_VALIDATE_URL)) {
+            $img = $imageUrl;
         }
 
-        $after = $this->getMarkdown($token, $promoId);
-        if ($after !== null && ! $this->couponContainsSku($after, $sku, $itemId)) {
-            return ['success' => false, 'message' => 'Add SKU returned OK but SKU not on coupon yet — retry'];
+        $payload = $this->codedCouponPayload(
+            $sku,
+            $itemId,
+            $pct,
+            $img,
+            $code,
+            inventoryItems: $items,
+            listingIds: $listings,
+            startDate: (string) ($detail['startDate'] ?? ''),
+            endDate: (string) ($detail['endDate'] ?? ''),
+            existingDetail: $detail
+        );
+
+        $resp = $this->http($token)
+            ->put('https://api.ebay.com/sell/marketing/v1/item_promotion/'.rawurlencode($promoId), $payload);
+
+        if ($resp->successful() || $resp->status() === 204) {
+            return ['success' => true, 'message' => 'add SKU ok'];
         }
 
-        return ['success' => true, 'message' => 'add SKU ok'];
+        Log::error('eBay1 coded coupon add SKU failed', [
+            'promotion_id' => $promoId,
+            'sku' => $sku,
+            'status' => $resp->status(),
+            'body' => mb_substr($resp->body(), 0, 500),
+        ]);
+
+        return ['success' => false, 'message' => 'Add SKU failed: '.$this->ebayErrorMessage($resp)];
     }
 
     /**
      * @param  array<string, mixed>  $detail
      * @return array{success:bool,message:string}
      */
-    private function removeSkuFromCoupon(string $token, string $promoId, string $sku, string $itemId, array $detail): array
-    {
-        $status = (string) ($detail['promotionStatus'] ?? '');
-        $disc = $detail['selectedInventoryDiscounts'][0] ?? null;
-        if (! is_array($disc)) {
-            return ['success' => false, 'message' => 'Coupon has no discount tier'];
-        }
-
-        $crit = is_array($disc['inventoryCriterion'] ?? null) ? $disc['inventoryCriterion'] : [];
+    private function removeSkuFromCodedCoupon(
+        string $token,
+        string $promoId,
+        string $sku,
+        string $itemId,
+        array $detail
+    ): array {
+        $pct = $this->couponPercent($detail) ?? 0;
+        $crit = is_array($detail['inventoryCriterion'] ?? null) ? $detail['inventoryCriterion'] : [];
         $listingIds = $crit['listingIds'] ?? null;
         $usesListingIds = is_array($listingIds) && $listingIds !== [];
 
@@ -449,6 +641,7 @@ class Ebay1CouponService
                 $keptListings[] = $lid;
             }
             $keptItems = null;
+            $isEmpty = $keptListings === [];
         } else {
             $items = $crit['inventoryItems'] ?? [];
             if (! is_array($items)) {
@@ -467,132 +660,202 @@ class Ebay1CouponService
                 $keptItems[] = $it;
             }
             $keptListings = null;
+            $isEmpty = $keptItems === [];
         }
 
-        $isEmpty = $usesListingIds ? ($keptListings === []) : ($keptItems === []);
-
-        // SCHEDULED/DRAFT/PAUSED: inventory replace works. RUNNING: eBay keeps existing SKUs.
-        if (in_array($status, ['SCHEDULED', 'DRAFT', 'PAUSED'], true)) {
-            if ($isEmpty) {
-                $del = $this->http($token)
-                    ->delete('https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($promoId));
-                if ($del->successful() || $del->status() === 204) {
-                    return ['success' => true, 'message' => 'coupon deleted (last SKU removed)'];
-                }
-
-                return ['success' => false, 'message' => 'Remove last SKU failed: '.$this->ebayErrorMessage($del)];
+        // Last SKU → pause campaign (keep campaign for future SKUs at this %)
+        if ($isEmpty) {
+            $url = 'https://api.ebay.com/sell/marketing/v1/promotion/'.rawurlencode($promoId).'/pause';
+            $resp = $this->http($token)->post($url);
+            if ($resp->successful() || in_array($resp->status(), [204, 400, 409], true)) {
+                return ['success' => true, 'message' => 'SKU removed; empty campaign paused'];
             }
 
-            $payload = $this->baseUpdatePayload($detail, $disc, inventoryItems: $keptItems, listingIds: $keptListings);
-            $put = $this->putMarkdownWithRetry($token, $promoId, $payload, 'remove SKU');
-            if (! $put['success']) {
-                return $put;
-            }
-            $after = $this->getMarkdown($token, $promoId);
-            if ($after !== null && $this->couponContainsSku($after, $sku, $itemId)) {
-                return ['success' => false, 'message' => 'Remove SKU returned OK but SKU still on coupon'];
-            }
+            return ['success' => false, 'message' => 'Pause empty campaign failed: '.$this->ebayErrorMessage($resp)];
+        }
 
+        $code = trim((string) ($detail['couponConfiguration']['couponCode']
+            ?? $detail['couponConfiguration']['coupon_code']
+            ?? $this->couponCodeForPercent($pct)));
+        $img = trim((string) ($detail['promotionImageUrl'] ?? ''));
+
+        $payload = $this->codedCouponPayload(
+            $sku,
+            $itemId,
+            $pct,
+            $img !== '' ? $img : 'https://i.ebayimg.com/images/g/placeholder/s-l1600.jpg',
+            $code,
+            inventoryItems: $keptItems,
+            listingIds: $keptListings,
+            startDate: (string) ($detail['startDate'] ?? ''),
+            endDate: (string) ($detail['endDate'] ?? ''),
+            existingDetail: $detail
+        );
+
+        $resp = $this->http($token)
+            ->put('https://api.ebay.com/sell/marketing/v1/item_promotion/'.rawurlencode($promoId), $payload);
+
+        if ($resp->successful() || $resp->status() === 204) {
             return ['success' => true, 'message' => 'remove SKU ok'];
         }
 
-        if ($status === 'RUNNING') {
-            return [
-                'success' => false,
-                'message' => 'Cannot remove SKU from a RUNNING eBay coupon via API (eBay only allows adding inventory while RUNNING). Remove in Seller Hub, or use a SCHEDULED coupon for membership changes.',
-            ];
-        }
-
-        return ['success' => false, 'message' => 'Unsupported coupon status '.$status];
+        return ['success' => false, 'message' => 'Remove SKU failed: '.$this->ebayErrorMessage($resp)];
     }
 
     /**
-     * @param  array<string, mixed>  $detail
-     * @param  array<string, mixed>  $disc
      * @param  list<array<string, mixed>>|null  $inventoryItems
      * @param  list<string>|null  $listingIds
+     * @param  array<string, mixed>|null  $existingDetail
      * @return array<string, mixed>
      */
-    private function baseUpdatePayload(array $detail, array $disc, ?array $inventoryItems, ?array $listingIds = null): array
-    {
-        $pct = $this->couponPercent($detail) ?? 0;
+    private function codedCouponPayload(
+        string $sku,
+        string $itemId,
+        int $pctInt,
+        string $imageUrl,
+        string $couponCode,
+        ?array $inventoryItems = null,
+        ?array $listingIds = null,
+        ?string $startDate = null,
+        ?string $endDate = null,
+        ?array $existingDetail = null
+    ): array {
+        $start = ($startDate !== null && $startDate !== '')
+            ? $startDate
+            : now('UTC')->addSeconds(30)->format('Y-m-d\TH:i:s.000\Z');
+        $end = ($endDate !== null && $endDate !== '')
+            ? $endDate
+            : now('UTC')->addDays(self::DURATION_DAYS)->format('Y-m-d\TH:i:s.000\Z');
+
         $criterion = [
             'inventoryCriterionType' => 'INVENTORY_BY_VALUE',
         ];
         if ($listingIds !== null) {
             $criterion['listingIds'] = array_values($listingIds);
         } else {
-            $criterion['inventoryItems'] = array_values($inventoryItems ?? []);
+            $criterion['inventoryItems'] = array_values($inventoryItems ?? [
+                ['inventoryReferenceId' => $sku],
+            ]);
         }
 
-        $tier = [
-            'discountBenefit' => [
-                'percentageOffItem' => (string) $pct,
-            ],
-            'inventoryCriterion' => $criterion,
-        ];
-        if (! empty($disc['discountId'])) {
-            $tier['discountId'] = (string) $disc['discountId'];
-        }
-        if (isset($disc['ruleOrder'])) {
-            $tier['ruleOrder'] = $disc['ruleOrder'];
+        $couponType = 'PUBLIC_SINGLE_SELLER_COUPON';
+        if (is_array($existingDetail)) {
+            $couponType = (string) ($existingDetail['couponConfiguration']['couponType']
+                ?? $existingDetail['couponConfiguration']['coupon_type']
+                ?? $couponType);
         }
 
         $payload = [
-            'name' => (string) ($detail['name'] ?? 'PEF coupon'),
-            'description' => (string) ($detail['description'] ?? 'PEF coupon'),
-            'marketplaceId' => (string) ($detail['marketplaceId'] ?? self::MARKETPLACE),
-            'startDate' => (string) ($detail['startDate'] ?? now('UTC')->format('Y-m-d\TH:i:s.000\Z')),
-            'endDate' => (string) ($detail['endDate'] ?? now('UTC')->addDay()->format('Y-m-d\TH:i:s.000\Z')),
-            // Required when updating a RUNNING promotion.
+            'name' => $this->campaignNameForPercent($pctInt),
+            'description' => $pctInt.'% public coupon (auto '.$couponCode.')',
+            'marketplaceId' => self::MARKETPLACE,
+            'startDate' => $start,
+            'endDate' => $end,
             'promotionStatus' => 'SCHEDULED',
-            'promotionImageUrl' => (string) ($detail['promotionImageUrl'] ?? ''),
-            'selectedInventoryDiscounts' => [$tier],
+            'promotionType' => 'CODED_COUPON',
+            'promotionImageUrl' => $imageUrl,
+            'couponConfiguration' => [
+                'couponCode' => $couponCode,
+                'couponType' => $couponType,
+                'maxCouponRedemptionPerUser' => 1,
+            ],
+            'inventoryCriterion' => $criterion,
+            'discountRules' => [
+                [
+                    'discountSpecification' => [
+                        'minQuantity' => 1,
+                    ],
+                    'discountBenefit' => [
+                        'percentageOffOrder' => (string) $pctInt,
+                    ],
+                    'ruleOrder' => 1,
+                ],
+            ],
         ];
 
-        foreach (['blockPriceIncreaseInItemRevision', 'applyFreeShipping', 'autoSelectFutureInventory'] as $flag) {
-            if (array_key_exists($flag, $detail)) {
-                $payload[$flag] = (bool) $detail[$flag];
-            }
+        // Updating a RUNNING promo requires SCHEDULED status in body (eBay rule)
+        if (is_array($existingDetail) && ($existingDetail['promotionStatus'] ?? '') === 'RUNNING') {
+            $payload['promotionStatus'] = 'SCHEDULED';
         }
 
         return $payload;
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     * @return array{success:bool,message:string}
-     */
-    private function putMarkdownWithRetry(string $token, string $promoId, array $payload, string $action): array
+    private function resolvePromotionImageUrl(string $itemId): string
     {
-        $lastMsg = 'unknown error';
-        for ($attempt = 1; $attempt <= 4; $attempt++) {
-            $resp = $this->http($token)
-                ->put('https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($promoId), $payload);
-
-            if ($resp->successful() || $resp->status() === 204) {
-                return ['success' => true, 'message' => $action.' ok'];
+        try {
+            $details = $this->ebay->getItem($itemId);
+            $item = is_array($details) ? ($details['Item'] ?? null) : null;
+            if (! is_array($item)) {
+                return '';
             }
-
-            $lastMsg = $this->ebayErrorMessage($resp);
-            $code = (string) (data_get($resp->json(), 'errors.0.errorId') ?? '');
-            // 345073 = update already processing
-            if ($code === '345073' || str_contains(strtolower($lastMsg), 'already processing')) {
-                usleep(750000 * $attempt);
-
-                continue;
+            $pic = $item['PictureDetails']['GalleryURL']
+                ?? $item['PictureDetails']['PictureURL']
+                ?? null;
+            if (is_array($pic)) {
+                $pic = $pic[0] ?? reset($pic);
             }
+            $url = is_string($pic) ? trim($pic) : '';
 
-            Log::error('eBay1 coupon '.$action.' failed', [
-                'promotion_id' => $promoId,
-                'status' => $resp->status(),
-                'body' => mb_substr($resp->body(), 0, 500),
+            return $url !== '' && filter_var($url, FILTER_VALIDATE_URL) ? $url : '';
+        } catch (\Throwable $e) {
+            Log::warning('eBay1 coupon image resolve failed', [
+                'item_id' => $itemId,
+                'error' => $e->getMessage(),
             ]);
 
-            return ['success' => false, 'message' => $action.' failed: '.$lastMsg];
+            return '';
+        }
+    }
+
+    private function extractPromotionId(Response $resp): string
+    {
+        $loc = (string) ($resp->header('Location') ?? $resp->header('location') ?? '');
+        if ($loc !== '') {
+            if (preg_match('#(?:item_promotion|promotion)/([^/?]+)#', $loc, $m)) {
+                return urldecode($m[1]);
+            }
+            $parts = explode('/', rtrim($loc, '/'));
+            $last = (string) end($parts);
+            if ($last !== '') {
+                return urldecode($last);
+            }
+        }
+        $json = $resp->json();
+        if (is_array($json)) {
+            foreach (['promotionId', 'promotion_id', 'id'] as $k) {
+                if (! empty($json[$k])) {
+                    return (string) $json[$k];
+                }
+            }
         }
 
-        return ['success' => false, 'message' => $action.' failed after retries: '.$lastMsg];
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $val
+     */
+    private function persistDv(EbayDataView $dv, array $val, string $promoId, int|float $pct, string $code): void
+    {
+        if ($promoId !== '') {
+            $val[self::DV_PROMO_ID] = $promoId;
+        } else {
+            unset($val[self::DV_PROMO_ID]);
+        }
+        if ($code !== '') {
+            $val[self::DV_COUPON_CODE] = $code;
+        } else {
+            unset($val[self::DV_COUPON_CODE]);
+        }
+        $val[self::DV_COUPON_PCT] = (float) $pct;
+        // Keep channel promo CPN% in sync when coupon is pushed
+        $val['PEF_CPN_PCT'] = (float) $pct;
+        if (! $dv->exists) {
+            $dv->sku = $dv->sku ?: null;
+        }
+        $dv->value = $val;
+        $dv->save();
     }
 
     private function http(string $token): \Illuminate\Http\Client\PendingRequest
@@ -605,24 +868,6 @@ class Ebay1CouponService
                 'Content-Language' => 'en-US',
             ])
             ->timeout(60);
-    }
-
-    /**
-     * @param  array<string, mixed>  $val
-     */
-    private function persistDv(EbayDataView $dv, array $val, string $promoId, int|float $pct): void
-    {
-        if ($promoId !== '') {
-            $val[self::DV_PROMO_ID] = $promoId;
-        } else {
-            unset($val[self::DV_PROMO_ID]);
-        }
-        $val[self::DV_COUPON_PCT] = (float) $pct;
-        if (! $dv->exists) {
-            $dv->sku = $dv->sku ?: null;
-        }
-        $dv->value = $val;
-        $dv->save();
     }
 
     private function ebayErrorMessage(Response $resp): string
