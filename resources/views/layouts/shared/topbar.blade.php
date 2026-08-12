@@ -1,6 +1,5 @@
 @php
     $__topbarBrand = config('app.name');
-    $__topbarBrandShort = \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr(preg_replace('/\s+/', '', $__topbarBrand), 0, 2));
 @endphp
 <!-- ========== Topbar Start ========== -->
 <div class="navbar-custom">
@@ -10,22 +9,22 @@
             <!-- Topbar Brand Logo -->
             <div class="logo-topbar">
                 <!-- Logo light -->
-                <a href="{{ route('any', 'index') }}" class="logo-light">
+                <a href="{{ route('any', 'index') }}" class="logo-light" aria-label="{{ $__topbarBrand }}">
                     <span class="logo-lg">
-                        <span style="font-size: 34px; font-weight: 700; line-height: 1; color: #0b2545;">{{ $__topbarBrand }}</span>
+                        <img src="{{ asset('images/5core-logo-sidebar.png') }}" alt="{{ $__topbarBrand }}" style="height: 34px; width: auto;">
                     </span>
                     <span class="logo-sm">
-                        <span style="font-size: 20px; font-weight: 700; line-height: 1; color: #0b2545;">{{ $__topbarBrandShort }}</span>
+                        <img src="{{ asset('images/5core-logo-sidebar.png') }}" alt="{{ $__topbarBrand }}" style="height: 22px; width: auto;">
                     </span>
                 </a>
 
                 <!-- Logo Dark -->
-                <a href="{{ route('any', 'index') }}" class="logo-dark">
+                <a href="{{ route('any', 'index') }}" class="logo-dark" aria-label="{{ $__topbarBrand }}">
                     <span class="logo-lg">
-                        <span style="font-size: 34px; font-weight: 700; line-height: 1; color: #0b2545;">{{ $__topbarBrand }}</span>
+                        <img src="{{ asset('images/5core-logo-sidebar.png') }}" alt="{{ $__topbarBrand }}" style="height: 34px; width: auto;">
                     </span>
                     <span class="logo-sm">
-                        <span style="font-size: 20px; font-weight: 700; line-height: 1; color: #0b2545;">{{ $__topbarBrandShort }}</span>
+                        <img src="{{ asset('images/5core-logo-sidebar.png') }}" alt="{{ $__topbarBrand }}" style="height: 22px; width: auto;">
                     </span>
                 </a>
             </div>
