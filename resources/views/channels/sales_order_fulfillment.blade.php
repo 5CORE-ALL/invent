@@ -102,14 +102,88 @@
             background: #f1f5f9;
             border: 1px solid #e2e8f0;
             border-radius: 8px;
-            padding: 12px 14px;
+            padding: 6px 10px;
         }
         #sof-filter-bar .sof-filter-label {
             display: block;
             font-size: 0.75rem;
             font-weight: 600;
             color: #475569;
-            margin-bottom: 4px;
+            margin-bottom: 2px;
+            line-height: 1.1;
+        }
+        /* Compact 2-row toolbar: badges/actions + filters */
+        #sof-toolbar {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        #sof-toolbar-row1,
+        #sof-toolbar-row2 {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            overflow-x: auto;
+        }
+        #sof-toolbar .sof-summary-badge {
+            font-size: 0.72rem !important;
+            padding: 0.2rem 0.45rem !important;
+            line-height: 1.15;
+            font-weight: 600 !important;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        #sof-toolbar .sof-top-badge {
+            font-size: 0.72rem;
+            padding: 0.2rem 0.45rem;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+        #sof-toolbar .btn-sm {
+            padding: 0.2rem 0.5rem;
+            font-size: 0.75rem;
+            line-height: 1.2;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        #sof-toolbar .form-control-sm,
+        #sof-toolbar .form-select-sm,
+        #sof-toolbar .input-group-sm > .form-control,
+        #sof-toolbar .input-group-sm > .input-group-text {
+            min-height: 28px;
+            height: 28px;
+            padding-top: 0.15rem;
+            padding-bottom: 0.15rem;
+            font-size: 0.78rem;
+        }
+        #sof-toolbar .sof-filter-field {
+            flex-shrink: 0;
+        }
+        #sof-toolbar #sof-order-search {
+            min-width: 180px;
+            flex: 1 1 180px;
+        }
+        #sof-toolbar #sof-channel-filter {
+            min-width: 130px;
+        }
+        #sof-date-filter-hint {
+            font-size: 0.7rem;
+            white-space: nowrap;
+            color: #64748b;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+        #sof-tabs {
+            margin-bottom: 0.5rem !important;
+        }
+        .sof-date-scope-hint {
+            margin-bottom: 0.35rem !important;
         }
 
         .sof-oc-dot {
@@ -885,95 +959,90 @@
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
-                <div class="card-body py-3">
-                    <div id="sof-summary-stats" class="p-3 bg-light rounded">
-                        <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between">
-                            <div class="d-flex flex-wrap gap-2" role="group" aria-label="Summary metrics">
-                                <span class="badge bg-primary fs-6 p-2 sof-summary-badge" data-sof-metric="channel_count" style="color: white; font-weight: bold;" title="Active channels — click for history graph">
-                                    Channels: <span id="sof-channel-count">0</span><i class="sof-hist-dot" data-sof-metric="channel_count" style="background:#6c757d;" title="History trend"></i>
+                <div class="card-body py-2">
+                    <div id="sof-toolbar" class="mb-2">
+                        {{-- Row 1: status badges + actions + platform badges --}}
+                        <div id="sof-toolbar-row1" role="group" aria-label="Summary metrics and actions">
+                            <span class="badge bg-primary sof-summary-badge" data-sof-metric="channel_count" style="color: white;" title="Active channels — click for history graph">
+                                Channels: <span id="sof-channel-count">0</span><i class="sof-hist-dot" data-sof-metric="channel_count" style="background:#6c757d;" title="History trend"></i>
+                            </span>
+                            <span class="badge sof-summary-badge" id="sof-pending-total-badge" data-sof-metric="pending_total" style="background:#fff3cd; color:#856404; border:1px solid #ffe69c;" title="Pending — click for history graph">
+                                Pending: <span id="sof-pending-total">0</span><i class="sof-hist-dot" data-sof-metric="pending_total" style="background:#6c757d;" title="History trend"></i>
+                            </span>
+                            <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan — click for history graph">
+                                Label Created / No Scan: <span id="sof-fulfilled-24h">0</span><i class="sof-hist-dot" data-sof-metric="fulfilled_24h" style="background:#6c757d;" title="History trend"></i>
+                            </span>
+                            <span class="badge sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="scan_done_24h" style="background:#cfe2ff; color:#084298; border:1px solid #9ec5fe;" title="Shipped/Received — click for history graph">
+                                Shipped/Received: <span id="sof-scan-done-24h">0</span><i class="sof-hist-dot" data-sof-metric="scan_done_24h" style="background:#6c757d;" title="History trend"></i>
+                            </span>
+                            <span class="badge sof-summary-badge" id="sof-in-transit-badge" data-sof-metric="in_transit_total" style="background:#ffe5d0; color:#9a3412; border:1px solid #fdba74;" title="In Transit — click for history graph">
+                                In Transit: <span id="sof-in-transit-total">0</span><i class="sof-hist-dot" data-sof-metric="in_transit_total" style="background:#6c757d;" title="History trend"></i>
+                            </span>
+                            <span class="badge sof-summary-badge" id="sof-in-received-badge" data-sof-metric="in_received_total" style="background:#d1fae5; color:#065f46; border:1px solid #6ee7b7;" title="In Received — click for history graph">
+                                In Received: <span id="sof-in-received-total">0</span><i class="sof-hist-dot" data-sof-metric="in_received_total" style="background:#6c757d;" title="History trend"></i>
+                            </span>
+                            <span class="badge sof-summary-badge" id="sof-invoiced-badge" data-sof-metric="invoiced_total" style="background:#e2d9f3; color:#432874; border:1px solid #c5b3e6;" title="Invoiced — click for history graph">
+                                Invoiced: <span id="sof-invoiced-total">0</span><i class="sof-hist-dot" data-sof-metric="invoiced_total" style="background:#6c757d;" title="History trend"></i>
+                            </span>
+                            <span class="badge sof-summary-badge" id="sof-delivered-badge" data-sof-metric="delivered_total" style="background:#cff4fc; color:#055160; border:1px solid #9eeaf9;" title="Delivered — click for history graph">
+                                Delivered: <span id="sof-delivered-total">0</span><i class="sof-hist-dot" data-sof-metric="delivered_total" style="background:#6c757d;" title="History trend"></i>
+                            </span>
+                            <span class="badge sof-summary-badge" id="sof-all-order-badge" data-sof-metric="all_order_total" style="background:#e9ecef; color:#343a40; border:1px solid #ced4da;" title="All Order — click for history graph">
+                                All Order: <span id="sof-all-order-total">0</span><i class="sof-hist-dot" data-sof-metric="all_order_total" style="background:#6c757d;" title="History trend"></i>
+                            </span>
+                            <button type="button"
+                                    id="sof-pull-tracking-btn"
+                                    class="btn btn-sm btn-outline-secondary ms-1"
+                                    title="Pull tracking for selected rows only (checkbox). If none selected, pulls a batch. Temu/Temu2 → Temu API; others → channel API (no Shopify).">
+                                <i class="mdi mdi-barcode-scan me-1"></i>
+                                <span class="sof-pull-tracking-label">Pull Tracking</span>
+                            </button>
+                            <button type="button"
+                                    id="sof-refresh-shipment-btn"
+                                    class="btn btn-sm btn-outline-primary"
+                                    title="Refresh open shipment statuses via USPS / UPS APIs">
+                                <i class="mdi mdi-truck-fast-outline me-1"></i>
+                                <span class="sof-refresh-shipment-label">Update Status</span>
+                            </button>
+                            @foreach(($topBadges ?? []) as $badge)
+                                @php
+                                    $badgeKey = $badge['key'] ?? '';
+                                    $badgeLabel = $badge['label'] ?? strtoupper($badgeKey);
+                                    $badgeLink = $badge['link'] ?? null;
+                                    $hasLink = !empty($badgeLink);
+                                    $gofoApiReady = $badgeKey === 'gofo' && !empty($gofoApiConfigured);
+                                    $veeqoApiReady = $badgeKey === 'veeqo' && !empty($veeqoApiConfigured);
+                                    $apiReady = $gofoApiReady || $veeqoApiReady;
+                                @endphp
+                                <span class="sof-top-badge {{ $badgeKey }} {{ ($hasLink || $apiReady) ? '' : 'is-disabled' }} {{ $apiReady ? 'is-api-ready' : '' }}"
+                                      data-badge-key="{{ $badgeKey }}"
+                                      data-badge-label="{{ $badgeLabel }}"
+                                      data-badge-link="{{ $badgeLink ?? '' }}"
+                                      data-gofo-api="{{ $gofoApiReady ? '1' : '0' }}"
+                                      data-veeqo-api="{{ $veeqoApiReady ? '1' : '0' }}"
+                                      title="{{ $gofoApiReady ? 'Click to open GOFO API tools' : ($veeqoApiReady ? 'Veeqo API connected' : ($hasLink ? 'Click to open '.$badgeLabel : 'Add a link via the red dot')) }}">
+                                    <span class="sof-top-badge-label">{{ $badgeLabel }}</span>
+                                    <span class="sof-ch-orders-dot {{ ($hasLink || $apiReady) ? 'green' : 'red' }} sof-top-badge-dot"
+                                          title="{{ $hasLink ? 'Double-click to edit link' : ($apiReady ? 'API connected' : 'Click to add link') }}"
+                                          role="button"
+                                          tabindex="0"></span>
                                 </span>
-                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-pending-total-badge" data-sof-metric="pending_total" style="background:#fff3cd; color:#856404; font-weight:600; border:1px solid #ffe69c;" title="Pending — click for history graph">
-                                    Pending: <span id="sof-pending-total">0</span><i class="sof-hist-dot" data-sof-metric="pending_total" style="background:#6c757d;" title="History trend"></i>
-                                </span>
-                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; font-weight:600; border:1px solid #a3cfbb;" title="Label Created / No Scan — click for history graph">
-                                    Label Created / No Scan: <span id="sof-fulfilled-24h">0</span><i class="sof-hist-dot" data-sof-metric="fulfilled_24h" style="background:#6c757d;" title="History trend"></i>
-                                </span>
-                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="scan_done_24h" style="background:#cfe2ff; color:#084298; font-weight:600; border:1px solid #9ec5fe;" title="Shipped/Received — click for history graph">
-                                    Shipped/Received: <span id="sof-scan-done-24h">0</span><i class="sof-hist-dot" data-sof-metric="scan_done_24h" style="background:#6c757d;" title="History trend"></i>
-                                </span>
-                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-in-transit-badge" data-sof-metric="in_transit_total" style="background:#ffe5d0; color:#9a3412; font-weight:600; border:1px solid #fdba74;" title="In Transit — click for history graph">
-                                    In Transit: <span id="sof-in-transit-total">0</span><i class="sof-hist-dot" data-sof-metric="in_transit_total" style="background:#6c757d;" title="History trend"></i>
-                                </span>
-                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-in-received-badge" data-sof-metric="in_received_total" style="background:#d1fae5; color:#065f46; font-weight:600; border:1px solid #6ee7b7;" title="In Received — click for history graph">
-                                    In Received: <span id="sof-in-received-total">0</span><i class="sof-hist-dot" data-sof-metric="in_received_total" style="background:#6c757d;" title="History trend"></i>
-                                </span>
-                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-invoiced-badge" data-sof-metric="invoiced_total" style="background:#e2d9f3; color:#432874; font-weight:600; border:1px solid #c5b3e6;" title="Invoiced — click for history graph">
-                                    Invoiced: <span id="sof-invoiced-total">0</span><i class="sof-hist-dot" data-sof-metric="invoiced_total" style="background:#6c757d;" title="History trend"></i>
-                                </span>
-                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-delivered-badge" data-sof-metric="delivered_total" style="background:#cff4fc; color:#055160; font-weight:600; border:1px solid #9eeaf9;" title="Delivered — click for history graph">
-                                    Delivered: <span id="sof-delivered-total">0</span><i class="sof-hist-dot" data-sof-metric="delivered_total" style="background:#6c757d;" title="History trend"></i>
-                                </span>
-                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-all-order-badge" data-sof-metric="all_order_total" style="background:#e9ecef; color:#343a40; font-weight:600; border:1px solid #ced4da;" title="All Order — click for history graph">
-                                    All Order: <span id="sof-all-order-total">0</span><i class="sof-hist-dot" data-sof-metric="all_order_total" style="background:#6c757d;" title="History trend"></i>
-                                </span>
-                            </div>
-                            <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end ms-auto" role="group" aria-label="Carrier / platform badges">
-                                <button type="button"
-                                        id="sof-pull-tracking-btn"
-                                        class="btn btn-sm btn-outline-secondary"
-                                        title="Pull tracking for selected rows only (checkbox). If none selected, pulls a batch. Temu/Temu2 → Temu API; others → channel API (no Shopify).">
-                                    <i class="mdi mdi-barcode-scan me-1"></i>
-                                    <span class="sof-pull-tracking-label">Pull Tracking Number</span>
-                                </button>
-                                <button type="button"
-                                        id="sof-refresh-shipment-btn"
-                                        class="btn btn-sm btn-outline-primary"
-                                        title="Refresh open shipment statuses via USPS / UPS APIs">
-                                    <i class="mdi mdi-truck-fast-outline me-1"></i>
-                                    <span class="sof-refresh-shipment-label">Update Shipment Status</span>
-                                </button>
-                                @foreach(($topBadges ?? []) as $badge)
-                                    @php
-                                        $badgeKey = $badge['key'] ?? '';
-                                        $badgeLabel = $badge['label'] ?? strtoupper($badgeKey);
-                                        $badgeLink = $badge['link'] ?? null;
-                                        $hasLink = !empty($badgeLink);
-                                        $gofoApiReady = $badgeKey === 'gofo' && !empty($gofoApiConfigured);
-                                        $veeqoApiReady = $badgeKey === 'veeqo' && !empty($veeqoApiConfigured);
-                                        $apiReady = $gofoApiReady || $veeqoApiReady;
-                                    @endphp
-                                    <span class="sof-top-badge {{ $badgeKey }} {{ ($hasLink || $apiReady) ? '' : 'is-disabled' }} {{ $apiReady ? 'is-api-ready' : '' }}"
-                                          data-badge-key="{{ $badgeKey }}"
-                                          data-badge-label="{{ $badgeLabel }}"
-                                          data-badge-link="{{ $badgeLink ?? '' }}"
-                                          data-gofo-api="{{ $gofoApiReady ? '1' : '0' }}"
-                                          data-veeqo-api="{{ $veeqoApiReady ? '1' : '0' }}"
-                                          title="{{ $gofoApiReady ? 'Click to open GOFO API tools' : ($veeqoApiReady ? 'Veeqo API connected' : ($hasLink ? 'Click to open '.$badgeLabel : 'Add a link via the red dot')) }}">
-                                        <span class="sof-top-badge-label">{{ $badgeLabel }}</span>
-                                        <span class="sof-ch-orders-dot {{ ($hasLink || $apiReady) ? 'green' : 'red' }} sof-top-badge-dot"
-                                              title="{{ $hasLink ? 'Double-click to edit link' : ($apiReady ? 'API connected' : 'Click to add link') }}"
-                                              role="button"
-                                              tabindex="0"></span>
-                                    </span>
-                                @endforeach
-                            </div>
+                            @endforeach
                         </div>
-                    </div>
-                </div>
-                <div class="card-body pt-0">
-                    <div id="sof-date-filter-bar" class="mb-3" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
-                        <div class="d-flex flex-wrap align-items-end gap-3">
-                            <div>
-                                <label class="sof-filter-label" for="sof-date-from">From</label>
-                                <input type="date" id="sof-date-from" class="form-control form-control-sm" style="min-width:150px;">
+
+                        {{-- Row 2: date / carrier / tracking / channels / SKU search / edit --}}
+                        <div id="sof-toolbar-row2">
+                            <div class="sof-filter-field">
+                                <label class="visually-hidden" for="sof-date-from">From</label>
+                                <input type="date" id="sof-date-from" class="form-control form-control-sm" style="width:140px;" title="From date (California)">
                             </div>
-                            <div>
-                                <label class="sof-filter-label" for="sof-date-to">To</label>
-                                <input type="date" id="sof-date-to" class="form-control form-control-sm" style="min-width:150px;">
+                            <div class="sof-filter-field">
+                                <label class="visually-hidden" for="sof-date-to">To</label>
+                                <input type="date" id="sof-date-to" class="form-control form-control-sm" style="width:140px;" title="To date (California)">
                             </div>
-                            <div>
-                                <label class="sof-filter-label" for="sof-carrier-filter">Carrier</label>
-                                <select id="sof-carrier-filter" class="form-select form-select-sm" style="min-width:160px;" title="{{ !empty($veeqoApiConfigured) ? 'Carriers from Veeqo API + GOFO/Veeqo' : 'Carrier filter' }}">
+                            <div class="sof-filter-field">
+                                <label class="visually-hidden" for="sof-carrier-filter">Carrier</label>
+                                <select id="sof-carrier-filter" class="form-select form-select-sm" style="width:140px;" title="{{ !empty($veeqoApiConfigured) ? 'Carriers from Veeqo API + GOFO/Veeqo' : 'Carrier filter' }}">
                                     <option value="">All carriers</option>
                                     <option value="gofo">GOFO</option>
                                     @php
@@ -1004,21 +1073,21 @@
                                     <option value="none">No carrier</option>
                                 </select>
                             </div>
-                            <div>
-                                <label class="sof-filter-label" for="sof-tracking-filter">Tracking</label>
-                                <select id="sof-tracking-filter" class="form-select form-select-sm" style="min-width:200px;" title="Filter by tracking number presence">
+                            <div class="sof-filter-field">
+                                <label class="visually-hidden" for="sof-tracking-filter">Tracking</label>
+                                <select id="sof-tracking-filter" class="form-select form-select-sm" style="width:170px;" title="Filter by tracking number presence">
                                     <option value="">Tracking (0)</option>
                                     <option value="updated">Tracking Updated (0)</option>
                                     <option value="pending">Tracking Pending (0)</option>
                                 </select>
                             </div>
-                            <div>
-                                <label class="sof-filter-label" for="sof-channel-filter">Channels</label>
-                                <div class="input-group input-group-sm" style="min-width:180px;">
+                            <div class="sof-filter-field">
+                                <label class="visually-hidden" for="sof-channel-filter">Channels</label>
+                                <div class="input-group input-group-sm" style="width:150px;">
                                     <span class="input-group-text" title="Quick Search Channels"><i class="fas fa-search"></i></span>
                                     <input type="text" id="sof-channel-filter" class="form-control"
                                            list="sof-channel-datalist"
-                                           placeholder="Quick Search…"
+                                           placeholder="Channels…"
                                            autocomplete="off"
                                            title="Quick Search filter by channel">
                                 </div>
@@ -1030,17 +1099,18 @@
                                     @endforeach
                                 </datalist>
                             </div>
-                            <div class="d-flex align-items-end gap-2">
-                                <button type="button" class="btn btn-sm btn-primary" id="sof-date-filter-apply">Apply</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-date-filter-clear" title="Reset date + carrier + tracking + channels filters">Clear</button>
+                            <div class="sof-filter-field flex-grow-1">
+                                <label class="visually-hidden" for="sof-order-search">Search</label>
+                                <input type="text" id="sof-order-search" class="form-control form-control-sm"
+                                       placeholder="Search Channel, Order ID, SKU, Status…"
+                                       autocomplete="off"
+                                       title="Filter orders by Channel, Order ID, SKU, Status">
                             </div>
-                            <div class="d-flex align-items-end gap-2 ms-md-2">
-                                <button type="button" class="btn btn-sm btn-success" id="sof-bulk-edit-btn" disabled title="Edit selected rows (only changed fields are saved)">
-                                    <i class="mdi mdi-pencil-box-multiple-outline me-1"></i>
-                                    Edit selected (<span id="sof-bulk-edit-count">0</span>)
-                                </button>
-                            </div>
-                            <div class="small text-muted ms-auto pb-1" id="sof-date-filter-hint">California order dates (default: last 30 days PT)</div>
+                            <button type="button" class="btn btn-sm btn-success" id="sof-bulk-edit-btn" disabled title="Edit selected rows (only changed fields are saved)">
+                                <i class="mdi mdi-pencil-box-multiple-outline me-1"></i>
+                                Edit (<span id="sof-bulk-edit-count">0</span>)
+                            </button>
+                            <div id="sof-date-filter-hint" title="Active filters">California dates (default: last 30 days PT)</div>
                         </div>
                     </div>
                     <ul class="nav nav-tabs mb-3" id="sof-tabs" role="tablist">
@@ -1112,14 +1182,10 @@
                     <div class="tab-content">
                         <div class="tab-pane fade show active" id="sof-channels-pane" role="tabpanel" aria-labelledby="sof-channels-tab">
                             <div id="sof-filter-bar" class="mb-2">
-                                <div class="d-flex flex-wrap align-items-end gap-3">
+                                <div class="d-flex flex-wrap align-items-end gap-2">
                                     <div class="flex-grow-1" style="min-width:200px;">
                                         <label class="sof-filter-label" for="sof-search">Search</label>
                                         <input type="text" id="sof-search" class="form-control form-control-sm" placeholder="Search by Channel or Alias...">
-                                    </div>
-                                    <div class="d-flex align-items-end gap-2">
-                                        <button type="button" class="btn btn-sm btn-primary" id="sof-filter-apply">Apply</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-filter-clear">Clear</button>
                                     </div>
                                 </div>
                             </div>
@@ -1127,137 +1193,41 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-all-order-pane" role="tabpanel" aria-labelledby="sof-all-order-tab">
-                            <div id="sof-all-order-filter-bar" class="mb-2" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
-                                <div class="d-flex flex-wrap align-items-end gap-3">
-                                    <div class="flex-grow-1" style="min-width:200px;">
-                                        <label class="sof-filter-label" for="sof-all-order-search">Search</label>
-                                        <input type="text" id="sof-all-order-search" class="form-control form-control-sm" placeholder="Search by Channel, Order ID, SKU, Status...">
-                                    </div>
-                                    <div class="d-flex align-items-end gap-2">
-                                        <button type="button" class="btn btn-sm btn-primary" id="sof-all-order-filter-apply">Apply</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-all-order-filter-clear">Clear</button>
-                                    </div>
-                                </div>
-                            </div>
                             <p class="small text-muted mb-2 sof-date-scope-hint">Marketplace orders in the selected date range, with original status values.</p>
                             <div id="sof-all-order-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-pending-pane" role="tabpanel" aria-labelledby="sof-pending-tab">
-                            <div id="sof-pending-filter-bar" class="mb-2" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
-                                <div class="d-flex flex-wrap align-items-end gap-3">
-                                    <div class="flex-grow-1" style="min-width:200px;">
-                                        <label class="sof-filter-label" for="sof-pending-search">Search</label>
-                                        <input type="text" id="sof-pending-search" class="form-control form-control-sm" placeholder="Search by Channel, Order ID, SKU, Status...">
-                                    </div>
-                                    <div class="d-flex align-items-end gap-2">
-                                        <button type="button" class="btn btn-sm btn-primary" id="sof-pending-filter-apply">Apply</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-pending-filter-clear">Clear</button>
-                                    </div>
-                                </div>
-                            </div>
                             <p class="small text-muted mb-2 sof-date-scope-hint">Pending / unfulfilled orders in the selected date range.</p>
                             <div id="sof-pending-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-fulfilled-pane" role="tabpanel" aria-labelledby="sof-fulfilled-tab">
-                            <div id="sof-fulfilled-filter-bar" class="mb-2" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
-                                <div class="d-flex flex-wrap align-items-end gap-3">
-                                    <div class="flex-grow-1" style="min-width:200px;">
-                                        <label class="sof-filter-label" for="sof-fulfilled-search">Search</label>
-                                        <input type="text" id="sof-fulfilled-search" class="form-control form-control-sm" placeholder="Search by Channel, Order ID, SKU, Status...">
-                                    </div>
-                                    <div class="d-flex align-items-end gap-2">
-                                        <button type="button" class="btn btn-sm btn-primary" id="sof-fulfilled-filter-apply">Apply</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-fulfilled-filter-clear">Clear</button>
-                                    </div>
-                                </div>
-                            </div>
                             <p class="small text-muted mb-2 sof-date-scope-hint">Label Created / No Scan orders in the selected date range.</p>
                             <div id="sof-fulfilled-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-scan-done-pane" role="tabpanel" aria-labelledby="sof-scan-done-tab">
-                            <div id="sof-scan-done-filter-bar" class="mb-2" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
-                                <div class="d-flex flex-wrap align-items-end gap-3">
-                                    <div class="flex-grow-1" style="min-width:200px;">
-                                        <label class="sof-filter-label" for="sof-scan-done-search">Search</label>
-                                        <input type="text" id="sof-scan-done-search" class="form-control form-control-sm" placeholder="Search by Channel, Order ID, SKU, Status...">
-                                    </div>
-                                    <div class="d-flex align-items-end gap-2">
-                                        <button type="button" class="btn btn-sm btn-primary" id="sof-scan-done-filter-apply">Apply</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-scan-done-filter-clear">Clear</button>
-                                    </div>
-                                </div>
-                            </div>
                             <p class="small text-muted mb-2 sof-date-scope-hint">Shipped/Received orders in the selected date range.</p>
                             <div id="sof-scan-done-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-in-transit-pane" role="tabpanel" aria-labelledby="sof-in-transit-tab">
-                            <div id="sof-in-transit-filter-bar" class="mb-2" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
-                                <div class="d-flex flex-wrap align-items-end gap-3">
-                                    <div class="flex-grow-1" style="min-width:200px;">
-                                        <label class="sof-filter-label" for="sof-in-transit-search">Search</label>
-                                        <input type="text" id="sof-in-transit-search" class="form-control form-control-sm" placeholder="Search by Channel, Order ID, SKU, Status...">
-                                    </div>
-                                    <div class="d-flex align-items-end gap-2">
-                                        <button type="button" class="btn btn-sm btn-primary" id="sof-in-transit-filter-apply">Apply</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-in-transit-filter-clear">Clear</button>
-                                    </div>
-                                </div>
-                            </div>
                             <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range.</p>
                             <div id="sof-in-transit-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-in-received-pane" role="tabpanel" aria-labelledby="sof-in-received-tab">
-                            <div id="sof-in-received-filter-bar" class="mb-2" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
-                                <div class="d-flex flex-wrap align-items-end gap-3">
-                                    <div class="flex-grow-1" style="min-width:200px;">
-                                        <label class="sof-filter-label" for="sof-in-received-search">Search</label>
-                                        <input type="text" id="sof-in-received-search" class="form-control form-control-sm" placeholder="Search by Channel, Order ID, SKU, Status...">
-                                    </div>
-                                    <div class="d-flex align-items-end gap-2">
-                                        <button type="button" class="btn btn-sm btn-primary" id="sof-in-received-filter-apply">Apply</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-in-received-filter-clear">Clear</button>
-                                    </div>
-                                </div>
-                            </div>
                             <p class="small text-muted mb-2 sof-date-scope-hint">In Received orders in the selected date range.</p>
                             <div id="sof-in-received-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-invoiced-pane" role="tabpanel" aria-labelledby="sof-invoiced-tab">
-                            <div id="sof-invoiced-filter-bar" class="mb-2" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
-                                <div class="d-flex flex-wrap align-items-end gap-3">
-                                    <div class="flex-grow-1" style="min-width:200px;">
-                                        <label class="sof-filter-label" for="sof-invoiced-search">Search</label>
-                                        <input type="text" id="sof-invoiced-search" class="form-control form-control-sm" placeholder="Search by Channel, Order ID, SKU, Status...">
-                                    </div>
-                                    <div class="d-flex align-items-end gap-2">
-                                        <button type="button" class="btn btn-sm btn-primary" id="sof-invoiced-filter-apply">Apply</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-invoiced-filter-clear">Clear</button>
-                                    </div>
-                                </div>
-                            </div>
                             <p class="small text-muted mb-2 sof-date-scope-hint">Invoiced orders in the selected date range.</p>
                             <div id="sof-invoiced-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-delivered-pane" role="tabpanel" aria-labelledby="sof-delivered-tab">
-                            <div id="sof-delivered-filter-bar" class="mb-2" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
-                                <div class="d-flex flex-wrap align-items-end gap-3">
-                                    <div class="flex-grow-1" style="min-width:200px;">
-                                        <label class="sof-filter-label" for="sof-delivered-search">Search</label>
-                                        <input type="text" id="sof-delivered-search" class="form-control form-control-sm" placeholder="Search by Channel, Order ID, SKU, Status...">
-                                    </div>
-                                    <div class="d-flex align-items-end gap-2">
-                                        <button type="button" class="btn btn-sm btn-primary" id="sof-delivered-filter-apply">Apply</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-delivered-filter-clear">Clear</button>
-                                    </div>
-                                </div>
-                            </div>
                             <p class="small text-muted mb-2 sof-date-scope-hint">Delivered / Received in the selected date range (Faire DELIVERED, Shein &amp; Reverb Received, etc.).</p>
                             <div id="sof-delivered-table" style="height: calc(100vh - 400px);"></div>
                         </div>
@@ -2034,17 +2004,7 @@
         sofReloadAllTablesForDateRange();
     }
 
-    $('#sof-date-filter-apply').on('click', sofApplyDateFilterFromInputs);
     $('#sof-date-from, #sof-date-to').on('change', sofApplyDateFilterFromInputs);
-
-    $('#sof-date-filter-clear').on('click', function () {
-        $('#sof-date-from').val(sofDefaultDateFrom());
-        $('#sof-date-to').val(sofDefaultDateTo());
-        $('#sof-carrier-filter').val('');
-        $('#sof-tracking-filter').val('');
-        $('#sof-channel-filter').val('');
-        sofReloadAllTablesForDateRange();
-    });
 
     $('#sof-carrier-filter').on('change', function () {
         sofUpdateDateFilterHint();
@@ -2597,14 +2557,14 @@
         const active = sofActiveOrderTable();
         if (active) {
             const searchMap = [
-                [pendingTable, '#sof-pending-search'],
-                [fulfilledTable, '#sof-fulfilled-search'],
-                [scanDoneTable, '#sof-scan-done-search'],
-                [inTransitTable, '#sof-in-transit-search'],
-                [inReceivedTable, '#sof-in-received-search'],
-                [invoicedTable, '#sof-invoiced-search'],
-                [deliveredTable, '#sof-delivered-search'],
-                [allOrderTable, '#sof-all-order-search'],
+                [pendingTable, '#sof-order-search'],
+                [fulfilledTable, '#sof-order-search'],
+                [scanDoneTable, '#sof-order-search'],
+                [inTransitTable, '#sof-order-search'],
+                [inReceivedTable, '#sof-order-search'],
+                [invoicedTable, '#sof-order-search'],
+                [deliveredTable, '#sof-order-search'],
+                [allOrderTable, '#sof-order-search'],
             ];
             for (let i = 0; i < searchMap.length; i++) {
                 if (searchMap[i][0] === active) {
@@ -3843,7 +3803,7 @@
     }
 
     function applyPendingFilters() {
-        sofApplyOrderTableFilter(pendingTable, '#sof-pending-search');
+        sofApplyOrderTableFilter(pendingTable, '#sof-order-search');
     }
 
     function ensurePendingTable() {
@@ -3902,7 +3862,7 @@
     }
 
     function applyFulfilledFilters() {
-        sofApplyOrderTableFilter(fulfilledTable, '#sof-fulfilled-search');
+        sofApplyOrderTableFilter(fulfilledTable, '#sof-order-search');
     }
 
     function ensureFulfilledTable() {
@@ -3974,7 +3934,7 @@
     }
 
     function applyScanDoneFilters() {
-        sofApplyOrderTableFilter(scanDoneTable, '#sof-scan-done-search');
+        sofApplyOrderTableFilter(scanDoneTable, '#sof-order-search');
     }
 
     function ensureScanDoneTable() {
@@ -4045,7 +4005,7 @@
     }
 
     function applyInTransitFilters() {
-        sofApplyOrderTableFilter(inTransitTable, '#sof-in-transit-search');
+        sofApplyOrderTableFilter(inTransitTable, '#sof-order-search');
     }
 
     function ensureInTransitTable() {
@@ -4116,7 +4076,7 @@
     }
 
     function applyInReceivedFilters() {
-        sofApplyOrderTableFilter(inReceivedTable, '#sof-in-received-search');
+        sofApplyOrderTableFilter(inReceivedTable, '#sof-order-search');
     }
 
     function ensureInReceivedTable() {
@@ -4187,7 +4147,7 @@
     }
 
     function applyInvoicedFilters() {
-        sofApplyOrderTableFilter(invoicedTable, '#sof-invoiced-search');
+        sofApplyOrderTableFilter(invoicedTable, '#sof-order-search');
     }
 
     function ensureInvoicedTable() {
@@ -4258,7 +4218,7 @@
     }
 
     function applyDeliveredFilters() {
-        sofApplyOrderTableFilter(deliveredTable, '#sof-delivered-search');
+        sofApplyOrderTableFilter(deliveredTable, '#sof-order-search');
     }
 
     function ensureDeliveredTable() {
@@ -4347,7 +4307,7 @@
     }
 
     function applyAllOrderFilters() {
-        sofApplyOrderTableFilter(allOrderTable, '#sof-all-order-search');
+        sofApplyOrderTableFilter(allOrderTable, '#sof-order-search');
     }
 
     function ensureAllOrderTable() {
@@ -4466,8 +4426,6 @@
     document.getElementById('sof-all-order-badge')?.addEventListener('click', function () {
         switchToAllOrderTab();
     });
-
-    $('#sof-filter-apply').on('click', applyFilters);
     $('#sof-search').on('keyup', function (e) {
         if (e.key === 'Enter') {
             applyFilters();
@@ -4475,113 +4433,12 @@
         }
         applyFilters();
     });
-    $('#sof-filter-clear').on('click', function () {
-        $('#sof-search').val('');
-        applyFilters();
-    });
-
-    $('#sof-pending-filter-apply').on('click', applyPendingFilters);
-    $('#sof-pending-search').on('keyup', function (e) {
-        if (e.key === 'Enter') {
-            applyPendingFilters();
-            return;
-        }
-        applyPendingFilters();
-    });
-    $('#sof-pending-filter-clear').on('click', function () {
-        $('#sof-pending-search').val('');
-        applyPendingFilters();
-    });
-
-    $('#sof-fulfilled-filter-apply').on('click', applyFulfilledFilters);
-    $('#sof-fulfilled-search').on('keyup', function (e) {
-        if (e.key === 'Enter') {
-            applyFulfilledFilters();
-            return;
-        }
-        applyFulfilledFilters();
-    });
-    $('#sof-fulfilled-filter-clear').on('click', function () {
-        $('#sof-fulfilled-search').val('');
-        applyFulfilledFilters();
-    });
-
-    $('#sof-scan-done-filter-apply').on('click', applyScanDoneFilters);
-    $('#sof-scan-done-search').on('keyup', function (e) {
-        if (e.key === 'Enter') {
-            applyScanDoneFilters();
-            return;
-        }
-        applyScanDoneFilters();
-    });
-    $('#sof-scan-done-filter-clear').on('click', function () {
-        $('#sof-scan-done-search').val('');
-        applyScanDoneFilters();
-    });
-
-    $('#sof-in-transit-filter-apply').on('click', applyInTransitFilters);
-    $('#sof-in-transit-search').on('keyup', function (e) {
-        if (e.key === 'Enter') {
-            applyInTransitFilters();
-            return;
-        }
-        applyInTransitFilters();
-    });
-    $('#sof-in-transit-filter-clear').on('click', function () {
-        $('#sof-in-transit-search').val('');
-        applyInTransitFilters();
-    });
-
-    $('#sof-in-received-filter-apply').on('click', applyInReceivedFilters);
-    $('#sof-in-received-search').on('keyup', function (e) {
-        if (e.key === 'Enter') {
-            applyInReceivedFilters();
-            return;
-        }
-        applyInReceivedFilters();
-    });
-    $('#sof-in-received-filter-clear').on('click', function () {
-        $('#sof-in-received-search').val('');
-        applyInReceivedFilters();
-    });
-
-    $('#sof-invoiced-filter-apply').on('click', applyInvoicedFilters);
-    $('#sof-invoiced-search').on('keyup', function (e) {
-        if (e.key === 'Enter') {
-            applyInvoicedFilters();
-            return;
-        }
-        applyInvoicedFilters();
-    });
-    $('#sof-invoiced-filter-clear').on('click', function () {
-        $('#sof-invoiced-search').val('');
-        applyInvoicedFilters();
-    });
-
-    $('#sof-delivered-filter-apply').on('click', applyDeliveredFilters);
-    $('#sof-delivered-search').on('keyup', function (e) {
-        if (e.key === 'Enter') {
-            applyDeliveredFilters();
-            return;
-        }
-        applyDeliveredFilters();
-    });
-    $('#sof-delivered-filter-clear').on('click', function () {
-        $('#sof-delivered-search').val('');
-        applyDeliveredFilters();
-    });
-
-    $('#sof-all-order-filter-apply').on('click', applyAllOrderFilters);
-    $('#sof-all-order-search').on('keyup', function (e) {
-        if (e.key === 'Enter') {
-            applyAllOrderFilters();
-            return;
-        }
-        applyAllOrderFilters();
-    });
-    $('#sof-all-order-filter-clear').on('click', function () {
-        $('#sof-all-order-search').val('');
-        applyAllOrderFilters();
+    let sofOrderSearchTimer = null;
+    $('#sof-order-search').on('input keyup', function () {
+        if (sofOrderSearchTimer) clearTimeout(sofOrderSearchTimer);
+        sofOrderSearchTimer = setTimeout(function () {
+            sofApplyAllCarrierFilters();
+        }, 150);
     });
 
     function sofMapPullTarget(r) {

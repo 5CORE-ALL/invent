@@ -2381,6 +2381,9 @@
                             <a href="{{ route('shipping.master') }}">PM Shipping Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('shipping.page.issues') }}">Shipping Cost Issue</a>
+                        </li>
+                        <li>
                             <a href="{{ route('general.specific.master') }}">PM General Specific Masters</a>
                         </li>
                         <li>

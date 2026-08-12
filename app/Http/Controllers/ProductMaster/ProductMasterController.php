@@ -36,6 +36,7 @@ use App\Services\WalmartService;
 use App\Services\WayfairApiService;
 use App\Support\OpenAiRequest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -989,14 +990,32 @@ class ProductMasterController extends Controller
             $product->Values = $values;
             $product->save();
 
+            // Match siblings with same dim/wt, persist links, auto-apply verified
+            $linkResult = ['linked_skus' => [], 'updated_skus' => [], 'group_key' => null];
+            try {
+                $linkResult = app(\App\Services\DimWtSkuLinkService::class)
+                    ->onVerifiedChanged($product, (int) $validated['verified_data'], Auth::user()?->name);
+            } catch (\Throwable $linkErr) {
+                Log::warning('Dim/Wt SKU link on verified failed: '.$linkErr->getMessage());
+            }
+
             \App\Http\Controllers\PurchaseMaster\CategoryController::forgetNotVerifiedSidebarCountCache();
+
+            $linkedCount = count($linkResult['updated_skus'] ?? []);
+            $message = 'Verified status updated successfully';
+            if ($linkedCount > 0) {
+                $message .= " (auto-applied to {$linkedCount} linked sibling SKU(s) with matching dim/wt)";
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Verified status updated successfully',
+                'message' => $message,
                 'data' => [
                     'sku' => $product->sku,
                     'verified_data' => $validated['verified_data'],
+                    'linked_skus' => $linkResult['linked_skus'] ?? [],
+                    'updated_skus' => $linkResult['updated_skus'] ?? [],
+                    'group_key' => $linkResult['group_key'] ?? null,
                 ],
             ]);
 
@@ -1048,6 +1067,13 @@ class ProductMasterController extends Controller
                 $product->Values = $values;
                 $product->save();
                 $updated++;
+
+                try {
+                    app(\App\Services\DimWtSkuLinkService::class)
+                        ->onVerifiedChanged($product, $verifiedValue, Auth::user()?->name);
+                } catch (\Throwable $linkErr) {
+                    Log::warning('Dim/Wt SKU link on bulk verified failed: '.$linkErr->getMessage());
+                }
             }
 
             $message = "Verified status updated for {$updated} SKU(s).";

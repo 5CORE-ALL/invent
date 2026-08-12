@@ -280,6 +280,13 @@
         .verified-data-dropdown option[value="0"] { color: #dc3545; }
         .verified-data-dropdown option[value="1"] { color: #28a745; }
 
+        #dim-wt-master-datatable th.col-dim-wt-link,
+        #dim-wt-master-datatable td.col-dim-wt-link {
+            min-width: 90px;
+            max-width: 160px;
+            font-size: 10px;
+        }
+
         /* Label Type dropdown in Type column — color by value */
         .label-type-dropdown {
             font-size: 10px;
@@ -741,6 +748,7 @@
                                     <th class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">item PKG</span></th>
                                     <th class="col-itm-pkg-cover text-center"><span class="th-vertical-label" style="font-size: 9px;">Itm pkg Cover</span></th>
                                     <th class="text-center"><span class="th-vertical-label">Verified</span></th>
+                                    <th class="text-center col-dim-wt-link"><span class="th-vertical-label" title="Sibling SKUs linked by matching dim/wt">Link SKU</span></th>
                                     <th><span class="th-vertical-label">Action</span></th>
                                 </tr>
                             </thead>
@@ -1644,6 +1652,25 @@
                     `;
                     row.appendChild(verifiedCell);
 
+                    // Link SKU column – siblings linked by matching dim/wt (dim_wt_sku_links)
+                    const linkedSkus = Array.isArray(item.dim_wt_linked_skus)
+                        ? item.dim_wt_linked_skus.filter(Boolean)
+                        : [];
+                    const linkCell = document.createElement('td');
+                    linkCell.className = 'text-center col-dim-wt-link';
+                    if (isParentRow) {
+                        linkCell.innerHTML = '<span class="text-muted">--</span>';
+                    } else if (linkedSkus.length === 0) {
+                        linkCell.innerHTML = '<span class="text-muted">—</span>';
+                        linkCell.title = 'No linked siblings yet. Verify a SKU to auto-link matching dim/wt siblings.';
+                    } else {
+                        const preview = linkedSkus.slice(0, 2).map(s => escapeHtml(String(s))).join(', ');
+                        const more = linkedSkus.length > 2 ? ` +${linkedSkus.length - 2}` : '';
+                        linkCell.innerHTML = `<span class="badge bg-info text-dark" style="font-size:10px; font-weight:500; white-space:normal; max-width:140px;">${preview}${more}</span>`;
+                        linkCell.title = 'Linked by matching dim/wt:\n' + linkedSkus.join('\n');
+                    }
+                    row.appendChild(linkCell);
+
                     // Action column
                     const actionCell = document.createElement('td');
                     actionCell.className = 'text-center';
@@ -1736,7 +1763,7 @@
                     } else if (section === 'carton_data') {
                         // Always show checkbox, Img, Parent, SKU (cols 0–3); keep utility tails
                         const isLeadIdentityCol = i < 4;
-                        const isTailUtilityCol = headerText.includes('verified') || /\baction\b/.test(headerText);
+                        const isTailUtilityCol = headerText.includes('verified') || headerText.includes('link sku') || /\baction\b/.test(headerText);
                         const isInstructionsPkgCol = headerText.includes('pkg');
                         visible = isLeadIdentityCol || isTailUtilityCol || isCtnDim || isCartonMetric || headerText.includes('status') || headerText === 'inv' || isInstructionsPkgCol;
                     }
@@ -1965,6 +1992,7 @@
                     29: { key: 'instructions_item_pkg', type: 'text' },
                     30: { key: 'item_pkg_cover', type: 'text' },
                     31: { key: 'verified_data', type: 'num' },
+                    32: { key: 'dim_wt_linked_skus', type: 'text' },
                 };
 
                 const getVal = (item, key) => {
@@ -1994,6 +2022,10 @@
                         let v = item.verified_data;
                         if ((v == null) && item.Values) v = item.Values.verified_data;
                         return (v === 1 || v === true) ? 1 : 0;
+                    }
+                    if (key === 'dim_wt_linked_skus') {
+                        const arr = Array.isArray(item.dim_wt_linked_skus) ? item.dim_wt_linked_skus : [];
+                        return arr.join(', ');
                     }
                     return item[key];
                 };
@@ -2997,11 +3029,14 @@
 
                 const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
                 if (siblingsCb) {
-                    siblingsCb.checked = false;
+                    // Restore last saved preference (checked/unchecked persists across opens)
+                    siblingsCb.checked = getSaveAlsoToSiblingsPref();
                     siblingsCb.disabled = isParentSkuString(skuStr);
                 }
 
-                bulkEditInitialValues = isBulk ? snapshotBulkEditFormValues() : null;
+                // Snapshot for both single and bulk so sibling-copy only pushes
+                // Verified / instructions when the user actually changed them.
+                bulkEditInitialValues = snapshotBulkEditFormValues();
                 
                 // Setup save button handler
                 const saveBtn = document.getElementById('saveDimWtBtn');
@@ -3102,11 +3137,13 @@
                         const isBulkSelection = !!(bulkTargets && bulkTargets.length > 1);
                         // Bulk: only changed fields. Sibling-copy from single edit: keep full form.
                         const payloadFields = isBulkSelection ? getBulkChangedFormData() : baseFormData;
-                        const instructionsChanged = !isBulkSelection
-                            || !bulkEditInitialValues
+                        // Only push these when the user changed them in the modal.
+                        // Previously !isBulkSelection made verifiedChanged always true, so
+                        // "save also to Siblings" overwrote every sibling's Verified status
+                        // (green → red when the edited SKU was not verified).
+                        const instructionsChanged = !bulkEditInitialValues
                             || String(instructionsRaw ?? '') !== String(bulkEditInitialValues.editInstructionsItemPkg ?? '');
-                        const verifiedChanged = !isBulkSelection
-                            || !bulkEditInitialValues
+                        const verifiedChanged = !bulkEditInitialValues
                             || String(verifiedValue) !== String(bulkEditInitialValues.editVerified ?? '0');
 
                         if (isBulkSelection
@@ -3246,20 +3283,24 @@
                             }
                         }
 
-                        // Save verified status (non-parent SKUs only)
-                        try {
-                            await makeRequest('/product_master/update-verified', 'POST', {
-                                sku: singleSku,
-                                verified_data: verifiedValue
-                            });
-                            const row = tableData.find(d => d.SKU === singleSku);
-                            if (row) {
-                                row.verified_data = verifiedValue;
-                                if (!row.Values) row.Values = {};
-                                row.Values.verified_data = verifiedValue;
+                        // Save verified only when the user changed it (avoid silent overwrites)
+                        const verifiedChangedSingle = !bulkEditInitialValues
+                            || String(verifiedValue) !== String(bulkEditInitialValues.editVerified ?? '0');
+                        if (verifiedChangedSingle) {
+                            try {
+                                await makeRequest('/product_master/update-verified', 'POST', {
+                                    sku: singleSku,
+                                    verified_data: verifiedValue
+                                });
+                                const row = tableData.find(d => d.SKU === singleSku);
+                                if (row) {
+                                    row.verified_data = verifiedValue;
+                                    if (!row.Values) row.Values = {};
+                                    row.Values.verified_data = verifiedValue;
+                                }
+                            } catch (verErr) {
+                                console.error('Verified save error:', verErr);
                             }
-                        } catch (verErr) {
-                            console.error('Verified save error:', verErr);
                         }
                     }
                     
@@ -3394,6 +3435,15 @@
 
             // Verified column – red/green dot toggle (event delegation)
             function setupVerifiedDropdowns() {
+                // Prevent scroll-wheel / trackpad from flipping the compact <select>
+                // and autosaving verified → not-verified by accident.
+                document.addEventListener('wheel', function(e) {
+                    if (e.target && e.target.classList && e.target.classList.contains('verified-data-dropdown')) {
+                        e.preventDefault();
+                        e.target.blur();
+                    }
+                }, { passive: false });
+
                 document.addEventListener('change', function(e) {
                     if (!e.target || !e.target.classList.contains('verified-data-dropdown')) return;
                     const dropdown = e.target;
@@ -3413,7 +3463,26 @@
                                     if (product.Values) product.Values.verified_data = verifiedValue;
                                     else if (!product.Values) product.Values = { verified_data: verifiedValue };
                                 }
-                                updateCounts();
+                                // Apply auto-linked sibling verified + refresh Link SKU column
+                                const linked = Array.isArray(data.data?.linked_skus) ? data.data.linked_skus : [];
+                                const updated = Array.isArray(data.data?.updated_skus) ? data.data.updated_skus : [];
+                                const groupSkus = Array.from(new Set([sku, ...linked]));
+                                groupSkus.forEach(groupSku => {
+                                    const row = tableData.find(d => d.SKU === groupSku);
+                                    if (!row) return;
+                                    row.dim_wt_linked_skus = groupSkus.filter(s => s !== groupSku);
+                                    if (updated.includes(groupSku) || groupSku === sku) {
+                                        row.verified_data = verifiedValue;
+                                        if (!row.Values) row.Values = {};
+                                        row.Values.verified_data = verifiedValue;
+                                    }
+                                });
+                                if (linked.length > 0 || updated.length > 0) {
+                                    showToast('success', data.message || 'Verified updated and linked siblings synced');
+                                    applyFilters();
+                                } else {
+                                    updateCounts();
+                                }
                             } else {
                                 showToast('danger', data.message || 'Failed to update verified status');
                                 dropdown.value = verifiedValue === 1 ? '0' : '1';
@@ -3424,7 +3493,7 @@
                         .catch(() => {
                             showToast('danger', 'Failed to update verified status');
                             dropdown.value = verifiedValue === 1 ? '0' : '1';
-                            dropdown.classList.toggle('verified', verifiedValue !== 1);
+                            dropdown.classList.toggle('verified', verifiedValue === 0);
                             dropdown.classList.toggle('not-verified', verifiedValue === 1);
                             dropdown.title = verifiedValue === 1 ? 'Not verified' : 'Verified';
                         });
@@ -3493,6 +3562,27 @@
             setupImport();
             setupSkuExport();
             setupSelectAll();
+            const SAVE_ALSO_TO_SIBLINGS_KEY = 'dimWtMaster.saveAlsoToSiblings';
+            function getSaveAlsoToSiblingsPref() {
+                try {
+                    return localStorage.getItem(SAVE_ALSO_TO_SIBLINGS_KEY) === '1';
+                } catch (e) {
+                    return false;
+                }
+            }
+            function setSaveAlsoToSiblingsPref(checked) {
+                try {
+                    localStorage.setItem(SAVE_ALSO_TO_SIBLINGS_KEY, checked ? '1' : '0');
+                } catch (e) { /* ignore quota / private mode */ }
+            }
+            const siblingsPrefCb = document.getElementById('editSaveAlsoToSiblings');
+            if (siblingsPrefCb) {
+                siblingsPrefCb.checked = getSaveAlsoToSiblingsPref();
+                siblingsPrefCb.addEventListener('change', function() {
+                    setSaveAlsoToSiblingsPref(!!siblingsPrefCb.checked);
+                });
+            }
+
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
@@ -3500,8 +3590,9 @@
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
                 const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
                 if (bulkHint) bulkHint.style.display = 'none';
+                // Keep "save also to Siblings" as the user's last choice (do not reset)
                 const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
-                if (siblingsCb) siblingsCb.checked = false;
+                if (siblingsCb) setSaveAlsoToSiblingsPref(!!siblingsCb.checked);
             });
         });
     </script>

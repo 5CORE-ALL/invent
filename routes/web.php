@@ -263,6 +263,7 @@ use App\Http\Controllers\ProductMaster\StockAnalysisController;
 use App\Http\Controllers\ProductMaster\ToBeDCController;
 use App\Http\Controllers\ProductMaster\ToOrderAnalysisController;
 use App\Http\Controllers\PurchaseMaster\CategoryController;
+use App\Http\Controllers\PurchaseMaster\ShippingPageIssuesController;
 use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
 use App\Http\Controllers\PurchaseMaster\ComparisonController;
 use App\Http\Controllers\PurchaseMaster\AdsLinkController;
@@ -4879,6 +4880,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shipping-master/history/{id}', [CategoryController::class, 'getShippingMasterHistory'])->whereNumber('id')->name('shipping.master.history');
     Route::get('/shipping-master/slab-history/{slabKey}', [CategoryController::class, 'getShippingSlabRateHistory'])->name('shipping.master.slab.history');
     Route::post('/shipping-master/slab-history', [CategoryController::class, 'storeShippingSlabRateHistory'])->name('shipping.master.slab.history.store');
+
+    Route::get('/shipping-page-issues', [ShippingPageIssuesController::class, 'index'])->name('shipping.page.issues');
+    Route::get('/shipping-page-issues/data', [ShippingPageIssuesController::class, 'data'])->name('shipping.page.issues.data');
+    Route::get('/shipping-page-issues/ship', [ShippingPageIssuesController::class, 'shipForSkuLookup'])->name('shipping.page.issues.ship');
+    Route::get('/shipping-page-issues/pin', [ShippingPageIssuesController::class, 'pinLookup'])->name('shipping.page.issues.pin');
+    Route::get('/shipping-page-issues/summary', [ShippingPageIssuesController::class, 'summary'])->name('shipping.page.issues.summary');
+    Route::get('/shipping-page-issues/history', [ShippingPageIssuesController::class, 'history'])->name('shipping.page.issues.history');
+    Route::post('/shipping-page-issues', [ShippingPageIssuesController::class, 'store'])->name('shipping.page.issues.store');
+    Route::put('/shipping-page-issues/{shippingPageIssue}', [ShippingPageIssuesController::class, 'update'])->name('shipping.page.issues.update');
+    Route::delete('/shipping-page-issues/{shippingPageIssue}', [ShippingPageIssuesController::class, 'destroy'])->name('shipping.page.issues.destroy');
     Route::get('/general-specific-master', [CategoryController::class, 'generalSpecificMaster'])->name('general.specific.master');
     Route::get('/general-specific-master-data-view', [CategoryController::class, 'getGeneralSpecificMasterData'])->name('general.specific.master.data');
     Route::get('/general-specific-master/skus', [CategoryController::class, 'getSkusForDropdown'])->name('general.specific.master.skus');

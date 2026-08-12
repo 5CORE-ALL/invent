@@ -766,6 +766,39 @@ class CategoryController extends Controller
             $result[] = $row;
         }
 
+        // Attach dim/wt sibling links from dim_wt_sku_links
+        try {
+            $linkMap = app(\App\Services\DimWtSkuLinkService::class)->linkedSkusMap();
+            if ($linkMap !== []) {
+                $normalize = static function (?string $sku): string {
+                    if ($sku === null || $sku === '') {
+                        return '';
+                    }
+                    $sku = str_replace("\u{00a0}", ' ', $sku);
+                    $sku = preg_replace('/\s+/u', ' ', trim($sku)) ?? trim($sku);
+
+                    return strtoupper($sku);
+                };
+                foreach ($result as &$row) {
+                    $norm = $normalize($row['SKU'] ?? '');
+                    $row['dim_wt_linked_skus'] = ($norm !== '' && isset($linkMap[$norm]))
+                        ? array_values($linkMap[$norm])
+                        : [];
+                }
+                unset($row);
+            } else {
+                foreach ($result as &$row) {
+                    $row['dim_wt_linked_skus'] = [];
+                }
+                unset($row);
+            }
+        } catch (\Throwable $e) {
+            foreach ($result as &$row) {
+                $row['dim_wt_linked_skus'] = [];
+            }
+            unset($row);
+        }
+
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
@@ -1009,6 +1042,8 @@ class CategoryController extends Controller
                 'label_qty' => 'nullable|integer',
                 'label_type' => 'nullable|string|in:ENV,STD,O-Size,Pallet',
                 'handling_charge' => 'nullable|string|max:3',
+                'o_size_charge' => 'nullable|string|max:20',
+                'pr_charge' => 'nullable|string|max:20',
                 'fba_ship_calculation' => 'nullable|numeric',
                 'fba_manual_ship' => 'nullable|numeric',
             ]);
@@ -1124,6 +1159,22 @@ class CategoryController extends Controller
                     $values['handling_charge'] = mb_substr(trim((string) $v), 0, 3);
                 }
             }
+            if (array_key_exists('o_size_charge', $validated)) {
+                $v = $validated['o_size_charge'];
+                if ($v === null || $v === '') {
+                    $values['o_size_charge'] = null;
+                } else {
+                    $values['o_size_charge'] = mb_substr(trim((string) $v), 0, 20);
+                }
+            }
+            if (array_key_exists('pr_charge', $validated)) {
+                $v = $validated['pr_charge'];
+                if ($v === null || $v === '') {
+                    $values['pr_charge'] = null;
+                } else {
+                    $values['pr_charge'] = mb_substr(trim((string) $v), 0, 20);
+                }
+            }
 
             // Snapshot of the OLD Values (before save) for change tracking
             $oldValues = is_array($product->getOriginal('Values'))
@@ -1157,10 +1208,27 @@ class CategoryController extends Controller
                 }
             }
 
+            // Auto-push dim/wt changes to linked sibling SKUs (dim_wt_sku_links)
+            $linkResult = ['linked_skus' => [], 'updated_skus' => []];
+            try {
+                $linkResult = app(\App\Services\DimWtSkuLinkService::class)
+                    ->onDimWtChanged($product, $validated, Auth::user()?->name);
+            } catch (\Throwable $linkErr) {
+                Log::warning('Dim/Wt SKU link sync on update failed: '.$linkErr->getMessage());
+            }
+
+            $linkedUpdated = count($linkResult['updated_skus'] ?? []);
+            $message = 'Dim & Wt Master updated successfully';
+            if ($linkedUpdated > 0) {
+                $message .= " (auto-synced to {$linkedUpdated} linked sibling SKU(s))";
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Dim & Wt Master updated successfully',
+                'message' => $message,
                 'data' => $product,
+                'linked_skus' => $linkResult['linked_skus'] ?? [],
+                'updated_skus' => $linkResult['updated_skus'] ?? [],
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw $e;
@@ -1250,6 +1318,8 @@ class CategoryController extends Controller
             'label_qty' => 'Label Qty',
             'label_type' => 'Label Type',
             'handling_charge' => 'Handling Charge',
+            'o_size_charge' => 'O-Size Charge',
+            'pr_charge' => 'PR Charge',
         ];
     }
 
@@ -1279,6 +1349,8 @@ class CategoryController extends Controller
             'label_qty',
             'label_type',
             'handling_charge',
+            'o_size_charge',
+            'pr_charge',
             'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship',
             'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni',
         ];
@@ -1724,6 +1796,39 @@ class CategoryController extends Controller
                 : null;
 
             $result[] = $row;
+        }
+
+        // Attach dim/wt sibling links from dim_wt_sku_links (same as dim-wt-master)
+        try {
+            $linkMap = app(\App\Services\DimWtSkuLinkService::class)->linkedSkusMap();
+            if ($linkMap !== []) {
+                $normalize = static function (?string $sku): string {
+                    if ($sku === null || $sku === '') {
+                        return '';
+                    }
+                    $sku = str_replace("\u{00a0}", ' ', $sku);
+                    $sku = preg_replace('/\s+/u', ' ', trim($sku)) ?? trim($sku);
+
+                    return strtoupper($sku);
+                };
+                foreach ($result as &$row) {
+                    $norm = $normalize($row['SKU'] ?? '');
+                    $row['dim_wt_linked_skus'] = ($norm !== '' && isset($linkMap[$norm]))
+                        ? array_values($linkMap[$norm])
+                        : [];
+                }
+                unset($row);
+            } else {
+                foreach ($result as &$row) {
+                    $row['dim_wt_linked_skus'] = [];
+                }
+                unset($row);
+            }
+        } catch (\Throwable $e) {
+            foreach ($result as &$row) {
+                $row['dim_wt_linked_skus'] = [];
+            }
+            unset($row);
         }
 
         return response()->json([
@@ -7045,6 +7150,11 @@ PROMPT;
                 'uni' => 'uni',
                 'handling_charge' => 'handling_charge',
                 'handling__charge' => 'handling_charge',
+                'o_size_charge' => 'o_size_charge',
+                'o_size__charge' => 'o_size_charge',
+                'osize_charge' => 'o_size_charge',
+                'pr_charge' => 'pr_charge',
+                'pr__charge' => 'pr_charge',
             ];
 
             // Find column indices
@@ -7114,6 +7224,10 @@ PROMPT;
                                 $value = mb_substr($value, 0, 100);
                             } elseif ($field === 'handling_charge') {
                                 $value = mb_substr($value, 0, 3);
+                            } elseif ($field === 'o_size_charge') {
+                                $value = mb_substr($value, 0, 20);
+                            } elseif ($field === 'pr_charge') {
+                                $value = mb_substr($value, 0, 20);
                             } elseif ($field === 'verified_data') {
                                 // Sheet supplies 0/1 (or yes/true); store the real value as int 0/1.
                                 // 0/blank means "no change" — keep the old verified value.

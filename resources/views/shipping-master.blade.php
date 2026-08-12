@@ -635,6 +635,13 @@
         .verified-data-dropdown option[value="0"] { color: #dc3545; }
         .verified-data-dropdown option[value="1"] { color: #28a745; }
 
+        #dim-wt-master-datatable th.col-dim-wt-link,
+        #dim-wt-master-datatable td.col-dim-wt-link {
+            min-width: 90px;
+            max-width: 160px;
+            font-size: 10px;
+        }
+
         /* Label Type dropdown in Type column — color by value */
         .label-type-dropdown {
             font-size: 10px;
@@ -671,6 +678,23 @@
         .label-type-dropdown:focus {
             box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.25);
             outline: none;
+        }
+
+        .o-size-charge-input {
+            width: 58px;
+            max-width: 70px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 4px;
+            text-align: center;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .o-size-charge-input:focus {
+            outline: none;
+            border-color: #86b7fe;
+            box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.25);
         }
 
         /* Ensure table fits container - auto layout so columns fit content */
@@ -1098,8 +1122,14 @@
                                     <th data-col-key="handling_charge" data-col-label="Handling Charge" class="shipping-rate-header" title="Handling Charge (up to 3 characters)">
                                         <span class="th-vertical-label">Handling<br>Charge</span>
                                     </th>
+                                    <th data-col-key="o_size_charge" data-col-label="O-Size Charge" class="shipping-rate-header" title="O-Size Charge (text input)">
+                                        <span class="th-vertical-label">O-Size<br>Charge</span>
+                                    </th>
+                                    <th data-col-key="pr_charge" data-col-label="PR Charge" class="shipping-rate-header" title="PR Charge (up to 20 characters)">
+                                        <span class="th-vertical-label">PR<br>Charge</span>
+                                    </th>
                                     <th data-col-key="inv" data-col-label="INV" class="shipping-rate-header"><span class="th-vertical-label">INV</span></th>
-                                    <th data-col-key="ship" data-col-label="Ship" class="th-has-filter shipping-rate-header shipping-ship-col" data-pm-ship-col="ship">
+                                    <th data-col-key="ship" data-col-label="Ship" class="th-has-filter shipping-rate-header shipping-ship-col" data-pm-ship-col="ship" title="Total Ship = Ship + Handling Charge + O-Size Charge + PR Charge">
                                         <div class="th-vertical-label">Ship</div>
                                         <select id="filterShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Ship column">
                                             <option value="all">All</option>
@@ -1272,6 +1302,9 @@
                                     <th data-col-key="ctn_qty" data-col-label="CTN QTY"><span class="th-vertical-label">CTN<br>QTY</span></th>
                                     <th data-col-key="ctn_cbm_each" data-col-label="Carton CBM each"><span class="th-vertical-label">Carton CBM<br>each</span></th>
                                     <th data-col-key="verified" data-col-label="Verified" class="text-center"><span class="th-vertical-label">Verified</span></th>
+                                    <th data-col-key="dim_wt_link" data-col-label="Link SKU" class="text-center col-dim-wt-link" title="Sibling SKUs linked by matching dim/wt">
+                                        <span class="th-vertical-label">Link SKU</span>
+                                    </th>
                                     <th data-col-key="action" data-col-label="Action"><span class="th-vertical-label">Action</span></th>
                                 </tr>
                             </thead>
@@ -1329,6 +1362,18 @@
                                 <label for="editHandlingCharge" class="form-label fw-bold" title="Up to 3 characters">Handling Charge</label>
                                 <input type="text" class="form-control fw-bold" id="editHandlingCharge" name="handling_charge"
                                     maxlength="3" placeholder="e.g. HC" title="Handling Charge (max 3 characters)" autocomplete="off">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="editOSizeCharge" class="form-label fw-bold" title="O-Size Charge (text, up to 20 characters)">O-Size Charge</label>
+                                <input type="text" class="form-control fw-bold" id="editOSizeCharge" name="o_size_charge"
+                                    maxlength="20" placeholder="e.g. 5" title="O-Size Charge (max 20 characters)" autocomplete="off">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editPrCharge" class="form-label fw-bold" title="PR Charge (text, up to 20 characters)">PR Charge</label>
+                                <input type="text" class="form-control fw-bold" id="editPrCharge" name="pr_charge"
+                                    maxlength="20" placeholder="e.g. 5" title="PR Charge (max 20 characters)" autocomplete="off">
                             </div>
                         </div>
                         
@@ -1513,6 +1558,17 @@
                             <div class="col-md-6">
                                 <label for="editFbaManualShip" class="form-label fw-bold">FBA manual ship</label>
                                 <input type="number" step="0.01" class="form-control fw-bold" id="editFbaManualShip" name="fba_manual_ship" placeholder="Manual + send (total)">
+                            </div>
+                        <div class="row mb-2">
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="editSaveAlsoToSiblings"
+                                           style="border-color:#198754; accent-color:#198754;">
+                                    <label class="form-check-label fw-semibold text-success" for="editSaveAlsoToSiblings">
+                                        save also to Siblings
+                                    </label>
+                                    <div class="small text-muted">When checked, changes also apply to all child SKUs under the same parent.</div>
+                                </div>
                             </div>
                         </div>
                     </form>
@@ -1981,6 +2037,61 @@
                 return v.slice(0, 3);
             }
 
+            /** O-Size Charge: optional free text, max 20 characters. */
+            function normalizeOSizeCharge(raw) {
+                const v = String(raw == null ? '' : raw).trim();
+                if (!v) return '';
+                return v.slice(0, 20);
+            }
+
+            /** PR Charge: optional free text, max 20 characters. */
+            function normalizePrCharge(raw) {
+                const v = String(raw == null ? '' : raw).trim();
+                if (!v) return '';
+                return v.slice(0, 20);
+            }
+
+            /** Parse charge text as a number for totals (non-numeric → 0). */
+            function parseChargeAmount(raw) {
+                if (raw === null || raw === undefined || raw === '') return 0;
+                const n = parseFloat(String(raw).trim());
+                return Number.isFinite(n) ? n : 0;
+            }
+
+            /**
+             * Total Ship shown in the Ship column:
+             * Ship + Handling Charge + O-Size Charge + PR Charge.
+             */
+            function calcTotalShip(item, isParentRow) {
+                if (!item) return null;
+                const ship = parseChargeAmount(getOuterCarrierDisplayRate(item, 'ship', !!isParentRow));
+                const handling = parseChargeAmount(
+                    item.handling_charge ?? (item.Values && item.Values.handling_charge)
+                );
+                const oSize = parseChargeAmount(
+                    item.o_size_charge ?? (item.Values && item.Values.o_size_charge)
+                );
+                const pr = parseChargeAmount(
+                    item.pr_charge ?? (item.Values && item.Values.pr_charge)
+                );
+                return ship + handling + oSize + pr;
+            }
+
+            function totalShipTooltip(item, isParentRow) {
+                const ship = parseChargeAmount(getOuterCarrierDisplayRate(item, 'ship', !!isParentRow));
+                const handling = parseChargeAmount(
+                    item.handling_charge ?? (item.Values && item.Values.handling_charge)
+                );
+                const oSize = parseChargeAmount(
+                    item.o_size_charge ?? (item.Values && item.Values.o_size_charge)
+                );
+                const pr = parseChargeAmount(
+                    item.pr_charge ?? (item.Values && item.Values.pr_charge)
+                );
+                const total = ship + handling + oSize + pr;
+                return `Total Ship ${formatNumber(total, 2)} = Ship ${formatNumber(ship, 2)} + Handling ${formatNumber(handling, 2)} + O-Size ${formatNumber(oSize, 2)} + PR ${formatNumber(pr, 2)}`;
+            }
+
             function applyLabelTypeColor(dropdown, labelType) {
                 if (!dropdown) return;
                 const type = normalizeLabelType(labelType);
@@ -2400,6 +2511,44 @@
                     }
                     row.appendChild(handlingChargeCell);
 
+                    // O-Size Charge — inline text input (saved to Values.o_size_charge)
+                    const oSizeChargeCell = document.createElement('td');
+                    oSizeChargeCell.className = 'text-center shipping-rate-cell';
+                    if (isParentRow) {
+                        oSizeChargeCell.textContent = '--';
+                    } else if (pkg.isExtraPackage) {
+                        const oscRead = normalizeOSizeCharge(item.o_size_charge);
+                        oSizeChargeCell.textContent = oscRead || '';
+                        if (oscRead) oSizeChargeCell.title = oscRead;
+                    } else {
+                        const oscVal = normalizeOSizeCharge(sourceItem.o_size_charge);
+                        oSizeChargeCell.innerHTML = `
+                            <input type="text" class="o-size-charge-input"
+                                maxlength="20"
+                                data-sku="${escapeHtml(sourceItem.SKU || '')}"
+                                data-id="${escapeHtml(String(sourceItem.id || ''))}"
+                                data-prev="${escapeHtml(oscVal)}"
+                                value="${escapeHtml(oscVal)}"
+                                title="O-Size Charge"
+                                autocomplete="off">
+                        `;
+                    }
+                    row.appendChild(oSizeChargeCell);
+
+                    // PR Charge — display value; edit via modal (Values.pr_charge)
+                    const prChargeCell = document.createElement('td');
+                    prChargeCell.className = 'text-center shipping-rate-cell';
+                    if (isParentRow) {
+                        prChargeCell.textContent = '--';
+                    } else {
+                        const prVal = normalizePrCharge(
+                            pkg.isExtraPackage ? item.pr_charge : sourceItem.pr_charge
+                        );
+                        prChargeCell.textContent = prVal || '';
+                        if (prVal) prChargeCell.title = prVal;
+                    }
+                    row.appendChild(prChargeCell);
+
                     // INV column (bold; child 0 / missing = red)
                     const invCell = document.createElement('td');
                     invCell.className = 'text-center shipping-rate-cell';
@@ -2451,10 +2600,15 @@
                         td.textContent = formatNumber(n, 2);
                     };
 
+                    // Ship column shows Total Ship (Ship + Handling + O-Size)
+                    const shipSource = pkg.isExtraPackage ? item : sourceItem;
                     const shipPmCell = document.createElement('td');
-                    setShippingNumericCell(shipPmCell, getOuterCarrierDisplayRate(item, 'ship', isParentRow), isParentRow);
+                    setShippingNumericCell(shipPmCell, calcTotalShip(shipSource, isParentRow), isParentRow);
                     shipPmCell.classList.add('shipping-ship-col');
-                    annotateOuterCarrierCell(shipPmCell, item, 'ship', isParentRow);
+                    shipPmCell.setAttribute('data-sku', sourceItem.SKU || item.SKU || '');
+                    if (!isParentRow) {
+                        shipPmCell.title = totalShipTooltip(shipSource, false);
+                    }
                     row.appendChild(shipPmCell);
 
                     const shipBbPmCell = document.createElement('td');
@@ -2652,6 +2806,26 @@
                     }
                     row.appendChild(verifiedCell);
 
+                    // Link SKU — siblings linked by matching dim/wt (dim_wt_sku_links)
+                    const linkSource = pkg.isExtraPackage && pkg.componentItem ? pkg.componentItem : sourceItem;
+                    const linkedSkus = Array.isArray(linkSource.dim_wt_linked_skus)
+                        ? linkSource.dim_wt_linked_skus.filter(Boolean)
+                        : [];
+                    const linkCell = document.createElement('td');
+                    linkCell.className = 'text-center col-dim-wt-link';
+                    if (isParentRow) {
+                        linkCell.innerHTML = '<span class="text-muted">--</span>';
+                    } else if (linkedSkus.length === 0) {
+                        linkCell.innerHTML = '<span class="text-muted">—</span>';
+                        linkCell.title = 'No linked siblings yet. Verify a SKU to auto-link matching dim/wt siblings.';
+                    } else {
+                        const preview = linkedSkus.slice(0, 2).map(s => escapeHtml(String(s))).join(', ');
+                        const more = linkedSkus.length > 2 ? ` +${linkedSkus.length - 2}` : '';
+                        linkCell.innerHTML = `<span class="badge bg-info text-dark" style="font-size:10px; font-weight:500; white-space:normal; max-width:140px;">${preview}${more}</span>`;
+                        linkCell.title = 'Linked by matching dim/wt:\n' + linkedSkus.join('\n');
+                    }
+                    row.appendChild(linkCell);
+
                     // Action column
                     // Multi-package Combo → edit opens Combo with Pkg 1 + Pkg 2 panels.
                     // Otherwise: primary row edits source; extra package row edits component.
@@ -2721,37 +2895,39 @@
                 5:  'label_qty',
                 6:  'label_type',
                 7:  'handling_charge',
-                8:  'inv',
-                9:  'ship',
-                10: 'ship_bb',
-                11: 'tt_ship',
-                12: 'temu_ship',
-                13: 'temu_gofo',
-                14: 'gofo',
-                15: 'fedex',
-                16: 'ups',
-                17: 'usps',
-                18: 'uni',
-                19: 'fba_sku',
-                20: 'fba_ship',
-                21: 'fba_manual_ship',
-                22: 'wt_act_kg',
-                23: 'wt_act',
-                // 24: wt_oz (computed; not editable)
-                25: 'l',
-                26: 'w',
-                27: 'h',
-                28: 'wt_decl',
-                29: 'l_decl',
-                30: 'w_decl',
-                31: 'h_decl',
-                32: 'l_cm',
-                33: 'w_cm',
-                34: 'h_cm',
-                35: 'ctn_l',
-                36: 'ctn_w',
-                37: 'ctn_h',
-                39: 'ctn_qty'
+                8:  'o_size_charge',
+                9:  'pr_charge',
+                10: 'inv',
+                11: 'ship',
+                12: 'ship_bb',
+                13: 'tt_ship',
+                14: 'temu_ship',
+                15: 'temu_gofo',
+                16: 'gofo',
+                17: 'fedex',
+                18: 'ups',
+                19: 'usps',
+                20: 'uni',
+                21: 'fba_sku',
+                22: 'fba_ship',
+                23: 'fba_manual_ship',
+                24: 'wt_act_kg',
+                25: 'wt_act',
+                // 26: wt_oz (computed; not editable)
+                27: 'l',
+                28: 'w',
+                29: 'h',
+                30: 'wt_decl',
+                31: 'l_decl',
+                32: 'w_decl',
+                33: 'h_decl',
+                34: 'l_cm',
+                35: 'w_cm',
+                36: 'h_cm',
+                37: 'ctn_l',
+                38: 'ctn_w',
+                39: 'ctn_h',
+                41: 'ctn_qty'
             };
 
             /** Human-readable field labels used by the small "Enter Missing
@@ -2760,6 +2936,8 @@
                 label_qty:       'Label Qty',
                 label_type:      'Label Type',
                 handling_charge: 'Handling Charge',
+                o_size_charge:   'O-Size Charge',
+                pr_charge:       'PR Charge',
                 wt_act_kg:       'Item Weight ACT (Kg)',
                 wt_act:          'Item WT ACT (LB)',
                 wt_decl:         'Itm wt GW Decl',
@@ -3109,7 +3287,7 @@
                 uni: false,
             };
             const SHIPPING_COL_CATEGORIES = {
-                basic: ['select', 'image', 'parent', 'sku', 'status', 'label_qty', 'label_type', 'handling_charge', 'inv', 'verified', 'action'],
+                basic: ['select', 'image', 'parent', 'sku', 'status', 'label_qty', 'label_type', 'handling_charge', 'o_size_charge', 'pr_charge', 'inv', 'verified', 'dim_wt_link', 'action'],
                 ship_rates: ['ship', 'ship_bb', 'tt_ship', 'temu_ship', 'temu_gofo', 'gofo', 'fedex', 'ups', 'usps', 'uni', 'fba_sku', 'fba_ship', 'fba_manual_ship'],
                 wt: ['wt_act_kg', 'wt_act', 'wt_oz', 'wt_decl'],
                 dimensions: ['l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each'],
@@ -3600,10 +3778,16 @@
             function matchesMarketplaceShipColFilter(item, fieldName, mode) {
                 if (!mode || mode === 'all') return true;
                 const isP = isParentSkuItem(item);
-                // Filter against the same value the outer cell shows (slab rate).
-                const raw = (typeof getOuterCarrierDisplayRate === 'function')
-                    ? getOuterCarrierDisplayRate(item, fieldName, isP)
-                    : item[fieldName];
+                // Ship column shows Total Ship (ship + handling + o-size); filter that value.
+                // Other carrier cols filter against the same slab/display rate as the cell.
+                let raw;
+                if (fieldName === 'ship' && typeof calcTotalShip === 'function') {
+                    raw = calcTotalShip(item, isP);
+                } else {
+                    raw = (typeof getOuterCarrierDisplayRate === 'function')
+                        ? getOuterCarrierDisplayRate(item, fieldName, isP)
+                        : item[fieldName];
+                }
                 const kind = marketplaceShipDisplayKind(raw, isP);
                 if (mode === 'zero') return kind === 'zero';
                 if (mode === 'dash') return kind === 'dash';
@@ -4146,6 +4330,19 @@
                 if (key === 'handling_charge') {
                     return normalizeHandlingCharge(item.handling_charge);
                 }
+                if (key === 'o_size_charge') {
+                    return normalizeOSizeCharge(item.o_size_charge);
+                }
+                if (key === 'pr_charge') {
+                    return normalizePrCharge(item.pr_charge);
+                }
+                if (key === 'dim_wt_linked_skus') {
+                    const arr = Array.isArray(item.dim_wt_linked_skus) ? item.dim_wt_linked_skus : [];
+                    return arr.join(', ');
+                }
+                if (key === 'ship') {
+                    return calcTotalShip(item, false);
+                }
                 if (key === 'shopify_inv') {
                     return item.shopify_inv;
                 }
@@ -4239,9 +4436,12 @@
                     label_qty: { key: 'label_qty', type: 'num' },
                     label_type: { key: 'label_type', type: 'text' },
                     handling_charge: { key: 'handling_charge', type: 'text' },
+                    o_size_charge: { key: 'o_size_charge', type: 'text' },
+                    pr_charge: { key: 'pr_charge', type: 'text' },
                     inv: { key: 'shopify_inv', type: 'num' },
                     ship: { key: 'ship', type: 'num' },
                     ship_bb: { key: 'ship_bb', type: 'num' },
+                    dim_wt_link: { key: 'dim_wt_linked_skus', type: 'text' },
                     tt_ship: { key: 'tt_ship', type: 'num' },
                     temu_ship: { key: 'temu_ship', type: 'num' },
                     temu_gofo: { key: 'temu_gofo', type: 'num' },
@@ -4364,7 +4564,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "Label Qty", "Type", "Handling Charge", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "OZ", "Length (inch)", "Width (inch)", "Height (Inch)", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "Label Qty", "Type", "Handling Charge", "O-Size Charge", "PR Charge", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "OZ", "Length (inch)", "Width (inch)", "Height (Inch)", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -4380,6 +4580,12 @@
                         "Handling Charge": {
                             key: "handling_charge"
                         },
+                        "O-Size Charge": {
+                            key: "o_size_charge"
+                        },
+                        "PR Charge": {
+                            key: "pr_charge"
+                        },
                         "Status": {
                             key: "status"
                         },
@@ -4387,7 +4593,7 @@
                             key: "shopify_inv"
                         },
                         "Ship": {
-                            key: "ship"
+                            computed: "total_ship"
                         },
                         "Ship BB": {
                             key: "ship_bb"
@@ -4532,6 +4738,10 @@
                                             row.push(v === null || v === undefined || v === '' ? '' : (parseFloat(v) || 0));
                                             return;
                                         }
+                                        if (colDef.computed === 'total_ship') {
+                                            row.push(calcTotalShip(item, false));
+                                            return;
+                                        }
                                         const key = colDef.key;
                                         let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
 
@@ -4540,6 +4750,12 @@
                                         }
                                         if (key === 'handling_charge') {
                                             value = normalizeHandlingCharge(value);
+                                        }
+                                        if (key === 'o_size_charge') {
+                                            value = normalizeOSizeCharge(value);
+                                        }
+                                        if (key === 'pr_charge') {
+                                            value = normalizePrCharge(value);
                                         }
                                         // CTN CBM: calculated as CTN L * CTN W * CTN H / 1000000
                                         if (key === 'ctn_cbm') {
@@ -4888,6 +5104,44 @@
                 return selected;
             }
 
+            /** All non-parent child SKUs that share any of the given Parent values. */
+            function getChildSkusForParents(parentKeys) {
+                const parents = new Set(
+                    [...(parentKeys || [])]
+                        .filter(Boolean)
+                        .map(p => String(p).trim())
+                        .filter(Boolean)
+                        .map(p => p.toUpperCase())
+                );
+                if (parents.size === 0) return [];
+                const seen = new Set();
+                const result = [];
+                for (const item of (tableData || [])) {
+                    if (!item || !item.Parent) continue;
+                    if (!parents.has(String(item.Parent).trim().toUpperCase())) continue;
+                    if (isParentSkuItem(item)) continue;
+                    const key = item.id != null ? ('id:' + item.id) : ('sku:' + normalizeSkuKey(item.SKU));
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    result.push(item);
+                }
+                return result;
+            }
+
+            const SAVE_ALSO_TO_SIBLINGS_KEY = 'shippingMaster.saveAlsoToSiblings';
+            function getSaveAlsoToSiblingsPref() {
+                try {
+                    return localStorage.getItem(SAVE_ALSO_TO_SIBLINGS_KEY) === '1';
+                } catch (e) {
+                    return false;
+                }
+            }
+            function setSaveAlsoToSiblingsPref(checked) {
+                try {
+                    localStorage.setItem(SAVE_ALSO_TO_SIBLINGS_KEY, checked ? '1' : '0');
+                } catch (e) { /* ignore */ }
+            }
+
             // Push Data functionality
             function setupPushData() {
                 document.getElementById('pushDataBtn').addEventListener('click', async function() {
@@ -5075,6 +5329,8 @@
                 { id: 'editLabelQty', key: 'label_qty', type: 'int' },
                 { id: 'editLabelType', key: 'label_type', type: 'label_type' },
                 { id: 'editHandlingCharge', key: 'handling_charge', type: 'handling_charge' },
+                { id: 'editOSizeCharge', key: 'o_size_charge', type: 'o_size_charge' },
+                { id: 'editPrCharge', key: 'pr_charge', type: 'pr_charge' },
                 { id: 'editWtActKg', key: 'wt_act_kg', type: 'num' },
                 { id: 'editWtAct', key: 'wt_act', type: 'num' },
                 { id: 'editWtDecl', key: 'wt_decl', type: 'wt_decl' },
@@ -5113,6 +5369,14 @@
                 if (field.type === 'handling_charge') {
                     const hc = normalizeHandlingCharge(t);
                     return hc === '' ? null : hc;
+                }
+                if (field.type === 'o_size_charge') {
+                    const osc = normalizeOSizeCharge(t);
+                    return osc === '' ? null : osc;
+                }
+                if (field.type === 'pr_charge') {
+                    const pr = normalizePrCharge(t);
+                    return pr === '' ? null : pr;
                 }
                 if (field.type === 'wt_decl') {
                     if (t === '') return null;
@@ -5201,6 +5465,10 @@
                     (labelQtyVal !== null && labelQtyVal !== undefined && labelQtyVal !== '') ? labelQtyVal : '';
                 document.getElementById('editLabelType').value = normalizeLabelType(product.label_type);
                 document.getElementById('editHandlingCharge').value = normalizeHandlingCharge(product.handling_charge);
+                const editOSizeEl = document.getElementById('editOSizeCharge');
+                if (editOSizeEl) editOSizeEl.value = normalizeOSizeCharge(product.o_size_charge);
+                const editPrEl = document.getElementById('editPrCharge');
+                if (editPrEl) editPrEl.value = normalizePrCharge(product.pr_charge);
                 document.getElementById('editWtActKg').value = product.wt_act_kg || '';
                 document.getElementById('editWtAct').value = product.wt_act || '';
                 // Decl: show saved wt_decl when present; otherwise seed from ACT (no slab round-up)
@@ -5261,8 +5529,14 @@
                 document.getElementById('editFbaShip').value = shipNum(product.fba_ship);
                 document.getElementById('editFbaManualShip').value = shipNum(product.fba_manual_ship);
 
-                // Snapshot after populate so bulk save only sends fields the user edits
-                bulkEditInitialValues = isBulk ? snapshotBulkEditFormValues() : null;
+                // Snapshot for bulk / sibling-save "only changed" checks
+                bulkEditInitialValues = snapshotBulkEditFormValues();
+
+                const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
+                if (siblingsCb) {
+                    siblingsCb.checked = getSaveAlsoToSiblingsPref();
+                    siblingsCb.disabled = isParentSkuItem(product) || !!editPackageMode;
+                }
                 
                 // Setup save button handler
                 const saveBtn = document.getElementById('saveDimWtBtn');
@@ -5276,12 +5550,13 @@
                 modal.show();
             }
 
-            // Save Shipping Master (single or bulk)
+            // Save Shipping Master (single, bulk, or + siblings when checkbox ticked)
             async function saveDimWt() {
                 const saveBtn = document.getElementById('saveDimWtBtn');
                 if (!saveBtn) return;
                 const originalText = saveBtn.innerHTML;
                 const bulkTargets = (bulkEditList && bulkEditList.length > 1) ? bulkEditList.slice() : null;
+                const applyToSiblings = !!(document.getElementById('editSaveAlsoToSiblings')?.checked);
                 
                 try {
                     saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
@@ -5337,6 +5612,10 @@
                     baseFormData.label_type = normalizeLabelType(document.getElementById('editLabelType').value);
                     const handlingChargeVal = normalizeHandlingCharge(document.getElementById('editHandlingCharge').value);
                     baseFormData.handling_charge = handlingChargeVal === '' ? null : handlingChargeVal;
+                    const oSizeChargeVal = normalizeOSizeCharge(document.getElementById('editOSizeCharge')?.value);
+                    baseFormData.o_size_charge = oSizeChargeVal === '' ? null : oSizeChargeVal;
+                    const prChargeVal = normalizePrCharge(document.getElementById('editPrCharge')?.value);
+                    baseFormData.pr_charge = prChargeVal === '' ? null : prChargeVal;
                     // Marketplace ship fields are read-only in Edit — only Slab Rates may change them.
 
                     const fbaShipStr = document.getElementById('editFbaShip').value.trim();
@@ -5352,10 +5631,32 @@
                         }
                     }
                     
+                    // Resolve targets: bulk selection and/or save-also-to-siblings
+                    let multiTargets = null;
                     if (bulkTargets && bulkTargets.length > 0) {
-                        // Bulk: apply ONLY fields the user changed — leave other SKU data intact
-                        const changedFields = getBulkChangedFormData();
-                        const changedKeys = Object.keys(changedFields);
+                        multiTargets = bulkTargets.filter(p => !isParentSkuItem(p));
+                    } else if (applyToSiblings && !editPackageMode) {
+                        const singleSku = document.getElementById('editSku').value;
+                        const singleId = document.getElementById('editProductId').value;
+                        let product = (tableData || []).find(d => singleId && String(d.id) === String(singleId))
+                            || (tableData || []).find(d => normalizeSkuKey(d.SKU) === normalizeSkuKey(singleSku));
+                        if (!product) {
+                            product = {
+                                id: singleId,
+                                SKU: singleSku,
+                                Parent: document.getElementById('editParent').value || ''
+                            };
+                        }
+                        const parentKeys = [product.Parent, document.getElementById('editParent').value].filter(Boolean);
+                        const siblings = getChildSkusForParents(parentKeys);
+                        multiTargets = siblings.length > 0 ? siblings : [product];
+                    }
+
+                    if (multiTargets && multiTargets.length > 0) {
+                        const isBulkSelection = !!(bulkTargets && bulkTargets.length > 0);
+                        // Bulk: only changed fields. Sibling-copy from single edit: full form.
+                        const payloadFields = isBulkSelection ? getBulkChangedFormData() : baseFormData;
+                        const changedKeys = Object.keys(payloadFields);
                         if (changedKeys.length === 0) {
                             showToast('warning', 'No fields changed — nothing to update on selected SKUs.');
                             return;
@@ -5363,9 +5664,10 @@
 
                         let successCount = 0;
                         let failCount = 0;
-                        for (const product of bulkTargets) {
+                        for (const product of multiTargets) {
+                            if (isParentSkuItem(product)) continue;
                             const formData = {
-                                ...changedFields,
+                                ...payloadFields,
                                 product_id: product.id,
                                 sku: product.SKU,
                                 parent: product.Parent || ''
@@ -5388,7 +5690,10 @@
                         bulkEditInitialValues = null;
                         document.getElementById('editDimWtModalLabel').textContent = 'Edit Shipping Master';
                         if (failCount === 0) {
-                            showToast('success', successCount + ' item(s) updated (' + changedKeys.length + ' field(s) only)!');
+                            const msg = applyToSiblings && !isBulkSelection
+                                ? (successCount + ' sibling SKU(s) updated successfully!')
+                                : (successCount + ' item(s) updated (' + changedKeys.length + ' field(s) only)!');
+                            showToast('success', msg);
                         } else {
                             showToast('warning', successCount + ' updated, ' + failCount + ' failed.');
                         }
@@ -5441,7 +5746,9 @@
                             ctn_weight_kg: baseFormData.ctn_weight_kg,
                             ctn_weight_lb: baseFormData.ctn_weight_lb,
                             label_type: baseFormData.label_type,
-                            handling_charge: baseFormData.handling_charge
+                            handling_charge: baseFormData.handling_charge,
+                            o_size_charge: baseFormData.o_size_charge,
+                            pr_charge: baseFormData.pr_charge
                         };
                         if (baseFormData.label_qty !== undefined) comboPayload.label_qty = baseFormData.label_qty;
                         if (baseFormData.fba_ship_calculation !== undefined) {
@@ -5522,6 +5829,12 @@
                             if (baseFormData.label_qty !== undefined) target.label_qty = baseFormData.label_qty;
                             if (baseFormData.handling_charge !== undefined) {
                                 target.handling_charge = baseFormData.handling_charge;
+                            }
+                            if (baseFormData.o_size_charge !== undefined) {
+                                target.o_size_charge = baseFormData.o_size_charge;
+                            }
+                            if (baseFormData.pr_charge !== undefined) {
+                                target.pr_charge = baseFormData.pr_charge;
                             }
                         }
                     }
@@ -5674,6 +5987,13 @@
 
             // Verified column – red/green dot toggle (event delegation)
             function setupVerifiedDropdowns() {
+                document.addEventListener('wheel', function(e) {
+                    if (e.target && e.target.classList && e.target.classList.contains('verified-data-dropdown')) {
+                        e.preventDefault();
+                        e.target.blur();
+                    }
+                }, { passive: false });
+
                 document.addEventListener('change', function(e) {
                     if (!e.target || !e.target.classList.contains('verified-data-dropdown')) return;
                     const dropdown = e.target;
@@ -5687,11 +6007,36 @@
                         .then(r => r.json())
                         .then(data => {
                             if (data.success) {
-                                const product = tableData.find(d => d.SKU === sku);
+                                const product = tableData.find(d =>
+                                    normalizeSkuKey(d.SKU) === normalizeSkuKey(sku)
+                                );
                                 if (product) {
                                     product.verified_data = verifiedValue;
                                     if (product.Values) product.Values.verified_data = verifiedValue;
                                     else if (!product.Values) product.Values = { verified_data: verifiedValue };
+                                }
+                                // Auto-link matching dim/wt siblings + apply verified
+                                const linked = Array.isArray(data.data?.linked_skus) ? data.data.linked_skus : [];
+                                const updated = Array.isArray(data.data?.updated_skus) ? data.data.updated_skus : [];
+                                const groupSkus = Array.from(new Set([sku, ...linked]));
+                                groupSkus.forEach(groupSku => {
+                                    const row = tableData.find(d =>
+                                        normalizeSkuKey(d.SKU) === normalizeSkuKey(groupSku)
+                                    );
+                                    if (!row) return;
+                                    row.dim_wt_linked_skus = groupSkus.filter(s =>
+                                        normalizeSkuKey(s) !== normalizeSkuKey(groupSku)
+                                    );
+                                    if (updated.some(u => normalizeSkuKey(u) === normalizeSkuKey(groupSku))
+                                        || normalizeSkuKey(groupSku) === normalizeSkuKey(sku)) {
+                                        row.verified_data = verifiedValue;
+                                        if (!row.Values) row.Values = {};
+                                        row.Values.verified_data = verifiedValue;
+                                    }
+                                });
+                                if (linked.length > 0 || updated.length > 0) {
+                                    showToast('success', data.message || 'Verified updated and linked siblings synced');
+                                    applyFilters();
                                 }
                             } else {
                                 showToast('danger', data.message || 'Failed to update verified status');
@@ -5703,7 +6048,7 @@
                         .catch(() => {
                             showToast('danger', 'Failed to update verified status');
                             dropdown.value = verifiedValue === 1 ? '0' : '1';
-                            dropdown.classList.toggle('verified', verifiedValue !== 1);
+                            dropdown.classList.toggle('verified', verifiedValue === 0);
                             dropdown.classList.toggle('not-verified', verifiedValue === 1);
                             dropdown.title = verifiedValue === 1 ? 'Not verified' : 'Verified';
                         });
@@ -5763,6 +6108,81 @@
             }
             setupLabelTypeDropdowns();
 
+            // O-Size Charge — inline text input (blur / Enter to save)
+            function refreshShipTotalCellsForSku(sku) {
+                if (!sku || !Array.isArray(tableData)) return;
+                const product = tableData.find(d => d.SKU === sku);
+                if (!product) return;
+                const total = calcTotalShip(product, false);
+                const tip = totalShipTooltip(product, false);
+                document.querySelectorAll(`.shipping-ship-col[data-sku="${CSS.escape(String(sku))}"]`).forEach(td => {
+                    td.textContent = formatNumber(total, 2);
+                    td.title = tip;
+                    td.classList.toggle('shipping-rate-alert', !Number.isFinite(total) || total === 0);
+                });
+            }
+
+            async function saveOSizeChargeInput(input) {
+                if (!input || input.disabled) return;
+                const sku = input.getAttribute('data-sku');
+                const productId = input.getAttribute('data-id');
+                const prev = normalizeOSizeCharge(input.getAttribute('data-prev'));
+                const next = normalizeOSizeCharge(input.value);
+                input.value = next;
+                if (next === prev) return;
+                input.disabled = true;
+                try {
+                    const response = await fetch('/dim-wt-master/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            product_id: productId ? Number(productId) : undefined,
+                            sku: sku,
+                            o_size_charge: next === '' ? null : next
+                        })
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok || data.success === false) {
+                        throw new Error(data.message || 'Failed to update O-Size Charge');
+                    }
+                    input.setAttribute('data-prev', next);
+                    const product = tableData.find(d =>
+                        (productId && String(d.id) === String(productId)) || d.SKU === sku
+                    );
+                    if (product) {
+                        product.o_size_charge = next === '' ? null : next;
+                        if (product.Values && typeof product.Values === 'object') {
+                            product.Values.o_size_charge = product.o_size_charge;
+                        }
+                    }
+                    refreshShipTotalCellsForSku(sku);
+                    showToast('success', 'O-Size Charge updated');
+                } catch (err) {
+                    input.value = prev;
+                    showToast('danger', err.message || 'Failed to update O-Size Charge');
+                } finally {
+                    input.disabled = false;
+                }
+            }
+
+            function setupOSizeChargeInputs() {
+                document.addEventListener('change', function(e) {
+                    if (!e.target || !e.target.classList.contains('o-size-charge-input')) return;
+                    saveOSizeChargeInput(e.target);
+                });
+                document.addEventListener('keydown', function(e) {
+                    if (!e.target || !e.target.classList.contains('o-size-charge-input')) return;
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.target.blur();
+                    }
+                });
+            }
+            setupOSizeChargeInputs();
+
             populateWtActLbFilterOptions();
 
             // Initialize (search and playback listeners once to avoid duplicates on reload)
@@ -5788,6 +6208,14 @@
                 });
             }
 
+            const siblingsPrefCb = document.getElementById('editSaveAlsoToSiblings');
+            if (siblingsPrefCb) {
+                siblingsPrefCb.checked = getSaveAlsoToSiblingsPref();
+                siblingsPrefCb.addEventListener('change', function() {
+                    setSaveAlsoToSiblingsPref(!!siblingsPrefCb.checked);
+                });
+            }
+
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
@@ -5796,6 +6224,8 @@
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Shipping Master';
                 const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
                 if (bulkHint) bulkHint.style.display = 'none';
+                const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
+                if (siblingsCb) setSaveAlsoToSiblingsPref(!!siblingsCb.checked);
             });
 
             // Slab Rates: apply per-carrier rates to all SKUs in a weight slab.
