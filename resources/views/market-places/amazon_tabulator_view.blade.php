@@ -20,6 +20,22 @@
 
         @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'css'])
 
+        /* Uniform body-cell font size across all Amazon tabulator columns */
+        #amazon-table .tabulator-row .tabulator-cell {
+            font-size: 13px !important;
+            line-height: 1.25 !important;
+        }
+        #amazon-table .tabulator-row .tabulator-cell span,
+        #amazon-table .tabulator-row .tabulator-cell a,
+        #amazon-table .tabulator-row .tabulator-cell div,
+        #amazon-table .tabulator-row .tabulator-cell button,
+        #amazon-table .tabulator-row .tabulator-cell label,
+        #amazon-table .tabulator-row .tabulator-cell input:not([type="checkbox"]):not([type="radio"]),
+        #amazon-table .tabulator-row .tabulator-cell select,
+        #amazon-table .tabulator-row .tabulator-cell i {
+            font-size: 13px !important;
+        }
+
         /* Give room between items without inflating control height */
         #amazon-filter-bar { gap: 8px 10px !important; }
         #summary-stats {
@@ -1880,6 +1896,7 @@
                     const isSprice = currentSkuChartMetric === 'sprice';
                     const isPrmt = currentSkuChartMetric === 'prmt';
                     const isCpn = currentSkuChartMetric === 'cpn';
+                    const isPushPrc = currentSkuChartMetric === 'push_prc';
                     const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
                     const values = isCvr ? data.map(d => Number(d.cvr_percent) || 0)
                         : isViews ? data.map(d => Number(d.views) || 0)
@@ -1892,6 +1909,10 @@
                             if (isFinite(sp) && sp > 0) return sp;
                             return Number(d.price) || 0;
                         })
+                        : isPushPrc ? data.map(d => {
+                            const n = Number(d.push_prc);
+                            return isFinite(n) && n > 0 ? n : null;
+                        })
                         : isPrmt ? data.map(d => {
                             const n = Number(d.prmt_pct);
                             return isFinite(n) ? n : null;
@@ -1903,17 +1924,17 @@
                         : data.map(d => Number(d.price) || 0);
                     const refLabelEl = document.getElementById('skuChartRefLabel');
                     const refDotEl = document.getElementById('skuChartRefDot');
-                    const refLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %' };
+                    const refLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %', push_prc: 'Push Prc' };
                     const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
                     if (refLabelEl) refLabelEl.textContent = refLabelText;
-                    const refColors = { cvr: '#008000', views: '#0000FF', inv: '#6c757d', inv_amz: '#17a2b8', al30: '#e83e8c', ovl30: '#fd7e14', sprice: '#0d6efd', prmt: '#0d6efd', cpn: '#20c997' };
+                    const refColors = { cvr: '#008000', views: '#0000FF', inv: '#6c757d', inv_amz: '#17a2b8', al30: '#e83e8c', ovl30: '#fd7e14', sprice: '#0d6efd', prmt: '#0d6efd', cpn: '#20c997', push_prc: '#FF9900' };
                     if (refDotEl) refDotEl.style.background = refColors[currentSkuChartMetric] || '#adb5bd';
 
                     skuMetricsChart.data.labels = labels;
                     skuMetricsChart.data.datasets[0].data = values;
-                    skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isSprice) ? ' (USD)' : ((isPrmt || isCpn || isCvr) ? ' (%)' : ''));
+                    skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isSprice || isPushPrc) ? ' (USD)' : ((isPrmt || isCpn || isCvr) ? ' (%)' : ''));
                     skuMetricsChart.data.datasets[0].borderColor = refColors[currentSkuChartMetric] || '#adb5bd';
-                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', inv: 'rgba(108,117,125,0.1)', inv_amz: 'rgba(23,162,184,0.1)', al30: 'rgba(232,62,140,0.1)', ovl30: 'rgba(253,126,20,0.1)', sprice: 'rgba(13,110,253,0.1)', prmt: 'rgba(13,110,253,0.1)', cpn: 'rgba(32,201,151,0.1)' };
+                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', inv: 'rgba(108,117,125,0.1)', inv_amz: 'rgba(23,162,184,0.1)', al30: 'rgba(232,62,140,0.1)', ovl30: 'rgba(253,126,20,0.1)', sprice: 'rgba(13,110,253,0.1)', prmt: 'rgba(13,110,253,0.1)', cpn: 'rgba(32,201,151,0.1)', push_prc: 'rgba(255,153,0,0.12)' };
                     skuMetricsChart.data.datasets[0].backgroundColor = bgColors[currentSkuChartMetric] || 'rgba(108,117,125,0.08)';
                     const cvrFmt = v => (Number(v) === v ? v.toFixed(1) : v) + '%';
                     const viewsFmt = intFmt;
@@ -1930,6 +1951,7 @@
                         else if (isViews) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'View L30: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isInv || isInvAmz || isAl30 || isOvl30) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return refLabelText + ': ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isSprice) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'S PRC: ' + skuChartFmtVal(context.parsed.y || 0); };
+                        else if (isPushPrc) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Push Prc: ' + skuChartFmtVal(context.parsed.y || 0); };
                         else skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Price: ' + skuChartFmtVal(context.parsed.y || 0); };
                     }
 
@@ -4164,7 +4186,7 @@
                 const days = $(this).val();
                 const daysNum = parseInt(days, 10);
                 const rangeLabel = daysNum === 0 ? 'Lifetime' : 'L' + daysNum;
-                const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %' };
+                const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %', push_prc: 'Push Prc' };
                 const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
                 $('#skuChartModalSuffix').text(metricLabel + ' (Rolling ' + rangeLabel + ')');
                 if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0);
@@ -4341,7 +4363,7 @@
                         cssClass: "text-primary",
                         tooltip: true,
                         frozen: true,
-                        width: 150,
+                        width: 120,
                         visible: true,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -4399,7 +4421,7 @@
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search SKU...",
                         frozen: true,
-                        width: 250,
+                        width: 200,
                         formatter: function(cell) {
                             const sku = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -4653,16 +4675,11 @@
                             else if (ratingVal > 4.5) ratingColor = '#e83e8c';
                             const count = parseInt(reviews, 10) || 0;
                             const reviewColor = count < 4 ? '#a00211' : '#6c757d';
-                            const reviewLabel = count === 1 ? '1 review' : (count.toLocaleString() + ' reviews');
                             const src = row.amz_reviews_source ? String(row.amz_reviews_source) : 'amazon';
-                            return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;" title="Source: ${escapeHtmlAttr(src)}">
-                                <span style="color: ${ratingColor}; font-weight: 600;">
+                            return `<span style="color: ${ratingColor}; font-weight: 600;" title="Source: ${escapeHtmlAttr(src)} · ${count.toLocaleString()} reviews">
                                     <i class="fa fa-star"></i> ${ratingVal.toFixed(1)}
-                                </span>
-                                <span style="font-size: 11px; color: ${reviewColor}; font-weight: 600;">
-                                    ${reviewLabel}
-                                </span>
-                            </div>`;
+                                    <span style="color: ${reviewColor};">(${count.toLocaleString()})</span>
+                                </span>`;
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const ra = parseFloat(aRow.getData().amz_avg_rating) || 0;
@@ -4688,7 +4705,7 @@
                             const href = 'https://www.amazon.com/dp/' + encodeURIComponent(itemId);
                             return `<a href="${escapeHtmlAttr(href)}" target="_blank" rel="noopener noreferrer"
                                 title="Buyer link — Amz ASIN ${escapeHtmlAttr(itemId)}"
-                                style="font-weight:600;color:#0d6efd;text-decoration:none;font-size:12px;"
+                                style="font-weight:600;color:#0d6efd;text-decoration:none;"
                                 onclick="event.stopPropagation();">
                                 <i class="fas fa-external-link-alt me-1"></i>Buyer
                             </a>`;
@@ -4713,7 +4730,7 @@
                             const href = 'https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin=' + encodeURIComponent(itemId);
                             return `<a href="${escapeHtmlAttr(href)}" target="_blank" rel="noopener noreferrer"
                                 title="Seller Central inventory — Amz ASIN ${escapeHtmlAttr(itemId)}"
-                                style="font-weight:600;color:#0d6efd;text-decoration:none;font-size:12px;"
+                                style="font-weight:600;color:#0d6efd;text-decoration:none;"
                                 onclick="event.stopPropagation();">
                                 <i class="fas fa-external-link-alt me-1"></i>Seller
                             </a>`;
@@ -5020,9 +5037,7 @@
                                 return '<span style="color: #999;">N/A</span>';
                             }
 
-                            let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
-                            
-                            // Show lowest price OUTSIDE modal (incl. shipping if applied)
+                            // LMP price + clickable competitor count in brackets: $28.70 (4)
                             if (lmpPrice) {
                                 const base = parseFloat(lmpPrice) || 0;
                                 const finalPrice = lmpWithShipping(rowData);
@@ -5030,21 +5045,34 @@
                                 const priceFormatted = '$' + finalPrice.toFixed(2);
                                 const currentPrice = parseFloat(rowData.price || 0);
                                 const priceColor = (finalPrice < currentPrice) ? '#dc3545' : '#28a745';
+                                const shipTip = shipCost > 0
+                                    ? ('$' + base.toFixed(2) + ' + $' + shipCost.toFixed(2) + ' ship')
+                                    : '';
+                                let html = '<span style="color: ' + priceColor + '; font-weight: 600;"'
+                                    + (shipTip ? (' title="' + escAttr(shipTip) + '"') : '') + '>'
+                                    + priceFormatted;
+                                if (totalCompetitors > 0) {
+                                    html += ' <a href="#" class="view-lmp-competitors" data-sku="' + escAttr(sku)
+                                        + '" data-linked-skus="' + linkedSkusAttr + '"'
+                                        + ' title="View ' + totalCompetitors + ' competitor'
+                                        + (totalCompetitors === 1 ? '' : 's') + '"'
+                                        + ' style="color: #007bff; text-decoration: none; cursor: pointer; font-weight: 600;">'
+                                        + '(' + totalCompetitors + ')</a>';
+                                }
+                                html += '</span>';
+                                return html;
+                            }
 
-                                const shipTip = shipCost > 0 ? ` title="$${base.toFixed(2)} + $${shipCost.toFixed(2)} ship"` : '';
-                                html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;"${shipTip}>${priceFormatted}</span>`;
-                            }
-                            
-                            // Show link to open modal with all competitors
                             if (totalCompetitors > 0) {
-                                html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
-                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
-                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
-                                </a>`;
+                                return '<a href="#" class="view-lmp-competitors" data-sku="' + escAttr(sku)
+                                    + '" data-linked-skus="' + linkedSkusAttr + '"'
+                                    + ' title="View ' + totalCompetitors + ' competitor'
+                                    + (totalCompetitors === 1 ? '' : 's') + '"'
+                                    + ' style="color: #007bff; text-decoration: none; cursor: pointer; font-weight: 600;">'
+                                    + '(' + totalCompetitors + ')</a>';
                             }
-                            
-                            html += '</div>';
-                            return html;
+
+                            return '<span style="color: #999;">N/A</span>';
                         },
                         width: 100
                     },
@@ -6801,6 +6829,7 @@
                 if (field === 'row_select') return 'Row Select';
                 if (field === '_select') return 'Select';
                 if (field === '_accept') return 'Push Prices';
+                if (field === 'push_prc') return 'Push Prc';
                 const raw = (def && def.title != null) ? def.title : field;
                 const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
                 return t || field;
@@ -6821,7 +6850,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|_select|sprice|s_status|pls_status|_accept|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|_select|sprice|s_status|pls_status|_accept|push_prc|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|s\s*st|pls|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';
@@ -7592,7 +7621,7 @@
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
                     $('#sku-chart-days-filter').val('30');
-                    const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %' };
+                    const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %', push_prc: 'Push Prc' };
                     const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
                     $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30)');
                     $('#skuChartLoading').show();

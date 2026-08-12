@@ -753,6 +753,10 @@ class OverallAmazonController extends Controller
                     $row['cpn_pct'] = $cpnPct !== null ? (string) $cpnPct : null;
                     $row['_prmt_pct_applied'] = $prmtPct ?? 0;
                     $row['_cpn_pct_applied'] = $cpnPct ?? 0;
+                    $row['PUSH_PRC_STATUS'] = $raw['PUSH_PRC_STATUS'] ?? null;
+                    $row['PUSH_PRC_VALUE'] = isset($raw['PUSH_PRC_VALUE']) && is_numeric($raw['PUSH_PRC_VALUE'])
+                        ? round((float) $raw['PUSH_PRC_VALUE'], 2)
+                        : null;
                     $row['Spft%'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;
                     $row['SGPFT'] = $raw['SGPFT'] ?? null;
@@ -1507,12 +1511,17 @@ class OverallAmazonController extends Controller
         if ($hasCpn) {
             $merged['PEF_CPN_PCT'] = max(0, round((float) $request->input('cpn_pct'), 2));
         }
+        if ($request->boolean('record_push_prc')) {
+            $merged['PUSH_PRC_STATUS'] = 'pushed';
+            $merged['PUSH_PRC_VALUE'] = $spriceFloat;
+            $merged['PUSH_PRC_PUSHED_AT'] = now()->toDateTimeString();
+        }
 
         $amazonDataView->value = $merged;
         $amazonDataView->save();
         Log::info('Data saved successfully', ['sku' => $sku]);
 
-        // Keep today's SKU daily snapshot in sync so S PRC / PRMT% / CPN% history dots stay current (PDT)
+        // Keep today's SKU daily snapshot in sync so S PRC / PRMT% / CPN% / Push Prc history dots stay current (PDT)
         try {
             $today = Carbon::now('America/Los_Angeles')->toDateString();
             $daily = AmazonSkuDailyData::firstOrNew([
@@ -1528,6 +1537,9 @@ class OverallAmazonController extends Controller
             }
             if ($hasCpn) {
                 $dailyPayload['cpn_pct'] = $merged['PEF_CPN_PCT'];
+            }
+            if ($request->boolean('record_push_prc')) {
+                $dailyPayload['push_prc'] = $spriceFloat;
             }
             $daily->daily_data = $dailyPayload;
             $daily->save();
@@ -1547,6 +1559,8 @@ class OverallAmazonController extends Controller
             'sgpft_percent' => $sgpft,
             'prmt_pct' => $merged['PEF_PRMT_PCT'] ?? null,
             'cpn_pct' => $merged['PEF_CPN_PCT'] ?? null,
+            'PUSH_PRC_STATUS' => $merged['PUSH_PRC_STATUS'] ?? null,
+            'PUSH_PRC_VALUE' => $merged['PUSH_PRC_VALUE'] ?? null,
         ]);
     }
 
@@ -3058,6 +3072,9 @@ class OverallAmazonController extends Controller
                     $cpnHist = isset($data['cpn_pct']) && is_numeric($data['cpn_pct'])
                         ? round((float) $data['cpn_pct'], 2)
                         : null;
+                    $pushPrcHist = isset($data['push_prc']) && is_numeric($data['push_prc'])
+                        ? round((float) $data['push_prc'], 2)
+                        : null;
                     $dataByDate[$dateKey] = [
                         'date' => $dateKey,
                         'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
@@ -3067,6 +3084,7 @@ class OverallAmazonController extends Controller
                             : round((float) ($data['price'] ?? 0), 2),
                         'prmt_pct' => $prmtHist,
                         'cpn_pct' => $cpnHist,
+                        'push_prc' => $pushPrcHist,
                         'views' => $views,
                         'cvr_percent' => $cvr,
                         'ad_percent' => round((float) ($data['ad_percent'] ?? 0), 2),

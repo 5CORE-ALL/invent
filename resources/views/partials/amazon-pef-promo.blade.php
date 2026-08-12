@@ -8,7 +8,7 @@
 @if($amazonPefPromoPart === 'css' || $amazonPefPromoPart === 'all')
         /* Dil vs PRMT / CVR vs CPN — same UX as /pricing-errors-fix */
         .amz-pef-promo-cell {
-            font-size: 11px;
+            font-size: inherit;
             font-weight: 600;
             color: #64748b;
         }
@@ -290,10 +290,14 @@
         function amzPefPromoHistoryDotHtml(sku, metric, pct) {
             if (!sku) return '';
             const n = Number(pct);
-            const has = isFinite(n);
-            const color = has && n > 0 ? (metric === 'cpn' ? '#20c997' : '#0d6efd') : '#adb5bd';
-            const tip = (metric === 'cpn' ? 'CPN%' : 'PRMT%')
-                + (has ? (' = ' + n + '%') : '')
+            const has = isFinite(n) && n > 0;
+            let color = '#adb5bd';
+            let label = metric;
+            if (metric === 'cpn') { color = has ? '#20c997' : '#adb5bd'; label = 'CPN%'; }
+            else if (metric === 'prmt') { color = has ? '#0d6efd' : '#adb5bd'; label = 'PRMT%'; }
+            else if (metric === 'push_prc') { color = has ? '#FF9900' : '#adb5bd'; label = 'Push Prc'; }
+            const tip = label
+                + (has ? (metric === 'push_prc' ? (' = $' + Number(n).toFixed(2)) : (' = ' + n + '%')) : '')
                 + ' — click for daily history (PDT)';
             return '<button type="button" class="btn btn-sm p-0 view-sku-chart amz-pef-hist-dot align-middle" '
                 + 'data-sku="' + amzPefEscAttr(sku) + '" data-metric="' + amzPefEscAttr(metric) + '" '
@@ -925,7 +929,175 @@
                         applyAmzPefPromoFromCell(cell, 'dsc');
                     },
                 },
+                {
+                    title: 'Push Prc',
+                    field: 'push_prc',
+                    width: 78,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: false,
+                    headerTooltip: 'Push Std Prc to Amazon with PRMT% + CPN% applied. Dot = PDT push history.',
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (!amzPefIsChildRow(d)) return '';
+                        const sku = amzPefSku(d);
+                        const pushPrice = computeAmzPushPrcFromStd(d);
+                        const status = String(d.PUSH_PRC_STATUS || '');
+                        const histVal = d.PUSH_PRC_VALUE != null ? d.PUSH_PRC_VALUE : pushPrice;
+                        const dot = amzPefPromoHistoryDotHtml(sku, 'push_prc', histVal);
+                        if (!(pushPrice > 0)) {
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
+                                + dot + '<span style="color:#adb5bd;" title="Set Std Prc first">—</span></span>';
+                        }
+                        let icon = '<i class="fas fa-upload"></i>';
+                        let color = '#FF9900';
+                        let tip = 'Push Std $' + pushPrice.toFixed(2) + ' to Amazon (with PRMT% + CPN%)';
+                        if (status === 'pushed') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            color = '#28a745';
+                            tip = 'Pushed $' + (Number(d.PUSH_PRC_VALUE) || pushPrice).toFixed(2) + ' — click to push again';
+                        } else if (status === 'error') {
+                            icon = '<i class="fa-solid fa-xmark"></i>';
+                            color = '#dc3545';
+                            tip = 'Last push failed — click to retry';
+                        } else if (status === 'processing') {
+                            icon = '<i class="fas fa-spinner fa-spin"></i>';
+                            color = '#ffc107';
+                            tip = 'Pushing…';
+                        }
+                        const asin = (d.asin != null && String(d.asin).trim() !== '')
+                            ? amzPefEscAttr(String(d.asin).trim()) : '';
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
+                            + dot
+                            + '<button type="button" class="btn btn-sm p-0 amz-push-prc-btn" '
+                            + 'data-sku="' + amzPefEscAttr(sku) + '" data-asin="' + asin + '" '
+                            + 'data-price="' + pushPrice.toFixed(2) + '" '
+                            + 'title="' + amzPefEscAttr(tip) + '" '
+                            + 'style="border:none;background:none;cursor:pointer;color:' + color
+                            + ';padding:0;line-height:1;vertical-align:middle;">'
+                            + icon + '</button></span>';
+                    },
+                    cellClick: function(e) {
+                        if (e.target.closest('.view-sku-chart') || e.target.closest('.amz-pef-hist-dot')
+                            || e.target.closest('.amz-push-prc-btn')) {
+                            e.stopPropagation();
+                            return false;
+                        }
+                    },
+                },
             ];
+        }
+
+        /** Std Prc × (1 − PRMT%/100) × (1 − CPN%/100) */
+        function computeAmzPushPrcFromStd(d) {
+            const std = Number(d.STANDARD_PRICE) || 0;
+            if (!(std > 0)) return null;
+            const prmt = Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
+            const cpn = Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
+            let price = std;
+            if (prmt > 0 && prmt < 100) price = price * (1 - (prmt / 100));
+            if (cpn > 0 && cpn < 100) price = price * (1 - (cpn / 100));
+            price = amzPefRound2(price);
+            return price >= 0.01 ? price : null;
+        }
+
+        function pushAmzStdPrcWithPromos($btn, row) {
+            const d = row.getData();
+            const sku = amzPefSku(d);
+            const price = computeAmzPushPrcFromStd(d);
+            const asin = (d.asin && String(d.asin).trim() !== '') ? String(d.asin).trim() : '';
+            if (!sku || !(price > 0)) {
+                amzPefToast('error', 'Set Std Prc first (and optional PRMT%/CPN%)');
+                return;
+            }
+            const prmt = Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
+            const cpn = Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
+            if (!confirm(
+                'Push Std Prc to Amazon for ' + sku + '?\n\n'
+                + 'Std: $' + Number(d.STANDARD_PRICE).toFixed(2) + '\n'
+                + 'PRMT%: ' + prmt + '\n'
+                + 'CPN%: ' + cpn + '\n'
+                + '→ Push price: $' + price.toFixed(2)
+            )) return;
+
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            row.update({ PUSH_PRC_STATUS: 'processing' });
+
+            $.ajax({
+                url: '/apply-amazon-price',
+                method: 'POST',
+                timeout: 120000,
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: {
+                    sku: sku,
+                    price: price,
+                    asin: asin || null,
+                    push_shopify: false,
+                    update_amazon_min_price: true,
+                    _token: amzPefCsrf(),
+                },
+            }).done(function(response) {
+                if (response && response.errors && response.errors.length) {
+                    row.update({ PUSH_PRC_STATUS: 'error' });
+                    amzPefToast('error', (response.errors[0] && response.errors[0].message) || 'Push failed');
+                    $btn.prop('disabled', false).html(html);
+                    if (table) table.redraw(true);
+                    return;
+                }
+                // Persist SPRICE + Push Prc daily history (PDT)
+                $.ajax({
+                    url: '/save-amazon-sprice',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                    data: {
+                        sku: sku,
+                        sprice: price,
+                        prmt_pct: prmt,
+                        cpn_pct: cpn,
+                        record_push_prc: 1,
+                        _token: amzPefCsrf(),
+                    },
+                }).done(function(saveRes) {
+                    const updates = {
+                        SPRICE: price,
+                        SPRICE_STATUS: 'pushed',
+                        PUSH_PRC_STATUS: 'pushed',
+                        PUSH_PRC_VALUE: price,
+                        prmt_pct: String(prmt),
+                        cpn_pct: String(cpn),
+                        _prmt_pct_applied: prmt,
+                        _cpn_pct_applied: cpn,
+                    };
+                    if (saveRes && saveRes.sgpft_percent !== undefined) updates.SGPFT = saveRes.sgpft_percent;
+                    if (saveRes && saveRes.spft_percent !== undefined) updates['Spft%'] = saveRes.spft_percent;
+                    if (saveRes && saveRes.sroi_percent !== undefined) updates.SROI = saveRes.sroi_percent;
+                    if (saveRes && saveRes.sgroi_percent !== undefined) updates.SGROI = saveRes.sgroi_percent;
+                    row.update(updates);
+                    amzPefToast('success', 'Pushed $' + price.toFixed(2) + ' (Std + PRMT/CPN) for ' + sku);
+                }).fail(function() {
+                    row.update({
+                        SPRICE: price,
+                        SPRICE_STATUS: 'pushed',
+                        PUSH_PRC_STATUS: 'pushed',
+                        PUSH_PRC_VALUE: price,
+                    });
+                    amzPefToast('success', 'Pushed $' + price.toFixed(2) + ' to Amazon (local save pending)');
+                }).always(function() {
+                    $btn.prop('disabled', false);
+                    if (table) table.redraw(true);
+                });
+            }).fail(function(xhr) {
+                row.update({ PUSH_PRC_STATUS: 'error' });
+                amzPefToast('error', 'Push Prc failed: ' + (
+                    (xhr.responseJSON && xhr.responseJSON.errors && xhr.responseJSON.errors[0]
+                        && xhr.responseJSON.errors[0].message)
+                    || (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                    || 'error'
+                ));
+                $btn.prop('disabled', false).html(html);
+                if (table) table.redraw(true);
+            });
         }
 
         function initAmazonPefPromoUi() {
@@ -1088,6 +1260,24 @@
                 } else {
                     clearAmzApprDiscount(row, { save: true, redraw: true });
                 }
+            });
+
+            // Push Prc — Std + PRMT% + CPN% → Amazon Listings our_price
+            $(document).off('click.amzpef', '.amz-push-prc-btn').on('click.amzpef', '.amz-push-prc-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!table) return;
+                const $btn = $(this);
+                if ($btn.prop('disabled')) return;
+                const sku = String($btn.attr('data-sku') || '');
+                const row = table.getRows().find(function(r) {
+                    return amzPefSku(r.getData()) === sku;
+                });
+                if (!row) {
+                    amzPefToast('error', 'Row not found');
+                    return;
+                }
+                pushAmzStdPrcWithPromos($btn, row);
             });
         }
 @endif
