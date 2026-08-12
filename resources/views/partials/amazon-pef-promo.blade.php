@@ -93,6 +93,20 @@
         #amz-bulk-push-prc-btn:disabled {
             opacity: 0.65;
         }
+        #amz-sprice-recalc-btn {
+            background: #0d6efd;
+            border-color: #0d6efd;
+            color: #fff;
+        }
+        #amz-sprice-recalc-btn:hover,
+        #amz-sprice-recalc-btn:focus {
+            background: #0b5ed7;
+            border-color: #0a58ca;
+            color: #fff;
+        }
+        #amz-sprice-recalc-btn:disabled {
+            opacity: 0.65;
+        }
         /* CVR vs CPN modal — light purple background */
         #pefCvrVsCpnModal .modal-content {
             background: #f3e8ff;
@@ -170,6 +184,10 @@
                     <button type="button" class="btn btn-sm" id="amz-bulk-push-prc-btn"
                         title="Bulk Push Prc for selected SKUs — Std → Your Price; Sale = Std × (1 − (PRMT% + CVR Discount%)/100); Min = Sale">
                         <i class="fas fa-upload"></i> Push Prc
+                    </button>
+                    <button type="button" class="btn btn-sm" id="amz-sprice-recalc-btn"
+                        title="Clear S PRC, then refill using Push Prc formula (Std − (PRMT% + CVR Disc%)) — no Amazon push. Skips INV = 0. Selected SKUs if checked; otherwise all visible.">
+                        sprice ?
                     </button>
 @endif
 
@@ -1314,20 +1332,118 @@
             try { row.reformat(); } catch (e) { /* ignore */ }
         }
 
-        function saveAmzPushPrcSprice(sku, plan) {
+        function saveAmzPushPrcSprice(sku, plan, opts) {
+            opts = opts || {};
+            const data = {
+                sku: sku,
+                sprice: plan.effective,
+                prmt_pct: plan.prmt,
+                cpn_pct: plan.cpn,
+                _token: amzPefCsrf(),
+            };
+            if (opts.recordPushPrc) data.record_push_prc = 1;
             return $.ajax({
                 url: '/save-amazon-sprice',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                data: {
-                    sku: sku,
-                    sprice: plan.effective,
-                    prmt_pct: plan.prmt,
-                    cpn_pct: plan.cpn,
-                    record_push_prc: 1,
-                    _token: amzPefCsrf(),
-                },
+                data: data,
             });
+        }
+
+        /**
+         * Clear S PRC then autofill from Push Prc formula (no Amazon push).
+         * Selected rows if any; otherwise all visible child rows with Std Prc.
+         */
+        function clearAndAutopopulateAmzSprice() {
+            if (!table) {
+                amzPefToast('error', 'Load data first');
+                return;
+            }
+            let targets = collectAmzPefSelectedRows();
+            let scopeLabel = 'selected';
+            if (!targets.length) {
+                targets = collectAmzPefVisibleRows();
+                scopeLabel = 'all visible';
+            }
+            let skippedInv = 0;
+            const ready = targets.filter(function(t) {
+                if (amzPefInv(t.d) === 0) {
+                    skippedInv++;
+                    return false;
+                }
+                const plan = computeAmzPushPrcPlan(t.d);
+                return plan && plan.std > 0;
+            });
+            if (!ready.length) {
+                amzPefToast(
+                    'error',
+                    skippedInv
+                        ? 'No rows to refill (skipped ' + skippedInv + ' with INV = 0)'
+                        : 'No rows with Std Prc to refill'
+                );
+                return;
+            }
+            if (!confirm(
+                'Clear S PRC and refill for ' + ready.length + ' ' + scopeLabel + ' SKU(s)?'
+                + (skippedInv ? ('\n(Skip ' + skippedInv + ' with INV = 0)') : '')
+                + '\n\nFormula (same as Push Prc, no Amazon push):\n'
+                + 'S PRC = Std × (1 − (PRMT% + CVR Disc%)/100)\n'
+                + 'If no discount → S PRC = Std'
+            )) return;
+
+            const $btn = $('#amz-sprice-recalc-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>…');
+
+            // Clear first (grid)
+            ready.forEach(function(t) {
+                t.row.update({
+                    SPRICE: 0,
+                    SGPFT: 0,
+                    'Spft%': 0,
+                    SROI: 0,
+                    SGROI: 0,
+                    has_custom_sprice: false,
+                    SPRICE_STATUS: null,
+                });
+            });
+            if (table) table.redraw(true);
+
+            let ok = 0;
+            let fail = 0;
+            let i = 0;
+            function next() {
+                if (i >= ready.length) {
+                    $btn.prop('disabled', false).html(html);
+                    if (table) table.redraw(true);
+                    amzPefToast(
+                        fail && !ok ? 'error' : 'success',
+                        'sprice ?: ' + ok + ' filled'
+                            + (fail ? (', ' + fail + ' failed') : '')
+                            + (skippedInv ? (', ' + skippedInv + ' skipped INV=0') : '')
+                    );
+                    return;
+                }
+                const item = ready[i++];
+                const plan = computeAmzPushPrcPlan(item.row.getData());
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
+                if (!plan || !(plan.effective > 0)) {
+                    fail++;
+                    next();
+                    return;
+                }
+                saveAmzPushPrcSprice(amzPefSku(item.d), plan, { recordPushPrc: false })
+                    .done(function(saveRes) {
+                        applyAmzPushPrcToSpriceRow(item.row, plan, saveRes);
+                        ok++;
+                    })
+                    .fail(function() {
+                        applyAmzPushPrcToSpriceRow(item.row, plan, null);
+                        fail++;
+                    })
+                    .always(function() { next(); });
+            }
+            next();
         }
 
         /** Push one row (Amazon Listings + write result into S PRC for margins). Resolves { ok, sku, error? }. */
@@ -1355,7 +1471,7 @@
 
             return new Promise(function(resolve) {
                 // 1) Persist result price → S PRC (+ margins) so profit columns update
-                saveAmzPushPrcSprice(sku, plan).done(function(saveRes) {
+                saveAmzPushPrcSprice(sku, plan, { recordPushPrc: true }).done(function(saveRes) {
                     applyAmzPushPrcToSpriceRow(row, plan, saveRes);
                 }).fail(function() {
                     // Still show planned S PRC in grid even if local save fails
@@ -1706,6 +1822,12 @@
             $('#amz-bulk-push-prc-btn').off('click.amzpef').on('click.amzpef', function(e) {
                 e.preventDefault();
                 bulkPushAmzPrcSelected();
+            });
+
+            // sprice ? — clear + refill S PRC from Push Prc formula (no Amazon push)
+            $('#amz-sprice-recalc-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
+                clearAndAutopopulateAmzSprice();
             });
         }
 @endif
