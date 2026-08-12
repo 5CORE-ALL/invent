@@ -77,7 +77,6 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\Ebay3UtilizedBidsAutoUpdate::class,
-        \App\Console\Commands\EbaySpriceCvrAutoPushCommand::class,
         \App\Console\Commands\AssignAmzListingVariationVerifyDailyTask::class,
         \App\Console\Commands\AssignMissingMappingDailyTask::class,
         \App\Console\Commands\UpdateEbayOneBudget::class,
@@ -617,15 +616,6 @@ class Kernel extends ConsoleKernel
             ->dailyAt('14:00')
             ->timezone('Asia/Kolkata')
             ->name('fetch-ebay-reports')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        // Clear SPRICE → Apply % Sprice×CVR → Push to eBay 1/2/3 (2:00 PM IST)
-        $ist($schedule->command('ebay:sprice-cvr-auto-push')
-            ->dailyAt('14:00')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay-sprice-cvr-auto-push')
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log));
@@ -2418,8 +2408,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // PEF CVR vs CPN → eBay1 Coupon API (always once/day after Dil/PRMT / price window).
-        // Uses saved pef_cvr_vs_cpn rules or defaults; CPN%=0 pauses coupon.
+        // PEF CVR vs CPN → eBay1 public coded coupon API (always once/day after Dil/PRMT / price window).
+        // Same CPN% reuses campaign (SAVE{nn}PCT); CPN%=0 removes SKU from coupon.
         $schedule->command('pef:cvr-cpn-auto-apply')
             ->dailyAt('00:30')
             ->timezone('Asia/Kolkata')

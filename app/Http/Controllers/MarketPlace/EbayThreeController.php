@@ -26,7 +26,10 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use App\Models\AmazonChannelSummary;
+use App\Models\AmazonDataView;
+use App\Services\ChannelPromoPricingService;
 use App\Services\EbayPushService;
+use App\Services\LmpSkuGroupService;
 
 class EbayThreeController extends Controller
 {
@@ -394,6 +397,57 @@ class EbayThreeController extends Controller
 
         // Fetch Amazon data for price comparison
         $amazonData = \App\Models\AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
+
+        // PRMT%/CPN%/DSC%/Appr/Push Prc — ebay3_promo_pricing (site-specific, not amazon_data_view)
+        $ebay3PromoMap = app(ChannelPromoPricingService::class)->mapForSkus('ebay3', $skus);
+
+        // Sku Link LMP — for Std Prc inheritance from linked siblings
+        $lmpGroupService = new LmpSkuGroupService();
+        try {
+            $lmpGroupService->prepareForSkus($skus);
+        } catch (\Throwable $e) {
+            Log::warning('LmpSkuGroupService prepare failed (eBay3): ' . $e->getMessage());
+        }
+
+        $resolveLinkedLmpSkus = static function (string $sku) use ($lmpGroupService): array {
+            $sku = trim($sku);
+            if ($sku === '') {
+                return [];
+            }
+            try {
+                $linkedGroup = $lmpGroupService->groupContaining($sku);
+            } catch (\Throwable $e) {
+                $linkedGroup = [];
+            }
+            if (empty($linkedGroup)) {
+                $linkedGroup = [$sku];
+            }
+            $seenLinked = [];
+            $linkedLmpSkus = [];
+            foreach ($linkedGroup as $member) {
+                $display = trim((string) $member);
+                $normMember = strtoupper($display);
+                if ($normMember === '' || isset($seenLinked[$normMember])) {
+                    continue;
+                }
+                $seenLinked[$normMember] = true;
+                $linkedLmpSkus[] = $display;
+            }
+
+            return $linkedLmpSkus;
+        };
 
         // Fetch NR values for these SKUs from EbayThreeDataView (include PARENT SKUs for nr_req mirror + lookups)
         $ebayDataViews = EbayThreeDataView::whereIn('sku', $allSkus)->get()->keyBy('sku');
@@ -986,6 +1040,8 @@ class EbayThreeController extends Controller
 
                 // Amazon Price - set to 0 for parent rows
                 $row['A Price'] = 0;
+                $row['linked_lmp_skus'] = [];
+                $row['STANDARD_PRICE'] = null;
                 
             } else {
                 // Shopify data for child SKUs
@@ -1322,6 +1378,24 @@ class EbayThreeController extends Controller
                 
                 // Amazon Price
                 $row['A Price'] = isset($amazonData[$sku]) ? ($amazonData[$sku]->price ?? 0) : 0;
+
+                // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
+                $linkedLmpSkus = $resolveLinkedLmpSkus((string) $sku);
+                $row['linked_lmp_skus'] = $linkedLmpSkus;
+                $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
+                if ($stdPrc === null) {
+                    foreach ($linkedLmpSkus as $linkedSku) {
+                        $linkedKey = strtoupper(trim((string) $linkedSku));
+                        if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                            $stdPrc = $amazonStandardPrices[$linkedKey];
+                            break;
+                        }
+                    }
+                }
+                $row['STANDARD_PRICE'] = $stdPrc;
+
+                // Site-specific promo columns (PRMT%/CPN%/DSC%/Appr/Push Prc)
+                $row = app(ChannelPromoPricingService::class)->applyToRow($row, $ebay3PromoMap, (string) $sku);
             }
 
             $processedData[] = (object) $row;

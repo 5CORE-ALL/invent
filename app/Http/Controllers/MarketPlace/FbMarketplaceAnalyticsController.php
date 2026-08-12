@@ -10,6 +10,7 @@ use App\Models\FBMarketplaceListingStatus;
 use App\Models\FbMarketplaceSheetdata;
 use App\Models\FacebookMarketplaceSale;
 use App\Models\ProductMaster;
+use App\Models\AmazonDataView;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -56,6 +57,18 @@ class FbMarketplaceAnalyticsController extends Controller
             ?: MarketplacePercentage::where('marketplace', 'FBMarketplace')->first();
         $percentage = $mpRow && $mpRow->percentage !== null ? (float) $mpRow->percentage : null;
         $factor = ($percentage !== null ? $percentage : 100) / 100;
+
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
 
         $data = [];
         foreach ($productMasterRows as $productMaster) {
@@ -128,6 +141,7 @@ class FbMarketplaceAnalyticsController extends Controller
                 'buyer_link' => $statusValue['buyer_link'] ?? null,
                 'seller_link' => $statusValue['seller_link'] ?? null,
                 'approved' => $statusValue['approved'] ?? null,
+                'STANDARD_PRICE' => $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null,
             ];
         }
 

@@ -10,8 +10,9 @@
     var STYLE =
         '#global-img-hover-preview{' +
         'position:fixed;display:none;z-index:200060;pointer-events:none;' +
-        'width:min(420px,92vw);height:min(420px,85vh);object-fit:contain;' +
-        'background:#fff;border-radius:10px;' +
+        'width:auto;height:auto;' +
+        'max-width:min(420px,90vw)!important;max-height:min(420px,80vh)!important;' +
+        'object-fit:contain;background:#fff;border-radius:10px;padding:4px;' +
         'box-shadow:0 8px 32px rgba(0,0,0,.35);border:1px solid rgba(0,0,0,.08);' +
         '}' +
         'img.global-img-hover-active{cursor:zoom-in;}';
@@ -42,6 +43,8 @@
         '#ne-img-preview',
         '#image-hover-preview',
         '#toa-cd-hover-preview',
+        '#dws-img-hover-preview',
+        '#ebay2op-img-hover-preview',
         '.product-image-thumbnail',
         '.product-image-enlarged',
         '.no-img-hover',

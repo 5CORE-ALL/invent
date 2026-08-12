@@ -13,6 +13,7 @@ use App\Models\MercariWoShipListingStatus;
 use App\Models\MercariDailyData;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
+use App\Models\AmazonDataView;
 use App\Models\ShopifySku;
 use Carbon\Carbon;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -64,6 +65,18 @@ class MercariWoShipController extends Controller
         // MercariWoShip percentage (profit factor) from marketplace_percentages
         $percentage = MarketplacePercentage::where('marketplace', 'MercariWoShip')->value('percentage');
         $factor = ($percentage !== null ? (float) $percentage : 100) / 100;
+
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
 
         $data = [];
         foreach ($productMasterRows as $productMaster) {
@@ -126,6 +139,7 @@ class MercariWoShipController extends Controller
                 'buyer_link' => $statusValue['buyer_link'] ?? null,
                 'seller_link' => $statusValue['seller_link'] ?? null,
                 'approved' => $statusValue['approved'] ?? null,
+                'STANDARD_PRICE' => $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null,
             ];
         }
 

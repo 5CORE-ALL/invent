@@ -233,6 +233,7 @@ class PurchasingPowerController extends Controller
             $row['standard_price'] = isset($amazonStandardPrices[$normSku])
                 ? floatval($amazonStandardPrices[$normSku])
                 : 0;
+            $row['STANDARD_PRICE'] = ($row['standard_price'] ?? 0) > 0 ? $row['standard_price'] : null;
 
             // SPRICE metrics (Ship excluded from margin math)
             $sprice = $row['SPRICE'] ?? 0;

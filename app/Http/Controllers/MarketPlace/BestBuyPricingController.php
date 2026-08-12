@@ -14,6 +14,7 @@ use App\Models\BestbuyUSAListingStatus;
 use App\Models\BestbuyPriceData;
 use App\Models\BestbuySkuCompetitor;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Models\LmpCompetitorHistory;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Support\Facades\Auth;
@@ -118,6 +119,18 @@ class BestBuyPricingController extends Controller
 
         // Fetch Amazon pricing data
         $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
 
         // NR/REQ + SPRICE data from BestbuyUSADataView
         $dataViews = BestbuyUSADataView::whereIn("sku", $skus)->pluck("value", "sku");
@@ -312,6 +325,19 @@ class BestBuyPricingController extends Controller
             // LMP — lowest total_price from bestbuy_sku_competitors across Sku Link LMP group
             $linkedLmpSkus = $this->linkedLmpSkusForProduct((string) $pm->sku);
             $row['linked_lmp_skus'] = $linkedLmpSkus;
+
+            // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
+            $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $pm->sku))] ?? null;
+            if ($stdPrc === null && ! empty($linkedLmpSkus)) {
+                foreach ($linkedLmpSkus as $linkedSku) {
+                    $linkedKey = strtoupper(trim((string) $linkedSku));
+                    if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                        $stdPrc = $amazonStandardPrices[$linkedKey];
+                        break;
+                    }
+                }
+            }
+            $row['STANDARD_PRICE'] = $stdPrc;
 
             $allLmpEntries = collect();
             foreach ($linkedLmpSkus as $linkedSku) {

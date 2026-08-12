@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuDataView;
@@ -53,6 +54,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Carbon\Carbon;
 use App\Models\AmazonChannelSummary;
 use App\Support\TemuGoodsIdHelper;
+use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
@@ -3356,6 +3358,22 @@ class TemuController extends Controller
                 ? collect()
                 : AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
+            // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+            $amazonStandardPrices = [];
+            foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+                $val = is_array($adv->value)
+                    ? $adv->value
+                    : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                $std = $val['STANDARD_PRICE'] ?? null;
+                if (is_numeric($std) && (float) $std > 0) {
+                    $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+                }
+            }
+
+            // PRMT%/CPN%/DSC%/Appr/Push Prc — temu / temu2_promo_pricing (site-specific)
+            $promoChannel = $isTemu2Pricing ? 'temu2' : 'temu';
+            $promoMap = app(ChannelPromoPricingService::class)->mapForSkus($promoChannel, $skus);
+
             $ebayData = $isTemu2Pricing
                 ? collect()
                 : EbayMetric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
@@ -3407,7 +3425,7 @@ class TemuController extends Controller
                 });
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $temu1PricingBySku, $temu2PricingGoodsIdBySku) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $temu1PricingBySku, $temu2PricingGoodsIdBySku, $promoMap) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3750,9 +3768,21 @@ class TemuController extends Controller
                     $lmp = $this->temuLmpRecoveryPrice($lmpRaw);
                 }
 
+                // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
+                $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
+                if ($stdPrc === null && ! empty($linkedLmpSkus)) {
+                    foreach ($linkedLmpSkus as $linkedSku) {
+                        $linkedKey = strtoupper(trim((string) $linkedSku));
+                        if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                            $stdPrc = $amazonStandardPrices[$linkedKey];
+                            break;
+                        }
+                    }
+                }
+
                 $isParentRow = stripos((string) $sku, 'PARENT') !== false;
 
-                return [
+                $row = [
                     'sku' => $sku,
                     'parent' => $productMaster->parent ?? '',
                     'is_parent' => $isParentRow,
@@ -3845,7 +3875,10 @@ class TemuController extends Controller
                     'lmp_link' => $lmp_link,
                     'lmp_entries' => $lmpEntries,
                     'linked_lmp_skus' => $linkedLmpSkus,
+                    'STANDARD_PRICE' => $stdPrc,
                 ];
+
+                return app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $sku);
             });
 
             // Temu 2: O/Ad/T clicks, Spend, and Impressions are goods_id-level (already listing totals).

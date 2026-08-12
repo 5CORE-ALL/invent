@@ -8,6 +8,7 @@ use App\Models\ReverbProduct;
 use App\Models\ShopifySku;
 use App\Models\ReverbSkuCompetitor;
 use App\Models\LmpCompetitorHistory;
+use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use App\Models\AmazonDataView;
 use App\Models\ReverbViewData;
 use App\Models\ReverbListingStatus;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -845,6 +847,21 @@ class ReverbController extends Controller
         // Get all unique SKUs from product master
         $skus = $productMasterRows->pluck("sku")->toArray();
 
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
+
+        // PRMT%/CPN%/DSC%/Appr/Push Prc — reverb_promo_pricing (site-specific)
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('reverb', $skus);
+
         // Sku Link LMP groups (shared lmp_sku_links — same as Amazon / eBay tabulators)
         try {
             $this->lmpSkuGroupService->prepareForSkus($skus);
@@ -1145,6 +1162,20 @@ class ReverbController extends Controller
             // LMP — lowest total_price across Sku Link LMP group (same pattern as Amazon tabulator)
             $linkedLmpSkus = $this->linkedLmpSkusForProduct((string) $sku);
             $processedItem['linked_lmp_skus'] = $linkedLmpSkus;
+
+            // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
+            $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
+            if ($stdPrc === null && ! empty($linkedLmpSkus)) {
+                foreach ($linkedLmpSkus as $linkedSku) {
+                    $linkedKey = strtoupper(trim((string) $linkedSku));
+                    if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                        $stdPrc = $amazonStandardPrices[$linkedKey];
+                        break;
+                    }
+                }
+            }
+            $processedItem['STANDARD_PRICE'] = $stdPrc;
+            $processedItem = app(ChannelPromoPricingService::class)->applyToRow($processedItem, $promoMap, (string) $sku);
 
             $allLmpEntries = collect();
             foreach ($linkedLmpSkus as $linkedSku) {

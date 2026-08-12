@@ -1,0 +1,374 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\DobaDataView;
+use App\Models\DobaWithoutShipDataView;
+use App\Models\EbayDataView;
+use App\Models\EbayThreeDataView;
+use App\Models\EbayTwoDataView;
+use App\Models\MacyDataView;
+use App\Models\ShopifyB2BDataView;
+use App\Models\Shopifyb2cDataView;
+use App\Models\Temu2DataView;
+use App\Models\TemuDataView;
+use App\Models\WalmartDataView;
+use App\Models\WayfairDataView;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Per-channel PRMT%/CPN%/DSC%/Appr/Push Prc — same JSON key format as Amazon
+ * (amazon_data_view.value), stored on each channel's own *_data_view.value.
+ *
+ * Keys: PEF_PRMT_PCT, PEF_CPN_PCT, PEF_DSC_PCT, PEF_APPR,
+ *       PUSH_PRC_STATUS, PUSH_PRC_VALUE, PUSH_PRC_PUSHED_AT
+ *
+ * Never uses amazon_data_view for channel promo fields.
+ * Never uses a separate channel_promo_pricing table.
+ */
+class ChannelPromoPricingService
+{
+    /** @var list<string> */
+    public const CHANNELS = [
+        'ebay1',
+        'ebay2',
+        'ebay2op',
+        'ebay3',
+        'shopify_b2c',
+        'shopify_b2b',
+        'macys',
+        'reverb',
+        'walmart',
+        'wayfair',
+        'temu',
+        'temu2',
+        'doba',
+        'doba_withoutship',
+    ];
+
+    /**
+     * Channel → Eloquent data_view model (same pattern as amazon_data_view).
+     *
+     * @var array<string, class-string<Model>>
+     */
+    private const DATA_VIEW_MODELS = [
+        'ebay1' => EbayDataView::class,
+        'ebay2' => EbayTwoDataView::class,
+        'ebay2op' => EbayTwoDataView::class,
+        'ebay3' => EbayThreeDataView::class,
+        'shopify_b2c' => Shopifyb2cDataView::class,
+        'shopify_b2b' => ShopifyB2BDataView::class,
+        'macys' => MacyDataView::class,
+        'walmart' => WalmartDataView::class,
+        'wayfair' => WayfairDataView::class,
+        'temu' => TemuDataView::class,
+        'temu2' => Temu2DataView::class,
+        'doba' => DobaDataView::class,
+        'doba_withoutship' => DobaWithoutShipDataView::class,
+        // reverb: no dedicated data_view model in repo — mapForSkus/upsert no-op until one exists
+    ];
+
+    public function isSupported(string $channel): bool
+    {
+        return in_array(strtolower(trim($channel)), self::CHANNELS, true);
+    }
+
+    /**
+     * @return class-string<Model>|null
+     */
+    public function dataViewModel(string $channel): ?string
+    {
+        $channel = strtolower(trim($channel));
+
+        return self::DATA_VIEW_MODELS[$channel] ?? null;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, array<string, mixed>> keyed by UPPER(trim(sku))
+     */
+    public function mapForSkus(string $channel, array $skus): array
+    {
+        $channel = strtolower(trim($channel));
+        $modelClass = $this->dataViewModel($channel);
+        if (! $this->isSupported($channel) || $skus === [] || ! $modelClass) {
+            return [];
+        }
+
+        /** @var Model $model */
+        $model = new $modelClass;
+        $table = $model->getTable();
+        if (! Schema::hasTable($table)) {
+            return [];
+        }
+
+        $norm = [];
+        foreach ($skus as $sku) {
+            $s = strtoupper(trim((string) $sku));
+            if ($s !== '') {
+                $norm[$s] = true;
+            }
+        }
+        if ($norm === []) {
+            return [];
+        }
+
+        $rows = $modelClass::query()
+            ->whereIn(DB::raw('UPPER(TRIM(sku))'), array_keys($norm))
+            ->get(['sku', 'value']);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $key = strtoupper(trim((string) $row->sku));
+            $val = $this->decodeValue($row->value);
+            $mapped = $this->mapFromValue($val);
+            if ($mapped !== null) {
+                $out[$key] = $mapped;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Merge promo fields onto a row array (returns updated row).
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array<string, array<string, mixed>>  $map
+     * @return array<string, mixed>
+     */
+    public function applyToRow(array $row, array $map, string $sku): array
+    {
+        $key = strtoupper(trim($sku));
+        $promo = ($key !== '' && isset($map[$key])) ? $map[$key] : null;
+
+        $prmt = $promo['prmt_pct'] ?? null;
+        $cpn = $promo['cpn_pct'] ?? null;
+
+        $dsc = $promo['dsc'] ?? null;
+
+        $row['prmt_pct'] = $prmt !== null ? (string) $prmt : null;
+        $row['cpn_pct'] = $cpn !== null ? (string) $cpn : null;
+        $row['dsc'] = $dsc !== null && $dsc !== '' ? (string) $dsc : null;
+        $row['appr'] = $promo['appr'] ?? false;
+        $row['PUSH_PRC_STATUS'] = $promo['PUSH_PRC_STATUS'] ?? null;
+        $row['PUSH_PRC_VALUE'] = $promo['PUSH_PRC_VALUE'] ?? null;
+        $row['_prmt_pct_applied'] = is_numeric($promo['_prmt_pct_applied'] ?? null)
+            ? (float) $promo['_prmt_pct_applied']
+            : (is_numeric($prmt) ? (float) $prmt : 0);
+        $row['_cpn_pct_applied'] = is_numeric($promo['_cpn_pct_applied'] ?? null)
+            ? (float) $promo['_cpn_pct_applied']
+            : (is_numeric($cpn) ? (float) $cpn : 0);
+        $row['_dsc_applied'] = is_numeric($promo['_dsc_applied'] ?? null)
+            ? (float) $promo['_dsc_applied']
+            : (is_numeric($dsc) ? (float) $dsc : 0);
+
+        return $row;
+    }
+
+    /**
+     * Upsert Amazon-format PEF / Push Prc keys into the channel's data_view.value.
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array<string, mixed>  mapped promo fields (same shape as mapForSkus entry)
+     */
+    public function upsert(string $channel, string $sku, array $fields): array
+    {
+        $channel = strtolower(trim($channel));
+        $modelClass = $this->dataViewModel($channel);
+        if (! $this->isSupported($channel) || ! $modelClass) {
+            throw new \InvalidArgumentException('Unsupported channel or missing data_view: '.$channel);
+        }
+
+        $skuNorm = strtoupper(trim($sku));
+        if ($skuNorm === '') {
+            throw new \InvalidArgumentException('SKU required');
+        }
+
+        /** @var Model $model */
+        $model = new $modelClass;
+        $table = $model->getTable();
+
+        // Lock row during read-modify-write so bulk Dil/CPN/S PRC saves cannot wipe PEF_* keys.
+        return DB::transaction(function () use ($modelClass, $table, $skuNorm, $fields) {
+            /** @var Model|null $row */
+            $row = $modelClass::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+                ->lockForUpdate()
+                ->first();
+
+            if (! $row) {
+                $row = new $modelClass(['sku' => $skuNorm]);
+                // Some *_data_view tables (e.g. ebay_data_view) have non-AI `id`
+                if (Schema::hasColumn($table, 'id') && empty($row->getKey())) {
+                    try {
+                        $nextId = ((int) (DB::table($table)->max('id') ?? 0)) + 1;
+                        $row->setAttribute($row->getKeyName(), $nextId);
+                    } catch (\Throwable $e) {
+                        // leave for DB default / auto-increment if available
+                    }
+                }
+            }
+
+            $existing = $this->decodeValue($row->value);
+
+            if (array_key_exists('prmt_pct', $fields)) {
+                $pct = $this->clampPct($fields['prmt_pct']);
+                if ($pct === null) {
+                    unset($existing['PEF_PRMT_PCT']);
+                } else {
+                    $existing['PEF_PRMT_PCT'] = $pct;
+                }
+            }
+            if (array_key_exists('cpn_pct', $fields)) {
+                $pct = $this->clampPct($fields['cpn_pct']);
+                if ($pct === null) {
+                    unset($existing['PEF_CPN_PCT']);
+                } else {
+                    $existing['PEF_CPN_PCT'] = $pct;
+                }
+            }
+            if (array_key_exists('dsc_pct', $fields) || array_key_exists('dsc', $fields)) {
+                $pct = $this->clampPct($fields['dsc_pct'] ?? $fields['dsc'] ?? null);
+                if ($pct === null) {
+                    unset($existing['PEF_DSC_PCT']);
+                } else {
+                    $existing['PEF_DSC_PCT'] = $pct;
+                }
+            }
+            if (array_key_exists('appr', $fields)) {
+                $existing['PEF_APPR'] = filter_var($fields['appr'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+            }
+            if (array_key_exists('push_prc_status', $fields)) {
+                $st = $fields['push_prc_status'];
+                if ($st === null || $st === '') {
+                    unset($existing['PUSH_PRC_STATUS']);
+                } else {
+                    $existing['PUSH_PRC_STATUS'] = substr((string) $st, 0, 64);
+                }
+            }
+            if (array_key_exists('push_prc_value', $fields)) {
+                $val = $fields['push_prc_value'];
+                if (is_numeric($val) && (float) $val > 0) {
+                    $existing['PUSH_PRC_VALUE'] = round((float) $val, 2);
+                } else {
+                    unset($existing['PUSH_PRC_VALUE']);
+                }
+            }
+            if (array_key_exists('push_prc_pushed_at', $fields)) {
+                $at = $fields['push_prc_pushed_at'];
+                if ($at) {
+                    $existing['PUSH_PRC_PUSHED_AT'] = is_string($at)
+                        ? $at
+                        : now()->toDateTimeString();
+                } else {
+                    unset($existing['PUSH_PRC_PUSHED_AT']);
+                }
+            } elseif (($existing['PUSH_PRC_STATUS'] ?? null) === 'pushed' && empty($existing['PUSH_PRC_PUSHED_AT'])) {
+                $existing['PUSH_PRC_PUSHED_AT'] = now()->toDateTimeString();
+            }
+
+            $row->sku = $row->sku ?: $skuNorm;
+            $row->value = $existing;
+            $row->save();
+
+            return $this->mapFromValue($existing) ?? [
+                'prmt_pct' => null,
+                'cpn_pct' => null,
+                'dsc' => null,
+                'appr' => false,
+                'PUSH_PRC_STATUS' => null,
+                'PUSH_PRC_VALUE' => null,
+                '_prmt_pct_applied' => 0,
+                '_cpn_pct_applied' => 0,
+                '_dsc_applied' => 0,
+                'sku' => (string) $row->sku,
+            ];
+        });
+    }
+
+    public function markPushed(string $channel, string $sku, float $value): void
+    {
+        $this->upsert($channel, $sku, [
+            'push_prc_status' => 'pushed',
+            'push_prc_value' => $value,
+            'push_prc_pushed_at' => now()->toDateTimeString(),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $val
+     * @return array<string, mixed>|null
+     */
+    private function mapFromValue(array $val): ?array
+    {
+        $prmt = $this->nullablePct($val['PEF_PRMT_PCT'] ?? null);
+        $cpn = $this->nullablePct($val['PEF_CPN_PCT'] ?? null);
+        $dsc = $this->nullablePct($val['PEF_DSC_PCT'] ?? null);
+        $hasAny = $prmt !== null || $cpn !== null || $dsc !== null
+            || isset($val['PEF_APPR'])
+            || isset($val['PUSH_PRC_STATUS'])
+            || isset($val['PUSH_PRC_VALUE']);
+
+        if (! $hasAny) {
+            return null;
+        }
+
+        $pushVal = $val['PUSH_PRC_VALUE'] ?? null;
+
+        return [
+            'prmt_pct' => $prmt,
+            'cpn_pct' => $cpn,
+            'dsc' => $dsc,
+            'appr' => filter_var($val['PEF_APPR'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'PUSH_PRC_STATUS' => $val['PUSH_PRC_STATUS'] ?? null,
+            'PUSH_PRC_VALUE' => (is_numeric($pushVal) && (float) $pushVal > 0)
+                ? round((float) $pushVal, 2)
+                : null,
+            '_prmt_pct_applied' => is_numeric($prmt) ? (float) $prmt : 0,
+            '_cpn_pct_applied' => is_numeric($cpn) ? (float) $cpn : 0,
+            '_dsc_applied' => is_numeric($dsc) ? (float) $dsc : 0,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function decodeValue(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            return $raw;
+        }
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return [];
+    }
+
+    private function clampPct(mixed $val): ?float
+    {
+        if ($val === null || $val === '') {
+            return null;
+        }
+        if (! is_numeric($val)) {
+            return null;
+        }
+        $n = round((float) $val, 2);
+
+        return $n < 0 ? 0.0 : $n;
+    }
+
+    private function nullablePct(mixed $val): ?float
+    {
+        if ($val === null || $val === '' || ! is_numeric($val)) {
+            return null;
+        }
+
+        return round((float) $val, 2);
+    }
+}

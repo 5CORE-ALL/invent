@@ -79,20 +79,6 @@
             border-color: #1aa179;
             color: #fff;
         }
-        #amz-bulk-push-prc-btn {
-            background: #FF9900;
-            border-color: #FF9900;
-            color: #fff;
-        }
-        #amz-bulk-push-prc-btn:hover,
-        #amz-bulk-push-prc-btn:focus {
-            background: #e68a00;
-            border-color: #e68a00;
-            color: #fff;
-        }
-        #amz-bulk-push-prc-btn:disabled {
-            opacity: 0.65;
-        }
         #amz-sprice-recalc-btn {
             background: #0d6efd;
             border-color: #0d6efd;
@@ -247,10 +233,6 @@
                             </li>
                         </ul>
                     </div>
-                    <button type="button" class="btn btn-sm" id="amz-bulk-push-prc-btn"
-                        title="Push Prc for selected SKUs: Your=Std; Sale=Std−(PRMT%+CVR Disc%); Max=Std×1.10; Min=Sale×0.95; Business=Sale×0.95">
-                        <i class="fas fa-upload"></i> Push Prc
-                    </button>
                     <button type="button" class="btn btn-sm" id="amz-sprice-recalc-btn"
                         title="Clear S PRC, then refill using Push Prc formula (Std − (PRMT% + CVR Disc%)) — no Amazon push. Skips INV = 0. Selected SKUs if checked; otherwise all visible.">
                         sprice ?
@@ -1820,13 +1802,7 @@
                 return planToAmzPushPrcQueueItem(r.d, r.plan);
             });
             if (table) table.redraw(true);
-
-            const $toolbarBtn = $('#amz-bulk-push-prc-btn');
-            const toolbarHtml = $toolbarBtn.html();
-            $toolbarBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Queuing…');
-            queueAmzPushPrcItems(items).always(function() {
-                $toolbarBtn.prop('disabled', false).html(toolbarHtml);
-            });
+            queueAmzPushPrcItems(items);
         }
 
         function cancelAmzPushPrcJob() {
@@ -2067,12 +2043,6 @@
                     return;
                 }
                 pushAmzStdPrcWithPromos($btn, row);
-            });
-
-            // Bulk Push Prc — selected SKUs only
-            $('#amz-bulk-push-prc-btn').off('click.amzpef').on('click.amzpef', function(e) {
-                e.preventDefault();
-                bulkPushAmzPrcSelected();
             });
 
             // sprice ? — clear + refill S PRC from Push Prc formula (no Amazon push)

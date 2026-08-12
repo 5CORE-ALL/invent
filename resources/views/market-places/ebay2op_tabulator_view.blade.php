@@ -212,6 +212,8 @@
             opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
+
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2op'])
     </style>
 @endsection
 
@@ -974,9 +976,11 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2op'])
 @endsection
 
     @section('script-bottom')
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2op'])
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         const COLUMN_VIS_KEY = "ebay2op_tabulator_column_visibility";
@@ -1046,6 +1050,73 @@
             bsToast.show();
             toast.addEventListener('hidden.bs.toast', () => toast.remove());
         }
+
+        function escAttr(s) {
+            if (s == null) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        /** Std Prc vs Amz price (fallback eBay Price): reduce / hold / increase → red / yellow / green. */
+        function ebayStdPrcChangeDotMeta(stdPrc, comparePrice) {
+            const sp = parseFloat(stdPrc);
+            const ap = parseFloat(comparePrice);
+            if (!isFinite(sp) || sp <= 0 || !isFinite(ap) || ap <= 0) return null;
+            const sp2 = sp.toFixed(2);
+            const ap2 = ap.toFixed(2);
+            if (parseFloat(sp2) < parseFloat(ap2)) {
+                return { kind: 'reduce', color: '#dc3545', title: 'Reduce vs Amz price' };
+            }
+            if (parseFloat(sp2) > parseFloat(ap2)) {
+                return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
+            }
+            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+        }
+
+        function ebayStdPrcChangeDotHtml(stdPrc, comparePrice, sku) {
+            const meta = ebayStdPrcChangeDotMeta(stdPrc, comparePrice);
+            if (!meta) return '';
+            const tip = meta.title + ' — Std Prc (shared with Amazon)';
+            return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;' +
+                'background:' + meta.color + ';flex-shrink:0;" title="' + escAttr(tip) + '"></span>';
+        }
+
+        /** Apply STANDARD_PRICE to a SKU row + all Sku Link LMP siblings in the grid */
+        function applyEbayStandardPriceToLinkedRows(sku, std, appliedSkus) {
+            if (typeof table === 'undefined' || !table) return null;
+            const target = String(sku || '').trim().toUpperCase();
+            const appliedSet = new Set(
+                (Array.isArray(appliedSkus) ? appliedSkus : [])
+                    .map(function(s) { return String(s || '').trim().toUpperCase(); })
+                    .filter(Boolean)
+            );
+            if (target) appliedSet.add(target);
+
+            let primaryRow = null;
+            (table.getRows('all') || table.getRows() || []).forEach(function(r) {
+                const d = r.getData();
+                if (!d || d.is_parent_summary || d.is_parent_row) return;
+                const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+                if (!rowSku) return;
+                const rowKey = rowSku.toUpperCase();
+                const linked = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus : [];
+                const inGroup = appliedSet.has(rowKey)
+                    || linked.some(function(s) { return String(s || '').trim().toUpperCase() === target; })
+                    || (target && rowKey === target);
+                if (!inGroup) return;
+                r.update({ STANDARD_PRICE: std });
+                if (rowKey === target) primaryRow = r;
+            });
+            return primaryRow;
+        }
+
+        // Shared LMP modal SP box (lmp-modal-sp.js) → keep grid Std Prc in sync
+        document.addEventListener('lmp-modal-sp-saved', function(e) {
+            const detail = (e && e.detail) || {};
+            const sku = detail.sku;
+            const saved = parseFloat(detail.standard_price);
+            if (!sku || !isFinite(saved) || saved <= 0) return;
+            applyEbayStandardPriceToLinkedRows(sku, saved, detail.applied_skus);
+        });
 
         // SKU-specific chart
         function initSkuMetricsChart() {
@@ -2862,6 +2933,40 @@
                         },
                         width: 60
                     },
+
+                    {
+                        title: "Std Prc",
+                        field: "STANDARD_PRICE",
+                        hozAlign: "center",
+                        headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Editable; saves to all Sku Link LMP siblings. Dot vs Amz price.",
+                        editor: "input",
+                        width: 70,
+                        sorter: "number",
+                        editable: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent_summary || d.is_parent_row) return false;
+                            const sku = String(d['(Child) sku'] || '');
+                            return sku && !String(d.Parent || '').toUpperCase().startsWith('PARENT');
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary || rowData.is_parent_row) return '';
+                            const value = cell.getValue();
+                            const std = parseFloat(value) || 0;
+                            if (!value || std <= 0) return '';
+                            const sku = rowData['(Child) sku'] || '';
+                            const amzPrice = parseFloat(rowData['A Price']) || 0;
+                            const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+                            const comparePrice = amzPrice > 0 ? amzPrice : ebayPrice;
+                            const dot = ebayStdPrcChangeDotHtml(std, comparePrice, sku);
+                            if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
+                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                                    dot + '</span>';
+                            }
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                                dot + ('$' + std.toFixed(2)) + '</span>';
+                        }
+                    },
                    
                     {
                         title: "Price",
@@ -3189,7 +3294,8 @@
                     //     width: 130
                     // },
                    
-                   
+                    // PRMT % / CPN % / Appr / DSC % / Push Prc — ebay2op_promo_pricing
+                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
                         title: "S PRC",
                         field: "SPRICE",
@@ -3216,6 +3322,7 @@
                         },
                         width: 80
                     },
+                    ...(typeof channelPromoSprcCpnColumn === 'function' ? [channelPromoSprcCpnColumn()] : []),
                     {
                         field: "_accept",
                         hozAlign: "center",
@@ -4238,6 +4345,40 @@
                 var field = cell.getColumn().getField();
                 var value = cell.getValue();
 
+                // Std Prc — shared amazon_data_view.STANDARD_PRICE (same as /amazon-tabulator-view)
+                if (field === 'STANDARD_PRICE') {
+                    const sku = data['(Child) sku'];
+                    const std = parseFloat(value);
+                    if (!sku || !isFinite(std) || std <= 0) {
+                        row.update({ STANDARD_PRICE: null });
+                        return;
+                    }
+                    $.ajax({
+                        url: '/save-amazon-sprice',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            sku: sku,
+                            sprice: std,
+                            is_standard_price: 1
+                        },
+                        success: function(response) {
+                            const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
+                            applyEbayStandardPriceToLinkedRows(sku, saved, response.applied_skus);
+                            const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                            showToast(n > 1
+                                ? ('Std Prc saved for ' + n + ' linked SKUs')
+                                : 'Std Prc saved', 'success');
+                        },
+                        error: function() {
+                            showToast('Failed to save Std Prc', 'error');
+                        }
+                    });
+                    return;
+                }
+
                 // Validate and save ratings field (must be between 0 and 5)
                 if (field === 'rating') {
                     var numValue = parseFloat(value);
@@ -4701,7 +4842,9 @@
             var pricingOnlyColumns = [
                 'image_path', 'E Stock', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
-                'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI',
+                'lmp_price', 'STANDARD_PRICE',
+                'prmt_pct', 'cpn_pct', 'dsc', 'appr', 'push_prc', 'sprc_cpn',
+                'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI',
                 'AD_Spend_L30'
             ];
             var kwAdsOnlyColumns = [

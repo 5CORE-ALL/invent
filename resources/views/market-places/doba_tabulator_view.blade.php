@@ -260,6 +260,7 @@
             color: #0a58ca !important;
         }
 
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'doba'])
     </style>
 @endsection
 
@@ -572,9 +573,11 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'doba'])
 @endsection
 
 @section('script-bottom')
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba'])
     <script>
         const COLUMN_VIS_KEY = "doba_tabulator_column_visibility";
         /**
@@ -2261,6 +2264,9 @@
                             return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">`;
                         }
                     },
+                    // PRMT % / CPN % / Appr / DSC % / Push Prc — doba_promo_pricing
+                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
+
                     {
                         title: "SPRICE",
                         field: "sprice",

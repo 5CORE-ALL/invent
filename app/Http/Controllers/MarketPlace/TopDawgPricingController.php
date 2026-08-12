@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\AmazonChannelSummary;
+use App\Models\AmazonDataView;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -101,6 +102,18 @@ class TopDawgPricingController extends Controller
 
         $skus = $productMasterRows->pluck('sku')->toArray();
         $shopifyData = ShopifySku::mapByProductSkus($skus);
+
+        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+        $amazonStandardPrices = [];
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
 
         $topdawgData = Schema::hasTable('topdawg_products')
             ? TopDawgProduct::buildLookupByNormalizedSku($skus)
@@ -218,6 +231,8 @@ class TopDawgPricingController extends Controller
                 $row['SGPFT'] = null;
                 $row['SROI']  = null;
             }
+
+            $row['STANDARD_PRICE'] = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
 
             $processedData[] = $row;
         }

@@ -138,20 +138,22 @@
         object-fit: cover !important;
     }
 
-    /* Keep scout / zoom previews larger.
-       Do NOT include #modal-product-image or generic .modal img[alt="Product"] —
-       those are OV L30 / price-increase thumbs; unbounded size hides channel rows. */
+    /* Scout / zoom / table hover previews — larger than 32px thumbs, but NEVER full-screen.
+       (Previously max-width:none !important blew up ebay/amazon hover previews to natural image size.) */
     .modal img.image-thumbnail,
     img.scouth-image-thumbnail,
     img[data-preview],
     img[style*="max-width:120px"],
     img[style*="max-width: 120px"],
     img[style*="max-width:350px"],
-    img[style*="max-width: 350px"] {
+    img[style*="max-width: 350px"],
+    #image-hover-preview img,
+    #global-img-hover-preview,
+    .product-image-enlarged {
         width: auto !important;
         height: auto !important;
-        max-width: none !important;
-        max-height: none !important;
+        max-width: min(420px, 90vw) !important;
+        max-height: min(420px, 80vh) !important;
         object-fit: contain !important;
     }
 
