@@ -55,10 +55,7 @@ class FetchWayfairData extends Command
             return;
         }
 
-        $this->info("Truncating old Wayfair data...");
-        WayfairPricingPrice::truncate(); 
-
-        $this->info("Access token received. Fetching all purchase orders...");
+        $this->info("Access token received. Fetching purchase orders (upsert, do not wipe existing listings)...");
 
         $limit = 100;
         $offset = 0;
@@ -80,10 +77,7 @@ class FetchWayfairData extends Command
                     if (!$sku) continue;
 
                     // Save to DB
-                    WayfairPricingPrice::create([
-                        'sku' => $sku,
-                        'purchase_order_data' => $poJson
-                    ]);
+                    WayfairPricingPrice::upsertBySku($sku);
 
                     $totalSaved++;
                     $this->info("Saved SKU: $sku | PO: " . ($po['poNumber'] ?? 'N/A'));

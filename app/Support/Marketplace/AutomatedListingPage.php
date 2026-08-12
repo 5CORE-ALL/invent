@@ -28,11 +28,21 @@ class AutomatedListingPage
         $statusClass = $cfg['status'] ?? null;
         $statusData = collect();
         if ($statusClass && class_exists($statusClass)) {
-            $statusData = $statusClass::whereIn('sku', $skus)
-                ->get()
-                ->mapWithKeys(function ($row) {
-                    return [strtolower(trim((string) $row->sku)) => $row];
-                });
+            $statusQuery = $statusClass::query()->whereNotNull('sku')->where('sku', '!=', '');
+            // Wayfair status SKUs often differ by spaces/hyphens from CP Master — load all and match normalized.
+            if ($statusClass !== \App\Models\WayfairListingStatus::class) {
+                $statusQuery->whereIn('sku', $skus);
+            }
+            foreach ($statusQuery->get() as $row) {
+                $lower = strtolower(trim((string) $row->sku));
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                if ($lower !== '' && ! $statusData->has($lower)) {
+                    $statusData[$lower] = $row;
+                }
+                if ($norm !== '' && ! $statusData->has($norm)) {
+                    $statusData[$norm] = $row;
+                }
+            }
         }
 
         $dataView = $cfg['dataView'] ?? null;
@@ -53,8 +63,11 @@ class AutomatedListingPage
 
             $item->buyer_link = null;
             $item->seller_link = null;
-            if (isset($statusData[$skuLower])) {
-                $statusValue = $statusData[$skuLower]->value;
+            $statusRow = $statusData[$skuLower]
+                ?? $statusData[ShopifySku::normalizeSkuForShopifyLookup($childSku)]
+                ?? null;
+            if ($statusRow) {
+                $statusValue = $statusRow->value;
                 $status = is_array($statusValue)
                     ? $statusValue
                     : (json_decode($statusValue, true) ?? []);
@@ -73,6 +86,9 @@ class AutomatedListingPage
             // EbayTwo-style blades historically read eBay_item_id for Missing L / links
             $item->eBay_item_id = $idOrNull;
             $item->listed = $listingId !== '' ? 'Listed' : 'Pending';
+            if (! $item->buyer_link && $idOrNull && str_starts_with($idOrNull, 'http')) {
+                $item->buyer_link = $idOrNull;
+            }
 
             return $item;
         })->values();

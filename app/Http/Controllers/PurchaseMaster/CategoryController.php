@@ -3628,7 +3628,7 @@ PROMPT;
     {
         try {
             $validated = $request->validate([
-                'field' => 'required|string|in:battery,wireless,electric,gcc,blanket,bluetooth,logo,graph',
+                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph',
                 'image' => 'required|file|image|max:5120',
             ]);
 
@@ -3663,7 +3663,7 @@ PROMPT;
     {
         try {
             $request->validate([
-                'field' => 'required|string|in:battery,wireless,electric,gcc,blanket,bluetooth,logo,graph',
+                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph',
                 'pdf' => 'required|file|mimes:pdf|max:15360',
             ]);
 
@@ -3696,7 +3696,7 @@ PROMPT;
      */
     private function complianceMasterRowHasFieldKeys(array $values): bool
     {
-        $fields = ['battery', 'wireless', 'electric', 'gcc', 'blanket', 'bluetooth', 'logo', 'graph'];
+        $fields = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph'];
         foreach ($fields as $f) {
             if (! array_key_exists($f, $values)) {
                 continue;
@@ -3716,7 +3716,7 @@ PROMPT;
     private function mergeComplianceFieldsFromRequest(array $validated): array
     {
         $out = [];
-        foreach (['battery', 'wireless', 'electric', 'gcc', 'blanket', 'bluetooth', 'logo', 'graph'] as $field) {
+        foreach (['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph'] as $field) {
             $v = $validated[$field] ?? '';
             $out[$field] = $v !== null ? trim((string) $v) : '';
             if ($out[$field] === '') {
@@ -3733,6 +3733,54 @@ PROMPT;
         return $out;
     }
 
+    /**
+     * Copy compliance field patch onto sibling child SKUs under the same parent.
+     *
+     * @param  array<string, string>  $patch
+     * @return list<string> Updated sibling SKUs
+     */
+    private function applyCompliancePatchToSiblingProducts(ProductMaster $source, array $patch, bool $applySiblings): array
+    {
+        if (! $applySiblings || $patch === []) {
+            return [];
+        }
+
+        $parent = trim((string) ($source->parent ?? ''));
+        if ($parent === '') {
+            return [];
+        }
+
+        $sourceSkuNorm = $this->normalizeSkuDisplayValue((string) $source->sku);
+        $updated = [];
+
+        $siblings = ProductMaster::query()
+            ->where('sku', 'NOT LIKE', 'PARENT %')
+            ->whereRaw('TRIM(parent) = ?', [$parent])
+            ->get();
+
+        foreach ($siblings as $sib) {
+            if ($this->normalizeSkuDisplayValue((string) $sib->sku) === $sourceSkuNorm) {
+                continue;
+            }
+
+            $existingValues = is_array($sib->Values) ? $sib->Values
+                : (is_string($sib->Values) ? json_decode($sib->Values, true) : []);
+            if (! is_array($existingValues)) {
+                $existingValues = [];
+            }
+
+            foreach ($patch as $k => $v) {
+                $existingValues[$k] = $v;
+            }
+
+            $sib->Values = $existingValues;
+            $sib->save();
+            $updated[] = $this->normalizeSkuDisplayValue((string) $sib->sku) ?: (string) $sib->sku;
+        }
+
+        return $updated;
+    }
+
     public function storeComplianceMaster(Request $request)
     {
         try {
@@ -3742,6 +3790,7 @@ PROMPT;
                 'wireless' => 'nullable|string',
                 'electric' => 'nullable|string',
                 'gcc' => 'nullable|string',
+                'rohs' => 'nullable|string',
                 'blanket' => 'nullable|string',
                 'bluetooth' => 'nullable|string',
                 'logo' => 'nullable|string',
@@ -3750,6 +3799,7 @@ PROMPT;
                 'wireless_img' => 'nullable|string|max:500',
                 'electric_img' => 'nullable|string|max:500',
                 'gcc_img' => 'nullable|string|max:500',
+                'rohs_img' => 'nullable|string|max:500',
                 'blanket_img' => 'nullable|string|max:500',
                 'bluetooth_img' => 'nullable|string|max:500',
                 'logo_img' => 'nullable|string|max:500',
@@ -3758,10 +3808,12 @@ PROMPT;
                 'wireless_pdf' => 'nullable|string|max:500',
                 'electric_pdf' => 'nullable|string|max:500',
                 'gcc_pdf' => 'nullable|string|max:500',
+                'rohs_pdf' => 'nullable|string|max:500',
                 'blanket_pdf' => 'nullable|string|max:500',
                 'bluetooth_pdf' => 'nullable|string|max:500',
                 'logo_pdf' => 'nullable|string|max:500',
                 'graph_pdf' => 'nullable|string|max:500',
+                'apply_siblings' => 'nullable|boolean',
             ]);
 
             // Get the product by SKU to retrieve parent (match normalized spacing vs DB)
@@ -3825,10 +3877,23 @@ PROMPT;
                 }
             }
 
+            $siblingSkus = $this->applyCompliancePatchToSiblingProducts(
+                $product,
+                $values,
+                ! empty($validated['apply_siblings'])
+            );
+
+            $message = 'Compliance Data added successfully';
+            if (count($siblingSkus) > 0) {
+                $message .= ' (+'.count($siblingSkus).' siblings)';
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Compliance Data added successfully',
+                'message' => $message,
                 'data' => $product,
+                'siblings' => $siblingSkus,
+                'siblings_count' => count($siblingSkus),
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
@@ -3858,6 +3923,7 @@ PROMPT;
                 'wireless' => 'nullable|string',
                 'electric' => 'nullable|string',
                 'gcc' => 'nullable|string',
+                'rohs' => 'nullable|string',
                 'blanket' => 'nullable|string',
                 'bluetooth' => 'nullable|string',
                 'logo' => 'nullable|string',
@@ -3866,6 +3932,7 @@ PROMPT;
                 'wireless_img' => 'nullable|string|max:500',
                 'electric_img' => 'nullable|string|max:500',
                 'gcc_img' => 'nullable|string|max:500',
+                'rohs_img' => 'nullable|string|max:500',
                 'blanket_img' => 'nullable|string|max:500',
                 'bluetooth_img' => 'nullable|string|max:500',
                 'logo_img' => 'nullable|string|max:500',
@@ -3874,10 +3941,12 @@ PROMPT;
                 'wireless_pdf' => 'nullable|string|max:500',
                 'electric_pdf' => 'nullable|string|max:500',
                 'gcc_pdf' => 'nullable|string|max:500',
+                'rohs_pdf' => 'nullable|string|max:500',
                 'blanket_pdf' => 'nullable|string|max:500',
                 'bluetooth_pdf' => 'nullable|string|max:500',
                 'logo_pdf' => 'nullable|string|max:500',
                 'graph_pdf' => 'nullable|string|max:500',
+                'apply_siblings' => 'nullable|boolean',
             ]);
 
             $product = $this->findProductMasterBySkuForCompliance($validated['sku']);
@@ -3903,10 +3972,23 @@ PROMPT;
             $product->Values = $existingValues;
             $product->save();
 
+            $siblingSkus = $this->applyCompliancePatchToSiblingProducts(
+                $product,
+                $patch,
+                ! empty($validated['apply_siblings'])
+            );
+
+            $message = 'Compliance data updated successfully.';
+            if (count($siblingSkus) > 0) {
+                $message .= ' (+'.count($siblingSkus).' siblings)';
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Compliance data updated successfully.',
+                'message' => $message,
                 'data' => $product,
+                'siblings' => $siblingSkus,
+                'siblings_count' => count($siblingSkus),
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
@@ -3961,6 +4043,7 @@ PROMPT;
                 'wireless' => 'wireless',
                 'electric' => 'electric',
                 'gcc' => 'gcc',
+                'rohs' => 'rohs',
                 'blanket' => 'blanket',
                 'bluetooth' => 'bluetooth',
                 'logo' => 'logo',
@@ -4041,7 +4124,7 @@ PROMPT;
                     }
                 }
 
-                foreach (['gcc', 'blanket', 'bluetooth', 'logo'] as $field) {
+                foreach (['gcc', 'rohs', 'blanket', 'bluetooth', 'logo'] as $field) {
                     if (isset($columnIndices[$field]) && isset($row[$columnIndices[$field]])) {
                         $v = trim((string) $row[$columnIndices[$field]]);
                         if ($v !== '') {

@@ -225,65 +225,89 @@
             color: #334155;
         }
 
-        /* ========== TOOLBAR (badges + filters, one line, autofit page) ========== */
+        /* ========== TOOLBAR (badges row + filters row, fit page, keep font) ========== */
         #wayfair-listing-toolbar {
             background: transparent;
             border: none;
             border-radius: 0;
             padding: 0;
-            overflow: hidden;
+            overflow: visible;
             width: 100%;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
 
         #wayfair-listing-toolbar .wayfair-listing-toolbar-row {
             display: flex;
-            flex-wrap: nowrap;
-            align-items: center;
-            justify-content: space-between;
-            gap: 6px;
+            flex-direction: column;
+            gap: 8px;
             width: 100%;
             min-width: 0;
             box-sizing: border-box;
         }
 
         #wayfair-listing-toolbar .listing-stat-badges {
-            display: inline-flex;
-            flex: 0 0 auto;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             align-items: stretch;
-            gap: 0;
+            gap: 6px;
+            width: 100%;
             margin: 0;
             padding: 0;
         }
 
         #wayfair-listing-toolbar .listing-stat-badge {
-            flex: 0 0 auto;
+            flex: none;
             justify-content: center;
             margin: 0 !important;
-            border-radius: 0;
+            min-width: 0;
+            width: 100%;
+            height: 45px;
+            padding: 0 10px;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+            overflow: visible;
         }
 
-        #wayfair-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
-            border-radius: 8px 0 0 8px;
+        #wayfair-listing-toolbar .listing-stat-badge > span {
+            font-size: 18px;
+            flex-shrink: 0;
         }
 
-        #wayfair-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
-            border-radius: 0 8px 8px 0;
+        #wayfair-listing-toolbar .listing-toolbar-controls {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            width: 100%;
+            min-width: 0;
+        }
+
+        #wayfair-listing-toolbar .listing-toolbar-filters {
+            display: flex;
+            flex: 1 1 auto;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
         }
 
         #wayfair-listing-toolbar .filter-select {
-            flex: 0 0 auto;
+            flex: 1 1 0;
             min-width: 0;
-            width: 92px !important;
-            max-width: 92px;
+            width: auto !important;
+            max-width: none;
             border-radius: 5px;
             border: 1px solid #cbd5e1;
             background: #fff;
             color: #64748b;
-            font-size: 11px;
+            font-size: 16px;
             font-weight: 600;
-            padding: 2px 16px 2px 4px;
-            height: 30px;
+            padding: 2px 22px 2px 8px;
+            height: 45px;
             line-height: 1.2;
         }
 
@@ -296,16 +320,30 @@
         #wayfair-listing-toolbar .toolbar-actions {
             display: flex;
             flex: 0 0 auto;
+            flex-shrink: 0;
             align-items: center;
+            gap: 6px;
             margin-left: 0;
+        }
+
+        #wayfair-listing-toolbar .verify-listings-btn {
+            height: 45px;
+            font-size: 16px;
+            font-weight: 700;
+            white-space: nowrap;
+            padding: 0 14px;
+            border-radius: 5px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
 
         #wayfair-listing-toolbar .listing-io-btn {
             border-radius: 5px;
             font-weight: 600;
-            font-size: 14px;
-            width: 32px;
-            height: 30px;
+            font-size: 21px;
+            width: 48px;
+            height: 45px;
             padding: 0;
             display: inline-flex;
             align-items: center;
@@ -342,26 +380,42 @@
             display: inline-flex;
             align-items: center;
             color: #fff;
-            font-size: 15px;
+            font-size: 12px;
             font-weight: 700;
-            padding: 8px 14px;
+            padding: 6px 10px;
             border-radius: 8px;
             white-space: nowrap;
-            line-height: 1.25;
+            line-height: 1.2;
             letter-spacing: 0.2px;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
         .listing-stat-badge > span {
             margin-left: 4px;
-            font-size: 16px;
+            font-size: 13px;
             font-weight: 800;
         }
 
-        .listing-stat-badge--req { background: #22c55e; color: #052e16; }
-        .listing-stat-badge--nrl { background: #ef4444; color: #fff; }
         .listing-stat-badge--nolink { background: #f59e0b; color: #1c1917; }
         .listing-stat-badge--listed { background: #0ea5e9; color: #fff; }
+        .listing-stat-badge--inv0 { background: #64748b; color: #fff; }
+        .listing-stat-badge--listed,
+        .listing-stat-badge--inv0 {
+            cursor: pointer;
+            user-select: none;
+        }
+        .listing-stat-badge--listed:hover,
+        .listing-stat-badge--inv0:hover {
+            filter: brightness(0.95);
+        }
+        .listing-stat-badge--listed.is-active {
+            outline: 2px solid #fff;
+            box-shadow: 0 0 0 2px #0284c7;
+        }
+        .listing-stat-badge--inv0.is-active {
+            outline: 2px solid #fff;
+            box-shadow: 0 0 0 2px #475569;
+        }
         .listing-stat-badge--pending { background: #dc3545; color: #fff; }
         .listing-stat-badge--pending {
             cursor: pointer;
@@ -374,10 +428,40 @@
             outline: 2px solid #fff;
             box-shadow: 0 0 0 2px #dc3545;
         }
+        .listing-stat-badge--pending-inv0 { background: #7c3aed; color: #fff; }
+        .listing-stat-badge--pending-inv0 {
+            cursor: pointer;
+            user-select: none;
+        }
+        .listing-stat-badge--pending-inv0:hover {
+            filter: brightness(0.95);
+        }
+        .listing-stat-badge--pending-inv0.is-active {
+            outline: 2px solid #fff;
+            box-shadow: 0 0 0 2px #7c3aed;
+        }
         .listing-stat-badge--rows { background: #334155; color: #fff; }
+        .listing-stat-badge--parents { background: #5eead4; color: #0f172a; }
+        .listing-stat-badge--skus { background: #60a5fa; color: #0f172a; }
+        .listing-stat-badge--parents,
+        .listing-stat-badge--skus {
+            cursor: pointer;
+            user-select: none;
+        }
+        .listing-stat-badge--parents:hover,
+        .listing-stat-badge--skus:hover {
+            filter: brightness(0.95);
+        }
+        .listing-stat-badge--parents.is-active {
+            outline: 2px solid #fff;
+            box-shadow: 0 0 0 2px #14b8a6;
+        }
+        .listing-stat-badge--skus.is-active {
+            outline: 2px solid #fff;
+            box-shadow: 0 0 0 2px #2563eb;
+        }
 
         /* ========== DROPDOWNS ========== */
-        #wayfair-listing-wrap select.nr-req-dropdown,
         #wayfair-listing-wrap select.listed-dropdown {
             border: 1px solid transparent;
             border-radius: 6px;
@@ -389,22 +473,9 @@
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        #wayfair-listing-wrap select.nr-req-dropdown:focus,
         #wayfair-listing-wrap select.listed-dropdown:focus {
             outline: none;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
-        }
-
-        #wayfair-listing-wrap select.nr-req-dropdown[data-val="REQ"],
-        #wayfair-listing-wrap select.nr-req-dropdown option.req-option {
-            background-color: #28a745;
-            color: #fff;
-        }
-
-        #wayfair-listing-wrap select.nr-req-dropdown[data-val="NR"],
-        #wayfair-listing-wrap select.nr-req-dropdown option.nr-option {
-            background-color: #dc3545;
-            color: #fff;
         }
 
         #wayfair-listing-wrap select.listed-dropdown[data-val="Listed"],
@@ -438,6 +509,7 @@
         .listing-auto-badge--listed { background-color: #28a745; }
         .listing-auto-badge--nrl,
         .listing-auto-badge--not-listed { background-color: #dc3545; }
+        .listing-auto-badge--not-listed-inv0 { background-color: #7c3aed; }
 
         .listing-listed-tick {
             display: inline-flex;
@@ -516,59 +588,72 @@
                     <div id="wayfair-listing-toolbar" class="mb-3">
                         <div class="wayfair-listing-toolbar-row">
                             <div class="listing-stat-badges">
-                                <span class="listing-stat-badge listing-stat-badge--req">REQ:<span id="req-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed). Click again to clear.">Missing L:<span id="pending-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--parents" id="parent-badge" role="button" tabindex="0" title="Unique parents from CP Master. Click to show Parent rows.">Parent <span id="parent-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--skus" id="sku-badge" role="button" tabindex="0" title="Child SKUs from CP Master. Click to show SKU rows.">SKU <span id="sku-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--listed" id="listed-badge" role="button" tabindex="0" title="Listed on Wayfair, including inv=0. Click to show listed SKUs.">Listed:<span id="listed-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--inv0" id="inv0-badge" role="button" tabindex="0" title="Child SKUs with inv=0. Click to show them.">inv=0:<span id="inv0-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs with inv&gt;0. Click again to clear.">Missing L &gt;0:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending-inv0" id="missing-l-inv0-badge" role="button" tabindex="0" title="Click to show Missing L SKUs with inv=0. Click again to clear.">Missing L = 0:<span id="pending-inv0-total">0</span></span>
                             </div>
 
-                            <select id="row-data-type" class="form-select form-select-sm filter-select" aria-label="Data Type">
-                                <option value="all" selected>Data Type</option>
-                                <option value="sku">SKU (Child)</option>
-                                <option value="parent">Parent</option>
-                            </select>
-                            <select id="inv-filter" class="form-select form-select-sm filter-select" aria-label="INV">
-                                <option value="all">INV: All</option>
-                                <option value="inv-only" selected>INV Only</option>
-                            </select>
-                            <select id="nr-req-filter" class="form-select form-select-sm filter-select" aria-label="NRL/REQ">
-                                <option value="all" selected>NRL/REQ</option>
-                                <option value="REQ">REQ</option>
-                                <option value="NR">NRL</option>
-                            </select>
-                            <select id="link-filter" class="form-select form-select-sm filter-select" aria-label="Buyer Link">
-                                <option value="all" selected>Buyer Link</option>
-                                <option value="with-link">With Link</option>
-                                <option value="without-link">Without Link</option>
-                            </select>
-                            <select id="listed-filter" class="form-select form-select-sm filter-select" aria-label="Listed">
-                                <option value="all" selected>Listed</option>
-                                <option value="Listed">Listed Only</option>
-                                <option value="Pending">Missing L</option>
-                            </select>
-                            <div class="toolbar-actions dropdown">
-                                <button type="button"
-                                    class="btn btn-sm btn-primary listing-io-btn"
-                                    id="listing-io-btn"
-                                    data-bs-toggle="dropdown"
-                                    aria-expanded="false"
-                                    title="Import / Export">
-                                    <i class="fas fa-file-import"></i>
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end listing-io-menu" aria-labelledby="listing-io-btn">
-                                    <li>
-                                        <button type="button" class="dropdown-item" id="import-btn" title="Import">
-                                            <i class="fas fa-file-import text-primary"></i>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="{{ route('listing_wayfair.export') }}" title="Export">
-                                            <i class="fas fa-file-export text-success"></i>
-                                        </a>
-                                    </li>
-                                </ul>
+                            <div class="listing-toolbar-controls">
+                                <div class="listing-toolbar-filters">
+                                    <select id="row-data-type" class="form-select form-select-sm filter-select" aria-label="Data Type">
+                                        <option value="all" selected>all</option>
+                                        <option value="sku">SKU (Child)</option>
+                                        <option value="parent">Parent</option>
+                                    </select>
+                                    <select id="inv-filter" class="form-select form-select-sm filter-select" aria-label="INV">
+                                        <option value="all" selected>inv all</option>
+                                        <option value="gt0">inv&gt;0</option>
+                                        <option value="eq0">inv=0</option>
+                                    </select>
+                                    <select id="link-filter" class="form-select form-select-sm filter-select" aria-label="Buyer Link">
+                                        <option value="all" selected>Buyer Link</option>
+                                        <option value="with-link">With Link</option>
+                                        <option value="without-link">Without Link</option>
+                                    </select>
+                                    <select id="listed-filter" class="form-select form-select-sm filter-select" aria-label="Listed">
+                                        <option value="all" selected>Listed</option>
+                                        <option value="Listed">Listed Only</option>
+                                        <option value="Pending">Missing L</option>
+                                    </select>
+                                </div>
+                                <div class="toolbar-actions dropdown">
+                                    <button type="button"
+                                        class="btn btn-sm btn-success verify-listings-btn"
+                                        id="verify-listings-btn"
+                                        title="Check Missing L SKUs against the Wayfair API and update listed ones">
+                                        <i class="fas fa-check-double"></i> Verify
+                                    </button>
+                                    <a href="{{ route('wayfair.variation.verify') }}"
+                                        class="btn btn-sm btn-outline-primary verify-listings-btn"
+                                        title="Wayfair Variation Verify (Parent vs Listed SKU)">
+                                        <i class="fas fa-table"></i> Variation Verify
+                                    </a>
+                                    <button type="button"
+                                        class="btn btn-sm btn-primary listing-io-btn"
+                                        id="listing-io-btn"
+                                        data-bs-toggle="dropdown"
+                                        aria-expanded="false"
+                                        title="Import / Export">
+                                        <i class="fas fa-file-import"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end listing-io-menu" aria-labelledby="listing-io-btn">
+                                        <li>
+                                            <button type="button" class="dropdown-item" id="import-btn" title="Import">
+                                                <i class="fas fa-file-import text-primary"></i>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="{{ route('listing_wayfair.export') }}" title="Export">
+                                                <i class="fas fa-file-export text-success"></i>
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -619,6 +704,7 @@
 
         let wayfairListingTable = null;
         let allListingData = [];
+        let syncCatalogBadgeActive = function () {};
 
         function isParentSku(sku) {
             return String(sku || '').toUpperCase().includes('PARENT');
@@ -657,8 +743,6 @@
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
                 const itemId = String(item.eBay_item_id || '').trim();
-                // Automated: NRL from EbayTwoDataView; Listed from ebay_2_metrics.item_id
-                const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
                 const listed = itemId ? 'Listed' : 'Pending';
                 return {
                     ...item,
@@ -666,7 +750,6 @@
                     sku: item.sku ?? '',
                     INV: inv,
                     L30: parseFloat(item.L30) || 0,
-                    nr_req: nrReq,
                     listed: listed,
                     eBay_item_id: itemId || null,
                     buyer_link: item.buyer_link || '',
@@ -692,45 +775,38 @@
                 }
 
                 const rows = wayfairListingTable.getData('active') || [];
-                const metrics = {
-                    invTotal: 0,
-                    reqTotal: 0,
-                    nrlTotal: 0,
-                    withoutLinkTotal: 0,
-                    listedTotal: 0,
-                    pendingTotal: 0
-                };
-
-                rows.forEach(item => {
-                    if (parseFloat(item.INV) > 0 && !isParentSku(item.sku)) {
-                        metrics.invTotal += parseFloat(item.INV) || 0;
-
-                        if (item.nr_req === 'REQ') {
-                            metrics.reqTotal++;
-                            // No Link: REQ rows with no ebay item id (dynamic link unavailable)
-                            if (!String(item.eBay_item_id || '').trim()) {
-                                metrics.withoutLinkTotal++;
-                            }
-                        }
-                        if (item.nr_req === 'NR') {
-                            metrics.nrlTotal++;
-                        }
-                        if (item.nr_req !== 'NR') {
-                            if (item.listed === 'Listed') {
-                                metrics.listedTotal++;
-                            }
-                            if (item.listed === 'Pending' || !item.listed) {
-                                metrics.pendingTotal++;
-                            }
+                const parentSet = new Set();
+                let skuCount = 0;
+                let listedTotal = 0;
+                let pendingTotal = 0;
+                let withoutLinkTotal = 0;
+                let inv0Total = 0;
+                let pendingInv0Total = 0;
+                allListingData.forEach(item => {
+                    const parent = String(item.parent || '').trim();
+                    if (parent) parentSet.add(parent);
+                    if (!item.sku || isParentSku(item.sku)) return;
+                    skuCount++;
+                    if ((parseFloat(item.INV) || 0) === 0) inv0Total++;
+                    if (item.listed === 'Listed') {
+                        listedTotal++;
+                    } else {
+                        if ((parseFloat(item.INV) || 0) === 0) {
+                            pendingInv0Total++;
+                        } else {
+                            pendingTotal++;
                         }
                     }
+                    const hasLink = !!String(item.buyer_link || item.eBay_item_id || '').trim();
+                    if (!hasLink) withoutLinkTotal++;
                 });
-
-                $('#req-total').text(metrics.reqTotal);
-                $('#nrl-total').text(metrics.nrlTotal);
-                $('#without-link-total').text(metrics.withoutLinkTotal);
-                $('#listed-total').text(metrics.listedTotal);
-                $('#pending-total').text(metrics.pendingTotal);
+                $('#parent-total').text(parentSet.size.toLocaleString());
+                $('#sku-total').text(skuCount.toLocaleString());
+                $('#listed-total').text(listedTotal.toLocaleString());
+                $('#inv0-total').text(inv0Total.toLocaleString());
+                $('#pending-total').text(pendingTotal.toLocaleString());
+                $('#pending-inv0-total').text(pendingInv0Total.toLocaleString());
+                $('#without-link-total').text(withoutLinkTotal.toLocaleString());
                 $('#rows-total').text(rows.length.toLocaleString());
             } catch (error) {
                 console.error('Error in calculateTotals:', error);
@@ -739,11 +815,13 @@
         }
 
         function resetMetricsToZero() {
-            $('#req-total').text('0');
-            $('#nrl-total').text('0');
+            $('#parent-total').text('0');
+            $('#sku-total').text('0');
             $('#without-link-total').text('0');
             $('#listed-total').text('0');
+            $('#inv0-total').text('0');
             $('#pending-total').text('0');
+            $('#pending-inv0-total').text('0');
             $('#rows-total').text('0');
         }
 
@@ -752,7 +830,6 @@
 
             const dataType = $('#row-data-type').val();
             const invFilter = $('#inv-filter').val();
-            const nrReqFilter = $('#nr-req-filter').val();
             const linkFilter = $('#link-filter').val();
             const listedFilter = $('#listed-filter').val();
 
@@ -760,11 +837,11 @@
                 if (dataType === 'parent' && !data.is_parent) return false;
                 if (dataType === 'sku' && data.is_parent) return false;
 
-                if (invFilter === 'inv-only') {
-                    if (!data.is_parent && !(parseFloat(data.INV) > 0)) return false;
+                if (!data.is_parent) {
+                    const inv = parseFloat(data.INV) || 0;
+                    if (invFilter === 'gt0' && !(inv > 0)) return false;
+                    if (invFilter === 'eq0' && inv !== 0) return false;
                 }
-
-                if (nrReqFilter !== 'all' && data.nr_req !== nrReqFilter) return false;
 
                 const hasItemLink = !!String(data.eBay_item_id || '').trim();
                 if (linkFilter === 'with-link' && !hasItemLink) return false;
@@ -776,17 +853,9 @@
             });
 
             calculateTotals();
-        }
-
-        function formatNrReq(cell) {
-            const data = cell.getRow().getData();
-            if (data.is_parent) return '';
-
-            const value = data.nr_req || 'REQ';
-            if (value === 'NR') {
-                return `<span class="listing-auto-badge listing-auto-badge--nrl" title="From channel DataView NRL">NRL</span>`;
+            if (typeof syncCatalogBadgeActive === 'function') {
+                syncCatalogBadgeActive();
             }
-            return `<span class="listing-auto-badge listing-auto-badge--req" title="From channel DataView NRL">REQ</span>`;
         }
 
         function showBsModal(id) {
@@ -838,11 +907,15 @@
             // Missing Listing: channel listing id / price signal = Listed
             const itemId = String(data.eBay_item_id || '').trim();
             if (itemId) {
-                return `<span class="listing-listed-tick" title="Listed (ebay_2_metrics.item_id)" aria-label="Listed">
+                return `<span class="listing-listed-tick" title="Listed (Wayfair pricing or listing status)" aria-label="Listed">
                     <i class="fas fa-check"></i>
                 </span>`;
             }
-            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no ebay item id">Missing L</span>`;
+            const inv = parseFloat(data.INV) || 0;
+            if (inv === 0) {
+                return `<span class="listing-auto-badge listing-auto-badge--not-listed-inv0" title="Missing L = 0 — not listed and inv=0">Missing L = 0</span>`;
+            }
+            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L &gt;0 — not listed and inv&gt;0">Missing L &gt;0</span>`;
         }
 
         $(document).ready(function () {
@@ -922,16 +995,6 @@
                         }
                     },
                     {
-                        title: 'NRL/REQ',
-                        field: 'nr_req',
-                        hozAlign: 'center',
-                        headerHozAlign: 'center',
-                        headerSort: false,
-                        width: 110,
-                        headerTooltip: 'Automatic from channel DataView NRL',
-                        formatter: formatNrReq
-                    },
-                    {
                         title: 'Buyer Link',
                         field: 'eBay_item_id',
                         hozAlign: 'center',
@@ -959,8 +1022,8 @@
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
-                        width: 130,
-                        headerTooltip: 'Automatic from channel listing signal (EbayTwo Missing L pattern)',
+                        width: 150,
+                        headerTooltip: 'Red = Missing L &gt;0 (has inventory). Purple = Missing L = 0 (inv=0).',
                         formatter: formatListed
                     }
                 ]
@@ -978,9 +1041,118 @@
                 showNotification('danger', 'Failed to load data. Please try again.');
             });
 
-            $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
+            $('#row-data-type, #inv-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
 
-            // Missing L badge → filter table to unlisted REQ SKUs (toggle)
+            syncCatalogBadgeActive = function () {
+                const dataType = $('#row-data-type').val();
+                const invFilter = $('#inv-filter').val();
+                const listedFilter = $('#listed-filter').val();
+                const linkFilter = $('#link-filter').val();
+                const catalogView = listedFilter === 'all' && linkFilter === 'all' && (invFilter === 'all' || dataType === 'parent');
+                $('#parent-badge').toggleClass('is-active', catalogView && dataType === 'parent');
+                $('#sku-badge').toggleClass('is-active', catalogView && dataType === 'sku' && invFilter === 'all');
+                $('#listed-badge').toggleClass('is-active',
+                    dataType === 'sku' && listedFilter === 'Listed' && invFilter === 'all' && linkFilter === 'all'
+                );
+                $('#inv0-badge').toggleClass('is-active',
+                    dataType === 'sku' && invFilter === 'eq0' && listedFilter === 'all' && linkFilter === 'all'
+                );
+                $('#missing-l-inv0-badge').toggleClass('is-active',
+                    dataType === 'sku' && listedFilter === 'Pending' && invFilter === 'eq0' && linkFilter === 'all'
+                );
+            }
+
+            function applyCatalogBadgeFilter(kind) {
+                const $parent = $('#parent-badge');
+                const $sku = $('#sku-badge');
+                const already =
+                    (kind === 'parent' && $parent.hasClass('is-active')) ||
+                    (kind === 'sku' && $sku.hasClass('is-active'));
+
+                applyMissingLBadgeFilter(true);
+                $('#link-filter').val('all');
+                $('#listed-filter').val('all');
+                $('#inv-filter').val('all');
+
+                if (already) {
+                    $('#row-data-type').val('all');
+                } else {
+                    $('#row-data-type').val(kind === 'parent' ? 'parent' : 'sku');
+                }
+                applyListingFilters();
+                syncCatalogBadgeActive();
+            }
+
+            $(document).on('click', '#parent-badge', function () {
+                applyCatalogBadgeFilter('parent');
+            });
+            $(document).on('click', '#sku-badge', function () {
+                applyCatalogBadgeFilter('sku');
+            });
+            $(document).on('keydown', '#parent-badge, #sku-badge', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    applyCatalogBadgeFilter(this.id === 'parent-badge' ? 'parent' : 'sku');
+                }
+            });
+            $('#row-data-type, #inv-filter, #link-filter, #listed-filter').on('change.catalogBadges', syncCatalogBadgeActive);
+
+            $(document).on('click', '#listed-badge', function () {
+                const already = $('#listed-badge').hasClass('is-active');
+                applyMissingLBadgeFilter(true);
+                $('#row-data-type').val('sku');
+                $('#inv-filter').val('all');
+                $('#link-filter').val('all');
+                $('#listed-filter').val(already ? 'all' : 'Listed');
+                applyListingFilters();
+                syncCatalogBadgeActive();
+            });
+            $(document).on('click', '#inv0-badge', function () {
+                const already = $('#inv0-badge').hasClass('is-active');
+                applyMissingLBadgeFilter(true);
+                $('#row-data-type').val('sku');
+                $('#link-filter').val('all');
+                $('#listed-filter').val('all');
+                if (already) {
+                    $('#row-data-type').val('all');
+                    $('#inv-filter').val('all');
+                } else {
+                    $('#inv-filter').val('eq0');
+                }
+                applyListingFilters();
+                syncCatalogBadgeActive();
+            });
+            $(document).on('keydown', '#listed-badge, #inv0-badge', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    $(this).trigger('click');
+                }
+            });
+
+            $(document).on('click', '#missing-l-inv0-badge', function () {
+                const already = $('#missing-l-inv0-badge').hasClass('is-active');
+                applyMissingLBadgeFilter(true);
+                $('#row-data-type').val('sku');
+                $('#link-filter').val('all');
+                if (already) {
+                    $('#row-data-type').val('all');
+                    $('#inv-filter').val('all');
+                    $('#listed-filter').val('all');
+                } else {
+                    $('#inv-filter').val('eq0');
+                    $('#listed-filter').val('Pending');
+                }
+                applyListingFilters();
+                syncCatalogBadgeActive();
+            });
+            $(document).on('keydown', '#missing-l-inv0-badge', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    $(this).trigger('click');
+                }
+            });
+
+            // Missing L badge → filter table to unlisted SKUs (toggle)
             let missingLFilterActive = false;
             function applyMissingLBadgeFilter(forceOff) {
                 if (forceOff === true) {
@@ -991,14 +1163,12 @@
                 const $badge = $('#missing-l-badge');
                 if (missingLFilterActive) {
                     $('#row-data-type').val('sku');
-                    $('#inv-filter').val('inv-only');
-                    $('#nr-req-filter').val('REQ');
+                    $('#inv-filter').val('gt0');
                     $('#link-filter').val('all');
                     $('#listed-filter').val('Pending');
                     $badge.addClass('is-active');
                 } else {
                     $('#listed-filter').val('all');
-                    $('#nr-req-filter').val('all');
                     $badge.removeClass('is-active');
                 }
                 applyListingFilters();
@@ -1012,12 +1182,11 @@
                     applyMissingLBadgeFilter();
                 }
             });
-            $('#listed-filter, #nr-req-filter, #inv-filter, #row-data-type').on('change.missingLBadge', function () {
+            $('#listed-filter, #inv-filter, #row-data-type').on('change.missingLBadge', function () {
                 if (!missingLFilterActive) return;
                 const stillMissing =
                     $('#listed-filter').val() === 'Pending' &&
-                    $('#nr-req-filter').val() === 'REQ' &&
-                    $('#inv-filter').val() === 'inv-only' &&
+                    $('#inv-filter').val() === 'gt0' &&
                     $('#row-data-type').val() === 'sku';
                 if (!stillMissing) {
                     missingLFilterActive = false;
@@ -1027,6 +1196,42 @@
 
             $('#import-btn').on('click', function () {
                 showBsModal('importModal');
+            });
+
+            $(document).on('click', '#verify-listings-btn', function () {
+                const $btn = $(this);
+                if ($btn.prop('disabled')) return;
+                if (!confirm('Verify Missing L SKUs against the Wayfair API and update any that are listed?')) {
+                    return;
+                }
+                $btn.prop('disabled', true);
+                const prevHtml = $btn.html();
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> Verifying…');
+                $('#data-loader .loader-text').text('Verifying missing listings with Wayfair API...');
+                showLoader();
+                $.ajax({
+                    url: "{{ route('listing_wayfair.verify') }}",
+                    type: 'POST',
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    timeout: 0,
+                    success: function (response) {
+                        const ok = !!(response && response.success);
+                        showNotification(ok ? 'success' : 'warning', (response && response.message) ? response.message : 'Verify finished.');
+                        wayfairListingTable.setData('/listing_wayfair/view-data');
+                    },
+                    error: function (xhr) {
+                        hideLoader();
+                        let errorMessage = 'Verify listings failed.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMessage = xhr.responseJSON.message;
+                        }
+                        showNotification('danger', errorMessage);
+                    },
+                    complete: function () {
+                        $btn.prop('disabled', false).html(prevHtml);
+                        $('#data-loader .loader-text').text('Loading Listing data...');
+                    }
+                });
             });
 
             $(document).on('click', '#confirmImportBtn', function () {

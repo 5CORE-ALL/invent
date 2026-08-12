@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Models\WayfairListingStatus;
 use App\Models\WayfairPricingPrice;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -18,8 +19,8 @@ class WayfairListingVariationVerifyController extends Controller
 
     /**
      * Parent-only rows: Parent, Required, Parent Vs Listed SKU.
-     * Listed source: wayfair_pricing_prices (same Missing rule as /wayfair-pricing).
-     * Missing = CP Master child not listed on Wayfair (no row or price <= 0).
+     * Listed source: wayfair_pricing_prices + wayfair_listing_statuses (same as /listing-wayfair).
+     * Missing = CP Master child not listed on Wayfair.
      * Extra   = listed Wayfair SKU in this parent family that is not a CP Master child.
      */
     public function data(Request $request)
@@ -167,9 +168,9 @@ class WayfairListingVariationVerifyController extends Controller
         return response()->json([
             'data' => $formattedData,
             'meta' => [
-                'listings_count' => (int) WayfairPricingPrice::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
+                'listings_count' => count($listedSkuSet['set'] ?? []),
                 'last_pulled_at' => WayfairPricingPrice::query()->max('updated_at'),
-                'has_listings_cache' => WayfairPricingPrice::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
+                'has_listings_cache' => ! ($listedSkuSet['empty'] ?? true),
                 'required_parent_count' => count($parentGroups),
                 'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
                 'mismatch_inv_gt0_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false && (float) ($r['INV'] ?? 0) > 0)),
@@ -180,18 +181,19 @@ class WayfairListingVariationVerifyController extends Controller
     }
 
     /**
-     * Wayfair listings come from price sheet upload on /wayfair-pricing (wayfair_pricing_prices).
+     * Refresh listed lookup from local Wayfair pricing + listing statuses.
      */
     public function pullListings(Request $request)
     {
         try {
-            $count = (int) WayfairPricingPrice::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+            $lookup = $this->buildListedSkuLookup();
+            $count = count($lookup['set'] ?? []);
             $lastPulledAt = WayfairPricingPrice::query()->max('updated_at');
 
             if ($count === 0) {
                 return response()->json([
                     'status' => 422,
-                    'message' => 'No Wayfair listings in wayfair_pricing_prices. Upload price sheet on Wayfair Pricing (/wayfair-pricing) first.',
+                    'message' => 'No Wayfair listings found in wayfair_pricing_prices or wayfair_listing_statuses.',
                     'count' => 0,
                     'last_pulled_at' => $lastPulledAt,
                 ], 422);
@@ -199,12 +201,12 @@ class WayfairListingVariationVerifyController extends Controller
 
             return response()->json([
                 'status' => 200,
-                'message' => "Wayfair listings ready. {$count} SKUs in wayfair_pricing_prices. Parent Vs Listed SKU updated.",
+                'message' => "Wayfair listings ready. {$count} listed SKUs. Parent Vs Listed SKU updated.",
                 'count' => $count,
                 'last_pulled_at' => $lastPulledAt,
             ]);
         } catch (\Throwable $e) {
-            Log::error('Wayfair Listing Variation Verify: pull listings failed', [
+            Log::error('Wayfair Variation Verify: pull listings failed', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -216,14 +218,11 @@ class WayfairListingVariationVerifyController extends Controller
     }
 
     /**
-     * Same normalize as WayfairController::normalizeWayfairPricingSku.
+     * Same normalize as listing-wayfair / ChannelListingRegistry::listedWayfair.
      */
     private function normalizeSku(?string $sku): string
     {
-        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim((string) $sku));
-        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
-
-        return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku));
+        return ShopifySku::normalizeSkuForShopifyLookup($sku);
     }
 
     /**
@@ -310,31 +309,49 @@ class WayfairListingVariationVerifyController extends Controller
         $set = [];
         $skuToListed = [];
 
-        $rows = WayfairPricingPrice::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->get(['sku', 'price']);
-
-        foreach ($rows as $row) {
-            $sku = trim((string) ($row->sku ?? ''));
+        $add = function (string $sku) use (&$set, &$skuToListed): void {
+            $sku = trim($sku);
             if ($sku === '') {
-                continue;
+                return;
             }
-
-            // Match /wayfair-pricing Missing: listed when price > 0
-            if ((float) ($row->price ?? 0) <= 0) {
-                continue;
-            }
-
-            $norm = $this->normalizeSku($sku);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             if ($norm === '') {
-                continue;
+                return;
             }
             $set[$norm] = true;
             if (! isset($skuToListed[$norm])) {
                 $skuToListed[$norm] = $sku;
             }
-        }
+        };
+
+        WayfairPricingPrice::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use ($add) {
+                foreach ($rows as $row) {
+                    $add((string) $row->sku);
+                }
+            });
+
+        WayfairListingStatus::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use ($add) {
+                foreach ($rows as $row) {
+                    $val = is_array($row->value)
+                        ? $row->value
+                        : (json_decode((string) $row->value, true) ?: []);
+                    $listedFlag = strtolower(trim((string) ($val['listed'] ?? '')));
+                    $buyer = trim((string) ($val['buyer_link'] ?? ''));
+                    $listingId = trim((string) ($val['listing_id'] ?? $val['item_id'] ?? ''));
+                    if ($listedFlag !== 'listed' && $buyer === '' && $listingId === '') {
+                        continue;
+                    }
+                    $add((string) $row->sku);
+                }
+            });
 
         return [
             'set' => $set,

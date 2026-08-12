@@ -186,13 +186,6 @@
                 </a>
             </li>
 
-            <li class="side-nav-item">
-                <a href="{{ route('compliance-certificates.index') }}" class="side-nav-link">
-                    <i class="ri-shield-check-line"></i>
-                    <span>Compliance Certificates</span>
-                </a>
-            </li>
-
             {{-- Audit --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#auditMaster" aria-expanded="false"
@@ -1651,7 +1644,7 @@
                                         <a href="{{ route('listing.wayfair') }}">Listing Wayfair</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('wayfair.listing.variation.verify') }}">Wayfair Listing Variation Verify</a>
+                                        <a href="{{ route('wayfair.variation.verify') }}">Wayfair Variation Verify</a>
                                     </li>
                                 </ul>
                             </div>

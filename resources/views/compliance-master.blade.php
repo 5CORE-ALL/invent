@@ -142,9 +142,15 @@
 
         #compliance-tabulator .compliance-na-badge,
         #compliance-tabulator .compliance-req-badge {
-            font-size: 9px;
-            padding: 0.08rem 0.3rem;
+            font-size: 11px;
+            padding: 0.1rem 0.35rem;
             font-weight: 600;
+            line-height: 1.2;
+        }
+
+        #compliance-tabulator .tabulator-row .tabulator-cell {
+            font-size: 11px;
+            line-height: 1.25;
         }
 
         #compliance-tabulator .compliance-pdf-icon-bg {
@@ -196,9 +202,56 @@
             padding-bottom: 0.2rem;
         }
 
-        .cm-compliance-filters-toolbar .form-label.small {
-            font-size: 10px;
-            line-height: 1.2;
+        .cm-compliance-filters-toolbar .cm-field-filter {
+            font-weight: 600;
+            transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+        }
+
+        .cm-compliance-filters-toolbar .cm-field-filter.cm-filter-req {
+            background-color: #dc3545 !important;
+            border-color: #dc3545 !important;
+            color: #fff !important;
+        }
+
+        .cm-compliance-filters-toolbar .cm-field-filter.cm-filter-req-ok {
+            background-color: #198754 !important;
+            border-color: #198754 !important;
+            color: #fff !important;
+        }
+
+        .cm-compliance-filters-toolbar .cm-field-filter.cm-filter-na {
+            background-color: #0d6efd !important;
+            border-color: #0d6efd !important;
+            color: #fff !important;
+        }
+
+        .cm-compliance-filters-toolbar .cm-field-filter option {
+            background-color: #fff;
+            color: #212529;
+            font-weight: 600;
+        }
+
+        .cm-compliance-filters-toolbar .cm-field-filter option.cm-opt-req,
+        .cm-compliance-filters-toolbar .cm-field-filter option[value="req"] {
+            background-color: #dc3545 !important;
+            color: #fff !important;
+        }
+
+        .cm-compliance-filters-toolbar .cm-field-filter option.cm-opt-req-ok,
+        .cm-compliance-filters-toolbar .cm-field-filter option[value="req-ok"] {
+            background-color: #198754 !important;
+            color: #fff !important;
+        }
+
+        .cm-compliance-filters-toolbar .cm-field-filter option.cm-opt-na,
+        .cm-compliance-filters-toolbar .cm-field-filter option[value="na"] {
+            background-color: #0d6efd !important;
+            color: #fff !important;
+        }
+
+        .cm-compliance-filters-toolbar .cm-field-filter option[value="all"] {
+            background-color: #fff !important;
+            color: #212529 !important;
         }
 
         #cm-summary-stats {
@@ -206,12 +259,12 @@
         }
 
         #cm-summary-stats h6 {
-            font-size: 0.8rem;
+            font-size: 11px;
             margin-bottom: 0.35rem !important;
         }
 
         #cm-summary-stats .badge {
-            font-size: 0.65rem;
+            font-size: 11px;
             font-weight: 600;
             padding: 0.2rem 0.4rem;
         }
@@ -668,24 +721,284 @@
             vertical-align: middle;
         }
 
+        /* Right-side compliance editor panel — dense, one-screen */
+        #addComplianceModal.offcanvas-end {
+            width: min(360px, 100vw);
+            border-left: 1px solid rgba(15, 23, 42, 0.08);
+        }
+
+        #addComplianceModal .offcanvas-header {
+            background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
+            color: #fff;
+            padding: 0.45rem 0.75rem;
+        }
+
+        #addComplianceModal .offcanvas-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        #addComplianceModal .btn-close {
+            transform: scale(0.85);
+        }
+
+        #addComplianceModal .cm-panel-body {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #addComplianceModal .cm-panel-scroll {
+            flex: 1 1 auto;
+            overflow: hidden;
+            padding: 0.45rem 0.55rem 0.25rem;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        #addComplianceModal #addComplianceForm {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+
+        #addComplianceModal .cm-panel-footer {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.4rem;
+            padding: 0.4rem 0.55rem;
+            border-top: 1px solid #e5e7eb;
+            background: #f8fafc;
+        }
+
+        #addComplianceModal .cm-sku-block {
+            flex: 0 0 auto;
+            margin-bottom: 0.35rem;
+            padding-bottom: 0.35rem;
+            border-bottom: 1px solid #eef2f7;
+        }
+
+        #addComplianceModal .cm-sku-block .form-label {
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: #64748b;
+            margin-bottom: 0.1rem;
+        }
+
+        #addComplianceModal .cm-meta-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 0.35rem 0.5rem;
+            margin-top: 0.25rem;
+            font-size: 0.72rem;
+        }
+
+        #addComplianceModal .cm-meta-row .small {
+            font-size: 0.68rem;
+        }
+
+        #addComplianceModal .cm-fields-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            flex: 1 1 auto;
+            min-height: 0;
+            justify-content: space-evenly;
+        }
+
+        #addComplianceModal .compliance-field-block {
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            background: #fff;
+            padding: 0.2rem 0.35rem;
+            transition: border-color 0.15s ease, background-color 0.15s ease;
+        }
+
+        #addComplianceModal .compliance-field-block.is-req {
+            border-color: #fca5a5;
+            background: #fef2f2;
+        }
+
+        #addComplianceModal .compliance-field-block.is-req.is-complete {
+            border-color: #86efac;
+            background: #f0fdf4;
+        }
+
+        #addComplianceModal .cm-field-row {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        #addComplianceModal .cm-field-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin: 0;
+            min-width: 3.6rem;
+            flex: 0 0 3.6rem;
+            line-height: 1.1;
+        }
+
+        #addComplianceModal .cm-field-row .btn-group {
+            flex: 1 1 auto;
+        }
+
+        #addComplianceModal .cm-field-row .btn {
+            padding: 0.12rem 0.35rem;
+            font-size: 0.65rem;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        #addComplianceModal .cm-file-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            flex: 0 0 auto;
+        }
+
+        #addComplianceModal .cm-file-btn {
+            position: relative;
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            border: 1px solid #cbd5e1;
+            border-radius: 5px;
+            background: #fff;
+            color: #475569;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        #addComplianceModal .cm-file-btn:hover {
+            border-color: #0d9488;
+            color: #0f766e;
+            background: #f0fdfa;
+        }
+
+        #addComplianceModal .cm-file-btn.has-file {
+            border-color: #16a34a;
+            color: #15803d;
+            background: #dcfce7;
+        }
+
+        #addComplianceModal .cm-file-btn.missing-file {
+            border-color: #ef4444;
+            color: #b91c1c;
+            background: #fee2e2;
+        }
+
+        #addComplianceModal .cm-file-dot {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #ef4444;
+            border: 1px solid #fff;
+        }
+
+        #addComplianceModal .cm-file-btn.has-file .cm-file-dot {
+            background: #22c55e;
+        }
+
+        #addComplianceModal .cm-file-preview-link {
+            font-size: 0.62rem;
+            max-width: 28px;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        #addComplianceModal .cm-file-preview-link img {
+            width: 22px;
+            height: 22px;
+            object-fit: cover;
+            border-radius: 3px;
+            display: block;
+        }
+
+        #addComplianceModal #cm_autosave_status {
+            font-size: 0.65rem;
+            white-space: nowrap;
+        }
+
+        #addComplianceModal .select2-container .select2-selection--single {
+            min-height: 28px !important;
+            border-color: #d1d5db;
+        }
+
+        #addComplianceModal .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            line-height: 26px !important;
+            font-size: 0.78rem;
+            padding-left: 0.45rem;
+        }
+
+        #addComplianceModal .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+            height: 26px !important;
+        }
+
+        @media (max-height: 720px) {
+            #addComplianceModal .cm-field-label {
+                min-width: 3.2rem;
+                flex-basis: 3.2rem;
+                font-size: 0.68rem;
+            }
+            #addComplianceModal .cm-field-row .btn {
+                padding: 0.08rem 0.28rem;
+                font-size: 0.6rem;
+            }
+            #addComplianceModal .cm-file-btn {
+                width: 22px;
+                height: 22px;
+                font-size: 0.62rem;
+            }
+            #addComplianceModal .compliance-field-block {
+                padding: 0.12rem 0.28rem;
+            }
+            #addComplianceModal .cm-fields-list {
+                gap: 0.12rem;
+            }
+        }
+
         .compliance-na-badge {
-            background-color: #fff !important;
-            color: #ca8a04 !important;
+            background-color: #0d6efd !important;
+            color: #fff !important;
             font-weight: 600;
             border: none;
         }
 
         .compliance-nrq-badge {
-            background-color: #fff !important;
-            color: #ca8a04 !important;
+            background-color: #0d6efd !important;
+            color: #fff !important;
             font-weight: 600;
             border: none;
         }
 
         .compliance-req-badge {
-            background-color: #0dcaf0 !important;
+            background-color: #dc3545 !important;
             color: #fff !important;
             font-weight: 600;
+        }
+
+        .compliance-req-badge.compliance-req-ok {
+            background-color: #198754 !important;
+            color: #fff !important;
         }
 
         .compliance-pdf-link {
@@ -710,9 +1023,79 @@
             transition: background-color 0.15s ease;
         }
 
-        .compliance-pdf-link:hover .compliance-pdf-icon-bg {
+        .compliance-pdf-link:hover .compliance-pdf-icon-bg,
+        .cm-file-chip:hover .compliance-pdf-icon-bg,
+        .cm-file-chip.is-menu-open .compliance-pdf-icon-bg {
             background-color: #16a34a;
             color: #fff;
+        }
+
+        .cm-file-chip {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            cursor: pointer;
+        }
+
+        .cm-file-chip .compliance-field-thumb {
+            width: 28px;
+            height: 28px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+        }
+
+        #cm-file-action-menu {
+            position: fixed;
+            z-index: 10060;
+            display: none;
+            min-width: 118px;
+            padding: 4px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+        }
+
+        #cm-file-action-menu.is-open {
+            display: block;
+        }
+
+        #cm-file-action-menu button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            border: 0;
+            background: transparent;
+            color: #0f172a;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 6px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        #cm-file-action-menu button:hover {
+            background: #f1f5f9;
+            color: #0f766e;
+        }
+
+        #cm-file-action-menu button i {
+            width: 14px;
+            text-align: center;
+            color: #64748b;
+        }
+
+        #cm-file-action-menu button:hover i {
+            color: #0f766e;
+        }
+
+        #compliance-tabulator .tabulator-cell.cm-compliance-field-col {
+            overflow: visible;
         }
     </style>
 @endsection
@@ -726,6 +1109,7 @@
             'wireless' => 'Wireless',
             'electric' => 'Electric',
             'gcc' => 'GCC',
+            'rohs' => 'RoHs',
             'blanket' => 'Blanket',
             'bluetooth' => 'Bluetooth',
             'logo' => 'Logo',
@@ -736,6 +1120,7 @@
             'wireless' => 'filterWireless',
             'electric' => 'filterElectric',
             'gcc' => 'filterGcc',
+            'rohs' => 'filterRohs',
             'blanket' => 'filterBlanket',
             'bluetooth' => 'filterBluetooth',
             'logo' => 'filterLogo',
@@ -779,6 +1164,7 @@
                             <span class="badge bg-danger">Wireless <span id="cm-summary-wireless">(0)</span></span>
                             <span class="badge bg-warning text-dark">Electric <span id="cm-summary-electric">(0)</span></span>
                             <span class="badge bg-info">GCC <span id="cm-summary-gcc">(0)</span></span>
+                            <span class="badge bg-info">RoHs <span id="cm-summary-rohs">(0)</span></span>
                             <span class="badge bg-secondary">Blanket <span id="cm-summary-blanket">(0)</span></span>
                             <span class="badge bg-dark">Bluetooth <span id="cm-summary-bluetooth">(0)</span></span>
                             <span class="badge bg-primary">Logo <span id="cm-summary-logo">(0)</span></span>
@@ -848,9 +1234,11 @@
                                 @foreach ($__cmFields as $fkey => $flabel)
                                     <div style="min-width: 6.5rem; max-width: 9rem;">
                                         <label class="form-label small mb-0 text-secondary" for="{{ $__cmFilterIds[$fkey] }}">{{ $flabel }} <span id="{{ $fkey }}MissingCount" class="text-danger fw-bold">(0)</span></label>
-                                        <select id="{{ $__cmFilterIds[$fkey] }}" class="form-select form-select-sm">
+                                        <select id="{{ $__cmFilterIds[$fkey] }}" class="form-select form-select-sm cm-field-filter" data-field="{{ $fkey }}">
                                             <option value="all">All Data</option>
-                                            <option value="req">REQ</option>
+                                            <option value="req" class="cm-opt-req">REQ</option>
+                                            <option value="req-ok" class="cm-opt-req-ok">REQ</option>
+                                            <option value="na" class="cm-opt-na">N/A</option>
                                         </select>
                                     </div>
                                 @endforeach
@@ -974,60 +1362,74 @@
         </div>
     </div>
 
-    <!-- Add Compliance Master Modal -->
-    <div class="modal fade" id="addComplianceModal" tabindex="-1" aria-labelledby="addComplianceModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="addComplianceModalLabel">Add Compliance Data</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="addComplianceForm">
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <label for="addComplianceSku" class="form-label">SKU <span class="text-danger">*</span></label>
-                                <select class="form-control" id="addComplianceSku" name="sku" required>
-                                    <option value="">Select SKU</option>
-                                </select>
-                            </div>
+    <!-- Add / Edit Compliance Master — right-side panel -->
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="addComplianceModal" aria-labelledby="addComplianceModalLabel">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title mb-0" id="addComplianceModalLabel">Add Compliance Data</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body cm-panel-body">
+            <div class="cm-panel-scroll">
+                <form id="addComplianceForm">
+                    <div class="cm-sku-block">
+                        <label for="addComplianceSku" class="form-label">SKU <span class="text-danger">*</span></label>
+                        <select class="form-control form-control-sm" id="addComplianceSku" name="sku" required>
+                            <option value="">Select SKU</option>
+                        </select>
+                        <div class="cm-meta-row">
+                            <label class="d-inline-flex align-items-center gap-2 mb-0 small"
+                                title="When checked, the same compliance values are saved to all child SKUs under the same parent"
+                                style="cursor:pointer;user-select:none;">
+                                <input type="checkbox" class="form-check-input m-0" id="cm_apply_siblings" autocomplete="off">
+                                <span class="fw-semibold">Siblings</span>
+                            </label>
+                            <span class="small text-muted" id="cm_siblings_hint"></span>
+                            <span class="small text-success d-none ms-auto" id="cm_autosave_status"></span>
                         </div>
-                        
-                        <div class="row">
-                            @foreach ($__cmFields as $fkey => $flabel)
-                                <div class="col-md-6 mb-3">
-                                    <div class="compliance-field-block border rounded p-2 h-100" data-add-field="{{ $fkey }}">
-                                        <label class="form-label mb-2">{{ $flabel }}</label>
-                                        <div class="btn-group btn-group-sm w-100 mb-2" role="group">
-                                            <input type="radio" class="btn-check" name="add_mode_{{ $fkey }}" id="add_na_{{ $fkey }}" value="na" checked autocomplete="off">
-                                            <label class="btn btn-outline-secondary" for="add_na_{{ $fkey }}">N/A</label>
-                                            <input type="radio" class="btn-check" name="add_mode_{{ $fkey }}" id="add_req_{{ $fkey }}" value="req" autocomplete="off">
-                                            <label class="btn btn-outline-primary" for="add_req_{{ $fkey }}">REQ</label>
-                                        </div>
-                                        <input type="hidden" id="add_{{ $fkey }}_img_path" value="">
-                                        <input type="hidden" id="add_{{ $fkey }}_pdf_path" value="">
-                                        <div class="add-compliance-req-wrap d-none" id="add_{{ $fkey }}_req_wrap">
-                                            <label class="form-label small">Image</label>
-                                            <input type="file" class="form-control form-control-sm add-compliance-img-input" accept="image/*" data-field="{{ $fkey }}" data-path-input="add_{{ $fkey }}_img_path">
-                                            <div class="small text-muted mt-1" id="add_{{ $fkey }}_img_status"></div>
-                                            <div class="mt-2" id="add_{{ $fkey }}_img_preview"></div>
-                                            <label class="form-label small mt-2">PDF</label>
-                                            <input type="file" class="form-control form-control-sm add-compliance-pdf-input" accept=".pdf,application/pdf" data-field="{{ $fkey }}" data-path-input="add_{{ $fkey }}_pdf_path">
-                                            <div class="small text-muted mt-1" id="add_{{ $fkey }}_pdf_status"></div>
-                                            <div class="small mt-1" id="add_{{ $fkey }}_pdf_link"></div>
-                                        </div>
+                    </div>
+
+                    <div class="cm-fields-list">
+                        @foreach ($__cmFields as $fkey => $flabel)
+                            <div class="compliance-field-block" data-add-field="{{ $fkey }}">
+                                <div class="cm-field-row">
+                                    <span class="cm-field-label">{{ $flabel }}</span>
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="{{ $flabel }} mode">
+                                        <input type="radio" class="btn-check" name="add_mode_{{ $fkey }}" id="add_na_{{ $fkey }}" value="na" checked autocomplete="off">
+                                        <label class="btn btn-outline-secondary" for="add_na_{{ $fkey }}">N/A</label>
+                                        <input type="radio" class="btn-check" name="add_mode_{{ $fkey }}" id="add_req_{{ $fkey }}" value="req" autocomplete="off">
+                                        <label class="btn btn-outline-primary" for="add_req_{{ $fkey }}">REQ</label>
+                                    </div>
+                                    <div class="cm-file-actions d-none" id="add_{{ $fkey }}_req_wrap">
+                                        <input type="file" class="d-none add-compliance-img-input" id="add_{{ $fkey }}_img_file" accept="image/*" data-field="{{ $fkey }}" data-path-input="add_{{ $fkey }}_img_path">
+                                        <button type="button" class="cm-file-btn cm-img-btn missing-file" data-trigger-file="add_{{ $fkey }}_img_file" title="Upload image" aria-label="Upload {{ $flabel }} image">
+                                            <i class="fas fa-image" aria-hidden="true"></i>
+                                            <span class="cm-file-dot" aria-hidden="true"></span>
+                                        </button>
+                                        <span class="cm-file-preview-link" id="add_{{ $fkey }}_img_preview"></span>
+
+                                        <input type="file" class="d-none add-compliance-pdf-input" id="add_{{ $fkey }}_pdf_file" accept=".pdf,application/pdf" data-field="{{ $fkey }}" data-path-input="add_{{ $fkey }}_pdf_path">
+                                        <button type="button" class="cm-file-btn cm-pdf-btn missing-file" data-trigger-file="add_{{ $fkey }}_pdf_file" title="Upload PDF" aria-label="Upload {{ $flabel }} PDF">
+                                            <i class="fas fa-file-pdf" aria-hidden="true"></i>
+                                            <span class="cm-file-dot" aria-hidden="true"></span>
+                                        </button>
+                                        <span class="cm-file-preview-link" id="add_{{ $fkey }}_pdf_link"></span>
+
+                                        <span class="visually-hidden" id="add_{{ $fkey }}_img_status"></span>
+                                        <span class="visually-hidden" id="add_{{ $fkey }}_pdf_status"></span>
                                     </div>
                                 </div>
-                            @endforeach
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveAddComplianceBtn">
-                        <i class="fas fa-save me-2"></i> Save
-                    </button>
-                </div>
+                                <input type="hidden" id="add_{{ $fkey }}_img_path" value="">
+                                <input type="hidden" id="add_{{ $fkey }}_pdf_path" value="">
+                            </div>
+                        @endforeach
+                    </div>
+                </form>
+            </div>
+            <div class="cm-panel-footer">
+                <button type="button" class="btn btn-sm btn-light border" data-bs-dismiss="offcanvas">Close</button>
+                <button type="button" class="btn btn-sm btn-primary" id="saveAddComplianceBtn">
+                    <i class="fas fa-save me-1"></i> Save
+                </button>
             </div>
         </div>
     </div>
@@ -1046,8 +1448,12 @@
             let complianceSearchSetupDone = false;
             let complianceFormMode = 'add';
             let complianceEditSku = '';
+            let complianceFormHydrating = false;
+            let complianceAutoSaveTimer = null;
+            let complianceAutoSaveInFlight = false;
+            let complianceAutoSaveQueued = false;
 
-            const COMPLIANCE_BULK_FIELD_KEYS = ['battery', 'wireless', 'electric', 'gcc', 'blanket', 'bluetooth', 'logo', 'graph'];
+            const COMPLIANCE_BULK_FIELD_KEYS = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph'];
             let bulkComplianceUploadPaths = {};
             let bulkCompliancePdfPaths = {};
 
@@ -1075,11 +1481,16 @@
                 return item[pk] != null ? String(item[pk]).trim() : '';
             }
 
+            function isComplianceNaValue(value) {
+                const upper = String(value == null ? '' : value).trim().toUpperCase();
+                return upper === '' || upper === 'N/A' || upper === 'NA' || upper === 'NRQ';
+            }
+
             function isMissingComplianceFieldForItem(item, key) {
                 const v = complianceFieldStoredValue(item, key);
                 const img = complianceFieldImagePath(item, key);
                 const pdf = complianceFieldPdfPath(item, key);
-                if (v === '' || v.toUpperCase() === 'N/A') return true;
+                if (isComplianceNaValue(v)) return true;
                 if (v.toUpperCase() === 'REQ') return img === '' || pdf === '';
                 return false;
             }
@@ -1089,21 +1500,53 @@
                 return complianceFieldStoredValue(item, key).toUpperCase() === 'REQ';
             }
 
+            function isReqOkFilterMatchForItem(item, key) {
+                if (!isReqFilterMatchForItem(item, key)) return false;
+                const img = complianceFieldImagePath(item, key);
+                const pdf = complianceFieldPdfPath(item, key);
+                return img !== '' && pdf !== '';
+            }
+
+            function isReqMissingFilterMatchForItem(item, key) {
+                if (!isReqFilterMatchForItem(item, key)) return false;
+                return !isReqOkFilterMatchForItem(item, key);
+            }
+
+            function isNaFilterMatchForItem(item, key) {
+                return isComplianceNaValue(complianceFieldStoredValue(item, key));
+            }
+
+            function matchesComplianceFieldFilter(item, key, filterValue) {
+                if (!filterValue || filterValue === 'all') return true;
+                if (filterValue === 'req') return isReqMissingFilterMatchForItem(item, key);
+                if (filterValue === 'req-ok') return isReqOkFilterMatchForItem(item, key);
+                if (filterValue === 'na') return isNaFilterMatchForItem(item, key);
+                return true;
+            }
+
+            function syncComplianceFieldFilterStyles() {
+                document.querySelectorAll('#cm-compliance-filters-toolbar .cm-field-filter').forEach(function(sel) {
+                    sel.classList.remove('cm-filter-req', 'cm-filter-req-ok', 'cm-filter-na');
+                    if (sel.value === 'req') sel.classList.add('cm-filter-req');
+                    else if (sel.value === 'req-ok') sel.classList.add('cm-filter-req-ok');
+                    else if (sel.value === 'na') sel.classList.add('cm-filter-na');
+                });
+            }
+
             function complianceFieldCellHtml(item, key) {
                 const v = complianceFieldStoredValue(item, key);
                 const img = complianceFieldImagePath(item, key);
                 const pdf = complianceFieldPdfPath(item, key);
                 const upper = v.toUpperCase();
-                const hasDataFile = img !== '' || pdf !== '';
+                const hasAnyFile = img !== '' || pdf !== '';
 
                 let badge = '';
                 if (upper === 'REQ') {
-                    if (!hasDataFile) {
-                        badge = '<span class="badge rounded-pill compliance-req-badge">REQ</span>';
+                    // Only show REQ when no files are attached yet
+                    if (!hasAnyFile) {
+                        badge = '<span class="badge rounded-pill compliance-req-badge" title="REQ — missing image or PDF">REQ</span>';
                     }
-                } else if (upper === 'NRQ') {
-                    badge = '<span class="badge rounded-pill compliance-nrq-badge">NRQ</span>';
-                } else if (upper === 'N/A' || v === '') {
+                } else if (isComplianceNaValue(v)) {
                     badge = '<span class="badge rounded-pill compliance-na-badge">N/A</span>';
                 } else {
                     badge = `<span class="badge rounded-pill bg-info text-dark" title="Legacy value">${escapeHtml(v)}</span>`;
@@ -1111,14 +1554,23 @@
                 let thumb = '';
                 if (img) {
                     const u = complianceImagePublicUrl(img);
-                    thumb = ` <img class="compliance-field-thumb" src="${escapeHtml(u)}" alt="">`;
+                    thumb = ' ' + complianceFileChipHtml(u, 'image');
                 }
                 let pdfLink = '';
                 if (pdf) {
                     const pu = complianceImagePublicUrl(pdf);
-                    pdfLink = ` <a href="${escapeHtml(pu)}" target="_blank" rel="noopener" class="compliance-pdf-link" title="Open PDF"><span class="compliance-pdf-icon-bg"><i class="fas fa-file-pdf" aria-hidden="true"></i></span></a>`;
+                    pdfLink = ' ' + complianceFileChipHtml(pu, 'pdf');
                 }
                 return `<span class="d-inline-flex align-items-center gap-1 flex-wrap justify-content-center">${badge}${thumb}${pdfLink}</span>`;
+            }
+
+            function complianceFileChipHtml(url, kind) {
+                const safeUrl = escapeHtml(String(url || ''));
+                const kindSafe = kind === 'pdf' ? 'pdf' : 'image';
+                const icon = kindSafe === 'pdf'
+                    ? '<span class="compliance-pdf-icon-bg" aria-hidden="true"><i class="fas fa-file-pdf"></i></span>'
+                    : `<img class="compliance-field-thumb" src="${safeUrl}" alt="">`;
+                return `<span class="cm-file-chip" data-file-url="${safeUrl}" data-file-kind="${kindSafe}" tabindex="0" title="Hover for file actions">${icon}</span>`;
             }
 
             async function uploadComplianceFieldImageToServer(field, file) {
@@ -1198,20 +1650,15 @@
                     if (pathEl) pathEl.value = '';
                     const pdfPathEl = document.getElementById(`add_${k}_pdf_path`);
                     if (pdfPathEl) pdfPathEl.value = '';
-                    const wrap = document.getElementById(`add_${k}_req_wrap`);
-                    if (wrap) wrap.classList.add('d-none');
                     const st = document.getElementById(`add_${k}_img_status`);
                     if (st) st.textContent = '';
                     const pst = document.getElementById(`add_${k}_pdf_status`);
                     if (pst) pst.textContent = '';
-                    const plink = document.getElementById(`add_${k}_pdf_link`);
-                    if (plink) plink.innerHTML = '';
-                    const prev = document.getElementById(`add_${k}_img_preview`);
-                    if (prev) prev.innerHTML = '';
                     const fi = modal.querySelector(`.add-compliance-img-input[data-field="${k}"]`);
                     if (fi) fi.value = '';
                     const fp = modal.querySelector(`.add-compliance-pdf-input[data-field="${k}"]`);
                     if (fp) fp.value = '';
+                    refreshComplianceFieldFileUi(k);
                 });
             }
 
@@ -1219,7 +1666,7 @@
                 COMPLIANCE_BULK_FIELD_KEYS.forEach(k => {
                     const raw = complianceFieldStoredValue(item, k);
                     const upper = raw.toUpperCase();
-                    const isReq = upper === 'REQ' || (raw !== '' && upper !== 'N/A');
+                    const isReq = upper === 'REQ';
                     document.getElementById(`add_na_${k}`).checked = !isReq;
                     document.getElementById(`add_req_${k}`).checked = isReq;
                     const p = complianceFieldImagePath(item, k);
@@ -1228,33 +1675,64 @@
                     if (pathEl) pathEl.value = p;
                     const pdfPathEl = document.getElementById(`add_${k}_pdf_path`);
                     if (pdfPathEl) pdfPathEl.value = pdfp;
-                    const wrap = document.getElementById(`add_${k}_req_wrap`);
-                    wrap.classList.toggle('d-none', !isReq);
                     const st = document.getElementById(`add_${k}_img_status`);
-                    st.textContent = p ? 'Current image on file.' : '';
+                    if (st) st.textContent = p ? 'Current image on file.' : '';
                     const pst = document.getElementById(`add_${k}_pdf_status`);
-                    pst.textContent = pdfp ? 'Current PDF on file.' : '';
-                    const prev = document.getElementById(`add_${k}_img_preview`);
-                    if (p && isReq) {
-                        const u = complianceImagePublicUrl(p);
-                        prev.innerHTML = `<img class="compliance-field-thumb" src="${escapeHtml(u)}" alt="">`;
-                    } else {
-                        prev.innerHTML = '';
-                    }
-                    const plink = document.getElementById(`add_${k}_pdf_link`);
-                    if (pdfp && isReq) {
-                        const pu = complianceImagePublicUrl(pdfp);
-                        plink.innerHTML = `<a href="${escapeHtml(pu)}" target="_blank" rel="noopener"><i class="fas fa-file-pdf me-1"></i>Open current PDF</a>`;
-                    } else {
-                        plink.innerHTML = '';
-                    }
+                    if (pst) pst.textContent = pdfp ? 'Current PDF on file.' : '';
+                    refreshComplianceFieldFileUi(k);
                 });
             }
 
-            function toggleAddComplianceReqWrap(field) {
-                const isReq = document.getElementById(`add_req_${field}`)?.checked;
+            function refreshComplianceFieldFileUi(field) {
+                const isReq = !!document.getElementById(`add_req_${field}`)?.checked;
+                const pathEl = document.getElementById(`add_${field}_img_path`);
+                const pdfPathEl = document.getElementById(`add_${field}_pdf_path`);
+                const imgPath = pathEl ? pathEl.value.trim() : '';
+                const pdfPath = pdfPathEl ? pdfPathEl.value.trim() : '';
+                const block = document.querySelector(`#addComplianceModal .compliance-field-block[data-add-field="${field}"]`);
                 const wrap = document.getElementById(`add_${field}_req_wrap`);
+                const imgBtn = wrap ? wrap.querySelector('.cm-img-btn') : null;
+                const pdfBtn = wrap ? wrap.querySelector('.cm-pdf-btn') : null;
+                const prev = document.getElementById(`add_${field}_img_preview`);
+                const plink = document.getElementById(`add_${field}_pdf_link`);
+
                 if (wrap) wrap.classList.toggle('d-none', !isReq);
+                if (block) {
+                    block.classList.toggle('is-req', isReq);
+                    block.classList.toggle('is-complete', isReq && imgPath !== '' && pdfPath !== '');
+                }
+
+                if (imgBtn) {
+                    imgBtn.classList.toggle('has-file', imgPath !== '');
+                    imgBtn.classList.toggle('missing-file', isReq && imgPath === '');
+                    imgBtn.title = imgPath ? 'Replace image' : 'Upload image';
+                }
+                if (pdfBtn) {
+                    pdfBtn.classList.toggle('has-file', pdfPath !== '');
+                    pdfBtn.classList.toggle('missing-file', isReq && pdfPath === '');
+                    pdfBtn.title = pdfPath ? 'Replace PDF' : 'Upload PDF';
+                }
+
+                if (prev) {
+                    if (imgPath) {
+                        const u = complianceImagePublicUrl(imgPath);
+                        prev.innerHTML = `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" title="Open image"><img src="${escapeHtml(u)}" alt=""></a>`;
+                    } else {
+                        prev.innerHTML = '';
+                    }
+                }
+                if (plink) {
+                    if (pdfPath) {
+                        const pu = complianceImagePublicUrl(pdfPath);
+                        plink.innerHTML = `<a href="${escapeHtml(pu)}" target="_blank" rel="noopener" title="Open PDF"><i class="fas fa-external-link-alt"></i></a>`;
+                    } else {
+                        plink.innerHTML = '';
+                    }
+                }
+            }
+
+            function toggleAddComplianceReqWrap(field) {
+                refreshComplianceFieldFileUi(field);
             }
 
             function collectComplianceFormPayload(sku) {
@@ -1275,7 +1753,115 @@
                         o[k + '_pdf'] = '';
                     }
                 });
+                const siblingsCb = document.getElementById('cm_apply_siblings');
+                o.apply_siblings = !!(siblingsCb && siblingsCb.checked);
                 return o;
+            }
+
+            function getComplianceSiblingSkusForSku(sku) {
+                const row = findComplianceRowBySku(sku);
+                const parent = String(row?.Parent || '').trim();
+                if (!parent) return [];
+                const seen = new Set();
+                const out = [];
+                (Array.isArray(tableData) ? tableData : []).forEach(item => {
+                    if (!item) return;
+                    const p = String(item.Parent || '').trim();
+                    const s = String(item.SKU || '').trim();
+                    if (!s || p !== parent) return;
+                    if (s.toUpperCase().includes('PARENT')) return;
+                    const key = s.toUpperCase();
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    out.push(s);
+                });
+                return out;
+            }
+
+            function updateComplianceSiblingsHint() {
+                const hint = document.getElementById('cm_siblings_hint');
+                const cb = document.getElementById('cm_apply_siblings');
+                if (!hint) return;
+
+                const skuSelect = document.getElementById('addComplianceSku');
+                let sku = '';
+                if (complianceFormMode === 'edit') {
+                    sku = (complianceEditSku || '').trim();
+                } else if (skuSelect) {
+                    sku = $(skuSelect).val() ? String($(skuSelect).val()).trim() : '';
+                }
+
+                if (!cb || !cb.checked) {
+                    hint.textContent = '';
+                    return;
+                }
+                if (!sku) {
+                    hint.textContent = 'Select a SKU first';
+                    return;
+                }
+                const siblings = getComplianceSiblingSkusForSku(sku);
+                const otherCount = Math.max(0, siblings.length - 1);
+                if (otherCount > 0) {
+                    hint.textContent = 'Will also update ' + otherCount + ' sibling SKU(s)';
+                } else {
+                    hint.textContent = 'No sibling children found for this parent';
+                }
+            }
+
+            function setComplianceAutosaveStatus(text, isError) {
+                const el = document.getElementById('cm_autosave_status');
+                if (!el) return;
+                if (!text) {
+                    el.classList.add('d-none');
+                    el.textContent = '';
+                    return;
+                }
+                el.classList.remove('d-none', 'text-success', 'text-danger', 'text-muted');
+                el.classList.add(isError ? 'text-danger' : 'text-success');
+                el.textContent = text;
+            }
+
+            function scheduleComplianceAutosave() {
+                if (complianceFormHydrating) return;
+                if (complianceAutoSaveTimer) clearTimeout(complianceAutoSaveTimer);
+                complianceAutoSaveTimer = setTimeout(function() {
+                    complianceAutoSaveTimer = null;
+                    saveCompliance({ auto: true, keepOpen: true });
+                }, 350);
+            }
+
+            function patchLocalComplianceRowsFromPayload(formData, siblingSkus) {
+                const targets = new Set();
+                const primary = String(formData.sku || '').trim().toUpperCase();
+                if (primary) targets.add(primary);
+                (Array.isArray(siblingSkus) ? siblingSkus : []).forEach(s => {
+                    const k = String(s || '').trim().toUpperCase();
+                    if (k) targets.add(k);
+                });
+                if (targets.size === 0) return;
+
+                const applyTo = (rows) => {
+                    if (!Array.isArray(rows)) return;
+                    rows.forEach(item => {
+                        const skuKey = String(item?.SKU || '').trim().toUpperCase();
+                        if (!targets.has(skuKey)) return;
+                        COMPLIANCE_BULK_FIELD_KEYS.forEach(k => {
+                            if (Object.prototype.hasOwnProperty.call(formData, k)) {
+                                item[k] = formData[k];
+                            }
+                            const ik = k + '_img';
+                            const pk = k + '_pdf';
+                            if (Object.prototype.hasOwnProperty.call(formData, ik)) item[ik] = formData[ik];
+                            if (Object.prototype.hasOwnProperty.call(formData, pk)) item[pk] = formData[pk];
+                        });
+                    });
+                };
+                applyTo(tableData);
+                applyTo(filteredData);
+                if (complianceTable) {
+                    renderTable(filteredData);
+                    updateCounts();
+                }
             }
 
             function buildComplianceBulkPayloadForItem(item) {
@@ -1376,6 +1962,10 @@
                 if (!host) return;
 
                 host.addEventListener('mouseover', function(e) {
+                    if (e.target.closest('.cm-file-chip')) {
+                        hidePreview();
+                        return;
+                    }
                     const wrap = e.target.closest('.compliance-thumb-wrap');
                     if (wrap && host.contains(wrap)) {
                         const srcImg = wrap.querySelector('img');
@@ -1402,6 +1992,191 @@
                 if (tableScroll) {
                     tableScroll.addEventListener('scroll', hidePreview, { passive: true });
                 }
+            }
+
+            function setupComplianceFileHoverActions() {
+                const host = document.getElementById('compliance-tabulator');
+                if (!host) return;
+
+                let menuEl = null;
+                let activeChip = null;
+                let hideTimer = null;
+
+                function getMenu() {
+                    if (menuEl) return menuEl;
+                    menuEl = document.createElement('div');
+                    menuEl.id = 'cm-file-action-menu';
+                    menuEl.innerHTML = `
+                        <button type="button" data-cm-file-action="copy"><i class="fas fa-copy"></i> Copy</button>
+                        <button type="button" data-cm-file-action="download"><i class="fas fa-download"></i> Download</button>
+                        <button type="button" data-cm-file-action="view"><i class="fas fa-eye"></i> View</button>
+                    `;
+                    document.body.appendChild(menuEl);
+
+                    menuEl.addEventListener('mouseenter', function() {
+                        if (hideTimer) {
+                            clearTimeout(hideTimer);
+                            hideTimer = null;
+                        }
+                    });
+                    menuEl.addEventListener('mouseleave', scheduleHideMenu);
+                    menuEl.addEventListener('click', async function(e) {
+                        const btn = e.target.closest('[data-cm-file-action]');
+                        if (!btn || !menuEl.contains(btn)) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const action = btn.getAttribute('data-cm-file-action');
+                        const url = menuEl.dataset.fileUrl || '';
+                        if (!url) return;
+                        await runComplianceFileAction(action, url, menuEl.dataset.fileKind || 'file');
+                        hideMenu();
+                    });
+                    return menuEl;
+                }
+
+                function absoluteFileUrl(url) {
+                    try {
+                        return new URL(url, window.location.origin).href;
+                    } catch (err) {
+                        return String(url || '');
+                    }
+                }
+
+                function guessFileName(url, kind) {
+                    try {
+                        const path = new URL(url, window.location.origin).pathname;
+                        const base = path.split('/').filter(Boolean).pop() || '';
+                        if (base) return decodeURIComponent(base);
+                    } catch (err) {}
+                    return kind === 'pdf' ? 'compliance.pdf' : 'compliance-file';
+                }
+
+                async function runComplianceFileAction(action, url, kind) {
+                    const abs = absoluteFileUrl(url);
+                    if (action === 'view') {
+                        window.open(abs, '_blank', 'noopener');
+                        return;
+                    }
+                    if (action === 'copy') {
+                        try {
+                            await navigator.clipboard.writeText(abs);
+                            showToast('success', 'Link copied');
+                        } catch (err) {
+                            showToast('danger', 'Could not copy link');
+                        }
+                        return;
+                    }
+                    if (action === 'download') {
+                        try {
+                            const res = await fetch(abs, { credentials: 'same-origin' });
+                            if (!res.ok) throw new Error('Download failed');
+                            const blob = await res.blob();
+                            const objectUrl = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = objectUrl;
+                            a.download = guessFileName(abs, kind);
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                            URL.revokeObjectURL(objectUrl);
+                        } catch (err) {
+                            const a = document.createElement('a');
+                            a.href = abs;
+                            a.target = '_blank';
+                            a.rel = 'noopener';
+                            a.download = guessFileName(abs, kind);
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                        }
+                    }
+                }
+
+                function positionMenu(chip) {
+                    const menu = getMenu();
+                    const rect = chip.getBoundingClientRect();
+                    const pad = 8;
+                    menu.style.display = 'block';
+                    menu.classList.add('is-open');
+                    const mw = menu.offsetWidth || 120;
+                    const mh = menu.offsetHeight || 110;
+                    let left = rect.left + (rect.width / 2) - (mw / 2);
+                    let top = rect.bottom + 6;
+                    if (left + mw > window.innerWidth - pad) left = window.innerWidth - mw - pad;
+                    if (left < pad) left = pad;
+                    if (top + mh > window.innerHeight - pad) top = Math.max(pad, rect.top - mh - 6);
+                    menu.style.left = left + 'px';
+                    menu.style.top = top + 'px';
+                }
+
+                function showMenu(chip) {
+                    if (hideTimer) {
+                        clearTimeout(hideTimer);
+                        hideTimer = null;
+                    }
+                    if (activeChip && activeChip !== chip) {
+                        activeChip.classList.remove('is-menu-open');
+                    }
+                    activeChip = chip;
+                    chip.classList.add('is-menu-open');
+                    const menu = getMenu();
+                    menu.dataset.fileUrl = chip.getAttribute('data-file-url') || '';
+                    menu.dataset.fileKind = chip.getAttribute('data-file-kind') || 'file';
+                    positionMenu(chip);
+                }
+
+                function hideMenu() {
+                    if (hideTimer) {
+                        clearTimeout(hideTimer);
+                        hideTimer = null;
+                    }
+                    if (activeChip) activeChip.classList.remove('is-menu-open');
+                    activeChip = null;
+                    if (menuEl) {
+                        menuEl.classList.remove('is-open');
+                        menuEl.style.display = 'none';
+                    }
+                }
+
+                function scheduleHideMenu() {
+                    if (hideTimer) clearTimeout(hideTimer);
+                    hideTimer = setTimeout(hideMenu, 160);
+                }
+
+                host.addEventListener('mouseover', function(e) {
+                    const chip = e.target.closest('.cm-file-chip');
+                    if (chip && host.contains(chip)) {
+                        showMenu(chip);
+                    }
+                });
+
+                host.addEventListener('mouseout', function(e) {
+                    const chip = e.target.closest('.cm-file-chip');
+                    if (!chip) return;
+                    const to = e.relatedTarget;
+                    if (to && (chip.contains(to) || (menuEl && menuEl.contains(to)))) return;
+                    scheduleHideMenu();
+                });
+
+                host.addEventListener('click', function(e) {
+                    const chip = e.target.closest('.cm-file-chip');
+                    if (chip && host.contains(chip)) {
+                        e.preventDefault();
+                        showMenu(chip);
+                    }
+                });
+
+                document.addEventListener('click', function(e) {
+                    if (!menuEl || menuEl.style.display === 'none') return;
+                    if (e.target.closest('.cm-file-chip') || e.target.closest('#cm-file-action-menu')) return;
+                    hideMenu();
+                });
+
+                const tableScroll = host.querySelector('.tabulator-tableholder');
+                if (tableScroll) {
+                    tableScroll.addEventListener('scroll', hideMenu, { passive: true });
+                }
+                window.addEventListener('resize', hideMenu);
             }
 
             // Format number
@@ -1597,6 +2372,7 @@
                 wireless: 'Wireless',
                 electric: 'Electric',
                 gcc: 'GCC',
+                rohs: 'RoHs',
                 blanket: 'Blanket',
                 bluetooth: 'Bluetooth',
                 logo: 'Logo',
@@ -1968,6 +2744,7 @@
                 let wirelessMissingCount = 0;
                 let electricMissingCount = 0;
                 let gccMissingCount = 0;
+                let rohsMissingCount = 0;
                 let blanketMissingCount = 0;
                 let bluetoothMissingCount = 0;
                 let logoMissingCount = 0;
@@ -1983,6 +2760,7 @@
                     if (isMissingComplianceFieldForItem(item, 'wireless')) wirelessMissingCount++;
                     if (isMissingComplianceFieldForItem(item, 'electric')) electricMissingCount++;
                     if (isMissingComplianceFieldForItem(item, 'gcc')) gccMissingCount++;
+                    if (isMissingComplianceFieldForItem(item, 'rohs')) rohsMissingCount++;
                     if (isMissingComplianceFieldForItem(item, 'blanket')) blanketMissingCount++;
                     if (isMissingComplianceFieldForItem(item, 'bluetooth')) bluetoothMissingCount++;
                     if (isMissingComplianceFieldForItem(item, 'logo')) logoMissingCount++;
@@ -1995,6 +2773,7 @@
                 document.getElementById('wirelessMissingCount').textContent = `(${wirelessMissingCount})`;
                 document.getElementById('electricMissingCount').textContent = `(${electricMissingCount})`;
                 document.getElementById('gccMissingCount').textContent = `(${gccMissingCount})`;
+                document.getElementById('rohsMissingCount').textContent = `(${rohsMissingCount})`;
                 document.getElementById('blanketMissingCount').textContent = `(${blanketMissingCount})`;
                 document.getElementById('bluetoothMissingCount').textContent = `(${bluetoothMissingCount})`;
                 document.getElementById('logoMissingCount').textContent = `(${logoMissingCount})`;
@@ -2010,6 +2789,7 @@
                 sp('cm-summary-wireless', wirelessMissingCount);
                 sp('cm-summary-electric', electricMissingCount);
                 sp('cm-summary-gcc', gccMissingCount);
+                sp('cm-summary-rohs', rohsMissingCount);
                 sp('cm-summary-blanket', blanketMissingCount);
                 sp('cm-summary-bluetooth', bluetoothMissingCount);
                 sp('cm-summary-logo', logoMissingCount);
@@ -2057,47 +2837,31 @@
                         }
                     }
 
-                    // Battery filter
-                    const filterBattery = document.getElementById('filterBattery').value;
-                    if (filterBattery === 'req' && !isReqFilterMatchForItem(item, 'battery')) {
-                        return false;
-                    }
-
-                    // Wireless filter
-                    const filterWireless = document.getElementById('filterWireless').value;
-                    if (filterWireless === 'req' && !isReqFilterMatchForItem(item, 'wireless')) {
-                        return false;
-                    }
-
-                    // Electric filter
-                    const filterElectric = document.getElementById('filterElectric').value;
-                    if (filterElectric === 'req' && !isReqFilterMatchForItem(item, 'electric')) {
-                        return false;
-                    }
-
-                    if (document.getElementById('filterGcc').value === 'req' && !isReqFilterMatchForItem(item, 'gcc')) {
-                        return false;
-                    }
-                    if (document.getElementById('filterBlanket').value === 'req' && !isReqFilterMatchForItem(item, 'blanket')) {
-                        return false;
-                    }
-                    if (document.getElementById('filterBluetooth').value === 'req' && !isReqFilterMatchForItem(item, 'bluetooth')) {
-                        return false;
-                    }
-                    if (document.getElementById('filterLogo').value === 'req' && !isReqFilterMatchForItem(item, 'logo')) {
-                        return false;
-                    }
-
-                    // Graph filter
-                    const filterGraph = document.getElementById('filterGraph').value;
-                    if (filterGraph === 'req' && !isReqFilterMatchForItem(item, 'graph')) {
-                        return false;
+                    // Compliance field filters (Battery / Wireless / …)
+                    const fieldFilterMap = {
+                        battery: 'filterBattery',
+                        wireless: 'filterWireless',
+                        electric: 'filterElectric',
+                        gcc: 'filterGcc',
+                        rohs: 'filterRohs',
+                        blanket: 'filterBlanket',
+                        bluetooth: 'filterBluetooth',
+                        logo: 'filterLogo',
+                        graph: 'filterGraph'
+                    };
+                    for (const key of Object.keys(fieldFilterMap)) {
+                        const el = document.getElementById(fieldFilterMap[key]);
+                        const fv = el ? el.value : 'all';
+                        if (!matchesComplianceFieldFilter(item, key, fv)) {
+                            return false;
+                        }
                     }
 
                     return true;
                 });
                 renderTable(filteredData);
                 updateCounts();
+                syncComplianceFieldFilterStyles();
             }
 
             // Setup search functionality
@@ -2110,7 +2874,7 @@
                 const clearSearchBtn = document.getElementById('clearSearch');
                 if (!parentSearch || !skuSearch || !customSearch || !clearSearchBtn) return;
 
-                const filterIds = ['filterBattery', 'filterWireless', 'filterElectric', 'filterGcc', 'filterBlanket', 'filterBluetooth', 'filterLogo', 'filterGraph'];
+                const filterIds = ['filterBattery', 'filterWireless', 'filterElectric', 'filterGcc', 'filterRohs', 'filterBlanket', 'filterBluetooth', 'filterLogo', 'filterGraph'];
                 for (let i = 0; i < filterIds.length; i++) {
                     if (!document.getElementById(filterIds[i])) return;
                 }
@@ -2138,6 +2902,7 @@
                     document.getElementById('filterWireless').value = 'all';
                     document.getElementById('filterElectric').value = 'all';
                     document.getElementById('filterGcc').value = 'all';
+                    document.getElementById('filterRohs').value = 'all';
                     document.getElementById('filterBlanket').value = 'all';
                     document.getElementById('filterBluetooth').value = 'all';
                     document.getElementById('filterLogo').value = 'all';
@@ -2155,9 +2920,11 @@
 
                 filterIds.forEach(function(fid) {
                     document.getElementById(fid).addEventListener('change', function() {
+                        syncComplianceFieldFilterStyles();
                         applyFilters();
                     });
                 });
+                syncComplianceFieldFilterStyles();
             }
 
             // Toast notification function
@@ -2197,7 +2964,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image and Action)
-                    const columns = ["Parent", "SKU", "Status", "INV", "Battery", "Wireless", "Electric", "GCC", "Blanket", "Bluetooth", "Logo", "Graph"];
+                    const columns = ["Parent", "SKU", "Status", "INV", "Battery", "Wireless", "Electric", "GCC", "RoHs", "Blanket", "Bluetooth", "Logo", "Graph"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -2225,6 +2992,9 @@
                         "GCC": {
                             key: "gcc"
                         },
+                        "RoHs": {
+                            key: "rohs"
+                        },
                         "Blanket": {
                             key: "blanket"
                         },
@@ -2245,24 +3015,21 @@
                     document.getElementById('downloadExcel').disabled = true;
 
                     // Compliance field keys that should mirror the on-screen badge logic
-                    // (Battery/Wireless/Electric/GCC/Blanket/Bluetooth/Logo/Graph). For these
+                    // (Battery/Wireless/Electric/GCC/RoHs/Blanket/Bluetooth/Logo/Graph). For these
                     // we render the same text the page shows: "REQ", "N/A", or a legacy value.
                     const complianceFieldKeysForExport = new Set([
-                        'battery', 'wireless', 'electric', 'gcc', 'blanket', 'bluetooth', 'logo', 'graph'
+                        'battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph'
                     ]);
 
                     // Mirror complianceFieldCellHtml() as plain text for Excel export so the
                     // file matches what the user sees on the page (e.g. empty DB value -> "N/A").
                     function complianceFieldCellText(item, key) {
                         const v = complianceFieldStoredValue(item, key);
-                        const img = complianceFieldImagePath(item, key);
-                        const pdf = complianceFieldPdfPath(item, key);
                         const upper = v.toUpperCase();
-                        const hasDataFile = img !== '' || pdf !== '';
                         if (upper === 'REQ') {
-                            return hasDataFile ? 'REQ' : 'REQ';
+                            return 'REQ';
                         }
-                        if (upper === 'N/A' || v === '') {
+                        if (isComplianceNaValue(v)) {
                             return 'N/A';
                         }
                         return v;
@@ -2341,7 +3108,7 @@
                                 // Adjust width based on column type
                                 if (["Parent", "SKU"].includes(col)) {
                                     return { wch: 20 }; // Wider for text columns
-                                } else if (["Status", "Battery", "Wireless", "Electric", "GCC", "Blanket", "Bluetooth", "Logo", "Graph"].includes(col)) {
+                                } else if (["Status", "Battery", "Wireless", "Electric", "GCC", "RoHs", "Blanket", "Bluetooth", "Logo", "Graph"].includes(col)) {
                                     return { wch: 15 };
                                 } else {
                                     return { wch: 10 }; // Default width for numeric columns
@@ -2456,8 +3223,13 @@
                     modalTitle.textContent = 'Add Compliance Data';
                 }
 
+                complianceFormHydrating = true;
                 document.getElementById('addComplianceForm').reset();
                 resetComplianceAddFormFields();
+                const siblingsCb = document.getElementById('cm_apply_siblings');
+                if (siblingsCb) siblingsCb.checked = false;
+                setComplianceAutosaveStatus('');
+                updateComplianceSiblingsHint();
 
                 if ($(skuSelect).hasClass('select2-hidden-accessible')) {
                     $(skuSelect).select2('destroy');
@@ -2473,24 +3245,33 @@
                     setAddComplianceFormFromItem(item);
                 }
 
+                complianceFormHydrating = false;
+                updateComplianceSiblingsHint();
+
                 const saveBtn = document.getElementById('saveAddComplianceBtn');
                 const newSaveBtn = saveBtn.cloneNode(true);
                 saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
                 newSaveBtn.addEventListener('click', async function() {
-                    await saveCompliance();
+                    await saveCompliance({ auto: false, keepOpen: false });
                 });
 
-                modalElement.addEventListener('hidden.bs.modal', function complianceModalCleanup() {
+                modalElement.addEventListener('hidden.bs.offcanvas', function complianceModalCleanup() {
+                    if (complianceAutoSaveTimer) {
+                        clearTimeout(complianceAutoSaveTimer);
+                        complianceAutoSaveTimer = null;
+                    }
                     $(skuSelect).prop('disabled', false);
                     if ($(skuSelect).hasClass('select2-hidden-accessible')) {
                         $(skuSelect).select2('destroy');
                     }
                     complianceFormMode = 'add';
                     complianceEditSku = '';
+                    complianceFormHydrating = false;
+                    setComplianceAutosaveStatus('');
                 }, { once: true });
 
-                const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
-                modal.show();
+                const panel = bootstrap.Offcanvas.getOrCreateInstance(modalElement);
+                panel.show();
             }
 
             // Load SKUs into dropdown
@@ -2540,9 +3321,10 @@
                 }
             }
 
-            async function saveCompliance() {
+            async function saveCompliance(options = {}) {
+                const opts = Object.assign({ auto: false, keepOpen: false }, options || {});
                 const saveBtn = document.getElementById('saveAddComplianceBtn');
-                const originalText = saveBtn.innerHTML;
+                const originalText = saveBtn ? saveBtn.innerHTML : '';
                 const skuSelect = document.getElementById('addComplianceSku');
 
                 let sku = '';
@@ -2553,25 +3335,35 @@
                 }
 
                 if (!sku) {
-                    showToast('warning', complianceFormMode === 'edit' ? 'Missing SKU for update.' : 'Please select SKU');
-                    if (complianceFormMode !== 'edit' && $(skuSelect).hasClass('select2-hidden-accessible')) {
-                        $(skuSelect).select2('open');
+                    if (!opts.auto) {
+                        showToast('warning', complianceFormMode === 'edit' ? 'Missing SKU for update.' : 'Please select SKU');
+                        if (complianceFormMode !== 'edit' && $(skuSelect).hasClass('select2-hidden-accessible')) {
+                            $(skuSelect).select2('open');
+                        }
                     }
                     return;
                 }
 
-                const url = complianceFormMode === 'edit' ? '/compliance-master/update' : '/compliance-master/store';
-                const successMsg = complianceFormMode === 'edit'
-                    ? 'Compliance data updated successfully!'
-                    : 'Compliance Data added successfully!';
+                if (opts.auto && complianceAutoSaveInFlight) {
+                    complianceAutoSaveQueued = true;
+                    return;
+                }
+
+                let url = complianceFormMode === 'edit' ? '/compliance-master/update' : '/compliance-master/store';
+                let usedUpdate = complianceFormMode === 'edit';
 
                 try {
-                    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
-                    saveBtn.disabled = true;
+                    complianceAutoSaveInFlight = true;
+                    if (opts.auto) {
+                        setComplianceAutosaveStatus('Saving…', false);
+                    } else if (saveBtn) {
+                        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
+                        saveBtn.disabled = true;
+                    }
 
                     const formData = collectComplianceFormPayload(sku);
 
-                    const response = await fetch(url, {
+                    let response = await fetch(url, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -2580,24 +3372,73 @@
                         body: JSON.stringify(formData)
                     });
 
-                    const data = await response.json();
+                    let data = await response.json().catch(() => ({}));
+
+                    // First autosave may hit store while row already has compliance → retry update.
+                    if (!usedUpdate && response.status === 409) {
+                        url = '/compliance-master/update';
+                        usedUpdate = true;
+                        response = await fetch(url, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: JSON.stringify(formData)
+                        });
+                        data = await response.json().catch(() => ({}));
+                    }
 
                     if (!response.ok || data.success === false) {
                         throw new Error(data.message || 'Failed to save data');
                     }
 
-                    showToast('success', successMsg);
+                    // After a successful create, treat further autosaves as edits.
+                    if (!usedUpdate) {
+                        complianceFormMode = 'edit';
+                        complianceEditSku = sku;
+                        const modalTitle = document.getElementById('addComplianceModalLabel');
+                        if (modalTitle) modalTitle.textContent = 'Edit Compliance Data';
+                        if (skuSelect) $(skuSelect).prop('disabled', true);
+                    }
 
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('addComplianceModal'));
-                    if (modal) modal.hide();
+                    const sibCount = Number(data.siblings_count) || (Array.isArray(data.siblings) ? data.siblings.length : 0);
+                    patchLocalComplianceRowsFromPayload(formData, data.siblings || []);
+                    updateComplianceSiblingsHint();
 
-                    loadData();
+                    if (opts.auto || opts.keepOpen) {
+                        const msg = sibCount > 0
+                            ? ('Saved (+' + sibCount + ' siblings)')
+                            : 'Saved';
+                        setComplianceAutosaveStatus(msg, false);
+                        if (!opts.auto) {
+                            showToast('success', data.message || msg);
+                        }
+                    } else {
+                        showToast('success', data.message || (usedUpdate
+                            ? 'Compliance data updated successfully!'
+                            : 'Compliance Data added successfully!'));
+                        const panel = bootstrap.Offcanvas.getInstance(document.getElementById('addComplianceModal'));
+                        if (panel) panel.hide();
+                        loadData();
+                    }
                 } catch (error) {
                     console.error('Error saving:', error);
-                    showToast('danger', error.message || 'Failed to save data');
+                    if (opts.auto) {
+                        setComplianceAutosaveStatus(error.message || 'Save failed', true);
+                    } else {
+                        showToast('danger', error.message || 'Failed to save data');
+                    }
                 } finally {
-                    saveBtn.innerHTML = originalText;
-                    saveBtn.disabled = false;
+                    complianceAutoSaveInFlight = false;
+                    if (saveBtn && !opts.auto) {
+                        saveBtn.innerHTML = originalText;
+                        saveBtn.disabled = false;
+                    }
+                    if (complianceAutoSaveQueued) {
+                        complianceAutoSaveQueued = false;
+                        scheduleComplianceAutosave();
+                    }
                 }
             }
 
@@ -2636,10 +3477,10 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data
                     const sampleData = [
-                        ['SKU', 'Battery', 'Wireless', 'Electric', 'GCC', 'Blanket', 'Bluetooth', 'Logo', 'Graph'],
-                        ['SKU001', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A'],
-                        ['SKU002', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
-                        ['SKU003', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'REQ']
+                        ['SKU', 'Battery', 'Wireless', 'Electric', 'GCC', 'RoHs', 'Blanket', 'Bluetooth', 'Logo', 'Graph'],
+                        ['SKU001', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
+                        ['SKU002', 'REQ', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A'],
+                        ['SKU003', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'REQ']
                     ];
 
                     // Create workbook
@@ -2653,6 +3494,7 @@
                         { wch: 12 }, // Wireless
                         { wch: 12 }, // Electric
                         { wch: 12 }, // GCC
+                        { wch: 12 }, // RoHs
                         { wch: 12 }, // Blanket
                         { wch: 12 }, // Bluetooth
                         { wch: 12 }, // Logo
@@ -2780,12 +3622,31 @@
                 const modal = document.getElementById('addComplianceModal');
                 if (!modal) return;
 
+                modal.addEventListener('click', function(e) {
+                    const trigger = e.target.closest('[data-trigger-file]');
+                    if (!trigger || !modal.contains(trigger)) return;
+                    e.preventDefault();
+                    const fileId = trigger.getAttribute('data-trigger-file');
+                    const fileInput = fileId ? document.getElementById(fileId) : null;
+                    if (fileInput) fileInput.click();
+                });
+
                 modal.addEventListener('change', function(e) {
+                    if (e.target && e.target.id === 'cm_apply_siblings') {
+                        updateComplianceSiblingsHint();
+                        scheduleComplianceAutosave();
+                        return;
+                    }
                     const name = e.target.getAttribute('name');
                     if (name && name.startsWith('add_mode_')) {
                         const k = name.replace('add_mode_', '');
                         toggleAddComplianceReqWrap(k);
+                        scheduleComplianceAutosave();
                     }
+                });
+
+                $(document).on('change.select2', '#addComplianceSku', function() {
+                    updateComplianceSiblingsHint();
                 });
 
                 modal.addEventListener('change', async function(e) {
@@ -2795,16 +3656,13 @@
                     const pathInputId = inp.dataset.pathInput;
                     const pathEl = pathInputId ? document.getElementById(pathInputId) : null;
                     const st = document.getElementById(`add_${field}_img_status`);
-                    const prev = document.getElementById(`add_${field}_img_preview`);
                     try {
                         if (st) st.textContent = 'Uploading...';
                         const path = await uploadComplianceFieldImageToServer(field, inp.files[0]);
                         if (pathEl) pathEl.value = path;
                         if (st) st.textContent = 'Image saved.';
-                        if (prev) {
-                            const u = complianceImagePublicUrl(path);
-                            prev.innerHTML = `<img class="compliance-field-thumb" src="${escapeHtml(u)}" alt="">`;
-                        }
+                        refreshComplianceFieldFileUi(field);
+                        scheduleComplianceAutosave();
                     } catch (err) {
                         if (st) st.textContent = err.message || 'Upload failed';
                         showToast('danger', err.message || 'Upload failed');
@@ -2818,16 +3676,13 @@
                     const pathInputId = inp.dataset.pathInput;
                     const pathEl = pathInputId ? document.getElementById(pathInputId) : null;
                     const st = document.getElementById(`add_${field}_pdf_status`);
-                    const linkEl = document.getElementById(`add_${field}_pdf_link`);
                     try {
                         if (st) st.textContent = 'Uploading...';
                         const path = await uploadComplianceFieldPdfToServer(field, inp.files[0]);
                         if (pathEl) pathEl.value = path;
                         if (st) st.textContent = 'PDF saved.';
-                        if (linkEl) {
-                            const u = complianceImagePublicUrl(path);
-                            linkEl.innerHTML = `<a href="${escapeHtml(u)}" target="_blank" rel="noopener"><i class="fas fa-file-pdf me-1"></i>Open PDF</a>`;
-                        }
+                        refreshComplianceFieldFileUi(field);
+                        scheduleComplianceAutosave();
                     } catch (err) {
                         if (st) st.textContent = err.message || 'Upload failed';
                         showToast('danger', err.message || 'Upload failed');
@@ -2837,6 +3692,7 @@
 
             // Initialize
             setupComplianceImageHoverPreview();
+            setupComplianceFileHoverActions();
             setupComplianceStatusFilter();
             refreshCmStatusFilterUI();
             setupSearch();

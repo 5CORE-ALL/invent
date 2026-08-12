@@ -85,7 +85,6 @@ use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
 use App\Http\Controllers\ChannelTabulatorColumnController;
 use App\Http\Controllers\AuditMasterController;
-use App\Http\Controllers\ComplianceCertificateController;
 use App\Http\Controllers\CustomerCare\CustomerFaqController;
 use App\Http\Controllers\CustomerCare\CustomerFollowupController;
 use App\Http\Controllers\CustomerCare\DARController;
@@ -3552,7 +3551,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/wayfair/sku-sales-data', [WayfairSalesController::class, 'getSkuSalesData'])->name('wayfair.sku.sales.data');
     Route::get('/wayfair/test-calculation', [WayfairSalesController::class, 'testCalculation'])->name('wayfair.test.calculation');
 
-    // Wayfair Listing Variation Verify — listings from wayfair_pricing_prices (/wayfair-pricing)
+    // Wayfair Variation Verify — Tabulator like /amz-listing-variation-verify
+    Route::get('/wayfair-variation-verify', [WayfairListingVariationVerifyController::class, 'index'])->name('wayfair.variation.verify');
+    Route::get('/wayfair-variation-verify/data', [WayfairListingVariationVerifyController::class, 'data'])->name('wayfair.variation.verify.data');
+    Route::post('/wayfair-variation-verify/pull-listings', [WayfairListingVariationVerifyController::class, 'pullListings'])->name('wayfair.variation.verify.pull');
     Route::get('/wayfair-listing-variation-verify', [WayfairListingVariationVerifyController::class, 'index'])->name('wayfair.listing.variation.verify');
     Route::get('/wayfair-listing-variation-verify/data', [WayfairListingVariationVerifyController::class, 'data'])->name('wayfair.listing.variation.verify.data');
     Route::post('/wayfair-listing-variation-verify/pull-listings', [WayfairListingVariationVerifyController::class, 'pullListings'])->name('wayfair.listing.variation.verify.pull');
@@ -4605,6 +4607,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-wayfair', [ListingWayfairController::class, 'listingWayfair'])->name('listing.wayfair');
     Route::get('/listing_wayfair/view-data', [ListingWayfairController::class, 'getViewListingWayfairData']);
     Route::post('/listing_wayfair/save-status', [ListingWayfairController::class, 'saveStatus']);
+    Route::post('/listing_wayfair/verify-listings', [ListingWayfairController::class, 'verifyListings'])->name('listing_wayfair.verify');
     Route::post('/listing_wayfair/import', [ListingWayfairController::class, 'import'])->name('listing_wayfair.import');
     Route::get('/listing_wayfair/export', [ListingWayfairController::class, 'export'])->name('listing_wayfair.export');
     Route::get('/listing_wayfair/sample', [ListingWayfairController::class, 'downloadSample'])->name('listing_wayfair.sample');
@@ -6551,21 +6554,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
 
-    Route::prefix('compliance-certificates')->group(function () {
-        Route::get('/', [ComplianceCertificateController::class, 'index'])->name('compliance-certificates.index');
-        Route::get('/data', [ComplianceCertificateController::class, 'getData'])->name('compliance-certificates.data');
-        Route::get('/channels', [ComplianceCertificateController::class, 'getChannels'])->name('compliance-certificates.channels');
-        Route::get('/sku-list', [ComplianceCertificateController::class, 'getSkuList'])->name('compliance-certificates.sku-list');
-        Route::get('/all-history', [ComplianceCertificateController::class, 'getAllHistory'])->name('compliance-certificates.all-history');
-        Route::get('/history', [ComplianceCertificateController::class, 'getHistory'])->name('compliance-certificates.history');
-        Route::post('/', [ComplianceCertificateController::class, 'store'])->name('compliance-certificates.store');
-        Route::put('/{id}', [ComplianceCertificateController::class, 'update'])->name('compliance-certificates.update');
-        Route::delete('/{id}', [ComplianceCertificateController::class, 'destroy'])->name('compliance-certificates.destroy');
-        Route::post('/upload-files', [ComplianceCertificateController::class, 'uploadFiles'])->name('compliance-certificates.upload-files');
-        Route::post('/delete-file', [ComplianceCertificateController::class, 'deleteFile'])->name('compliance-certificates.delete-file');
-        Route::post('/bulk-update', [ComplianceCertificateController::class, 'bulkUpdate'])->name('compliance-certificates.bulk-update');
-    });
-
     // Audit Master
     Route::prefix('audit-master')->group(function () {
         Route::get('/cc-messages-audit', [AuditMasterController::class, 'ccMessagesAudit'])->name('audit.master.cc.messages');
@@ -7079,11 +7067,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Route::post('/auto-stock-balance-store', [AutoStockBalanceController::class, 'store'])->name('autostock.balance.store');
     // Route::get('/auto-stock-balance-data-list', [AutoStockBalanceController::class, 'list']);
-
-    // =============================================================================
-    // COMPLIANCE CERTIFICATES ROUTES
-    // =============================================================================
- 
 
 });
 

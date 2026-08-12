@@ -80,6 +80,64 @@
             min-width: 52px;
             width: auto;
         }
+
+        /* Label QTY (same source/style as shipping-master) */
+        #dim-wt-master-datatable td.label-qty-cell {
+            font-weight: 700;
+            vertical-align: middle;
+        }
+        #dim-wt-master-datatable td.label-qty-ok {
+            background-color: #bbf7d0 !important;
+            color: #166534 !important;
+        }
+        #dim-wt-master-datatable tbody tr:hover td.label-qty-ok {
+            background-color: #86efac !important;
+            color: #14532d !important;
+        }
+        #dim-wt-master-datatable td.label-qty-alert {
+            background-color: #fecaca !important;
+            color: #991b1b !important;
+        }
+        #dim-wt-master-datatable tbody tr:hover td.label-qty-alert {
+            background-color: #fca5a5 !important;
+            color: #7f1d1d !important;
+        }
+        .dim-wt-package-badge {
+            display: inline-block;
+            margin-top: 2px;
+            padding: 0 5px;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: 700;
+            line-height: 1.4;
+            color: #9a3412;
+            background: #ffedd5;
+            white-space: nowrap;
+        }
+        #dim-wt-master-datatable tbody tr.dim-wt-package-row-2 td {
+            background-color: #fff7ed !important;
+        }
+        #dim-wt-master-datatable tbody tr.dim-wt-package-row-3 td {
+            background-color: #eff6ff !important;
+        }
+        #dim-wt-master-datatable tbody tr.dim-wt-package-row-4 td {
+            background-color: #f5f3ff !important;
+        }
+        #dim-wt-master-datatable tbody tr.dim-wt-package-row-extra td {
+            background-color: #f0fdf4 !important;
+        }
+        #dim-wt-master-datatable tbody tr.dim-wt-package-row-2:hover td {
+            background-color: #ffedd5 !important;
+        }
+        #dim-wt-master-datatable tbody tr.dim-wt-package-row-3:hover td {
+            background-color: #dbeafe !important;
+        }
+        #dim-wt-master-datatable tbody tr.dim-wt-package-row-4:hover td {
+            background-color: #ede9fe !important;
+        }
+        #dim-wt-master-datatable tbody tr.dim-wt-package-row-extra:hover td {
+            background-color: #dcfce7 !important;
+        }
         .table-responsive thead th.th-checkbox-col {
             height: auto;
             min-width: 24px;
@@ -689,6 +747,17 @@
                                         <span class="th-vertical-label" style="font-size: 9px;">STATUS</span>
                                     </th>
                                     <th><span class="th-vertical-label">INV</span></th>
+                                    <th class="th-has-filter" title="Label Qty (same source as Shipping Master)">
+                                        <div class="th-vertical-label">label<br>qty</div>
+                                        <select id="filterLabelQty" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Label Qty">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="1">1</option>
+                                            <option value="2">2</option>
+                                            <option value="3">3</option>
+                                            <option value="has">Has value</option>
+                                        </select>
+                                    </th>
                                     <th class="th-has-filter" title="Label Type">
                                         <div class="th-vertical-label">Type</div>
                                         <select id="filterLabelType" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Label Type">
@@ -795,6 +864,11 @@
                         </div>
                         <div class="row mb-3">
                             <div class="col-md-4">
+                                <label for="editLabelQty" class="form-label">Label Qty</label>
+                                <input type="number" step="1" min="0" class="form-control fw-bold" id="editLabelQty" name="label_qty" placeholder="Label Qty">
+                                <div class="form-text">Same field as Shipping Master (<code>Values.label_qty</code>)</div>
+                            </div>
+                            <div class="col-md-4">
                                 <label for="editWtActKg" class="form-label">Item Weight ACT (Kg)</label>
                                 <input type="number" step="0.01" class="form-control" id="editWtActKg" name="wt_act_kg" placeholder="Enter Item Weight ACT (Kg)">
                             </div>
@@ -802,6 +876,8 @@
                                 <label for="editWtAct" class="form-label">Itm wt GW</label>
                                 <input type="number" step="0.01" class="form-control" id="editWtAct" name="wt_act" placeholder="Enter Itm wt GW">
                             </div>
+                        </div>
+                        <div class="row mb-3">
                             <div class="col-md-4">
                                 <label for="editWtDecl" class="form-label">Itm wt GW Decl</label>
                                 <input type="number" step="0.01" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Enter Itm wt GW Decl">
@@ -1343,26 +1419,100 @@
                 return ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
             }
 
+            function getLabelQtyNumber(item) {
+                const labelQtyRaw = item?.label_qty ?? item?.['Label QTY'] ?? item?.Label_QTY;
+                if (labelQtyRaw === null || labelQtyRaw === undefined || labelQtyRaw === '') return NaN;
+                if (typeof labelQtyRaw === 'string' && labelQtyRaw.trim() === '') return NaN;
+                return parseInt(labelQtyRaw, 10);
+            }
+
+            function dimWtPackageRowBgClass(packageIndex, packageCount) {
+                if (!(Number.isFinite(packageCount) && packageCount >= 2)) return '';
+                if (packageIndex === 2) return 'dim-wt-package-row-2';
+                if (packageIndex === 3) return 'dim-wt-package-row-3';
+                if (packageIndex === 4) return 'dim-wt-package-row-4';
+                if (packageIndex > 4) return 'dim-wt-package-row-extra';
+                return '';
+            }
+
+            /** Label QTY >= 2 ⇒ one visual row per package (same behavior as shipping-master). */
+            function buildDimWtPackageRows(sourceItem) {
+                const isParentRow = !!(sourceItem.SKU && String(sourceItem.SKU).toUpperCase().includes('PARENT'));
+                const labelQtyNum = getLabelQtyNumber(sourceItem);
+                const packageCount = (!isParentRow && Number.isFinite(labelQtyNum) && labelQtyNum >= 2)
+                    ? labelQtyNum
+                    : 1;
+                const rows = [];
+                for (let i = 0; i < packageCount; i++) {
+                    const packageIndex = i + 1;
+                    rows.push({
+                        sourceItem,
+                        packageIndex,
+                        packageCount,
+                        isExtraPackage: i > 0,
+                        bgClass: dimWtPackageRowBgClass(packageIndex, packageCount)
+                    });
+                }
+                return rows;
+            }
+
+            function renderLabelQtyCell(sourceItem, pkg, isParentRow) {
+                const labelQtyCell = document.createElement('td');
+                labelQtyCell.className = 'text-center label-qty-cell';
+                if (isParentRow) {
+                    labelQtyCell.textContent = '--';
+                    return labelQtyCell;
+                }
+                const labelQtyRaw = sourceItem.label_qty ?? sourceItem['Label QTY'] ?? sourceItem.Label_QTY;
+                const labelQtyBlank = labelQtyRaw === null || labelQtyRaw === undefined || labelQtyRaw === '' ||
+                    (typeof labelQtyRaw === 'string' && labelQtyRaw.trim() === '');
+                const labelQtyNum = labelQtyBlank ? NaN : parseInt(labelQtyRaw, 10);
+                if (labelQtyBlank || (Number.isFinite(labelQtyNum) && labelQtyNum === 0)) {
+                    labelQtyCell.textContent = '-';
+                    return labelQtyCell;
+                }
+                const qtyLabel = document.createElement('div');
+                qtyLabel.textContent = Number.isFinite(labelQtyNum) ? String(labelQtyNum) : String(labelQtyRaw);
+                labelQtyCell.appendChild(qtyLabel);
+                if (labelQtyNum === 1) {
+                    labelQtyCell.classList.add('label-qty-ok');
+                } else if (Number.isFinite(labelQtyNum) && labelQtyNum >= 2) {
+                    labelQtyCell.classList.add('label-qty-alert');
+                    const badge = document.createElement('span');
+                    badge.className = 'dim-wt-package-badge';
+                    badge.textContent = `Pkg ${pkg.packageIndex}/${pkg.packageCount}`;
+                    labelQtyCell.appendChild(badge);
+                }
+                return labelQtyCell;
+            }
+
             // Render table
             function renderTable(data) {
                 const tbody = document.getElementById('table-body');
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="28" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="34" class="text-center">No data found</td></tr>';
                     return;
                 }
 
-                data.forEach(item => {
+                data.forEach(sourceItem => {
+                    const packageRows = buildDimWtPackageRows(sourceItem);
+                    packageRows.forEach(pkg => {
+                    const item = sourceItem;
                     const row = document.createElement('tr');
                     const isParentRow = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
                     if (isParentRow) row.classList.add('parent-row');
+                    if (pkg.bgClass) row.classList.add(pkg.bgClass);
+                    if (pkg.isExtraPackage) row.classList.add('dim-wt-package-extra');
+                    row.setAttribute('data-package-index', String(pkg.packageIndex));
+                    row.setAttribute('data-package-count', String(pkg.packageCount));
                     const cellVal = (val, decimals) => isParentRow ? '--' : formatNumber(val || 0, decimals);
 
-                    // Checkbox column (not shown for parent rows)
+                    // Checkbox column (not shown for parent / extra package rows)
                     const checkboxCell = document.createElement('td');
                     checkboxCell.className = 'text-center';
-                    if (!isParentRow) {
+                    if (!isParentRow && !pkg.isExtraPackage) {
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
                         checkbox.className = 'row-checkbox';
@@ -1419,22 +1569,29 @@
                     }
                     row.appendChild(invCell);
 
+                    // Label QTY (same Values.label_qty source as shipping-master)
+                    row.appendChild(renderLabelQtyCell(sourceItem, pkg, isParentRow));
+
                     // Type column (Label Type) — ENV / STD / O-Size / Pallet; default STD
                     const labelTypeCell = document.createElement('td');
                     labelTypeCell.className = 'text-center';
                     const labelTypeVal = normalizeLabelType(item.label_type);
                     const labelTypeColorCls = LABEL_TYPE_COLOR_CLASS[labelTypeVal] || 'label-type-std';
-                    labelTypeCell.innerHTML = `
-                        <select class="label-type-dropdown ${labelTypeColorCls}"
-                            data-sku="${escapeHtml(item.SKU || '')}"
-                            data-id="${escapeHtml(String(item.id || ''))}"
-                            data-prev="${escapeHtml(labelTypeVal)}"
-                            title="Label Type">
-                            ${LABEL_TYPE_OPTIONS.map(opt =>
-                                `<option value="${opt}"${opt === labelTypeVal ? ' selected' : ''}>${opt}</option>`
-                            ).join('')}
-                        </select>
-                    `;
+                    if (pkg.isExtraPackage) {
+                        labelTypeCell.innerHTML = `<span class="label-type-dropdown ${labelTypeColorCls}" style="display:inline-block;pointer-events:none;" title="Label Type">${escapeHtml(labelTypeVal)}</span>`;
+                    } else {
+                        labelTypeCell.innerHTML = `
+                            <select class="label-type-dropdown ${labelTypeColorCls}"
+                                data-sku="${escapeHtml(item.SKU || '')}"
+                                data-id="${escapeHtml(String(item.id || ''))}"
+                                data-prev="${escapeHtml(labelTypeVal)}"
+                                title="Label Type">
+                                ${LABEL_TYPE_OPTIONS.map(opt =>
+                                    `<option value="${opt}"${opt === labelTypeVal ? ' selected' : ''}>${opt}</option>`
+                                ).join('')}
+                            </select>
+                        `;
+                    }
                     row.appendChild(labelTypeCell);
 
                     // Weight ACT (Kg) column (hidden)
@@ -1642,7 +1799,7 @@
                     const verifiedValue = isVerified ? '1' : '0';
                     const verifiedCell = document.createElement('td');
                     verifiedCell.className = 'text-center';
-                    verifiedCell.innerHTML = isParentRow ? '--' : `
+                    verifiedCell.innerHTML = (isParentRow || pkg.isExtraPackage) ? '--' : `
                         <select class="verified-data-dropdown ${verifiedClass}"
                             data-sku="${escapeHtml(item.SKU)}" data-id="${escapeHtml(item.id)}"
                             title="${isVerified ? 'Verified' : 'Not verified'}">
@@ -1677,12 +1834,12 @@
                     const hasHistory = item.has_history === true || item.has_history === 1;
                     const historyDotColor = hasHistory ? '#28a745' : '#dc3545';
                     const historyDotTitle = hasHistory ? 'History available — click to view' : 'No history yet — click to view';
-                    const historyBtnHtml = (canViewDimWtHistory && !isParentRow)
+                    const historyBtnHtml = (canViewDimWtHistory && !isParentRow && !pkg.isExtraPackage)
                         ? `<button class="btn btn-sm btn-link p-0 border-0 history-btn" data-id="${item.id != null ? escapeHtml(item.id) : ''}" data-sku="${escapeHtml(item.SKU)}" title="${historyDotTitle}" style="line-height:1;">
                                 <span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${historyDotColor};"></span>
                             </button>`
                         : '';
-                    const editBtnHtml = isParentRow
+                    const editBtnHtml = (isParentRow || pkg.isExtraPackage)
                         ? ''
                         : `<button class="btn btn-sm edit-btn p-0 border-0 bg-transparent" data-sku="${escapeHtml(item.SKU)}" title="Edit" style="color:#000;">
                                 <i class="bi bi-pencil-square"></i>
@@ -1726,6 +1883,7 @@
                     }
 
                     tbody.appendChild(row);
+                    });
                 });
                 applyDimWtSectionFilter();
             }
@@ -1921,6 +2079,7 @@
                 const parentSearchVal = (document.getElementById('parentSearch')?.value || '').toLowerCase();
                 const skuSearchVal = (document.getElementById('skuSearch')?.value || '').toLowerCase();
                 const filterLabelType = document.getElementById('filterLabelType')?.value || 'all';
+                const filterLabelQty = document.getElementById('filterLabelQty')?.value || 'all';
 
                 filteredData = tableData.filter(item => {
                     if (parentSearchVal && !(item.Parent || '').toLowerCase().includes(parentSearchVal)) return false;
@@ -1928,6 +2087,16 @@
 
                     if (filterLabelType && filterLabelType !== 'all') {
                         if (normalizeLabelType(item.label_type) !== filterLabelType) return false;
+                    }
+
+                    if (filterLabelQty && filterLabelQty !== 'all') {
+                        const n = getLabelQtyNumber(item);
+                        const blank = !Number.isFinite(n) || n === 0;
+                        if (filterLabelQty === 'missing' && !blank) return false;
+                        if (filterLabelQty === 'has' && blank) return false;
+                        if (filterLabelQty === '1' && n !== 1) return false;
+                        if (filterLabelQty === '2' && n !== 2) return false;
+                        if (filterLabelQty === '3' && n !== 3) return false;
                     }
 
                     if (verifiedFilter !== null) {
@@ -1966,6 +2135,7 @@
                     3: { key: 'SKU', type: 'text' },
                     4: { key: 'status', type: 'text' },
                     5: { key: 'shopify_inv', type: 'num' },
+<<<<<<< Updated upstream
                     6: { key: 'label_type', type: 'text' },
                     7: { key: 'wt_act_kg', type: 'num' },
                     8: { key: 'wt_act', type: 'num' },
@@ -1993,12 +2163,45 @@
                     30: { key: 'item_pkg_cover', type: 'text' },
                     31: { key: 'verified_data', type: 'num' },
                     32: { key: 'dim_wt_linked_skus', type: 'text' },
+=======
+                    6: { key: 'label_qty', type: 'num' },
+                    7: { key: 'label_type', type: 'text' },
+                    8: { key: 'wt_act_kg', type: 'num' },
+                    9: { key: 'wt_act', type: 'num' },
+                    10: { key: 'org_l', type: 'num' },
+                    11: { key: 'org_w', type: 'num' },
+                    12: { key: 'org_h', type: 'num' },
+                    13: { key: 'wt_decl', type: 'num' },
+                    14: { key: 'l_decl', type: 'num' },
+                    15: { key: 'w_decl', type: 'num' },
+                    16: { key: 'h_decl', type: 'num' },
+                    17: { key: 'girth', type: 'num' },
+                    18: { key: 'girth_plus_l', type: 'num' },
+                    19: { key: 'cbm', type: 'num' },
+                    20: { key: 'l_cm', type: 'num' },
+                    21: { key: 'w_cm', type: 'num' },
+                    22: { key: 'h_cm', type: 'num' },
+                    23: { key: 'ctn_l', type: 'num' },
+                    24: { key: 'ctn_w', type: 'num' },
+                    25: { key: 'ctn_h', type: 'num' },
+                    26: { key: 'ctn_cbm', type: 'num' },
+                    27: { key: 'ctn_qty', type: 'num' },
+                    28: { key: 'ctn_cbm_each', type: 'num' },
+                    29: { key: 'ctn_instructions', type: 'text' },
+                    30: { key: 'instructions_item_pkg', type: 'text' },
+                    31: { key: 'item_pkg_cover', type: 'text' },
+                    32: { key: 'verified_data', type: 'num' },
+>>>>>>> Stashed changes
                 };
 
                 const getVal = (item, key) => {
                     if (key === 'status') {
                         const s = (item.status != null && item.status !== '') ? item.status : (item.Values && item.Values.status);
                         return String(s || '');
+                    }
+                    if (key === 'label_qty') {
+                        const n = getLabelQtyNumber(item);
+                        return Number.isFinite(n) ? n : null;
                     }
                     if (key === 'label_type') {
                         return normalizeLabelType(item.label_type);
@@ -2069,6 +2272,8 @@
                 if (skuSearch) skuSearch.addEventListener('input', applyFiltersDebounced);
                 const filterLabelTypeEl = document.getElementById('filterLabelType');
                 if (filterLabelTypeEl) filterLabelTypeEl.addEventListener('change', applyFilters);
+                const filterLabelQtyEl = document.getElementById('filterLabelQty');
+                if (filterLabelQtyEl) filterLabelQtyEl.addEventListener('change', applyFilters);
                 const sectionFilterEl = document.getElementById('dimWtSectionFilter');
                 if (sectionFilterEl) sectionFilterEl.addEventListener('change', applyDimWtSectionFilter);
 
@@ -2118,7 +2323,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Type", "Weight ACT (Kg)", "Itm wt GW", "Item L IN", "Item W IN", "Item H IN", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "GIRTH", "GIRTH + L", "Itm CBM", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "Verified"];
+                    const columns = ["SKU", "Status", "INV", "Label Qty", "Type", "Weight ACT (Kg)", "Itm wt GW", "Item L IN", "Item W IN", "Item H IN", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "GIRTH", "GIRTH + L", "Itm CBM", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "Verified"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -2130,6 +2335,9 @@
                         },
                         "INV": {
                             key: "shopify_inv"
+                        },
+                        "Label Qty": {
+                            key: "label_qty"
                         },
                         "Type": {
                             key: "label_type"
@@ -2235,6 +2443,11 @@
 
                                         if (key === 'label_type') {
                                             value = normalizeLabelType(value);
+                                        }
+                                        if (key === 'label_qty') {
+                                            const n = getLabelQtyNumber(item);
+                                            row.push(Number.isFinite(n) ? n : '');
+                                            return;
                                         }
 
                                         // Organized inch dims + girth (highest=L, 2nd=W, 3rd=H)
@@ -2871,6 +3084,7 @@
             });
 
             const BULK_EDIT_TRACKED_FIELDS = [
+                { id: 'editLabelQty', key: 'label_qty', type: 'num' },
                 { id: 'editWtActKg', key: 'wt_act_kg', type: 'num' },
                 { id: 'editWtAct', key: 'wt_act', type: 'num' },
                 { id: 'editWtDecl', key: 'wt_decl', type: 'num' },
@@ -2953,6 +3167,7 @@
                 document.getElementById('editProductId').value = product.id || '';
                 document.getElementById('editSku').value = product.SKU || '';
                 document.getElementById('editParent').value = product.Parent || '';
+                document.getElementById('editLabelQty').value = (product.label_qty != null && product.label_qty !== '') ? product.label_qty : '';
                 document.getElementById('editWtActKg').value = product.wt_act_kg || '';
                 document.getElementById('editWtAct').value = product.wt_act || '';
                 document.getElementById('editWtDecl').value = product.wt_decl || product.wt_act || '';
@@ -3070,6 +3285,7 @@
                     const ctnCbmEach = calculateCtnCbmEach(ctnCbm, ctnQty);
                     
                     const baseFormData = {
+                        label_qty: document.getElementById('editLabelQty').value.trim() || null,
                         wt_act_kg: document.getElementById('editWtActKg').value.trim() || null,
                         wt_act: document.getElementById('editWtAct').value.trim() || null,
                         wt_decl: document.getElementById('editWtDecl').value.trim() || null,

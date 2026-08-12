@@ -20,6 +20,7 @@ use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\WalmartMetrics;
 use App\Models\WayfairPricingPrice;
+use App\Models\WayfairListingStatus;
 use App\Models\ProductMaster;
 
 /**
@@ -154,10 +155,10 @@ class ChannelListingRegistry
                 'seller_tpl' => null,
             ],
             'wayfair' => [
-                'dataView' => \App\Models\WayfairDataView::class,
+                'dataView' => null,
                 'status' => \App\Models\WayfairListingStatus::class,
-                // Listed = SKU present in wayfair_pricing_prices (marketplace catalog), not sheet price>0
-                'listed' => ['type' => 'column', 'model' => WayfairPricingPrice::class, 'column' => 'sku'],
+                // Listed = wayfair_pricing_prices OR wayfair_listing_statuses (listed / buyer link)
+                'listed' => ['type' => 'custom', 'method' => 'listedWayfair'],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -398,6 +399,85 @@ class ChannelListingRegistry
                 $skus
             ),
         };
+    }
+
+    /**
+     * Wayfair Listed = SKU in wayfair_pricing_prices OR wayfair_listing_statuses
+     * (value.listed = Listed, or a buyer/seller/listing link), matched with
+     * normalized SKU (spaces/case). Pricing-only was ~250; listing statuses
+     * hold the rest of Partner Home listings.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedWayfair(array $skus): array
+    {
+        if ($skus === []) {
+            return [];
+        }
+
+        $byNorm = [];
+
+        if (class_exists(WayfairPricingPrice::class)) {
+            WayfairPricingPrice::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm) {
+                    foreach ($rows as $row) {
+                        $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                        if ($norm !== '' && ! isset($byNorm[$norm])) {
+                            $byNorm[$norm] = trim((string) $row->sku);
+                        }
+                    }
+                });
+        }
+
+        if (class_exists(WayfairListingStatus::class)) {
+            WayfairListingStatus::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm) {
+                    foreach ($rows as $row) {
+                        $val = is_array($row->value)
+                            ? $row->value
+                            : (json_decode((string) $row->value, true) ?: []);
+                        $listedFlag = strtolower(trim((string) ($val['listed'] ?? '')));
+                        $buyer = trim((string) ($val['buyer_link'] ?? ''));
+                        $listingId = trim((string) ($val['listing_id'] ?? $val['item_id'] ?? ''));
+                        if ($listedFlag !== 'listed' && $buyer === '' && $listingId === '') {
+                            continue;
+                        }
+                        $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                        if ($norm === '') {
+                            continue;
+                        }
+                        $id = $listingId !== '' ? $listingId : ($buyer !== '' ? $buyer : trim((string) $row->sku));
+                        $existing = $byNorm[$norm] ?? '';
+                        $preferNew = $existing === '' || (
+                            str_starts_with($id, 'http') && ! str_starts_with($existing, 'http')
+                        );
+                        if ($preferNew) {
+                            $byNorm[$norm] = $id;
+                        }
+                    }
+                });
+        }
+
+        $map = [];
+        foreach ($skus as $rawSku) {
+            $sku = trim((string) $rawSku);
+            if ($sku === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && isset($byNorm[$norm])) {
+                $map[strtolower($sku)] = $byNorm[$norm];
+            }
+        }
+
+        return $map;
     }
 
     /**
