@@ -3254,7 +3254,11 @@
             height: auto;
             display: block;
             pointer-events: none;
-            filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+        }
+
+        /* Hide dark topbar text brand so it does not stack under the red logo */
+        body.desktop-sidebar-collapsible .logo-topbar {
+            display: none !important;
         }
 
         body.desktop-sidebar-collapsible.desktop-menu-open #sidebar-logo-hover {
