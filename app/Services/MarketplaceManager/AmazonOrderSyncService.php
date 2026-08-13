@@ -144,7 +144,7 @@ class AmazonOrderSyncService
             })
             ->where('order_date', '>=', $cutoff)
             ->orderBy('id')
-            ->limit(50)
+            ->limit(100)
             ->get();
 
         $dispatched = 0;

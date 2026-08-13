@@ -615,6 +615,7 @@ class AmazonSyncController extends Controller
             'statusFilter' => $statusFilter ?? '',
             'search' => $search ?? '',
             'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('amazon'),
+            'autoImportToShopify' => MarketplaceSyncSettings::canAutoImportToShopify('amazon'),
             'shopifyImportCutoff' => AmazonOrder::SHOPIFY_IMPORT_CUTOFF_DATE,
         ]);
     }
@@ -723,8 +724,9 @@ class AmazonSyncController extends Controller
             $result = $sync->fetchAndStore($days);
         }
 
-        // Manual Fetch does not auto-push (avoids duplicates). Cron uses --import.
-        if ($request->boolean('import')) {
+        // Same as other MM channels: when auto-import is ON, queue FBM Shopify creates
+        // after fetch. Duplicate check links existing Shopify orders; FBA is skipped.
+        if ($request->boolean('import') || MarketplaceSyncSettings::canAutoImportToShopify('amazon')) {
             $dispatched = $sync->dispatchImportsForNewOrders();
             $result['message'] .= " Dispatched {$dispatched} Shopify import job(s).";
         }

@@ -614,6 +614,27 @@ class AmazonOrderPushService
 
         $orderPayload['line_items'] = $resolved;
 
+        if ($resolved === []) {
+            $line = $lines->first();
+            $qty = max(1, (int) ($line?->quantity ?? 1));
+            $price = number_format((float) ($line?->price ?? 0), 2, '.', '');
+            $title = (string) ($line?->title ?: 'Amazon order item');
+            $resolved[] = [
+                'title' => $title,
+                'price' => $price,
+                'quantity' => $qty,
+            ];
+            $meta[] = [
+                'sku' => (string) ($line?->sku ?? ''),
+                'title' => $title,
+                'quantity' => $qty,
+                'price' => $price,
+                'variant_id' => null,
+                'match_type' => 'custom',
+            ];
+            $orderPayload['line_items'] = $resolved;
+        }
+
         $missing = collect($meta)->where('match_type', 'custom')->filter(fn ($r) => ($r['sku'] ?? '') !== '');
         if ($missing->isNotEmpty()) {
             $orderPayload['tags'] = trim((string) ($orderPayload['tags'] ?? '').', SKU Missing', ', ');

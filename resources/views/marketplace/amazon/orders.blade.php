@@ -17,10 +17,11 @@
         <a href="{{ route('marketplace.manager.show', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amz Manager</a>
         @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amz Orders'])
         <p class="text-muted mb-3">
-            Orders stored locally from Amz SP-API. FBM orders on/after {{ $shopifyImportCutoff ?? '2026-08-06' }} PT
-            are pushed to Shopify (FBA is never created). Duplicate check links existing Shopify orders
-            from the previous sync app. Configure auto-import in
-            <a href="{{ route('marketplace.settings', 'amazon') }}">Settings</a>.
+            <strong>Push to Shopify</strong> creates the Shopify order immediately (same as other marketplaces).
+            FBA is never created. Already-synced orders are linked, not duplicated.
+            With auto-import ON, new FBM orders on/after {{ $shopifyImportCutoff ?? '2026-08-06' }} PT
+            are also queued every 15 minutes.
+            Configure in <a href="{{ route('marketplace.settings', 'amazon') }}">Settings</a>.
         </p>
 
         @include('marketplace.amazon._nav', ['active' => 'orders'])
@@ -202,17 +203,20 @@
 document.getElementById('btn-fetch-orders')?.addEventListener('click', function () {
     var btn = this;
     var selected = document.getElementById('fetch-days')?.value || '7';
-    var body = {};
+    var body = { import: {{ !empty($autoImportToShopify) ? 'true' : 'false' }} };
     var confirmMsg = '';
+    var importNote = body.import
+        ? '\n\nEligible FBM orders will be queued to Shopify (FBA skipped; already-synced orders are linked, not duplicated).'
+        : '\n\nThis will NOT auto-push to Shopify. Turn on auto-import in Settings, or use Push to Shopify per order.';
 
     if (selected.indexOf('from:') === 0) {
         var fromDate = selected.slice(5);
         body.from_date = fromDate;
-        confirmMsg = 'Fetch Amz orders from ' + fromDate + ' onward (Pacific)?\n\nThis will NOT auto-push to Shopify (avoids duplicates).';
+        confirmMsg = 'Fetch Amz orders from ' + fromDate + ' onward (Pacific)?' + importNote;
     } else {
         var days = parseInt(selected, 10) || 7;
         body.days = days;
-        confirmMsg = 'Fetch Amz orders from the last ' + days + ' days (Pacific)?\n\nThis will NOT auto-push to Shopify.';
+        confirmMsg = 'Fetch Amz orders from the last ' + days + ' days (Pacific)?' + importNote;
     }
 
     if (!confirm(confirmMsg)) {
@@ -241,7 +245,7 @@ document.querySelectorAll('.btn-push-order').forEach(function (btn) {
     btn.addEventListener('click', function () {
         var id = this.getAttribute('data-id');
         if (!id) return;
-        if (!confirm('Create a Shopify order from this Amazon FBM order?\n\nFBA orders are never created. Already-synced orders are linked, not duplicated.')) return;
+        if (!confirm('Push this Amazon FBM order to Shopify now?\n\nThis creates a real Shopify order (same as other marketplaces). FBA is never created. If it already exists on Shopify, it will be linked instead of duplicated.')) return;
         this.disabled = true;
         fetch('{{ route('marketplace.orders.push', 'amazon') }}', {
             method: 'POST',

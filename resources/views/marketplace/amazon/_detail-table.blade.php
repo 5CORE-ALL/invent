@@ -16,7 +16,7 @@
                     <th class="ps-3 text-muted" style="width: {{ $width ?? '200px' }};">{{ $label }}</th>
                     <td>
                         @if(is_array($display))
-                            {{ implode(', ', array_filter($display)) ?: '—' }}
+                            <pre class="small mb-0">{{ json_encode($display, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }}</pre>
                         @else
                             {!! $display !!}
                         @endif
