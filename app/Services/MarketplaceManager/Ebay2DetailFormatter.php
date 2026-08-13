@@ -1740,11 +1740,12 @@ class Ebay2DetailFormatter
 
     protected function isMetricLinked(?Ebay2Metric $metric, string $shopifySku): bool
     {
-        if (! $metric || empty($metric->product_id)) {
+        if (! $metric) {
             return false;
         }
+        $productId = trim((string) ($metric->item_id ?? $metric->product_id ?? ''));
         $mappedSku = trim((string) $metric->sku);
-        if ($mappedSku === '' || $mappedSku === (string) $metric->product_id) {
+        if ($productId === '' || $mappedSku === '' || strcasecmp($productId, $mappedSku) === 0) {
             return false;
         }
 
@@ -2049,7 +2050,7 @@ class Ebay2DetailFormatter
         }
 
         if ($productId) {
-            $metric = Ebay2Metric::query()->where('product_id', $productId)->first();
+            $metric = Ebay2Metric::query()->where('item_id', $productId)->first();
             if ($metric && Schema::hasTable('shopify_skus')) {
                 $shopify = ShopifySku::firstForProductSku($metric->sku);
                 if ($shopify?->image_src) {

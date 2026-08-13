@@ -26,4 +26,37 @@ class Ebay2Metric extends Model
         'ebay_stock',
         'bullet_points',
     ];
+
+    /** MM alias: product_id ↔ item_id */
+    public function getProductIdAttribute($value = null)
+    {
+        return $this->attributes['item_id'] ?? $value;
+    }
+
+    public function setProductIdAttribute($value): void
+    {
+        $this->attributes['item_id'] = $value;
+    }
+
+    /** MM alias: product_name ↔ ebay_title */
+    public function getProductNameAttribute($value = null)
+    {
+        return $this->attributes['ebay_title'] ?? $value;
+    }
+
+    public function setProductNameAttribute($value): void
+    {
+        $this->attributes['ebay_title'] = $value;
+    }
+
+    /** MM alias: price ↔ ebay_price */
+    public function getPriceAttribute($value = null)
+    {
+        return $this->attributes['ebay_price'] ?? $value;
+    }
+
+    public function setPriceAttribute($value): void
+    {
+        $this->attributes['ebay_price'] = $value;
+    }
 }

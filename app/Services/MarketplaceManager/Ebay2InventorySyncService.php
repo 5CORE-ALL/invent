@@ -59,6 +59,7 @@ class Ebay2InventorySyncService
             $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
+        $shopifyQty = $this->mergeLocalShopifyQtyFallback($shopifyQty, $fetchSkus);
 
         $metrics = Ebay2Metric::query()
             ->whereNotNull('item_id')
@@ -219,6 +220,7 @@ class Ebay2InventorySyncService
                 $shopifyQty[$sku] = $qty;
             }
         }
+        $shopifyQty = $this->mergeLocalShopifyQtyFallback($shopifyQty, $skus);
 
         $coverage = MarketplaceLiveInventoryRules::shopifyLiveCoverageReport(
             $skus,
@@ -462,6 +464,42 @@ class Ebay2InventorySyncService
         }
 
         return null;
+    }
+
+    /**
+     * Products page qty comes from shopify_skus. If live API missed a SKU, use that
+     * so eBay 2 is not zeroed while Shopify still shows stock.
+     *
+     * @param  array<string, int>  $shopifyQty
+     * @param  array<int, string>  $skus
+     * @return array<string, int>
+     */
+    protected function mergeLocalShopifyQtyFallback(array $shopifyQty, array $skus): array
+    {
+        $missing = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '' && $this->resolveShopifyQty($shopifyQty, $sku) === null) {
+                $missing[] = $sku;
+            }
+        }
+        if ($missing === []) {
+            return $shopifyQty;
+        }
+
+        $local = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($missing);
+        if ($local === []) {
+            $local = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($missing);
+        }
+        foreach ($missing as $sku) {
+            $qty = $this->resolveShopifyQty($local, $sku);
+            if ($qty === null) {
+                continue;
+            }
+            $shopifyQty[$sku] = $qty;
+        }
+
+        return $shopifyQty;
     }
 
     /**

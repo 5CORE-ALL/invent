@@ -1533,12 +1533,13 @@ class Ebay2SyncController extends Controller
 
     protected function isShopifySkuLinkedOnEbay2(?Ebay2Metric $metric, string $shopifySku): bool
     {
-        if (! $metric || empty($metric->product_id)) {
+        if (! $metric) {
             return false;
         }
 
+        $productId = trim((string) ($metric->item_id ?? $metric->product_id ?? ''));
         $mappedSku = trim((string) $metric->sku);
-        if ($mappedSku === '' || $mappedSku === (string) $metric->product_id) {
+        if ($productId === '' || $mappedSku === '' || strcasecmp($productId, $mappedSku) === 0) {
             return false;
         }
 
