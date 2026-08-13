@@ -382,6 +382,7 @@
                                 ['value' => 'listing_neweggb2c', 'text' => 'Listing Newegg B2C'],
                                 ['value' => 'wayfair', 'text' => 'Wayfair'],
                                 ['value' => 'listing_wayfair', 'text' => 'Listing Wayfair'],
+                                ['value' => 'wayfair_listing_variation_verify', 'text' => 'Wayfair Variation Verify'],
                                 ['value' => 'reverb', 'text' => 'Reverb'],
                                 ['value' => 'listing_reverb', 'text' => 'Listing Reverb'],
                                 ['value' => 'temu', 'text' => 'Temu'],

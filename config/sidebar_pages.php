@@ -126,7 +126,7 @@ return [
     ['value' => 'purchasing_power_listing_variation_verify', 'text' => 'Purchasing Power Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'wayfair', 'text' => 'Wayfair', 'group' => 'Marketplace'],
     ['value' => 'listing_wayfair', 'text' => 'Listing Wayfair', 'group' => 'Marketplace'],
-    ['value' => 'wayfair_listing_variation_verify', 'text' => 'Wayfair Listing Variation Verify', 'group' => 'Marketplace'],
+    ['value' => 'wayfair_listing_variation_verify', 'text' => 'Wayfair Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'reverb', 'text' => 'Reverb', 'group' => 'Marketplace'],
     ['value' => 'listing_reverb', 'text' => 'Listing Reverb', 'group' => 'Marketplace'],
 

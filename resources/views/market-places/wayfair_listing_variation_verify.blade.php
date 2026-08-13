@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Wayfair Listing Variation Verify'])
+@extends('layouts.vertical', ['title' => 'Wayfair Variation Verify'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -114,7 +114,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Wayfair Listing Variation Verify',
+        'page_title' => 'Wayfair Variation Verify',
         'sub_title'  => 'Wayfair Listings',
     ])
 
@@ -126,7 +126,7 @@
                         <div class="d-flex align-items-center flex-wrap gap-2 py-1">
                             <span class="wayfair-stat-badge wayfair-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="wayfair-lvv-badge-parents">0</span></span>
                             <span class="wayfair-stat-badge wayfair-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="wayfair-lvv-badge-children">0</span></span>
-                            <span class="wayfair-stat-badge wayfair-stat-badge--listed" title="Wayfair listings (wayfair_pricing_prices)">LISTED:<span id="wayfair-lvv-badge-listed">0</span></span>
+                            <span class="wayfair-stat-badge wayfair-stat-badge--listed" title="Wayfair listings (pricing + listing statuses)">LISTED:<span id="wayfair-lvv-badge-listed">0</span></span>
                             <span class="wayfair-stat-badge wayfair-stat-badge--mismatch" id="wayfair-lvv-badge-mismatch-btn" role="button" tabindex="0" title="Filter: mismatch only">MISMATCH:<span id="wayfair-lvv-badge-mismatch">0</span></span>
                             <span class="wayfair-stat-badge wayfair-stat-badge--mismatch-inv" id="wayfair-lvv-badge-mismatch-inv-btn" role="button" tabindex="0" title="Filter: mismatch parents with Shopify INV &gt; 0">MISMATCH INV&gt;0:<span id="wayfair-lvv-badge-mismatch-inv">0</span></span>
                         </div>
@@ -135,8 +135,8 @@
                         <button type="button" id="wayfair-lvv-refresh-btn" class="btn btn-sm btn-outline-primary wayfair-raw-icon-btn" title="Refresh" aria-label="Refresh">
                             <i class="fa fa-refresh"></i>
                         </button>
-                        <button type="button" id="wayfair-lvv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Refresh Wayfair listings cache">
-                            <i class="fas fa-sync-alt me-1"></i> Refresh Listings
+                        <button type="button" id="wayfair-lvv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull Wayfair listings (pricing + listing statuses)">
+                            <i class="fas fa-cloud-download-alt me-1"></i> Pull Listings
                         </button>
                         <button type="button" id="wayfair-lvv-export-btn" class="btn btn-sm btn-success" title="Export filtered rows to Excel">
                             <i class="fas fa-file-excel me-1"></i> Export Excel
@@ -530,12 +530,12 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm("Refresh Wayfair listings from wayfair_pricing_prices cache?\n\nUpload price sheet on Wayfair Pricing (/wayfair-pricing) if the cache is empty.")) {
+                if (!confirm("Pull Wayfair listings from pricing and listing statuses?\n\nThis updates Parent vs Listed SKU from local Wayfair data.")) {
                     return;
                 }
 
                 $btn.prop('disabled', true)
-                    .html('<span class="spinner-border spinner-border-sm me-1"></span> Refreshing…');
+                    .html('<span class="spinner-border spinner-border-sm me-1"></span> Pulling…');
 
                 $.ajax({
                     url: '{{ route("wayfair.listing.variation.verify.pull") }}',
@@ -561,7 +561,7 @@
                     },
                     complete: function () {
                         $btn.prop('disabled', false)
-                            .html('<i class="fas fa-sync-alt me-1"></i> Refresh Listings');
+                            .html('<i class="fas fa-cloud-download-alt me-1"></i> Pull Listings');
                     }
                 });
             });

@@ -915,6 +915,439 @@ XML;
         }
     }
 
+    /**
+     * Look up SKUs on Wayfair (catalog inventory, then purchase-order history).
+     *
+     * @param  list<string>  $skus
+     * @return array{
+     *     items: array<string, array{sku: string, quantity: int, price: float|null}>,
+     *     source: string,
+     *     error: string|null
+     * }
+     */
+    public function lookupInventoryBySkus(array $skus): array
+    {
+        $wanted = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $norm = $this->normalizePartNumber($sku);
+            if ($norm !== '' && ! isset($wanted[$norm])) {
+                $wanted[$norm] = $sku;
+            }
+        }
+
+        if ($wanted === []) {
+            return ['items' => [], 'source' => 'none', 'error' => null];
+        }
+
+        $error = null;
+
+        try {
+            $fromSupplier = $this->lookupFromSupplierCatalog(array_values($wanted));
+            if ($fromSupplier['items'] !== []) {
+                return $fromSupplier;
+            }
+            if (! empty($fromSupplier['error'])) {
+                $error = $fromSupplier['error'];
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+            Log::warning('Wayfair lookupInventoryBySkus supplierCatalog failed', ['error' => $error]);
+        }
+
+        try {
+            $fromCatalog = $this->lookupInventoryFromCatalog(array_keys($wanted));
+            if ($fromCatalog['items'] !== []) {
+                return $fromCatalog;
+            }
+            if (! empty($fromCatalog['error'])) {
+                $error = $fromCatalog['error'];
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+            Log::warning('Wayfair lookupInventoryBySkus catalog failed', ['error' => $error]);
+        }
+
+        try {
+            $fromPo = $this->lookupInventoryFromPurchaseOrders(array_keys($wanted));
+            if ($fromPo['items'] !== []) {
+                return $fromPo;
+            }
+            if ($error === null && ! empty($fromPo['error'])) {
+                $error = $fromPo['error'];
+            }
+        } catch (\Throwable $e) {
+            $error = $error ?: $e->getMessage();
+            Log::warning('Wayfair lookupInventoryBySkus PO failed', ['error' => $e->getMessage()]);
+        }
+
+        return ['items' => [], 'source' => 'none', 'error' => $error];
+    }
+
+    protected function normalizePartNumber(string $sku): string
+    {
+        $s = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', $sku);
+        $s = preg_replace('/\s+/u', ' ', trim($s));
+
+        return strtoupper((string) $s);
+    }
+
+    /**
+     * Live catalog lookup via Supplier Catalog API (part number in catalog = listed).
+     *
+     * @param  list<string>  $skus
+     * @return array{items: array<string, array{sku: string, quantity: int, price: float|null}>, source: string, error: string|null}
+     */
+    protected function lookupFromSupplierCatalog(array $skus): array
+    {
+        $token = $this->authenticate();
+        $url = 'https://api.wayfair.io/v1/supplier-catalog-api/graphql';
+        $supplierId = (int) config('services.wayfair.supplier_id');
+        $query = <<<'GRAPHQL'
+        query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
+          supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
+            pageInfo { page pageSize hasNextPage totalPages }
+            products {
+              productId
+              supplierPartNumber
+              status
+              skus { sku displaySku isLive status }
+            }
+          }
+        }
+        GRAPHQL;
+
+        $items = [];
+        $lastError = null;
+
+        foreach (array_chunk(array_values($skus), 25) as $chunk) {
+            $response = $this->apiHttpClient()
+                ->withToken($token)
+                ->withHeaders([
+                    'X-SELECTED-SUPPLIER-ID' => (string) $supplierId,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])
+                ->post($url, [
+                    'query' => $query,
+                    'variables' => [
+                        'supplierId' => $supplierId,
+                        'filter' => [
+                            'supplierPartNumber' => ['in' => $chunk],
+                        ],
+                        'paginationOptions' => [
+                            'page' => 1,
+                            'pageSize' => 25,
+                        ],
+                    ],
+                ]);
+
+            $json = $response->json();
+            if (! empty($json['errors'])) {
+                $lastError = $this->formatGraphqlErrors($json['errors']);
+                if (stripos($lastError, 'permission') !== false || stripos($lastError, 'denied') !== false) {
+                    return ['items' => $items, 'source' => 'supplier_catalog', 'error' => $lastError];
+                }
+                continue;
+            }
+
+            $products = $json['data']['supplierCatalog']['products'] ?? [];
+            if (! is_array($products)) {
+                continue;
+            }
+
+            foreach ($products as $product) {
+                if (! is_array($product)) {
+                    continue;
+                }
+                $part = trim((string) ($product['supplierPartNumber'] ?? ''));
+                $status = strtoupper((string) ($product['status'] ?? ''));
+                $liveSku = false;
+                foreach (($product['skus'] ?? []) as $skuRow) {
+                    if (! is_array($skuRow)) {
+                        continue;
+                    }
+                    if (! empty($skuRow['isLive']) || strtoupper((string) ($skuRow['status'] ?? '')) === 'LIVE') {
+                        $liveSku = true;
+                    }
+                    foreach ([$skuRow['sku'] ?? '', $skuRow['displaySku'] ?? ''] as $alt) {
+                        $altNorm = $this->normalizePartNumber((string) $alt);
+                        if ($altNorm !== '') {
+                            $items[$altNorm] = [
+                                'sku' => trim((string) $alt) !== '' ? trim((string) $alt) : $part,
+                                'quantity' => 0,
+                                'price' => null,
+                            ];
+                        }
+                    }
+                }
+                if ($part === '') {
+                    continue;
+                }
+                if ($status === 'UNPURCHASABLE' && ! $liveSku) {
+                    continue;
+                }
+                $items[$this->normalizePartNumber($part)] = [
+                    'sku' => $part,
+                    'quantity' => 0,
+                    'price' => null,
+                ];
+            }
+        }
+
+        return ['items' => $items, 'source' => 'supplier_catalog', 'error' => $lastError];
+    }
+
+    /**
+     * @param  list<string>  $wantedUpper
+     * @return array{items: array<string, array{sku: string, quantity: int, price: float|null}>, source: string, error: string|null}
+     */
+    protected function lookupInventoryFromCatalog(array $wantedUpper): array
+    {
+        $wantedSet = array_fill_keys($wantedUpper, true);
+        $token = $this->getTokenForCatalog();
+        $urls = array_values(array_unique(array_filter([
+            (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql'),
+            $this->graphqlUrl,
+        ])));
+
+        $lastError = null;
+        foreach ($urls as $url) {
+            $batched = $this->queryInventoryByPartNumbers($url, $token, $wantedUpper);
+            if (! empty($batched['error']) && empty($batched['items'])) {
+                $lastError = $batched['error'];
+            }
+            if ($batched['items'] !== []) {
+                return ['items' => $batched['items'], 'source' => 'catalog', 'error' => null];
+            }
+
+            $paged = $this->queryPaginatedInventory($url, $token, $wantedSet);
+            if (! empty($paged['error']) && empty($paged['items'])) {
+                $lastError = $paged['error'];
+            }
+            if ($paged['items'] !== []) {
+                return ['items' => $paged['items'], 'source' => 'catalog', 'error' => null];
+            }
+        }
+
+        return ['items' => [], 'source' => 'catalog', 'error' => $lastError];
+    }
+
+    /**
+     * @param  list<string>  $wantedUpper
+     * @return array{items: array<string, array{sku: string, quantity: int, price: float|null}>, error: ?string}
+     */
+    protected function queryInventoryByPartNumbers(string $url, string $token, array $wantedUpper): array
+    {
+        $items = [];
+        $lastError = null;
+        $chunks = array_chunk($wantedUpper, 50);
+
+        $queries = [
+            <<<'GRAPHQL'
+            query InventoryByParts($parts: [String!]!) {
+              inventory(supplierPartNumbers: $parts) {
+                supplierPartNumber
+                quantityOnHand
+              }
+            }
+            GRAPHQL,
+            <<<'GRAPHQL'
+            query InventoryByFilter($parts: [String!]!) {
+              inventory(filter: { supplierPartNumbers: $parts }) {
+                supplierPartNumber
+                quantityOnHand
+              }
+            }
+            GRAPHQL,
+        ];
+
+        foreach ($chunks as $chunk) {
+            $chunkFound = false;
+            foreach ($queries as $query) {
+                $res = $this->graphqlPost($url, $token, $query, ['parts' => array_values($chunk)]);
+                if (! empty($res['json']['errors'])) {
+                    $lastError = $this->formatGraphqlErrors($res['json']['errors']);
+                    continue;
+                }
+                if (! $res['ok']) {
+                    $lastError = 'HTTP '.$res['status'].': '.$res['body'];
+                    continue;
+                }
+                $rows = $res['json']['data']['inventory'] ?? null;
+                if (! is_array($rows)) {
+                    continue;
+                }
+                $chunkFound = true;
+                foreach ($rows as $row) {
+                    $mapped = $this->mapInventoryRow($row);
+                    if ($mapped !== null) {
+                        $items[$mapped['key']] = $mapped['item'];
+                    }
+                }
+                break;
+            }
+            if (! $chunkFound && $items === []) {
+                return ['items' => [], 'error' => $lastError];
+            }
+        }
+
+        return ['items' => $items, 'error' => $lastError];
+    }
+
+    /**
+     * @param  array<string, true>  $wantedSet
+     * @return array{items: array<string, array{sku: string, quantity: int, price: float|null}>, error: ?string}
+     */
+    protected function queryPaginatedInventory(string $url, string $token, array $wantedSet): array
+    {
+        $query = <<<'GRAPHQL'
+        query GetInventory($limit: Int!, $offset: Int!) {
+          inventory(limit: $limit, offset: $offset) {
+            supplierPartNumber
+            quantityOnHand
+          }
+        }
+        GRAPHQL;
+
+        $items = [];
+        $limit = 100;
+        $offset = 0;
+        $lastError = null;
+
+        for ($page = 0; $page < 250; $page++) {
+            $res = $this->graphqlPost($url, $token, $query, [
+                'limit' => $limit,
+                'offset' => $offset,
+            ]);
+            if (! empty($res['json']['errors'])) {
+                $lastError = $this->formatGraphqlErrors($res['json']['errors']);
+                break;
+            }
+            if (! $res['ok']) {
+                $lastError = 'HTTP '.$res['status'].': '.$res['body'];
+                break;
+            }
+            $rows = $res['json']['data']['inventory'] ?? [];
+            if (! is_array($rows) || $rows === []) {
+                break;
+            }
+            foreach ($rows as $row) {
+                $mapped = $this->mapInventoryRow($row);
+                if ($mapped === null) {
+                    continue;
+                }
+                if (isset($wantedSet[$mapped['key']])) {
+                    $items[$mapped['key']] = $mapped['item'];
+                }
+            }
+            if (count($rows) < $limit) {
+                break;
+            }
+            $offset += $limit;
+        }
+
+        return ['items' => $items, 'error' => $lastError];
+    }
+
+    /**
+     * @param  list<string>  $wantedUpper
+     * @return array{items: array<string, array{sku: string, quantity: int, price: float|null}>, source: string, error: string|null}
+     */
+    protected function lookupInventoryFromPurchaseOrders(array $wantedUpper): array
+    {
+        $wantedSet = array_fill_keys($wantedUpper, true);
+        $po = $this->getInventory();
+        $items = [];
+        foreach (($po['products'] ?? []) as $product) {
+            $sku = $this->normalizePartNumber((string) ($product['sku'] ?? ''));
+            if ($sku === '' || ! isset($wantedSet[$sku])) {
+                continue;
+            }
+            $qty = (int) ($product['quantity'] ?? 0);
+            $price = isset($product['price']) && is_numeric($product['price']) ? (float) $product['price'] : null;
+            if (! isset($items[$sku])) {
+                $items[$sku] = [
+                    'sku' => (string) ($product['sku'] ?? $sku),
+                    'quantity' => $qty,
+                    'price' => $price,
+                ];
+            } else {
+                $items[$sku]['quantity'] += $qty;
+                if ($items[$sku]['price'] === null && $price !== null) {
+                    $items[$sku]['price'] = $price;
+                }
+            }
+        }
+
+        return ['items' => $items, 'source' => 'purchase_orders', 'error' => null];
+    }
+
+    /**
+     * @param  mixed  $row
+     * @return array{key: string, item: array{sku: string, quantity: int, price: float|null}}|null
+     */
+    protected function mapInventoryRow($row): ?array
+    {
+        if (! is_array($row)) {
+            return null;
+        }
+        $sku = trim((string) ($row['supplierPartNumber'] ?? $row['sku'] ?? ''));
+        if ($sku === '') {
+            return null;
+        }
+
+        return [
+            'key' => $this->normalizePartNumber($sku),
+            'item' => [
+                'sku' => $sku,
+                'quantity' => (int) ($row['quantityOnHand'] ?? $row['quantity'] ?? 0),
+                'price' => isset($row['price']) && is_numeric($row['price']) ? (float) $row['price'] : null,
+            ],
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $errors
+     */
+    protected function formatGraphqlErrors(array $errors): string
+    {
+        $parts = [];
+        foreach ($errors as $err) {
+            if (is_array($err) && isset($err['message'])) {
+                $parts[] = (string) $err['message'];
+            }
+        }
+
+        return $parts !== [] ? implode('; ', $parts) : 'GraphQL error';
+    }
+
+    /**
+     * @return array{ok: bool, json: array, body: string, status: int}
+     */
+    protected function graphqlPost(string $url, string $token, string $query, array $variables = []): array
+    {
+        $response = $this->apiHttpClient()
+            ->withToken($token)
+            ->withHeaders(['Content-Type' => 'application/json', 'Accept' => 'application/json'])
+            ->post($url, [
+                'query' => $query,
+                'variables' => $variables,
+            ]);
+
+        $json = $response->json();
+
+        return [
+            'ok' => $response->successful(),
+            'json' => is_array($json) ? $json : [],
+            'body' => $response->body(),
+            'status' => $response->status(),
+        ];
+    }
+
     public function isConfigured(): bool
     {
         $clientId = trim((string) config('services.wayfair.client_id'), " \t\n\r\0\x0B\"'");
