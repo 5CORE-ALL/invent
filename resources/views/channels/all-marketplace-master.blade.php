@@ -234,6 +234,25 @@
             max-width: 100%;
         }
 
+        #yesterdayMpModal .modal-dialog {
+            max-width: 1100px;
+        }
+        #yesterdayMpTable th {
+            font-size: 11px;
+            white-space: nowrap;
+            text-align: center;
+            background: #e6e6e6;
+        }
+        #yesterdayMpTable td {
+            font-size: 12px;
+            vertical-align: middle;
+        }
+        #yesterdayMpTable tfoot td {
+            font-weight: 700;
+            background: #f8f9fa;
+            border-top: 2px solid #4361ee;
+        }
+
         /* Summary badges — horizontal scroll; each badge keeps full width (no flex-shrink overlap) */
         #summary-stats .ebay2-summary-badge-row {
             display: flex;
@@ -310,6 +329,10 @@
                     <button id="addChannelBtn" class="btn btn-sm btn-outline-dark" data-bs-toggle="modal"
                         data-bs-target="#addChannelModal" title="Add Channel" aria-label="Add Channel">
                         <i class="fas fa-plus-circle" style="color: #000;"></i>
+                    </button>
+                    <button type="button" id="yesterdayMpViewBtn" class="btn btn-sm btn-outline-dark"
+                        title="Yesterday by marketplace" aria-label="Yesterday by marketplace">
+                        <i class="fas fa-eye" style="color: #000;"></i>
                     </button>
 
                 </div>
@@ -565,6 +588,43 @@
                     </button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="updateChannelBtn">Update Channel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Yesterday by marketplace -->
+    <div class="modal fade" id="yesterdayMpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2" style="background: linear-gradient(135deg, #17a2b8, #0d6efd);">
+                    <h6 class="modal-title text-white mb-0">
+                        <i class="fas fa-eye me-2"></i>
+                        Yesterday by marketplace
+                        <span class="fw-normal" style="opacity:.9;">— {{ now('America/Los_Angeles')->subDay()->format('M j, Y') }} (Pacific)</span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-hover mb-0" id="yesterdayMpTable">
+                            <thead>
+                                <tr>
+                                    <th class="text-start">Marketplace</th>
+                                    <th>Y Sales</th>
+                                    <th>GPFT</th>
+                                    <th>GROI</th>
+                                    <th>NROI</th>
+                                    <th>NPFT</th>
+                                    <th>Views</th>
+                                    <th>CVR</th>
+                                    <th>Orders</th>
+                                </tr>
+                            </thead>
+                            <tbody id="yesterdayMpTableBody"></tbody>
+                            <tfoot id="yesterdayMpTableFoot"></tfoot>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1470,6 +1530,7 @@
                     {
                         title: "Growth",
                         field: "Growth",
+                        visible: false,
                         headerTooltip: "Growth % comparing yesterday’s sales (Y Sales) to sales on the Pacific day 30 days before yesterday (D30 Sales). Formula: ((Y Sales − D30 Sales) / D30 Sales) × 100. Green = up vs that day, red = down.",
                         hozAlign: "center",
                         sorter: "number",
@@ -3706,6 +3767,7 @@
                 'Map',
                 'Miss',
                 'NMap',
+                'Growth',
                 '_gross_pft',
                 'Shopping Sales', 'Shopping ACOS', 'Shopping Sold', 'Shopping CVR',
                 'ad_sold', 'Ads CVR', 'clicks', 'Ad Sales',
@@ -4954,6 +5016,132 @@
                         showToast('error', msg);
                     }
                 });
+            });
+
+            function yMpPct(value, kind) {
+                const v = parseNumber(value);
+                if (v == null || isNaN(v)) return '<span class="text-muted">—</span>';
+                let style = 'font-weight:600;';
+                if (kind === 'gpft' || kind === 'npft') {
+                    if (v <= 10) style += 'color:#a00211;';
+                    else if (v <= 18) style += 'background:#ffc107;color:#000;padding:2px 6px;border-radius:4px;';
+                    else if (v <= 25) style += 'color:#3591dc;';
+                    else if (v <= 40) style += 'color:#28a745;';
+                    else style += 'color:#e83e8c;';
+                } else {
+                    if (v <= 50) style += 'color:#a00211;';
+                    else if (v <= 75) style += 'background:#ffc107;color:#000;padding:2px 6px;border-radius:4px;';
+                    else if (v <= 125) style += 'color:#28a745;';
+                    else style += 'color:#8000ff;';
+                }
+                return `<span style="${style}">${Math.round(v)}%</span>`;
+            }
+
+            function yMpMoney(value) {
+                const v = parseNumber(value);
+                if (!v) return '<span class="text-muted" title="No Yesterday Sales">NYS</span>';
+                return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(v).toLocaleString('en-US')}</span>`;
+            }
+
+            function yMpInt(value) {
+                const v = parseNumber(value);
+                if (v == null || isNaN(v) || v === 0) return '<span class="text-muted">—</span>';
+                return Math.round(v).toLocaleString('en-US');
+            }
+
+            function yMpCvr(row) {
+                const serverCvr = row['CVR'];
+                if (serverCvr !== undefined && serverCvr !== null && serverCvr !== '') {
+                    return parseNumber(serverCvr);
+                }
+                const views = parseNumber(row['Total Views'] || 0);
+                const qty = parseNumber(row['Qty'] || 0);
+                return views > 0 ? (qty / views) * 100 : null;
+            }
+
+            function openYesterdayMarketplaceModal() {
+                if (!table || typeof table.getData !== 'function') return;
+                const rows = (table.getData() || []).slice().sort(function(a, b) {
+                    return parseNumber(b['Y Sales'] || 0) - parseNumber(a['Y Sales'] || 0);
+                });
+
+                let sumSales = 0, sumGp = 0, sumCogs = 0, sumViews = 0, sumQty = 0, sumOrders = 0;
+                let sumNpftW = 0, sumGroiW = 0, sumNroiW = 0, wSales = 0;
+
+                const body = rows.map(function(row) {
+                    const name = (row['Channel '] || row['Channel'] || '').toString().trim() || '—';
+                    const ySales = parseNumber(row['Y Sales'] || 0);
+                    const gpft = parseNumber(row['Gprofit%'] || 0);
+                    const groi = parseNumber(row['G Roi'] || 0);
+                    const nroi = parseNumber(row['N ROI'] || 0);
+                    const npft = parseNumber(row['N PFT'] || 0);
+                    const views = parseNumber(row['Total Views'] || 0);
+                    const orders = parseNumber(row['L30 Orders'] || 0);
+                    const qty = parseNumber(row['Qty'] || 0);
+                    const cogs = parseNumber(row['cogs'] || 0);
+                    const cvr = yMpCvr(row);
+
+                    sumSales += ySales;
+                    sumGp += (gpft / 100) * ySales;
+                    sumCogs += cogs;
+                    sumViews += views;
+                    sumQty += qty;
+                    sumOrders += orders;
+                    if (ySales > 0) {
+                        wSales += ySales;
+                        sumNpftW += npft * ySales;
+                        sumGroiW += groi * ySales;
+                        sumNroiW += nroi * ySales;
+                    }
+
+                    const cvrHtml = (cvr == null || isNaN(cvr))
+                        ? '<span class="text-muted">—</span>'
+                        : `<span style="font-weight:600;">${Math.round(cvr)}%</span>`;
+
+                    return `<tr>
+                        <td class="text-start fw-semibold">${name}</td>
+                        <td class="text-end">${yMpMoney(ySales)}</td>
+                        <td class="text-center">${yMpPct(gpft, 'gpft')}</td>
+                        <td class="text-center">${yMpPct(groi, 'groi')}</td>
+                        <td class="text-center">${yMpPct(nroi, 'nroi')}</td>
+                        <td class="text-center">${yMpPct(npft, 'npft')}</td>
+                        <td class="text-end">${yMpInt(views)}</td>
+                        <td class="text-center">${cvrHtml}</td>
+                        <td class="text-end">${yMpInt(orders)}</td>
+                    </tr>`;
+                }).join('');
+
+                const totGpft = sumSales > 0 ? (sumGp / sumSales) * 100 : 0;
+                const totNpft = wSales > 0 ? (sumNpftW / wSales) : 0;
+                const totGroi = wSales > 0 ? (sumGroiW / wSales) : 0;
+                const totNroi = wSales > 0 ? (sumNroiW / wSales) : 0;
+                const totCvr = sumViews > 0 ? (sumQty / sumViews) * 100 : null;
+                const totCvrHtml = (totCvr == null || isNaN(totCvr))
+                    ? '—'
+                    : Math.round(totCvr) + '%';
+
+                $('#yesterdayMpTableBody').html(body || '<tr><td colspan="9" class="text-center text-muted">No channels</td></tr>');
+                $('#yesterdayMpTableFoot').html(`<tr>
+                    <td class="text-start">Total</td>
+                    <td class="text-end">${yMpMoney(sumSales)}</td>
+                    <td class="text-center">${yMpPct(totGpft, 'gpft')}</td>
+                    <td class="text-center">${yMpPct(totGroi, 'groi')}</td>
+                    <td class="text-center">${yMpPct(totNroi, 'nroi')}</td>
+                    <td class="text-center">${yMpPct(totNpft, 'npft')}</td>
+                    <td class="text-end">${yMpInt(sumViews)}</td>
+                    <td class="text-center">${totCvrHtml}</td>
+                    <td class="text-end">${yMpInt(sumOrders)}</td>
+                </tr>`);
+
+                const el = document.getElementById('yesterdayMpModal');
+                if (typeof bootstrap === 'undefined' || !el) return;
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            }
+
+            $(document).on('click', '#yesterdayMpViewBtn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openYesterdayMarketplaceModal();
             });
         });
     </script>
