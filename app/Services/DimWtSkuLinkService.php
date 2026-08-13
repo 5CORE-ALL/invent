@@ -164,6 +164,20 @@ class DimWtSkuLinkService
             return $empty;
         }
 
+        // Only copy dim/wt onto linked SKUs when the user explicitly opted in.
+        // Otherwise a single-SKU GW/L/W/H save silently overwrote every linked child.
+        $optIn = filter_var($changedFields['save_also_to_siblings'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $hasDimFields = false;
+        foreach (self::SYNC_KEYS as $key) {
+            if (array_key_exists($key, $changedFields)) {
+                $hasDimFields = true;
+                break;
+            }
+        }
+        if (! $optIn || ! $hasDimFields) {
+            return $empty;
+        }
+
         $linkedProducts = $this->linkedProductsFor($product);
         if ($linkedProducts->isEmpty()) {
             return $empty;

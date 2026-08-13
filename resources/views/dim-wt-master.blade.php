@@ -3828,9 +3828,13 @@
 
                 const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
                 if (siblingsCb) {
-                    // Restore last saved checkbox from this SKU (checked or unchecked)
-                    siblingsCb.checked = readFamilySiblingsPref(product);
-                    siblingsCb.disabled = isParentSkuString(skuStr);
+                    siblingsCb.disabled = isParentSkuString(skuStr) || isBulk;
+                    // Single edit: start unchecked. Restoring a saved "on" was
+                    // overwriting every child even when grid siblings were deselected.
+                    siblingsCb.checked = false;
+                    siblingsCb.title = isBulk
+                        ? 'Bulk edit already applies only to the selected SKUs.'
+                        : 'Tick to copy this save to all child SKUs under the same parent.';
                 }
 
                 // Snapshot for both single and bulk so sibling-copy only pushes

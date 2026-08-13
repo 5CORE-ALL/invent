@@ -43,6 +43,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController
 use App\Http\Controllers\MarketPlace\EbayThreeController as MarketPlaceEbayThreeController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Support\Marketplace\EbayTwoListingCounts;
+use App\Services\Support\YesterdayMarketplaceMetricsService;
 use App\Models\AliExpressSheetData;
 use App\Models\AliexpressDailyData;
 use App\Models\AliexpressListingStatus;
@@ -13976,6 +13977,28 @@ class ChannelMasterController extends Controller
         } catch (\Exception $e) {
             Log::error('Error fetching current Google Sheet campaigns: ' . $e->getMessage());
             return [];
+        }
+    }
+
+    /**
+     * Yesterday-only GPFT / GROI / NROI / NPFT / orders per active channel (Pacific calendar day).
+     */
+    public function getYesterdayMarketplaceMetrics()
+    {
+        try {
+            $payload = app(YesterdayMarketplaceMetricsService::class)->build();
+
+            return response()->json([
+                'status' => 200,
+                'data' => $payload,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Yesterday marketplace metrics failed: '.$e->getMessage());
+
+            return response()->json([
+                'status' => 500,
+                'message' => 'Failed to load yesterday metrics',
+            ], 500);
         }
     }
 

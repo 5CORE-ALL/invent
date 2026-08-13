@@ -524,6 +524,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channels-master-data-slow', [ChannelMasterController::class, 'getViewChannelData']); // Fallback
     
     Route::get('/channel-master-history/{channel}', [ChannelMasterController::class, 'getChannelHistory']);
+    Route::get('/yesterday-marketplace-metrics', [ChannelMasterController::class, 'getYesterdayMarketplaceMetrics']);
     Route::get('/channel-clicks-breakdown', [ChannelMasterController::class, 'getClicksBreakdown']);
     Route::get('/ad-breakdown-chart-data', [ChannelMasterController::class, 'getAdBreakdownChartData']);
     Route::get('/channel-metric-chart-data', [ChannelMasterController::class, 'getChannelMetricChartData']);

@@ -1192,7 +1192,8 @@ class CategoryController extends Controller
                 }
             }
 
-            // Auto-push dim/wt changes to linked sibling SKUs (dim_wt_sku_links)
+            // Linked-SKU dim copy is opt-in (save_also_to_siblings). Unselected
+            // children must not change when one SKU's Itm wt GW / dims are saved.
             $linkResult = ['linked_skus' => [], 'updated_skus' => []];
             try {
                 $linkResult = app(\App\Services\DimWtSkuLinkService::class)

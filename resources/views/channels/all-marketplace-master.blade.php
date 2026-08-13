@@ -601,7 +601,7 @@
                     <h6 class="modal-title text-white mb-0">
                         <i class="fas fa-eye me-2"></i>
                         Yesterday by marketplace
-                        <span class="fw-normal" style="opacity:.9;">— {{ now('America/Los_Angeles')->subDay()->format('M j, Y') }} (Pacific)</span>
+                        <span class="fw-normal" style="opacity:.9;">— {{ now('America/Los_Angeles')->subDay()->format('M j, Y') }} (Pacific, 1-day — not L30)</span>
                     </h6>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -5059,44 +5059,34 @@
                 return views > 0 ? (qty / views) * 100 : null;
             }
 
-            function openYesterdayMarketplaceModal() {
-                if (!table || typeof table.getData !== 'function') return;
-                const rows = (table.getData() || []).slice().sort(function(a, b) {
-                    return parseNumber(b['Y Sales'] || 0) - parseNumber(a['Y Sales'] || 0);
-                });
+            function renderYesterdayMarketplaceRows(rows) {
+                let sumSales = 0, sumPft = 0, sumCogs = 0, sumAd = 0, sumGpftSales = 0;
+                let sumViews = 0, sumQty = 0, sumOrders = 0;
 
-                let sumSales = 0, sumGp = 0, sumCogs = 0, sumViews = 0, sumQty = 0, sumOrders = 0;
-                let sumNpftW = 0, sumGroiW = 0, sumNroiW = 0, wSales = 0;
-
-                const body = rows.map(function(row) {
-                    const name = (row['Channel '] || row['Channel'] || '').toString().trim() || '—';
-                    const ySales = parseNumber(row['Y Sales'] || 0);
-                    const gpft = parseNumber(row['Gprofit%'] || 0);
-                    const groi = parseNumber(row['G Roi'] || 0);
-                    const nroi = parseNumber(row['N ROI'] || 0);
-                    const npft = parseNumber(row['N PFT'] || 0);
-                    const views = parseNumber(row['Total Views'] || 0);
-                    const orders = parseNumber(row['L30 Orders'] || 0);
-                    const qty = parseNumber(row['Qty'] || 0);
-                    const cogs = parseNumber(row['cogs'] || 0);
-                    const cvr = yMpCvr(row);
+                const body = (rows || []).map(function(row) {
+                    const name = (row.channel || '').toString().trim() || '—';
+                    const ySales = parseNumber(row.sales || 0) || 0;
+                    const gpft = row.gpft;
+                    const groi = row.groi;
+                    const nroi = row.nroi;
+                    const npft = row.npft;
+                    const views = row.views;
+                    const orders = parseNumber(row.orders || 0) || 0;
+                    const qty = parseNumber(row.qty || 0) || 0;
+                    const cvr = row.cvr;
 
                     sumSales += ySales;
-                    sumGp += (gpft / 100) * ySales;
-                    sumCogs += cogs;
-                    sumViews += views;
+                    sumPft += parseNumber(row.pft || 0) || 0;
+                    sumCogs += parseNumber(row.cogs || 0) || 0;
+                    sumAd += parseNumber(row.ad_spend || 0) || 0;
+                    sumGpftSales += parseNumber(row.gpft_sales || 0) || 0;
+                    sumViews += parseNumber(views || 0) || 0;
                     sumQty += qty;
                     sumOrders += orders;
-                    if (ySales > 0) {
-                        wSales += ySales;
-                        sumNpftW += npft * ySales;
-                        sumGroiW += groi * ySales;
-                        sumNroiW += nroi * ySales;
-                    }
 
-                    const cvrHtml = (cvr == null || isNaN(cvr))
+                    const cvrHtml = (cvr == null || cvr === '' || isNaN(parseNumber(cvr)))
                         ? '<span class="text-muted">—</span>'
-                        : `<span style="font-weight:600;">${Math.round(cvr)}%</span>`;
+                        : `<span style="font-weight:600;">${Math.round(parseNumber(cvr))}%</span>`;
 
                     return `<tr>
                         <td class="text-start fw-semibold">${name}</td>
@@ -5111,10 +5101,11 @@
                     </tr>`;
                 }).join('');
 
-                const totGpft = sumSales > 0 ? (sumGp / sumSales) * 100 : 0;
-                const totNpft = wSales > 0 ? (sumNpftW / wSales) : 0;
-                const totGroi = wSales > 0 ? (sumGroiW / wSales) : 0;
-                const totNroi = wSales > 0 ? (sumNroiW / wSales) : 0;
+                const totGpft = sumGpftSales > 0 ? (sumPft / sumGpftSales) * 100 : null;
+                const totGroi = sumCogs > 0 ? (sumPft / sumCogs) * 100 : null;
+                const totNroi = sumCogs > 0 ? ((sumPft - sumAd) / sumCogs) * 100 : null;
+                const totAds = sumGpftSales > 0 ? (sumAd / sumGpftSales) * 100 : 0;
+                const totNpft = totGpft != null ? totGpft - totAds : null;
                 const totCvr = sumViews > 0 ? (sumQty / sumViews) * 100 : null;
                 const totCvrHtml = (totCvr == null || isNaN(totCvr))
                     ? '—'
@@ -5132,10 +5123,23 @@
                     <td class="text-center">${totCvrHtml}</td>
                     <td class="text-end">${yMpInt(sumOrders)}</td>
                 </tr>`);
+            }
 
+            function openYesterdayMarketplaceModal() {
                 const el = document.getElementById('yesterdayMpModal');
                 if (typeof bootstrap === 'undefined' || !el) return;
+                $('#yesterdayMpTableBody').html('<tr><td colspan="9" class="text-center text-muted py-3">Loading yesterday metrics…</td></tr>');
+                $('#yesterdayMpTableFoot').empty();
                 bootstrap.Modal.getOrCreateInstance(el).show();
+
+                $.get('/yesterday-marketplace-metrics')
+                    .done(function(res) {
+                        const rows = (res && res.data && res.data.rows) ? res.data.rows : [];
+                        renderYesterdayMarketplaceRows(rows);
+                    })
+                    .fail(function() {
+                        $('#yesterdayMpTableBody').html('<tr><td colspan="9" class="text-center text-danger">Could not load yesterday metrics</td></tr>');
+                    });
             }
 
             $(document).on('click', '#yesterdayMpViewBtn', function(e) {
