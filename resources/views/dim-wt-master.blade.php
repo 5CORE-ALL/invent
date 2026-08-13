@@ -267,13 +267,16 @@
         .table-responsive thead th.item-dim-header {
             background-color: #fffef2 !important; /* light yellow */
         }
-        #dim-wt-master-datatable td.item-l-over-38 {
+        #dim-wt-master-datatable td.item-l-over-38,
+        #dim-wt-master-datatable td.item-wt-gw-over-20 {
             background-color: #ef4444 !important;
             color: #fff !important;
             font-weight: 700;
         }
         .table-responsive tbody tr:hover td.item-l-over-38,
-        .table-responsive tbody tr.parent-row td.item-l-over-38 {
+        .table-responsive tbody tr.parent-row td.item-l-over-38,
+        .table-responsive tbody tr:hover td.item-wt-gw-over-20,
+        .table-responsive tbody tr.parent-row td.item-wt-gw-over-20 {
             background-color: #ef4444 !important;
             color: #fff !important;
         }
@@ -1900,10 +1903,15 @@
                     wtActKgCell.textContent = cellVal(item.wt_act_kg, 1);
                     row.appendChild(wtActKgCell);
 
-                    // WT ACT column
+                    // WT ACT column (Itm wt GW)
                     const wtActCell = document.createElement('td');
                     wtActCell.className = 'text-center';
                     wtActCell.textContent = cellVal(item.wt_act, 1);
+                    const wtGw = parseFloat(item.wt_act);
+                    if (!isParentRow && Number.isFinite(wtGw) && wtGw > 20) {
+                        wtActCell.classList.add('item-wt-gw-over-20');
+                        wtActCell.title = 'Itm wt GW — over 20';
+                    }
                     row.appendChild(wtActCell);
 
                     // Item L/W/H (inch) — reorganized: highest=L, 2nd=W, 3rd=H
