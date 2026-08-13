@@ -4581,6 +4581,20 @@ class ChannelMasterController extends Controller
             
             // Get summary data from cache
             $summaryData = \Cache::get('channel_master_summary_data', []);
+
+            // Persist today's Pacific snapshot from the fast path too. The live
+            // getViewChannelData saver often never finishes, and listing-page
+            // writers then create a sparse day that charts as $0 for every column.
+            if (! $section && $page === 1 && count($formattedData) >= $total) {
+                try {
+                    if (! empty($formattedData)) {
+                        $formattedData[0]['inventory_value_amazon'] = $summaryData['inventory_value_amazon'] ?? 0;
+                    }
+                    $this->saveChannelDailySummaries($formattedData);
+                } catch (\Throwable $e) {
+                    \Log::warning('saveChannelDailySummaries (fast path) failed: ' . $e->getMessage());
+                }
+            }
             
             return response()->json([
                 'status' => 200,
@@ -14086,6 +14100,17 @@ class ChannelMasterController extends Controller
             foreach ($grouped as $dateKey => $rows) {
                 $date = Carbon::parse($dateKey, 'America/Los_Angeles')->format('M d');
 
+                // Listing-only / map-miss writers can create a day with no l30_sales.
+                // Those rows plot as $0 on every metric — skip them.
+                $fullRows = $rows->filter(function ($row) {
+                    $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+                    return array_key_exists('l30_sales', $sd);
+                });
+                if ($fullRows->isEmpty()) {
+                    continue;
+                }
+                $rows = $fullRows;
+
                 if ($isAll) {
                     // Aggregate across all channels for this date
                     $totalVal = 0;
@@ -14406,7 +14431,9 @@ class ChannelMasterController extends Controller
                 $cmsRows = \App\Models\ChannelMasterSummary::where('channel', $channel)
                     ->orderBy('snapshot_date', 'desc')
                     ->take($snapshotWindow)
-                    ->get();
+                    ->get()
+                    ->filter(fn ($row) => $row->isFullChannelSnapshot())
+                    ->values();
 
                 if ($cmsRows->count() >= 2) {
                     $newerSd = $cmsRows->get(0)->summary_data ?? [];
@@ -15156,7 +15183,7 @@ class ChannelMasterController extends Controller
                 $existingSummary = \App\Models\ChannelMasterSummary::where('channel', $channelName)
                     ->whereDate('snapshot_date', $today)
                     ->first();
-                $prevSd = is_array($existingSummary?->summary_data) ? $existingSummary->summary_data : [];
+                $prevSd = \App\Models\ChannelMasterSummary::decodeSummaryData($existingSummary?->summary_data);
                 foreach (['listing_miss_count', 'listing_req', 'listing_nrl', 'listing_listed', 'listing_captured_at'] as $listingKey) {
                     if (array_key_exists($listingKey, $prevSd)) {
                         $summaryData[$listingKey] = $prevSd[$listingKey];

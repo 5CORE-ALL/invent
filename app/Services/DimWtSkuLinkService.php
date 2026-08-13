@@ -248,6 +248,68 @@ class DimWtSkuLinkService
     }
 
     /**
+     * Fill dim_wt_linked_skus on flattened master rows.
+     * Uses saved dim_wt_sku_links first, then live same-parent dim/wt matches.
+     *
+     * @param  list<array<string, mixed>>  $result
+     * @return list<array<string, mixed>>
+     */
+    public function attachLinkedSkusToRows(array $result): array
+    {
+        $linkMap = $this->linkedSkusMap();
+        $compactMap = [];
+        foreach ($linkMap as $key => $skus) {
+            $compactMap[str_replace(' ', '', (string) $key)] = $skus;
+        }
+
+        $byParentFp = [];
+        foreach ($result as $row) {
+            $sku = trim((string) ($row['SKU'] ?? $row['sku'] ?? ''));
+            if ($sku === '' || $this->isParentSku($sku)) {
+                continue;
+            }
+            $parent = strtoupper(trim((string) ($row['Parent'] ?? $row['parent'] ?? '')));
+            $fp = $this->fingerprintFromValues($this->rowWithDeclFallback($row));
+            if ($parent === '' || $fp === null) {
+                continue;
+            }
+            $byParentFp[$parent.'|'.$fp][] = $sku;
+        }
+
+        foreach ($result as &$row) {
+            $sku = trim((string) ($row['SKU'] ?? $row['sku'] ?? ''));
+            $norm = $this->normalizeSku($sku);
+            $linked = [];
+
+            if ($norm !== '' && isset($linkMap[$norm])) {
+                $linked = array_values($linkMap[$norm]);
+            } elseif ($norm !== '') {
+                $compact = str_replace(' ', '', $norm);
+                if (isset($compactMap[$compact])) {
+                    $linked = array_values($compactMap[$compact]);
+                }
+            }
+
+            if ($linked === [] && $sku !== '' && ! $this->isParentSku($sku)) {
+                $parent = strtoupper(trim((string) ($row['Parent'] ?? $row['parent'] ?? '')));
+                $fp = $this->fingerprintFromValues($this->rowWithDeclFallback($row));
+                if ($parent !== '' && $fp !== null) {
+                    foreach ($byParentFp[$parent.'|'.$fp] ?? [] as $otherSku) {
+                        if ($this->normalizeSku((string) $otherSku) !== $norm) {
+                            $linked[] = $otherSku;
+                        }
+                    }
+                }
+            }
+
+            $row['dim_wt_linked_skus'] = array_values(array_unique(array_filter($linked)));
+        }
+        unset($row);
+
+        return $result;
+    }
+
+    /**
      * @return Collection<int, ProductMaster>
      */
     public function linkedProductsFor(ProductMaster $product): Collection
@@ -402,6 +464,24 @@ class DimWtSkuLinkService
         }
 
         return [];
+    }
+
+    /**
+     * Use declared dim/wt when actual is empty so sibling matching still works in the grid.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function rowWithDeclFallback(array $row): array
+    {
+        foreach (['wt_act' => 'wt_decl', 'l' => 'l_decl', 'w' => 'w_decl', 'h' => 'h_decl'] as $act => $decl) {
+            $n = $this->numericOrNull($row[$act] ?? null);
+            if ($n === null || $n <= 0) {
+                $row[$act] = $row[$decl] ?? null;
+            }
+        }
+
+        return $row;
     }
 
     private function numericOrNull(mixed $value): ?float

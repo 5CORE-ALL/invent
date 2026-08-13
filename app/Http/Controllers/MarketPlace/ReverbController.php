@@ -1750,33 +1750,21 @@ class ReverbController extends Controller
     private function syncReverbMapMissToChannelHistory(array $counts): void
     {
         try {
-            $today = now('America/Los_Angeles')->toDateString();
-
-            $existing = ChannelMasterSummary::where('channel', 'reverb')
-                ->where('snapshot_date', $today)
-                ->first();
-            $summary = ($existing && is_array($existing->summary_data))
-                ? $existing->summary_data
-                : [];
-
-            $summary['miss_count'] = (int) ($counts['miss'] ?? 0);
-            $summary['map_count'] = (int) ($counts['map'] ?? 0);
-            $summary['nmap_count'] = (int) ($counts['nmap'] ?? 0);
-            $summary['total_views'] = (int) ($counts['total_views'] ?? 0);
+            $fields = [
+                'miss_count' => (int) ($counts['miss'] ?? 0),
+                'map_count' => (int) ($counts['map'] ?? 0),
+                'nmap_count' => (int) ($counts['nmap'] ?? 0),
+                'total_views' => (int) ($counts['total_views'] ?? 0),
+                'map_miss_updated_at' => now()->toDateTimeString(),
+            ];
             if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null) {
-                $summary['listing_cvr'] = round((float) $counts['cvr_pct'], 2);
+                $fields['listing_cvr'] = round((float) $counts['cvr_pct'], 2);
             }
-            $summary['map_miss_updated_at'] = now()->toDateTimeString();
 
-            ChannelMasterSummary::updateOrCreate(
-                [
-                    'channel' => 'reverb',
-                    'snapshot_date' => $today,
-                ],
-                [
-                    'summary_data' => $summary,
-                    'notes' => 'Reverb map/miss synced from reverb-pricing',
-                ]
+            ChannelMasterSummary::mergeTodaySummary(
+                'reverb',
+                $fields,
+                'Reverb map/miss synced from reverb-pricing'
             );
 
             if (Schema::hasTable('channel_master_calculated_data')) {

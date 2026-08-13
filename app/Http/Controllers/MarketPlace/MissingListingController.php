@@ -362,8 +362,6 @@ class MissingListingController extends Controller
         }
 
         try {
-            $today = now(self::TZ)->toDateString();
-
             foreach ($rows as $row) {
                 $channelKey = ListingChannelCounts::normalize((string) ($row['channel'] ?? ''));
                 if ($channelKey === '') {
@@ -375,27 +373,13 @@ class MissingListingController extends Controller
                     continue;
                 }
 
-                $existing = ChannelMasterSummary::where('channel', $channelKey)
-                    ->whereDate('snapshot_date', $today)
-                    ->first();
-
-                $sd = is_array($existing?->summary_data) ? $existing->summary_data : [];
-                $sd['listing_miss_count'] = (int) ($row['missing_listing'] ?? 0);
-                $sd['listing_req'] = (int) ($row['req'] ?? 0);
-                $sd['listing_nrl'] = (int) ($row['nrl'] ?? 0);
-                $sd['listing_listed'] = (int) ($row['listed'] ?? 0);
-                $sd['listing_captured_at'] = now(self::TZ)->toDateTimeString();
-
-                ChannelMasterSummary::updateOrCreate(
-                    [
-                        'channel' => $channelKey,
-                        'snapshot_date' => $today,
-                    ],
-                    [
-                        'summary_data' => $sd,
-                        'notes' => $existing?->notes ?: 'Listing Missing L snapshot (California)',
-                    ]
-                );
+                ChannelMasterSummary::mergeTodaySummary($channelKey, [
+                    'listing_miss_count' => (int) ($row['missing_listing'] ?? 0),
+                    'listing_req' => (int) ($row['req'] ?? 0),
+                    'listing_nrl' => (int) ($row['nrl'] ?? 0),
+                    'listing_listed' => (int) ($row['listed'] ?? 0),
+                    'listing_captured_at' => now(self::TZ)->toDateTimeString(),
+                ], 'Listing Missing L snapshot (California)', self::TZ);
             }
         } catch (\Throwable $e) {
             Log::warning('Missing Listing persistListingMissingHistory failed: ' . $e->getMessage());

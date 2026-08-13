@@ -22,6 +22,84 @@ class ChannelMasterSummary extends Model
         'snapshot_date' => 'date',
         'summary_data' => 'array', // Auto JSON encode/decode
     ];
+
+    /**
+     * Decode summary_data whether it is already an array or a JSON string.
+     *
+     * @param  mixed  $sd
+     * @return array<string, mixed>
+     */
+    public static function decodeSummaryData($sd): array
+    {
+        if (is_string($sd)) {
+            $sd = json_decode($sd, true);
+        }
+
+        return is_array($sd) ? $sd : [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function summaryArray(): array
+    {
+        return self::decodeSummaryData($this->summary_data);
+    }
+
+    /**
+     * Full Active Channel snapshots always persist l30_sales. Listing-only
+     * writers (Missing L, Reverb map/miss) can create a sparse day without it,
+     * which the metric chart then plots as $0 for every column.
+     */
+    public function isFullChannelSnapshot(): bool
+    {
+        return array_key_exists('l30_sales', $this->summaryArray());
+    }
+
+    /**
+     * Merge fields into today's Pacific snapshot without wiping sales/metrics.
+     * If today has no full snapshot yet, seed from the latest full day.
+     *
+     * @param  array<string, mixed>  $fields
+     */
+    public static function mergeTodaySummary(
+        string $channel,
+        array $fields,
+        ?string $notes = null,
+        string $timezone = 'America/Los_Angeles'
+    ): ?self {
+        $today = now($timezone)->toDateString();
+        $existing = self::where('channel', $channel)
+            ->whereDate('snapshot_date', $today)
+            ->first();
+        $sd = $existing ? $existing->summaryArray() : [];
+
+        if (! array_key_exists('l30_sales', $sd)) {
+            $prior = self::query()
+                ->where('channel', $channel)
+                ->where('snapshot_date', '<', $today)
+                ->orderByDesc('snapshot_date')
+                ->limit(14)
+                ->get()
+                ->first(fn (self $row) => $row->isFullChannelSnapshot());
+            if ($prior) {
+                $sd = array_merge($prior->summaryArray(), $sd);
+            }
+        }
+
+        $sd = array_merge($sd, $fields);
+
+        return self::updateOrCreate(
+            [
+                'channel' => $channel,
+                'snapshot_date' => $today,
+            ],
+            [
+                'summary_data' => $sd,
+                'notes' => $existing?->notes ?: ($notes ?: 'Merged channel snapshot'),
+            ]
+        );
+    }
     
     /**
      * Get yesterday's summary for comparison

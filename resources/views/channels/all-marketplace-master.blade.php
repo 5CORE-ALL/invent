@@ -362,12 +362,6 @@
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             NROI: <span id="avg-nroi">0%</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="nmap" style="background-color:#a71d2a;color:#fff;font-weight:bold;cursor:pointer;" title="Sum of N Map column (not mapped / INV vs channel stock beyond tolerance — same as pricing pages)">
-                            N Map: <span id="total-nmap">0</span>
-                        </span>
-                        <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="missing_l" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Missing L : <span id="total-miss">0</span>
-                        </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amz Price)">
                             inv: <span id="inventory-value-amazon">0</span>
                         </span>
@@ -1238,6 +1232,7 @@
                     {
                         title: "Missing L",
                         field: "Miss",
+                        visible: false,
                         hozAlign: "center",
                         sorter: "number",
                        
@@ -1317,6 +1312,7 @@
                     {
                         title: "N Map",
                         field: "NMap",
+                        visible: false,
                         hozAlign: "center",
                         sorter: "number",
                         
@@ -3708,6 +3704,8 @@
                 'A2Z Claims',
                 'Missing Ads',
                 'Map',
+                'Miss',
+                'NMap',
                 '_gross_pft',
                 'Shopping Sales', 'Shopping ACOS', 'Shopping Sold', 'Shopping CVR',
                 'ad_sold', 'Ads CVR', 'clicks', 'Ad Sales',

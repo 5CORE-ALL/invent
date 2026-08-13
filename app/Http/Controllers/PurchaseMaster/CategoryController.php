@@ -678,6 +678,9 @@ class CategoryController extends Controller
                     $row = array_merge($row, $values);
                 }
             }
+            $row['id'] = $product->id;
+            $row['SKU'] = $product->sku;
+            $row['Parent'] = $product->parent;
 
             // Label Type defaults to STD when unset (same field as Shipping Master)
             $allowedLabelTypes = ['ENV', 'STD', 'O-Size', 'Pallet'];
@@ -766,32 +769,9 @@ class CategoryController extends Controller
             $result[] = $row;
         }
 
-        // Attach dim/wt sibling links from dim_wt_sku_links
+        // Attach dim/wt sibling links from dim_wt_sku_links, else live dim/wt matches
         try {
-            $linkMap = app(\App\Services\DimWtSkuLinkService::class)->linkedSkusMap();
-            if ($linkMap !== []) {
-                $normalize = static function (?string $sku): string {
-                    if ($sku === null || $sku === '') {
-                        return '';
-                    }
-                    $sku = str_replace("\u{00a0}", ' ', $sku);
-                    $sku = preg_replace('/\s+/u', ' ', trim($sku)) ?? trim($sku);
-
-                    return strtoupper($sku);
-                };
-                foreach ($result as &$row) {
-                    $norm = $normalize($row['SKU'] ?? '');
-                    $row['dim_wt_linked_skus'] = ($norm !== '' && isset($linkMap[$norm]))
-                        ? array_values($linkMap[$norm])
-                        : [];
-                }
-                unset($row);
-            } else {
-                foreach ($result as &$row) {
-                    $row['dim_wt_linked_skus'] = [];
-                }
-                unset($row);
-            }
+            $result = app(\App\Services\DimWtSkuLinkService::class)->attachLinkedSkusToRows($result);
         } catch (\Throwable $e) {
             foreach ($result as &$row) {
                 $row['dim_wt_linked_skus'] = [];
@@ -1752,6 +1732,9 @@ class CategoryController extends Controller
                     $row = array_merge($row, $values);
                 }
             }
+            $row['id'] = $product->id;
+            $row['SKU'] = $product->sku;
+            $row['Parent'] = $product->parent;
 
             // Label Type defaults to STD when unset
             $allowedLabelTypes = ['ENV', 'STD', 'O-Size', 'Pallet'];
@@ -1804,30 +1787,7 @@ class CategoryController extends Controller
 
         // Attach dim/wt sibling links from dim_wt_sku_links (same as dim-wt-master)
         try {
-            $linkMap = app(\App\Services\DimWtSkuLinkService::class)->linkedSkusMap();
-            if ($linkMap !== []) {
-                $normalize = static function (?string $sku): string {
-                    if ($sku === null || $sku === '') {
-                        return '';
-                    }
-                    $sku = str_replace("\u{00a0}", ' ', $sku);
-                    $sku = preg_replace('/\s+/u', ' ', trim($sku)) ?? trim($sku);
-
-                    return strtoupper($sku);
-                };
-                foreach ($result as &$row) {
-                    $norm = $normalize($row['SKU'] ?? '');
-                    $row['dim_wt_linked_skus'] = ($norm !== '' && isset($linkMap[$norm]))
-                        ? array_values($linkMap[$norm])
-                        : [];
-                }
-                unset($row);
-            } else {
-                foreach ($result as &$row) {
-                    $row['dim_wt_linked_skus'] = [];
-                }
-                unset($row);
-            }
+            $result = app(\App\Services\DimWtSkuLinkService::class)->attachLinkedSkusToRows($result);
         } catch (\Throwable $e) {
             foreach ($result as &$row) {
                 $row['dim_wt_linked_skus'] = [];

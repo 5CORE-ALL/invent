@@ -15,7 +15,7 @@
             border-radius: 10px;
             max-height: 600px;
             overflow-y: auto;
-            overflow-x: hidden;
+            overflow-x: auto;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
             background-color: white;
             width: 100%;
@@ -267,13 +267,13 @@
         .table-responsive thead th.item-dim-header {
             background-color: #fffef2 !important; /* light yellow */
         }
-        #dim-wt-master-datatable td.item-l-over-39 {
+        #dim-wt-master-datatable td.item-l-over-38 {
             background-color: #ef4444 !important;
             color: #fff !important;
             font-weight: 700;
         }
-        .table-responsive tbody tr:hover td.item-l-over-39,
-        .table-responsive tbody tr.parent-row td.item-l-over-39 {
+        .table-responsive tbody tr:hover td.item-l-over-38,
+        .table-responsive tbody tr.parent-row td.item-l-over-38 {
             background-color: #ef4444 !important;
             color: #fff !important;
         }
@@ -450,11 +450,22 @@
         .verified-data-dropdown option[value="0"] { color: #dc3545; }
         .verified-data-dropdown option[value="1"] { color: #28a745; }
 
-        #dim-wt-master-datatable th.col-dim-wt-link,
-        #dim-wt-master-datatable td.col-dim-wt-link {
-            min-width: 90px;
-            max-width: 160px;
+        #dim-wt-master-datatable tbody td.col-dim-wt-link {
+            min-width: 110px;
+            max-width: 220px;
             font-size: 10px;
+            overflow: visible !important;
+            white-space: normal !important;
+            text-overflow: clip;
+        }
+        #dim-wt-master-datatable td.col-dim-wt-link .dim-wt-link-badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 600;
+            white-space: normal;
+            max-width: 200px;
+            line-height: 1.25;
+            padding: 3px 6px;
         }
 
         /* Label Type dropdown in Type column — color by value */
@@ -586,6 +597,24 @@
             color: white;
             transform: translateY(-2px);
             box-shadow: 0 3px 8px rgba(26, 86, 183, 0.2);
+        }
+
+        #dim-wt-master-datatable th.col-action,
+        #dim-wt-master-datatable td.col-action {
+            min-width: 56px;
+            width: 56px;
+            overflow: visible;
+        }
+        #dim-wt-master-datatable td.col-action .edit-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 26px;
+            min-height: 26px;
+        }
+        #dim-wt-master-datatable td.col-action .edit-btn i {
+            font-size: 14px;
+            line-height: 1;
         }
 
         .delete-btn {
@@ -934,6 +963,14 @@
                                         </select>
                                     </div>
                                     <div class="d-flex align-items-center gap-1">
+                                        <label class="form-label mb-0 small" for="dimWtRowTypeFilter">Rows:</label>
+                                        <select id="dimWtRowTypeFilter" class="form-select form-select-sm" style="width: auto; min-width: 110px;" title="Show all rows, child SKUs only, or parent rows only">
+                                            <option value="all">All</option>
+                                            <option value="sku">SKU</option>
+                                            <option value="parent">Parents</option>
+                                        </select>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1">
                                         <label for="parentSearch" class="form-label mb-0 small fw-bold">Parent</label>
                                         <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Search parent" style="width: 150px;">
                                     </div>
@@ -1074,7 +1111,7 @@
                                     <th data-col-key="instructions_item_pkg" data-col-label="item PKG" class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">item PKG</span></th>
                                     <th data-col-key="item_pkg_cover" data-col-label="Itm pkg Cover" class="col-itm-pkg-cover text-center"><span class="th-vertical-label" style="font-size: 9px;">Itm pkg Cover</span></th>
                                     <th data-col-key="verified" data-col-label="Verified" class="text-center"><span class="th-vertical-label">Verified</span></th>
-                                    <th data-col-key="action" data-col-label="Action"><span class="th-vertical-label">Action</span></th>
+                                    <th data-col-key="action" data-col-label="Action" class="col-action"><span class="th-vertical-label">Action</span></th>
                                     <th data-col-key="dim_wt_link" data-col-label="Link SKU" class="text-center col-dim-wt-link"><span class="th-vertical-label" title="Sibling SKUs linked by matching dim/wt">Link SKU</span></th>
                                 </tr>
                             </thead>
@@ -1681,6 +1718,74 @@
                 return labelQtyCell;
             }
 
+            function dimWtLinkFingerprint(item) {
+                const pairs = [
+                    ['wt_act', 'wt_decl'],
+                    ['l', 'l_decl'],
+                    ['w', 'w_decl'],
+                    ['h', 'h_decl'],
+                ];
+                const parts = [];
+                for (let i = 0; i < pairs.length; i++) {
+                    let n = parseFloat(item ? item[pairs[i][0]] : NaN);
+                    if (!Number.isFinite(n) || n <= 0) {
+                        n = parseFloat(item ? item[pairs[i][1]] : NaN);
+                    }
+                    if (!Number.isFinite(n) || n <= 0) return null;
+                    parts.push(pairs[i][0] + '=' + (Math.round(n * 10000) / 10000).toFixed(4));
+                }
+                return parts.join('|');
+            }
+
+            function dimWtSkuKey(sku) {
+                return String(sku || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+            }
+
+            function parseLinkedSkuList(raw) {
+                if (Array.isArray(raw)) {
+                    return raw.map(s => String(s || '').trim()).filter(Boolean);
+                }
+                if (raw && typeof raw === 'object') {
+                    return Object.values(raw).map(s => String(s || '').trim()).filter(Boolean);
+                }
+                if (typeof raw === 'string' && raw.trim() !== '') {
+                    try {
+                        const parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed) || (parsed && typeof parsed === 'object')) {
+                            return parseLinkedSkuList(parsed);
+                        }
+                    } catch (e) { /* not JSON */ }
+                    return raw.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+                }
+                return [];
+            }
+
+            function resolveLinkedSkus(item) {
+                const saved = parseLinkedSkuList(item && item.dim_wt_linked_skus)
+                    .concat(parseLinkedSkuList(item && item.Values && item.Values.dim_wt_linked_skus));
+                const uniqueSaved = [];
+                const seenSaved = {};
+                saved.forEach(sku => {
+                    const key = dimWtSkuKey(sku);
+                    if (!key || seenSaved[key]) return;
+                    seenSaved[key] = true;
+                    uniqueSaved.push(sku);
+                });
+                if (uniqueSaved.length > 0) return uniqueSaved;
+                if (!item || isParentSkuString(item.SKU)) return [];
+                const parent = dimWtSkuKey(item.Parent);
+                const selfSku = dimWtSkuKey(item.SKU);
+                if (!parent || !selfSku) return [];
+                const fp = dimWtLinkFingerprint(item);
+                if (!fp) return [];
+                return (tableData || []).filter(other => {
+                    if (!other || isParentSkuString(other.SKU)) return false;
+                    if (dimWtSkuKey(other.SKU) === selfSku) return false;
+                    if (dimWtSkuKey(other.Parent) !== parent) return false;
+                    return dimWtLinkFingerprint(other) === fp;
+                }).map(other => other.SKU).filter(Boolean);
+            }
+
             // Render table
             function renderTable(data) {
                 const tbody = document.getElementById('table-body');
@@ -1807,9 +1912,9 @@
                     lCell.className = 'text-center';
                     lCell.title = 'Length (highest of L/W/H)';
                     lCell.textContent = cellVal(orgDims.length, 0);
-                    if (!isParentRow && orgDims.length != null && Number(orgDims.length) > 39) {
-                        lCell.classList.add('item-l-over-39');
-                        lCell.title = 'Length (highest of L/W/H) — over 39 in';
+                    if (!isParentRow && orgDims.length != null && Number(orgDims.length) > 38) {
+                        lCell.classList.add('item-l-over-38');
+                        lCell.title = 'Length (highest of L/W/H) — over 38 in';
                     }
                     row.appendChild(lCell);
 
@@ -1996,7 +2101,7 @@
 
                     // Action column
                     const actionCell = document.createElement('td');
-                    actionCell.className = 'text-center';
+                    actionCell.className = 'text-center col-action';
                     const hasHistory = item.has_history === true || item.has_history === 1;
                     const historyDotColor = hasHistory ? '#28a745' : '#dc3545';
                     const historyDotTitle = hasHistory ? 'History available — click to view' : 'No history yet — click to view';
@@ -2005,10 +2110,10 @@
                                 <span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${historyDotColor};"></span>
                             </button>`
                         : '';
-                    const editBtnHtml = (isParentRow || pkg.isExtraPackage)
+                    const editBtnHtml = isParentRow
                         ? ''
-                        : `<button class="btn btn-sm edit-btn p-0 border-0 bg-transparent" data-sku="${escapeHtml(item.SKU)}" title="Edit" style="color:#000;">
-                                <i class="bi bi-pencil-square"></i>
+                        : `<button class="btn btn-sm edit-btn p-0 border-0 bg-transparent" data-sku="${escapeHtml(item.SKU)}" title="Edit" style="color:#1a56b7;">
+                                <i class="fas fa-edit"></i>
                             </button>`;
                     actionCell.innerHTML = `
                         <div class="d-inline-flex gap-1">
@@ -2018,21 +2123,20 @@
                     `;
                     row.appendChild(actionCell);
 
-                    // Link SKU column – siblings linked by matching dim/wt (dim_wt_sku_links)
-                    const linkedSkus = Array.isArray(item.dim_wt_linked_skus)
-                        ? item.dim_wt_linked_skus.filter(Boolean)
-                        : [];
+                    // Link SKU column – siblings linked by matching dim/wt (saved links, else live match)
+                    const linkedSkus = resolveLinkedSkus(item);
                     const linkCell = document.createElement('td');
                     linkCell.className = 'text-center col-dim-wt-link';
+                    linkCell.setAttribute('data-col-key', 'dim_wt_link');
                     if (isParentRow) {
                         linkCell.innerHTML = '<span class="text-muted">--</span>';
                     } else if (linkedSkus.length === 0) {
                         linkCell.innerHTML = '<span class="text-muted">—</span>';
-                        linkCell.title = 'No linked siblings yet. Verify a SKU to auto-link matching dim/wt siblings.';
+                        linkCell.title = 'No linked siblings yet. Matching dim/wt child SKUs under the same parent will appear here.';
                     } else {
                         const preview = linkedSkus.slice(0, 2).map(s => escapeHtml(String(s))).join(', ');
                         const more = linkedSkus.length > 2 ? ` +${linkedSkus.length - 2}` : '';
-                        linkCell.innerHTML = `<span class="badge bg-info text-dark" style="font-size:10px; font-weight:500; white-space:normal; max-width:140px;">${preview}${more}</span>`;
+                        linkCell.innerHTML = `<span class="badge bg-info text-dark dim-wt-link-badge">${preview}${more}</span>`;
                         linkCell.title = 'Linked by matching dim/wt:\n' + linkedSkus.join('\n');
                     }
                     row.appendChild(linkCell);
@@ -2515,6 +2619,12 @@
                 const filterLabelQty = document.getElementById('filterLabelQty')?.value || 'all';
 
                 filteredData = tableData.filter(item => {
+                    const rowTypeEl = document.getElementById('dimWtRowTypeFilter');
+                    const rowType = rowTypeEl ? rowTypeEl.value : 'all';
+                    const isParentSku = isParentSkuString(item.SKU);
+                    if (rowType === 'sku' && isParentSku) return false;
+                    if (rowType === 'parent' && !isParentSku) return false;
+
                     if (parentSearchVal && !(item.Parent || '').toLowerCase().includes(parentSearchVal)) return false;
                     if (skuSearchVal && !(item.SKU || '').toLowerCase().includes(skuSearchVal)) return false;
 
@@ -2533,7 +2643,6 @@
                     }
 
                     if (verifiedFilter !== null) {
-                        const isParentSku = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
                         if (isParentSku) return false;
                         const isVerified = item.verified_data === 1 || item.verified_data === true ||
                             (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
@@ -2630,8 +2739,7 @@
                         return (v === 1 || v === true) ? 1 : 0;
                     }
                     if (key === 'dim_wt_linked_skus') {
-                        const arr = Array.isArray(item.dim_wt_linked_skus) ? item.dim_wt_linked_skus : [];
-                        return arr.join(', ');
+                        return resolveLinkedSkus(item).join(', ');
                     }
                     return item[key];
                 };
@@ -2679,6 +2787,8 @@
                 if (filterLabelQtyEl) filterLabelQtyEl.addEventListener('change', applyFilters);
                 const sectionFilterEl = document.getElementById('dimWtSectionFilter');
                 if (sectionFilterEl) sectionFilterEl.addEventListener('change', applyDimWtSectionFilter);
+                const rowTypeFilterEl = document.getElementById('dimWtRowTypeFilter');
+                if (rowTypeFilterEl) rowTypeFilterEl.addEventListener('change', applyFilters);
 
                 const notVerifiedBadge = document.getElementById('notVerifiedBadge');
                 if (notVerifiedBadge) notVerifiedBadge.addEventListener('click', () => toggleVerifiedFilter(0));
