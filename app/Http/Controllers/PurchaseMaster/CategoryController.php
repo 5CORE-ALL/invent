@@ -1046,6 +1046,7 @@ class CategoryController extends Controller
                 'pr_charge' => 'nullable|string|max:20',
                 'fba_ship_calculation' => 'nullable|numeric',
                 'fba_manual_ship' => 'nullable|numeric',
+                'save_also_to_siblings' => 'nullable|boolean',
             ]);
 
             // Find the product
@@ -1174,6 +1175,9 @@ class CategoryController extends Controller
                 } else {
                     $values['pr_charge'] = mb_substr(trim((string) $v), 0, 20);
                 }
+            }
+            if (array_key_exists('save_also_to_siblings', $validated)) {
+                $values['save_also_to_siblings'] = filter_var($validated['save_also_to_siblings'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
             }
 
             // Snapshot of the OLD Values (before save) for change tracking

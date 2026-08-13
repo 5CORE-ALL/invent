@@ -267,6 +267,16 @@
         .table-responsive thead th.item-dim-header {
             background-color: #fffef2 !important; /* light yellow */
         }
+        #dim-wt-master-datatable td.item-l-over-39 {
+            background-color: #ef4444 !important;
+            color: #fff !important;
+            font-weight: 700;
+        }
+        .table-responsive tbody tr:hover td.item-l-over-39,
+        .table-responsive tbody tr.parent-row td.item-l-over-39 {
+            background-color: #ef4444 !important;
+            color: #fff !important;
+        }
         /* Declared dimension headers — distinct from ACT yellow */
         .table-responsive thead th.item-dim-decl-header {
             background-color: #d4edda !important; /* light green */
@@ -285,6 +295,108 @@
         .table-responsive thead th.hide-item-wt-act,
         .table-responsive tbody td.hide-item-wt-act {
             display: none;
+        }
+
+        /* User column visibility (Columns dropdown) */
+        #dim-wt-master-datatable th.col-user-hidden,
+        #dim-wt-master-datatable td.col-user-hidden {
+            display: none !important;
+        }
+        #dim-wt-master-datatable th.col-user-visible,
+        #dim-wt-master-datatable td.col-user-visible {
+            display: table-cell !important;
+        }
+        #dimWtColumnVisibilityDropdown {
+            background: #20c9c3;
+            border-color: #20c9c3;
+            color: #fff;
+        }
+        #dimWtColumnVisibilityDropdown:hover,
+        #dimWtColumnVisibilityDropdown:focus,
+        #dimWtColumnVisibilityDropdown.show {
+            background: #18b5af;
+            border-color: #18b5af;
+            color: #fff;
+        }
+        #dim-wt-column-dropdown-menu {
+            min-width: min(780px, 96vw);
+            max-width: 96vw;
+            padding: 10px 12px;
+        }
+        #dim-wt-column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #dim-wt-column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #dim-wt-column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #dim-wt-column-dropdown-menu .col-vis-group-title input {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #dim-wt-column-dropdown-menu .col-vis-group-title.col-vis-group-empty {
+            opacity: 0.55;
+            cursor: default;
+        }
+        #dim-wt-column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 320px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #dim-wt-column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            border-radius: 4px;
+        }
+        #dim-wt-column-dropdown-menu .col-vis-item > label {
+            display: block;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #dim-wt-column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+        #dim-wt-column-dropdown-menu .col-vis-item > label.col-vis-locked {
+            opacity: 0.65;
+            cursor: default;
         }
 
         .table {
@@ -431,6 +543,11 @@
             border: 1px solid #d1d5db;
             border-radius: 6px;
             background: #fff;
+            cursor: pointer;
+        }
+        #dim-wt-master-datatable td.col-itm-pkg-cover .itm-pkg-cover-icon {
+            color: #28a745;
+            font-size: 14px;
             cursor: pointer;
         }
 
@@ -648,6 +765,133 @@
         .shipping-history-table tbody tr:hover {
             background: #f8fbff;
         }
+
+        /* Edit modal: right-side drawer, compact enough for one screen (no scroll) */
+        #editDimWtModal {
+            padding-right: 0 !important;
+        }
+        #editDimWtModal .modal-dialog {
+            position: fixed;
+            top: 0;
+            right: 0;
+            left: auto;
+            margin: 0;
+            width: min(480px, 100vw);
+            max-width: min(480px, 100vw);
+            height: 100vh;
+            max-height: 100vh;
+        }
+        #editDimWtModal.modal.fade .modal-dialog {
+            transform: translateX(100%);
+            transition: transform 0.2s ease-out;
+        }
+        #editDimWtModal.modal.show .modal-dialog {
+            transform: none;
+        }
+        #editDimWtModal .modal-content {
+            height: 100vh;
+            max-height: 100vh;
+            border: none;
+            border-radius: 0;
+            box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18);
+            display: flex;
+            flex-direction: column;
+        }
+        #editDimWtModal .modal-header {
+            padding: 6px 12px;
+            flex-shrink: 0;
+        }
+        #editDimWtModal .modal-title {
+            font-size: 14px;
+            line-height: 1.2;
+        }
+        #editDimWtModal .modal-footer {
+            padding: 6px 12px;
+            flex-shrink: 0;
+        }
+        #editDimWtModal .modal-footer .btn {
+            padding: 4px 12px;
+            font-size: 13px;
+        }
+        #editDimWtModal .modal-body {
+            flex: 1 1 auto;
+            overflow: hidden;
+            padding: 6px 10px 4px;
+        }
+        #editDimWtModal .form-label {
+            font-size: 11px;
+            margin-bottom: 1px;
+            font-weight: 600;
+            line-height: 1.15;
+        }
+        #editDimWtModal .form-control,
+        #editDimWtModal .form-select {
+            padding: 2px 6px;
+            font-size: 12px;
+            min-height: 26px;
+            height: 26px;
+        }
+        #editDimWtModal textarea.form-control {
+            height: 42px;
+            min-height: 42px;
+            resize: none;
+            line-height: 1.25;
+        }
+        #editDimWtModal .row {
+            --bs-gutter-x: 0.4rem;
+            --bs-gutter-y: 0.12rem;
+        }
+        #editDimWtModal .mb-3,
+        #editDimWtModal .mb-2,
+        #editDimWtModal .mb-1 {
+            margin-bottom: 0.2rem !important;
+        }
+        #editDimWtModal .form-text,
+        #editDimWtModal small.text-muted {
+            display: none;
+        }
+        #editDimWtModal small.text-secondary {
+            font-size: 10px;
+            line-height: 1.1;
+            letter-spacing: 0.02em;
+        }
+        #editDimWtModal #editItemPkgCoverPreview {
+            width: 44px !important;
+            height: 44px !important;
+            margin: 0 !important;
+            border-radius: 6px !important;
+        }
+        #editDimWtModal .form-check {
+            min-height: 0;
+            padding-left: 1.4em;
+            margin-bottom: 0;
+        }
+        #editDimWtModal .form-check-label {
+            font-size: 12px;
+        }
+        #editDimWtModal .form-check .small {
+            display: none;
+        }
+        #editDimWtModal #bulkEditOnlyChangedHint {
+            padding: 4px 8px !important;
+            margin-bottom: 4px !important;
+            font-size: 11px !important;
+        }
+        @media (max-height: 700px) {
+            #editDimWtModal .form-control,
+            #editDimWtModal .form-select {
+                min-height: 24px;
+                height: 24px;
+                font-size: 11px;
+            }
+            #editDimWtModal textarea.form-control {
+                height: 36px;
+                min-height: 36px;
+            }
+            #editDimWtModal .form-label {
+                font-size: 10px;
+            }
+        }
     </style>
 @endsection
 
@@ -701,9 +945,22 @@
                                         <span class="badge bg-danger rounded-1 d-inline-flex align-items-center badge-filter" id="notVerifiedBadge" title="Click to show only Not-Verified SKUs" style="font-size: 0.95rem; padding: 0.5rem 0.9rem; font-weight: 500; cursor: pointer;">
                                             N Verify <span id="notVerifiedCount" class="ms-2 fw-bold">0</span>
                                         </span>
+                                        <span class="badge bg-success rounded-1 d-inline-flex align-items-center badge-filter" id="verifiedBadge" title="Click to show only Verified SKUs" style="font-size: 0.95rem; padding: 0.5rem 0.9rem; font-weight: 500; cursor: pointer;">
+                                            Verified <span id="verifiedCount" class="ms-2 fw-bold">0</span>
+                                        </span>
                                     </div>
                                 </div>
-                                <div class="btn-group" role="group">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="dropdown">
+                                        <button type="button" class="btn dropdown-toggle" id="dimWtColumnVisibilityDropdown"
+                                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                                            title="Columns" aria-label="Columns">
+                                            <i class="fas fa-columns"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dimWtColumnVisibilityDropdown" id="dim-wt-column-dropdown-menu">
+                                        </ul>
+                                    </div>
+                                    <div class="btn-group" role="group">
                                     <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                                         <i class="fas fa-bolt me-1"></i> Actions
                                     </button>
@@ -725,6 +982,7 @@
                                         </li>
                                     </ul>
                                 </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -733,21 +991,21 @@
                         <table id="dim-wt-master-datatable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
-                                    <th class="text-center th-checkbox-col">
+                                    <th data-col-key="select" data-col-label="Select" class="text-center th-checkbox-col">
                                         <input type="checkbox" id="selectAll" title="Select All" style="width: 16px; height: 16px;">
                                     </th>
-                                    <th><span class="th-vertical-label">Img</span></th>
-                                    <th class="th-parent-sku-col">
+                                    <th data-col-key="image" data-col-label="Img"><span class="th-vertical-label">Img</span></th>
+                                    <th data-col-key="parent" data-col-label="Parent" class="th-parent-sku-col">
                                         <div class="th-horizontal-label" style="font-size: 11px;">Parent</div>
                                     </th>
-                                    <th class="th-parent-sku-col">
+                                    <th data-col-key="sku" data-col-label="SKU" class="th-parent-sku-col">
                                         <div class="th-horizontal-label" style="font-size: 20px !important;">SKU</div>
                                     </th>
-                                    <th>
+                                    <th data-col-key="status" data-col-label="Status">
                                         <span class="th-vertical-label" style="font-size: 9px;">STATUS</span>
                                     </th>
-                                    <th><span class="th-vertical-label">INV</span></th>
-                                    <th class="th-has-filter" title="Label Qty (same source as Shipping Master)">
+                                    <th data-col-key="inv" data-col-label="INV"><span class="th-vertical-label">INV</span></th>
+                                    <th data-col-key="label_qty" data-col-label="Label Qty" class="th-has-filter" title="Label Qty (same source as Shipping Master)">
                                         <div class="th-vertical-label">label<br>qty</div>
                                         <select id="filterLabelQty" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Label Qty">
                                             <option value="all">All</option>
@@ -758,7 +1016,7 @@
                                             <option value="has">Has value</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter" title="Label Type">
+                                    <th data-col-key="label_type" data-col-label="Type" class="th-has-filter" title="Label Type">
                                         <div class="th-vertical-label">Type</div>
                                         <select id="filterLabelType" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Label Type">
                                             <option value="all">All</option>
@@ -768,57 +1026,56 @@
                                             <option value="Pallet">Pallet</option>
                                         </select>
                                     </th>
-                                    <th class="item-dim-header hide-item-wt-act">
+                                    <th data-col-key="wt_act_kg" data-col-label="Wt ACT (Kg)" class="item-dim-header hide-item-wt-act">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item Weight ACT<br>(Kg)</span>
                                     </th>
-                                    <th class="item-dim-header">
+                                    <th data-col-key="wt_act" data-col-label="Itm wt GW" class="item-dim-header">
                                         <span class="th-vertical-label" style="font-size: 9px;">Itm wt GW</span>
                                     </th>
-                                    <th class="item-dim-header">
+                                    <th data-col-key="l" data-col-label="Item L IN" class="item-dim-header">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item L IN</span>
                                     </th>
-                                    <th class="item-dim-header">
+                                    <th data-col-key="w" data-col-label="Item W IN" class="item-dim-header">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item W IN</span>
                                     </th>
-                                    <th class="item-dim-header">
+                                    <th data-col-key="h" data-col-label="Item H IN" class="item-dim-header">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item H IN</span>
                                     </th>
-                                    <th class="item-dim-decl-header" title="Copies Itm wt GW when Decl is empty">
+                                    <th data-col-key="wt_decl" data-col-label="Itm wt GW Decl" class="item-dim-decl-header" title="Copies Itm wt GW when Decl is empty">
                                         <span class="th-vertical-label" style="font-size: 9px;">Itm wt GW Decl</span>
                                     </th>
-                                    <th class="item-dim-decl-header" title="Copies Item L IN when Decl is empty">
+                                    <th data-col-key="l_decl" data-col-label="Item L IN Decl" class="item-dim-decl-header" title="Copies Item L IN when Decl is empty">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item L IN Decl</span>
                                     </th>
-                                    <th class="item-dim-decl-header" title="Copies Item W IN when Decl is empty">
+                                    <th data-col-key="w_decl" data-col-label="Item W IN Decl" class="item-dim-decl-header" title="Copies Item W IN when Decl is empty">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item W IN Decl</span>
                                     </th>
-                                    <th class="item-dim-decl-header" title="Copies Item H IN when Decl is empty">
+                                    <th data-col-key="h_decl" data-col-label="Item H IN Decl" class="item-dim-decl-header" title="Copies Item H IN when Decl is empty">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item H IN Decl</span>
                                     </th>
-                                    <th class="item-dim-header" title="Girth = 2 × (Width + Height)">
+                                    <th data-col-key="girth" data-col-label="GIRTH" class="item-dim-header" title="Girth = 2 × (Width + Height)">
                                         <span class="th-vertical-label" style="font-size: 9px;">GIRTH</span>
                                     </th>
-                                    <th class="item-dim-header" title="GIRTH + Length">
+                                    <th data-col-key="girth_plus_l" data-col-label="GIRTH + L" class="item-dim-header" title="GIRTH + Length">
                                         <span class="th-vertical-label" style="font-size: 9px;">GIRTH + L</span>
                                     </th>
-                                    <th class="item-dim-header" title="Item CBM (from Product Master Values.cbm)">
+                                    <th data-col-key="cbm" data-col-label="Itm CBM" class="item-dim-header" title="Item CBM (from Product Master Values.cbm)">
                                         <span class="th-vertical-label" style="font-size: 9px;">Itm CBM</span>
                                     </th>
-                                    <th class="item-cm-col"><span class="th-vertical-label">Item Length<br>(CM)</span></th>
-                                    <th class="item-cm-col"><span class="th-vertical-label">Item Width<br>(CM)</span></th>
-                                    <th class="item-cm-col"><span class="th-vertical-label">Item Height<br>(CM)</span></th>
-                                    <th class="ctn-cm-col"><span class="th-vertical-label">CTN L<br>(CM)</span></th>
-                                    <th class="ctn-cm-col"><span class="th-vertical-label">CTN W<br>(CM)</span></th>
-                                    <th class="ctn-cm-col"><span class="th-vertical-label">CTN H<br>(CM)</span></th>
-                                    <th><span class="th-vertical-label">Carton<br>CBM</span></th>
-                                    <th><span class="th-vertical-label">CTN<br>QTY</span></th>
-                                    <th><span class="th-vertical-label">Carton CBM<br>each</span></th>
-                                    <th class="col-ctn-pkg text-center"><span class="th-vertical-label" style="font-size: 9px;">Ctn pkg</span></th>
-                                    <th class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">item PKG</span></th>
-                                    <th class="col-itm-pkg-cover text-center"><span class="th-vertical-label" style="font-size: 9px;">Itm pkg Cover</span></th>
-                                    <th class="text-center"><span class="th-vertical-label">Verified</span></th>
-                                    <th class="text-center col-dim-wt-link"><span class="th-vertical-label" title="Sibling SKUs linked by matching dim/wt">Link SKU</span></th>
-                                    <th><span class="th-vertical-label">Action</span></th>
+                                    <th data-col-key="l_cm" data-col-label="Item L (CM)" class="item-cm-col"><span class="th-vertical-label">Item Length<br>(CM)</span></th>
+                                    <th data-col-key="w_cm" data-col-label="Item W (CM)" class="item-cm-col"><span class="th-vertical-label">Item Width<br>(CM)</span></th>
+                                    <th data-col-key="h_cm" data-col-label="Item H (CM)" class="item-cm-col"><span class="th-vertical-label">Item Height<br>(CM)</span></th>
+                                    <th data-col-key="ctn_l" data-col-label="CTN L (CM)" class="ctn-cm-col"><span class="th-vertical-label">CTN L<br>(CM)</span></th>
+                                    <th data-col-key="ctn_w" data-col-label="CTN W (CM)" class="ctn-cm-col"><span class="th-vertical-label">CTN W<br>(CM)</span></th>
+                                    <th data-col-key="ctn_h" data-col-label="CTN H (CM)" class="ctn-cm-col"><span class="th-vertical-label">CTN H<br>(CM)</span></th>
+                                    <th data-col-key="ctn_cbm" data-col-label="Carton CBM"><span class="th-vertical-label">Carton<br>CBM</span></th>
+                                    <th data-col-key="ctn_qty" data-col-label="CTN QTY"><span class="th-vertical-label">CTN<br>QTY</span></th>
+                                    <th data-col-key="ctn_cbm_each" data-col-label="Carton CBM each"><span class="th-vertical-label">Carton CBM<br>each</span></th>
+                                    <th data-col-key="instructions_item_pkg" data-col-label="item PKG" class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">item PKG</span></th>
+                                    <th data-col-key="item_pkg_cover" data-col-label="Itm pkg Cover" class="col-itm-pkg-cover text-center"><span class="th-vertical-label" style="font-size: 9px;">Itm pkg Cover</span></th>
+                                    <th data-col-key="verified" data-col-label="Verified" class="text-center"><span class="th-vertical-label">Verified</span></th>
+                                    <th data-col-key="action" data-col-label="Action"><span class="th-vertical-label">Action</span></th>
+                                    <th data-col-key="dim_wt_link" data-col-label="Link SKU" class="text-center col-dim-wt-link"><span class="th-vertical-label" title="Sibling SKUs linked by matching dim/wt">Link SKU</span></th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -840,7 +1097,7 @@
 
     <!-- Edit Dimensions & Weight Master Modal -->
     <div class="modal fade" id="editDimWtModal" tabindex="-1" aria-labelledby="editDimWtModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="editDimWtModalLabel">Edit Dimensions & Weight Master</h5>
@@ -856,175 +1113,113 @@
                         <input type="hidden" id="editProductId" name="product_id">
                         <input type="hidden" id="editSku" name="sku">
                         <input type="hidden" id="editParent" name="parent">
-                        
+
                         <div class="row mb-1">
                             <div class="col-12">
                                 <small class="text-secondary fw-semibold">Item Dimension</small>
                             </div>
                         </div>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
+                        <div class="row mb-1">
+                            <div class="col-3">
                                 <label for="editLabelQty" class="form-label">Label Qty</label>
-                                <input type="number" step="1" min="0" class="form-control fw-bold" id="editLabelQty" name="label_qty" placeholder="Label Qty">
-                                <div class="form-text">Same field as Shipping Master (<code>Values.label_qty</code>)</div>
+                                <input type="number" step="1" min="0" class="form-control fw-bold" id="editLabelQty" name="label_qty" placeholder="Qty" title="Same field as Shipping Master (Values.label_qty)">
                             </div>
-                            <div class="col-md-4">
-                                <label for="editWtActKg" class="form-label">Item Weight ACT (Kg)</label>
-                                <input type="number" step="0.01" class="form-control" id="editWtActKg" name="wt_act_kg" placeholder="Enter Item Weight ACT (Kg)">
+                            <div class="col-3">
+                                <label for="editWtActKg" class="form-label">Wt ACT (Kg)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWtActKg" name="wt_act_kg" placeholder="Kg">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-3">
                                 <label for="editWtAct" class="form-label">Itm wt GW</label>
-                                <input type="number" step="0.01" class="form-control" id="editWtAct" name="wt_act" placeholder="Enter Itm wt GW">
+                                <input type="number" step="0.01" class="form-control" id="editWtAct" name="wt_act" placeholder="GW">
                             </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editWtDecl" class="form-label">Itm wt GW Decl</label>
-                                <input type="number" step="0.01" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Enter Itm wt GW Decl">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editL" class="form-label">Item Length (inch)</label>
-                                <input type="number" step="0.01" class="form-control" id="editL" name="l" placeholder="Enter Item Length (inch)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editW" class="form-label">Item Width (inch)</label>
-                                <input type="number" step="0.01" class="form-control" id="editW" name="w" placeholder="Enter Item Width (inch)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editH" class="form-label">Item Height (Inch)</label>
-                                <input type="number" step="0.01" class="form-control" id="editH" name="h" placeholder="Enter Item Height (Inch)">
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editLDecl" class="form-label">Item L IN Decl</label>
-                                <input type="number" step="0.01" class="form-control" id="editLDecl" name="l_decl" placeholder="Enter Item L IN Decl">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editWDecl" class="form-label">Item W IN Decl</label>
-                                <input type="number" step="0.01" class="form-control" id="editWDecl" name="w_decl" placeholder="Enter Item W IN Decl">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editHDecl" class="form-label">Item H IN Decl</label>
-                                <input type="number" step="0.01" class="form-control" id="editHDecl" name="h_decl" placeholder="Enter Item H IN Decl">
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editLCm" class="form-label">Item Length (CM)</label>
-                                <input type="number" step="0.01" class="form-control" id="editLCm" name="l_cm" placeholder="Enter Item Length (CM)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editWCm" class="form-label">Item Width (CM)</label>
-                                <input type="number" step="0.01" class="form-control" id="editWCm" name="w_cm" placeholder="Enter Item Width (CM)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editHCm" class="form-label">Item Height (CM)</label>
-                                <input type="number" step="0.01" class="form-control" id="editHCm" name="h_cm" placeholder="Enter Item Height (CM)">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-1">
-                            <div class="col-12">
-                                <small class="text-secondary fw-semibold">CARTON Dimension section</small>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editCtnL" class="form-label">CTN L (CM)</label>
-                                <input type="number" step="0.01" class="form-control" id="editCtnL" name="ctn_l" placeholder="Enter CTN L (CM)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editCtnW" class="form-label">CTN W (CM)</label>
-                                <input type="number" step="0.01" class="form-control" id="editCtnW" name="ctn_w" placeholder="Enter CTN W (CM)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editCtnH" class="form-label">CTN H (CM)</label>
-                                <input type="number" step="0.01" class="form-control" id="editCtnH" name="ctn_h" placeholder="Enter CTN H (CM)">
+                            <div class="col-3">
+                                <label for="editWtDecl" class="form-label">Wt GW Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Decl">
                             </div>
                         </div>
 
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <label for="editCtnQty" class="form-label">CTN (QTY)</label>
-                                <input type="number" step="0.01" class="form-control" id="editCtnQty" name="ctn_qty" placeholder="Enter CTN (QTY)">
+                        <div class="row mb-1">
+                            <div class="col-4">
+                                <label for="editL" class="form-label">Length (in)</label>
+                                <input type="number" step="0.01" class="form-control" id="editL" name="l" placeholder="L in">
+                            </div>
+                            <div class="col-4">
+                                <label for="editW" class="form-label">Width (in)</label>
+                                <input type="number" step="0.01" class="form-control" id="editW" name="w" placeholder="W in">
+                            </div>
+                            <div class="col-4">
+                                <label for="editH" class="form-label">Height (in)</label>
+                                <input type="number" step="0.01" class="form-control" id="editH" name="h" placeholder="H in">
+                            </div>
+                        </div>
+                        <div class="row mb-1">
+                            <div class="col-4">
+                                <label for="editLDecl" class="form-label">L IN Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editLDecl" name="l_decl" placeholder="L decl">
+                            </div>
+                            <div class="col-4">
+                                <label for="editWDecl" class="form-label">W IN Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editWDecl" name="w_decl" placeholder="W decl">
+                            </div>
+                            <div class="col-4">
+                                <label for="editHDecl" class="form-label">H IN Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editHDecl" name="h_decl" placeholder="H decl">
+                            </div>
+                        </div>
+                        <div class="row mb-1">
+                            <div class="col-4">
+                                <label for="editLCm" class="form-label">Length (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editLCm" name="l_cm" placeholder="L cm">
+                            </div>
+                            <div class="col-4">
+                                <label for="editWCm" class="form-label">Width (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWCm" name="w_cm" placeholder="W cm">
+                            </div>
+                            <div class="col-4">
+                                <label for="editHCm" class="form-label">Height (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editHCm" name="h_cm" placeholder="H cm">
                             </div>
                         </div>
 
                         <div class="row mb-1">
                             <div class="col-12">
-                                <small class="text-secondary fw-semibold">Ctn pkg</small>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-12">
-                                <label for="editCtnInstructions" class="form-label">Ctn pkg <span class="text-muted small fw-normal">(max 100 characters)</span></label>
-                                <input type="text" class="form-control" id="editCtnInstructions" name="ctn_instructions" maxlength="100" placeholder="Carton packaging instructions (max 100 characters)" autocomplete="off">
-                                <small class="text-muted">Leave blank to clear. Not saved for PARENT rows.</small>
+                                <label for="editInstructionsItemPkg" class="form-label">Instructions item PKG</label>
+                                <textarea class="form-control" id="editInstructionsItemPkg" name="instructions_item_pkg" rows="2" placeholder="Packaging instructions" title="Leave blank to clear. Not saved for PARENT rows."></textarea>
                             </div>
                         </div>
 
-                        <div class="row mb-1">
-                            <div class="col-12">
-                                <small class="text-secondary fw-semibold">Instructions item PKG</small>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-12">
-                                <label for="editInstructionsItemPkg" class="form-label">Instructions</label>
-                                <textarea class="form-control" id="editInstructionsItemPkg" name="instructions_item_pkg" rows="3" placeholder="Packaging instructions (saved separately from dimensions)"></textarea>
-                                <small class="text-muted">Leave blank to clear. Not saved for PARENT rows.</small>
-                            </div>
-                        </div>
-
-                        <div class="row mb-1">
-                            <div class="col-12">
-                                <small class="text-secondary fw-semibold">Itm pkg Cover</small>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-4 text-center">
+                        <div class="row mb-1 align-items-center">
+                            <div class="col-auto">
                                 <div id="editItemPkgCoverPreview"
-                                     style="width:120px;height:120px;margin:0 auto;border:1px solid #d1d5db;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;">
+                                     style="width:44px;height:44px;border:1px solid #d1d5db;border-radius:6px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;">
                                     <span class="text-muted small">No cover</span>
                                 </div>
                             </div>
-                            <div class="col-md-8">
-                                <label for="editItemPkgCoverInput" class="form-label">Cover image URL / path</label>
+                            <div class="col">
+                                <label for="editItemPkgCoverInput" class="form-label">Itm pkg Cover</label>
                                 <input type="text" class="form-control" id="editItemPkgCoverInput"
-                                       placeholder="Image URL or path (e.g. storage/... or https://...)"
-                                       autocomplete="off">
-                                <small class="text-muted">Saved to product master Values.item_pkg_cover (same as PO proforma). Leave blank to clear. Not saved for PARENT rows.</small>
+                                       placeholder="Cover image URL / path"
+                                       autocomplete="off"
+                                       title="Saved to Values.item_pkg_cover. Leave blank to clear. Not saved for PARENT rows.">
                             </div>
                         </div>
 
-                        <div class="row mb-1">
-                            <div class="col-12">
-                                <small class="text-secondary fw-semibold">Verified</small>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="editVerified" class="form-label">Verified status</label>
+                        <div class="row mb-1 align-items-end">
+                            <div class="col-5">
+                                <label for="editVerified" class="form-label">Verified</label>
                                 <select class="form-select" id="editVerified" name="verified_data">
                                     <option value="0">🔴 Not Verified</option>
                                     <option value="1">🟢 Verified</option>
                                 </select>
                             </div>
-                        </div>
-
-                        <div class="row mb-2">
-                            <div class="col-12">
-                                <div class="form-check">
+                            <div class="col-7">
+                                <div class="form-check" title="When checked, changes also apply to all child SKUs under the same parent.">
                                     <input class="form-check-input" type="checkbox" id="editSaveAlsoToSiblings"
+                                           autocomplete="off"
                                            style="border-color:#198754; accent-color:#198754;">
                                     <label class="form-check-label fw-semibold text-success" for="editSaveAlsoToSiblings">
                                         save also to Siblings
                                     </label>
-                                    <div class="small text-muted">When checked, changes also apply to all child SKUs under the same parent.</div>
                                 </div>
                             </div>
                         </div>
@@ -1612,6 +1807,10 @@
                     lCell.className = 'text-center';
                     lCell.title = 'Length (highest of L/W/H)';
                     lCell.textContent = cellVal(orgDims.length, 0);
+                    if (!isParentRow && orgDims.length != null && Number(orgDims.length) > 39) {
+                        lCell.classList.add('item-l-over-39');
+                        lCell.title = 'Length (highest of L/W/H) — over 39 in';
+                    }
                     row.appendChild(lCell);
 
                     const wCell = document.createElement('td');
@@ -1741,20 +1940,6 @@
                     ctnCbmEachCell.textContent = cellVal(ctnCbmEachCalculated, 1);
                     row.appendChild(ctnCbmEachCell);
 
-                    // Ctn pkg (Values.ctn_instructions) – magnifying glass, full text on hover
-                    const ctnPkgCell = document.createElement('td');
-                    ctnPkgCell.className = 'col-ctn-pkg text-center';
-                    if (isParentRow) {
-                        ctnPkgCell.textContent = '--';
-                    } else {
-                        const rawCtnPkg = item.ctn_instructions != null ? String(item.ctn_instructions).trim() : '';
-                        const hasCtnPkg = rawCtnPkg !== '';
-                        const ctnIconColor = hasCtnPkg ? '#28a745' : '#dc3545';
-                        const ctnIconTitle = hasCtnPkg ? rawCtnPkg : 'No instructions available';
-                        ctnPkgCell.innerHTML = `<i class="fas fa-search" style="color:${ctnIconColor}; font-size:14px; cursor:pointer;" title="${escapeHtml(ctnIconTitle)}"></i>`;
-                    }
-                    row.appendChild(ctnPkgCell);
-
                     // Instructions item PKG (from instructions_item_pkg table)
                     const pkgCell = document.createElement('td');
                     pkgCell.className = 'col-instructions-item-pkg';
@@ -1778,10 +1963,10 @@
                     } else {
                         const coverUrl = (item.item_pkg_cover != null ? String(item.item_pkg_cover).trim() : '');
                         if (coverUrl) {
-                            coverCell.innerHTML = `<img src="${escapeHtml(coverUrl)}" alt="Itm pkg Cover" class="itm-pkg-cover-thumb" title="Itm pkg Cover">`;
-                            const coverImg = coverCell.querySelector('img');
-                            if (coverImg) {
-                                coverImg.addEventListener('click', function(e) {
+                            coverCell.innerHTML = `<i class="fas fa-image itm-pkg-cover-icon" title="Itm pkg Cover"></i>`;
+                            const coverIcon = coverCell.querySelector('i');
+                            if (coverIcon) {
+                                coverIcon.addEventListener('click', function(e) {
                                     e.stopPropagation();
                                     window.open(coverUrl, '_blank', 'noopener');
                                 });
@@ -1809,25 +1994,6 @@
                     `;
                     row.appendChild(verifiedCell);
 
-                    // Link SKU column – siblings linked by matching dim/wt (dim_wt_sku_links)
-                    const linkedSkus = Array.isArray(item.dim_wt_linked_skus)
-                        ? item.dim_wt_linked_skus.filter(Boolean)
-                        : [];
-                    const linkCell = document.createElement('td');
-                    linkCell.className = 'text-center col-dim-wt-link';
-                    if (isParentRow) {
-                        linkCell.innerHTML = '<span class="text-muted">--</span>';
-                    } else if (linkedSkus.length === 0) {
-                        linkCell.innerHTML = '<span class="text-muted">—</span>';
-                        linkCell.title = 'No linked siblings yet. Verify a SKU to auto-link matching dim/wt siblings.';
-                    } else {
-                        const preview = linkedSkus.slice(0, 2).map(s => escapeHtml(String(s))).join(', ');
-                        const more = linkedSkus.length > 2 ? ` +${linkedSkus.length - 2}` : '';
-                        linkCell.innerHTML = `<span class="badge bg-info text-dark" style="font-size:10px; font-weight:500; white-space:normal; max-width:140px;">${preview}${more}</span>`;
-                        linkCell.title = 'Linked by matching dim/wt:\n' + linkedSkus.join('\n');
-                    }
-                    row.appendChild(linkCell);
-
                     // Action column
                     const actionCell = document.createElement('td');
                     actionCell.className = 'text-center';
@@ -1851,6 +2017,25 @@
                         </div>
                     `;
                     row.appendChild(actionCell);
+
+                    // Link SKU column – siblings linked by matching dim/wt (dim_wt_sku_links)
+                    const linkedSkus = Array.isArray(item.dim_wt_linked_skus)
+                        ? item.dim_wt_linked_skus.filter(Boolean)
+                        : [];
+                    const linkCell = document.createElement('td');
+                    linkCell.className = 'text-center col-dim-wt-link';
+                    if (isParentRow) {
+                        linkCell.innerHTML = '<span class="text-muted">--</span>';
+                    } else if (linkedSkus.length === 0) {
+                        linkCell.innerHTML = '<span class="text-muted">—</span>';
+                        linkCell.title = 'No linked siblings yet. Verify a SKU to auto-link matching dim/wt siblings.';
+                    } else {
+                        const preview = linkedSkus.slice(0, 2).map(s => escapeHtml(String(s))).join(', ');
+                        const more = linkedSkus.length > 2 ? ` +${linkedSkus.length - 2}` : '';
+                        linkCell.innerHTML = `<span class="badge bg-info text-dark" style="font-size:10px; font-weight:500; white-space:normal; max-width:140px;">${preview}${more}</span>`;
+                        linkCell.title = 'Linked by matching dim/wt:\n' + linkedSkus.join('\n');
+                    }
+                    row.appendChild(linkCell);
                     
                     // Add event listener for edit button
                     // Multi-select + pencil = bulk edit (no separate Bulk Edit button)
@@ -1888,50 +2073,294 @@
                 applyDimWtSectionFilter();
             }
 
-            // Section filter: controls visibility of item vs carton metrics
-            function applyDimWtSectionFilter() {
+            // Column visibility (saved per user via /tabulator-column-visibility-user)
+            const DIM_WT_COLUMN_CHANNEL = 'dim_wt_master';
+            const DIM_WT_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility-user';
+            const DIM_WT_COL_LOCKED = { select: true, parent: true, sku: true, action: true };
+            const DIM_WT_COL_CATEGORY_KEYS = ['basic', 'item', 'girth', 'others'];
+            const DIM_WT_COL_CATEGORY_LABELS = {
+                basic: 'Basic',
+                item: 'Item',
+                girth: 'Girth',
+                others: 'Others',
+            };
+            const DIM_WT_COL_DEFAULT_VISIBILITY = {
+                wt_act_kg: false,
+                l_cm: false,
+                w_cm: false,
+                h_cm: false,
+                ctn_l: false,
+                ctn_w: false,
+                ctn_h: false,
+            };
+            const DIM_WT_COL_CATEGORIES = {
+                basic: ['select', 'image', 'parent', 'sku', 'status', 'inv', 'label_qty', 'label_type', 'verified', 'action', 'dim_wt_link'],
+                item: ['wt_act_kg', 'wt_act', 'l', 'w', 'h', 'wt_decl', 'l_decl', 'w_decl', 'h_decl', 'cbm', 'l_cm', 'w_cm', 'h_cm', 'instructions_item_pkg', 'item_pkg_cover'],
+                girth: ['girth', 'girth_plus_l'],
+                others: ['ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each'],
+            };
+            let dimWtColVisMap = {};
+
+            function dimWtColCategoryForKey(key) {
+                for (const cat of DIM_WT_COL_CATEGORY_KEYS) {
+                    if ((DIM_WT_COL_CATEGORIES[cat] || []).includes(key)) return cat;
+                }
+                return 'others';
+            }
+
+            function isDimWtColumnUserVisible(key) {
+                if (!key) return true;
+                if (DIM_WT_COL_LOCKED[key]) return true;
+                if (Object.prototype.hasOwnProperty.call(dimWtColVisMap, key)) {
+                    return dimWtColVisMap[key] !== false;
+                }
+                if (Object.prototype.hasOwnProperty.call(DIM_WT_COL_DEFAULT_VISIBILITY, key)) {
+                    return DIM_WT_COL_DEFAULT_VISIBILITY[key] !== false;
+                }
+                return true;
+            }
+
+            function columnAllowedBySection(th, index, section) {
+                const headerText = (th.textContent || '').toLowerCase();
+                const isCtnDim =
+                    headerText.includes('ctn l') ||
+                    headerText.includes('ctn w') ||
+                    headerText.includes('ctn h');
+                const isCartonMetric =
+                    (!isCtnDim && headerText.includes('carton')) ||
+                    headerText.includes('ctn cbm') ||
+                    (headerText.includes('ctn') && headerText.includes('qty'));
+
+                if (section === 'item_data') {
+                    return !isCartonMetric;
+                }
+                if (section === 'carton_data') {
+                    const isLeadIdentityCol = index < 4;
+                    const isTailUtilityCol = headerText.includes('verified') || headerText.includes('link sku') || /\baction\b/.test(headerText);
+                    const isInstructionsPkgCol = headerText.includes('pkg');
+                    return isLeadIdentityCol || isTailUtilityCol || isCtnDim || isCartonMetric
+                        || headerText.includes('status') || headerText === 'inv' || isInstructionsPkgCol;
+                }
+                return true;
+            }
+
+            function applyDimWtColumnVisibility() {
                 const table = document.getElementById('dim-wt-master-datatable');
                 const sectionEl = document.getElementById('dimWtSectionFilter');
-                if (!table || !sectionEl) return;
+                if (!table) return;
                 const theadRow = table.querySelector('thead tr');
                 const tbody = document.getElementById('table-body');
                 if (!theadRow || !tbody) return;
                 const ths = theadRow.querySelectorAll('th');
-                const section = sectionEl.value;
+                const section = sectionEl ? sectionEl.value : 'item_data';
 
                 for (let i = 0; i < ths.length; i++) {
                     const th = ths[i];
-                    const headerText = (th.textContent || '').toLowerCase();
-
-                    const isCtnDim =
-                        headerText.includes('ctn l') ||
-                        headerText.includes('ctn w') ||
-                        headerText.includes('ctn h');
-
-                    const isCartonMetric =
-                        (!isCtnDim && headerText.includes('carton')) ||
-                        headerText.includes('ctn cbm') ||
-                        (headerText.includes('ctn') && headerText.includes('qty'));
-
-                    let visible = true;
-
-                    if (section === 'item_data') {
-                        // Show all item columns + CTN dimensions; hide only carton summary metrics
-                        visible = !isCartonMetric;
-                    } else if (section === 'carton_data') {
-                        // Always show checkbox, Img, Parent, SKU (cols 0–3); keep utility tails
-                        const isLeadIdentityCol = i < 4;
-                        const isTailUtilityCol = headerText.includes('verified') || headerText.includes('link sku') || /\baction\b/.test(headerText);
-                        const isInstructionsPkgCol = headerText.includes('pkg');
-                        visible = isLeadIdentityCol || isTailUtilityCol || isCtnDim || isCartonMetric || headerText.includes('status') || headerText === 'inv' || isInstructionsPkgCol;
-                    }
-
-                    th.style.display = visible ? '' : 'none';
+                    const key = th.getAttribute('data-col-key') || '';
+                    const show = columnAllowedBySection(th, i, section) && isDimWtColumnUserVisible(key);
+                    th.classList.toggle('col-user-hidden', !show);
+                    th.classList.toggle('col-user-visible', show);
+                    th.style.display = '';
                     tbody.querySelectorAll('tr').forEach(tr => {
                         const cell = tr.cells[i];
-                        if (cell) cell.style.display = visible ? '' : 'none';
+                        if (!cell) return;
+                        cell.classList.toggle('col-user-hidden', !show);
+                        cell.classList.toggle('col-user-visible', show);
+                        cell.style.display = '';
                     });
                 }
+            }
+
+            function collectDimWtColumnVisibilityMap() {
+                const table = document.getElementById('dim-wt-master-datatable');
+                const map = {};
+                if (!table) return map;
+                table.querySelectorAll('thead th[data-col-key]').forEach(th => {
+                    const key = th.getAttribute('data-col-key');
+                    if (!key || DIM_WT_COL_LOCKED[key]) return;
+                    map[key] = isDimWtColumnUserVisible(key);
+                });
+                return map;
+            }
+
+            function saveDimWtColumnVisibility() {
+                const visibility = collectDimWtColumnVisibilityMap();
+                dimWtColVisMap = { ...visibility };
+                return fetch(DIM_WT_COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        channel: DIM_WT_COLUMN_CHANNEL,
+                        visibility,
+                    }),
+                }).catch(err => console.warn('dim-wt column visibility save failed:', err));
+            }
+
+            function fetchDimWtColumnVisibility() {
+                return fetch(
+                    DIM_WT_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(DIM_WT_COLUMN_CHANNEL),
+                    { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+                )
+                    .then(r => r.json())
+                    .then(map => {
+                        dimWtColVisMap = (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+                        return dimWtColVisMap;
+                    })
+                    .catch(() => {
+                        dimWtColVisMap = {};
+                        return {};
+                    });
+            }
+
+            function getDimWtCategoryToggleKeys(cat) {
+                return (DIM_WT_COL_CATEGORIES[cat] || []).filter(key => key && !DIM_WT_COL_LOCKED[key]);
+            }
+
+            function syncDimWtCategoryHeaderCheckbox(catCb, cat) {
+                if (!catCb) return;
+                const keys = getDimWtCategoryToggleKeys(cat);
+                if (keys.length === 0) {
+                    catCb.checked = false;
+                    catCb.indeterminate = false;
+                    catCb.disabled = true;
+                    return;
+                }
+                catCb.disabled = false;
+                const checkedCount = keys.filter(key => isDimWtColumnUserVisible(key)).length;
+                catCb.checked = checkedCount === keys.length;
+                catCb.indeterminate = checkedCount > 0 && checkedCount < keys.length;
+            }
+
+            function setDimWtCategoryVisibility(cat, visible) {
+                getDimWtCategoryToggleKeys(cat).forEach(key => {
+                    dimWtColVisMap[key] = !!visible;
+                });
+                applyDimWtColumnVisibility();
+                saveDimWtColumnVisibility();
+            }
+
+            function buildDimWtColumnDropdown() {
+                const menu = document.getElementById('dim-wt-column-dropdown-menu');
+                const table = document.getElementById('dim-wt-master-datatable');
+                if (!menu || !table) return;
+                menu.innerHTML = '';
+
+                const showAllLi = document.createElement('li');
+                showAllLi.innerHTML = '<a class="dropdown-item py-1" href="#" id="dim-wt-show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
+                menu.appendChild(showAllLi);
+
+                const hintLi = document.createElement('li');
+                hintLi.innerHTML = '<div class="px-2 pb-1 text-muted" style="font-size:0.7rem;">Use group checkboxes to select / deselect all</div>';
+                menu.appendChild(hintLi);
+
+                const groupsLi = document.createElement('li');
+                const groupsWrap = document.createElement('div');
+                groupsWrap.className = 'col-vis-groups';
+
+                const lists = {};
+                const categoryHeaderCbs = {};
+                DIM_WT_COL_CATEGORY_KEYS.forEach(cat => {
+                    const group = document.createElement('div');
+                    group.className = 'col-vis-group';
+                    group.dataset.category = cat;
+
+                    const titleEl = document.createElement('label');
+                    titleEl.className = 'col-vis-group-title';
+                    const catCb = document.createElement('input');
+                    catCb.type = 'checkbox';
+                    catCb.className = 'col-vis-group-check';
+                    catCb.dataset.category = cat;
+                    catCb.title = 'Select / deselect all in ' + DIM_WT_COL_CATEGORY_LABELS[cat];
+                    catCb.addEventListener('change', () => {
+                        setDimWtCategoryVisibility(cat, catCb.checked);
+                        buildDimWtColumnDropdown();
+                    });
+                    titleEl.appendChild(catCb);
+                    titleEl.appendChild(document.createTextNode(DIM_WT_COL_CATEGORY_LABELS[cat]));
+                    group.appendChild(titleEl);
+
+                    const list = document.createElement('ul');
+                    list.className = 'col-vis-group-list';
+                    group.appendChild(list);
+                    groupsWrap.appendChild(group);
+                    lists[cat] = list;
+                    categoryHeaderCbs[cat] = catCb;
+                });
+
+                table.querySelectorAll('thead th[data-col-key]').forEach(th => {
+                    const key = th.getAttribute('data-col-key');
+                    const label = th.getAttribute('data-col-label') || key;
+                    const cat = dimWtColCategoryForKey(key);
+                    const locked = !!DIM_WT_COL_LOCKED[key];
+
+                    const li = document.createElement('li');
+                    li.className = 'col-vis-item';
+                    const lab = document.createElement('label');
+                    if (locked) lab.className = 'col-vis-locked';
+
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.value = key;
+                    cb.checked = isDimWtColumnUserVisible(key);
+                    cb.disabled = locked;
+                    cb.style.marginRight = '6px';
+                    if (!locked) {
+                        cb.addEventListener('change', () => {
+                            dimWtColVisMap[key] = !!cb.checked;
+                            applyDimWtColumnVisibility();
+                            saveDimWtColumnVisibility();
+                            syncDimWtCategoryHeaderCheckbox(categoryHeaderCbs[cat], cat);
+                        });
+                    }
+
+                    lab.appendChild(cb);
+                    lab.appendChild(document.createTextNode(label));
+                    li.appendChild(lab);
+                    (lists[cat] || lists.others).appendChild(li);
+                });
+
+                DIM_WT_COL_CATEGORY_KEYS.forEach(cat => {
+                    const catCb = categoryHeaderCbs[cat];
+                    const titleEl = catCb ? catCb.closest('.col-vis-group-title') : null;
+                    if (getDimWtCategoryToggleKeys(cat).length === 0 && titleEl) {
+                        titleEl.classList.add('col-vis-group-empty');
+                    }
+                    syncDimWtCategoryHeaderCheckbox(catCb, cat);
+                });
+
+                groupsLi.appendChild(groupsWrap);
+                menu.appendChild(groupsLi);
+
+                const showAllBtn = document.getElementById('dim-wt-show-all-columns-btn');
+                if (showAllBtn) {
+                    showAllBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        table.querySelectorAll('thead th[data-col-key]').forEach(th => {
+                            const key = th.getAttribute('data-col-key');
+                            if (!key || DIM_WT_COL_LOCKED[key]) return;
+                            dimWtColVisMap[key] = true;
+                        });
+                        applyDimWtColumnVisibility();
+                        saveDimWtColumnVisibility().then(() => buildDimWtColumnDropdown());
+                    });
+                }
+            }
+
+            function setupDimWtColumnVisibility() {
+                fetchDimWtColumnVisibility().then(() => {
+                    applyDimWtColumnVisibility();
+                    buildDimWtColumnDropdown();
+                });
+            }
+
+            // Section filter: controls visibility of item vs carton metrics
+            function applyDimWtSectionFilter() {
+                applyDimWtColumnVisibility();
             }
 
             // Update counts
@@ -1945,6 +2374,7 @@
                 let wMissingCount = 0;
                 let hMissingCount = 0;
                 let notVerifiedCount = 0;
+                let verifiedCount = 0;
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
@@ -1964,10 +2394,11 @@
                     if (isMissing(item.w)) wMissingCount++;
                     if (isMissing(item.h)) hMissingCount++;
 
-                    // Not verified (red dots) — child SKUs only
+                    // Verified (green) / not verified (red) — child SKUs only
                     const isVerified = item.verified_data === 1 || item.verified_data === true ||
                         (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
-                    if (!isVerified) notVerifiedCount++;
+                    if (isVerified) verifiedCount++;
+                    else notVerifiedCount++;
                 });
                 
                 const setHeaderCount = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = `(${val})`; };
@@ -1982,6 +2413,8 @@
 
                 const notVerifiedCountEl = document.getElementById('notVerifiedCount');
                 if (notVerifiedCountEl) notVerifiedCountEl.textContent = notVerifiedCount;
+                const verifiedCountEl = document.getElementById('verifiedCount');
+                if (verifiedCountEl) verifiedCountEl.textContent = verifiedCount;
             }
 
             function refreshProductPlaybackState() {
@@ -2158,10 +2591,9 @@
                     26: { key: 'ctn_cbm', type: 'num' },
                     27: { key: 'ctn_qty', type: 'num' },
                     28: { key: 'ctn_cbm_each', type: 'num' },
-                    29: { key: 'ctn_instructions', type: 'text' },
-                    30: { key: 'instructions_item_pkg', type: 'text' },
-                    31: { key: 'item_pkg_cover', type: 'text' },
-                    32: { key: 'verified_data', type: 'num' },
+                    29: { key: 'instructions_item_pkg', type: 'text' },
+                    30: { key: 'item_pkg_cover', type: 'text' },
+                    31: { key: 'verified_data', type: 'num' },
                     33: { key: 'dim_wt_linked_skus', type: 'text' },
                 };
 
@@ -2250,13 +2682,17 @@
 
                 const notVerifiedBadge = document.getElementById('notVerifiedBadge');
                 if (notVerifiedBadge) notVerifiedBadge.addEventListener('click', () => toggleVerifiedFilter(0));
+                const verifiedBadge = document.getElementById('verifiedBadge');
+                if (verifiedBadge) verifiedBadge.addEventListener('click', () => toggleVerifiedFilter(1));
             }
 
-            // Toggle N Verify filter (click again to clear)
+            // Toggle Verified / N Verify filter (click again to clear)
             function toggleVerifiedFilter(value) {
                 verifiedFilter = (verifiedFilter === value) ? null : value;
                 const notVerifiedBadge = document.getElementById('notVerifiedBadge');
                 if (notVerifiedBadge) notVerifiedBadge.classList.toggle('badge-filter-active', verifiedFilter === 0);
+                const verifiedBadge = document.getElementById('verifiedBadge');
+                if (verifiedBadge) verifiedBadge.classList.toggle('badge-filter-active', verifiedFilter === 1);
                 applyFilters();
             }
 
@@ -2956,6 +3392,81 @@
             }
 
             /** All non-parent child SKUs that share any of the given Parent values. */
+            function isSavedSiblingsPref(value) {
+                return value === true || value === 1 || value === '1';
+            }
+
+            function readSavedSiblingsPrefRaw(product) {
+                if (!product) return null;
+                let v = null;
+                if (product.save_also_to_siblings != null && product.save_also_to_siblings !== '') {
+                    v = product.save_also_to_siblings;
+                } else if (product.Values && product.Values.save_also_to_siblings != null && product.Values.save_also_to_siblings !== '') {
+                    v = product.Values.save_also_to_siblings;
+                }
+                if (v === null || v === undefined || v === '') return null;
+                return isSavedSiblingsPref(v);
+            }
+
+            function readFamilySiblingsPref(product) {
+                const own = readSavedSiblingsPrefRaw(product);
+                if (own !== null) return own;
+                const parent = product && product.Parent;
+                if (!parent) return false;
+                const siblings = getChildSkusForParents([parent]);
+                for (const s of siblings) {
+                    const v = readSavedSiblingsPrefRaw(s);
+                    if (v !== null) return v;
+                }
+                return false;
+            }
+
+            function rememberSiblingsPrefOnProduct(product, checked) {
+                if (!product) return;
+                const flag = checked ? 1 : 0;
+                product.save_also_to_siblings = flag;
+                if (!product.Values) product.Values = {};
+                product.Values.save_also_to_siblings = flag;
+            }
+
+            function collectSaveParentKeys(products) {
+                const keys = [];
+                (products || []).forEach(p => {
+                    if (p && p.Parent) keys.push(p.Parent);
+                });
+                const formParent = document.getElementById('editParent')?.value;
+                if (formParent) keys.push(formParent);
+                return keys;
+            }
+
+            async function persistSiblingsCheckboxToFamily(parentKeys, checked, alreadyUpdatedIds) {
+                const siblings = getChildSkusForParents(parentKeys);
+                if (!siblings.length) return;
+                const skip = new Set((alreadyUpdatedIds || []).map(id => String(id)));
+                const flag = checked ? 1 : 0;
+                for (const product of siblings) {
+                    rememberSiblingsPrefOnProduct(product, checked);
+                    if (skip.has(String(product.id))) continue;
+                    try {
+                        await fetch('/dim-wt-master/update', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: JSON.stringify({
+                                product_id: product.id,
+                                sku: product.SKU,
+                                parent: product.Parent || '',
+                                save_also_to_siblings: flag
+                            })
+                        });
+                    } catch (e) {
+                        console.error('Sibling checkbox sync error:', e);
+                    }
+                }
+            }
+
             function getChildSkusForParents(parentKeys) {
                 const parents = new Set(
                     [...(parentKeys || [])]
@@ -3068,11 +3579,6 @@
                 { id: 'editLCm', key: 'l_cm', type: 'num' },
                 { id: 'editWCm', key: 'w_cm', type: 'num' },
                 { id: 'editHCm', key: 'h_cm', type: 'num' },
-                { id: 'editCtnL', key: 'ctn_l', type: 'num' },
-                { id: 'editCtnW', key: 'ctn_w', type: 'num' },
-                { id: 'editCtnH', key: 'ctn_h', type: 'num' },
-                { id: 'editCtnQty', key: 'ctn_qty', type: 'num' },
-                { id: 'editCtnInstructions', key: 'ctn_instructions', type: 'text100' },
             ];
 
             function snapshotBulkEditFormValues() {
@@ -3087,6 +3593,8 @@
                 snap.editItemPkgCoverInput = coverEl ? String(coverEl.value ?? '') : '';
                 const verifiedEl = document.getElementById('editVerified');
                 snap.editVerified = verifiedEl ? String(verifiedEl.value ?? '0') : '0';
+                const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
+                snap.editSaveAlsoToSiblings = (siblingsCb && siblingsCb.checked) ? '1' : '0';
                 return snap;
             }
 
@@ -3111,16 +3619,6 @@
                     if (now === was) return;
                     data[f.key] = parseBulkEditFieldValue(f, now);
                 });
-                if ('ctn_l' in data || 'ctn_w' in data || 'ctn_h' in data || 'ctn_qty' in data) {
-                    const ctnL = parseFloat(document.getElementById('editCtnL').value) || 0;
-                    const ctnW = parseFloat(document.getElementById('editCtnW').value) || 0;
-                    const ctnH = parseFloat(document.getElementById('editCtnH').value) || 0;
-                    const ctnQty = parseFloat(document.getElementById('editCtnQty').value) || 0;
-                    const ctnCbm = calculateCtnCbm(ctnL, ctnW, ctnH);
-                    const ctnCbmEach = calculateCtnCbmEach(ctnCbm, ctnQty);
-                    data.ctn_cbm = ctnCbm > 0 ? ctnCbm : null;
-                    data.ctn_cbm_each = ctnCbmEach > 0 ? ctnCbmEach : null;
-                }
                 return data;
             }
 
@@ -3151,10 +3649,6 @@
                 document.getElementById('editLCm').value = product.l_cm || '';
                 document.getElementById('editWCm').value = product.w_cm || '';
                 document.getElementById('editHCm').value = product.h_cm || '';
-                document.getElementById('editCtnL').value = product.ctn_l || '';
-                document.getElementById('editCtnW').value = product.ctn_w || '';
-                document.getElementById('editCtnH').value = product.ctn_h || '';
-                // Populate auto-calculated inch fields
                 // Auto-populate Item CM fields from inch values if CM is missing
                 const lValInch = parseFloat(product.l) || 0;
                 const wValInch = parseFloat(product.w) || 0;
@@ -3169,18 +3663,11 @@
                     document.getElementById('editHCm').value = (hValInch * 2.54).toFixed(2);
                 }
 
-                document.getElementById('editCtnQty').value = product.ctn_qty || '';
-
-                const ctnPkgEl = document.getElementById('editCtnInstructions');
                 const pkgEl = document.getElementById('editInstructionsItemPkg');
                 const coverInputEl = document.getElementById('editItemPkgCoverInput');
                 const skuStr = product.SKU || '';
                 const coverVal = product.item_pkg_cover != null ? String(product.item_pkg_cover) : '';
                 if (isParentSkuString(skuStr)) {
-                    if (ctnPkgEl) {
-                        ctnPkgEl.value = '';
-                        ctnPkgEl.disabled = true;
-                    }
                     pkgEl.value = '';
                     pkgEl.disabled = true;
                     if (coverInputEl) {
@@ -3190,10 +3677,6 @@
                     }
                     setEditItemPkgCoverPreview('');
                 } else {
-                    if (ctnPkgEl) {
-                        ctnPkgEl.disabled = false;
-                        ctnPkgEl.value = (product.ctn_instructions != null ? String(product.ctn_instructions) : '').slice(0, 100);
-                    }
                     pkgEl.disabled = false;
                     pkgEl.value = product.instructions_item_pkg != null ? String(product.instructions_item_pkg) : '';
                     if (coverInputEl) {
@@ -3215,8 +3698,8 @@
 
                 const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
                 if (siblingsCb) {
-                    // Restore last saved preference (checked/unchecked persists across opens)
-                    siblingsCb.checked = getSaveAlsoToSiblingsPref();
+                    // Restore last saved checkbox from this SKU (checked or unchecked)
+                    siblingsCb.checked = readFamilySiblingsPref(product);
                     siblingsCb.disabled = isParentSkuString(skuStr);
                 }
 
@@ -3246,15 +3729,7 @@
                 try {
                     saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
                     saveBtn.disabled = true;
-                    
-                    // Calculate CTN CBM and CTN CBM/Each
-                    const ctnL = parseFloat(document.getElementById('editCtnL').value) || 0;
-                    const ctnW = parseFloat(document.getElementById('editCtnW').value) || 0;
-                    const ctnH = parseFloat(document.getElementById('editCtnH').value) || 0;
-                    const ctnQty = parseFloat(document.getElementById('editCtnQty').value) || 0;
-                    const ctnCbm = calculateCtnCbm(ctnL, ctnW, ctnH);
-                    const ctnCbmEach = calculateCtnCbmEach(ctnCbm, ctnQty);
-                    
+
                     const baseFormData = {
                         label_qty: document.getElementById('editLabelQty').value.trim() || null,
                         wt_act_kg: document.getElementById('editWtActKg').value.trim() || null,
@@ -3269,13 +3744,7 @@
                         l_cm: document.getElementById('editLCm').value.trim() || null,
                         w_cm: document.getElementById('editWCm').value.trim() || null,
                         h_cm: document.getElementById('editHCm').value.trim() || null,
-                        ctn_l: document.getElementById('editCtnL').value.trim() || null,
-                        ctn_w: document.getElementById('editCtnW').value.trim() || null,
-                        ctn_h: document.getElementById('editCtnH').value.trim() || null,
-                        ctn_cbm: ctnCbm > 0 ? ctnCbm : null,
-                        ctn_qty: document.getElementById('editCtnQty').value.trim() || null,
-                        ctn_cbm_each: ctnCbmEach > 0 ? ctnCbmEach : null,
-                        ctn_instructions: (document.getElementById('editCtnInstructions')?.value || '').trim().slice(0, 100) || null,
+                        save_also_to_siblings: applyToSiblings ? 1 : 0,
                     };
 
                     const instructionsRaw = document.getElementById('editInstructionsItemPkg').value;
@@ -3332,12 +3801,15 @@
                             || String(instructionsRaw ?? '') !== String(bulkEditInitialValues.editInstructionsItemPkg ?? '');
                         const verifiedChanged = !bulkEditInitialValues
                             || String(verifiedValue) !== String(bulkEditInitialValues.editVerified ?? '0');
+                        const siblingsPrefChanged = !bulkEditInitialValues
+                            || String(applyToSiblings ? 1 : 0) !== String(bulkEditInitialValues.editSaveAlsoToSiblings ?? '0');
 
                         if (isBulkSelection
                             && Object.keys(payloadFields).length === 0
                             && !instructionsChanged
                             && !verifiedChanged
-                            && !coverChanged) {
+                            && !coverChanged
+                            && !siblingsPrefChanged) {
                             showToast('warning', 'No fields changed — nothing to update on selected SKUs.');
                             return;
                         }
@@ -3347,9 +3819,11 @@
                         for (const product of targets) {
                             if (isParentSkuString(product.SKU)) continue;
                             try {
-                                if (Object.keys(payloadFields).length > 0) {
+                                const shouldPostUpdate = Object.keys(payloadFields).length > 0 || siblingsPrefChanged || !isBulkSelection;
+                                if (shouldPostUpdate) {
                                     const formData = {
                                         ...payloadFields,
+                                        save_also_to_siblings: applyToSiblings ? 1 : 0,
                                         product_id: product.id,
                                         sku: product.SKU,
                                         parent: product.Parent || ''
@@ -3366,6 +3840,7 @@
                                         failCount++;
                                         continue;
                                     }
+                                    rememberSiblingsPrefOnProduct(product, applyToSiblings);
                                 }
                                 if (instructionsChanged) {
                                     try {
@@ -3417,6 +3892,11 @@
                         }
                         const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
                         modal.hide();
+                        await persistSiblingsCheckboxToFamily(
+                            collectSaveParentKeys(targets),
+                            applyToSiblings,
+                            targets.map(t => t.id)
+                        );
                         loadData();
                         return;
                     }
@@ -3424,6 +3904,7 @@
                     const product = targets[0];
                     const formData = {
                         ...baseFormData,
+                        save_also_to_siblings: applyToSiblings ? 1 : 0,
                         product_id: product.id,
                         sku: product.SKU,
                         parent: product.Parent || ''
@@ -3443,6 +3924,13 @@
                     if (!response.ok) {
                         throw new Error(data.message || 'Failed to save data');
                     }
+
+                    rememberSiblingsPrefOnProduct(product, applyToSiblings);
+                    await persistSiblingsCheckboxToFamily(
+                        collectSaveParentKeys([product]),
+                        applyToSiblings,
+                        [product.id]
+                    );
 
                     const singleSku = product.SKU;
                     if (!isParentSkuString(singleSku)) {
@@ -3744,31 +4232,12 @@
             setupSearch();
             setupSort();
             setupProductPlaybackListeners();
+            setupDimWtColumnVisibility();
             loadData();
             setupExcelExport();
             setupImport();
             setupSkuExport();
             setupSelectAll();
-            const SAVE_ALSO_TO_SIBLINGS_KEY = 'dimWtMaster.saveAlsoToSiblings';
-            function getSaveAlsoToSiblingsPref() {
-                try {
-                    return localStorage.getItem(SAVE_ALSO_TO_SIBLINGS_KEY) === '1';
-                } catch (e) {
-                    return false;
-                }
-            }
-            function setSaveAlsoToSiblingsPref(checked) {
-                try {
-                    localStorage.setItem(SAVE_ALSO_TO_SIBLINGS_KEY, checked ? '1' : '0');
-                } catch (e) { /* ignore quota / private mode */ }
-            }
-            const siblingsPrefCb = document.getElementById('editSaveAlsoToSiblings');
-            if (siblingsPrefCb) {
-                siblingsPrefCb.checked = getSaveAlsoToSiblingsPref();
-                siblingsPrefCb.addEventListener('change', function() {
-                    setSaveAlsoToSiblingsPref(!!siblingsPrefCb.checked);
-                });
-            }
 
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
@@ -3777,9 +4246,6 @@
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
                 const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
                 if (bulkHint) bulkHint.style.display = 'none';
-                // Keep "save also to Siblings" as the user's last choice (do not reset)
-                const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
-                if (siblingsCb) setSaveAlsoToSiblingsPref(!!siblingsCb.checked);
             });
         });
     </script>
