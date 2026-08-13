@@ -80,6 +80,27 @@ class YesterdayMarketplaceMetricsService
     }
 
     /**
+     * One Pacific calendar day's reported sales for a channel_master snapshot key.
+     * Returns null when this channel has no 1-day source (do not use L30 / current Y Sales).
+     */
+    public function salesForPacificDate(string $channelKey, string $ymd): ?float
+    {
+        $day = Carbon::parse($ymd, self::TZ);
+        $date = $day->toDateString();
+        $m = $this->forChannel(
+            $channelKey,
+            $day->copy()->startOfDay(),
+            $day->copy()->endOfDay(),
+            $date
+        );
+        if (! ($m['computed'] ?? false)) {
+            return null;
+        }
+
+        return round((float) ($m['sales'] ?? 0), 2);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function forChannel(string $name, Carbon $start, Carbon $end, string $date): array
@@ -97,7 +118,18 @@ class YesterdayMarketplaceMetricsService
             'macys', 'macysinc' => $this->mirakl("Macy's, Inc.", 'Macys', 76, 'ship', $start, $end),
             'fbmarketplace', 'facebookmarketplace' => $this->fbMarketplace($start, $end, $date),
             'tiktok', 'tiktokshop' => $this->tiktok($start, $end),
+            'tiktok2', 'tiktokshop2' => $this->tiktok2($start, $end),
             'wayfair' => $this->wayfair($date),
+            'shein' => $this->salesOnly($this->sheinSales($start, $end)),
+            'aliexpress' => $this->salesOnly($this->aliexpressSales($start, $end)),
+            'mercariwship' => $this->salesOnly($this->mercariSales($start, $end, true)),
+            'mercariwoship' => $this->salesOnly($this->mercariSales($start, $end, false)),
+            'topdawg' => $this->salesOnly($this->topdawgSales($date)),
+            'depop' => $this->salesOnly($this->depopSales($date)),
+            'vinted' => $this->salesOnly($this->vintedSales($date)),
+            'faire' => $this->salesOnly($this->faireSales($start, $end)),
+            'purchasingpower' => $this->salesOnly($this->purchasingPowerSales($start, $end)),
+            'reverb' => $this->salesOnly($this->reverbSales($date)),
             default => $this->fallback($name),
         };
     }
@@ -636,6 +668,212 @@ class YesterdayMarketplaceMetricsService
         }
 
         return $this->pack($sales, $sales, $pft, $cogs, 0.0, count($orders), $qty, $sales);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function tiktok2(Carbon $start, Carbon $end): array
+    {
+        if (! Schema::hasTable('tiktok_sales_two')) {
+            return $this->emptyMetrics();
+        }
+        $sales = (float) DB::table('tiktok_sales_two')
+            ->where('order_date', '>=', $start)
+            ->where('order_date', '<=', $end)
+            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->value('revenue');
+
+        return $this->salesOnly($sales);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function salesOnly(float $sales): array
+    {
+        return $this->pack($sales, $sales, 0.0, 0.0, 0.0, 0, 0, $sales);
+    }
+
+    private function sheinSales(Carbon $start, Carbon $end): float
+    {
+        if (! Schema::hasTable('shein_daily_data')) {
+            return 0.0;
+        }
+        $sum = 0.0;
+        foreach (
+            DB::table('shein_daily_data')
+                ->where('order_processed_on', '>=', $start)
+                ->where('order_processed_on', '<=', $end)
+                ->cursor() as $row
+        ) {
+            $orderStatus = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($orderStatus, 'refund') || str_contains($orderStatus, 'return')
+                || str_contains($orderStatus, 'cancel') || str_contains($orderStatus, 'closed')
+                || str_contains($orderStatus, 'exchange')) {
+                continue;
+            }
+            $quantity = max(1, (int) ($row->quantity ?? 0));
+            $sum += (float) ($row->product_price ?? 0) * $quantity;
+        }
+
+        return $sum;
+    }
+
+    private function aliexpressSales(Carbon $start, Carbon $end): float
+    {
+        if (! Schema::hasTable('aliexpress_daily_data')) {
+            return 0.0;
+        }
+        $sum = 0.0;
+        foreach (
+            DB::table('aliexpress_daily_data')
+                ->where('order_date', '>=', $start)
+                ->where('order_date', '<=', $end)
+                ->cursor() as $row
+        ) {
+            $status = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($status, 'refund') || str_contains($status, 'return')
+                || str_contains($status, 'cancel') || str_contains($status, 'closed')) {
+                continue;
+            }
+            if (empty($row->sku_code) || empty($row->order_id)) {
+                continue;
+            }
+            $line = (float) ($row->product_total ?? 0);
+            if ($line <= 0) {
+                $line = (float) ($row->supply_price ?? 0);
+            }
+            if ($line <= 0) {
+                $line = (float) ($row->order_amount ?? 0);
+            }
+            $sum += $line;
+        }
+
+        return $sum;
+    }
+
+    private function mercariSales(Carbon $start, Carbon $end, bool $withShip): float
+    {
+        if (! Schema::hasTable('mercari_daily_data')) {
+            return 0.0;
+        }
+        $q = DB::table('mercari_daily_data')
+            ->whereNotNull('sold_date')
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->whereNull('canceled_date')
+            ->where(function ($q2) {
+                $q2->whereNull('order_status')
+                    ->orWhereRaw('LOWER(order_status) NOT LIKE ?', ['%cancel%']);
+            })
+            ->where('sold_date', '>=', $start)
+            ->where('sold_date', '<=', $end);
+        if ($withShip) {
+            $q->where(function ($q3) {
+                $q3->whereNull('buyer_shipping_fee')
+                    ->orWhere('buyer_shipping_fee', '=', 0)
+                    ->orWhere('buyer_shipping_fee', '=', '');
+            });
+        } else {
+            $q->where('buyer_shipping_fee', '>', 0);
+        }
+
+        return (float) $q->selectRaw('COALESCE(SUM(item_price), 0) as revenue')->value('revenue');
+    }
+
+    private function topdawgSales(string $date): float
+    {
+        if (! Schema::hasTable('topdawg_order_metrics')) {
+            return 0.0;
+        }
+
+        return (float) DB::table('topdawg_order_metrics')
+            ->whereDate('order_date', $date)
+            ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
+            ->value('revenue');
+    }
+
+    private function depopSales(string $date): float
+    {
+        if (! Schema::hasTable('depop_sales_data')) {
+            return 0.0;
+        }
+
+        return (float) DB::table('depop_sales_data')
+            ->whereDate('sale_date', $date)
+            ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
+            ->value('revenue');
+    }
+
+    private function vintedSales(string $date): float
+    {
+        if (! Schema::hasTable('vinted_sales_data')) {
+            return 0.0;
+        }
+
+        return (float) DB::table('vinted_sales_data')
+            ->whereDate('sale_date', $date)
+            ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
+            ->value('revenue');
+    }
+
+    private function faireSales(Carbon $start, Carbon $end): float
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return 0.0;
+        }
+        $faireWhere = function ($q) {
+            $q->where('source_name', 'faire')
+                ->orWhere('source_name', 'LIKE', '%faire%')
+                ->orWhere('tags', 'LIKE', '%Faire%');
+        };
+
+        return (float) DB::table('shopify_raw_orders')
+            ->where($faireWhere)
+            ->where('order_date', '>=', $start)
+            ->where('order_date', '<=', $end)
+            ->where('quantity', '>', 0)
+            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+            ->value('revenue');
+    }
+
+    private function purchasingPowerSales(Carbon $start, Carbon $end): float
+    {
+        try {
+            $ppWhere = function ($q) {
+                $q->where('source_name', 'LIKE', '%purchasing power%')
+                    ->orWhere('source_name', 'LIKE', '%purchasingpower%')
+                    ->orWhere('tags', 'LIKE', '%Purchasing Power%')
+                    ->orWhere('tags', 'LIKE', '%PurchasingPower%');
+            };
+
+            return (float) DB::connection('apicentral')->table('shopify_order_items')
+                ->where($ppWhere)
+                ->where('order_date', '>=', $start)
+                ->where('order_date', '<=', $end)
+                ->where('quantity', '>', 0)
+                ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+                ->value('revenue');
+        } catch (\Throwable $e) {
+            return 0.0;
+        }
+    }
+
+    private function reverbSales(string $date): float
+    {
+        if (! Schema::hasTable('reverb_daily_data')) {
+            return 0.0;
+        }
+
+        return (float) DB::table('reverb_daily_data')
+            ->whereDate('order_date', $date)
+            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
+            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
+            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->whereNotNull('order_number')->where('order_number', '!=', '')
+            ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
+            ->value('revenue');
     }
 
     /**

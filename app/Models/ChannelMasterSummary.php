@@ -12,6 +12,7 @@ class ChannelMasterSummary extends Model
     protected $table = 'channel_master_daily_data';
     
     protected $fillable = [
+        'id',
         'channel',
         'snapshot_date',
         'summary_data',
