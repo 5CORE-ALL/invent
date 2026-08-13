@@ -157,6 +157,7 @@ class TikTokLinkMapSyncService
      * Sync one API page for UI progress. Pass page=1 with reset=true to start.
      *
      * @param  string  $mode  auto|quick|full
+     * @param  string  $pageToken  Client-supplied TikTok next_page_token (survives cache wipes)
      * @return array{
      *     success: bool,
      *     message: string,
@@ -166,10 +167,11 @@ class TikTokLinkMapSyncService
      *     page_upserted: int,
      *     total_upserted: int,
      *     done: bool,
-     *     mode?: string
+     *     mode?: string,
+     *     next_page_token?: string
      * }
      */
-    public function syncPage(int $page = 1, int $pageSize = 50, bool $reset = false, string $mode = 'auto'): array
+    public function syncPage(int $page = 1, int $pageSize = 50, bool $reset = false, string $mode = 'auto', string $pageToken = ''): array
     {
         if (! Schema::hasTable($this->table())) {
             return $this->fail($this->table().' table missing. Run migrations.');
@@ -179,7 +181,7 @@ class TikTokLinkMapSyncService
         $pageSize = max(1, min(100, $pageSize));
         $label = $this->label();
 
-        if ($reset || $page === 1) {
+        if ($reset) {
             $resolved = $this->resolveMode($mode);
             $this->resetProgress();
             $this->updateProgress([
@@ -190,28 +192,34 @@ class TikTokLinkMapSyncService
         }
 
         $state = $this->getProgress();
+        if (empty($state['mode'])) {
+            $resolved = $this->resolveMode($mode);
+            $this->updateProgress([
+                'mode' => $resolved['mode'],
+                'update_time_ge' => $resolved['update_time_ge'],
+                'mode_reason' => $resolved['reason'],
+            ]);
+            $state = $this->getProgress();
+        }
         $activeMode = (string) ($state['mode'] ?? 'full');
         $updateTimeGe = isset($state['update_time_ge']) && $state['update_time_ge']
             ? (int) $state['update_time_ge']
             : null;
         $modeReason = (string) ($state['mode_reason'] ?? '');
 
-        $pageToken = '';
-        if ($page > 1) {
+        $pageToken = trim($pageToken);
+        if ($page <= 1) {
+            $pageToken = '';
+        } elseif ($pageToken === '') {
             $pageToken = trim((string) ($state['next_page_token'] ?? ''));
-            if ($pageToken === '') {
-                return [
-                    'success' => false,
-                    'message' => 'Missing pagination token. Click Sync again to restart from page 1.',
-                    'page' => $page,
-                    'total_page' => null,
-                    'total_count' => null,
-                    'page_upserted' => 0,
-                    'total_upserted' => (int) ($state['total_upserted'] ?? 0),
-                    'done' => true,
-                    'mode' => $activeMode,
-                ];
-            }
+        }
+        if ($page > 1 && $pageToken === '') {
+            Log::warning('TikTok link map missing page token; restarting from page 1', [
+                'channel' => $this->channel,
+                'page' => $page,
+            ]);
+
+            return $this->syncPage(1, $pageSize, true, $mode, '');
         }
 
         $modeLabel = $activeMode === 'quick' ? 'quick (changed only)' : 'full catalog';
@@ -285,13 +293,9 @@ class TikTokLinkMapSyncService
             return $this->fail("{$label} API: {$msg}", $page, $state);
         }
 
-        $products = $response['products'] ?? $response['data']['products'] ?? [];
-        if (! is_array($products)) {
-            $products = [];
-        }
-
-        $totalCount = $this->intOrNull($response['total_count'] ?? $response['data']['total_count'] ?? null);
-        $nextToken = trim((string) ($response['next_page_token'] ?? $response['data']['next_page_token'] ?? ''));
+        $products = $this->extractProducts($response);
+        $totalCount = $this->intOrNull($this->extractTotalCount($response));
+        $nextToken = $this->extractNextPageToken($response);
         $pageUpserted = $this->upsertProducts($products);
 
         $totalUpserted = (int) ($state['total_upserted'] ?? 0) + $pageUpserted;
@@ -364,6 +368,7 @@ class TikTokLinkMapSyncService
             'total_upserted' => $totalUpserted,
             'done' => $done,
             'mode' => $activeMode,
+            'next_page_token' => $done ? '' : $nextToken,
         ];
     }
 
@@ -406,7 +411,7 @@ class TikTokLinkMapSyncService
      */
     public function getProgress(): array
     {
-        return Cache::get($this->cacheKey(), [
+        $defaults = [
             'running' => false,
             'page' => 0,
             'total_page' => null,
@@ -419,12 +424,22 @@ class TikTokLinkMapSyncService
             'mode' => null,
             'update_time_ge' => null,
             'mode_reason' => '',
-        ]);
+        ];
+        $cached = Cache::get($this->cacheKey());
+        if (is_array($cached) && $cached !== []) {
+            return array_merge($defaults, $cached);
+        }
+        $fromFile = $this->readProgressFile();
+        if (is_array($fromFile) && $fromFile !== []) {
+            return array_merge($defaults, $fromFile);
+        }
+
+        return $defaults;
     }
 
     public function resetProgress(): void
     {
-        Cache::put($this->cacheKey(), [
+        $payload = [
             'running' => false,
             'page' => 0,
             'total_page' => null,
@@ -437,7 +452,9 @@ class TikTokLinkMapSyncService
             'mode' => null,
             'update_time_ge' => null,
             'mode_reason' => '',
-        ], 3600);
+        ];
+        Cache::put($this->cacheKey(), $payload, 3600);
+        $this->writeProgressFile($payload);
     }
 
     /**
@@ -446,9 +463,101 @@ class TikTokLinkMapSyncService
     protected function updateProgress(array $patch): void
     {
         $current = $this->getProgress();
-        Cache::put($this->cacheKey(), array_merge($current, $patch, [
+        $merged = array_merge($current, $patch, [
             'updated_at' => now()->toDateTimeString(),
-        ]), 3600);
+        ]);
+        Cache::put($this->cacheKey(), $merged, 3600);
+        $this->writeProgressFile($merged);
+    }
+
+    protected function progressFilePath(): string
+    {
+        return storage_path('app/'.$this->cacheKey().'.json');
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function readProgressFile(): ?array
+    {
+        $path = $this->progressFilePath();
+        if (! is_file($path)) {
+            return null;
+        }
+        $decoded = json_decode((string) @file_get_contents($path), true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function writeProgressFile(array $payload): void
+    {
+        try {
+            $dir = dirname($this->progressFilePath());
+            if (! is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            @file_put_contents($this->progressFilePath(), json_encode($payload));
+        } catch (\Throwable) {
+            // Best-effort; client page_token is the primary pagination source.
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $response
+     * @return list<array<string, mixed>>
+     */
+    protected function extractProducts(array $response): array
+    {
+        $candidates = [
+            $response['products'] ?? null,
+            $response['data']['products'] ?? null,
+            $response['data']['data']['products'] ?? null,
+        ];
+        foreach ($candidates as $products) {
+            if (is_array($products) && $products !== []) {
+                return array_values(array_filter($products, 'is_array'));
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $response
+     */
+    protected function extractTotalCount(array $response): mixed
+    {
+        return $response['total_count']
+            ?? $response['data']['total_count']
+            ?? $response['data']['data']['total_count']
+            ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $response
+     */
+    protected function extractNextPageToken(array $response): string
+    {
+        $candidates = [
+            $response['next_page_token'] ?? null,
+            $response['page_token'] ?? null,
+            $response['nextPageToken'] ?? null,
+            $response['data']['next_page_token'] ?? null,
+            $response['data']['page_token'] ?? null,
+            $response['data']['nextPageToken'] ?? null,
+            $response['data']['data']['next_page_token'] ?? null,
+        ];
+        foreach ($candidates as $token) {
+            $token = trim((string) $token);
+            if ($token !== '') {
+                return $token;
+            }
+        }
+
+        return '';
     }
 
     /**

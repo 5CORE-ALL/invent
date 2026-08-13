@@ -196,6 +196,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     var countsEl = document.getElementById('link-map-counts');
     var url = @json(route('marketplace.manager.tiktok2.refresh'));
     var page = 1;
+    var pageToken = '';
 
     function setProgress(pageNum, totalPage, totalUpserted, message, totalCount) {
         var pct = 0;
@@ -222,7 +223,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ page: page, reset: !!reset, mode: 'auto' }),
+            body: JSON.stringify({ page: page, reset: !!reset, mode: 'auto', page_token: pageToken }),
             signal: ctrl ? ctrl.signal : undefined,
         }).then(function (r) { return r.json(); }).finally(function () {
             if (timer) clearTimeout(timer);
@@ -240,6 +241,10 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     setProgress(0, null, 0, 'Starting sync…');
 
     function runPage(reset) {
+        if (reset) {
+            page = 1;
+            pageToken = '';
+        }
         syncNext(reset).then(function (data) {
             if (!data.success && data.done) {
                 alert(data.message || 'Sync failed.');
@@ -262,6 +267,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
                 return;
             }
 
+            pageToken = data.next_page_token || '';
             page = (data.page || page) + 1;
             setTimeout(function () { runPage(false); }, 500);
         }).catch(function (err) {

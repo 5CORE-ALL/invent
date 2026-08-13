@@ -120,11 +120,12 @@ class TikTok2SyncController extends Controller
         if (! in_array($mode, ['auto', 'quick', 'full'], true)) {
             $mode = 'auto';
         }
+        $pageToken = trim((string) $request->input('page_token', $request->input('next_page_token', '')));
 
         Log::info('TikTok 2 link map sync page', ['page' => $page, 'reset' => $reset, 'mode' => $mode]);
 
         try {
-            $result = TikTokLinkMapSyncService::for('tiktok2')->syncPage($page, 50, $reset, $mode);
+            $result = TikTokLinkMapSyncService::for('tiktok2')->syncPage($page, 50, $reset, $mode, $pageToken);
         } catch (\Throwable $e) {
             Log::error('TikTok 2 link map sync exception', ['page' => $page, 'error' => $e->getMessage()]);
 
