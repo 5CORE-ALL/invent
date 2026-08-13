@@ -675,6 +675,11 @@
             border-color: #3b82f6;
             color: #1e40af;
         }
+        .label-type-dropdown.label-type-ovwt {
+            background-color: #fed7aa;
+            border-color: #f97316;
+            color: #9a3412;
+        }
         .label-type-dropdown:focus {
             box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.25);
             outline: none;
@@ -1117,6 +1122,7 @@
                                             <option value="STD">STD</option>
                                             <option value="O-Size">O-Size</option>
                                             <option value="Pallet">Pallet</option>
+                                            <option value="OV-Wt">OV-Wt</option>
                                         </select>
                                     </th>
                                     <th data-col-key="handling_charge" data-col-label="Handling Charge" class="shipping-rate-header" title="Handling Charge (up to 3 characters)">
@@ -1356,6 +1362,7 @@
                                     <option value="STD" selected>STD</option>
                                     <option value="O-Size">O-Size</option>
                                     <option value="Pallet">Pallet</option>
+                                    <option value="OV-Wt">OV-Wt</option>
                                 </select>
                             </div>
                             <div class="col-md-4">
@@ -2017,12 +2024,13 @@
             }
 
             /** Label Type choices for the Type column. */
-            const LABEL_TYPE_OPTIONS = ['ENV', 'STD', 'O-Size', 'Pallet'];
+            const LABEL_TYPE_OPTIONS = ['ENV', 'STD', 'O-Size', 'Pallet', 'OV-Wt'];
             const LABEL_TYPE_COLOR_CLASS = {
                 'ENV': 'label-type-env',
                 'STD': 'label-type-std',
                 'O-Size': 'label-type-osize',
-                'Pallet': 'label-type-pallet'
+                'Pallet': 'label-type-pallet',
+                'OV-Wt': 'label-type-ovwt'
             };
 
             function normalizeLabelType(raw) {
@@ -2471,7 +2479,7 @@
                     }
                     row.appendChild(labelQtyCell);
 
-                    // Type column (Label Type) — ENV / STD / O-Size / Pallet; default STD
+                    // Type column (Label Type) — ENV / STD / O-Size / Pallet / OV-Wt; default STD
                     // Extra package rows show the component's type as read-only.
                     const labelTypeCell = document.createElement('td');
                     labelTypeCell.className = 'text-center shipping-rate-cell';
@@ -6056,7 +6064,7 @@
             }
             setupVerifiedDropdowns();
 
-            // Type column – Label Type dropdown (ENV / STD / O-Size / Pallet)
+            // Type column – Label Type dropdown (ENV / STD / O-Size / Pallet / OV-Wt)
             function setupLabelTypeDropdowns() {
                 document.addEventListener('change', async function(e) {
                     if (!e.target || !e.target.classList.contains('label-type-dropdown')) return;

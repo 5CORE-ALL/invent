@@ -140,6 +140,7 @@ class FetchAliexpressMetrics extends Command
                     );
                     $saved++;
 
+                    // Pricing grid reads aliexpress_pricing_prices — always write merchant SKUs.
                     if ($syncPricing && $hasMerchantSku) {
                         if ($this->upsertPricingRow($sku, $price, $stock)) {
                             $pricingSaved++;
@@ -175,19 +176,21 @@ class FetchAliexpressMetrics extends Command
      */
     private function upsertPricingRow(string $sku, float $price, ?int $stock): bool
     {
-        $normalized = strtoupper(str_replace("\u{00a0}", ' ', trim($sku)));
+        $normalized = $this->normalizePricingSku($sku);
         if ($normalized === '') {
             return false;
         }
 
-        $row = AliexpressPricingPrice::firstOrNew(['sku' => $normalized]);
+        $row = AliexpressPricingPrice::query()->where('sku', $normalized)->first()
+            ?? AliexpressPricingPrice::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        if (! $row) {
+            $row = new AliexpressPricingPrice(['sku' => $normalized]);
+        }
         $changed = ! $row->exists;
 
-        if ($price > 0) {
-            if ((float) $row->price !== $price) {
-                $row->price = $price;
-                $changed = true;
-            }
+        if ($price > 0 && round((float) $row->price, 2) !== round($price, 2)) {
+            $row->price = round($price, 2);
+            $changed = true;
         }
 
         if ($stock !== null) {
@@ -203,6 +206,14 @@ class FetchAliexpressMetrics extends Command
         }
 
         return $changed;
+    }
+
+    private function normalizePricingSku(string $sku): string
+    {
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim($sku));
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
+
+        return strtoupper((string) preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku));
     }
 
     private function fetchOrders(AliExpressApiService $api): int

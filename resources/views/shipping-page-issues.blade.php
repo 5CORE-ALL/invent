@@ -101,6 +101,7 @@
         .label-type-dropdown.label-type-std { background:#bbf7d0; border-color:#22c55e; color:#166534; }
         .label-type-dropdown.label-type-osize { background:#e9d5ff; border-color:#a855f7; color:#6b21a8; }
         .label-type-dropdown.label-type-pallet { background:#bfdbfe; border-color:#3b82f6; color:#1e40af; }
+        .label-type-dropdown.label-type-ovwt { background:#fed7aa; border-color:#f97316; color:#9a3412; }
 
         .sci-lg-pos { color: #28a745; font-weight: bold; }
         .sci-lg-neg { color: #dc3545; font-weight: bold; }
@@ -392,12 +393,13 @@
     let skipNextModalReset = false;
     const modalEl = document.getElementById('issueModal');
     const historyModalEl = document.getElementById('sci-history-modal');
-    const LABEL_TYPE_OPTIONS = ['ENV', 'STD', 'O-Size', 'Pallet'];
+    const LABEL_TYPE_OPTIONS = ['ENV', 'STD', 'O-Size', 'Pallet', 'OV-Wt'];
     const LABEL_TYPE_COLOR = {
         'ENV': 'label-type-env',
         'STD': 'label-type-std',
         'O-Size': 'label-type-osize',
         'Pallet': 'label-type-pallet',
+        'OV-Wt': 'label-type-ovwt',
     };
 
     function getBootstrap() { return window.bootstrap || null; }

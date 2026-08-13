@@ -481,7 +481,7 @@
         .label-type-dropdown {
             font-size: 10px;
             padding: 2px 4px;
-            max-width: 78px;
+            max-width: 86px;
             min-width: 62px;
             border-radius: 4px;
             border: 1px solid #ced4da;
@@ -509,6 +509,11 @@
             background-color: #bfdbfe;
             border-color: #3b82f6;
             color: #1e40af;
+        }
+        .label-type-dropdown.label-type-ovwt {
+            background-color: #fed7aa;
+            border-color: #f97316;
+            color: #9a3412;
         }
         .label-type-dropdown:focus {
             box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.25);
@@ -1070,6 +1075,7 @@
                                             <option value="STD">STD</option>
                                             <option value="O-Size">O-Size</option>
                                             <option value="Pallet">Pallet</option>
+                                            <option value="OV-Wt">OV-Wt</option>
                                         </select>
                                     </th>
                                     <th data-col-key="wt_act_kg" data-col-label="Wt ACT (Kg)" class="item-dim-header hide-item-wt-act">
@@ -1259,7 +1265,7 @@
                                 </select>
                             </div>
                             <div class="col-7">
-                                <div class="form-check" title="When checked, changes also apply to all child SKUs under the same parent.">
+                                <div class="form-check" title="When checked, changes also apply to all child SKUs under the same parent and they stay in Link SKU. Uncheck and save to delink.">
                                     <input class="form-check-input" type="checkbox" id="editSaveAlsoToSiblings"
                                            autocomplete="off"
                                            style="border-color:#198754; accent-color:#198754;">
@@ -1481,6 +1487,8 @@
             // When set (via multi-select + Action column Edit), save updates these products (changed fields only)
             let bulkEditList = null;
             let bulkEditInitialValues = null;
+            const dimWtCheckedRowKeys = new Set();
+            const dimWtUserUncheckedKeys = new Set();
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -1605,12 +1613,13 @@
             }
 
             /** Label Type choices for the Type column. */
-            const LABEL_TYPE_OPTIONS = ['ENV', 'STD', 'O-Size', 'Pallet'];
+            const LABEL_TYPE_OPTIONS = ['ENV', 'STD', 'O-Size', 'Pallet', 'OV-Wt'];
             const LABEL_TYPE_COLOR_CLASS = {
                 'ENV': 'label-type-env',
                 'STD': 'label-type-std',
                 'O-Size': 'label-type-osize',
-                'Pallet': 'label-type-pallet'
+                'Pallet': 'label-type-pallet',
+                'OV-Wt': 'label-type-ovwt'
             };
 
             function normalizeLabelType(raw) {
@@ -1780,19 +1789,36 @@
                     seenSaved[key] = true;
                     uniqueSaved.push(sku);
                 });
-                if (uniqueSaved.length > 0) return uniqueSaved;
-                if (!item || isParentSkuString(item.SKU)) return [];
-                const parent = dimWtSkuKey(item.Parent);
-                const selfSku = dimWtSkuKey(item.SKU);
-                if (!parent || !selfSku) return [];
-                const fp = dimWtLinkFingerprint(item);
-                if (!fp) return [];
-                return (tableData || []).filter(other => {
-                    if (!other || isParentSkuString(other.SKU)) return false;
-                    if (dimWtSkuKey(other.SKU) === selfSku) return false;
-                    if (dimWtSkuKey(other.Parent) !== parent) return false;
-                    return dimWtLinkFingerprint(other) === fp;
-                }).map(other => other.SKU).filter(Boolean);
+                return uniqueSaved;
+            }
+
+            function dimWtRowKey(itemOrSku, id) {
+                if (itemOrSku && typeof itemOrSku === 'object') {
+                    if (itemOrSku.id != null && itemOrSku.id !== '') return 'id:' + String(itemOrSku.id);
+                    return 'sku:' + String(itemOrSku.SKU || '');
+                }
+                if (id != null && id !== '') return 'id:' + String(id);
+                return 'sku:' + String(itemOrSku || '');
+            }
+
+            function markDimWtRowsChecked(skus) {
+                (skus || []).forEach(sku => {
+                    const item = (tableData || []).find(d => dimWtSkuKey(d.SKU) === dimWtSkuKey(sku));
+                    const key = item ? dimWtRowKey(item) : dimWtRowKey(sku);
+                    if (!key || key === 'sku:') return;
+                    dimWtCheckedRowKeys.add(key);
+                    dimWtUserUncheckedKeys.delete(key);
+                });
+            }
+
+            function markDimWtRowsUnchecked(skus) {
+                (skus || []).forEach(sku => {
+                    const item = (tableData || []).find(d => dimWtSkuKey(d.SKU) === dimWtSkuKey(sku));
+                    const key = item ? dimWtRowKey(item) : dimWtRowKey(sku);
+                    if (!key || key === 'sku:') return;
+                    dimWtCheckedRowKeys.delete(key);
+                    dimWtUserUncheckedKeys.add(key);
+                });
             }
 
             // Render table
@@ -1828,7 +1854,22 @@
                         checkbox.value = escapeHtml(item.SKU);
                         checkbox.setAttribute('data-sku', escapeHtml(item.SKU));
                         checkbox.setAttribute('data-id', escapeHtml(item.id));
+                        const rowKey = dimWtRowKey(item);
+                        const isLinked = resolveLinkedSkus(item).length > 0;
+                        if (dimWtUserUncheckedKeys.has(rowKey)) {
+                            checkbox.checked = false;
+                        } else if (dimWtCheckedRowKeys.has(rowKey) || isLinked) {
+                            checkbox.checked = true;
+                            dimWtCheckedRowKeys.add(rowKey);
+                        }
                         checkbox.addEventListener('change', function() {
+                            if (this.checked) {
+                                dimWtCheckedRowKeys.add(rowKey);
+                                dimWtUserUncheckedKeys.delete(rowKey);
+                            } else {
+                                dimWtCheckedRowKeys.delete(rowKey);
+                                dimWtUserUncheckedKeys.add(rowKey);
+                            }
                             updatePushButtonState();
                         });
                         checkboxCell.appendChild(checkbox);
@@ -1881,7 +1922,7 @@
                     // Label QTY (same Values.label_qty source as shipping-master)
                     row.appendChild(renderLabelQtyCell(sourceItem, pkg, isParentRow));
 
-                    // Type column (Label Type) — ENV / STD / O-Size / Pallet; default STD
+                    // Type column (Label Type) — ENV / STD / O-Size / Pallet / OV-Wt; default STD
                     const labelTypeCell = document.createElement('td');
                     labelTypeCell.className = 'text-center';
                     const labelTypeVal = normalizeLabelType(item.label_type);
@@ -3491,10 +3532,17 @@
                     const checkboxes = document.querySelectorAll('.row-checkbox');
                     checkboxes.forEach(checkbox => {
                         const rowEl = checkbox.closest('tr');
-                        // Only (de)select checkboxes for currently visible (filtered) rows
                         const isVisible = rowEl && rowEl.offsetParent !== null;
                         if (isVisible) {
                             checkbox.checked = selectAllCheckbox.checked;
+                            const rowKey = dimWtRowKey(checkbox.getAttribute('data-sku'), checkbox.getAttribute('data-id'));
+                            if (selectAllCheckbox.checked) {
+                                dimWtCheckedRowKeys.add(rowKey);
+                                dimWtUserUncheckedKeys.delete(rowKey);
+                            } else {
+                                dimWtCheckedRowKeys.delete(rowKey);
+                                dimWtUserUncheckedKeys.add(rowKey);
+                            }
                         }
                     });
                     updatePushButtonState();
@@ -3829,12 +3877,12 @@
                 const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
                 if (siblingsCb) {
                     siblingsCb.disabled = isParentSkuString(skuStr) || isBulk;
-                    // Single edit: start unchecked. Restoring a saved "on" was
-                    // overwriting every child even when grid siblings were deselected.
-                    siblingsCb.checked = false;
+                    const isLinked = resolveLinkedSkus(product).length > 0;
+                    const prefOn = readSavedSiblingsPrefRaw(product) === true;
+                    siblingsCb.checked = !isBulk && !isParentSkuString(skuStr) && (isLinked || prefOn);
                     siblingsCb.title = isBulk
                         ? 'Bulk edit already applies only to the selected SKUs.'
-                        : 'Tick to copy this save to all child SKUs under the same parent.';
+                        : 'Tick to copy this save to all child SKUs under the same parent and keep Link SKU. Leave unchecked to delink.';
                 }
 
                 // Snapshot for both single and bulk so sibling-copy only pushes
@@ -4031,6 +4079,9 @@
                             applyToSiblings,
                             targets.map(t => t.id)
                         );
+                        const targetSkus = targets.map(t => t.SKU).filter(Boolean);
+                        if (applyToSiblings) markDimWtRowsChecked(targetSkus);
+                        else markDimWtRowsUnchecked(targetSkus);
                         loadData();
                         return;
                     }
@@ -4060,6 +4111,24 @@
                     }
 
                     rememberSiblingsPrefOnProduct(product, applyToSiblings);
+                    if (data.delinked) {
+                        const former = Array.isArray(data.former_skus) ? data.former_skus : [];
+                        [product.SKU, ...former].forEach(sku => {
+                            const row = (tableData || []).find(d => dimWtSkuKey(d.SKU) === dimWtSkuKey(sku));
+                            if (!row) return;
+                            row.dim_wt_linked_skus = [];
+                            if (row.Values) row.Values.dim_wt_linked_skus = [];
+                        });
+                        markDimWtRowsUnchecked([product.SKU, ...former]);
+                    } else if (Array.isArray(data.linked_skus) && data.linked_skus.length > 0) {
+                        const group = Array.from(new Set([product.SKU, ...data.linked_skus].filter(Boolean)));
+                        group.forEach(sku => {
+                            const row = (tableData || []).find(d => dimWtSkuKey(d.SKU) === dimWtSkuKey(sku));
+                            if (!row) return;
+                            row.dim_wt_linked_skus = group.filter(s => dimWtSkuKey(s) !== dimWtSkuKey(sku));
+                        });
+                        markDimWtRowsChecked(group);
+                    }
                     await persistSiblingsCheckboxToFamily(
                         collectSaveParentKeys([product]),
                         applyToSiblings,
@@ -4310,7 +4379,7 @@
             }
             setupVerifiedDropdowns();
 
-            // Type column – Label Type dropdown (ENV / STD / O-Size / Pallet)
+            // Type column – Label Type dropdown (ENV / STD / O-Size / Pallet / OV-Wt)
             function setupLabelTypeDropdowns() {
                 document.addEventListener('change', async function(e) {
                     if (!e.target || !e.target.classList.contains('label-type-dropdown')) return;

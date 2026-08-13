@@ -152,20 +152,19 @@ class DimWtSkuLinkService
     }
 
     /**
-     * On dim/wt save: push changed fields to existing linked SKUs and refresh fingerprints.
+     * On dim/wt save: copy to linked SKUs only when "save also to Siblings" is checked.
+     * Unchecking that box removes the Link SKU group.
      *
      * @param  array<string, mixed>  $changedFields
-     * @return array{linked_skus: list<string>, updated_skus: list<string>}
+     * @return array{linked_skus: list<string>, updated_skus: list<string>, delinked?: bool, former_skus?: list<string>}
      */
     public function onDimWtChanged(ProductMaster $product, array $changedFields, ?string $user = null): array
     {
-        $empty = ['linked_skus' => [], 'updated_skus' => []];
+        $empty = ['linked_skus' => [], 'updated_skus' => [], 'delinked' => false];
         if (! $this->tableReady() || $this->isParentSku($product->sku)) {
             return $empty;
         }
 
-        // Only copy dim/wt onto linked SKUs when the user explicitly opted in.
-        // Otherwise a single-SKU GW/L/W/H save silently overwrote every linked child.
         $optIn = filter_var($changedFields['save_also_to_siblings'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $hasDimFields = false;
         foreach (self::SYNC_KEYS as $key) {
@@ -174,46 +173,96 @@ class DimWtSkuLinkService
                 break;
             }
         }
-        if (! $optIn || ! $hasDimFields) {
+        // Uncheck + save (form includes dim fields) removes the Link SKU group.
+        // Checkbox-only family persist does not, so other sibling groups stay intact.
+        if (array_key_exists('save_also_to_siblings', $changedFields) && ! $optIn && $hasDimFields) {
+            return $this->unlinkGroupForProduct($product);
+        }
+        if (! $optIn) {
             return $empty;
         }
 
+        $matches = $this->findMatchingSiblingProducts($product);
         $linkedProducts = $this->linkedProductsFor($product);
-        if ($linkedProducts->isEmpty()) {
-            return $empty;
-        }
+        $group = collect([$product])->merge($matches)->merge($linkedProducts)->unique('id')->values();
 
-        $sourceValues = $this->valuesArray($product);
-        $syncPayload = [];
-        foreach (self::SYNC_KEYS as $key) {
-            if (array_key_exists($key, $changedFields)) {
-                $syncPayload[$key] = $changedFields[$key];
-            } elseif (array_key_exists($key, $sourceValues)) {
-                // Keep linked rows aligned with source for match keys even if not in payload
-                if (in_array($key, self::MATCH_KEYS, true)) {
+        $updated = [];
+        if ($hasDimFields && $linkedProducts->isNotEmpty()) {
+            $sourceValues = $this->valuesArray($product);
+            $syncPayload = [];
+            foreach (self::SYNC_KEYS as $key) {
+                if (array_key_exists($key, $changedFields)) {
+                    $syncPayload[$key] = $changedFields[$key];
+                } elseif (array_key_exists($key, $sourceValues) && in_array($key, self::MATCH_KEYS, true)) {
                     $syncPayload[$key] = $sourceValues[$key];
+                }
+            }
+            if ($syncPayload !== []) {
+                foreach ($linkedProducts as $sib) {
+                    if ($this->mergeValuesAndSave($sib, $syncPayload)) {
+                        $updated[] = (string) $sib->sku;
+                    }
                 }
             }
         }
 
-        if ($syncPayload === []) {
+        if ($group->count() >= 2) {
+            $this->saveGroup($group, $user);
+        }
+
+        $selfNorm = $this->normalizeSku((string) $product->sku);
+        $linked = $group
+            ->filter(fn (ProductMaster $p) => $this->normalizeSku((string) $p->sku) !== $selfNorm)
+            ->map(fn (ProductMaster $p) => (string) $p->sku)
+            ->values()
+            ->all();
+
+        return [
+            'linked_skus' => $linked,
+            'updated_skus' => $updated,
+            'delinked' => false,
+        ];
+    }
+
+    /**
+     * Remove this SKU's Link SKU group so badges disappear on uncheck.
+     *
+     * @return array{linked_skus: list<string>, updated_skus: list<string>, delinked: bool, former_skus: list<string>}
+     */
+    public function unlinkGroupForProduct(ProductMaster $product): array
+    {
+        $empty = ['linked_skus' => [], 'updated_skus' => [], 'delinked' => true, 'former_skus' => []];
+        if (! $this->tableReady() || $this->isParentSku($product->sku)) {
             return $empty;
         }
 
-        $updated = [];
-        foreach ($linkedProducts as $sib) {
-            if ($this->mergeValuesAndSave($sib, $syncPayload)) {
-                $updated[] = (string) $sib->sku;
-            }
+        $norm = $this->normalizeSku((string) $product->sku);
+        $self = DimWtSkuLink::query()->where('sku_norm', $norm)->first();
+        if (! $self && $norm !== '') {
+            $compact = str_replace(' ', '', $norm);
+            $self = DimWtSkuLink::query()
+                ->get(['id', 'sku_norm', 'group_key', 'sku'])
+                ->first(fn ($row) => str_replace(' ', '', (string) $row->sku_norm) === $compact);
+        }
+        if (! $self) {
+            return $empty;
         }
 
-        // Refresh group from source + former links (all should share new fingerprint)
-        $group = collect([$product])->merge($linkedProducts)->values();
-        $this->saveGroup($group, $user);
+        $former = DimWtSkuLink::query()
+            ->where('group_key', $self->group_key)
+            ->pluck('sku')
+            ->map(fn ($s) => trim((string) $s))
+            ->filter()
+            ->values()
+            ->all();
+
+        DimWtSkuLink::query()->where('group_key', $self->group_key)->delete();
 
         return [
-            'linked_skus' => $linkedProducts->map(fn (ProductMaster $p) => (string) $p->sku)->values()->all(),
-            'updated_skus' => $updated,
+            'linked_skus' => [],
+            'updated_skus' => [],
+            'delinked' => true,
+            'former_skus' => $former,
         ];
     }
 
@@ -262,8 +311,7 @@ class DimWtSkuLinkService
     }
 
     /**
-     * Fill dim_wt_linked_skus on flattened master rows.
-     * Uses saved dim_wt_sku_links first, then live same-parent dim/wt matches.
+     * Fill dim_wt_linked_skus from saved dim_wt_sku_links only (no live guess).
      *
      * @param  list<array<string, mixed>>  $result
      * @return list<array<string, mixed>>
@@ -274,20 +322,6 @@ class DimWtSkuLinkService
         $compactMap = [];
         foreach ($linkMap as $key => $skus) {
             $compactMap[str_replace(' ', '', (string) $key)] = $skus;
-        }
-
-        $byParentFp = [];
-        foreach ($result as $row) {
-            $sku = trim((string) ($row['SKU'] ?? $row['sku'] ?? ''));
-            if ($sku === '' || $this->isParentSku($sku)) {
-                continue;
-            }
-            $parent = strtoupper(trim((string) ($row['Parent'] ?? $row['parent'] ?? '')));
-            $fp = $this->fingerprintFromValues($this->rowWithDeclFallback($row));
-            if ($parent === '' || $fp === null) {
-                continue;
-            }
-            $byParentFp[$parent.'|'.$fp][] = $sku;
         }
 
         foreach ($result as &$row) {
@@ -301,18 +335,6 @@ class DimWtSkuLinkService
                 $compact = str_replace(' ', '', $norm);
                 if (isset($compactMap[$compact])) {
                     $linked = array_values($compactMap[$compact]);
-                }
-            }
-
-            if ($linked === [] && $sku !== '' && ! $this->isParentSku($sku)) {
-                $parent = strtoupper(trim((string) ($row['Parent'] ?? $row['parent'] ?? '')));
-                $fp = $this->fingerprintFromValues($this->rowWithDeclFallback($row));
-                if ($parent !== '' && $fp !== null) {
-                    foreach ($byParentFp[$parent.'|'.$fp] ?? [] as $otherSku) {
-                        if ($this->normalizeSku((string) $otherSku) !== $norm) {
-                            $linked[] = $otherSku;
-                        }
-                    }
                 }
             }
 
@@ -478,24 +500,6 @@ class DimWtSkuLinkService
         }
 
         return [];
-    }
-
-    /**
-     * Use declared dim/wt when actual is empty so sibling matching still works in the grid.
-     *
-     * @param  array<string, mixed>  $row
-     * @return array<string, mixed>
-     */
-    private function rowWithDeclFallback(array $row): array
-    {
-        foreach (['wt_act' => 'wt_decl', 'l' => 'l_decl', 'w' => 'w_decl', 'h' => 'h_decl'] as $act => $decl) {
-            $n = $this->numericOrNull($row[$act] ?? null);
-            if ($n === null || $n <= 0) {
-                $row[$act] = $row[$decl] ?? null;
-            }
-        }
-
-        return $row;
     }
 
     private function numericOrNull(mixed $value): ?float

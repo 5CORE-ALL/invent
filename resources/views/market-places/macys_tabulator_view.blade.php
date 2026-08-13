@@ -402,8 +402,8 @@
 @endsection
 
 @section('script-bottom')
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys'])
 <script>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys'])
     const COLUMN_VIS_KEY = "macys_tabulator_column_visibility";
     let table = null;
     let allTableData = []; // Full dataset for ParentExpand
@@ -414,6 +414,15 @@
     // Must match MarketplacePercentage for Macys (and row.percentage from API) — NOT a hardcoded 0.80.
     // Using 0.80 here while GPFT uses 0.75 made SPFT ≠ GPFT when SPRICE === MC Price.
     const MACYS_DEFAULT_MARGIN = {{ number_format(((float) ($macysPercentage ?? 80)) / 100, 4, '.', '') }};
+
+    /** Listed = uploaded sheet has a price (row.is_missing_macy from API). */
+    function isMacysListed(rowData) {
+        if (!rowData || rowData.is_parent_summary) return false;
+        if (typeof rowData.is_missing_macy !== 'undefined') {
+            return !rowData.is_missing_macy;
+        }
+        return (parseFloat(rowData['MC Price']) || 0) > 0;
+    }
 
     /** Take-home margin for a row (same value used for GPFT% on the server). */
     function getMacysMargin(rowData) {
@@ -1978,8 +1987,12 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary || (rowData.Parent && String(rowData.Parent).startsWith('PARENT'))) return '';
+                        if (!isMacysListed(rowData)) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
+                        const value = parseFloat(cell.getValue() || 0);
                         const amazonPrice = parseFloat(rowData['A Price']) || 0;
                         
                         if (value === 0) {
@@ -2106,7 +2119,6 @@
                     sorter: "string",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const price = parseFloat(rowData['MC Price']) || 0;
                         const inv = parseFloat(rowData['INV']) || 0;
                         const nrReq = rowData['nr_req'] || 'REQ';
                         
@@ -2115,7 +2127,7 @@
                             return '';
                         }
                         
-                        if (price === 0) {
+                        if (!isMacysListed(rowData)) {
                             return '<span style="color: #a00211; font-weight: 600;">M</span>';
                         }
                         return '';
@@ -2131,11 +2143,10 @@
                         const rowData = cell.getRow().getData();
                         const ourInv = parseFloat(rowData['INV']) || 0;
                         const mcInv = parseFloat(rowData['MC INV']) || 0; // Marketplace inventory from Macy's
-                        const price = parseFloat(rowData['MC Price']) || 0;
                         const nrReq = rowData['nr_req'] || 'REQ';
                         
-                        // Don't show for NR items, INV = 0, or Missing items (price = 0)
-                        if (nrReq === 'NR' || ourInv === 0 || price === 0) {
+                        // Don't show for NR items, INV = 0, or unlisted SKUs
+                        if (nrReq === 'NR' || ourInv === 0 || !isMacysListed(rowData)) {
                             return '';
                         }
                         
@@ -2156,6 +2167,7 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        if (!isMacysListed(cell.getRow().getData())) return '<span style="color: #6c757d;">-</span>';
                         const value = cell.getValue();
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
@@ -2172,6 +2184,7 @@
                     formatter: function(cell) {
                         // Macys has no ads — NPFT% = GPFT%
                         const rowData = cell.getRow().getData();
+                        if (!isMacysListed(rowData)) return '<span style="color: #6c757d;">-</span>';
                         const percent = parseFloat(rowData['GPFT%'] ?? cell.getValue());
                         if (!isFinite(percent)) return '';
                         const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
@@ -2185,6 +2198,7 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        if (!isMacysListed(cell.getRow().getData())) return '<span style="color: #6c757d;">-</span>';
                         const value = cell.getValue();
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
@@ -2200,6 +2214,7 @@
                     sorter: "number",
                     formatter: function(cell) {
                         // Macys has no ads — NROI% = GROI% (ROI%)
+                        if (!isMacysListed(cell.getRow().getData())) return '<span style="color: #6c757d;">-</span>';
                         const percent = parseFloat(cell.getRow().getData()['ROI%']);
                         if (!isFinite(percent)) return '';
                         const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
@@ -2588,10 +2603,9 @@
 
             if (missingFilterActive) {
                 table.addFilter(function(data) {
-                    const price = parseFloat(data['MC Price']) || 0;
                     const inv = parseFloat(data['INV']) || 0;
                     const nrReq = data['nr_req'] || 'REQ';
-                    return nrReq === 'REQ' && inv > 0 && price === 0;
+                    return nrReq === 'REQ' && inv > 0 && !isMacysListed(data);
                 });
             }
 
@@ -2599,10 +2613,8 @@
                 table.addFilter(function(data) {
                     const ourInv = parseFloat(data['INV']) || 0;
                     const mcInv = parseFloat(data['MC INV']) || 0;
-                    const price = parseFloat(data['MC Price']) || 0;
                     const nrReq = data['nr_req'] || 'REQ';
-                    const isMissing = (price === 0);
-                    return nrReq === 'REQ' && ourInv > 0 && !isMissing && Math.abs(ourInv - mcInv) > 3;
+                    return nrReq === 'REQ' && ourInv > 0 && isMacysListed(data) && Math.abs(ourInv - mcInv) > 3;
                 });
             }
 
@@ -2644,9 +2656,9 @@
                 }
                 const inv = parseFloat(row.INV) || 0;
                 const nrReq = row['nr_req'] || 'REQ';
-                const isMissing = (price === 0);
+                const isMissing = !isMacysListed(row);
 
-                if (price > 0) {
+                if (!isMissing && price > 0) {
                     totalPrice += price;
                     priceCount++;
                 } else {

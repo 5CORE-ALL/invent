@@ -683,7 +683,7 @@ class CategoryController extends Controller
             $row['Parent'] = $product->parent;
 
             // Label Type defaults to STD when unset (same field as Shipping Master)
-            $allowedLabelTypes = ['ENV', 'STD', 'O-Size', 'Pallet'];
+            $allowedLabelTypes = ['ENV', 'STD', 'O-Size', 'Pallet', 'OV-Wt'];
             $labelType = isset($row['label_type']) ? trim((string) $row['label_type']) : '';
             $row['label_type'] = in_array($labelType, $allowedLabelTypes, true) ? $labelType : 'STD';
 
@@ -1020,7 +1020,7 @@ class CategoryController extends Controller
                 'usps' => 'nullable|numeric',
                 'uni' => 'nullable|numeric',
                 'label_qty' => 'nullable|integer',
-                'label_type' => 'nullable|string|in:ENV,STD,O-Size,Pallet',
+                'label_type' => 'nullable|string|in:ENV,STD,O-Size,Pallet,OV-Wt',
                 'handling_charge' => 'nullable|string|max:3',
                 'o_size_charge' => 'nullable|string|max:20',
                 'pr_charge' => 'nullable|string|max:20',
@@ -1204,7 +1204,9 @@ class CategoryController extends Controller
 
             $linkedUpdated = count($linkResult['updated_skus'] ?? []);
             $message = 'Dim & Wt Master updated successfully';
-            if ($linkedUpdated > 0) {
+            if (! empty($linkResult['delinked'])) {
+                $message .= ' (Link SKU delinked)';
+            } elseif ($linkedUpdated > 0) {
                 $message .= " (auto-synced to {$linkedUpdated} linked sibling SKU(s))";
             }
 
@@ -1214,6 +1216,8 @@ class CategoryController extends Controller
                 'data' => $product,
                 'linked_skus' => $linkResult['linked_skus'] ?? [],
                 'updated_skus' => $linkResult['updated_skus'] ?? [],
+                'delinked' => (bool) ($linkResult['delinked'] ?? false),
+                'former_skus' => $linkResult['former_skus'] ?? [],
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw $e;
@@ -1738,7 +1742,7 @@ class CategoryController extends Controller
             $row['Parent'] = $product->parent;
 
             // Label Type defaults to STD when unset
-            $allowedLabelTypes = ['ENV', 'STD', 'O-Size', 'Pallet'];
+            $allowedLabelTypes = ['ENV', 'STD', 'O-Size', 'Pallet', 'OV-Wt'];
             $labelType = isset($row['label_type']) ? trim((string) $row['label_type']) : '';
             $row['label_type'] = in_array($labelType, $allowedLabelTypes, true) ? $labelType : 'STD';
 

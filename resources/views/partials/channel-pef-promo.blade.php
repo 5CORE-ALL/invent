@@ -356,7 +356,7 @@
                 saveSpriceMode: 'sku',
             },
             macys: {
-                label: "Macy's",
+                label: 'Macys',
                 saveSpriceUrl: '/macys-save-sprice-tabulator',
                 pushPriceUrl: null,
                 priceField: 'MC Price',
@@ -444,7 +444,8 @@
                 saveSpriceMode: 'sku',
             },
         };
-        const chPromoCfg = CHANNEL_PROMO_CFG[CHANNEL_PROMO_CHANNEL] || CHANNEL_PROMO_CFG.ebay1;
+        CHANNEL_PROMO_CFG.macy = CHANNEL_PROMO_CFG.macys;
+        const chPromoCfg = CHANNEL_PROMO_CFG[CHANNEL_PROMO_CHANNEL] || {};
         const CH_PROMO_SAVE_URL = '/channel-promo-pricing/save';
         const CH_PROMO_RULES_BASE = '/channel-promo-pricing/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
         const CH_PROMO_EBAY1_COUPON_URL = '/pricing-errors-fix-ebay1-coupon';
@@ -576,8 +577,12 @@
         }
         function chPromoPrice(d) {
             const f = chPromoCfg.priceField;
-            let p = Number(d[f]);
+            let p = f ? Number(d[f]) : NaN;
             if (isFinite(p) && p > 0) return p;
+            // Macys: sheet field (MC Price) only — never fall back to a generic/product price.
+            if (CHANNEL_PROMO_CHANNEL === 'macys' || CHANNEL_PROMO_CHANNEL === 'macy') {
+                return 0;
+            }
             p = Number(d.price);
             if (isFinite(p) && p > 0) return p;
             return 0;

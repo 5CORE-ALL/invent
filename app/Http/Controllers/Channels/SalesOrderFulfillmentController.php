@@ -1005,7 +1005,7 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         $shippingByNorm = [];
-        $allowed = ['ENV', 'STD', 'O-Size', 'Pallet'];
+        $allowed = ['ENV', 'STD', 'O-Size', 'Pallet', 'OV-Wt'];
 
         $scalar = static function (array $values, string $key) {
             if (! array_key_exists($key, $values) || $values[$key] === null || $values[$key] === '') {

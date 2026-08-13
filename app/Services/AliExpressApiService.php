@@ -1244,8 +1244,9 @@ class AliExpressApiService
             $info = $this->getProductInfo($productId);
             if (! empty($info['success']) && is_array($info['data'] ?? null)) {
                 $rows = $this->extractSkuRowsFromProductInfo($info['data'], $productId, $productName);
-
-                return $rows;
+                if ($rows !== []) {
+                    return $rows;
+                }
             }
         }
 
@@ -1302,10 +1303,25 @@ class AliExpressApiService
         $productName = $productName ?? $this->extractProductName($info);
         $rows = [];
 
+        if (isset($info['result']) && is_array($info['result']) && ! isset($info['aeop_ae_product_sku_list'])) {
+            $nested = $this->extractSkuRowsFromProductInfo($info['result'], $productId, $productName);
+            if ($nested !== []) {
+                return $nested;
+            }
+        }
+
         $skus = $info['aeop_ae_product_sku_list']
             ?? $info['aeop_ae_product_s_k_us']
             ?? $info['aeop_a_e_product_s_k_u_list']
+            ?? $info['aeop_ae_product_s_k_u_s']
+            ?? $info['product_sku_list']
+            ?? $info['sku_info_list']
+            ?? $info['skus']
             ?? [];
+        if (is_string($skus)) {
+            $decoded = json_decode($skus, true);
+            $skus = is_array($decoded) ? $decoded : [];
+        }
 
         foreach ($this->normalizeList($skus) as $skuRow) {
             $skuRow = $this->normalizeApiRow($skuRow);
@@ -1414,9 +1430,10 @@ class AliExpressApiService
     private function extractListPrice(array $item): float
     {
         $item = $this->normalizeApiRow($item);
-        foreach (['product_min_price', 'product_max_price', 'price', 'sale_price'] as $key) {
-            if (isset($item[$key]) && is_numeric($item[$key])) {
-                return (float) $item[$key];
+        foreach (['product_min_price', 'product_max_price', 'item_offer_min_price', 'price', 'sale_price'] as $key) {
+            $parsed = $this->parseMoney($item[$key] ?? null);
+            if ($parsed > 0) {
+                return $parsed;
             }
         }
 
@@ -1448,19 +1465,41 @@ class AliExpressApiService
     private function extractPriceFromRow(array $row): float
     {
         $row = $this->normalizeApiRow($row);
-        foreach (['sku_price', 'price', 'product_min_price', 'product_max_price', 'sale_price', 'unit_price'] as $key) {
-            if (isset($row[$key]) && is_numeric($row[$key])) {
-                return (float) $row[$key];
+        foreach ([
+            'sku_price', 'offer_sale_price', 'sku_discount_price', 'sale_price',
+            'price', 'product_min_price', 'product_max_price', 'unit_price',
+            'supply_price', 'retail_price', 'discount_price', 'original_price',
+            'offer_bulk_sale_price', 's_sku_price',
+        ] as $key) {
+            $parsed = $this->parseMoney($row[$key] ?? null);
+            if ($parsed > 0) {
+                return $parsed;
             }
         }
         if (isset($row['product_unit_price']) && is_array($row['product_unit_price'])) {
-            $amount = $row['product_unit_price']['amount'] ?? null;
-            if ($amount !== null && is_numeric($amount)) {
-                return (float) $amount;
+            $parsed = $this->parseMoney($row['product_unit_price']['amount'] ?? null);
+            if ($parsed > 0) {
+                return $parsed;
             }
         }
 
         return 0.0;
+    }
+
+    private function parseMoney(mixed $value): float
+    {
+        if ($value === null || $value === '' || $value === false) {
+            return 0.0;
+        }
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+        if (! is_string($value)) {
+            return 0.0;
+        }
+        $n = preg_replace('/[^0-9.\-]/', '', $value);
+
+        return is_numeric($n) ? (float) $n : 0.0;
     }
 
     private function extractProductName(array $item): ?string

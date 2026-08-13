@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\MarketPlace\MacyController;
 use App\Models\AliexpressDataView;
 use App\Models\AliexpressPricingPrice;
 use App\Models\AmazonDatasheet;
@@ -133,8 +134,8 @@ class MapIssuesController extends Controller
         $reverbByNorm    = $this->buildReverbLookupByNormalizedSku($skus);
         $nrStatusReverb  = $this->buildReverbNrReqStatusLookup($skus);
 
-        // Macy's: stock/SKU from macy_products; price = sheet first, else product.price
-        // (same as macys-pricing). REQ/NR from macys_listing_statuses.
+        // Macy's: Price = uploaded sheet only. Not in sheet → not listed.
+        // REQ/NR from macys_listing_statuses.
         $macyByNorm         = $this->buildMacyLookupByNormalizedSku($skus);
         $macyPriceByNorm    = $this->buildMacyPriceLookupByNormalizedSku($skus);
         $nrStatusMacy       = $this->buildNrReqStatusLookup(MacysListingStatus::class, $skus);
@@ -404,9 +405,9 @@ class MapIssuesController extends Controller
             $macySheetPrice = ($key !== '' && array_key_exists($key, $macyPriceByNorm))
                 ? floatval($macyPriceByNorm[$key])
                 : null;
-            $macyProductPrice = floatval($macy?->price ?? 0);
-            $macyPrice = $macySheetPrice !== null ? $macySheetPrice : $macyProductPrice;
-            $macyListed = $macyPrice > 0;
+            $resolvedMacy = MacyController::resolveListedPrice($macy, $macySheetPrice);
+            $macyPrice = $resolvedMacy['price'];
+            $macyListed = $resolvedMacy['listed'];
             $macySku = $macy?->sku ?? null;
             $macyReason = $macySku !== null ? $this->skuDifferenceReason($pm->sku, $macySku) : '';
             $macyHasIssue = $macyReason !== '';

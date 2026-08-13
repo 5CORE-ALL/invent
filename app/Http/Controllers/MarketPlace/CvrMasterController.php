@@ -990,7 +990,7 @@ class CvrMasterController extends Controller
             $macyMarketplace = MarketplacePercentage::where('marketplace', 'Macys')->first();
             $macyPercentage = $macyMarketplace ? ($macyMarketplace->percentage / 100) : 0.80;
 
-            // Same price source as /macys-pricing: macys_price_data sheet first, else macy_products.price
+            // Same price source as /macys-pricing: uploaded sheet only.
             $normalizeMacySku = static fn ($s) => strtoupper(trim(preg_replace('/\s+/u', ' ', str_replace("\u{00a0}", ' ', (string) $s))));
             $macyProducts = MacyProduct::whereIn('sku', $skus)->get()
                 ->keyBy(fn ($m) => $normalizeMacySku($m->sku));
@@ -1980,13 +1980,11 @@ class CvrMasterController extends Controller
                 // Shopify B2C PFT% = GPFT% (no ads)
                 $sb2cPFT = $sb2cGPFT;
 
-                // Macy's price — same as /macys-pricing MC Price: sheet first, else product
+                // Macy's price — same as /macys-pricing: uploaded sheet only.
                 $macySkuKey = $normalizeMacySku($sku);
                 $macyProduct = $macyProducts->get($macySkuKey);
                 $macySheetRow = $macyPriceSheet->get($macySkuKey);
-                $macyPrice = $macySheetRow
-                    ? floatval($macySheetRow->price ?? 0)
-                    : ($macyProduct ? floatval($macyProduct->price ?? 0) : 0);
+                $macyPrice = MacyController::resolveListedPrice($macyProduct, $macySheetRow)['price'];
 
                 // GPFT% = ((price × percentage − ship − lp) / price) × 100  (same as /macys-pricing)
                 $macyGPFT = $macyPrice > 0
@@ -4468,8 +4466,7 @@ class CvrMasterController extends Controller
                 'seller_link' => null,
             ];
 
-            // Macy — same sources/formulas as /macys-pricing:
-            // MC Price = macys_price_data.price (sheet) if present, else macy_products.price
+            // Macy — same as /macys-pricing: Price = uploaded sheet only.
             $macySkuNorm = strtoupper(trim(preg_replace('/\s+/u', ' ', str_replace("\u{00a0}", ' ', (string) $fullSku))));
             $macyProduct = MacyProduct::where('sku', $fullSku)->first()
                 ?? MacyProduct::whereRaw('UPPER(TRIM(REPLACE(sku, CHAR(160), \' \'))) = ?', [$macySkuNorm])->first();
@@ -4479,9 +4476,9 @@ class CvrMasterController extends Controller
             $macyMarketplace = MarketplacePercentage::where('marketplace', 'Macys')->first();
             $macyPercentage = $macyMarketplace ? ((float) $macyMarketplace->percentage / 100) : 0.80;
 
-            $macyPrice = $macySheetRow
-                ? floatval($macySheetRow->price ?? 0)
-                : ($macyProduct ? floatval($macyProduct->price ?? 0) : 0);
+            $resolvedMacy = MacyController::resolveListedPrice($macyProduct, $macySheetRow);
+            $macyPrice = $resolvedMacy['price'];
+            $hasMacyData = $resolvedMacy['listed'];
 
             $macyGPFT = $macyPrice > 0
                 ? round((($macyPrice * $macyPercentage - $lp - $ship) / $macyPrice) * 100, 2)
@@ -4502,8 +4499,6 @@ class CvrMasterController extends Controller
                 }
             }
 
-            $hasMacyData = ($macyProduct || $macySheetRow) && ($macyL30 > 0 || $macyPrice > 0);
-            
             $breakdownData[] = [
                 'marketplace' => 'MACY',
                 'sku' => $hasMacyData ? $fullSku : 'Not Listed',

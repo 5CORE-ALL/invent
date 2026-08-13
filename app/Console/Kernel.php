@@ -1129,6 +1129,15 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
+        // Listed product price + AE stock → aliexpress_pricing_prices (/aliexpress-pricing).
+        $schedule->command('app:fetch-aliexpress-metrics --listed')
+            ->dailyAt('04:45')
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-fetch-listed-prices')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\SyncInventoryToAlibaba)
             ->everyFourHours()
             ->timezone('Asia/Kolkata')

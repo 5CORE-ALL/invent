@@ -388,7 +388,7 @@ class ShippingPageIssuesController extends Controller
             return [];
         }
 
-        $allowedLabelTypes = ['ENV', 'STD', 'O-Size', 'Pallet'];
+        $allowedLabelTypes = ['ENV', 'STD', 'O-Size', 'Pallet', 'OV-Wt'];
         $dimKeys = [
             'wt_act_kg', 'wt_act', 'wt_decl',
             'l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl',

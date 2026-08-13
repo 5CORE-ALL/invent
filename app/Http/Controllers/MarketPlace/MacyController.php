@@ -116,8 +116,8 @@ class MacyController extends Controller
         // NBSP / unicode spaces in PM vs macy_products break plain whereIn + strtoupper match (SKU looks identical in UI)
         $macysByNormSku = $this->buildMacyProductLookupByNormalizedSku($skus);
 
-        // Uploaded price sheet (macys_price_data) — SKUs stored uppercased on import.
-        // Displayed price = sheet if present, else macy_products.price (same as Tiendamia).
+        // Uploaded price sheet (macys_price_data) is the only Price source.
+        // Not in the sheet (or sheet price ≤ 0) → not listed, do not use macy_products.price.
         $priceDataCollection = MacysPriceData::whereIn('sku', $skus)
             ->get()
             ->keyBy(function ($item) {
@@ -192,13 +192,13 @@ class MacyController extends Controller
             $row["INV"] = $shopify ? (int) ($shopify->inv ?? 0) : 0;
             $row["L30"] = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
-            // MC L30 / MC INV from macy_products. MC Price: sheet first, else product table.
+            // MC L30 / MC INV from macy_products. MC Price = uploaded sheet only.
+            $resolvedPrice = self::resolveListedPrice($macysMetric, $priceData);
             $row["MC L30"] = $macysMetric->m_l30 ?? 0;
-            $row["MC Price"] = $priceData
-                ? floatval($priceData->price ?? 0)
-                : ($macysMetric ? floatval($macysMetric->price ?? 0) : 0.0);
+            $row["MC Price"] = $resolvedPrice['price'];
             $row["MC INV"] = $macysMetric ? (int) ($macysMetric->stock ?? 0) : 0;
-            $row["Price Source"] = $priceData ? 'sheet' : (floatval($row["MC Price"]) > 0 ? 'product' : '');
+            $row["Price Source"] = $resolvedPrice['source'];
+            $row["is_missing_macy"] = $resolvedPrice['missing'];
 
             // Amazon price
             $row["A Price"] = $amazon ? floatval($amazon->price ?? 0) : null;
@@ -418,6 +418,39 @@ class MacyController extends Controller
     }
 
     /**
+     * Macys Price comes from the uploaded sheet (macys_price_data) only.
+     * macy_products is not used for price (L30/INV still come from there).
+     * No sheet row or sheet price ≤ 0 → not listed.
+     *
+     * @param  object|null  $product  unused; kept so existing callers can pass macy_products
+     * @param  object|float|int|string|null  $sheet  macys_price_data row or numeric sheet price
+     * @return array{listed: bool, price: float, source: string, missing: bool}
+     */
+    public static function resolveListedPrice($product, $sheet = null): array
+    {
+        $sheetPrice = null;
+        if (is_object($sheet)) {
+            $raw = $sheet->price ?? null;
+            if ($raw !== null && $raw !== '') {
+                $sheetPrice = floatval($raw);
+            }
+        } elseif (is_numeric($sheet)) {
+            $sheetPrice = floatval($sheet);
+        }
+
+        if ($sheetPrice === null || $sheetPrice <= 0) {
+            return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
+        }
+
+        return [
+            'listed' => true,
+            'price' => $sheetPrice,
+            'source' => 'sheet',
+            'missing' => false,
+        ];
+    }
+
+    /**
      * Map / Miss / NMap for macys-pricing badges and all-marketplace-master Macys row.
      * Matches macys_tabulator_view updateSummary() with default filters: INV &gt; 0, REQ only,
      * exclude rows whose Parent starts with PARENT; |INV − MC INV| ≤ 3 → Map, else NMap.
@@ -452,9 +485,11 @@ class MacyController extends Controller
             }
 
             $mcInv = (float) ($row['MC INV'] ?? 0);
-            $price = (float) ($row['MC Price'] ?? 0);
+            $missing = array_key_exists('is_missing_macy', $row)
+                ? (bool) $row['is_missing_macy']
+                : ((float) ($row['MC Price'] ?? 0) == 0.0);
 
-            if ($price == 0.0) {
+            if ($missing) {
                 $miss++;
                 continue;
             }
