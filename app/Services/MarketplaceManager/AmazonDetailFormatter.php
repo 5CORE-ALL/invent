@@ -77,6 +77,10 @@ class AmazonDetailFormatter
         $buyerEmail = $buyer['BuyerEmail'] ?? $buyer['buyerEmail'] ?? null;
         $buyerName = $buyer['BuyerName'] ?? $buyer['buyerName'] ?? ($orderRoot['BuyerName'] ?? null);
         $shipName = $addr['Name'] ?? $addr['name'] ?? $buyerName;
+        $addressLine2Parts = array_filter([
+            trim((string) ($addr['AddressLine2'] ?? $addr['addressLine2'] ?? '')),
+            trim((string) ($addr['AddressLine3'] ?? $addr['addressLine3'] ?? '')),
+        ], static fn ($part) => $part !== '');
 
         $shippingCost = 0.0;
         $lineItems = [];
@@ -122,12 +126,12 @@ class AmazonDetailFormatter
             'shipping' => [
                 'recipient' => $shipName,
                 'address_line_1' => $addr['AddressLine1'] ?? $addr['addressLine1'] ?? null,
-                'address_line_2' => $addr['AddressLine2'] ?? $addr['addressLine2'] ?? null,
+                'address_line_2' => $addressLine2Parts !== [] ? implode(', ', $addressLine2Parts) : null,
                 'city' => $addr['City'] ?? $addr['city'] ?? null,
                 'province' => $addr['StateOrRegion'] ?? $addr['stateOrRegion'] ?? null,
                 'zip' => $addr['PostalCode'] ?? $addr['postalCode'] ?? null,
                 'country' => $addr['CountryCode'] ?? $addr['countryCode'] ?? null,
-                'phone' => $addr['Phone'] ?? $addr['phone'] ?? null,
+                'phone' => $addr['Phone'] ?? $addr['phone'] ?? ($buyer['BuyerPhone'] ?? $buyer['buyerPhone'] ?? null),
                 'email' => $buyerEmail,
             ],
             'line_items' => $lineItems,

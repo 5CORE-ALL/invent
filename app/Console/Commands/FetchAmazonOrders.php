@@ -10,7 +10,9 @@ use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\AmazonOrderCursor;
 use App\Models\AmazonDailySync;
+use App\Models\MarketplaceSyncSettings;
 use App\Models\ProductMaster;
+use App\Services\MarketplaceManager\AmazonOrderSyncService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
@@ -106,6 +108,7 @@ class FetchAmazonOrders extends Command
             }
             $this->info('✅ Access Token obtained successfully');
             $this->refreshOrdersUpdatedSince($accessToken);
+            $this->queueShopifyImportsIfEnabled();
             return;
         }
 
@@ -120,6 +123,7 @@ class FetchAmazonOrders extends Command
         if ($this->option('resync-date')) {
             $date = Carbon::parse($this->option('resync-date'), 'America/Los_Angeles');
             $this->resyncSpecificDate($date);
+            $this->queueShopifyImportsIfEnabled();
             return;
         }
 
@@ -127,6 +131,7 @@ class FetchAmazonOrders extends Command
         if ($this->option('resync-last-days')) {
             $days = (int) $this->option('resync-last-days');
             $this->resyncLastDays($days);
+            $this->queueShopifyImportsIfEnabled();
             return;
         }
 
@@ -165,6 +170,7 @@ class FetchAmazonOrders extends Command
 
         $this->info("\n🎉 All days processed!");
         $this->showSyncStatus();
+        $this->queueShopifyImportsIfEnabled();
     }
 
     /**
@@ -948,6 +954,7 @@ class FetchAmazonOrders extends Command
 
         $this->info("\n🎉 Auto-sync completed!");
         $this->showSyncStatus();
+        $this->queueShopifyImportsIfEnabled();
     }
 
     /**
@@ -1327,6 +1334,27 @@ class FetchAmazonOrders extends Command
         $this->info("   Fixed from ProductMaster: {$fixedFromProductMaster}");
         $this->info("   Fixed from OrderTotal: {$fixedFromOrderTotal}");
         $this->info("   Still $0: {$stillZero}");
+    }
+
+    /**
+     * Same as other MM channels: when auto-import is ON, queue FBM Shopify creates
+     * as soon as new Amazon orders are stored (cron fetch, not only the MM job).
+     */
+    private function queueShopifyImportsIfEnabled(): void
+    {
+        try {
+            if (! MarketplaceSyncSettings::canAutoImportToShopify('amazon')) {
+                return;
+            }
+            $dispatched = app(AmazonOrderSyncService::class)->dispatchImportsForNewOrders();
+            if ($dispatched > 0) {
+                $this->info("Queued {$dispatched} Amazon FBM order(s) for Shopify import.");
+            }
+        } catch (\Throwable $e) {
+            Log::warning('FetchAmazonOrders: could not queue Shopify imports', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function getAccessToken()

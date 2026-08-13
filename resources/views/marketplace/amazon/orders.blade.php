@@ -17,10 +17,10 @@
         <a href="{{ route('marketplace.manager.show', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amz Manager</a>
         @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amz Orders'])
         <p class="text-muted mb-3">
-            <strong>Push to Shopify</strong> creates the Shopify order immediately (same as other marketplaces).
+            <strong>New FBM orders auto-push to Shopify</strong> when they are fetched (same as other marketplaces).
             FBA is never created. Already-synced orders are linked, not duplicated.
-            With auto-import ON, new FBM orders on/after {{ $shopifyImportCutoff ?? '2026-08-06' }} PT
-            are also queued every 15 minutes.
+            After a shipping label is bought in Shopify / ShipStation / any connected software,
+            tracking is pushed to Amazon automatically.
             Configure in <a href="{{ route('marketplace.settings', 'amazon') }}">Settings</a>.
         </p>
 

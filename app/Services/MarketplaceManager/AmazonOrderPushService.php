@@ -71,6 +71,8 @@ class AmazonOrderPushService
             ];
         }
 
+        $this->orderDetailService->hydrateRestrictedPii($order);
+        $order->refresh();
         $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
         $items = $order->relationLoaded('items') ? $order->items : $order->items()->orderBy('id')->get();
         $detail = $this->formatter->formatOrder($orderRoot, $items, $order);
@@ -210,7 +212,7 @@ class AmazonOrderPushService
     {
         $settings ??= MarketplaceSyncSettings::getFor('amazon');
 
-        return (bool) ($settings['order']['sync_address_to_shopify'] ?? false);
+        return (bool) ($settings['order']['sync_address_to_shopify'] ?? true);
     }
 
     public function importToShopify(AmazonOrder $order): ?string
@@ -266,6 +268,14 @@ class AmazonOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            try {
+                $this->syncShippingAddressToShopify($order->fresh() ?? $order);
+            } catch (\Throwable $e) {
+                Log::warning('AmazonOrderPushService: address sync after link failed', [
+                    'amazon_order_id' => $amazonOrderId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             return (string) $existing['id'];
         }
@@ -417,12 +427,20 @@ class AmazonOrderPushService
             ];
         }
 
+        $pii = $this->orderDetailService->hydrateRestrictedPii($order);
+        $order->refresh();
         $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
         if ($orderRoot === []) {
             return [
                 'success' => false,
                 'message' => 'No Amazon order payload available to build a Shopify order.',
             ];
+        }
+        if (empty($pii['success'])) {
+            Log::warning('AmazonOrderPushService: shipping PII hydrate failed before Shopify create', [
+                'amazon_order_id' => $order->amazon_order_id,
+                'message' => $pii['message'] ?? null,
+            ]);
         }
 
         $items = $order->relationLoaded('items')

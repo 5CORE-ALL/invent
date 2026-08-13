@@ -75,7 +75,7 @@
                             <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically import Amz FBM orders to Shopify</span>
                         </label>
-                        <div class="form-text ms-4">ON by default. FBM orders on/after 6 Aug 2026 PT are queued to Shopify on the 15‑minute schedule. <strong>FBA (AFN) is never created</strong>. Already-synced orders (previous app) are linked, not duplicated.</div>
+                        <div class="form-text ms-4">ON by default. New FBM orders on/after 6 Aug 2026 PT are queued to Shopify as soon as they are fetched (and again on the 15‑minute schedule). <strong>FBA (AFN) is never created</strong>. Already-synced orders (previous app) are linked, not duplicated.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
@@ -96,7 +96,7 @@
                             <input class="form-check-input" type="checkbox" name="order[push_tracking_to_amazon]" value="1" {{ ($settings['order']['push_tracking_to_amazon'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically push Shopify tracking numbers to Amz</span>
                         </label>
-                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments (after you print/download a label) and ships the order on Amz — no manual push needed. You can still push per order from the order detail page.</div>
+                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments after a label is bought in Shopify, ShipStation, or any connected shipping software, then confirms shipment on Amazon. You can still push per order from the order detail page.</div>
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>

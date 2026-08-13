@@ -13,7 +13,7 @@ class SyncAmazonTrackingFromShopify extends Command
                             {--force : Run even if Push Shopify tracking setting is Off}
                             {--order= : Push tracking for a single Amazon order id}';
 
-    protected $description = 'Push Shopify fulfillment tracking numbers to Amazon (stub).';
+    protected $description = 'Push Shopify fulfillment tracking numbers to Amazon confirmShipment.';
 
     public function handle(AmazonTrackingSyncService $sync): int
     {

@@ -65,7 +65,23 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.orders', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amz Orders</a>
-        @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Order '.$order->amazon_order_id, 'mb' => 'mb-3'])
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mt-2 mb-1">
+            <div>
+                @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Order '.$order->amazon_order_id, 'mb' => 'mb-0', 'mt' => ''])
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                @if($connected ?? true)
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="btn-pull-amazon-order" data-id="{{ $order->id }}">
+                        <i class="ri-download-cloud-line"></i> Pull address from Amazon
+                    </button>
+                    @if($order->shopify_order_id)
+                        <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-amazon" data-id="{{ $order->id }}" title="Read Shopify fulfillment tracking and confirm shipment on Amazon">
+                            <i class="ri-truck-line"></i> Push tracking to Amazon
+                        </button>
+                    @endif
+                @endif
+            </div>
+        </div>
 
         @include('marketplace.amazon._nav', ['active' => 'orders'])
 
@@ -191,8 +207,9 @@
                 </div>
             </div>
             <div class="card-body small text-muted">
-                FBM orders on/after {{ \App\Models\AmazonOrder::SHOPIFY_IMPORT_CUTOFF_DATE }} PT are created on Shopify.
+                FBM orders on/after {{ \App\Models\AmazonOrder::SHOPIFY_IMPORT_CUTOFF_DATE }} PT auto-push to Shopify when fetched.
                 Existing Shopify orders (previous sync app) are linked, never duplicated. FBA is never created.
+                After a shipping label is bought in Shopify / ShipStation / any connected software, tracking is confirmed on Amazon.
             </div>
         </div>
 
@@ -374,6 +391,59 @@ document.getElementById('btn-mark-imported')?.addEventListener('click', function
     })
     .catch(function () { alert('Request failed.'); })
     .finally(function () { btn.disabled = false; });
+});
+
+document.getElementById('btn-pull-amazon-order')?.addEventListener('click', function () {
+    var btn = this;
+    var id = btn.getAttribute('data-id');
+    if (!id) return;
+    var original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ri-loader-4-line"></i> Pulling…';
+    fetch('{{ url('marketplace/amazon/orders') }}/' + id + '/pull', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+    })
+    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+    .then(function (res) {
+        alert((res.data && res.data.message) || (res.ok ? 'Done' : 'Failed'));
+        if (res.ok && res.data && res.data.success) location.reload();
+    })
+    .catch(function () { alert('Request failed.'); })
+    .finally(function () {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    });
+});
+
+document.getElementById('btn-push-tracking-amazon')?.addEventListener('click', function () {
+    var btn = this;
+    var id = btn.getAttribute('data-id');
+    if (!id) return;
+    if (!confirm('Read the Shopify tracking number for this order (from any shipping software that wrote it to Shopify) and confirm shipment on Amazon?')) return;
+    var original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ri-loader-4-line"></i> Pushing…';
+    fetch('{{ url('marketplace/amazon/orders') }}/' + id + '/push-tracking', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+    })
+    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+    .then(function (res) {
+        alert((res.data && res.data.message) || (res.ok ? 'Done' : 'Failed'));
+        if (res.ok && res.data && res.data.success) location.reload();
+    })
+    .catch(function () { alert('Request failed.'); })
+    .finally(function () {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    });
 });
 </script>
 @endsection

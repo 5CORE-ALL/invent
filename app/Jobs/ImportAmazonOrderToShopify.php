@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\AmazonOrder;
 use App\Services\MarketplaceManager\AmazonOrderPushService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -13,7 +14,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
-class ImportAmazonOrderToShopify implements ShouldQueue
+class ImportAmazonOrderToShopify implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -21,12 +22,19 @@ class ImportAmazonOrderToShopify implements ShouldQueue
 
     public int $timeout = 180;
 
+    public int $uniqueFor = 900;
+
     public array $backoff = [30, 60, 120, 300, 600];
 
     public function __construct(
         protected int $amazonOrderId
     ) {
         $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('amazon'));
+    }
+
+    public function uniqueId(): string
+    {
+        return 'amazon-import-'.$this->amazonOrderId;
     }
 
     public function middleware(): array

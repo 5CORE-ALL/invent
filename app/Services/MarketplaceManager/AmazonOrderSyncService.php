@@ -24,11 +24,11 @@ class AmazonOrderSyncService
     {
         $result = $this->fetchAndStoreFromDate($fromDate);
 
-        if ($import) {
-            $dispatched = $this->dispatchImportsForNewOrders();
-            if ($dispatched > 0) {
-                $result['message'] .= " Dispatched {$dispatched} Shopify import job(s).";
-            }
+        $dispatched = $this->dispatchImportsForNewOrders();
+        if ($dispatched > 0) {
+            $result['message'] .= " Dispatched {$dispatched} Shopify import job(s).";
+        } elseif ($import && ! MarketplaceSyncSettings::canAutoImportToShopify('amazon')) {
+            $result['message'] .= ' Auto-import is Off — no Shopify jobs queued.';
         }
 
         return $result;
@@ -132,7 +132,7 @@ class AmazonOrderSyncService
             ->whereNull('shopify_order_id')
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed', 'queued']);
             })
             ->where(function ($q) {
                 $q->whereNull('fulfillment_channel')
