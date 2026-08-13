@@ -104,7 +104,9 @@ class RebuildChannelMasterSnapshot extends Command
             $oldY = $sd['y_sales'] ?? null;
             $ySales = $ySalesSvc->salesForPacificDate($key, $ySalesDate);
             $sd['l30_sales'] = (float) ($m->l30_sales ?? $m->total_sales ?? 0);
-            if ($ySales !== null) {
+            // Do not replace a real Y Sales figure with 0 when that calendar
+            // day has no rows (Faire / PP often lag; latest-order−1 is kept).
+            if ($ySales !== null && ($ySales > 0 || (float) ($oldY ?? 0) <= 0)) {
                 $sd['y_sales'] = $ySales;
             }
             $sd['l30_orders'] = (float) ($m->total_orders ?? 0);
@@ -174,6 +176,9 @@ class RebuildChannelMasterSnapshot extends Command
             }
             $sd = $existing->summaryArray();
             $oldY = $sd['y_sales'] ?? null;
+            if ($ySales <= 0 && (float) ($oldY ?? 0) > 0) {
+                continue;
+            }
             $sd['y_sales'] = $ySales;
             $this->line(sprintf(
                 '%s %s  y %s → %s',
