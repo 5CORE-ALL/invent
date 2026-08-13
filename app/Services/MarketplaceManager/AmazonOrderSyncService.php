@@ -2,6 +2,7 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Jobs\ImportAmazonOrderToShopify;
 use App\Models\AmazonOrder;
 use App\Models\MarketplaceSyncSettings;
 use Carbon\Carbon;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Marketplace Manager order sync for Amazon.
  * Reuses the existing SP-API fetcher (app:fetch-amazon-orders) and local
- * amazon_orders / amazon_order_items tables.
+ * amazon_orders / amazon_order_items tables, then queues FBM Shopify imports.
  */
 class AmazonOrderSyncService
 {
@@ -23,8 +24,11 @@ class AmazonOrderSyncService
     {
         $result = $this->fetchAndStoreFromDate($fromDate);
 
-        if ($import && MarketplaceSyncSettings::canAutoImportToShopify('amazon')) {
-            $result['message'] .= ' Shopify auto-import is not implemented for Amazon yet (orders stay local).';
+        if ($import) {
+            $dispatched = $this->dispatchImportsForNewOrders();
+            if ($dispatched > 0) {
+                $result['message'] .= " Dispatched {$dispatched} Shopify import job(s).";
+            }
         }
 
         return $result;
@@ -111,16 +115,62 @@ class AmazonOrderSyncService
         ];
     }
 
-    /**
-     * Queue Shopify import jobs for newly fetched orders (stub — Amazon import not implemented).
-     */
     public function dispatchImportsForNewOrders(): int
     {
-        if (! MarketplaceSyncSettings::canAutoImportToShopify('amazon')) {
+        $settings = MarketplaceSyncSettings::getFor('amazon');
+        if (! ($settings['order']['auto_import_to_shopify'] ?? false)) {
+            return 0;
+        }
+        if (! Schema::hasColumn('amazon_orders', 'shopify_order_id')) {
             return 0;
         }
 
-        return 0;
+        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('amazon', $settings);
+        $cutoff = AmazonOrder::shopifyImportCutoff()->timezone('UTC');
+
+        $orders = AmazonOrder::query()
+            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('import_status')
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
+            })
+            ->where(function ($q) {
+                $q->whereNull('fulfillment_channel')
+                    ->orWhere('fulfillment_channel', '!=', 'AFN');
+            })
+            ->where(function ($q) {
+                $q->whereNull('status')
+                    ->orWhereNotIn('status', ['Canceled', 'Cancelled']);
+            })
+            ->where('order_date', '>=', $cutoff)
+            ->orderBy('id')
+            ->limit(50)
+            ->get();
+
+        $dispatched = 0;
+        foreach ($orders as $order) {
+            if ($order->isFba()) {
+                $order->update(['import_status' => 'skipped_fba', 'fulfillment_channel' => 'AFN']);
+
+                continue;
+            }
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('amazon', $order)) {
+                continue;
+            }
+
+            try {
+                ImportAmazonOrderToShopify::dispatch((int) $order->id);
+                $order->update(['import_status' => 'queued']);
+                $dispatched++;
+            } catch (\Throwable $e) {
+                Log::warning('AmazonOrderSyncService: failed to queue import', [
+                    'id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $dispatched;
     }
 
     protected function shortOutput(string $output): string

@@ -42,7 +42,7 @@ class AmazonOrderDetailService
      */
     public function resolveOrderRoot(AmazonOrder $order): array
     {
-        $raw = is_array($order->raw_data) ? $order->raw_data : [];
+        $raw = AmazonOrder::decodeRawPayload($order->raw_data);
         if ($raw !== []) {
             return $raw;
         }

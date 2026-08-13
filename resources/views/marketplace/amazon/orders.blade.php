@@ -17,9 +17,10 @@
         <a href="{{ route('marketplace.manager.show', 'amazon') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Amz Manager</a>
         @include('marketplace._page-heading', ['slug' => 'amazon', 'heading' => 'Amz Orders'])
         <p class="text-muted mb-3">
-            Orders stored locally from Amz SP-API (same source as
-            <a href="{{ url('/amazon/daily-sales') }}" target="_blank" rel="noopener">Amz Daily Sales</a>).
-            Configure fetch schedule in <a href="{{ route('marketplace.settings', 'amazon') }}">Settings</a>.
+            Orders stored locally from Amz SP-API. FBM orders on/after {{ $shopifyImportCutoff ?? '2026-08-06' }} PT
+            are pushed to Shopify (FBA is never created). Duplicate check links existing Shopify orders
+            from the previous sync app. Configure auto-import in
+            <a href="{{ route('marketplace.settings', 'amazon') }}">Settings</a>.
         </p>
 
         @include('marketplace.amazon._nav', ['active' => 'orders'])
@@ -87,6 +88,7 @@
                                 <th>Items</th>
                                 <th>Qty</th>
                                 <th>Amount</th>
+                                <th>Shopify</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -98,6 +100,11 @@
                                     $qty = (int) $o->items->sum('quantity');
                                     $lineSum = (float) $o->items->sum('price');
                                     $amount = (float) ($o->total_amount ?: $lineSum);
+                                    $isFba = $o->isFba();
+                                    $channel = $o->fulfillmentChannel();
+                                    $pushBlocked = ($importPaidOrdersOnly ?? false)
+                                        && ! \App\Services\MarketplaceManager\MarketplaceOrderPaidFilter::isPaid('amazon', $o);
+                                    $canPush = empty($o->shopify_order_id) && ! $isFba && $o->canCreateShopifyOrder() && ! $pushBlocked;
                                 @endphp
                                 <tr style="cursor: pointer;" onclick="window.location='{{ $orderUrl }}'">
                                     <td>
@@ -135,13 +142,47 @@
                                         {{ $amount > 0 ? number_format($amount, 2) : '—' }}
                                         <small class="text-muted">{{ $o->currency ?: 'USD' }}</small>
                                     </td>
+                                    <td>
+                                        @if($isFba)
+                                            <span class="badge bg-dark">FBA</span>
+                                            <small class="d-block text-muted">Not sent to Shopify</small>
+                                        @elseif($o->shopify_order_id)
+                                            @if(str_starts_with((string) $o->shopify_order_id, 'manual'))
+                                                <span class="badge bg-success">Already imported</span>
+                                            @else
+                                                <span class="badge bg-success">Imported</span>
+                                            @endif
+                                            <small class="d-block text-muted">{{ $o->shopify_order_id }}</small>
+                                        @elseif(($o->import_status ?? '') === 'queued')
+                                            <span class="badge bg-info">Queued</span>
+                                        @elseif(($o->import_status ?? '') === 'import_failed')
+                                            <span class="badge bg-danger">Failed</span>
+                                        @elseif(($o->import_status ?? '') === 'skipped_pre_cutoff')
+                                            <span class="badge bg-secondary">Pre-cutoff</span>
+                                        @else
+                                            <span class="badge bg-light text-muted">Pending</span>
+                                            @if($channel)
+                                                <small class="d-block text-muted">{{ $channel }}</small>
+                                            @endif
+                                        @endif
+                                    </td>
                                     <td onclick="event.stopPropagation();">
-                                        <a href="{{ $orderUrl }}" class="btn btn-sm btn-outline-primary">View</a>
+                                        <div class="d-flex gap-1 flex-wrap">
+                                            <a href="{{ $orderUrl }}" class="btn btn-sm btn-outline-primary">View</a>
+                                            @if(empty($o->shopify_order_id) && ! $isFba)
+                                                @if($canPush)
+                                                    <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>
+                                                @elseif($pushBlocked)
+                                                    <button type="button" class="btn btn-sm btn-secondary" disabled title="{{ \App\Services\MarketplaceManager\MarketplaceOrderPaidFilter::unpaidPushBlockedMessage() }}">Push to Shopify</button>
+                                                @endif
+                                                <button type="button" class="btn btn-sm btn-outline-success btn-mark-imported" data-id="{{ $o->id }}" data-order-id="{{ $o->amazon_order_id }}" title="Mark as already imported — no new Shopify order">Already imported</button>
+                                            @endif
+                                        </div>
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="8" class="text-center text-muted py-4">
+                                    <td colspan="9" class="text-center text-muted py-4">
                                         No orders yet. Click <strong>Fetch from Amz</strong>.
                                     </td>
                                 </tr>
@@ -167,11 +208,11 @@ document.getElementById('btn-fetch-orders')?.addEventListener('click', function 
     if (selected.indexOf('from:') === 0) {
         var fromDate = selected.slice(5);
         body.from_date = fromDate;
-        confirmMsg = 'Fetch Amz orders from ' + fromDate + ' onward (Pacific)?\n\nThis may take a few minutes.';
+        confirmMsg = 'Fetch Amz orders from ' + fromDate + ' onward (Pacific)?\n\nThis will NOT auto-push to Shopify (avoids duplicates).';
     } else {
         var days = parseInt(selected, 10) || 7;
         body.days = days;
-        confirmMsg = 'Fetch Amz orders from the last ' + days + ' days (Pacific)?';
+        confirmMsg = 'Fetch Amz orders from the last ' + days + ' days (Pacific)?\n\nThis will NOT auto-push to Shopify.';
     }
 
     if (!confirm(confirmMsg)) {
@@ -194,6 +235,58 @@ document.getElementById('btn-fetch-orders')?.addEventListener('click', function 
     })
     .catch(function () { alert('Request failed.'); })
     .finally(function () { btn.disabled = false; });
+});
+
+document.querySelectorAll('.btn-push-order').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var id = this.getAttribute('data-id');
+        if (!id) return;
+        if (!confirm('Create a Shopify order from this Amazon FBM order?\n\nFBA orders are never created. Already-synced orders are linked, not duplicated.')) return;
+        this.disabled = true;
+        fetch('{{ route('marketplace.orders.push', 'amazon') }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id: id }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            alert(data.message || (data.success ? 'Pushed to Shopify.' : 'Push failed'));
+            if (data.success) location.reload();
+        })
+        .catch(function () { alert('Request failed.'); })
+        .finally(function () { btn.disabled = false; }.bind(this));
+    });
+});
+
+document.querySelectorAll('.btn-mark-imported').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var id = this.getAttribute('data-id');
+        var orderId = this.getAttribute('data-order-id') || id;
+        if (!id) return;
+        if (!confirm('Mark Amazon order ' + orderId + ' as already imported?\n\nNo new Shopify order will be created.')) return;
+        var shopifyOrderId = prompt('Optional Shopify order ID (leave blank if entered manually):', '') || '';
+        this.disabled = true;
+        fetch('{{ route('marketplace.orders.mark-imported', 'amazon') }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id: id, shopify_order_id: shopifyOrderId }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            alert(data.message || (data.success ? 'Marked imported.' : 'Failed'));
+            if (data.success) location.reload();
+        })
+        .catch(function () { alert('Request failed.'); })
+        .finally(function () { btn.disabled = false; }.bind(this));
+    });
 });
 </script>
 @endsection

@@ -23,6 +23,12 @@ class AmazonOrder extends Model
 
     public const SALES_TOTAL_MODE_QTY_TIMES_PRICE = 'qty_times_price';
 
+    /**
+     * Previous Amazon→Shopify sync app was stopped on this Pacific date.
+     * Orders before this stay local (already in Shopify); only FBM orders on/after this are created.
+     */
+    public const SHOPIFY_IMPORT_CUTOFF_DATE = '2026-08-06';
+
     protected $fillable = [
         'amazon_order_id',
         'order_date',
@@ -31,16 +37,106 @@ class AmazonOrder extends Model
         'currency',
         'period',
         'raw_data',
+        'shopify_order_id',
+        'pushed_to_shopify_at',
+        'import_status',
+        'fulfillment_channel',
     ];
 
     protected $casts = [
         'order_date' => 'datetime',
+        'pushed_to_shopify_at' => 'datetime',
         'raw_data' => 'array',
     ];
 
     public function items()
     {
         return $this->hasMany(AmazonOrderItem::class, 'amazon_order_id');
+    }
+
+    /**
+     * Decode amazon_orders.raw_data / item raw_data whether stored as array or (double) JSON string.
+     *
+     * @return array<string, mixed>
+     */
+    public static function decodeRawPayload(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            return $raw;
+        }
+        if (! is_string($raw) || trim($raw) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (is_string($decoded)) {
+            $decoded = json_decode($decoded, true);
+        }
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function rawPayload(): array
+    {
+        return self::decodeRawPayload($this->raw_data);
+    }
+
+    public function fulfillmentChannel(): string
+    {
+        $col = strtoupper(trim((string) ($this->fulfillment_channel ?? '')));
+        if ($col !== '') {
+            return $col;
+        }
+
+        $raw = $this->rawPayload();
+
+        return strtoupper(trim((string) ($raw['FulfillmentChannel'] ?? $raw['fulfillmentChannel'] ?? '')));
+    }
+
+    public function isFba(): bool
+    {
+        return $this->fulfillmentChannel() === 'AFN';
+    }
+
+    public function isCancelled(): bool
+    {
+        $status = strtoupper(trim((string) ($this->status ?? '')));
+
+        return in_array($status, ['CANCELED', 'CANCELLED'], true);
+    }
+
+    public static function shopifyImportCutoff(): \Carbon\Carbon
+    {
+        return \Carbon\Carbon::parse(self::SHOPIFY_IMPORT_CUTOFF_DATE, 'America/Los_Angeles')->startOfDay();
+    }
+
+    public function isOnOrAfterShopifyImportCutoff(): bool
+    {
+        if (! $this->order_date) {
+            return false;
+        }
+
+        return \Carbon\Carbon::parse($this->order_date)
+            ->timezone('America/Los_Angeles')
+            ->gte(self::shopifyImportCutoff());
+    }
+
+    /**
+     * Eligible to CREATE a new Shopify order (FBM, not cancelled, on/after cutoff, not already linked).
+     */
+    public function canCreateShopifyOrder(): bool
+    {
+        if (trim((string) ($this->shopify_order_id ?? '')) !== '') {
+            return false;
+        }
+        if ($this->isFba() || $this->isCancelled()) {
+            return false;
+        }
+
+        return $this->isOnOrAfterShopifyImportCutoff();
     }
 
     public static function salesTotalMode(): string

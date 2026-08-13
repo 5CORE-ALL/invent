@@ -1341,7 +1341,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('amazon', '', true, 7))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('amazon', '2026-08-06', true))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('amazon-sync-orders')

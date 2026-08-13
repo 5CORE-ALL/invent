@@ -12,7 +12,7 @@ class SyncAmazonManagerOrders extends Command
     protected $signature = 'amazon:sync-orders
                             {--days=7 : Days of order history}
                             {--from= : Fetch orders from this date onward (YYYY-MM-DD); overrides --days}
-                            {--import : Reserved (Shopify auto-import not implemented for Amazon yet)}
+                            {--import : Queue FBM Amazon orders to Shopify (skips FBA and already-synced)}
                             {--force : Run even if Fetch orders setting is Off}';
 
     protected $description = 'Fetch Amazon orders from SP-API into amazon_orders (Marketplace Manager).';

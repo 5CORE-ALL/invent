@@ -12,6 +12,7 @@ use App\Models\AmazonOrderCursor;
 use App\Models\AmazonDailySync;
 use App\Models\ProductMaster;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class FetchAmazonOrders extends Command
@@ -285,15 +286,32 @@ class FetchAmazonOrders extends Command
                         continue;
                     }
 
+                    $fulfillmentChannel = strtoupper(trim((string) ($order['FulfillmentChannel'] ?? $order['fulfillmentChannel'] ?? '')));
+                    $attrs = [
+                        'order_date' => Carbon::parse($order['PurchaseDate']),
+                        'status' => $order['OrderStatus'] ?? null,
+                        'total_amount' => $order['OrderTotal']['Amount'] ?? 0,
+                        'currency' => $order['OrderTotal']['CurrencyCode'] ?? 'USD',
+                        'raw_data' => $order,
+                    ];
+                    if (Schema::hasColumn('amazon_orders', 'fulfillment_channel') && $fulfillmentChannel !== '') {
+                        $attrs['fulfillment_channel'] = $fulfillmentChannel;
+                    }
+                    if (
+                        $fulfillmentChannel === 'AFN'
+                        && Schema::hasColumn('amazon_orders', 'import_status')
+                    ) {
+                        $existingShopify = AmazonOrder::query()
+                            ->where('amazon_order_id', $orderId)
+                            ->value('shopify_order_id');
+                        if (empty($existingShopify)) {
+                            $attrs['import_status'] = 'skipped_fba';
+                        }
+                    }
+
                     $orderRecord = AmazonOrder::updateOrCreate(
                         ['amazon_order_id' => $orderId],
-                        [
-                            'order_date' => Carbon::parse($order['PurchaseDate']),
-                            'status' => $order['OrderStatus'] ?? null,
-                            'total_amount' => $order['OrderTotal']['Amount'] ?? 0,
-                            'currency' => $order['OrderTotal']['CurrencyCode'] ?? 'USD',
-                            'raw_data' => json_encode($order),
-                        ]
+                        $attrs
                     );
 
                     if ($orderRecord->wasRecentlyCreated) {
@@ -335,7 +353,7 @@ class FetchAmazonOrders extends Command
                                     'price' => $itemPrice,
                                     'currency' => $itemCurrency,
                                     'title' => $item['Title'] ?? null,
-                                    'raw_data' => json_encode($item),
+                                    'raw_data' => $item,
                                 ]
                             );
                             $itemsWritten++;
@@ -1124,7 +1142,7 @@ class FetchAmazonOrders extends Command
                                         'price' => $itemPrice,
                                         'currency' => $itemCurrency,
                                         'title' => $item['Title'] ?? null,
-                                        'raw_data' => json_encode($item),
+                                        'raw_data' => $item,
                                     ]
                                 );
                             }

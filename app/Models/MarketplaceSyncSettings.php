@@ -206,10 +206,8 @@ class MarketplaceSyncSettings extends Model
             ],
             'order' => [
                 'fetch_orders' => true,
-                // Newegg/Shein/Faire: keep order + address + tracking automation ON by default.
-                // Amazon stays local (Seller Central fulfillment); other channels default ON.
-                // Temu / Temu 2: manual push only (no cron auto-import to Shopify).
-                'auto_import_to_shopify' => $isNewegg || $isShein || $isTopDawg || $isPurchasingPower || $isWayfair || $isBestBuy || $isMacy || $isDoba || $isEbay1 || $isEbay2 || $isEbay3 || $isFaire || $isTikTok2 || $isTikTok,
+                // Amazon FBM only (AFN/FBA never created). Previous sync app stopped 2026-08-06.
+                'auto_import_to_shopify' => $isNewegg || $isShein || $isTopDawg || $isPurchasingPower || $isWayfair || $isBestBuy || $isMacy || $isDoba || $isEbay1 || $isEbay2 || $isEbay3 || $isFaire || $isTikTok2 || $isTikTok || $isAmazon,
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
                 // Shopify label/tracking → declare shipment (ON by default per channel).

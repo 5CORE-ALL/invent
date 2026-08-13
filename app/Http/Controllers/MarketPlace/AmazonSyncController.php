@@ -615,13 +615,14 @@ class AmazonSyncController extends Controller
             'statusFilter' => $statusFilter ?? '',
             'search' => $search ?? '',
             'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('amazon'),
+            'shopifyImportCutoff' => AmazonOrder::SHOPIFY_IMPORT_CUTOFF_DATE,
         ]);
     }
 
     public function showOrder(int $id): View
     {
         $order = AmazonOrder::query()->with('items')->findOrFail($id);
-        $raw = is_array($order->raw_data) ? $order->raw_data : [];
+        $raw = AmazonOrder::decodeRawPayload($order->raw_data);
 
         return view('marketplace.amazon.order-show', [
             'title' => 'Amazon Order — '.$order->amazon_order_id,
@@ -631,6 +632,8 @@ class AmazonSyncController extends Controller
             'connected' => $this->apiConfig->isConfigured('amazon'),
             'shippingAddress' => $this->extractShippingAddress($raw),
             'buyerInfo' => $this->extractBuyerInfo($raw),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('amazon'),
+            'orderIsPaid' => MarketplaceOrderPaidFilter::isPaid('amazon', $order),
         ]);
     }
 
@@ -643,10 +646,24 @@ class AmazonSyncController extends Controller
         $line = AmazonOrder::query()->findOrFail($id);
         $result = app(AmazonOrderDetailService::class)->fetchAndPersistOrderDetail((string) $line->amazon_order_id);
 
-        // Persist only — Shopify address fill matches AliExpress / Reverb (SyncAmazonAddressJob).
+        $line->refresh();
+        $message = $result['message'] ?? ($result['success'] ? 'Order details updated from Amazon.' : 'Failed to pull order details.');
+        $shopifySynced = null;
+
+        if (! empty($result['success']) && ! empty($line->shopify_order_id)) {
+            $sync = app(AmazonOrderPushService::class)->syncShippingAddressToShopify($line);
+            $shopifySynced = ! empty($sync['success']);
+            if ($shopifySynced) {
+                $message = 'Pulled from Amazon and updated shipping address on Shopify.';
+            } elseif (! empty($sync['skipped'])) {
+                $message = 'Pulled from Amazon. '.($sync['message'] ?? 'Shopify address not updated.');
+            }
+        }
+
         return response()->json([
             'success' => ! empty($result['success']),
-            'message' => $result['message'] ?? ($result['success'] ? 'Order details updated from Amazon.' : 'Failed to pull order details.'),
+            'shopify_synced' => $shopifySynced,
+            'message' => $message,
         ]);
     }
 
@@ -706,10 +723,10 @@ class AmazonSyncController extends Controller
             $result = $sync->fetchAndStore($days);
         }
 
-        // Only auto-queue Shopify imports when explicitly requested.
-        // Prefer from_date fetches without import when older orders already exist on Shopify.
-        if ($request->boolean('import') && MarketplaceSyncSettings::canAutoImportToShopify('amazon')) {
-            $result['message'] .= ' Shopify auto-import is not implemented for Amazon yet (orders stay local).';
+        // Manual Fetch does not auto-push (avoids duplicates). Cron uses --import.
+        if ($request->boolean('import')) {
+            $dispatched = $sync->dispatchImportsForNewOrders();
+            $result['message'] .= " Dispatched {$dispatched} Shopify import job(s).";
         }
 
         return response()->json([
@@ -862,9 +879,53 @@ class AmazonSyncController extends Controller
             return response()->json(app(AmazonOrderPushService::class)->previewShopifyPush($order));
         }
 
+        if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
+            return response()->json([
+                'success' => true,
+                'message' => 'Already imported.',
+                'shopify_order_id' => $order->shopify_order_id,
+            ]);
+        }
+
+        if (MarketplaceOrderPaidFilter::blocksUnpaidPush('amazon', $order)) {
+            return response()->json([
+                'success' => false,
+                'message' => MarketplaceOrderPaidFilter::unpaidPushBlockedMessage(),
+            ], 422);
+        }
+
+        $push = app(AmazonOrderPushService::class);
+        try {
+            $shopifyOrderId = $push->importToShopify($order);
+        } catch (\Throwable $e) {
+            $order->update(['import_status' => 'import_failed']);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Shopify import failed.',
+            ], 422);
+        }
+
+        if ($shopifyOrderId) {
+            $order->refresh();
+            $message = $push->lastDuplicateLinkMessage ?: 'Pushed to Shopify.';
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'shopify_order_id' => $shopifyOrderId,
+                'linked_existing' => $push->lastDuplicateLinkMessage !== null,
+            ]);
+        }
+
+        if (! $push->lastSkipStatus) {
+            $order->update(['import_status' => 'import_failed']);
+        }
+
         return response()->json([
             'success' => false,
-            'message' => 'Amazon → Shopify import is not implemented yet. Fulfill in Seller Central.',
+            'message' => $push->lastFailureReason ?: 'Shopify import failed.',
+            'skip_status' => $push->lastSkipStatus,
         ], 422);
     }
 
@@ -878,10 +939,37 @@ class AmazonSyncController extends Controller
 
     public function markOrderAlreadyImported(Request $request): JsonResponse
     {
+        $id = (int) $request->input('id');
+        $order = AmazonOrder::find($id);
+
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+
+        if (! empty($order->shopify_order_id)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Already marked as imported.',
+                'shopify_order_id' => $order->shopify_order_id,
+            ]);
+        }
+
+        $shopifyOrderId = trim((string) $request->input('shopify_order_id', ''));
+        if ($shopifyOrderId === '') {
+            $shopifyOrderId = 'manual:'.$order->amazon_order_id;
+        }
+
+        $order->update([
+            'shopify_order_id' => $shopifyOrderId,
+            'import_status' => 'imported',
+            'pushed_to_shopify_at' => now(),
+        ]);
+
         return response()->json([
-            'success' => false,
-            'message' => 'Mark imported is not supported for Amazon MM yet.',
-        ], 422);
+            'success' => true,
+            'message' => "Marked Amazon order {$order->amazon_order_id} as already imported.",
+            'shopify_order_id' => $shopifyOrderId,
+        ]);
     }
 
     public function syncSettings(Request $request): View
