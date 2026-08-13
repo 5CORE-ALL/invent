@@ -272,6 +272,11 @@
             background-color: #ef4444 !important;
             color: #fff !important;
             font-weight: 700;
+            box-shadow: inset 0 0 0 9999px #ef4444 !important;
+            --bs-table-bg: #ef4444;
+            --bs-table-accent-bg: #ef4444;
+            --bs-table-bg-state: #ef4444;
+            --bs-table-bg-type: #ef4444;
         }
         .table-responsive tbody tr:hover td.item-l-over-38,
         .table-responsive tbody tr.parent-row td.item-l-over-38,
@@ -279,6 +284,7 @@
         .table-responsive tbody tr.parent-row td.item-wt-gw-over-20 {
             background-color: #ef4444 !important;
             color: #fff !important;
+            box-shadow: inset 0 0 0 9999px #ef4444 !important;
         }
         /* Declared dimension headers — distinct from ACT yellow */
         .table-responsive thead th.item-dim-decl-header {
@@ -1907,7 +1913,7 @@
                     const wtActCell = document.createElement('td');
                     wtActCell.className = 'text-center';
                     wtActCell.textContent = cellVal(item.wt_act, 1);
-                    const wtGw = parseFloat(item.wt_act);
+                    const wtGw = parseFloat(String(item.wt_act ?? '').replace(/,/g, ''));
                     if (!isParentRow && Number.isFinite(wtGw) && wtGw > 20) {
                         wtActCell.classList.add('item-wt-gw-over-20');
                         wtActCell.title = 'Itm wt GW — over 20';
@@ -1942,7 +1948,13 @@
                     const wtDeclCell = document.createElement('td');
                     wtDeclCell.className = 'text-center';
                     wtDeclCell.title = 'Itm wt GW Decl';
-                    wtDeclCell.textContent = isParentRow ? '--' : cellVal(itemDeclValue(item, 'wt_decl', 'wt_act'), 1);
+                    const wtDeclShown = isParentRow ? null : itemDeclValue(item, 'wt_decl', 'wt_act');
+                    wtDeclCell.textContent = isParentRow ? '--' : cellVal(wtDeclShown, 1);
+                    const wtDeclNum = parseFloat(String(wtDeclShown ?? '').replace(/,/g, ''));
+                    if (!isParentRow && Number.isFinite(wtDeclNum) && wtDeclNum > 20) {
+                        wtDeclCell.classList.add('item-wt-gw-over-20');
+                        wtDeclCell.title = 'Itm wt GW Decl — over 20';
+                    }
                     row.appendChild(wtDeclCell);
 
                     const lDeclCell = document.createElement('td');
