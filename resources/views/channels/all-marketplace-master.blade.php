@@ -5019,6 +5019,9 @@
             });
 
             function yMpPct(value, kind) {
+                if (value === null || value === undefined || value === '') {
+                    return '<span class="text-muted">—</span>';
+                }
                 const v = parseNumber(value);
                 if (v == null || isNaN(v)) return '<span class="text-muted">—</span>';
                 let style = 'font-weight:600;';

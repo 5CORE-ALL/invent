@@ -739,21 +739,32 @@ class Ebay1CouponService
         }
 
         $couponType = 'PUBLIC_SINGLE_SELLER_COUPON';
+        // eBay Amount.value for coupon budget / max discount must be whole dollars (no decimals).
+        $budget = ['currency' => 'USD', 'value' => '500'];
+        $maxDiscount = ['currency' => 'USD', 'value' => '50'];
         if (is_array($existingDetail)) {
             $couponType = (string) ($existingDetail['couponConfiguration']['couponType']
                 ?? $existingDetail['couponConfiguration']['coupon_type']
                 ?? $couponType);
+            if (is_array($existingDetail['budget'] ?? null)) {
+                $budget = $existingDetail['budget'];
+            }
+            $existingMax = $existingDetail['discountRules'][0]['maxDiscountAmount'] ?? null;
+            if (is_array($existingMax)) {
+                $maxDiscount = $existingMax;
+            }
         }
 
         $payload = [
             'name' => $this->campaignNameForPercent($pctInt),
-            'description' => $pctInt.'% public coupon (auto '.$couponCode.')',
+            'description' => $this->clipDescription($pctInt.'% off with code '.$couponCode),
             'marketplaceId' => self::MARKETPLACE,
             'startDate' => $start,
             'endDate' => $end,
             'promotionStatus' => 'SCHEDULED',
             'promotionType' => 'CODED_COUPON',
             'promotionImageUrl' => $imageUrl,
+            'budget' => $budget,
             'couponConfiguration' => [
                 'couponCode' => $couponCode,
                 'couponType' => $couponType,
@@ -768,6 +779,7 @@ class Ebay1CouponService
                     'discountBenefit' => [
                         'percentageOffOrder' => (string) $pctInt,
                     ],
+                    'maxDiscountAmount' => $maxDiscount,
                     'ruleOrder' => 1,
                 ],
             ],
@@ -858,13 +870,24 @@ class Ebay1CouponService
         $dv->save();
     }
 
+    /** eBay promotion description max length is 50. */
+    private function clipDescription(string $text): string
+    {
+        $text = trim($text);
+        if (mb_strlen($text) <= 50) {
+            return $text;
+        }
+
+        return rtrim(mb_substr($text, 0, 50));
+    }
+
     private function http(string $token): \Illuminate\Http\Client\PendingRequest
     {
         return Http::withoutVerifying()
             ->withToken($token)
+            ->asJson()
             ->acceptJson()
             ->withHeaders([
-                'Content-Type' => 'application/json',
                 'Content-Language' => 'en-US',
             ])
             ->timeout(60);

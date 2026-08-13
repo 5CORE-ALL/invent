@@ -455,7 +455,7 @@
             return CHANNEL_PROMO_CHANNEL === 'ebay1';
         }
 
-        /** eBay1: create/update ORDER_DISCOUNT sale event from PRMT%. 0 pauses. */
+        /** eBay1: create/add markdown sale event from PRMT%. 0 removes SKU. */
         function syncEbay1Promotion(sku, percent) {
             return new Promise(function(resolve) {
                 $.ajax({

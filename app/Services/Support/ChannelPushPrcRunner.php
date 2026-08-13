@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
  * Background channel Push Prc worker.
  *
  * 1) Push Std Prc as the live listing StartPrice
- * 2) Create/update sale event from PRMT % (eBay1 ORDER_DISCOUNT)
+ * 2) Create/update markdown sale event from PRMT % (eBay1 item_price_markdown)
  * 3) Create/add coded coupon campaign from CPN % (eBay1 CODED_COUPON)
  *
  * Local S PRC (Std − PRMT%) is not overwritten. Same queue pattern as AmazonPushPrcRunner.

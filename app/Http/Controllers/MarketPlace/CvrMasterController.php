@@ -461,8 +461,8 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * PEF PRMT % → eBay1 Sell Marketing promotion (item_promotion ORDER_DISCOUNT).
-     * percent = 0 pauses any stored promotion for the SKU.
+     * PEF PRMT % → eBay1 markdown sale event (item_price_markdown).
+     * percent = 0 removes the SKU from sale campaign(s).
      */
     public function pricingErrorsFixEbay1Promotion(Request $request): JsonResponse
     {

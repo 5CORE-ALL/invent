@@ -692,7 +692,8 @@ class YesterdayMarketplaceMetricsService
      */
     private function salesOnly(float $sales): array
     {
-        return $this->pack($sales, $sales, 0.0, 0.0, 0.0, 0, 0, $sales);
+        // Sales only — keep gpft_sales at 0 so GPFT/GROI render as "—" not 0%.
+        return $this->pack($sales, 0.0, 0.0, 0.0, 0.0, 0, 0, 0.0);
     }
 
     private function sheinSales(Carbon $start, Carbon $end): float
@@ -1115,7 +1116,7 @@ class YesterdayMarketplaceMetricsService
 
     private function key(string $name): string
     {
-        $k = strtolower((string) preg_replace('/[^a-z0-9]/', '', $name));
+        $k = preg_replace('/[^a-z0-9]/', '', strtolower($name));
 
         return match ($k) {
             'ebaytwo', 'ebay2' => 'ebay2',
