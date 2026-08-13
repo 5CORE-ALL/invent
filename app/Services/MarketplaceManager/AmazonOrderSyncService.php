@@ -6,8 +6,11 @@ use App\Jobs\ImportAmazonOrderToShopify;
 use App\Models\AmazonOrder;
 use App\Models\MarketplaceSyncSettings;
 use Carbon\Carbon;
+use Illuminate\Bus\UniqueLock;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -119,20 +122,31 @@ class AmazonOrderSyncService
     {
         $settings = MarketplaceSyncSettings::getFor('amazon');
         if (! ($settings['order']['auto_import_to_shopify'] ?? false)) {
+            Log::info('AmazonOrderSyncService: auto-import is Off — no Shopify jobs queued.');
+
             return 0;
         }
         if (! Schema::hasColumn('amazon_orders', 'shopify_order_id')) {
+            Log::error('AmazonOrderSyncService: amazon_orders.shopify_order_id column missing — run migrations before auto-import can work.');
+
             return 0;
+        }
+
+        // Only recover rows left "queued" with no job after a previous insert failure.
+        if ((int) DB::table('jobs')->where('queue', 'mm-amazon')->count() === 0) {
+            $this->releaseStuckQueuedImports();
         }
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('amazon', $settings);
         $cutoff = AmazonOrder::shopifyImportCutoff()->timezone('UTC');
 
         $orders = AmazonOrder::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed', 'queued']);
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
             ->where(function ($q) {
                 $q->whereNull('fulfillment_channel')
@@ -140,12 +154,21 @@ class AmazonOrderSyncService
             })
             ->where(function ($q) {
                 $q->whereNull('status')
-                    ->orWhereNotIn('status', ['Canceled', 'Cancelled']);
+                    ->orWhereNotIn('status', ['Canceled', 'Cancelled', 'Pending']);
             })
             ->where('order_date', '>=', $cutoff)
             ->orderBy('id')
-            ->limit(100)
-            ->get();
+            ->limit(250)
+            ->get([
+                'id',
+                'amazon_order_id',
+                'status',
+                'order_date',
+                'fulfillment_channel',
+                'import_status',
+                'shopify_order_id',
+                'raw_data',
+            ]);
 
         $dispatched = 0;
         foreach ($orders as $order) {
@@ -159,7 +182,9 @@ class AmazonOrderSyncService
             }
 
             try {
-                ImportAmazonOrderToShopify::dispatch((int) $order->id);
+                $job = new ImportAmazonOrderToShopify((int) $order->id);
+                (new UniqueLock(app('cache.store')))->release($job);
+                Queue::connection('database')->pushOn('mm-amazon', $job);
                 $order->update(['import_status' => 'queued']);
                 $dispatched++;
             } catch (\Throwable $e) {
@@ -171,6 +196,24 @@ class AmazonOrderSyncService
         }
 
         return $dispatched;
+    }
+
+    /**
+     * Unique locks can swallow Bus::dispatch while import_status stays "queued"
+     * with no row in jobs. Reset those so the next run actually pushes work.
+     */
+    protected function releaseStuckQueuedImports(): void
+    {
+        if (! Schema::hasColumn('amazon_orders', 'import_status')) {
+            return;
+        }
+
+        AmazonOrder::query()
+            ->where('import_status', 'queued')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
+            ->update(['import_status' => null]);
     }
 
     protected function shortOutput(string $output): string
