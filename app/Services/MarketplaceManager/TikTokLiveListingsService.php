@@ -33,7 +33,7 @@ class TikTokLiveListingsService
         }
 
         $rows = $this->fetchFromLocal();
-        Cache::put($this->cacheKey, $rows, now()->addHours(6));
+        Cache::put($this->cacheKey, $rows, now()->addMinutes(10));
 
         return $rows;
     }

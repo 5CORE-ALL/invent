@@ -32,6 +32,16 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
+     * eBay parent/placeholder SKUs (PARENT ALLIGATOR, etc.) are not Shopify SKUs.
+     */
+    public static function isParentPlaceholderSku(?string $sku): bool
+    {
+        $sku = trim((string) $sku);
+
+        return $sku !== '' && stripos($sku, 'PARENT') !== false;
+    }
+
+    /**
      * Live Shopify → marketplace push qty.
      * Missing / null / negative => 0. Never invent stock via min_quantity.
      * Optional percent/max may only REDUCE inventory, never raise above live Shopify.

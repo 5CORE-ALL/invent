@@ -91,7 +91,7 @@ class TikTokListingsPageBuilder
         $linkedSkus = $this->linkedSkus();
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
-            $liveService->peekCached(),
+            null,
             $this->stockMapForSkus($allLinkedVerified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
@@ -316,7 +316,7 @@ class TikTokListingsPageBuilder
         $linkedSkus = $this->linkedSkus();
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
-            $liveService->peekCached(),
+            null,
             $this->stockMapForSkus($verified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
@@ -438,7 +438,7 @@ class TikTokListingsPageBuilder
             ->where('sku_id', '!=', '')
             ->pluck('sku')
             ->map(static fn ($sku) => trim((string) $sku))
-            ->filter(static fn (string $sku) => $sku !== '')
+            ->filter(static fn (string $sku) => $sku !== '' && ! MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku))
             ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
             ->values()
             ->all();
@@ -459,9 +459,20 @@ class TikTokListingsPageBuilder
             return [];
         }
 
+        $keys = [];
+        foreach ($skus as $sku) {
+            $keys[] = $sku;
+            $keys[] = strtoupper($sku);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $keys[] = $norm;
+            }
+        }
+        $keys = array_values(array_unique($keys));
+
         $map = [];
         ($this->productModel())::query()
-            ->whereIn('sku', $skus)
+            ->whereIn('sku', $keys)
             ->get()
             ->each(function (Model $row) use (&$map) {
                 $sku = (string) $row->sku;

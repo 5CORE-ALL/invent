@@ -1923,7 +1923,7 @@ class Kernel extends ConsoleKernel
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('tiktok-sync-mismatch-inventory')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok', '2026-07-07', true))
@@ -1967,7 +1967,7 @@ class Kernel extends ConsoleKernel
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('tiktok2-sync-mismatch-inventory')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '2026-07-07', true))

@@ -8,7 +8,7 @@
         <p class="text-muted mb-3">
             <strong>All</strong> = every Shopify live SKU.
             <strong>Active SKU</strong> = qty matched on TikTok.
-            <strong>Active SKU Mismatch</strong> = qty differs.
+            <strong>SKU Inv Mismatch</strong> = qty differs.
             <strong>Zero on Shopify</strong> / <strong>Not on TikTok</strong> = unlinked or zero stock.
             <em>Refresh live</em> warms the listings cache. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
@@ -35,7 +35,7 @@
                     @elseif(($linkTab ?? '') === 'matched')
                         {{ $products->total() }} Active SKU
                     @elseif(($linkTab ?? '') === 'mismatch')
-                        {{ $products->total() }} Active SKU Mismatch
+                        {{ $products->total() }} SKU Inv Mismatch
                     @elseif(($linkTab ?? '') === 'zero')
                         {{ $products->total() }} zero on Shopify
                     @else
@@ -103,7 +103,7 @@
                         <a href="{{ request()->url() }}?link=matched&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Active SKU {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Active SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">SKU Inv Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=zero&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'zero' ? 'active' : '' }}">Zero on Shopify {{ $counts['zero'] ?? 0 }}</a>

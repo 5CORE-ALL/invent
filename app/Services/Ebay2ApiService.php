@@ -390,7 +390,8 @@ class Ebay2ApiService
                 'Content-Type'                   => 'text/xml',
             ];
 
-            $response = Http::withHeaders($headers)
+            $response = $this->tradingHttp(60)
+                ->withHeaders($headers)
                 ->withBody($xmlBody, 'text/xml')
                 ->post($this->endpoint);
 
@@ -2237,7 +2238,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
                 'Content-Type' => 'text/xml',
             ];
 
-            $response = Http::timeout(60)
+            $response = $this->tradingHttp(60)
                 ->withHeaders($headers)
                 ->withBody($xml->asXML(), 'text/xml')
                 ->post($this->endpoint);
@@ -2258,21 +2259,32 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
 
             $data = json_decode(json_encode($xmlResp), true) ?: [];
             $ack = $data['Ack'] ?? 'Failure';
+            $errBlob = json_encode($data['Errors'] ?? []);
+            if ($this->listingLooksEnded($errBlob) || $this->listingLooksEnded((string) ($data['Errors']['LongMessage'] ?? ''))) {
+                $msg = $this->flattenEbayErrors($data);
+                Log::warning('eBay2 ReviseInventoryStatus: listing ended', [
+                    'itemId' => $itemId,
+                    'sku' => $sku,
+                    'qty' => $quantity,
+                    'message' => $msg,
+                ]);
+
+                return ['success' => false, 'ended' => true, 'message' => $msg ?: 'Listing ended.', 'data' => $data];
+            }
+
             if ($ack === 'Success' || $ack === 'Warning') {
+                $returnedQty = $this->extractReturnedInventoryQuantity($data);
+
                 return [
                     'success' => true,
+                    'quantity_confirmed' => $returnedQty === null || $returnedQty === $quantity,
+                    'returned_qty' => $returnedQty,
                     'message' => 'Inventory updated.',
                     'data' => $data,
                 ];
             }
 
-            $errors = $data['Errors'] ?? [];
-            $errors = is_array($errors) ? $errors : [$errors];
-            $messages = [];
-            foreach ($errors as $err) {
-                $messages[] = $this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]);
-            }
-            $msg = implode('; ', array_filter($messages)) ?: 'ReviseInventoryStatus failed.';
+            $msg = $this->flattenEbayErrors($data) ?: 'ReviseInventoryStatus failed.';
 
             Log::warning('eBay2 ReviseInventoryStatus failed', [
                 'itemId' => $itemId,
@@ -2282,7 +2294,12 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
                 'message' => $msg,
             ]);
 
-            return ['success' => false, 'message' => $msg, 'data' => $data];
+            return [
+                'success' => false,
+                'ended' => $this->listingLooksEnded($msg),
+                'message' => $msg,
+                'data' => $data,
+            ];
         } catch (\Throwable $e) {
             Log::warning('eBay2 ReviseInventoryStatus exception', [
                 'itemId' => $itemId,
@@ -2292,6 +2309,398 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Qty-only variation revise (no StartPrice) when ReviseInventoryStatus is a no-op.
+     *
+     * @return array{success: bool, message: string, data?: array, ended?: bool}
+     */
+    public function reviseVariationQuantity(string $itemId, string $sku, int $quantity): array
+    {
+        $itemId = trim($itemId);
+        $sku = trim($sku);
+        if ($itemId === '' || $sku === '') {
+            return ['success' => false, 'message' => 'ItemID and SKU are required.'];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $this->generateBearerToken() ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+
+            $item = $xml->addChild('Item');
+            $item->addChild('ItemID', $itemId);
+            $variations = $item->addChild('Variations');
+            $variation = $variations->addChild('Variation');
+            $variation->addChild('SKU', $sku);
+            $variation->addChild('Quantity', (string) max(0, $quantity));
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME' => $this->devId,
+                'X-EBAY-API-APP-NAME' => $this->appId,
+                'X-EBAY-API-CERT-NAME' => $this->certId,
+                'X-EBAY-API-CALL-NAME' => 'ReviseFixedPriceItem',
+                'X-EBAY-API-SITEID' => $this->siteId,
+                'Content-Type' => 'text/xml',
+            ];
+
+            $response = $this->tradingHttp(60)
+                ->withHeaders($headers)
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.', 'raw' => $body];
+            }
+
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            $msg = $this->flattenEbayErrors($data);
+            if ($ack === 'Success' || $ack === 'Warning') {
+                if ($this->ebayErrorLooksLikeNonVariationListing(
+                    isset($data['Errors'][0]) ? $data['Errors'] : (isset($data['Errors']) && is_array($data['Errors']) ? [$data['Errors']] : []),
+                    $msg
+                )) {
+                    return ['success' => false, 'message' => $msg ?: 'Not a multi-SKU listing.', 'data' => $data];
+                }
+
+                return ['success' => true, 'message' => 'Variation quantity updated.', 'data' => $data];
+            }
+
+            return [
+                'success' => false,
+                'ended' => $this->listingLooksEnded($msg),
+                'message' => $msg ?: 'ReviseFixedPriceItem quantity failed.',
+                'data' => $data,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Relist an ended fixed-price listing. Returns the new ItemID when eBay assigns one.
+     *
+     * @return array{success: bool, message: string, item_id?: string, data?: array}
+     */
+    public function relistFixedPriceItem(string $itemId, ?string $sku = null, ?int $quantity = null): array
+    {
+        $itemId = trim($itemId);
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'ItemID is required.'];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><RelistFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $this->generateBearerToken() ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+
+            $item = $xml->addChild('Item');
+            $item->addChild('ItemID', $itemId);
+            $sku = $sku !== null ? trim($sku) : '';
+            if ($sku !== '' && $quantity !== null) {
+                $variations = $item->addChild('Variations');
+                $variation = $variations->addChild('Variation');
+                $variation->addChild('SKU', $sku);
+                $variation->addChild('Quantity', (string) max(0, $quantity));
+            } elseif ($quantity !== null && $sku === '') {
+                $item->addChild('Quantity', (string) max(0, $quantity));
+            }
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME' => $this->devId,
+                'X-EBAY-API-APP-NAME' => $this->appId,
+                'X-EBAY-API-CERT-NAME' => $this->certId,
+                'X-EBAY-API-CALL-NAME' => 'RelistFixedPriceItem',
+                'X-EBAY-API-SITEID' => $this->siteId,
+                'Content-Type' => 'text/xml',
+            ];
+
+            $response = $this->tradingHttp(60)
+                ->withHeaders($headers)
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.', 'raw' => $body];
+            }
+
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            $newId = trim((string) ($data['ItemID'] ?? ''));
+            if ($ack === 'Success' || $ack === 'Warning') {
+                return [
+                    'success' => true,
+                    'message' => 'Listing relisted.',
+                    'item_id' => $newId !== '' ? $newId : $itemId,
+                    'data' => $data,
+                ];
+            }
+
+            $msg = $this->flattenEbayErrors($data);
+            if ($sku !== '' && (str_contains($msg, '21916635') || str_contains(strtolower($msg), 'invalid multi-sku'))) {
+                return $this->relistFixedPriceItem($itemId, null, $quantity);
+            }
+
+            return [
+                'success' => false,
+                'message' => $msg ?: 'RelistFixedPriceItem failed.',
+                'data' => $data,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('eBay2 RelistFixedPriceItem exception', [
+                'itemId' => $itemId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Available qty for a listing or variation SKU from GetItem.
+     */
+    public function variationAvailableQty(string $itemId, ?string $sku = null): ?int
+    {
+        $raw = $this->getItem($itemId);
+        if (! is_array($raw) || ! isset($raw['Item'])) {
+            return null;
+        }
+
+        $item = $raw['Item'];
+        $status = strtolower((string) ($item['SellingStatus']['ListingStatus'] ?? ''));
+        if (in_array($status, ['completed', 'ended'], true)) {
+            return 0;
+        }
+
+        $sku = trim((string) $sku);
+        $vars = $item['Variations']['Variation'] ?? null;
+        if (is_array($vars) && $sku !== '') {
+            $list = isset($vars['SKU']) || isset($vars['Quantity']) ? [$vars] : $vars;
+            $needle = strtoupper($sku);
+            foreach ($list as $v) {
+                if (! is_array($v)) {
+                    continue;
+                }
+                if (strtoupper(trim((string) ($v['SKU'] ?? ''))) !== $needle) {
+                    continue;
+                }
+
+                return $this->availableFromQtyAndSold($v['Quantity'] ?? null, $v['SellingStatus']['QuantitySold'] ?? ($v['QuantitySold'] ?? 0));
+            }
+        }
+
+        return $this->availableFromQtyAndSold(
+            $item['Quantity'] ?? null,
+            $item['SellingStatus']['QuantitySold'] ?? 0
+        );
+    }
+
+    public function listingStatus(string $itemId): ?string
+    {
+        $raw = $this->getItem($itemId);
+        if (! is_array($raw) || ! isset($raw['Item']['SellingStatus']['ListingStatus'])) {
+            return null;
+        }
+
+        return strtolower(trim((string) $raw['Item']['SellingStatus']['ListingStatus']));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function findItemIdsBySku(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $headers = [
+            'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+            'X-EBAY-API-DEV-NAME' => $this->devId,
+            'X-EBAY-API-APP-NAME' => $this->appId,
+            'X-EBAY-API-CERT-NAME' => $this->certId,
+            'X-EBAY-API-SITEID' => $this->siteId,
+        ];
+        $token = (string) ($this->generateBearerToken() ?? '');
+        $ids = [];
+        foreach (['ActiveList', 'UnsoldList'] as $list) {
+            foreach ($this->myEbaySellingItemIdsForSku($headers, $token, $sku, $list) as $id) {
+                $ids[$id] = true;
+            }
+        }
+
+        return array_keys($ids);
+    }
+
+    public function listingLooksEnded(?string $message): bool
+    {
+        $blob = strtolower((string) $message);
+        if ($blob === '') {
+            return false;
+        }
+
+        return str_contains($blob, 'this item cannot be accessed')
+            || str_contains($blob, 'listing has been ended')
+            || str_contains($blob, 'auction has been closed')
+            || str_contains($blob, 'ended')
+            || str_contains($blob, 'completed')
+            || str_contains($blob, 'errorcode>17')
+            || str_contains($blob, '"17"')
+            || str_contains($blob, '21916250')
+            || str_contains($blob, 'error 291')
+            || str_contains($blob, '#291');
+    }
+
+    protected function tradingHttp(int $timeout = 60)
+    {
+        return Http::timeout($timeout)->withoutVerifying();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function flattenEbayErrors(array $data): string
+    {
+        $errors = $data['Errors'] ?? [];
+        $errors = is_array($errors) ? $errors : [$errors];
+        if ($errors !== [] && ! isset($errors[0]) && isset($errors['ShortMessage'])) {
+            $errors = [$errors];
+        }
+        $messages = [];
+        foreach ($errors as $err) {
+            $messages[] = $this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]);
+        }
+
+        return implode('; ', array_filter($messages));
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function extractReturnedInventoryQuantity(array $data): ?int
+    {
+        $status = $data['InventoryStatus'] ?? null;
+        if (! is_array($status)) {
+            return null;
+        }
+        if (isset($status['Quantity'])) {
+            return (int) $status['Quantity'];
+        }
+        if (isset($status[0]['Quantity'])) {
+            return (int) $status[0]['Quantity'];
+        }
+
+        return null;
+    }
+
+    protected function availableFromQtyAndSold(mixed $quantity, mixed $sold): int
+    {
+        $qty = max(0, (int) $quantity);
+        $soldQty = max(0, (int) $sold);
+        if ($soldQty > 0 && $qty >= $soldQty) {
+            return $qty - $soldQty;
+        }
+
+        return $qty;
+    }
+
+    /**
+     * @param  array<string, string>  $headers
+     * @return list<string>
+     */
+    protected function myEbaySellingItemIdsForSku(array $headers, string $token, string $sku, string $listName): array
+    {
+        $target = strtoupper($sku);
+        $ids = [];
+        $page = 1;
+        $totalPages = 1;
+        $listXml = $listName === 'UnsoldList'
+            ? '<UnsoldList><Include>true</Include><DurationInDays>60</DurationInDays><Pagination><EntriesPerPage>200</EntriesPerPage><PageNumber>%d</PageNumber></Pagination></UnsoldList>'
+            : '<ActiveList><Include>true</Include><Pagination><EntriesPerPage>200</EntriesPerPage><PageNumber>%d</PageNumber></Pagination></ActiveList>';
+
+        while ($page <= min($totalPages, 8)) {
+            $xmlBody = '<?xml version="1.0" encoding="utf-8"?>'
+                .'<GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+                .sprintf($listXml, $page)
+                .'</GetMyeBaySellingRequest>';
+            try {
+                $h = $headers;
+                $h['X-EBAY-API-CALL-NAME'] = 'GetMyeBaySelling';
+                $h['Content-Type'] = 'text/xml';
+                $h['X-EBAY-API-IAF-TOKEN'] = $token;
+                $response = $this->tradingHttp(60)->withHeaders($h)->withBody($xmlBody, 'text/xml')->post($this->endpoint);
+                $xml = simplexml_load_string((string) $response->body());
+                if ($xml === false) {
+                    break;
+                }
+                $arr = json_decode(json_encode($xml), true) ?: [];
+                $ack = $arr['Ack'] ?? 'Failure';
+                if ($ack !== 'Success' && $ack !== 'Warning') {
+                    break;
+                }
+                $block = $arr[$listName] ?? [];
+                if ($page === 1) {
+                    $totalPages = max(1, (int) ($block['PaginationResult']['TotalNumberOfPages'] ?? 1));
+                }
+                $items = $block['ItemArray']['Item'] ?? null;
+                if ($items === null) {
+                    $page++;
+                    continue;
+                }
+                if (isset($items['ItemID'])) {
+                    $items = [$items];
+                }
+                foreach ((array) $items as $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+                    $itemId = trim((string) ($item['ItemID'] ?? ''));
+                    if ($itemId === '') {
+                        continue;
+                    }
+                    $skus = [strtoupper(trim((string) ($item['SKU'] ?? '')))];
+                    $variations = $item['Variations']['Variation'] ?? null;
+                    if (is_array($variations)) {
+                        if (isset($variations['SKU'])) {
+                            $variations = [$variations];
+                        }
+                        foreach ($variations as $variation) {
+                            if (is_array($variation)) {
+                                $skus[] = strtoupper(trim((string) ($variation['SKU'] ?? '')));
+                            }
+                        }
+                    }
+                    if (in_array($target, $skus, true)) {
+                        $ids[] = $itemId;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('eBay2 GetMyeBaySelling scan failed', [
+                    'sku' => $sku,
+                    'list' => $listName,
+                    'error' => $e->getMessage(),
+                ]);
+                break;
+            }
+            $page++;
+        }
+
+        return array_values(array_unique($ids));
     }
 
     /**

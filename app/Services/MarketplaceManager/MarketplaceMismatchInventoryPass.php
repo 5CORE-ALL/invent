@@ -270,7 +270,7 @@ final class MarketplaceMismatchInventoryPass
                 ->whereColumn('sku', '!=', 'item_id')
                 ->pluck('sku')
                 ->map(static fn ($sku) => trim((string) $sku))
-                ->filter(static fn (string $sku) => $sku !== '')
+                ->filter(static fn (string $sku) => $sku !== '' && ! MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku))
                 ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
                 ->values()
                 ->all();
@@ -356,8 +356,8 @@ final class MarketplaceMismatchInventoryPass
             'aliexpress' => app(AliexpressLiveListingsService::class)->peekCached(),
             'faire' => app(FaireLiveListingsService::class)->peekCached(),
             'amazon' => app(AmazonLiveListingsService::class)->peekCached(),
-            'tiktok' => app(TikTokLiveListingsService::class)->peekCached(),
-            'tiktok2' => app(TikTok2LiveListingsService::class)->peekCached(),
+            'tiktok' => null,
+            'tiktok2' => null,
             default => null,
         };
 

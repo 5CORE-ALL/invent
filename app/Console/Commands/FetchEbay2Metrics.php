@@ -91,20 +91,8 @@ class FetchEbay2Metrics extends Command
                 $itemIdToSku[$itemId][] = $sku;
             }
 
-            // Check if this SKU exists with different item_id and delete old records
-            $existingRecords = Ebay2Metric::where('sku', $sku)
-                ->where('item_id', '!=', $itemId)
-                ->get();
-            
-            if ($existingRecords->count() > 0) {
-                $this->info("🔄 SKU {$sku}: Found old item_id(s), cleaning up...");
-                foreach ($existingRecords as $oldRecord) {
-                    $this->info("❌ Deleting old record: {$oldRecord->item_id}/{$sku}");
-                    $oldRecord->delete();
-                }
-            }
-
-            // Save per SKU (unique by item_id + sku)
+            // Keep every item_id+sku pair. The same child SKU can be listed on
+            // two eBay items; deleting the "other" item_id left that listing stuck.
             Ebay2Metric::updateOrCreate(
                 ['item_id' => $itemId, 'sku' => $sku],
                 [
@@ -118,17 +106,9 @@ class FetchEbay2Metrics extends Command
         
         DB::connection()->disconnect();
 
-        // Clean up SKUs that are no longer active (not in current fetch)
-        $uniqueActiveSkus = array_unique($activeSkus);
-        if (!empty($uniqueActiveSkus)) {
-            $deletedCount = Ebay2Metric::whereNotIn('sku', $uniqueActiveSkus)->delete();
-        } else {
-            $deletedCount = 0;
-        }
-        if ($deletedCount > 0) {
-            $this->info("🗑️  Cleaned up {$deletedCount} inactive SKU records");
-        }
-        DB::connection()->disconnect();
+        // Do not delete SKUs missing from this fetch. ActiveInventoryReport omits
+        // OOS / ended variation children, and deleting them drops the link map so
+        // inventory sync can never restock those listings.
 
         // Fetch and update titles for all items
         $this->updateTitles($token, $itemIdToSku);

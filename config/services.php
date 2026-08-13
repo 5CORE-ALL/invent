@@ -915,6 +915,7 @@ return [
         'access_token' => env('TIKTOK_ACCESS_TOKEN'),
         'refresh_token' => env('TIKTOK_REFRESH_TOKEN'),
         'app_id' => env('TIKTOK_APP_ID'),
+        'warehouse_id' => env('TIKTOK_WAREHOUSE_ID'),
     ],
 
     /*
@@ -935,6 +936,7 @@ return [
         'access_token' => env('TIKTOK2_ACCESS_TOKEN'),
         'refresh_token' => env('TIKTOK2_REFRESH_TOKEN'),
         'app_id' => env('TIKTOK2_APP_ID'),
+        'warehouse_id' => env('TIKTOK2_WAREHOUSE_ID'),
     ],
 
     /*

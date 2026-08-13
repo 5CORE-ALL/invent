@@ -35,6 +35,8 @@ class TikTokShopService
     /** Cache key prefix — overridden by TikTok2ShopService */
     protected string $cachePrefix = 'tiktok';
 
+    protected bool $ipAllowListBlocked = false;
+
     public function __construct()
     {
         $cfg = config('services.'.$this->configKey, []);
@@ -179,27 +181,56 @@ class TikTokShopService
     protected function applyShopCipherFromShopInfo(?array $shopInfo): ?string
     {
         $shops = $this->extractShopsFromShopInfo($shopInfo);
+        $preferred = array_values(array_filter([
+            trim((string) (config('services.'.$this->configKey.'.shop_id') ?? '')),
+            trim((string) (Cache::get($this->cachePrefix.'_shop_id') ?? '')),
+        ], static fn (string $id) => $id !== ''));
+
+        $pick = null;
         foreach ($shops as $shop) {
             $cipher = trim((string) ($shop['cipher'] ?? ''));
-            if ($cipher === '') {
+            if (! $this->isUsableShopCipher($cipher)) {
                 continue;
             }
-            $this->rememberShopCipher($cipher);
             $shopId = trim((string) ($shop['id'] ?? $shop['shop_id'] ?? ''));
-            if ($shopId !== '') {
-                Cache::put($this->cachePrefix.'_shop_id', $shopId, 86400 * 30);
+            if ($pick === null) {
+                $pick = ['cipher' => $cipher, 'shop_id' => $shopId];
             }
-
-            return $cipher;
+            if ($shopId !== '' && in_array($shopId, $preferred, true)) {
+                $pick = ['cipher' => $cipher, 'shop_id' => $shopId];
+                break;
+            }
         }
 
-        return null;
+        if ($pick === null) {
+            return null;
+        }
+
+        $this->rememberShopCipher($pick['cipher']);
+        if ($pick['shop_id'] !== '') {
+            Cache::put($this->cachePrefix.'_shop_id', $pick['shop_id'], 86400 * 30);
+        }
+
+        return $pick['cipher'];
+    }
+
+    protected function isUsableShopCipher(string $cipher): bool
+    {
+        $cipher = trim($cipher);
+        if ($cipher === '' || strlen($cipher) < 12) {
+            return false;
+        }
+        $lower = strtolower($cipher);
+
+        return ! str_contains($lower, 'xxxx')
+            && ! str_contains($lower, 'the_real_one')
+            && ! str_contains($lower, 'placeholder');
     }
 
     protected function rememberShopCipher(string $cipher): void
     {
         $cipher = trim($cipher);
-        if ($cipher === '') {
+        if (! $this->isUsableShopCipher($cipher)) {
             return;
         }
 
@@ -233,7 +264,7 @@ class TikTokShopService
         }
         $cipher = trim((string) @file_get_contents($path));
 
-        return $cipher !== '' ? $cipher : null;
+        return $this->isUsableShopCipher($cipher) ? $cipher : null;
     }
 
     /**
@@ -813,7 +844,7 @@ class TikTokShopService
 
         // Prefer previously cached cipher (survives getShopInfo IP allow-list failures)
         $cached = Cache::get($this->cachePrefix.'_shop_cipher');
-        if (is_string($cached) && trim($cached) !== '') {
+        if (is_string($cached) && $this->isUsableShopCipher($cached)) {
             $this->rememberShopCipher(trim($cached));
 
             return;
@@ -1566,6 +1597,28 @@ class TikTokShopService
         }
     }
 
+    public static function isIpAllowListError(?string $message): bool
+    {
+        $message = trim((string) $message);
+
+        return $message !== '' && (
+            stripos($message, 'IP allow list') !== false
+            || stripos($message, 'IP address is not in the IP allow list') !== false
+        );
+    }
+
+    public function isIpAllowListBlocked(): bool
+    {
+        return $this->ipAllowListBlocked;
+    }
+
+    protected function rememberIpAllowList(?string $message): void
+    {
+        if (self::isIpAllowListError($message)) {
+            $this->ipAllowListBlocked = true;
+        }
+    }
+
     /**
      * Update inventory for a single SKU on TikTok Shop.
      *
@@ -1574,10 +1627,14 @@ class TikTokShopService
      * @param  int     $quantity   Available quantity to set
      * @return array{success: bool, message: string}
      */
-    public function updateProductInventory(string $productId, string $skuId, int $quantity): array
+    public function updateProductInventory(string $productId, string $skuId, int $quantity, bool $retried = false): array
     {
         if (! $this->accessToken) {
             return ['success' => false, 'message' => 'TikTok access token not available.'];
+        }
+
+        if ($this->ipAllowListBlocked) {
+            return ['success' => false, 'message' => 'Access denied. Your IP address is not in the IP allow list configured for this app.'];
         }
 
         try {
@@ -1585,52 +1642,45 @@ class TikTokShopService
             $this->ensureShopCipher();
 
             $warehouseId = $this->resolveDefaultWarehouseId();
-            $inventoryRow = ['quantity' => max(0, $quantity)];
-            if ($warehouseId !== null && $warehouseId !== '') {
-                $inventoryRow['warehouse_id'] = $warehouseId;
+            if ($this->ipAllowListBlocked) {
+                return ['success' => false, 'message' => 'Access denied. Your IP address is not in the IP allow list configured for this app.'];
             }
 
-            // SDK: Product::updateInventory($product_id, $params)
-            $params = [
-                'skus' => [
-                    [
-                        'id' => $skuId,
-                        'inventory' => [$inventoryRow],
-                    ],
-                ],
-            ];
+            $result = $this->sendProductInventoryUpdate($productId, $skuId, $quantity, $warehouseId);
+            if (! empty($result['success'])) {
+                return $result;
+            }
 
-            $response = $this->client->Product->updateInventory($productId, $params);
-            $this->lastResponse = $response;
-
-            // Library may return data payload or wrapped {code, message, data}
-            if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
-                $message = (string) ($response['message'] ?? 'TikTok inventory update failed.');
-                // Retry once with the warehouse from the product SKU if default warehouse was rejected.
-                if ($warehouseId && (stripos($message, 'warehouse') !== false)) {
-                    $skuWarehouse = $this->warehouseIdFromProductSku($productId, $skuId);
-                    if ($skuWarehouse && $skuWarehouse !== $warehouseId) {
-                        $params['skus'][0]['inventory'][0]['warehouse_id'] = $skuWarehouse;
-                        $response = $this->client->Product->updateInventory($productId, $params);
-                        $this->lastResponse = $response;
-                        if (! (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0)) {
-                            return ['success' => true, 'message' => 'Inventory updated.'];
-                        }
-                        $message = (string) ($response['message'] ?? $message);
-                    }
-                }
-
+            $message = (string) ($result['message'] ?? 'TikTok inventory update failed.');
+            $this->rememberIpAllowList($message);
+            if ($this->ipAllowListBlocked) {
                 return ['success' => false, 'message' => $message];
             }
 
-            return ['success' => true, 'message' => 'Inventory updated.'];
+            if (stripos($message, 'warehouse') !== false) {
+                $skuWarehouse = $this->warehouseIdFromProductSku($productId, $skuId);
+                if ($skuWarehouse !== null && $skuWarehouse !== '' && $skuWarehouse !== $warehouseId) {
+                    $retry = $this->sendProductInventoryUpdate($productId, $skuId, $quantity, $skuWarehouse);
+                    if (! empty($retry['success'])) {
+                        return $retry;
+                    }
+                    $message = (string) ($retry['message'] ?? $message);
+                }
+            }
+
+            return ['success' => false, 'message' => $message !== '' ? $message : 'TikTok inventory update failed.'];
         } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
-            if ($this->refreshAccessToken()) {
-                return $this->updateProductInventory($productId, $skuId, $quantity);
+            $this->rememberIpAllowList($e->getMessage());
+            if ($this->ipAllowListBlocked) {
+                return ['success' => false, 'message' => $e->getMessage()];
+            }
+            if (! $retried && $this->refreshAccessToken()) {
+                return $this->updateProductInventory($productId, $skuId, $quantity, true);
             }
 
             return ['success' => false, 'message' => 'Token expired and refresh failed: '.$e->getMessage()];
         } catch (\Throwable $e) {
+            $this->rememberIpAllowList($e->getMessage());
             Log::error('TikTok updateProductInventory failed', [
                 'product_id' => $productId,
                 'sku_id' => $skuId,
@@ -1639,6 +1689,44 @@ class TikTokShopService
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    protected function sendProductInventoryUpdate(string $productId, string $skuId, int $quantity, ?string $warehouseId): array
+    {
+        $inventoryRow = ['quantity' => max(0, $quantity)];
+        if ($warehouseId !== null && $warehouseId !== '') {
+            $inventoryRow['warehouse_id'] = $warehouseId;
+        }
+
+        $params = [
+            'skus' => [
+                [
+                    'id' => $skuId,
+                    'inventory' => [$inventoryRow],
+                ],
+            ],
+        ];
+
+        try {
+            $response = $this->client->Product->updateInventory($productId, $params);
+            $this->lastResponse = $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
+            return [
+                'success' => false,
+                'message' => (string) ($response['message'] ?? 'TikTok inventory update failed.'),
+            ];
+        }
+
+        return ['success' => true, 'message' => 'Inventory updated.'];
     }
 
     protected function warehouseIdFromProductSku(string $productId, string $skuId): ?string
@@ -1652,22 +1740,29 @@ class TikTokShopService
                 if (! is_array($sku) || (string) ($sku['id'] ?? '') !== $skuId) {
                     continue;
                 }
-                $inventory = $sku['inventory'] ?? [];
-                if (! is_array($inventory)) {
-                    break;
+                $wid = trim((string) ($sku['warehouse_id'] ?? $sku['warehouseId'] ?? ''));
+                if ($wid !== '') {
+                    return $wid;
                 }
-                $rows = array_is_list($inventory) ? $inventory : [$inventory];
-                foreach ($rows as $row) {
-                    if (! is_array($row)) {
+                foreach (['inventory', 'warehouses', 'stock_infos', 'inventory_list'] as $key) {
+                    $inventory = $sku[$key] ?? null;
+                    if (! is_array($inventory)) {
                         continue;
                     }
-                    $wid = trim((string) ($row['warehouse_id'] ?? ''));
-                    if ($wid !== '') {
-                        return $wid;
+                    $rows = array_is_list($inventory) ? $inventory : [$inventory];
+                    foreach ($rows as $row) {
+                        if (! is_array($row)) {
+                            continue;
+                        }
+                        $wid = trim((string) ($row['warehouse_id'] ?? $row['warehouseId'] ?? ($row['warehouse']['id'] ?? '')));
+                        if ($wid !== '') {
+                            return $wid;
+                        }
                     }
                 }
             }
         } catch (\Throwable $e) {
+            $this->rememberIpAllowList($e->getMessage());
             Log::info('TikTok warehouseIdFromProductSku failed', [
                 'product_id' => $productId,
                 'sku_id' => $skuId,
@@ -1678,8 +1773,22 @@ class TikTokShopService
         return null;
     }
 
+    protected function cacheWarehouseId(string $cacheKey, string $value, int $ttl): void
+    {
+        try {
+            Cache::put($cacheKey, $value, $ttl);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
     protected function resolveDefaultWarehouseId(): ?string
     {
+        $fromConfig = trim((string) (config('services.'.$this->configKey.'.warehouse_id') ?? ''));
+        if ($fromConfig !== '') {
+            return $fromConfig;
+        }
+
         $cacheKey = $this->cachePrefix.'_default_warehouse_id';
 
         try {
@@ -1693,6 +1802,14 @@ class TikTokShopService
 
         try {
             $response = $this->client->Logistic->getWarehouseList();
+            if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
+                $message = (string) ($response['message'] ?? 'TikTok warehouse list failed.');
+                $this->rememberIpAllowList($message);
+                $this->cacheWarehouseId($cacheKey, '__none__', 600);
+                Log::warning('TikTok resolveDefaultWarehouseId failed', ['error' => $message]);
+
+                return null;
+            }
             $warehouses = [];
             if (is_array($response)) {
                 $warehouses = $response['warehouses']
@@ -1718,24 +1835,18 @@ class TikTokShopService
                     || str_contains($type, 'SALES')
                     || str_contains($type, 'DEFAULT');
                 if ($isDefault) {
-                    try {
-                        Cache::put($cacheKey, $id, 3600);
-                    } catch (\Throwable $e) {
-                        // ignore
-                    }
+                    $this->cacheWarehouseId($cacheKey, $id, 3600);
 
                     return $id;
                 }
             }
 
-            try {
-                Cache::put($cacheKey, $fallback ?? '__none__', $fallback ? 3600 : 600);
-            } catch (\Throwable $e) {
-                // ignore
-            }
+            $this->cacheWarehouseId($cacheKey, $fallback ?? '__none__', $fallback ? 3600 : 600);
 
             return $fallback;
         } catch (\Throwable $e) {
+            $this->rememberIpAllowList($e->getMessage());
+            $this->cacheWarehouseId($cacheKey, '__none__', 600);
             Log::warning('TikTok resolveDefaultWarehouseId failed', ['error' => $e->getMessage()]);
         }
 

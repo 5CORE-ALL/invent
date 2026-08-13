@@ -61,6 +61,8 @@ class Ebay2InventorySyncService
         );
         $shopifyQty = $this->mergeLocalShopifyQtyFallback($shopifyQty, $fetchSkus);
 
+        $this->ensureMetricsForSkus($skus);
+
         $metrics = Ebay2Metric::query()
             ->whereNotNull('item_id')
             ->where('sku', '!=', '')
@@ -76,6 +78,9 @@ class Ebay2InventorySyncService
             ->get()
             ->filter(function (Ebay2Metric $metric) use ($wantedNorms, $skus) {
                 $raw = (string) $metric->sku;
+                if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($raw)) {
+                    return false;
+                }
                 if (in_array($raw, $skus, true)) {
                     return true;
                 }
@@ -106,6 +111,15 @@ class Ebay2InventorySyncService
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requested);
                 }
             }
+            if ($shopifyStock === null) {
+                $onShopify = ShopifySku::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                    ->exists();
+                if (! $onShopify) {
+                    $skipped++;
+                    continue;
+                }
+            }
             $pushQty = $shopifyStock === null
                 ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
                 : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
@@ -129,12 +143,13 @@ class Ebay2InventorySyncService
         }
 
         $invResult = $this->pushInventoryRows($inventoryRows);
-        if (! empty($invResult['success'])) {
-            $this->updateLocalStock($inventoryRows);
-            $this->updateLocalPlatformQuantities($inventoryRows);
+        $pushedRows = $invResult['rows'] ?? [];
+        if ($pushedRows !== []) {
+            $this->updateLocalStock($pushedRows);
+            $this->updateLocalPlatformQuantities($pushedRows);
 
             return [
-                'updated' => (int) ($invResult['pushed'] ?? count($inventoryRows)),
+                'updated' => (int) ($invResult['pushed'] ?? count($pushedRows)),
                 'failed' => (int) ($invResult['failed'] ?? 0),
                 'skipped' => $skipped,
                 'message' => 'Synced '.((int) ($invResult['pushed'] ?? 0)).' SKU(s) to eBay 2 from live Shopify.',
@@ -187,12 +202,27 @@ class Ebay2InventorySyncService
             ];
         }
 
+        $this->ensureMetricsForSkus(
+            ShopifySku::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '' && ! MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku))
+                ->unique()
+                ->values()
+                ->all(),
+            false
+        );
+
         $metrics = Ebay2Metric::query()
             ->whereNotNull('sku')
             ->whereNotNull('item_id')
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'item_id')
-            ->get();
+            ->get()
+            ->filter(fn (Ebay2Metric $metric) => ! MarketplaceLiveInventoryRules::isParentPlaceholderSku((string) $metric->sku))
+            ->values();
 
         if ($metrics->isEmpty()) {
             return [
@@ -316,9 +346,10 @@ class Ebay2InventorySyncService
             $invResult = $this->pushInventoryRows($inventoryRows);
             $updated = (int) ($invResult['pushed'] ?? 0);
             $failed = (int) ($invResult['failed'] ?? 0);
-            if ($updated > 0) {
-                $this->updateLocalStock($inventoryRows);
-                $this->updateLocalPlatformQuantities($inventoryRows);
+            $pushedRows = $invResult['rows'] ?? [];
+            if ($pushedRows !== []) {
+                $this->updateLocalStock($pushedRows);
+                $this->updateLocalPlatformQuantities($pushedRows);
             } elseif ($failed > 0) {
                 Log::warning('Ebay2InventorySyncService: inventory push failed', $invResult);
             }
@@ -364,30 +395,67 @@ class Ebay2InventorySyncService
 
     /**
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int, price?: float|null}>  $inventoryRows
-     * @return array{success: bool, pushed: int, failed: int, message?: string}
+     * @return array{success: bool, pushed: int, failed: int, message?: string, rows: array<int, array<string, mixed>>}
      */
     protected function pushInventoryRows(array $inventoryRows): array
     {
         $pushed = 0;
         $failed = 0;
         $lastMessage = null;
+        $pushedRows = [];
 
         foreach ($inventoryRows as $row) {
             $itemId = trim((string) ($row['product_id'] ?? ''));
             $sku = trim((string) ($row['sku_code'] ?? ''));
-            if ($itemId === '' || $sku === '') {
+            if ($itemId === '' || $sku === '' || MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
                 $failed++;
                 continue;
             }
 
             $qty = max(0, (int) ($row['inventory'] ?? 0));
-            // Qty-only via ReviseInventoryStatus (no GetItem). Price is optional; omit unless valid.
             $price = $row['price'] ?? null;
             $price = ($price !== null && (float) $price > 0) ? (float) $price : null;
 
             try {
                 $result = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, $sku, $price);
+                if (empty($result['success']) && (! empty($result['ended']) || $this->ebay2Api->listingLooksEnded($result['message'] ?? ''))) {
+                    $relist = $this->ebay2Api->relistFixedPriceItem($itemId, $sku, $qty);
+                    if (! empty($relist['success'])) {
+                        $newId = trim((string) ($relist['item_id'] ?? $itemId));
+                        if ($newId !== '' && $newId !== $itemId) {
+                            Ebay2Metric::query()->where('item_id', $itemId)->update(['item_id' => $newId]);
+                            $itemId = $newId;
+                            $row['product_id'] = $itemId;
+                        }
+                        $result = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, $sku, $price);
+                    } else {
+                        $failed++;
+                        $lastMessage = $relist['message'] ?? ($result['message'] ?? 'Relist failed');
+                        Log::warning('Ebay2InventorySyncService: relist failed', [
+                            'item_id' => $itemId,
+                            'sku' => $sku,
+                            'result' => $relist,
+                        ]);
+                        continue;
+                    }
+                }
+                if (empty($result['success']) || (isset($result['quantity_confirmed']) && $result['quantity_confirmed'] === false)) {
+                    $fallback = $this->ebay2Api->reviseVariationQuantity($itemId, $sku, $qty);
+                    if (! empty($fallback['success'])) {
+                        $result = $fallback;
+                    } elseif (empty($result['success'])) {
+                        $result = $fallback;
+                    }
+                }
+
                 if (! empty($result['success'])) {
+                    if (! ($result['quantity_confirmed'] ?? true)) {
+                        $liveQty = $this->ebay2Api->variationAvailableQty($itemId, $sku);
+                        if ($liveQty !== null) {
+                            $row['inventory'] = $liveQty;
+                        }
+                    }
+                    $pushedRows[] = $row;
                     $pushed++;
                 } else {
                     $failed++;
@@ -415,7 +483,90 @@ class Ebay2InventorySyncService
             'pushed' => $pushed,
             'failed' => $failed,
             'message' => $lastMessage,
+            'rows' => $pushedRows,
         ];
+    }
+
+    /**
+     * Re-link Shopify SKUs that eBay still has (including ended / duplicate listings).
+     *
+     * @param  array<int, string>  $skus
+     */
+    protected function ensureMetricsForSkus(array $skus, bool $scanEbay = true): void
+    {
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '' || MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
+                continue;
+            }
+
+            $hasChild = Ebay2Metric::query()
+                ->where(function ($q) use ($sku) {
+                    $q->where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+                })
+                ->whereNotNull('item_id')
+                ->where('item_id', '!=', '')
+                ->whereColumn('item_id', '!=', 'sku')
+                ->exists();
+
+            $ids = [];
+            if ($scanEbay) {
+                $ids = $this->ebay2Api->findItemIdsBySku($sku);
+            }
+            if ($ids === [] && ! $hasChild) {
+                $ids = $this->guessItemIdsFromParentMetrics($sku);
+            }
+            foreach ($ids as $itemId) {
+                $itemId = trim((string) $itemId);
+                if ($itemId === '') {
+                    continue;
+                }
+                $this->upsertEbay2MetricLink($itemId, $sku);
+            }
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function guessItemIdsFromParentMetrics(string $sku): array
+    {
+        $upper = strtoupper($sku);
+        $ids = [];
+        Ebay2Metric::query()
+            ->where('sku', 'like', 'PARENT%')
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->get(['item_id', 'sku'])
+            ->each(function (Ebay2Metric $row) use ($upper, &$ids) {
+                $key = strtoupper(trim((string) preg_replace('/^PARENT\s*/i', '', (string) $row->sku)));
+                if ($key !== '' && str_contains($upper, $key)) {
+                    $ids[] = (string) $row->item_id;
+                }
+            });
+
+        return array_values(array_unique($ids));
+    }
+
+    protected function upsertEbay2MetricLink(string $itemId, string $sku): void
+    {
+        $existing = Ebay2Metric::query()
+            ->where('item_id', $itemId)
+            ->where('sku', $sku)
+            ->first();
+        if ($existing) {
+            $existing->report_range = now()->toDateString();
+            $existing->save();
+
+            return;
+        }
+
+        $row = new Ebay2Metric();
+        $row->id = ((int) Ebay2Metric::query()->max('id')) + 1;
+        $row->item_id = $itemId;
+        $row->sku = $sku;
+        $row->report_range = now()->toDateString();
+        $row->save();
     }
 
     /**

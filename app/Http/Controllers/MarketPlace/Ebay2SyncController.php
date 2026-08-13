@@ -18,6 +18,7 @@ use App\Services\MarketplaceManager\Ebay2OrderPushService;
 use App\Services\MarketplaceManager\Ebay2OrderSyncService;
 use App\Services\MarketplaceManager\Ebay2TrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
@@ -1329,6 +1330,8 @@ class Ebay2SyncController extends Controller
             ->where('item_id', '!=', '')
             ->whereColumn('sku', '!=', 'item_id')
             ->pluck('sku')
+            ->map(static fn ($sku) => trim((string) $sku))
+            ->filter(static fn (string $sku) => $sku !== '' && ! MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku))
             ->unique()
             ->values()
             ->all();
