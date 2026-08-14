@@ -1559,19 +1559,21 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Wayfair Marketplace Manager
+        // Wayfair Marketplace Manager — Shopify qty → active listings.
+        // 30 min cadence; unique lock + withoutOverlapping skip the next tick if the
+        // previous run is still going (do not dispatch a second overlapping job).
         $schedule->job(new \App\Jobs\SyncInventoryToWayfair)
-            ->everyFourHours()
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('wayfair-sync-inventory')
-            ->withoutOverlapping(200)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('wayfair'))
-            ->everyFifteenMinutes()
+            ->cron('15,45 * * * *')
             ->timezone('Asia/Kolkata')
             ->name('wayfair-sync-mismatch-inventory')
-            ->withoutOverlapping(12)
+            ->withoutOverlapping(14)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('wayfair', '2026-07-07', true))

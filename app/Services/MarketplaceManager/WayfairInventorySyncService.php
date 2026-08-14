@@ -123,13 +123,20 @@ class WayfairInventorySyncService
         }
 
         $bulk = $this->wayfairApi->updateItemInventoryBulk($apiItems);
-        $this->persistLocalStock($apiItems);
+        $accepted = array_fill_keys(array_map('strval', $bulk['skus'] ?? []), true);
+        $persistRows = $accepted === []
+            ? []
+            : array_values(array_filter($apiItems, static fn (array $row) => isset($accepted[(string) $row['sku']])));
+        if ($persistRows !== []) {
+            $this->persistLocalStock($persistRows);
+            app(WayfairLiveListingsService::class)->clearCache();
+        }
 
         return [
-            'updated' => (int) ($bulk['pushed'] ?? count($apiItems)),
+            'updated' => (int) ($bulk['pushed'] ?? 0),
             'failed' => (int) ($bulk['failed'] ?? 0),
             'skipped' => $skipped,
-            'message' => $bulk['message'] ?? ('Pushed '.count($apiItems).' inventory row(s) to Wayfair.'),
+            'message' => $bulk['message'] ?? ('Pushed '.count($persistRows).' inventory row(s) to Wayfair.'),
         ];
     }
 
@@ -167,12 +174,19 @@ class WayfairInventorySyncService
             ->values()
             ->all();
 
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        if ($catalog->tablesReady() && $catalog->hasAnyActive()) {
+            $skus = $catalog->filterLinkedToVerified($skus);
+        }
+
+        $skus = $this->filterToActiveWayfairListings($skus);
+
         if ($skus === []) {
             return [
                 'updated' => 0,
                 'failed' => 0,
                 'skipped' => 0,
-                'message' => 'No Wayfair SKUs. Run Sync link map first.',
+                'message' => 'No active Wayfair SKUs linked to Shopify. Run Sync link map first.',
             ];
         }
 
@@ -181,15 +195,52 @@ class WayfairInventorySyncService
                 'updated' => 0,
                 'failed' => 0,
                 'skipped' => 0,
-                'message' => '[dry-run] Would sync '.count($skus).' linked SKU(s).',
+                'message' => '[dry-run] Would sync '.count($skus).' active Wayfair SKU(s).',
             ];
         }
 
         $result = $this->syncSkusFromShopify($skus);
-        $pass = app(MarketplaceMismatchInventoryPass::class)->run('wayfair');
-        $result['message'] = ($result['message'] ?? '').' '.($pass['message'] ?? '');
 
         return $result;
+    }
+
+    /**
+     * Keep SKUs whose live Wayfair listing state is active. If the live cache
+     * has no state data, keep the incoming list (treated as active).
+     *
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    protected function filterToActiveWayfairListings(array $skus): array
+    {
+        $live = app(WayfairLiveListingsService::class)->peekCached();
+        if (! is_array($live) || $live === []) {
+            return $skus;
+        }
+
+        $activeNorms = [];
+        foreach ($live as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $state = strtolower(trim((string) ($row['state'] ?? 'active')));
+            if (! in_array($state, ['active', '1', 'true', 'onselling', 'on_selling'], true)) {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($row['sku'] ?? ''));
+            if ($norm !== '') {
+                $activeNorms[$norm] = true;
+            }
+        }
+        if ($activeNorms === []) {
+            return $skus;
+        }
+
+        return array_values(array_filter($skus, static function ($sku) use ($activeNorms) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+
+            return $norm !== '' && isset($activeNorms[$norm]);
+        }));
     }
 
     /**
@@ -238,8 +289,9 @@ class WayfairInventorySyncService
             $sku = (string) $row['sku'];
             $qty = (int) $row['quantity'];
             WayfairPricingPrice::query()
-                ->where('sku', $sku)
-                ->orWhere('sku', strtoupper($sku))
+                ->where(function ($q) use ($sku) {
+                    $q->where('sku', $sku)->orWhere('sku', strtoupper($sku));
+                })
                 ->update(['wayfair_stock' => $qty]);
 
             if (Schema::hasTable('product_stock_mappings')
