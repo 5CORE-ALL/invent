@@ -102,12 +102,17 @@ class RebuildChannelMasterSnapshot extends Command
 
             $oldL30 = $sd['l30_sales'] ?? null;
             $oldY = $sd['y_sales'] ?? null;
+            $oldL7 = $sd['l7_sales'] ?? null;
             $ySales = $ySalesSvc->salesForPacificDate($key, $ySalesDate);
+            $l7Sales = $ySalesSvc->salesForPacificWindow($key, $ySalesDate, 7);
             $sd['l30_sales'] = (float) ($m->l30_sales ?? $m->total_sales ?? 0);
             // Do not replace a real Y Sales figure with 0 when that calendar
             // day has no rows (Faire / PP often lag; latest-order−1 is kept).
             if ($ySales !== null && ($ySales > 0 || (float) ($oldY ?? 0) <= 0)) {
                 $sd['y_sales'] = $ySales;
+            }
+            if ($l7Sales !== null && ($l7Sales > 0 || (float) ($oldL7 ?? 0) <= 0)) {
+                $sd['l7_sales'] = $l7Sales;
             }
             $sd['l30_orders'] = (float) ($m->total_orders ?? 0);
             $sd['total_quantity'] = (float) ($m->total_quantity ?? 0);
@@ -132,13 +137,15 @@ class RebuildChannelMasterSnapshot extends Command
             $sd['rebuilt_at'] = now()->toDateTimeString();
 
             $this->line(sprintf(
-                '%s %s  l30 %s → %s  y %s → %s  gpft %s',
+                '%s %s  l30 %s → %s  y %s → %s  l7 %s → %s  gpft %s',
                 $dry ? 'DRY' : 'UPD',
                 str_pad($key, 16),
                 $oldL30 ?? '—',
                 $sd['l30_sales'],
                 $oldY ?? '—',
                 $sd['y_sales'] ?? '—',
+                $oldL7 ?? '—',
+                $sd['l7_sales'] ?? '—',
                 $sd['gprofit_percent']
             ));
 
@@ -171,25 +178,34 @@ class RebuildChannelMasterSnapshot extends Command
                 continue;
             }
             $ySales = $ySalesSvc->salesForPacificDate($extraKey, $ySalesDate);
-            if ($ySales === null) {
+            $l7Sales = $ySalesSvc->salesForPacificWindow($extraKey, $ySalesDate, 7);
+            if ($ySales === null && $l7Sales === null) {
                 continue;
             }
             $sd = $existing->summaryArray();
             $oldY = $sd['y_sales'] ?? null;
-            if ($ySales <= 0 && (float) ($oldY ?? 0) > 0) {
+            $oldL7 = $sd['l7_sales'] ?? null;
+            if ($ySales !== null && ! ($ySales <= 0 && (float) ($oldY ?? 0) > 0)) {
+                $sd['y_sales'] = $ySales;
+            }
+            if ($l7Sales !== null && ! ($l7Sales <= 0 && (float) ($oldL7 ?? 0) > 0)) {
+                $sd['l7_sales'] = $l7Sales;
+            }
+            if (! array_key_exists('y_sales', $sd) && ! array_key_exists('l7_sales', $sd)) {
                 continue;
             }
-            $sd['y_sales'] = $ySales;
             $this->line(sprintf(
-                '%s %s  y %s → %s',
+                '%s %s  y %s → %s  l7 %s → %s',
                 $dry ? 'DRY' : 'UPD',
                 str_pad($extraKey, 16),
                 $oldY ?? '—',
-                $ySales
+                $sd['y_sales'] ?? '—',
+                $oldL7 ?? '—',
+                $sd['l7_sales'] ?? '—'
             ));
             if (! $dry) {
                 $existing->summary_data = $sd;
-                $existing->notes = 'Rebuilt y_sales from orders '.$ySalesDate;
+                $existing->notes = 'Rebuilt y_sales/l7_sales from orders '.$ySalesDate;
                 $existing->save();
             }
             $updated++;

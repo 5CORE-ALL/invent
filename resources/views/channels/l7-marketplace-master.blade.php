@@ -273,8 +273,8 @@
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="adChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
-                            <option value="7">7 Days</option>
-                            <option value="30" selected>30 Days</option>
+                            <option value="7" selected>7 Days</option>
+                            <option value="30">30 Days</option>
                             <option value="31">31 Days</option>
                             <option value="32">32 Days</option>
                             <option value="35">35 Days</option>
@@ -336,7 +336,8 @@
         var currentChartChannel = '';
         var currentMetricKey = '';
         var currentChartMetric = '';
-        var currentChartDays = 30;
+        var currentChartDays = 7;
+        var chartWindowDays = 7;
         var currentCellValue = null;
         var adBreakdownChartInstance = null;
         var adChartAjax = null;
@@ -509,7 +510,7 @@
         }
 
         const metricLabels = {
-            y_sales: 'Y Sales', l30_orders: 'Orders', qty: 'Qty', total_views: 'Views',
+            y_sales: 'L7 Sales', l7_sales: 'L7 Sales', l30_orders: 'Orders', qty: 'Qty', total_views: 'Views',
             cvr: 'CVR', gprofit: 'GPFT%', groi: 'G ROI%', ad_spend: 'Spend',
             ads_pct: 'Ads %', npft: 'NPFT%', nroi: 'NROI%'
         };
@@ -518,11 +519,11 @@
             currentChartChannel = snapshotChannelKey(channel);
             currentMetricKey = metricKey;
             currentChartMetric = metricKey;
-            currentChartDays = 30;
+            currentChartDays = 7;
             currentCellValue = (cellValue !== undefined && cellValue !== null && !isNaN(cellValue)) ? cellValue : null;
-            $('#adChartRangeSelect').val('30');
+            $('#adChartRangeSelect').val('7');
             const titleName = displayName || channel || 'All';
-            $('#adChartModalTitle').text(`${titleName} - ${metricLabels[metricKey] || metricKey} (Rolling ${adChartRangeLabel(30)})`);
+            $('#adChartModalTitle').text(`${titleName} - ${metricLabels[metricKey] || metricKey} (Rolling ${adChartRangeLabel(7)})`);
             new bootstrap.Modal(document.getElementById('adBreakdownChartModal')).show();
             loadMetricChart();
         }
@@ -531,7 +532,7 @@
             $('#adChartNoData').hide();
             $('#adBreakdownChartContainer').hide();
             $('#adChartLoading').show();
-            const params = { channel: currentChartChannel, metric: currentMetricKey, days: currentChartDays };
+            const params = { channel: currentChartChannel, metric: currentMetricKey, days: currentChartDays, window: chartWindowDays };
             if (currentCellValue !== null) params.badge_value = currentCellValue;
             adChartAjax = $.ajax({
                 url: '/channel-metric-chart-data',
@@ -665,7 +666,7 @@
             $.ajax({
                 url: channelMetricDotTrendsUrl,
                 type: 'GET',
-                data: { channels: channelKeys.join(',') },
+                data: { channels: channelKeys.join(','), window: chartWindowDays },
                 dataType: 'json'
             }).done(function(response) {
                 var inverted = ['ads_pct'];

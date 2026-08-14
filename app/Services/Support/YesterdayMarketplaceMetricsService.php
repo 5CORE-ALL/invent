@@ -135,6 +135,26 @@ class YesterdayMarketplaceMetricsService
     }
 
     /**
+     * Sum of reported sales for $days Pacific calendar days ending on $endYmd.
+     */
+    public function salesForPacificWindow(string $channelKey, string $endYmd, int $days = 7): ?float
+    {
+        $sum = 0.0;
+        $any = false;
+        $end = Carbon::parse($endYmd, self::TZ);
+        for ($i = 0; $i < max(1, $days); $i++) {
+            $v = $this->salesForPacificDate($channelKey, $end->copy()->subDays($i)->toDateString());
+            if ($v === null) {
+                continue;
+            }
+            $sum += $v;
+            $any = true;
+        }
+
+        return $any ? round($sum, 2) : null;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function forChannel(string $name, Carbon $start, Carbon $end, string $date): array
