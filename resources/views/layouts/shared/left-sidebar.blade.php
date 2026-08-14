@@ -86,7 +86,7 @@
                         </li>
                         <li>
                             <a href="{{ route('yesterday.marketplace.master') }}" class="{{ request()->routeIs('yesterday.marketplace.master') ? 'active' : '' }}">
-                                <i class="ri-calendar-check-line me-2"></i>Dashboard Yesterday Channel
+                                <i class="ri-calendar-check-line me-2"></i>Active Channel Yesterday
                             </a>
                         </li>
                         <li>

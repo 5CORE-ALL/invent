@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Yesterday Channel', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Active Channel Yesterday', 'sidenav' => 'condensed'])
 
 @php
     $yesterdayLabel = now('America/Los_Angeles')->subDays(2)->format('M j, Y');
@@ -175,7 +175,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Yesterday Channel Master',
+        'page_title' => 'Active Channel Yesterday',
         'sub_title' => $yesterdayLabel . ' (latest complete day — sales, orders, qty, spend)',
     ])
 

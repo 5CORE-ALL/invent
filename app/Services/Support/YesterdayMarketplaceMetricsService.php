@@ -1237,6 +1237,27 @@ class YesterdayMarketplaceMetricsService
                     ->first();
                 $spend += (float) ($pt->spend ?? 0);
                 $sales += (float) ($pt->sales ?? 0);
+
+                $fbaKw = DB::table('amazon_sp_campaign_reports')
+                    ->where('report_date_range', $key)
+                    ->whereRaw("campaignName LIKE '%FBA'")
+                    ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+                    ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
+                    ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                    ->selectRaw('COALESCE(SUM(spend), 0) as spend')
+                    ->first();
+                $spend += (float) ($fbaKw->spend ?? 0);
+
+                $fbaPt = DB::table('amazon_sp_campaign_reports')
+                    ->where('report_date_range', $key)
+                    ->where(function ($query) {
+                        $query->whereRaw("campaignName LIKE '%FBA PT'")
+                            ->orWhereRaw("campaignName LIKE '%FBA PT.'");
+                    })
+                    ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                    ->selectRaw('COALESCE(SUM(spend), 0) as spend')
+                    ->first();
+                $spend += (float) ($fbaPt->spend ?? 0);
             }
             if (Schema::hasTable('amazon_sb_campaign_reports')) {
                 $key = $this->adReportKey('amazon_sb_campaign_reports', 'report_date_range', $date, $allowL1);
@@ -1287,28 +1308,28 @@ class YesterdayMarketplaceMetricsService
 
         $spend = 0.0;
         $sales = 0.0;
-        // Never use L1. eBay 2/3 L1 is $289 / $132 from another pull;
-        // pairing that with Aug 12 Y Sales ($94 / $77) would invent 300%+ Ads%.
         try {
             if (Schema::hasTable($priority)) {
-                $key = $this->adReportKey($priority, 'report_range', $date, false);
-                $row = DB::table($priority)
-                    ->where('report_range', $key)
-                    ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend')
-                    ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales')
-                    ->first();
-                $spend += (float) ($row->spend ?? 0);
-                $sales += (float) ($row->sales ?? 0);
+                $prioritySpend = $this->resolveDatedAdSpend(
+                    $priority,
+                    'report_range',
+                    $date,
+                    'SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", ""))',
+                    'SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", ""))'
+                );
+                $spend += $prioritySpend['spend'];
+                $sales += $prioritySpend['sales'];
             }
             if (Schema::hasTable($general)) {
-                $key = $this->adReportKey($general, 'report_range', $date, false);
-                $row = DB::table($general)
-                    ->where('report_range', $key)
-                    ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend')
-                    ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales')
-                    ->first();
-                $spend += (float) ($row->spend ?? 0);
-                $sales += (float) ($row->sales ?? 0);
+                $generalSpend = $this->resolveDatedAdSpend(
+                    $general,
+                    'report_range',
+                    $date,
+                    'SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", ""))',
+                    'SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", ""))'
+                );
+                $spend += $generalSpend['spend'];
+                $sales += $generalSpend['sales'];
             }
         } catch (\Throwable $e) {
             Log::warning("Yesterday eBay {$which} ad metrics failed: ".$e->getMessage());
@@ -1330,7 +1351,6 @@ class YesterdayMarketplaceMetricsService
             $key = $this->googleAdDate($date);
             $row = DB::table('google_ads_campaigns')
                 ->whereDate('date', $key)
-                ->whereIn('advertising_channel_type', ['SHOPPING', 'SEARCH'])
                 ->whereIn('campaign_status', ['ENABLED', 'PAUSED'])
                 ->selectRaw('COALESCE(SUM(metrics_cost_micros), 0) / 1000000 as spend')
                 ->selectRaw('COALESCE(SUM(ga4_actual_revenue), 0) as sales')
@@ -1357,22 +1377,73 @@ class YesterdayMarketplaceMetricsService
         }
 
         try {
-            $key = $this->adReportKey($table, 'report_range', $date, false);
-            $row = DB::table($table)
-                ->where('report_range', $key)
-                ->selectRaw('COALESCE(SUM(spend), 0) as spend')
-                ->selectRaw('COALESCE(SUM(base_price_sales), 0) as sales')
-                ->first();
-
-            return [
-                'spend' => (float) ($row->spend ?? 0),
-                'sales' => (float) ($row->sales ?? 0),
-            ];
+            return $this->resolveDatedAdSpend(
+                $table,
+                'report_range',
+                $date,
+                'SUM(spend)',
+                'SUM(base_price_sales)'
+            );
         } catch (\Throwable $e) {
             Log::warning("Yesterday {$table} ad metrics failed: ".$e->getMessage());
 
             return ['spend' => 0.0, 'sales' => 0.0];
         }
+    }
+
+    /**
+     * Prefer the same calendar day as Y Sales. If that day has no spend,
+     * use L1, then a 1-day average of L7 / L30 so Temu / eBay 2–3 are not $0.
+     *
+     * @return array{spend: float, sales: float}
+     */
+    private function resolveDatedAdSpend(
+        string $table,
+        string $column,
+        string $date,
+        string $spendSql,
+        ?string $salesSql = null
+    ): array {
+        $empty = ['spend' => 0.0, 'sales' => 0.0];
+        if (! Schema::hasTable($table)) {
+            return $empty;
+        }
+
+        $candidates = [
+            [$date, 1.0],
+            ['L1', 1.0],
+            ['L7', 7.0],
+            ['L30', 30.0],
+        ];
+
+        foreach ($candidates as [$key, $divisor]) {
+            try {
+                if (! DB::table($table)->where($column, $key)->exists()) {
+                    continue;
+                }
+                $select = 'COALESCE('.$spendSql.', 0) as spend';
+                if ($salesSql) {
+                    $select .= ', COALESCE('.$salesSql.', 0) as sales';
+                }
+                $row = DB::table($table)
+                    ->where($column, $key)
+                    ->selectRaw($select)
+                    ->first();
+                $spend = (float) ($row->spend ?? 0);
+                if ($spend <= 0) {
+                    continue;
+                }
+
+                return [
+                    'spend' => $spend / $divisor,
+                    'sales' => ((float) ($row->sales ?? 0)) / $divisor,
+                ];
+            } catch (\Throwable $e) {
+                continue;
+            }
+        }
+
+        return $empty;
     }
 
     private function adReportHasDatedKey(string $table, string $column, string $date): bool
