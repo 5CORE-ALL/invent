@@ -235,9 +235,21 @@ final class MarketplaceLiveInventoryRules
         }
 
         $diff = $shopifyQty - $marketplaceQty;
-        $threshold = max(3.0, $shopifyQty * 0.03);
+        $threshold = self::mismatchIgnoreThreshold($shopifyQty);
 
-        return $diff <= $threshold + 1e-9;
+        return $diff <= $threshold;
+    }
+
+    /**
+     * Ignore bar when Shopify qty is higher: max(3 units, 3% of Shopify qty).
+     */
+    public static function mismatchIgnoreThreshold(int $shopifyQty): int
+    {
+        if ($shopifyQty <= 0) {
+            return 0;
+        }
+
+        return max(3, (int) ceil($shopifyQty * 0.03));
     }
 
     /**

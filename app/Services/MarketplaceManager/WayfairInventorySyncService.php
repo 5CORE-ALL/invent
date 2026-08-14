@@ -80,6 +80,13 @@ class WayfairInventorySyncService
             })
             ->values();
 
+        $catalogQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus);
+        foreach ($catalogQty as $key => $qty) {
+            if (! array_key_exists($key, $shopifyQty)) {
+                $shopifyQty[$key] = (int) $qty;
+            }
+        }
+
         $apiItems = [];
         $skipped = 0;
 
@@ -101,11 +108,15 @@ class WayfairInventorySyncService
                 continue;
             }
 
-            $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-            if ($maxQty !== null && $maxQty !== '') {
-                $qty = min($qty, (int) $maxQty);
+            $qty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $qty = MarketplaceLiveInventoryRules::clampPushQty($qty, $shopifyStock);
+
+            $currentMp = $product->wayfair_stock !== null ? (int) $product->wayfair_stock : null;
+            if ($shopifyStock > 0
+                && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp)) {
+                $skipped++;
+                continue;
             }
-            $qty = max(0, $qty);
 
             $apiItems[] = [
                 'sku' => $sku,
@@ -123,10 +134,13 @@ class WayfairInventorySyncService
         }
 
         $bulk = $this->wayfairApi->updateItemInventoryBulk($apiItems);
-        $accepted = array_fill_keys(array_map('strval', $bulk['skus'] ?? []), true);
+        $accepted = [];
+        foreach ($bulk['skus'] ?? [] as $sku) {
+            $accepted[strtoupper((string) $sku)] = true;
+        }
         $persistRows = $accepted === []
             ? []
-            : array_values(array_filter($apiItems, static fn (array $row) => isset($accepted[(string) $row['sku']])));
+            : array_values(array_filter($apiItems, static fn (array $row) => isset($accepted[strtoupper((string) $row['sku'])])));
         if ($persistRows !== []) {
             $this->persistLocalStock($persistRows);
             app(WayfairLiveListingsService::class)->clearCache();
@@ -199,9 +213,7 @@ class WayfairInventorySyncService
             ];
         }
 
-        $result = $this->syncSkusFromShopify($skus);
-
-        return $result;
+        return $this->syncSkusFromShopify($skus);
     }
 
     /**
@@ -290,7 +302,9 @@ class WayfairInventorySyncService
             $qty = (int) $row['quantity'];
             WayfairPricingPrice::query()
                 ->where(function ($q) use ($sku) {
-                    $q->where('sku', $sku)->orWhere('sku', strtoupper($sku));
+                    $q->where('sku', $sku)
+                        ->orWhere('sku', strtoupper($sku))
+                        ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))]);
                 })
                 ->update(['wayfair_stock' => $qty]);
 
