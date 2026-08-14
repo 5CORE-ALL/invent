@@ -4155,6 +4155,154 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Yesterday-only Active Channel page (GPFT / GROI from Pacific yesterday, not L30).
+     */
+    public function yesterdayMarketplaceMaster()
+    {
+        return view('channels.yesterday-marketplace-master');
+    }
+
+    /**
+     * Tabulator rows for /yesterday-marketplace-master.
+     * Same active channels as /all-marketplace-master; profit metrics are 1-day Pacific.
+     */
+    /**
+     * Y Sales All Marketplace Master actually shows (fast path):
+     * cached channel_master_calculated_data.yesterday_sales, then the same live overlays.
+     *
+     * @return array<string, float> keyed by lowercase channel lookup (spaces/dashes stripped)
+     */
+    public function displayedAllMarketplaceYSalesByLookupKey(): array
+    {
+        $sales = [];
+        foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['channel', 'yesterday_sales']) as $row) {
+            $name = trim((string) $row->channel);
+            if ($name === '') {
+                continue;
+            }
+            $sales[$this->allMarketplaceYSalesLookupKey($name)] = (float) ($row->yesterday_sales ?? 0);
+        }
+
+        $live = [
+            'temu' => fn () => $this->computeTemuYSalesLikeAmazon(false),
+            'temu2' => fn () => $this->computeTemuYSalesLikeAmazon(true),
+            'ebay' => fn () => $this->computeEbayYSalesLikeAmazon(1),
+            'ebaytwo' => fn () => $this->computeEbayYSalesLikeAmazon(2),
+            'ebaythree' => fn () => $this->computeEbayYSalesLikeAmazon(3),
+            'purchasingpower' => fn () => $this->computePurchasingPowerYSalesLikeAmazon(),
+            'shopify' => fn () => $this->computeShopifyDirectYSalesLikeAmazon(),
+            'fbmarketplace' => fn () => $this->computeFbMarketplaceYSalesLikeAmazon(),
+            'tiktok2' => fn () => $this->computeTiktokTwoYSalesLikeAmazon(),
+        ];
+
+        foreach ($live as $key => $fn) {
+            try {
+                $value = $fn();
+                if ($value !== null) {
+                    $sales[$key] = (float) $value;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Displayed AMM Y Sales failed for '.$key.': '.$e->getMessage());
+            }
+        }
+
+        if (isset($sales['ebaytwo'])) {
+            $sales['ebay2'] = $sales['ebaytwo'];
+        }
+        if (isset($sales['ebaythree'])) {
+            $sales['ebay3'] = $sales['ebaythree'];
+        }
+        if (isset($sales['bestbuyusa'])) {
+            $sales['bestbuy'] = $sales['bestbuyusa'];
+        }
+        if (isset($sales['tiktokshop'])) {
+            $sales['tiktok'] = $sales['tiktokshop'];
+        }
+        if (isset($sales['tiktok2'])) {
+            $sales['tiktokshop2'] = $sales['tiktok2'];
+        }
+        if (isset($sales['fbmarketplace'])) {
+            $sales['facebookmarketplace'] = $sales['fbmarketplace'];
+        }
+
+        return $sales;
+    }
+
+    private function allMarketplaceYSalesLookupKey(string $name): string
+    {
+        return strtolower(str_replace([' ', '-', '&', '/', ',', "'"], '', trim($name)));
+    }
+
+    public function getYesterdayMarketplaceMasterData()
+    {
+        try {
+            $payload = app(YesterdayMarketplaceMetricsService::class)->build();
+            $metaByKey = [];
+
+            $query = ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active']);
+            $select = ['channel'];
+            foreach (['alias', 'logo', 'seller_link', 'missing_link'] as $col) {
+                if (Schema::hasColumn('channel_master', $col)) {
+                    $select[] = $col;
+                }
+            }
+
+            foreach ($query->get($select) as $row) {
+                $key = $this->canonicalChannelKey($row->channel);
+                if (! isset($metaByKey[$key])) {
+                    $metaByKey[$key] = $row;
+                }
+            }
+
+            $data = [];
+            foreach (($payload['rows'] ?? []) as $row) {
+                $name = (string) ($row['channel'] ?? '');
+                $meta = $metaByKey[$this->canonicalChannelKey($name)] ?? null;
+
+                $data[] = [
+                    'Channel ' => $name,
+                    'snapshot_key' => $this->allMarketplaceSnapshotKey($name),
+                    'alias' => $meta->alias ?? null,
+                    'logo' => $meta->logo ?? null,
+                    'seller_link' => $meta->seller_link ?? null,
+                    'missing_link' => $meta->missing_link ?? null,
+                    'Y Sales' => $row['sales'] ?? 0,
+                    'L30 Orders' => $row['orders'] ?? 0,
+                    'Qty' => $row['qty'] ?? 0,
+                    'Gprofit%' => $row['gpft'],
+                    'G Roi' => $row['groi'],
+                    'N PFT' => $row['npft'],
+                    'N ROI' => $row['nroi'],
+                    'Ads%' => $row['ads_pct'] ?? 0,
+                    'Ad Sales' => $row['attributed_ad_sales'] ?? 0,
+                    'Total Ad Spend' => $row['ad_spend'] ?? 0,
+                    'Total Views' => $row['views'] ?? null,
+                    'CVR' => $row['cvr'] ?? null,
+                    'cogs' => $row['cogs'] ?? 0,
+                    'Total PFT' => $row['pft'] ?? 0,
+                    'gpft_sales' => $row['gpft_sales'] ?? 0,
+                    'computed' => (bool) ($row['computed'] ?? false),
+                ];
+            }
+
+            return response()->json([
+                'status' => 200,
+                'date' => $payload['date'] ?? null,
+                'label' => $payload['label'] ?? null,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Yesterday marketplace master data failed: '.$e->getMessage());
+
+            return response()->json([
+                'status' => 500,
+                'message' => 'Failed to load yesterday channel metrics',
+                'data' => [],
+            ], 500);
+        }
+    }
+
+    /**
      * Full channel payload for badge aggregation (all rows, same overlays as the page API).
      *
      * @return array<string, mixed>
@@ -12835,6 +12983,25 @@ class ChannelMasterController extends Controller
      * (e.g. "channel-logos/1716743521_abc.png") suitable to combine with
      * asset('storage/...') on the frontend.
      */
+    /**
+     * ChannelMasterSummary / chart / dot-trend key used by All Marketplace Master.
+     */
+    private function allMarketplaceSnapshotKey(?string $name): string
+    {
+        $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $name)));
+
+        return match ($key) {
+            'ebay2', 'ebaytwo' => 'ebaytwo',
+            'ebay3', 'ebaythree' => 'ebaythree',
+            'shopify', 'shopifyb2c' => 'shopifyb2c',
+            'tiktok', 'tiktokshop' => 'tiktokshop',
+            'tiktok2', 'tiktokshop2' => 'tiktokshop2',
+            'bestbuy', 'bestbuyusa' => 'bestbuyusa',
+            'facebookmarketplace', 'fbmarketplace' => 'fbmarketplace',
+            default => $key,
+        };
+    }
+
     /**
      * Normalise a channel name to a canonical key so duplicate / aliased names
      * (e.g. "TikTok 2" vs "Tiktok Shop 2") resolve to the same logo / seller link.

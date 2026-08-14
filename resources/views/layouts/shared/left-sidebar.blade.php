@@ -85,6 +85,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="{{ route('yesterday.marketplace.master') }}" class="{{ request()->routeIs('yesterday.marketplace.master') ? 'active' : '' }}">
+                                <i class="ri-calendar-check-line me-2"></i>Dashboard Yesterday Channel
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('any', 'index') }}">
                                 <i class="ri-dashboard-3-line me-2"></i>Dashboard Main
                             </a>

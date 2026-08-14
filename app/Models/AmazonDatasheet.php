@@ -18,6 +18,7 @@ class AmazonDatasheet extends Model
         'units_ordered_l30',
         'units_ordered_l60',
         'units_ordered_l90',
+        'sessions_l1',
         'sessions_l7',
         'sessions_l15',
         'sessions_l30',

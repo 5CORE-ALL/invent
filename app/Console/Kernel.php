@@ -116,6 +116,7 @@ class Kernel extends ConsoleKernel
         FetchShopifyB2BMetrics::class,
         FetchShopifyB2CMetrics::class,
         FetchShopifyProductViews::class,
+        \App\Console\Commands\CollectYesterdayViews::class,
         \App\Console\Commands\UpdateEbayCompetitorPrices::class,
         \App\Console\Commands\UpdateEbaySkuCompetitorPrices::class,
         \App\Console\Commands\UpdateAmazonCompetitorPrices::class,
@@ -560,6 +561,14 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('amazon-collect-metrics')
             ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('channel:collect-yesterday-views')
+            ->dailyAt('18:45')
+            ->timezone('Asia/Kolkata')
+            ->name('channel-yesterday-views')
+            ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo($log));
 

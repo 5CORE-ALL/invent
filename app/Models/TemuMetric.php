@@ -20,6 +20,8 @@ class TemuMetric extends Model
         'recommended_base_price',
         'product_impressions_l30',
         'product_clicks_l30',
+        'product_clicks_l7',
+        'product_clicks_l1',
         'product_impressions_l60',
         'product_clicks_l60',
         'temu_sheet_price',

@@ -957,11 +957,10 @@
                                         @php
                                             if($amazon_ad_sales > 0){
                                                 $acos = ($amazon_spent/$amazon_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -974,11 +973,10 @@
                                 @php
                                     if(($amazon_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($amazon_l60_spent ?? 0) / ($amazon_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -1000,11 +998,10 @@
                                 @php
                                     if($amazon_l30_sales > 0){
                                         $tacos = ($amazon_spent/$amazon_l30_sales)*100;
-                                        $tacos = number_format($tacos, 2);
                                     }else{
                                         $tacos = 0;
                                     }
-                                    $tacos = round($tacos);
+                                    $tacos = round((float) $tacos);
                                 @endphp
                                 {{ $tacos.' %'  }}
                             </td>
@@ -1013,11 +1010,10 @@
                                 @php
                                     if($amazon_clicks > 0){
                                         $cvr = ($amazon_ad_sold/$amazon_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                     $amazon_cvr = $cvr; 
                                 @endphp
                                 {{ $cvr.' %' }}
@@ -1026,11 +1022,10 @@
                                 @php
                                     if(($amazon_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($amazon_l60_ad_sold ?? 0) / ($amazon_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -1128,11 +1123,10 @@
                                         @php
                                             if($amazonkw_ad_sales > 0){
                                                 $acos = ($amazonkw_spent/$amazonkw_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -1145,11 +1139,10 @@
                                 @php
                                     if(($amazonkw_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($amazonkw_l60_spent ?? 0) / ($amazonkw_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -1173,11 +1166,10 @@
                                 @php
                                     if($amazonkw_clicks > 0){
                                         $cvr = ($amazonkw_ad_sold/$amazonkw_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -1185,11 +1177,10 @@
                                 @php
                                     if(($amazonkw_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($amazonkw_l60_ad_sold ?? 0) / ($amazonkw_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -1287,11 +1278,10 @@
                                         @php
                                             if($amazonpt_ad_sales > 0){
                                                 $acos = ($amazonpt_spent/$amazonpt_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -1304,11 +1294,10 @@
                                 @php
                                     if(($amazonpt_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($amazonpt_l60_spent ?? 0) / ($amazonpt_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -1332,11 +1321,10 @@
                                 @php
                                     if($amazonpt_clicks > 0){
                                         $cvr = ($amazonpt_ad_sold/$amazonpt_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -1344,11 +1332,10 @@
                                 @php
                                     if(($amazonpt_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($amazonpt_l60_ad_sold ?? 0) / ($amazonpt_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -1446,11 +1433,10 @@
                                         @php
                                             if($amazonhl_ad_sales > 0){
                                                 $acos = ($amazonhl_spent/$amazonhl_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -1463,11 +1449,10 @@
                                 @php
                                     if(($amazonhl_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($amazonhl_l60_spent ?? 0) / ($amazonhl_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -1491,11 +1476,10 @@
                                 @php
                                     if($amazonhl_clicks > 0){
                                         $cvr = ($amazonhl_ad_sold/$amazonhl_clicks)*100;
-                                        $cvr = number_format($cvr, 2); 
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -1503,11 +1487,10 @@
                                 @php
                                     if(($amazonhl_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($amazonhl_l60_ad_sold ?? 0) / ($amazonhl_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -1614,11 +1597,10 @@
                                         @php
                                             if($ebay_ad_sales > 0){
                                                 $acos = ($ebay_spent/$ebay_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -1631,11 +1613,10 @@
                                 @php
                                     if(($ebay_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($ebay_l60_spent ?? 0) / ($ebay_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -1657,11 +1638,10 @@
                                 @php
                                     if($ebay_l30_sales > 0){
                                         $tacos = ($ebay_spent/$ebay_l30_sales)*100;
-                                        $tacos = number_format($tacos, 2);
                                     }else{
                                         $tacos = 0;
                                     }
-                                    $tacos = round($tacos);
+                                    $tacos = round((float) $tacos);
                                 @endphp
                                 {{ $tacos.' %'  }}
                             </td>
@@ -1670,11 +1650,10 @@
                                 @php
                                     if($ebay_clicks > 0){
                                         $cvr = ($ebay_ad_sold/$ebay_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                     $ebay_cvr = $cvr; 
                                 @endphp
                                 {{ $cvr.' %' }}
@@ -1683,11 +1662,10 @@
                                 @php
                                     if(($ebay_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($ebay_l60_ad_sold ?? 0) / ($ebay_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -1785,11 +1763,10 @@
                                         @php
                                             if($ebaykw_ad_sales > 0){
                                                 $acos = ($ebaykw_spent/$ebaykw_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -1802,11 +1779,10 @@
                                 @php
                                     if(($ebaykw_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($ebaykw_l60_spent ?? 0) / ($ebaykw_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -1830,11 +1806,10 @@
                                 @php
                                     if($ebaykw_clicks > 0){
                                         $cvr = ($ebaykw_ad_sold/$ebaykw_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -1842,11 +1817,10 @@
                                 @php
                                     if(($ebaykw_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($ebaykw_l60_ad_sold ?? 0) / ($ebaykw_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -1944,11 +1918,10 @@
                                         @php
                                             if($ebaypmt_ad_sales > 0){
                                                 $acos = ($ebaypmt_spent/$ebaypmt_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -1961,11 +1934,10 @@
                                 @php
                                     if(($ebaypmt_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($ebaypmt_l60_spent ?? 0) / ($ebaypmt_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -1989,11 +1961,10 @@
                                 @php
                                     if($ebaypmt_clicks > 0){
                                         $cvr = ($ebaypmt_ad_sold/$ebaypmt_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -2001,11 +1972,10 @@
                                 @php
                                     if(($ebaypmt_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($ebaypmt_l60_ad_sold ?? 0) / ($ebaypmt_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -2112,11 +2082,10 @@
                                         @php
                                             if($ebay2_ad_sales > 0){
                                                 $acos = ($ebay2_spent/$ebay2_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -2129,11 +2098,10 @@
                                 @php
                                     if(($ebay2_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($ebay2_l60_spent ?? 0) / ($ebay2_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -2155,11 +2123,10 @@
                                 @php
                                     if($ebay2_l30_sales > 0){
                                         $tacos = ($ebay2_spent/$ebay2_l30_sales)*100;
-                                        $tacos = number_format($tacos, 2);
                                     }else{
                                         $tacos = 0;
                                     }
-                                    $tacos = round($tacos);
+                                    $tacos = round((float) $tacos);
                                 @endphp
                                 {{ $tacos.' %'  }}
                             </td>
@@ -2168,11 +2135,10 @@
                                 @php
                                     if($ebay2_clicks > 0){
                                         $cvr = ($ebay2_ad_sold/$ebay2_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -2180,11 +2146,10 @@
                                 @php
                                     if(($ebay2_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($ebay2_l60_ad_sold ?? 0) / ($ebay2_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -2282,11 +2247,10 @@
                                         @php
                                             if($ebay2pmt_ad_sales > 0){
                                                 $acos = ($ebay2pmt_spent/$ebay2pmt_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -2299,11 +2263,10 @@
                                 @php
                                     if(($ebay2pmt_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($ebay2pmt_l60_spent ?? 0) / ($ebay2pmt_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -2327,11 +2290,10 @@
                                 @php
                                     if($ebay2pmt_clicks > 0){
                                         $cvr = ($ebay2pmt_ad_sold/$ebay2pmt_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -2339,11 +2301,10 @@
                                 @php
                                     if(($ebay2pmt_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($ebay2pmt_l60_ad_sold ?? 0) / ($ebay2pmt_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -2450,11 +2411,10 @@
                                         @php
                                             if($ebay3_ad_sales > 0){
                                                 $acos = ($ebay3_spent/$ebay3_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -2467,11 +2427,10 @@
                                 @php
                                     if(($ebay3_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($ebay3_l60_spent ?? 0) / ($ebay3_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -2493,11 +2452,10 @@
                                 @php
                                     if($ebay3_l30_sales > 0){
                                         $tacos = ($ebay3_spent/$ebay3_l30_sales)*100;
-                                        $tacos = number_format($tacos, 2);
                                     }else{
                                         $tacos = 0;
                                     }
-                                    $tacos = round($tacos);
+                                    $tacos = round((float) $tacos);
                                 @endphp
                                 {{ $tacos.' %'  }}
                             </td>
@@ -2506,11 +2464,10 @@
                                 @php
                                     if($ebay3_clicks > 0){
                                         $cvr = ($ebay3_ad_sold/$ebay3_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -2518,11 +2475,10 @@
                                 @php
                                     if(($ebay3_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($ebay3_l60_ad_sold ?? 0) / ($ebay3_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -2620,11 +2576,10 @@
                                         @php
                                             if($ebay3kw_ad_sales > 0){
                                                 $acos = ($ebay3kw_spent/$ebay3kw_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -2637,11 +2592,10 @@
                                 @php
                                     if(($ebay3kw_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($ebay3kw_l60_spent ?? 0) / ($ebay3kw_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -2665,11 +2619,10 @@
                                 @php
                                     if($ebay3kw_clicks > 0){
                                         $cvr = ($ebay3kw_ad_sold/$ebay3kw_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -2677,11 +2630,10 @@
                                 @php
                                     if(($ebay3kw_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($ebay3kw_l60_ad_sold ?? 0) / ($ebay3kw_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -2779,11 +2731,10 @@
                                         @php
                                             if($ebay3pmt_ad_sales > 0){
                                                 $acos = ($ebay3pmt_spent/$ebay3pmt_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -2796,11 +2747,10 @@
                                 @php
                                     if(($ebay3pmt_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($ebay3pmt_l60_spent ?? 0) / ($ebay3pmt_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -2824,11 +2774,10 @@
                                 @php
                                     if($ebay3pmt_clicks > 0){
                                         $cvr = ($ebay3pmt_ad_sold/$ebay3pmt_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -2836,11 +2785,10 @@
                                 @php
                                     if(($ebay3pmt_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($ebay3pmt_l60_ad_sold ?? 0) / ($ebay3pmt_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -2947,11 +2895,10 @@
                                         @php
                                             if($walmart_ad_sales > 0){
                                                 $acos = ($walmart_spent/$walmart_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -2964,11 +2911,10 @@
                                 @php
                                     if(($walmart_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($walmart_l60_spent ?? 0) / ($walmart_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -2994,11 +2940,10 @@
                                 @php
                                     if($walmart_clicks > 0){
                                         $cvr = ($walmart_ad_sold/$walmart_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -3006,11 +2951,10 @@
                                 @php
                                     if(($walmart_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($walmart_l60_ad_sold ?? 0) / ($walmart_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>
@@ -3153,11 +3097,10 @@
                                         @php
                                             if($gshoping_ad_sales > 0){
                                                 $acos = ($gshoping_spent/$gshoping_ad_sales)*100;
-                                                $acos = number_format($acos, 2);
                                             }else{
                                                 $acos = 0;
                                             }
-                                            $acos = round($acos);
+                                            $acos = round((float) $acos);
                                         @endphp
                                         {{ $acos.' %'  }}
                                     </span>
@@ -3170,11 +3113,10 @@
                                 @php
                                     if(($gshoping_l60_ad_sales ?? 0) > 0){
                                         $l60_acos = (($gshoping_l60_spent ?? 0) / ($gshoping_l60_ad_sales ?? 1)) * 100;
-                                        $l60_acos = number_format($l60_acos, 2);
                                     }else{
                                         $l60_acos = 0;
                                     }
-                                    $l60_acos = round($l60_acos);
+                                    $l60_acos = round((float) $l60_acos);
                                 @endphp
                                 {{ $l60_acos.' %'  }}
                             </td>
@@ -3198,11 +3140,10 @@
                                 @php
                                     if($gshoping_clicks > 0){
                                         $cvr = ($gshoping_ad_sold/$gshoping_clicks)*100;
-                                        $cvr = number_format($cvr, 2);
                                     }else{
                                         $cvr = 0;
                                     }
-                                    $cvr = round($cvr, 1);
+                                    $cvr = round((float) $cvr, 1);
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
@@ -3210,11 +3151,10 @@
                                 @php
                                     if(($gshoping_l60_clicks ?? 0) > 0){
                                         $cvr_60 = (($gshoping_l60_ad_sold ?? 0) / ($gshoping_l60_clicks ?? 1)) * 100;
-                                        $cvr_60 = number_format($cvr_60, 2);
                                     }else{
                                         $cvr_60 = 0;
                                     }
-                                    $cvr_60 = round($cvr_60, 1);
+                                    $cvr_60 = round((float) $cvr_60, 1);
                                 @endphp
                                 {{ $cvr_60.' %' }}
                             </td>

@@ -57,6 +57,8 @@ class ChannelMasterCalculatedData extends Model
         'miss',
         'nmap',
         'total_views',
+        'yesterday_views',
+        'l7_views',
         'listing_cvr',
         'nr',
         'update_flag',

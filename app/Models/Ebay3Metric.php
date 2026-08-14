@@ -23,6 +23,7 @@ class Ebay3Metric extends Model
         'ebay_stock',
         'views',
         'l7_views',
+        'l1_views',
         'price_lmpa',
         'lmp_link',
         'lmp_data',

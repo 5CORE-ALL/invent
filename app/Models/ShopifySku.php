@@ -21,6 +21,8 @@ class ShopifySku extends Model
         'inv', // stock on hand in this app
         'quantity', // sold units (not available inventory)
         'views', // L30 product landing-page sessions (ShopifyQL)
+        'views_l1',
+        'views_l7',
         'price',
         'b2b_price',
         'b2c_price',
