@@ -311,6 +311,9 @@ class SyncTikTokApiData extends Command
                         if ($hasSkuIdCol && $row['sku_id'] !== null && $row['sku_id'] !== '') {
                             $updateData['sku_id'] = (string) $row['sku_id'];
                         }
+                        if (array_key_exists('stock', $row) && $row['stock'] !== null) {
+                            $updateData['stock'] = (int) $row['stock'];
+                        }
 
                         $tiktokProduct = ($this->productModel)::updateOrCreate(
                             ['sku' => $normalizedSku],
@@ -342,7 +345,7 @@ class SyncTikTokApiData extends Command
     /**
      * Expand a TikTok product into one row per seller SKU.
      *
-     * @return list<array{sku: string, sku_id: ?string, price: float}>
+     * @return list<array{sku: string, sku_id: ?string, price: float, stock: ?int}>
      */
     protected function expandProductSkuRows(array $product): array
     {
@@ -363,6 +366,7 @@ class SyncTikTokApiData extends Command
                     'sku' => $sellerSku,
                     'sku_id' => $skuId !== '' ? $skuId : null,
                     'price' => $this->extractPriceFromSkuNode($skuNode, $product),
+                    'stock' => \App\Services\TikTokShopService::skuNodeAvailableQty($skuNode),
                 ];
             }
         }
@@ -381,6 +385,7 @@ class SyncTikTokApiData extends Command
             'sku' => $sku,
             'sku_id' => $this->extractSkuId($product),
             'price' => $this->extractPrice($product),
+            'stock' => null,
         ]];
     }
 
@@ -413,7 +418,7 @@ class SyncTikTokApiData extends Command
     }
 
     /**
-     * Process and store inventory data
+     * Process and store inventory data (one row per seller SKU, never product total).
      */
     protected function processInventory(array $inventory)
     {
@@ -430,24 +435,28 @@ class SyncTikTokApiData extends Command
             $chunkUpdated = 0;
             foreach ($chunk as $item) {
                 try {
-                    $productId = $item['product_id'] ?? null;
-                    if (!$productId) {
+                    $sku = strtoupper(trim((string) ($item['sku'] ?? $item['seller_sku'] ?? '')));
+                    $skuId = trim((string) ($item['sku_id'] ?? ''));
+                    if ($sku === '' && $skuId === '') {
                         continue;
                     }
 
-                    $tiktokProduct = ($this->productModel)::where('product_id', $productId)->first();
-                    if (!$tiktokProduct) {
+                    $query = ($this->productModel)::query();
+                    if ($sku !== '') {
+                        $tiktokProduct = $query->where('sku', $sku)->first();
+                    } else {
+                        $tiktokProduct = $query->where('sku_id', $skuId)->first();
+                    }
+                    if (! $tiktokProduct) {
                         continue;
                     }
 
-                    $stock = $this->extractStock($item);
-
-                    $tiktokProduct->stock = $stock;
+                    $tiktokProduct->stock = $this->extractStock($item);
                     $tiktokProduct->save();
                     $updated++;
                     $chunkUpdated++;
                 } catch (\Exception $e) {
-                    $this->error('Error processing inventory: '.($item['product_id'] ?? 'unknown').' - '.$e->getMessage());
+                    $this->error('Error processing inventory: '.($item['sku'] ?? $item['product_id'] ?? 'unknown').' - '.$e->getMessage());
                     Log::error('TikTok inventory processing error', [
                         'item' => $item,
                         'error' => $e->getMessage(),

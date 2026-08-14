@@ -221,7 +221,8 @@ final class ShopifyLiveVerifiedCatalogService
     /**
      * Classify linked SKUs vs marketplace stock using shopify_skus live qty
      * (available_to_sell / inv / on_hand — SyncShopifyLiveInventory SoT).
-     * Priority: shopify qty <= 0 → zero; else qty match → matched; else → mismatch.
+     * Priority: shopify qty <= 0 → zero; else exact match, or Shopify higher
+     * within max(3 units, 3% of Shopify qty) → matched; else → mismatch.
      *
      * @param  array<int, string>  $linkedSkus
      * @param  array<string, int>  $marketplaceStockMap  UPPER / normalize keys from stockMapForSkus
@@ -280,7 +281,7 @@ final class ShopifyLiveVerifiedCatalogService
 
             if ($shopifyQty <= 0) {
                 $zero[] = $canonical;
-            } elseif ($mpQty !== null && $mpQty === $shopifyQty) {
+            } elseif ($mpQty !== null && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty)) {
                 $matched[] = $canonical;
             } else {
                 $mismatch[] = $canonical;

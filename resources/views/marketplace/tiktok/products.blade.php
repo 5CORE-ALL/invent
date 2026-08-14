@@ -6,10 +6,11 @@
         <a href="{{ route('marketplace.manager.show', 'tiktok') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> TikTok Shop Manager</a>
         @include('marketplace._page-heading', ['slug' => 'tiktok', 'heading' => 'TikTok Shop Listings'])
         <p class="text-muted mb-3">
-            <strong>All</strong> = every Shopify live SKU.
-            <strong>Active SKU</strong> = qty matched on TikTok.
-            <strong>Active SKU Mismatch</strong> = qty differs.
-            <strong>Zero on Shopify</strong> / <strong>Not on TikTok</strong> = unlinked or zero stock.
+            Seller Center <strong>Active</strong> counts <strong>products</strong> (a combined listing is 1). This page counts <strong>Shopify SKUs</strong>.
+            Linked here ≈ Active SKU + SKU Inv Mismatch + Zero on Shopify (sold-out SKUs are still Active in Seller Center).
+            <strong>Active SKU</strong> = qty matches, or Shopify is higher by at most the higher of 3 units or 3% of Shopify qty.
+            <strong>SKU Inv Mismatch</strong> = TikTok qty is higher than Shopify, or the gap is beyond that bar — use <em>Sync Mismatch inventory now</em>.
+            App has {{ $counts['tiktok_products'] ?? 0 }} TikTok products / {{ $counts['tiktok_skus'] ?? 0 }} linked SKUs.
             <em>Refresh live</em> warms the listings cache. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
@@ -35,7 +36,7 @@
                     @elseif(($linkTab ?? '') === 'matched')
                         {{ $products->total() }} Active SKU
                     @elseif(($linkTab ?? '') === 'mismatch')
-                        {{ $products->total() }} Active SKU Mismatch
+                        {{ $products->total() }} SKU Inv Mismatch
                     @elseif(($linkTab ?? '') === 'zero')
                         {{ $products->total() }} zero on Shopify
                     @else
@@ -73,7 +74,7 @@
             </div>
             <div class="card-body">
                 @php
-                    $counts = $counts ?? ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+                    $counts = $counts ?? ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0, 'tiktok_products' => 0, 'tiktok_skus' => 0];
                     $qName = urlencode($searchName ?? '');
                     $qSku = urlencode($searchSku ?? '');
                 @endphp
@@ -103,7 +104,7 @@
                         <a href="{{ request()->url() }}?link=matched&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Active SKU {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Active SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">SKU Inv Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=zero&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'zero' ? 'active' : '' }}">Zero on Shopify {{ $counts['zero'] ?? 0 }}</a>
@@ -196,6 +197,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     var countsEl = document.getElementById('link-map-counts');
     var url = @json(route('marketplace.manager.tiktok.refresh'));
     var page = 1;
+    var pageToken = '';
 
     function setProgress(pageNum, totalPage, totalUpserted, message, totalCount) {
         var pct = 0;
@@ -222,7 +224,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ page: page, reset: !!reset, mode: 'auto' }),
+            body: JSON.stringify({ page: page, reset: !!reset, mode: 'auto', page_token: pageToken }),
             signal: ctrl ? ctrl.signal : undefined,
         }).then(function (r) { return r.json(); }).finally(function () {
             if (timer) clearTimeout(timer);
@@ -240,6 +242,10 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     setProgress(0, null, 0, 'Starting sync…');
 
     function runPage(reset) {
+        if (reset) {
+            page = 1;
+            pageToken = '';
+        }
         syncNext(reset).then(function (data) {
             if (!data.success && data.done) {
                 alert(data.message || 'Sync failed.');
@@ -262,6 +268,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
                 return;
             }
 
+            pageToken = data.next_page_token || '';
             page = (data.page || page) + 1;
             setTimeout(function () { runPage(false); }, 500);
         }).catch(function (err) {

@@ -33,7 +33,7 @@ class TikTokLiveListingsService
         }
 
         $rows = $this->fetchFromLocal();
-        Cache::put($this->cacheKey, $rows, now()->addHours(6));
+        Cache::put($this->cacheKey, $rows, now()->addMinutes(10));
 
         return $rows;
     }
@@ -100,8 +100,14 @@ class TikTokLiveListingsService
             if ($parsed === null) {
                 continue;
             }
-            $out[$parsed['product_id']] = $parsed;
             $out[$parsed['sku']] = $parsed;
+            $out[strtoupper($parsed['sku'])] = $parsed;
+            if (! empty($parsed['sku_id'])) {
+                $out[(string) $parsed['sku_id']] = $parsed;
+            }
+            if (! isset($out[$parsed['product_id']])) {
+                $out[$parsed['product_id']] = $parsed;
+            }
         }
 
         return $out;
