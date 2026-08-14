@@ -662,7 +662,6 @@
             width: 100%;
             max-width: 100%;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'temu'])
     </style>
 @endsection
 
@@ -1652,12 +1651,9 @@
             </div>
         </div>
     </div>
-
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'temu'])
 @endsection
 
 @section('script-bottom')
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu'])
 <script>
     const COLUMN_VIS_KEY = "temu_decrease_column_visibility";
     // Temu margin from marketplace_percentages (Temu) — same source as backend GROI/GPFT/SROI
@@ -5219,9 +5215,6 @@
                         e.stopPropagation();
                     }
                 },
-                // PRMT % / CPN % / Appr / DSC % / Push Prc — temu_promo_pricing
-                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-
                 {
                     title: "S PRC",
                     field: "sprice",

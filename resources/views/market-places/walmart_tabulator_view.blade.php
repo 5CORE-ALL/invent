@@ -52,7 +52,6 @@
             color: black;
             font-weight: normal;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'walmart'])
     </style>
 @endsection
 
@@ -276,11 +275,9 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'walmart'])
 @endsection
 
 @section('script-bottom')
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'walmart'])
     <script>
         const COLUMN_VIS_KEY = "walmart_tabulator_column_visibility";
         const MARKETPLACE_PERCENTAGE = {{ $percentage ?? 80 }} / 100; // Walmart marketplace percentage
@@ -845,9 +842,6 @@
                     //     sorter: "number",
                     //     width: 100
                     // },
-                    // PRMT % / CPN % / Appr / DSC % / Push Prc — walmart_promo_pricing
-                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-
                     {
                         title: "S PRC",
                         field: "SPRICE",

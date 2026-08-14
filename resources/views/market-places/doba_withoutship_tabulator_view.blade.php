@@ -291,7 +291,6 @@
         .dws-sc.yellow { background: #ffc107; }
         .dws-sc.green { background: #28a745; }
         .dws-sc.pink { background: #e83e8c; }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'doba_withoutship'])
     </style>
 @endsection
 
@@ -599,11 +598,9 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'doba_withoutship'])
 @endsection
 
 @section('script-bottom')
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba_withoutship'])
     <script>
         const COLUMN_VIS_KEY = "doba_withoutship_tabulator_column_visibility";
         /**
@@ -2149,9 +2146,6 @@
                             return value > 0 ? `$${value.toFixed(2)}` : '';
                         }
                     },
-                    // PRMT % / CPN % / Appr / DSC % / Push Prc — doba_withoutship_promo_pricing
-                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-
                     {
                         title: "SPRICE",
                         field: "sprice",

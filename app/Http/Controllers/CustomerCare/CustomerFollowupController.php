@@ -120,12 +120,18 @@ class CustomerFollowupController extends Controller
         return view('customer-care.customer_followups', compact('channels', 'canDeleteFollowups'));
     }
 
-    /** Only this account may delete follow-ups (UI + API). */
+    /** Accounts that may delete follow-ups (wrong / duplicate rows) in the UI + API. */
+    private const FOLLOWUP_DELETE_EMAILS = [
+        'president@5core.com',
+        'software5@5core.com',
+        'software@5core.com',
+    ];
+
     private static function userMayDeleteFollowups(): bool
     {
         $email = strtolower(trim((string) auth()->user()?->email ?? ''));
 
-        return $email === 'president@5core.com';
+        return $email !== '' && in_array($email, self::FOLLOWUP_DELETE_EMAILS, true);
     }
 
     /** Hard upper bound enforced server-side ("under 1 MB"). Mirrors the client-side guard. */

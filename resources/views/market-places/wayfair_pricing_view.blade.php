@@ -62,8 +62,6 @@
                 column-count: 2;
             }
         }
-
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'wayfair'])
     </style>
 @endsection
 
@@ -288,11 +286,9 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'wayfair'])
 @endsection
 
 @section('script-bottom')
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'wayfair'])
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
@@ -1484,9 +1480,6 @@
                             return money(cell.getValue());
                         }
                     },
-                    // PRMT % / CPN % / Appr / DSC % / Push Prc — wayfair_promo_pricing
-                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-
                     {
                         title: 'S PRC', field: 'sprice', sorter: 'number', hozAlign: 'right',
                         editor: 'number', editorParams: { min: 0, step: 0.01 },

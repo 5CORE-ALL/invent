@@ -212,8 +212,6 @@
             opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
-
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2op'])
     </style>
 @endsection
 
@@ -976,11 +974,9 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2op'])
 @endsection
 
     @section('script-bottom')
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2op'])
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         const COLUMN_VIS_KEY = "ebay2op_tabulator_column_visibility";
@@ -3294,8 +3290,6 @@
                     //     width: 130
                     // },
                    
-                    // PRMT % / CPN % / Appr / DSC % / Push Prc — ebay2op_promo_pricing
-                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
                         title: "S PRC",
                         field: "SPRICE",

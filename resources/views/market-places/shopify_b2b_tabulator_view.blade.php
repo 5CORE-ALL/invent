@@ -336,7 +336,6 @@
             font-size: 0.7rem;
             line-height: 1;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2b'])
     </style>
 @endsection
 
@@ -691,11 +690,9 @@
         </div>
     </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shopify_b2b'])
 @endsection
 
 @section('script-bottom')
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2b'])
 <script>
     const COLUMN_VIS_KEY = "shopify_b2b_tabulator_column_visibility";
     /** Stored in DB table channel_tabulator_column_settings (shared across all users — same as Amazon). */
@@ -2497,9 +2494,6 @@
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
                     }
                 },
-                // PRMT % / CPN % / Appr / DSC % / Push Prc — shopify_b2b_promo_pricing
-                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-
                 {
                     title: "S PRC",
                     field: "SPRICE",
