@@ -527,6 +527,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/yesterday-marketplace-metrics', [ChannelMasterController::class, 'getYesterdayMarketplaceMetrics']);
     Route::get('/yesterday-marketplace-master', [ChannelMasterController::class, 'yesterdayMarketplaceMaster'])->name('yesterday.marketplace.master');
     Route::get('/yesterday-marketplace-master-data', [ChannelMasterController::class, 'getYesterdayMarketplaceMasterData']);
+    Route::get('/l7-marketplace-master', [ChannelMasterController::class, 'l7MarketplaceMaster'])->name('l7.marketplace.master');
+    Route::get('/l7-marketplace-master-data', [ChannelMasterController::class, 'getL7MarketplaceMasterData']);
     Route::get('/channel-clicks-breakdown', [ChannelMasterController::class, 'getClicksBreakdown']);
     Route::get('/ad-breakdown-chart-data', [ChannelMasterController::class, 'getAdBreakdownChartData']);
     Route::get('/channel-metric-chart-data', [ChannelMasterController::class, 'getChannelMetricChartData']);

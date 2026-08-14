@@ -4162,6 +4162,11 @@ class ChannelMasterController extends Controller
         return view('channels.yesterday-marketplace-master');
     }
 
+    public function l7MarketplaceMaster()
+    {
+        return view('channels.l7-marketplace-master');
+    }
+
     /**
      * Tabulator rows for /yesterday-marketplace-master.
      * Same active channels as /all-marketplace-master; profit metrics are 1-day Pacific.
@@ -4235,8 +4240,18 @@ class ChannelMasterController extends Controller
 
     public function getYesterdayMarketplaceMasterData()
     {
+        return $this->marketplaceWindowMasterData(1, 'Yesterday marketplace master data failed', 'Failed to load yesterday channel metrics');
+    }
+
+    public function getL7MarketplaceMasterData()
+    {
+        return $this->marketplaceWindowMasterData(7, 'L7 marketplace master data failed', 'Failed to load 7-day channel metrics');
+    }
+
+    private function marketplaceWindowMasterData(int $days, string $logMessage, string $errorMessage)
+    {
         try {
-            $payload = app(YesterdayMarketplaceMetricsService::class)->build();
+            $payload = app(YesterdayMarketplaceMetricsService::class)->build($days);
             $metaByKey = [];
 
             $query = ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active']);
@@ -4288,15 +4303,18 @@ class ChannelMasterController extends Controller
             return response()->json([
                 'status' => 200,
                 'date' => $payload['date'] ?? null,
+                'from' => $payload['from'] ?? null,
+                'to' => $payload['to'] ?? null,
+                'days' => $payload['days'] ?? $days,
                 'label' => $payload['label'] ?? null,
                 'data' => $data,
             ]);
         } catch (\Throwable $e) {
-            Log::error('Yesterday marketplace master data failed: '.$e->getMessage());
+            Log::error($logMessage.': '.$e->getMessage());
 
             return response()->json([
                 'status' => 500,
-                'message' => 'Failed to load yesterday channel metrics',
+                'message' => $errorMessage,
                 'data' => [],
             ], 500);
         }

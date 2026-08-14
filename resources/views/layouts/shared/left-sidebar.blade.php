@@ -90,6 +90,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="{{ route('l7.marketplace.master') }}" class="{{ request()->routeIs('l7.marketplace.master') ? 'active' : '' }}">
+                                <i class="ri-calendar-2-line me-2"></i>Active Channel 7 Days
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('any', 'index') }}">
                                 <i class="ri-dashboard-3-line me-2"></i>Dashboard Main
                             </a>

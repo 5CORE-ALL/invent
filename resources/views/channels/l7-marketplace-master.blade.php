@@ -1,7 +1,8 @@
-@extends('layouts.vertical', ['title' => 'Active Channel Yesterday', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Active Channel 7 Days', 'sidenav' => 'condensed'])
 
 @php
-    $yesterdayLabel = now('America/Los_Angeles')->subDays(2)->format('M j, Y');
+    $l7End = now('America/Los_Angeles')->subDays(2);
+    $l7Label = $l7End->copy()->subDays(6)->format('M j') . ' – ' . $l7End->format('M j, Y');
 @endphp
 
 @section('css')
@@ -175,8 +176,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Active Channel Yesterday',
-        'sub_title' => $yesterdayLabel . ' (latest complete day — sales, orders, qty, spend)',
+        'page_title' => 'Active Channel 7 Days',
+        'sub_title' => $l7Label . ' (latest complete 7 days — sales, orders, qty, spend)',
     ])
 
     <div class="toast-container"></div>
@@ -188,66 +189,66 @@
                     <input type="text" id="channel-search" class="form-control form-control-sm"
                         placeholder="Search Channel..." style="width: 150px; display: inline-block;">
 
-                    <a href="{{ route('l7.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
-                        title="Open Active Channel 7 Days">
-                        <i class="fas fa-calendar-week me-1"></i> L7 Master
+                    <a href="{{ route('yesterday.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
+                        title="Open Active Channel Yesterday">
+                        <i class="fas fa-calendar-day me-1"></i> Yesterday
                     </a>
                     <a href="{{ route('all.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
                         title="Open Active Channel Master (L30)">
                         <i class="fas fa-table me-1"></i> L30 Master
                     </a>
                     <span class="badge" style="background-color:#17a2b8;color:#fff;font-weight:600;">
-                        Complete day: {{ $yesterdayLabel }} PT
+                        Complete 7 days: {{ $l7Label }} PT
                     </span>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Yesterday summary metrics">
+                    <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="7-day summary metrics">
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             Channels: <span id="total-channels">0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;"
-                            title="Sum of 1-day sales. Click for trend + date range.">
-                            Y Sales: <span id="total-y-sales">$0</span>
+                            title="Sum of 7-day sales. Click for trend + date range.">
+                            L7 Sales: <span id="total-y-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;"
-                            title="Sum of yesterday orders. Click for trend + date range.">
+                            title="Sum of 7-day orders. Click for trend + date range.">
                             Orders: <span id="total-orders">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;"
-                            title="Sum of yesterday units. Click for trend + date range.">
+                            title="Sum of 7-day units. Click for trend + date range.">
                             Qty: <span id="total-qty">0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;"
-                            title="Yesterday listing views. Click for trend + date range.">
+                            title="7-day listing views. Click for trend + date range.">
                             Views: <span id="total-views">—</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;"
-                            title="Yesterday CVR. Click for trend + date range.">
+                            title="7-day CVR. Click for trend + date range.">
                             CVR: <span id="avg-cvr">—</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;"
-                            title="Yesterday blended GPFT%. Click for trend + date range.">
+                            title="7-day blended GPFT%. Click for trend + date range.">
                             GPFT: <span id="avg-gprofit">0%</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;"
-                            title="Yesterday blended GROI%. Click for trend + date range.">
+                            title="7-day blended GROI%. Click for trend + date range.">
                             G ROI: <span id="avg-groi">0%</span>
                         </span>
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;"
-                            title="Yesterday ad spend. Click for trend + date range.">
+                            title="7-day ad spend (L7 from campaign-ads). Click for trend + date range.">
                             Spend: <span id="total-ad-spend">$0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;"
-                            title="Yesterday Ads% (TACOS). Click for trend + date range.">
+                            title="7-day Ads% (TACOS). Click for trend + date range.">
                             Ads: <span id="ads-percent-badge">0%</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="npft" style="color: black; font-weight: bold; cursor:pointer;"
-                            title="Yesterday NPFT%. Click for trend + date range.">
+                            title="7-day NPFT%. Click for trend + date range.">
                             NPFT: <span id="avg-npft">0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;"
-                            title="Yesterday NROI%. Click for trend + date range.">
+                            title="7-day NROI%. Click for trend + date range.">
                             NROI: <span id="avg-nroi">0%</span>
                         </span>
                     </div>
@@ -358,7 +359,7 @@
             return lastDotColorByKey[k] || DEFAULT_DOT_GRAY;
         }
         function saveDotColorsToStorage() {
-            try { localStorage.setItem('yesterdayChannelDotColors', JSON.stringify(lastDotColorByKey)); } catch (e) {}
+            try { localStorage.setItem('l7ChannelDotColors', JSON.stringify(lastDotColorByKey)); } catch (e) {}
         }
         function channelKeyFromRow(row) {
             if (row && row.snapshot_key) return String(row.snapshot_key).trim();
@@ -434,7 +435,7 @@
             const v = parseNumber(value);
             if (!v) {
                 return emptyAsNys
-                    ? '<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>'
+                    ? '<span style="color:#adb5bd;font-weight:600;" title="No 7-day Sales">N7S</span>'
                     : '<span style="color:#adb5bd;">—</span>';
             }
             return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(v).toLocaleString('en-US')}</span>`;
@@ -704,7 +705,7 @@
 
         $(document).ready(function() {
             table = new Tabulator("#marketplace-table", {
-                ajaxURL: "/yesterday-marketplace-master-data",
+                ajaxURL: "/l7-marketplace-master-data",
                 ajaxSorting: false,
                 layout: "fitDataStretch",
                 height: false,
@@ -718,16 +719,16 @@
                         if (response.label) {
                             const $badge = $('#summary-stats').prev().find('.badge').last();
                             if ($badge.length) {
-                                $badge.text('Complete day: ' + response.label + ' PT');
+                                $badge.text('Complete 7 days: ' + response.label + ' PT');
                             }
                         }
                         return response.data;
                     }
-                    showToast('error', (response && response.message) ? response.message : 'Failed to load yesterday metrics');
+                    showToast('error', (response && response.message) ? response.message : 'Failed to load 7-day metrics');
                     return [];
                 },
                 ajaxRequestError: function() {
-                    showToast('error', 'Failed to load yesterday channel data');
+                    showToast('error', 'Failed to load 7-day channel data');
                 },
                 columns: [
                     {
@@ -779,11 +780,11 @@
                         }
                     },
                     {
-                        title: "Y Sales",
+                        title: "L7 Sales",
                         field: "Y Sales",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "1-day sales using the same latest-complete-day window as All Marketplace Master (not L30).",
+                        headerTooltip: "7-day sales ending on the same latest complete day as Yesterday (not L30).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             return withDot(formatMoney(cell.getValue(), true), channelKeyFromRow(row), 'y_sales', parseNumber(cell.getValue()), channelLabelFromRow(row));
@@ -800,7 +801,7 @@
                         field: "L30 Orders",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Yesterday order count (Pacific).",
+                        headerTooltip: "7-day order count (Pacific).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             return withDot(formatInt(cell.getValue()), channelKeyFromRow(row), 'l30_orders', parseNumber(cell.getValue()), channelLabelFromRow(row));
@@ -815,7 +816,7 @@
                         field: "Qty",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Yesterday units sold (Pacific).",
+                        headerTooltip: "7-day units sold (Pacific).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             return withDot(formatInt(cell.getValue()), channelKeyFromRow(row), 'qty', parseNumber(cell.getValue()), channelLabelFromRow(row));
@@ -830,7 +831,7 @@
                         field: "Total Views",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Yesterday listing views stored from API (1-day Pacific — not L30).",
+                        headerTooltip: "7-day listing views (L7 columns — not L30).",
                         formatter: function(cell) {
                             const v = cell.getValue();
                             const row = cell.getRow().getData();
@@ -857,7 +858,7 @@
                         field: "CVR",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Yesterday CVR = yesterday qty ÷ yesterday views × 100.",
+                        headerTooltip: "7-day CVR = 7-day qty ÷ 7-day views × 100.",
                         formatter: function(cell) {
                             const v = cell.getValue();
                             const row = cell.getRow().getData();
@@ -880,7 +881,7 @@
                         field: "Gprofit%",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Yesterday GPFT% = profit $ ÷ yesterday sales (not L30).",
+                        headerTooltip: "7-day GPFT% = profit $ ÷ 7-day sales (not L30).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             return withDot(formatPctCell(cell.getValue(), 'gpft'), channelKeyFromRow(row), 'gprofit', parseNumber(cell.getValue()), channelLabelFromRow(row));
@@ -897,7 +898,7 @@
                         field: "G Roi",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Yesterday GROI% = profit $ ÷ yesterday COGS (not L30).",
+                        headerTooltip: "7-day GROI% = profit $ ÷ 7-day COGS (not L30).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             return withDot(formatPctCell(cell.getValue(), 'groi'), channelKeyFromRow(row), 'groi', parseNumber(cell.getValue()), channelLabelFromRow(row));
@@ -914,7 +915,7 @@
                         field: "Ads%",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Yesterday Ads% = yesterday ad spend ÷ yesterday sales.",
+                        headerTooltip: "7-day Ads% = L7 ad spend ÷ 7-day sales.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             if (!row.computed && !parseNumber(row['Y Sales'])) {
@@ -934,7 +935,7 @@
                         field: "N PFT",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Yesterday NPFT% = yesterday GPFT% − yesterday Ads%.",
+                        headerTooltip: "7-day NPFT% = 7-day GPFT% − 7-day Ads%.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             return withDot(formatPctCell(cell.getValue(), 'npft'), channelKeyFromRow(row), 'npft', parseNumber(cell.getValue()), channelLabelFromRow(row));
@@ -951,7 +952,7 @@
                         field: "N ROI",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Yesterday NROI% = (yesterday profit $ − ad spend) ÷ COGS.",
+                        headerTooltip: "7-day NROI% = (7-day profit $ − L7 ad spend) ÷ COGS.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             return withDot(formatPctCell(cell.getValue(), 'nroi'), channelKeyFromRow(row), 'nroi', parseNumber(cell.getValue()), channelLabelFromRow(row));
@@ -968,7 +969,7 @@
                         field: "Total Ad Spend",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Ad spend for the same day as Y Sales (not L1 from another day).",
+                        headerTooltip: "L7 ad spend from /amazon-ads/all and /ebay/campaign-ads (same tables as Yesterday, L7 key).",
                         formatter: function(cell) {
                             const v = parseNumber(cell.getValue());
                             const row = cell.getRow().getData();

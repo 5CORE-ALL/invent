@@ -57,6 +57,43 @@ class YesterdayViewsService
     }
 
     /**
+     * L7 listing views for the 7-day dashboard (same marketplace columns as L1, L7 field).
+     *
+     * @return array<string, int>
+     */
+    public function viewsByChannelL7(): array
+    {
+        $sources = [
+            'amazon' => ['amazon_datsheets', 'sessions_l7'],
+            'ebay' => ['ebay_metrics', 'l7_views'],
+            'ebay2' => ['ebay_2_metrics', 'l7_views'],
+            'ebay3' => ['ebay_3_metrics', 'l7_views'],
+            'shopify' => ['shopify_skus', 'views_l7'],
+            'temu' => ['temu_metrics', 'product_clicks_l7'],
+            'temu2' => ['temu2_metrics', 'product_clicks_l7'],
+            'walmart' => ['walmart_pricing_sales', 'page_views_l7'],
+            'doba' => ['doba_sheet_data', 'views_l7'],
+            'wayfair' => ['wayfair_product_sheets', 'views_l7'],
+            'reverb' => ['reverb_products', 'views_l7'],
+            'tiktok' => ['tiktok_products', 'views_l7'],
+            'tiktok2' => ['tiktok_products_two', 'views_l7'],
+        ];
+
+        $map = [];
+        foreach ($sources as $channel => [$table, $l7Col]) {
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $l7Col)) {
+                continue;
+            }
+            $l7 = (int) DB::table($table)->sum($l7Col);
+            if ($l7 > 0) {
+                $map[$channel] = $l7;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
      * Sum L1 columns on marketplace tables. If L1 is still 0, use L7 ÷ 7
      * (eBay l7_views and Amazon sessions_l7 are already filled by the APIs).
      *

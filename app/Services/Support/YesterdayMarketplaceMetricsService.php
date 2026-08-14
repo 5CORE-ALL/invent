@@ -24,9 +24,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * One-day GPFT / GROI / NROI / NPFT / orders, plus Spend / ACOS from daily raw ads.
- * Y Sales, orders, qty, spend, and Ads% use each channel's latest complete day
+ * 1-day or 7-day GPFT / GROI / NROI / NPFT / orders, plus Spend / ACOS from campaign ads.
+ * Sales, orders, qty, spend, and Ads% use each channel's latest complete day
  * (the full day before its newest raw timestamp) — not a partial calendar yesterday.
+ * L7 is that complete day plus the 6 days before it.
  */
 class YesterdayMarketplaceMetricsService
 {
@@ -44,13 +45,18 @@ class YesterdayMarketplaceMetricsService
     /** When true, Y Sales uses All Marketplace's latest-order-minus-1-day window. */
     private bool $alignLatestCompleteDay = false;
 
-    public function build(): array
+    /** 1 = yesterday complete day; 7 = that day plus the prior 6 days. */
+    private int $windowDays = 1;
+
+    public function build(int $days = 1): array
     {
+        $this->windowDays = max(1, $days);
         $this->alignLatestCompleteDay = true;
+        $this->adReportKeyCache = [];
         $day = Carbon::yesterday(self::TZ)->subDay();
         $date = $day->toDateString();
-        $start = $day->copy()->startOfDay();
         $end = $day->copy()->endOfDay();
+        $start = $day->copy()->subDays($this->windowDays - 1)->startOfDay();
 
         $this->fallbackSales = ChannelMasterCalculatedData::query()
             ->get(['channel', 'yesterday_sales'])
@@ -68,7 +74,10 @@ class YesterdayMarketplaceMetricsService
 
         $viewsByChannel = [];
         try {
-            $viewsByChannel = app(YesterdayViewsService::class)->viewsByChannel($date);
+            $viewsSvc = app(YesterdayViewsService::class);
+            $viewsByChannel = $this->windowDays >= 7
+                ? $viewsSvc->viewsByChannelL7()
+                : $viewsSvc->viewsByChannel($date);
         } catch (\Throwable $e) {
             Log::warning('Yesterday views lookup failed: '.$e->getMessage());
         }
@@ -88,9 +97,16 @@ class YesterdayMarketplaceMetricsService
 
         usort($rows, static fn ($a, $b) => ($b['sales'] <=> $a['sales']));
 
+        $label = $this->windowDays >= 7
+            ? $start->format('M j').' – '.$day->format('M j, Y')
+            : $day->format('M j, Y');
+
         return [
             'date' => $date,
-            'label' => $day->format('M j, Y'),
+            'from' => $start->toDateString(),
+            'to' => $date,
+            'days' => $this->windowDays,
+            'label' => $label,
             'rows' => $rows,
         ];
     }
@@ -101,6 +117,7 @@ class YesterdayMarketplaceMetricsService
      */
     public function salesForPacificDate(string $channelKey, string $ymd): ?float
     {
+        $this->windowDays = 1;
         $this->alignLatestCompleteDay = false;
         $day = Carbon::parse($ymd, self::TZ);
         $date = $day->toDateString();
@@ -246,7 +263,8 @@ class YesterdayMarketplaceMetricsService
             if (! $created) {
                 continue;
             }
-            if (Carbon::parse($created)->setTimezone(self::TZ)->toDateString() !== $date) {
+            $createdYmd = Carbon::parse($created)->setTimezone(self::TZ)->toDateString();
+            if (! $this->ymdInCompleteWindow($createdYmd, $date)) {
                 continue;
             }
 
@@ -305,7 +323,7 @@ class YesterdayMarketplaceMetricsService
                 continue;
             }
             $day = $row->creation_date ? Carbon::parse($row->creation_date)->format('Y-m-d') : null;
-            if ($day !== $date) {
+            if ($day === null || ! $this->ymdInCompleteWindow($day, $date)) {
                 continue;
             }
             $oid = (string) $row->order_id;
@@ -641,8 +659,8 @@ class YesterdayMarketplaceMetricsService
         $orders = [];
 
         FacebookMarketplaceSale::query()
-            ->where(function ($q) use ($date, $rangeStartUtc, $rangeEndUtc) {
-                $q->whereBetween('order_date', [$date, $date])
+            ->where(function ($q) use ($start, $end, $rangeStartUtc, $rangeEndUtc) {
+                $q->whereBetween('order_date', [$start->toDateString(), $end->toDateString()])
                     ->orWhere(function ($q2) use ($rangeStartUtc, $rangeEndUtc) {
                         $q2->whereNull('order_date')
                             ->whereBetween('created_at', [
@@ -679,9 +697,9 @@ class YesterdayMarketplaceMetricsService
     {
         if ($this->alignLatestCompleteDay) {
             $latest = TiktokOrder::latestCreatedAt();
-            if ($latest) {
-                $start = $latest->copy()->subDay()->startOfDay();
-                $end = $latest->copy()->subDay()->endOfDay();
+            $window = $this->latestCompleteDay($latest ? $latest->toDateTimeString() : null, 'to_pacific');
+            if ($window !== null) {
+                [$start, $end] = $window;
             }
         }
 
@@ -728,8 +746,10 @@ class YesterdayMarketplaceMetricsService
             $date = $window[2];
         }
 
+        [$from, $to] = $this->windowYmdBounds($date);
         $rows = DB::table('wayfair_daily_data')
-            ->whereDate('po_date', $date)
+            ->whereDate('po_date', '>=', $from)
+            ->whereDate('po_date', '<=', $to)
             ->where('quantity', '>', 0)
             ->get();
 
@@ -941,8 +961,11 @@ class YesterdayMarketplaceMetricsService
             $date = $window[2];
         }
 
+        [$from, $to] = $this->windowYmdBounds($date);
+
         return (float) DB::table('topdawg_order_metrics')
-            ->whereDate('order_date', $date)
+            ->whereDate('order_date', '>=', $from)
+            ->whereDate('order_date', '<=', $to)
             ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
             ->value('revenue');
     }
@@ -959,8 +982,11 @@ class YesterdayMarketplaceMetricsService
             $date = $window[2];
         }
 
+        [$from, $to] = $this->windowYmdBounds($date);
+
         return (float) DB::table('depop_sales_data')
-            ->whereDate('sale_date', $date)
+            ->whereDate('sale_date', '>=', $from)
+            ->whereDate('sale_date', '<=', $to)
             ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
             ->value('revenue');
     }
@@ -977,8 +1003,11 @@ class YesterdayMarketplaceMetricsService
             $date = $window[2];
         }
 
+        [$from, $to] = $this->windowYmdBounds($date);
+
         return (float) DB::table('vinted_sales_data')
-            ->whereDate('sale_date', $date)
+            ->whereDate('sale_date', '>=', $from)
+            ->whereDate('sale_date', '<=', $to)
             ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
             ->value('revenue');
     }
@@ -1069,8 +1098,10 @@ class YesterdayMarketplaceMetricsService
             $date = Carbon::now('UTC')->subDay()->toDateString();
         }
 
+        [$from, $to] = $this->windowYmdBounds($date);
         $row = DB::table('reverb_daily_data')
-            ->whereDate('order_date', $date)
+            ->whereDate('order_date', '>=', $from)
+            ->whereDate('order_date', '<=', $to)
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
             ->whereNotNull('sku')->where('sku', '!=', '')
@@ -1345,8 +1376,10 @@ class YesterdayMarketplaceMetricsService
 
         try {
             $key = $this->googleAdDate($date);
+            [$from, $to] = $this->windowYmdBounds($key);
             $row = DB::table('google_ads_campaigns')
-                ->whereDate('date', $key)
+                ->whereDate('date', '>=', $from)
+                ->whereDate('date', '<=', $to)
                 ->whereIn('advertising_channel_type', ['SHOPPING', 'SEARCH'])
                 ->whereIn('campaign_status', ['ENABLED', 'PAUSED'])
                 ->selectRaw('COALESCE(SUM(metrics_cost_micros), 0) / 1000000 as spend')
@@ -1402,21 +1435,23 @@ class YesterdayMarketplaceMetricsService
     }
 
     /**
-     * 1-day spend key for campaign-ads tables.
-     * Prefer L1 — the same yesterday pull /amazon-ads/all and /ebay/campaign-ads use.
-     * Dated daily keys are often a thin subset (Amazon 2026-08-12 = 259 campaigns
-     * / $256 vs L1 = 1430 / $721) and understate Spend / Ads%.
+     * Spend key for campaign-ads tables.
+     * L7 dashboard prefers L7 (same as /amazon-ads/all and /ebay/campaign-ads L7).
+     * Yesterday prefers L1 — dated daily keys are often a thin subset.
      */
     private function adReportKey(string $table, string $column, string $yesterday): string
     {
-        $cacheKey = $table.'|'.$column.'|'.$yesterday;
+        $prefer = $this->windowDays >= 7 ? 'L7' : 'L1';
+        $cacheKey = $table.'|'.$column.'|'.$yesterday.'|'.$prefer;
         if (isset($this->adReportKeyCache[$cacheKey])) {
             return $this->adReportKeyCache[$cacheKey];
         }
 
         $key = $yesterday;
         try {
-            if (DB::table($table)->where($column, 'L1')->exists()) {
+            if (DB::table($table)->where($column, $prefer)->exists()) {
+                $key = $prefer;
+            } elseif ($prefer === 'L7' && DB::table($table)->where($column, 'L1')->exists()) {
                 $key = 'L1';
             } elseif (DB::table($table)->where($column, $yesterday)->exists()) {
                 $key = $yesterday;
@@ -1454,10 +1489,29 @@ class YesterdayMarketplaceMetricsService
             default => Carbon::parse($latestRaw)->timezone(self::TZ),
         };
 
-        $start = $latest->copy()->subDay()->startOfDay();
-        $end = $latest->copy()->subDay()->endOfDay();
+        $endDay = $latest->copy()->subDay();
+        $end = $endDay->copy()->endOfDay();
+        $start = $endDay->copy()->subDays(max(1, $this->windowDays) - 1)->startOfDay();
 
-        return [$start, $end, $start->toDateString()];
+        return [$start, $end, $endDay->toDateString()];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function windowYmdBounds(string $endYmd): array
+    {
+        $end = Carbon::parse($endYmd, self::TZ);
+        $start = $end->copy()->subDays(max(1, $this->windowDays) - 1);
+
+        return [$start->toDateString(), $end->toDateString()];
+    }
+
+    private function ymdInCompleteWindow(string $ymd, string $endYmd): bool
+    {
+        [$from, $to] = $this->windowYmdBounds($endYmd);
+
+        return $ymd >= $from && $ymd <= $to;
     }
 
     /**
