@@ -3358,17 +3358,79 @@ class TemuController extends Controller
                 ? collect()
                 : AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
-            // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
+            // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view).
+            // Include Sku Link LMP siblings so a Temu SKU inherits the Amazon SP when the
+            // value is stored on a linked sibling (same as /amazon-tabulator-view).
+            $stdLookupSkus = $skus;
+            foreach ($skus as $pageSku) {
+                foreach ($this->lmpSkuGroupService->groupContaining((string) $pageSku) as $memberSku) {
+                    $stdLookupSkus[] = $memberSku;
+                }
+            }
+            $stdLookupSkus = array_values(array_unique(array_filter(array_map(
+                static fn ($s) => trim((string) $s),
+                $stdLookupSkus
+            ))));
+
             $amazonStandardPrices = [];
-            foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $indexAmazonStdPrc = function ($skuKey, $std) use (&$amazonStandardPrices, $normalizeSku) {
+                if (! is_numeric($std) || (float) $std <= 0) {
+                    return;
+                }
+                $rounded = round((float) $std, 2);
+                $raw = trim((string) $skuKey);
+                if ($raw === '') {
+                    return;
+                }
+                $amazonStandardPrices[$raw] = $rounded;
+                $amazonStandardPrices[strtoupper($raw)] = $rounded;
+                $norm = $normalizeSku($raw);
+                if ($norm !== '') {
+                    $amazonStandardPrices[$norm] = $rounded;
+                }
+            };
+
+            foreach (AmazonDataView::whereIn('sku', $stdLookupSkus)->get(['sku', 'value']) as $adv) {
                 $val = is_array($adv->value)
                     ? $adv->value
                     : (json_decode((string) ($adv->value ?? ''), true) ?: []);
-                $std = $val['STANDARD_PRICE'] ?? null;
-                if (is_numeric($std) && (float) $std > 0) {
-                    $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+                $indexAmazonStdPrc($adv->sku, $val['STANDARD_PRICE'] ?? null);
+            }
+
+            // Same as /amazon-tabulator-view: also match rows whose SKU only differs by
+            // spacing / PCS suffix so Temu shows the same Std Prc Amazon does.
+            $normalizedStdSet = [];
+            foreach ($stdLookupSkus as $s) {
+                $n = $normalizeSku($s);
+                if ($n !== '') {
+                    $normalizedStdSet[$n] = true;
                 }
             }
+            if ($normalizedStdSet !== []) {
+                foreach (AmazonDataView::query()->select(['sku', 'value'])->get() as $adv) {
+                    $n = $normalizeSku($adv->sku);
+                    if ($n === '' || ! isset($normalizedStdSet[$n])) {
+                        continue;
+                    }
+                    $val = is_array($adv->value)
+                        ? $adv->value
+                        : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                    $indexAmazonStdPrc($adv->sku, $val['STANDARD_PRICE'] ?? null);
+                    $indexAmazonStdPrc($n, $val['STANDARD_PRICE'] ?? null);
+                }
+            }
+
+            $lookupStdPrc = function ($candidate) use ($amazonStandardPrices, $normalizeSku) {
+                $raw = trim((string) $candidate);
+                if ($raw === '') {
+                    return null;
+                }
+
+                return $amazonStandardPrices[$raw]
+                    ?? $amazonStandardPrices[strtoupper($raw)]
+                    ?? $amazonStandardPrices[$normalizeSku($raw)]
+                    ?? null;
+            };
 
             // PRMT%/CPN%/DSC%/Appr/Push Prc — temu / temu2_promo_pricing (site-specific)
             $promoChannel = $isTemu2Pricing ? 'temu2' : 'temu';
@@ -3425,7 +3487,7 @@ class TemuController extends Controller
                 });
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $temu1PricingBySku, $temu2PricingGoodsIdBySku, $promoMap) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $temu1PricingBySku, $temu2PricingGoodsIdBySku, $promoMap, $lookupStdPrc) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3769,12 +3831,11 @@ class TemuController extends Controller
                 }
 
                 // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
-                $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
+                $stdPrc = $lookupStdPrc($sku);
                 if ($stdPrc === null && ! empty($linkedLmpSkus)) {
                     foreach ($linkedLmpSkus as $linkedSku) {
-                        $linkedKey = strtoupper(trim((string) $linkedSku));
-                        if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
-                            $stdPrc = $amazonStandardPrices[$linkedKey];
+                        $stdPrc = $lookupStdPrc($linkedSku);
+                        if ($stdPrc !== null) {
                             break;
                         }
                     }
@@ -4299,13 +4360,13 @@ class TemuController extends Controller
                 'today_badge_snapshot' => $todayBadge,
                 'ad_totals' => $adTotals,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Temu decrease data error: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return response()->json(['error' => config('app.debug') ? $e->getMessage() : 'Failed to fetch data'], 500);
+            return response()->json(['error' => config('app.debug') ? $e->getMessage() : 'Failed to fetch data', 'data' => []], 500);
         }
     }
 

@@ -159,63 +159,82 @@ class AdvertisementMasterController extends Controller
         Ebay3CampaignAdsController $ebay3CampaignAds,
         ShopifyAdsMasterController $shopifyAdsMaster
     ) {
-        $amazonNetSales = $this->amazonNetSales();
-        $ebayNetSales = EbayCampaignAdsController::advertisementMasterNetSales();
-        $ebay2NetSales = Ebay2CampaignAdsController::advertisementMasterNetSales();
-        $ebay3NetSales = Ebay3CampaignAdsController::advertisementMasterNetSales();
-        $shopifyNetSales = ShopifyAdsMasterController::advertisementMasterNetSales();
-
-        $rows = array_merge(
-            $amazonAds->getAdvertisementMasterChannelRows(),
-            $ebayCampaignAds->getAdvertisementMasterChannelRows(),
-            $ebay2CampaignAds->getAdvertisementMasterChannelRows(),
-            $ebay3CampaignAds->getAdvertisementMasterChannelRows(),
-            $shopifyAdsMaster->getAdvertisementMasterChannelRows()
-        );
-
-        $this->applyTcosToRows($rows, [
-            'amazon' => $amazonNetSales,
-            'ebay'   => $ebayNetSales,
-            'ebay2'  => $ebay2NetSales,
-            'ebay3'  => $ebay3NetSales,
-            'shopify' => $shopifyNetSales,
-        ]);
-
-        $totalNetSales = round(
-            $amazonNetSales + $ebayNetSales + $ebay2NetSales + $ebay3NetSales + $shopifyNetSales,
-            2
-        );
-
-        // Trend dots: compare each metric against the previous Pacific-day
-        // snapshot (per channel). Read *before* today's snapshot write so
-        // "previous" never means today. Spend + ACOS are inverted on the
-        // frontend (a higher value is worse → red).
-        $pacificToday  = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
-        $prevByChannel = $this->previousSnapshotByChannel($pacificToday);
-        $this->attachTrends($rows, $prevByChannel);
-
-        // Persist today's snapshot so the trend dots + badge charts have
-        // history. The snapshot table is flat (one row per channel), so
-        // flatten the tree first, and store combined S Sales as its own
-        // pseudo-channel so the TCOS / S SALES badges get a trend too. Never
-        // let a snapshot write break the data feed.
         try {
-            $this->snapshotChannels($this->flattenRows($rows), $totalNetSales);
-        } catch (\Throwable $e) {
-            \Log::warning('Advertisement Master snapshot failed: ' . $e->getMessage());
-        }
+            $amazonNetSales = $this->amazonNetSales();
+            $ebayNetSales = EbayCampaignAdsController::advertisementMasterNetSales();
+            $ebay2NetSales = Ebay2CampaignAdsController::advertisementMasterNetSales();
+            $ebay3NetSales = Ebay3CampaignAdsController::advertisementMasterNetSales();
+            $shopifyNetSales = ShopifyAdsMasterController::advertisementMasterNetSales();
 
-        return response()->json([
-            'status' => 200,
-            'message' => 'Advertisement Master data fetched successfully',
-            'data' => $rows,
-            'amazon_net_sales' => $amazonNetSales,
-            'ebay_net_sales' => $ebayNetSales,
-            'ebay2_net_sales' => $ebay2NetSales,
-            'ebay3_net_sales' => $ebay3NetSales,
-            'shopify_net_sales' => $shopifyNetSales,
-            'total_net_sales' => $totalNetSales,
-        ]);
+            $rows = array_merge(
+                $amazonAds->getAdvertisementMasterChannelRows(),
+                $ebayCampaignAds->getAdvertisementMasterChannelRows(),
+                $ebay2CampaignAds->getAdvertisementMasterChannelRows(),
+                $ebay3CampaignAds->getAdvertisementMasterChannelRows(),
+                $shopifyAdsMaster->getAdvertisementMasterChannelRows()
+            );
+
+            $this->applyTcosToRows($rows, [
+                'amazon' => $amazonNetSales,
+                'ebay'   => $ebayNetSales,
+                'ebay2'  => $ebay2NetSales,
+                'ebay3'  => $ebay3NetSales,
+                'shopify' => $shopifyNetSales,
+            ]);
+
+            $totalNetSales = round(
+                $amazonNetSales + $ebayNetSales + $ebay2NetSales + $ebay3NetSales + $shopifyNetSales,
+                2
+            );
+
+            // Trend dots: compare each metric against the previous Pacific-day
+            // snapshot (per channel). Read *before* today's snapshot write so
+            // "previous" never means today. Spend + ACOS are inverted on the
+            // frontend (a higher value is worse → red).
+            $pacificToday  = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
+            $prevByChannel = $this->previousSnapshotByChannel($pacificToday);
+            $this->attachTrends($rows, $prevByChannel);
+
+            // Persist today's snapshot so the trend dots + badge charts have
+            // history. The snapshot table is flat (one row per channel), so
+            // flatten the tree first, and store combined S Sales as its own
+            // pseudo-channel so the TCOS / S SALES badges get a trend too. Never
+            // let a snapshot write break the data feed.
+            try {
+                $this->snapshotChannels($this->flattenRows($rows), $totalNetSales);
+            } catch (\Throwable $e) {
+                \Log::warning('Advertisement Master snapshot failed: ' . $e->getMessage());
+            }
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'Advertisement Master data fetched successfully',
+                'data' => $rows,
+                'amazon_net_sales' => $amazonNetSales,
+                'ebay_net_sales' => $ebayNetSales,
+                'ebay2_net_sales' => $ebay2NetSales,
+                'ebay3_net_sales' => $ebay3NetSales,
+                'shopify_net_sales' => $shopifyNetSales,
+                'total_net_sales' => $totalNetSales,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Advertisement Master data failed: '.$e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'status' => 500,
+                'message' => 'Failed to load Advertisement Master data',
+                'data' => [],
+                'amazon_net_sales' => 0,
+                'ebay_net_sales' => 0,
+                'ebay2_net_sales' => 0,
+                'ebay3_net_sales' => 0,
+                'shopify_net_sales' => 0,
+                'total_net_sales' => 0,
+            ], 500);
+        }
     }
 
     /**
@@ -336,12 +355,20 @@ class AdvertisementMasterController extends Controller
             return;
         }
 
-        DB::table('advertisement_master_metric_snapshots')->insert(array_merge($measures, [
+        $payload = array_merge($measures, [
             'snapshot_date' => $date,
             'channel'       => $channel,
             'created_at'    => $now,
             'updated_at'    => $now,
-        ]));
+        ]);
+
+        // Local/prod tables were created with a PK `id` and no AUTO_INCREMENT.
+        // Assign the next id so the insert cannot fail with
+        // "Field 'id' doesn't have a default value".
+        $maxId = DB::table('advertisement_master_metric_snapshots')->max('id');
+        $payload['id'] = ((int) $maxId) + 1;
+
+        DB::table('advertisement_master_metric_snapshots')->insert($payload);
     }
 
     /**

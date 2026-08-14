@@ -362,6 +362,14 @@
                         title="Yesterday by marketplace" aria-label="Yesterday by marketplace">
                         <i class="fas fa-eye" style="color: #000;"></i>
                     </button>
+                    <a href="{{ route('yesterday.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
+                        title="Yesterday Channel Master — GPFT / GROI from Pacific yesterday only" aria-label="Yesterday Channel Master">
+                        <i class="fas fa-calendar-day" style="color: #000;"></i>
+                    </a>
+                    <a href="{{ route('l7.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
+                        title="7-Day Channel Master — same metrics as Yesterday over 7 complete days" aria-label="7-Day Channel Master">
+                        <i class="fas fa-calendar-week" style="color: #000;"></i>
+                    </a>
 
                 </div>
 

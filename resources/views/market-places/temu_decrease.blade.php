@@ -1146,6 +1146,7 @@
                     {{-- SKU search input moved up into the toolbar row (.temu-toolbar-row)
                          so it shares the same flex-wrap behavior as the other filters.
                          The table starts directly under the toolbar now. --}}
+                    <div id="temu-table-error" class="text-danger small px-2 py-2 d-none"></div>
                     <div id="temu-table" style="flex: 1;"></div>
                 </div>
             </div>
@@ -2221,7 +2222,9 @@
     }
 
     function initSkuMetricsChart() {
-        const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+        const canvas = document.getElementById('skuMetricsChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        const ctx = canvas.getContext('2d');
 
         const medianLinePlugin = {
             id: 'temuMedianLine',
@@ -2340,7 +2343,9 @@
     }
 
     function initBadgeTrendChart() {
-        const ctx = document.getElementById('badgeTrendChartCanvas').getContext('2d');
+        const canvas = document.getElementById('badgeTrendChartCanvas');
+        if (!canvas || typeof Chart === 'undefined') return;
+        const ctx = canvas.getContext('2d');
         const medianLinePlugin = {
             id: 'badgeMedianLine',
             afterDraw(chart) {
@@ -2711,7 +2716,9 @@
     }
 
     function initAvgViewsChart() {
-        const ctx = document.getElementById('avgViewsChart').getContext('2d');
+        const canvas = document.getElementById('avgViewsChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        const ctx = canvas.getContext('2d');
 
         const avgViewsValueLabelsPlugin = {
             id: 'avgViewsValueLabels',
@@ -2973,17 +2980,11 @@
     }
 
     $(document).ready(function() {
-        initSkuLinkLmpModal();
-
-        // Initialize SKU-specific chart
-        initSkuMetricsChart();
-        initBadgeTrendChart();
-
-        // Initialize Average Views chart
-        initAvgViewsChart();
-
-        // Load latest average views for filtering
-        loadLatestAvgViews();
+        try { initSkuLinkLmpModal(); } catch (e) { console.error('Temu decrease: SKU link modal init failed', e); }
+        try { initSkuMetricsChart(); } catch (e) { console.error('Temu decrease: SKU chart init failed', e); }
+        try { initBadgeTrendChart(); } catch (e) { console.error('Temu decrease: badge chart init failed', e); }
+        try { initAvgViewsChart(); } catch (e) { console.error('Temu decrease: avg views chart init failed', e); }
+        try { loadLatestAvgViews(); } catch (e) { console.error('Temu decrease: latest avg views failed', e); }
 
         // SKU chart days filter
         $('#sku-chart-days-filter').on('change', function() {
@@ -3286,7 +3287,7 @@
         // Show the select column as soon as the user interacts with either Target input
         // (clicking, focusing, or typing), so checkboxes are already visible by the time
         // they want to pick rows.
-            .on('focus click', temuEnsureSelectColumnVisible);
+        $('#target-roi-input, #target-gpft-input').on('focus click input', temuEnsureSelectColumnVisible);
 
 
         function temuApplyTargetSpriceBatch(opts) {
@@ -4385,8 +4386,17 @@
             return (n > 3.5 ? String(Math.round(n)) : n.toFixed(1)) + '%';
         }
 
+        const temuDecreaseDataUrl = @json(url('/temu-decrease-data'));
+        const temuTableErrorEl = document.getElementById('temu-table-error');
+        function showTemuTableError(message) {
+            if (!temuTableErrorEl) return;
+            temuTableErrorEl.textContent = message || 'Failed to load Temu Analytics data. Try refresh.';
+            temuTableErrorEl.classList.remove('d-none');
+        }
+
         table = new Tabulator("#temu-table", {
-            ajaxURL: "/temu-decrease-data",
+            ajaxURL: temuDecreaseDataUrl,
+            ajaxRequestTimeout: 180000,
             ajaxSorting: false,
             layout: "fitDataStretch",
             // Drag column edges to widen/narrow (same as ebay / other Tabulator pages)
@@ -4402,6 +4412,11 @@
                 {column: "cvr_percent", dir: "asc"}
             ],
             ajaxResponse: function(url, params, response) {
+                if (temuTableErrorEl) temuTableErrorEl.classList.add('d-none');
+                if (response && response.error && !Array.isArray(response.data)) {
+                    showTemuTableError(response.error);
+                    return [];
+                }
                 if (response && Array.isArray(response.data)) {
                     const periodFromResponse = (response.period || currentCampaignPeriod || 'L30').toUpperCase();
                     currentCampaignPeriod = periodFromResponse;
@@ -4421,7 +4436,11 @@
                     return response.data;
                 }
                 if (Array.isArray(response)) return response;
+                showTemuTableError('Temu Analytics returned no rows.');
                 return [];
+            },
+            ajaxError: function() {
+                showTemuTableError('Temu Analytics data request failed or timed out. Try refresh.');
             },
             columns: [
                 {
@@ -4436,7 +4455,7 @@
                     },
                     headerSort: false
                 },
-                ParentExpand.columnDef(),
+                (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                 {
                     title: "SKU",
                     field: "sku",
@@ -4759,11 +4778,8 @@
                     minWidth: 80,
                     headerTooltip: "Organic Product clicks from Seller Center sheet upload only (temu_view_data). No Ads API fallback.",
                     formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const sku = row.sku || '';
                         const value = parseInt(cell.getValue()) || 0;
-                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View O Clicks chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
-                        return `${value.toLocaleString()} ${dotBtn}`.trim();
+                        return value.toLocaleString();
                     }
                 },
                  {
@@ -4845,10 +4861,9 @@
                             : (parseFloat(rowData.temu_price_display || rowData.temu_price || 0) || 0);
                         const channelPrice = amzPrice > 0 ? amzPrice : temuDisplay;
                         const dot = temu1StdPrcChangeDotHtml(std, channelPrice);
-                        if (channelPrice > 0 && channelPrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + '</span>';
-                        }
-                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
+                        // Always show $ amount — same as /amazon-tabulator-view (do not hide on hold).
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                            dot + ('$' + std.toFixed(2)) + '</span>';
                     }
                 },
                 {
@@ -7486,7 +7501,9 @@
         }
 
         function currentPeriodEndpoint() {
-            return currentCampaignPeriod === 'L7' ? '/temu-decrease-data-l7' : '/temu-decrease-data';
+            return currentCampaignPeriod === 'L7'
+                ? @json(url('/temu-decrease-data-l7'))
+                : @json(url('/temu-decrease-data'));
         }
 
         $('#campaign-period-select').on('change', function() {

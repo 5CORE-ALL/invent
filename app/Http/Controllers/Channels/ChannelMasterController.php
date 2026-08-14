@@ -4155,6 +4155,180 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Yesterday-only Active Channel page (GPFT / GROI from Pacific yesterday, not L30).
+     */
+    public function yesterdayMarketplaceMaster()
+    {
+        return view('channels.yesterday-marketplace-master');
+    }
+
+    public function l7MarketplaceMaster()
+    {
+        return view('channels.l7-marketplace-master');
+    }
+
+    /**
+     * Tabulator rows for /yesterday-marketplace-master.
+     * Same active channels as /all-marketplace-master; profit metrics are 1-day Pacific.
+     */
+    /**
+     * Y Sales All Marketplace Master actually shows (fast path):
+     * cached channel_master_calculated_data.yesterday_sales, then the same live overlays.
+     *
+     * @return array<string, float> keyed by lowercase channel lookup (spaces/dashes stripped)
+     */
+    public function displayedAllMarketplaceYSalesByLookupKey(): array
+    {
+        $sales = [];
+        foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['channel', 'yesterday_sales']) as $row) {
+            $name = trim((string) $row->channel);
+            if ($name === '') {
+                continue;
+            }
+            $sales[$this->allMarketplaceYSalesLookupKey($name)] = (float) ($row->yesterday_sales ?? 0);
+        }
+
+        $live = [
+            'temu' => fn () => $this->computeTemuYSalesLikeAmazon(false),
+            'temu2' => fn () => $this->computeTemuYSalesLikeAmazon(true),
+            'ebay' => fn () => $this->computeEbayYSalesLikeAmazon(1),
+            'ebaytwo' => fn () => $this->computeEbayYSalesLikeAmazon(2),
+            'ebaythree' => fn () => $this->computeEbayYSalesLikeAmazon(3),
+            'purchasingpower' => fn () => $this->computePurchasingPowerYSalesLikeAmazon(),
+            'shopify' => fn () => $this->computeShopifyDirectYSalesLikeAmazon(),
+            'fbmarketplace' => fn () => $this->computeFbMarketplaceYSalesLikeAmazon(),
+            'tiktok2' => fn () => $this->computeTiktokTwoYSalesLikeAmazon(),
+        ];
+
+        foreach ($live as $key => $fn) {
+            try {
+                $value = $fn();
+                if ($value !== null) {
+                    $sales[$key] = (float) $value;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Displayed AMM Y Sales failed for '.$key.': '.$e->getMessage());
+            }
+        }
+
+        if (isset($sales['ebaytwo'])) {
+            $sales['ebay2'] = $sales['ebaytwo'];
+        }
+        if (isset($sales['ebaythree'])) {
+            $sales['ebay3'] = $sales['ebaythree'];
+        }
+        if (isset($sales['bestbuyusa'])) {
+            $sales['bestbuy'] = $sales['bestbuyusa'];
+        }
+        if (isset($sales['tiktokshop'])) {
+            $sales['tiktok'] = $sales['tiktokshop'];
+        }
+        if (isset($sales['tiktok2'])) {
+            $sales['tiktokshop2'] = $sales['tiktok2'];
+        }
+        if (isset($sales['fbmarketplace'])) {
+            $sales['facebookmarketplace'] = $sales['fbmarketplace'];
+        }
+
+        return $sales;
+    }
+
+    private function allMarketplaceYSalesLookupKey(string $name): string
+    {
+        return strtolower(str_replace([' ', '-', '&', '/', ',', "'"], '', trim($name)));
+    }
+
+    public function getYesterdayMarketplaceMasterData()
+    {
+        return $this->marketplaceWindowMasterData(1, 'Yesterday marketplace master data failed', 'Failed to load yesterday channel metrics');
+    }
+
+    public function getL7MarketplaceMasterData()
+    {
+        return $this->marketplaceWindowMasterData(7, 'L7 marketplace master data failed', 'Failed to load 7-day channel metrics');
+    }
+
+    private function marketplaceWindowMasterData(int $days, string $logMessage, string $errorMessage)
+    {
+        try {
+            $payload = app(YesterdayMarketplaceMetricsService::class)->build($days);
+            $metaByKey = [];
+
+            $query = ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active']);
+            $select = ['channel'];
+            foreach (['alias', 'logo', 'seller_link', 'missing_link'] as $col) {
+                if (Schema::hasColumn('channel_master', $col)) {
+                    $select[] = $col;
+                }
+            }
+
+            foreach ($query->get($select) as $row) {
+                $key = $this->canonicalChannelKey($row->channel);
+                if (! isset($metaByKey[$key])) {
+                    $metaByKey[$key] = $row;
+                }
+            }
+
+            $data = [];
+            foreach (($payload['rows'] ?? []) as $row) {
+                $name = (string) ($row['channel'] ?? '');
+                $meta = $metaByKey[$this->canonicalChannelKey($name)] ?? null;
+
+                $data[] = [
+                    'Channel ' => $name,
+                    'snapshot_key' => $this->allMarketplaceSnapshotKey($name),
+                    'alias' => $meta->alias ?? null,
+                    'logo' => $meta->logo ?? null,
+                    'seller_link' => $meta->seller_link ?? null,
+                    'missing_link' => $meta->missing_link ?? null,
+                    'Y Sales' => $row['sales'] ?? 0,
+                    'L30 Orders' => $row['orders'] ?? 0,
+                    'Qty' => $row['qty'] ?? 0,
+                    'Gprofit%' => $row['gpft'],
+                    'G Roi' => $row['groi'],
+                    'N PFT' => $row['npft'],
+                    'N ROI' => $row['nroi'],
+                    'Ads%' => $row['ads_pct'] ?? 0,
+                    'Ad Sales' => $row['attributed_ad_sales'] ?? 0,
+                    'Total Ad Spend' => $row['ad_spend'] ?? 0,
+                    'Total Views' => $row['views'] ?? null,
+                    'CVR' => $row['cvr'] ?? null,
+                    'cogs' => $row['cogs'] ?? 0,
+                    'Total PFT' => $row['pft'] ?? 0,
+                    'gpft_sales' => $row['gpft_sales'] ?? 0,
+                    'computed' => (bool) ($row['computed'] ?? false),
+                ];
+            }
+
+            if ($days >= 7) {
+                try {
+                    $this->persistL7WindowSnapshots($data);
+                } catch (\Throwable $e) {
+                    Log::warning('persistL7WindowSnapshots failed: '.$e->getMessage());
+                }
+            }
+
+            return response()->json([
+                'status' => 200,
+                'date' => $payload['date'] ?? null,
+                'from' => $payload['from'] ?? null,
+                'to' => $payload['to'] ?? null,
+                'days' => $payload['days'] ?? $days,
+                'label' => $payload['label'] ?? null,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error($logMessage.': '.$e->getMessage());
+
+            return response()->json([
+                'status' => 500,
+                'message' => $errorMessage,
+                'data' => [],
+            ], 500);
+        }
+    }
+
+    /**
      * Full channel payload for badge aggregation (all rows, same overlays as the page API).
      *
      * @return array<string, mixed>
@@ -12836,6 +13010,25 @@ class ChannelMasterController extends Controller
      * asset('storage/...') on the frontend.
      */
     /**
+     * ChannelMasterSummary / chart / dot-trend key used by All Marketplace Master.
+     */
+    private function allMarketplaceSnapshotKey(?string $name): string
+    {
+        $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $name)));
+
+        return match ($key) {
+            'ebay2', 'ebaytwo' => 'ebaytwo',
+            'ebay3', 'ebaythree' => 'ebaythree',
+            'shopify', 'shopifyb2c' => 'shopifyb2c',
+            'tiktok', 'tiktokshop' => 'tiktokshop',
+            'tiktok2', 'tiktokshop2' => 'tiktokshop2',
+            'bestbuy', 'bestbuyusa' => 'bestbuyusa',
+            'facebookmarketplace', 'fbmarketplace' => 'fbmarketplace',
+            default => $key,
+        };
+    }
+
+    /**
      * Normalise a channel name to a canonical key so duplicate / aliased names
      * (e.g. "TikTok 2" vs "Tiktok Shop 2") resolve to the same logo / seller link.
      */
@@ -14041,6 +14234,7 @@ class ChannelMasterController extends Controller
             $channel = strtolower(str_replace([' ', '-', '&', '/'], '', trim($request->input('channel', ''))));
             $metric = $request->input('metric', 'l30_sales');
             $days = intval($request->input('days', 32));
+            $useL7Window = intval($request->input('window', 0)) >= 7 || $metric === 'l7_sales';
 
             if (!$channel) {
                 return response()->json(['success' => false, 'message' => 'Channel is required'], 400);
@@ -14054,6 +14248,7 @@ class ChannelMasterController extends Controller
                 // Yesterday's sales (snapshot was added later; older days will lack this key
                 // and are skipped below so the chart only shows real Y Sales history).
                 'y_sales' => 'y_sales',
+                'l7_sales' => 'l7_sales',
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -14101,7 +14296,8 @@ class ChannelMasterController extends Controller
             }
 
             if ($days > 0) {
-                $startDate = now('America/Los_Angeles')->subDays($days + 1)->toDateString();
+                $extra = $useL7Window ? 6 : 0;
+                $startDate = now('America/Los_Angeles')->subDays($days + 1 + $extra)->toDateString();
                 $query->where('snapshot_date', '>=', $startDate);
             }
 
@@ -14109,6 +14305,10 @@ class ChannelMasterController extends Controller
 
             if ($history->isEmpty()) {
                 return response()->json(['success' => true, 'data' => []]);
+            }
+
+            if ($useL7Window) {
+                $this->applyL7WindowToChannelSummaries($history);
             }
 
             // Group by marketplace as-of date (snapshot_date − 1 Pacific day).
@@ -14125,9 +14325,15 @@ class ChannelMasterController extends Controller
 
                 // Listing-only / map-miss writers can create a day with no l30_sales.
                 // Those rows plot as $0 on every metric — skip them.
-                $fullRows = $rows->filter(function ($row) {
+                $fullRows = $rows->filter(function ($row) use ($useL7Window) {
                     $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
-                    return array_key_exists('l30_sales', $sd);
+                    if (array_key_exists('l30_sales', $sd)) {
+                        return true;
+                    }
+
+                    return $useL7Window && (
+                        array_key_exists('l7_sales', $sd) || array_key_exists('y_sales', $sd)
+                    );
                 });
                 if ($fullRows->isEmpty()) {
                     continue;
@@ -14256,11 +14462,13 @@ class ChannelMasterController extends Controller
                         $value = $totalCogs > 0 ? round((($totalPft - $totalSpend) / $totalCogs) * 100, 1) : 0;
                     } elseif ($metric === 'ads_pct') {
                         $value = $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 1) : 0;
-                    } elseif ($metric === 'y_sales') {
-                        // Skip days that pre-date the y_sales snapshot field so we don't
+                    } elseif ($metric === 'y_sales' || $metric === 'l7_sales') {
+                        // Skip days that pre-date the y_sales / l7_sales snapshot field so we don't
                         // draw a long flat-zero line before real history begins.
                         if (!$hasMetricData) continue;
                         $value = round($totalVal, 2);
+                    } elseif ($useL7Window && $metricKey !== null && !$hasMetricData) {
+                        continue;
                     } elseif ($shouldAvg && $count > 0) {
                         $value = round($totalVal / $count, 1);
                     } else {
@@ -14325,6 +14533,11 @@ class ChannelMasterController extends Controller
                         $cogs = floatval($summaryData['cogs'] ?? 0);
                         $value = $cogs > 0 ? round((($pft - $spend) / $cogs) * 100, 1) : 0;
                     } else {
+                        $requireKey = in_array($metric, ['y_sales', 'l7_sales'], true)
+                            || ($useL7Window && $metricKey !== null && ! in_array($metric, ['cvr', 'nroi', 'pft', 'acos', 'ad_sales', 'ad_sold', 'ads_cvr'], true));
+                        if ($requireKey && ! array_key_exists($metricKey, $summaryData)) {
+                            continue;
+                        }
                         $value = floatval($summaryData[$metricKey] ?? 0);
                     }
                 }
@@ -14368,6 +14581,11 @@ class ChannelMasterController extends Controller
                 }
             }
 
+            // Extra lookback for L7 rolling should not appear on the X-axis.
+            if ($useL7Window && $days > 0 && count($chartData) > $days) {
+                $chartData = array_values(array_slice($chartData, -$days));
+            }
+
             // Do NOT interpolate channel-metric chart: values are exact snapshots from DB.
             // Interpolation would replace same-value points (e.g. 88630, 88630) with smoothed
             // values and make the graph show incorrect numbers vs table.
@@ -14407,6 +14625,7 @@ class ChannelMasterController extends Controller
                 'l60_orders' => 'l60_orders',
                 'l30_sales' => 'l30_sales',
                 'y_sales' => 'y_sales',
+                'l7_sales' => 'l7_sales',
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -14422,7 +14641,8 @@ class ChannelMasterController extends Controller
                 'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'l7_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
+            $useL7Window = intval($request->input('window', 0)) >= 7;
             $out = [];
 
             // Today's snapshot is included in the comparison: saveChannelDailySummaries
@@ -14444,7 +14664,7 @@ class ChannelMasterController extends Controller
             // 30-snapshot window (a month is plenty: any longer flat run is itself a
             // meaningful "no trend") and pick the most-recent prior snapshot whose value
             // differs from today's.
-            $snapshotWindow = 30;
+            $snapshotWindow = $useL7Window ? 36 : 30;
             foreach ($channelKeys as $channel) {
                 foreach ($metrics as $metric) {
                     $out[$channel][$metric] = [null, null];
@@ -14455,8 +14675,21 @@ class ChannelMasterController extends Controller
                     ->orderBy('snapshot_date', 'desc')
                     ->take($snapshotWindow)
                     ->get()
-                    ->filter(fn ($row) => $row->isFullChannelSnapshot())
+                    ->filter(function ($row) use ($useL7Window) {
+                        if ($row->isFullChannelSnapshot()) {
+                            return true;
+                        }
+                        $sd = $row->summaryArray();
+
+                        return $useL7Window && (
+                            array_key_exists('l7_sales', $sd) || array_key_exists('y_sales', $sd)
+                        );
+                    })
                     ->values();
+
+                if ($useL7Window) {
+                    $this->applyL7WindowToChannelSummaries($cmsRows);
+                }
 
                 if ($cmsRows->count() >= 2) {
                     $newerSd = $cmsRows->get(0)->summary_data ?? [];
@@ -15096,6 +15329,125 @@ class ChannelMasterController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * Store the live 7-day dashboard window on today's Pacific snapshot so L7
+     * charts/dots can read history the same way Yesterday reads y_sales.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function persistL7WindowSnapshots(array $rows): void
+    {
+        foreach ($rows as $row) {
+            $key = (string) ($row['snapshot_key'] ?? $this->allMarketplaceSnapshotKey($row['Channel '] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+
+            $fields = [
+                'l7_sales' => floatval($row['Y Sales'] ?? 0),
+                'l7_orders' => floatval($row['L30 Orders'] ?? 0),
+                'l7_qty' => floatval($row['Qty'] ?? 0),
+                'l7_ad_spend' => floatval($row['Total Ad Spend'] ?? 0),
+                'l7_ad_sales' => floatval($row['Ad Sales'] ?? 0),
+                'l7_cogs' => floatval($row['cogs'] ?? 0),
+                'l7_pft' => floatval($row['Total PFT'] ?? 0),
+            ];
+
+            $optional = [
+                'l7_views' => $row['Total Views'] ?? null,
+                'l7_listing_cvr' => $row['CVR'] ?? null,
+                'l7_gprofit_percent' => $row['Gprofit%'] ?? null,
+                'l7_groi_percent' => $row['G Roi'] ?? null,
+                'l7_npft_percent' => $row['N PFT'] ?? null,
+                'l7_nroi_percent' => $row['N ROI'] ?? null,
+                'l7_tcos_percent' => $row['Ads%'] ?? null,
+            ];
+            foreach ($optional as $field => $value) {
+                if ($value === null || $value === '') {
+                    continue;
+                }
+                $fields[$field] = floatval(preg_replace('/[^0-9.\-]/', '', (string) $value));
+            }
+
+            \App\Models\ChannelMasterSummary::mergeTodaySummary($key, $fields, 'L7 window snapshot');
+        }
+    }
+
+    /**
+     * Rewrite in-memory snapshot rows so chart/dot code that reads L30 / Y Sales
+     * keys instead sees the 7-day window. Missing l7_sales is filled from a
+     * rolling 7-day sum of persisted y_sales.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\ChannelMasterSummary>  $history
+     */
+    private function applyL7WindowToChannelSummaries($history): void
+    {
+        $yByChannelDate = [];
+        foreach ($history as $row) {
+            $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+            $channel = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row->channel ?? ''))));
+            $asOf = Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->subDay()->toDateString();
+            if ($channel !== '' && array_key_exists('y_sales', $sd)) {
+                $yByChannelDate[$channel][$asOf] = (float) $sd['y_sales'];
+            }
+        }
+
+        $overlay = [
+            'l30_sales' => 'l7_sales',
+            'y_sales' => 'l7_sales',
+            'l30_orders' => 'l7_orders',
+            'total_quantity' => 'l7_qty',
+            'total_views' => 'l7_views',
+            'total_ad_spend' => 'l7_ad_spend',
+            'gprofit_percent' => 'l7_gprofit_percent',
+            'groi_percent' => 'l7_groi_percent',
+            'npft_percent' => 'l7_npft_percent',
+            'nroi_percent' => 'l7_nroi_percent',
+            'tcos_percent' => 'l7_tcos_percent',
+            'cogs' => 'l7_cogs',
+            'total_pft' => 'l7_pft',
+            'ad_sales' => 'l7_ad_sales',
+            'listing_cvr' => 'l7_listing_cvr',
+        ];
+
+        foreach ($history as $row) {
+            $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+            $channel = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row->channel ?? ''))));
+            $asOf = Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->subDay()->toDateString();
+
+            $l7Sales = array_key_exists('l7_sales', $sd) ? (float) $sd['l7_sales'] : null;
+            if ($l7Sales === null && $channel !== '') {
+                $sum = 0.0;
+                $n = 0;
+                $end = Carbon::parse($asOf, 'America/Los_Angeles');
+                for ($i = 0; $i < 7; $i++) {
+                    $d = $end->copy()->subDays($i)->toDateString();
+                    if (! isset($yByChannelDate[$channel][$d])) {
+                        continue;
+                    }
+                    $sum += $yByChannelDate[$channel][$d];
+                    $n++;
+                }
+                if ($n > 0) {
+                    $l7Sales = round($sum, 2);
+                }
+            }
+            if ($l7Sales !== null) {
+                $sd['l7_sales'] = $l7Sales;
+            }
+
+            foreach ($overlay as $pageKey => $l7Key) {
+                if (array_key_exists($l7Key, $sd) && $sd[$l7Key] !== null && $sd[$l7Key] !== '') {
+                    $sd[$pageKey] = $sd[$l7Key];
+                } else {
+                    unset($sd[$pageKey]);
+                }
+            }
+
+            $row->summary_data = $sd;
+        }
     }
 
     /**

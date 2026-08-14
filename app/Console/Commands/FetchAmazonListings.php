@@ -202,7 +202,12 @@ class FetchAmazonListings extends Command
         $l90End = $l60Start->copy()->subDay(2)->endOfDay();
         $l90Start = $l90End->copy()->subDays(30)->startOfDay();
 
+        $l1Day = Carbon::yesterday('America/Los_Angeles');
+        $l1Start = $l1Day->copy()->startOfDay()->utc();
+        $l1End = $l1Day->copy()->endOfDay()->utc();
+
         $dateRanges = [
+            'l1' => [$l1Start->toIso8601ZuluString(), $l1End->toIso8601ZuluString()],
             'l7' => [$l7Start->toIso8601ZuluString(), $l7End->toIso8601ZuluString()],
             'l15' => [$l15Start->toIso8601ZuluString(), $l15End->toIso8601ZuluString()],
             'l30' => [$l30Start->toIso8601ZuluString(), $l30End->toIso8601ZuluString()],
@@ -359,6 +364,10 @@ class FetchAmazonListings extends Command
                     "units_ordered_{$key}" => $unitsOrdered,
                     "sessions_{$key}"      => $sessions,
                 ];
+                if ($key === 'l1') {
+                    $updateData['sessions_l1'] = intval($sessions);
+                    unset($updateData['units_ordered_l1']);
+                }
                 
                 // Calculate organic_views for L30 and L7 data using formula:
                 // Organic Views = Total Detail Page Views - Ads Attributed Views

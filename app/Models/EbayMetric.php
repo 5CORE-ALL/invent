@@ -22,6 +22,7 @@ class EbayMetric extends Model
         'ebay_l7',
         'views',
         'l7_views',
+        'l1_views',
         'organic_clicks',
         'price_lmpa',
         'report_date',

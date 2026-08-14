@@ -525,6 +525,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     
     Route::get('/channel-master-history/{channel}', [ChannelMasterController::class, 'getChannelHistory']);
     Route::get('/yesterday-marketplace-metrics', [ChannelMasterController::class, 'getYesterdayMarketplaceMetrics']);
+    Route::get('/yesterday-marketplace-master', [ChannelMasterController::class, 'yesterdayMarketplaceMaster'])->name('yesterday.marketplace.master');
+    Route::get('/yesterday-marketplace-master-data', [ChannelMasterController::class, 'getYesterdayMarketplaceMasterData']);
+    Route::get('/l7-marketplace-master', [ChannelMasterController::class, 'l7MarketplaceMaster'])->name('l7.marketplace.master');
+    Route::get('/l7-marketplace-master-data', [ChannelMasterController::class, 'getL7MarketplaceMasterData']);
     Route::get('/channel-clicks-breakdown', [ChannelMasterController::class, 'getClicksBreakdown']);
     Route::get('/ad-breakdown-chart-data', [ChannelMasterController::class, 'getAdBreakdownChartData']);
     Route::get('/channel-metric-chart-data', [ChannelMasterController::class, 'getChannelMetricChartData']);
@@ -2176,6 +2180,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.list.patch.claim.filed');
     Route::patch('/customer-care/all-issues/issues/{id}/claimable', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimable'])
         ->name('customer.care.dispatch.issues.list.patch.claimable');
+    Route::patch('/customer-care/all-issues/issues/{id}/claimable-remark', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimableRemark'])
+        ->name('customer.care.dispatch.issues.list.patch.claimable.remark');
     Route::patch('/customer-care/all-issues/issues/{id}/nfe', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateNfe'])
         ->name('customer.care.dispatch.issues.list.patch.nfe');
     Route::patch('/customer-care/all-issues/issues/{id}/amp-usd', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmpUsd'])

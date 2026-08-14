@@ -13,9 +13,9 @@ use App\Models\EbayOrder;
 use App\Models\FacebookMarketplaceSale;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
-use App\Models\Temu2CampaignReport;
 use App\Models\Temu2DailyData;
-use App\Models\TemuCampaignReport;
+use App\Models\TemuOrder;
+use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
 use App\Services\TemuShopifySalesService;
 use Carbon\Carbon;
@@ -24,8 +24,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * One Pacific calendar day (yesterday) of GPFT / GROI / NROI / NPFT / orders
- * for the Active Channel "Yesterday by marketplace" modal.
+ * 1-day or 7-day GPFT / GROI / NROI / NPFT / orders, plus Spend / ACOS from campaign ads.
+ * Sales, orders, qty, spend, and Ads% use each channel's latest complete day
+ * (the full day before its newest raw timestamp) — not a partial calendar yesterday.
+ * L7 is that complete day plus the 6 days before it.
  */
 class YesterdayMarketplaceMetricsService
 {
@@ -37,12 +39,24 @@ class YesterdayMarketplaceMetricsService
     /** @var array<string, float> */
     private array $fallbackSales = [];
 
-    public function build(): array
+    /** @var array<string, string> */
+    private array $adReportKeyCache = [];
+
+    /** When true, Y Sales uses All Marketplace's latest-order-minus-1-day window. */
+    private bool $alignLatestCompleteDay = false;
+
+    /** 1 = yesterday complete day; 7 = that day plus the prior 6 days. */
+    private int $windowDays = 1;
+
+    public function build(int $days = 1): array
     {
-        $day = Carbon::yesterday(self::TZ);
+        $this->windowDays = max(1, $days);
+        $this->alignLatestCompleteDay = true;
+        $this->adReportKeyCache = [];
+        $day = Carbon::yesterday(self::TZ)->subDay();
         $date = $day->toDateString();
-        $start = $day->copy()->startOfDay();
         $end = $day->copy()->endOfDay();
+        $start = $day->copy()->subDays($this->windowDays - 1)->startOfDay();
 
         $this->fallbackSales = ChannelMasterCalculatedData::query()
             ->get(['channel', 'yesterday_sales'])
@@ -58,6 +72,16 @@ class YesterdayMarketplaceMetricsService
             ->unique()
             ->values();
 
+        $viewsByChannel = [];
+        try {
+            $viewsSvc = app(YesterdayViewsService::class);
+            $viewsByChannel = $this->windowDays >= 7
+                ? $viewsSvc->viewsByChannelL7()
+                : $viewsSvc->viewsByChannel($date);
+        } catch (\Throwable $e) {
+            Log::warning('Yesterday views lookup failed: '.$e->getMessage());
+        }
+
         $rows = [];
         foreach ($channels as $name) {
             $name = (string) $name;
@@ -67,14 +91,22 @@ class YesterdayMarketplaceMetricsService
                 Log::warning('Yesterday marketplace metrics failed for '.$name.': '.$e->getMessage());
                 $m = $this->emptyMetrics();
             }
+            $m['views'] = $this->viewsForChannel($name, $viewsByChannel);
             $rows[] = $this->formatRow($name, $m);
         }
 
         usort($rows, static fn ($a, $b) => ($b['sales'] <=> $a['sales']));
 
+        $label = $this->windowDays >= 7
+            ? $start->format('M j').' – '.$day->format('M j, Y')
+            : $day->format('M j, Y');
+
         return [
             'date' => $date,
-            'label' => $day->format('M j, Y'),
+            'from' => $start->toDateString(),
+            'to' => $date,
+            'days' => $this->windowDays,
+            'label' => $label,
             'rows' => $rows,
         ];
     }
@@ -85,6 +117,8 @@ class YesterdayMarketplaceMetricsService
      */
     public function salesForPacificDate(string $channelKey, string $ymd): ?float
     {
+        $this->windowDays = 1;
+        $this->alignLatestCompleteDay = false;
         $day = Carbon::parse($ymd, self::TZ);
         $date = $day->toDateString();
         $m = $this->forChannel(
@@ -98,6 +132,26 @@ class YesterdayMarketplaceMetricsService
         }
 
         return round((float) ($m['sales'] ?? 0), 2);
+    }
+
+    /**
+     * Sum of reported sales for $days Pacific calendar days ending on $endYmd.
+     */
+    public function salesForPacificWindow(string $channelKey, string $endYmd, int $days = 7): ?float
+    {
+        $sum = 0.0;
+        $any = false;
+        $end = Carbon::parse($endYmd, self::TZ);
+        for ($i = 0; $i < max(1, $days); $i++) {
+            $v = $this->salesForPacificDate($channelKey, $end->copy()->subDays($i)->toDateString());
+            if ($v === null) {
+                continue;
+            }
+            $sum += $v;
+            $any = true;
+        }
+
+        return $any ? round($sum, 2) : null;
     }
 
     /**
@@ -127,9 +181,9 @@ class YesterdayMarketplaceMetricsService
             'topdawg' => $this->salesOnly($this->topdawgSales($date)),
             'depop' => $this->salesOnly($this->depopSales($date)),
             'vinted' => $this->salesOnly($this->vintedSales($date)),
-            'faire' => $this->salesOnly($this->faireSales($start, $end)),
+            'faire' => $this->faire($start, $end),
             'purchasingpower' => $this->salesOnly($this->purchasingPowerSales($start, $end)),
-            'reverb' => $this->salesOnly($this->reverbSales($date)),
+            'reverb' => $this->reverb($date),
             default => $this->fallback($name),
         };
     }
@@ -139,6 +193,12 @@ class YesterdayMarketplaceMetricsService
      */
     private function amazon(Carbon $start, Carbon $end, string $date): array
     {
+        $latest = DB::table('amazon_orders')->whereNotNull('order_date')->max('order_date');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            [$start, $end, $date] = $window;
+        }
+
         $yStartUtc = $start->copy()->utc();
         $yEndUtc = $end->copy()->utc();
 
@@ -183,9 +243,9 @@ class YesterdayMarketplaceMetricsService
             $pft += round((($unitPrice * 0.80) - $pm['lp'] - $shipCost) * $quantity, 2);
         }
 
-        $adSpend = $this->amazonAdSpend($date);
+        $ads = $this->amazonAdMetrics($date);
 
-        return $this->pack($displaySales, $skuLineSales, $pft, $cogs, $adSpend, count($orderIds), $qty, $skuLineSales);
+        return $this->pack($displaySales, $skuLineSales, $pft, $cogs, $ads['spend'], count($orderIds), $qty, $skuLineSales, $ads['sales']);
     }
 
     /**
@@ -194,6 +254,12 @@ class YesterdayMarketplaceMetricsService
     private function ebay(int $which, string $date): array
     {
         $model = $which === 1 ? EbayOrder::class : Ebay2Order::class;
+        $latest = $model::where('period', 'l30')->whereNotNull('order_date')->max('order_date');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            $date = $window[2];
+        }
+
         $orders = $model::with('items')->where('period', 'l30')->get();
 
         $orderSales = 0.0;
@@ -217,7 +283,8 @@ class YesterdayMarketplaceMetricsService
             if (! $created) {
                 continue;
             }
-            if (Carbon::parse($created)->setTimezone(self::TZ)->toDateString() !== $date) {
+            $createdYmd = Carbon::parse($created)->setTimezone(self::TZ)->toDateString();
+            if (! $this->ymdInCompleteWindow($createdYmd, $date)) {
                 continue;
             }
 
@@ -248,9 +315,9 @@ class YesterdayMarketplaceMetricsService
             }
         }
 
-        $adSpend = $this->ebayAdSpend($which, $date);
+        $ads = $this->ebayAdMetrics($which, $date);
 
-        return $this->pack($orderSales, $merch, $pft, $cogs, $adSpend, $orderCount, $qty, $orderSales);
+        return $this->pack($orderSales, $merch, $pft, $cogs, $ads['spend'], $orderCount, $qty, $orderSales, $ads['sales']);
     }
 
     /**
@@ -258,6 +325,12 @@ class YesterdayMarketplaceMetricsService
      */
     private function ebay3(string $date): array
     {
+        $latest = Ebay3DailyData::where('period', 'l30')->whereNotNull('creation_date')->max('creation_date');
+        $window = $this->latestCompleteDay($latest, 'naive');
+        if ($window !== null) {
+            $date = $window[2];
+        }
+
         $rows = Ebay3DailyData::where('period', 'l30')->get();
         $byOrder = [];
         $merch = 0.0;
@@ -270,7 +343,7 @@ class YesterdayMarketplaceMetricsService
                 continue;
             }
             $day = $row->creation_date ? Carbon::parse($row->creation_date)->format('Y-m-d') : null;
-            if ($day !== $date) {
+            if ($day === null || ! $this->ymdInCompleteWindow($day, $date)) {
                 continue;
             }
             $oid = (string) $row->order_id;
@@ -295,9 +368,9 @@ class YesterdayMarketplaceMetricsService
             $orderSales += round($v['total_price'] + $v['car'], 2);
         }
 
-        $adSpend = $this->ebayAdSpend(3, $date);
+        $ads = $this->ebayAdMetrics(3, $date);
 
-        return $this->pack($orderSales, $merch, $pft, $cogs, $adSpend, count($byOrder), $qty, $orderSales);
+        return $this->pack($orderSales, $merch, $pft, $cogs, $ads['spend'], count($byOrder), $qty, $orderSales, $ads['sales']);
     }
 
     /**
@@ -305,21 +378,25 @@ class YesterdayMarketplaceMetricsService
      */
     private function temu(Carbon $start, Carbon $end, string $date): array
     {
-        $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
-        $adSpend = 0.0;
-        if (Schema::hasTable('temu_campaign_reports')) {
-            $adSpend = (float) (TemuCampaignReport::where('report_range', $date)->sum('spend') ?? 0);
+        $latest = TemuOrder::query()->whereNotNull('parent_order_time')->max('parent_order_time');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            [$start, $end, $date] = $window;
         }
+
+        $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
+        $ads = $this->temuAdMetrics('temu_campaign_reports', $date);
 
         return $this->pack(
             (float) $m['base_sales'],
             (float) $m['sales'],
             (float) $m['pft'],
             (float) $m['cogs'],
-            $adSpend,
+            $ads['spend'],
             (int) $m['orders'],
             (int) $m['qty'],
-            (float) $m['sales']
+            (float) $m['sales'],
+            $ads['sales']
         );
     }
 
@@ -352,7 +429,14 @@ class YesterdayMarketplaceMetricsService
             }
         }
 
+        $latest = Temu2DailyData::whereNotNull('purchase_date')->max('purchase_date');
+        $window = $this->latestCompleteDay($latest, 'naive');
+        if ($window !== null) {
+            [$start, $end, $date] = $window;
+        }
+
         $margin = TemuShopifySalesService::temu2MarginDecimal();
+        $parentsBySku = ProductMaster::query()->pluck('parent', 'sku');
         $rows = Temu2DailyData::where('purchase_date', '>=', $start)
             ->where('purchase_date', '<=', $end)
             ->get();
@@ -366,13 +450,7 @@ class YesterdayMarketplaceMetricsService
 
         foreach ($rows as $row) {
             $rawSku = trim((string) ($row->contribution_sku ?? ''));
-            $orderId = trim((string) ($row->order_id ?? ''));
-            if ($rawSku === '' || $orderId === '') {
-                continue;
-            }
-            $normalizedRowSku = $normalizeSku($rawSku);
-            $normalizedRowSkuNoSpace = str_replace(' ', '', $normalizedRowSku);
-            if (! isset($normalizedPmSet[$normalizedRowSku]) && ! isset($noSpaceToNormalized[$normalizedRowSkuNoSpace])) {
+            if ($rawSku === '') {
                 continue;
             }
 
@@ -382,22 +460,36 @@ class YesterdayMarketplaceMetricsService
                 continue;
             }
 
-            $fbPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
             $pm = $this->pm($rawSku);
+            $parent = (string) ($parentsBySku[$rawSku] ?? '');
+            if ($parent !== '' && str_starts_with($parent, 'PARENT')) {
+                continue;
+            }
+
+            // Y Sales matches All Marketplace: base price × qty, no Product Master / order_id filter.
             $baseSales += $basePrice * $quantity;
+
+            $orderId = trim((string) ($row->order_id ?? ''));
+            $normalizedRowSku = $normalizeSku($rawSku);
+            $normalizedRowSkuNoSpace = str_replace(' ', '', $normalizedRowSku);
+            $inPm = isset($normalizedPmSet[$normalizedRowSku]) || isset($noSpaceToNormalized[$normalizedRowSkuNoSpace]);
+            if (! $inPm) {
+                continue;
+            }
+
+            $fbPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
             $fbSales += $fbPrice * $quantity;
             $qty += $quantity;
-            $orders[$orderId] = true;
+            if ($orderId !== '') {
+                $orders[$orderId] = true;
+            }
             $cogs += $pm['lp'] * $quantity;
             $pft += ($fbPrice * $margin - $pm['lp'] - $pm['temu_ship']) * $quantity;
         }
 
-        $adSpend = 0.0;
-        if (Schema::hasTable('temu2_campaign_reports')) {
-            $adSpend = (float) (Temu2CampaignReport::where('report_range', $date)->sum('spend') ?? 0);
-        }
+        $ads = $this->temuAdMetrics('temu2_campaign_reports', $date);
 
-        return $this->pack($baseSales, $fbSales, $pft, $cogs, $adSpend, count($orders), $qty, $fbSales);
+        return $this->pack($baseSales, $fbSales, $pft, $cogs, $ads['spend'], count($orders), $qty, $fbSales, $ads['sales']);
     }
 
     /**
@@ -407,6 +499,12 @@ class YesterdayMarketplaceMetricsService
     {
         if (! Schema::hasTable('shopify_raw_orders')) {
             return $this->fallback('shopify');
+        }
+
+        $latest = DB::table('shopify_raw_orders')->whereNotNull('order_date')->max('order_date');
+        $window = $this->latestCompleteDay($latest, 'as_pacific');
+        if ($window !== null) {
+            [$start, $end] = $window;
         }
 
         $startDate = $start->toDateString();
@@ -440,16 +538,9 @@ class YesterdayMarketplaceMetricsService
             $pft += ($ns * $margin) - ($pm['lp'] * $q) - ($shipCost * $q);
         }
 
-        $adSpend = 0.0;
-        if (Schema::hasTable('google_ads_campaigns')) {
-            $adSpend = ((float) DB::table('google_ads_campaigns')
-                ->whereDate('date', $startDate)
-                ->whereIn('advertising_channel_type', ['SHOPPING', 'SEARCH'])
-                ->whereIn('campaign_status', ['ENABLED', 'PAUSED'])
-                ->sum('metrics_cost_micros')) / 1_000_000.0;
-        }
+        $ads = $this->shopifyGoogleAdMetrics($startDate);
 
-        return $this->pack($sales, $sales, $pft, $cogs, $adSpend, $orders, $qty, $sales);
+        return $this->pack($sales, $sales, $pft, $cogs, $ads['spend'], $orders, $qty, $sales, $ads['sales']);
     }
 
     /**
@@ -458,13 +549,22 @@ class YesterdayMarketplaceMetricsService
     private function doba(Carbon $start, Carbon $end): array
     {
         $cancelled = ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'];
+        $latest = DobaDailyData::query()
+            ->where(function ($q) use ($cancelled) {
+                $q->whereNull('order_status')->orWhereNotIn('order_status', $cancelled);
+            })
+            ->max('order_time');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            [$start, $end] = $window;
+        }
+
         $rows = DobaDailyData::query()
             ->where('order_time', '>=', $start)
             ->where('order_time', '<=', $end)
             ->where(function ($q) use ($cancelled) {
                 $q->whereNull('order_status')->orWhereNotIn('order_status', $cancelled);
             })
-            ->whereRaw('LOWER(TRIM(COALESCE(order_type, ?))) <> ?', ['', 'pickup with a prepaid label'])
             ->get();
 
         $sales = 0.0;
@@ -499,6 +599,15 @@ class YesterdayMarketplaceMetricsService
     {
         if (! Schema::hasTable('mirakl_daily_data')) {
             return $this->fallback($channelName);
+        }
+
+        $latest = DB::table('mirakl_daily_data')
+            ->where('channel_name', $channelName)
+            ->where('status', '!=', 'CLOSED')
+            ->max('order_created_at');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            [$start, $end] = $window;
         }
 
         $rows = DB::table('mirakl_daily_data')
@@ -549,6 +658,14 @@ class YesterdayMarketplaceMetricsService
             return $this->fallback('fbmarketplace');
         }
 
+        $latest = FacebookMarketplaceSale::query()
+            ->selectRaw('MAX(COALESCE(order_date, created_at)) as latest')
+            ->value('latest');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            [$start, $end, $date] = $window;
+        }
+
         $rangeStartUtc = $start->copy()->utc();
         $rangeEndUtc = $end->copy()->utc();
         $mpRow = MarketplacePercentage::where('marketplace', 'FB Marketplace')->first()
@@ -562,8 +679,8 @@ class YesterdayMarketplaceMetricsService
         $orders = [];
 
         FacebookMarketplaceSale::query()
-            ->where(function ($q) use ($date, $rangeStartUtc, $rangeEndUtc) {
-                $q->whereBetween('order_date', [$date, $date])
+            ->where(function ($q) use ($start, $end, $rangeStartUtc, $rangeEndUtc) {
+                $q->whereBetween('order_date', [$start->toDateString(), $end->toDateString()])
                     ->orWhere(function ($q2) use ($rangeStartUtc, $rangeEndUtc) {
                         $q2->whereNull('order_date')
                             ->whereBetween('created_at', [
@@ -598,6 +715,14 @@ class YesterdayMarketplaceMetricsService
      */
     private function tiktok(Carbon $start, Carbon $end): array
     {
+        if ($this->alignLatestCompleteDay) {
+            $latest = TiktokOrder::latestCreatedAt();
+            $window = $this->latestCompleteDay($latest ? $latest->toDateTimeString() : null, 'to_pacific');
+            if ($window !== null) {
+                [$start, $end] = $window;
+            }
+        }
+
         $items = TiktokOrder::linesInWindow($start, $end);
         $sales = 0.0;
         $pft = 0.0;
@@ -635,8 +760,16 @@ class YesterdayMarketplaceMetricsService
             return $this->fallback('wayfair');
         }
 
+        $latest = DB::table('wayfair_daily_data')->whereNotNull('po_date')->max('po_date');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            $date = $window[2];
+        }
+
+        [$from, $to] = $this->windowYmdBounds($date);
         $rows = DB::table('wayfair_daily_data')
-            ->whereDate('po_date', $date)
+            ->whereDate('po_date', '>=', $from)
+            ->whereDate('po_date', '<=', $to)
             ->where('quantity', '>', 0)
             ->get();
 
@@ -675,16 +808,52 @@ class YesterdayMarketplaceMetricsService
      */
     private function tiktok2(Carbon $start, Carbon $end): array
     {
-        if (! Schema::hasTable('tiktok_sales_two')) {
-            return $this->emptyMetrics();
+        if (Schema::hasTable('tiktok_sales_two')) {
+            $latest = DB::table('tiktok_sales_two')->whereNotNull('order_date')->max('order_date');
+            $window = $this->latestCompleteDay($latest, 'to_pacific');
+            if ($window !== null) {
+                [$start, $end] = $window;
+            }
         }
-        $sales = (float) DB::table('tiktok_sales_two')
-            ->where('order_date', '>=', $start)
-            ->where('order_date', '<=', $end)
-            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
-            ->value('revenue');
 
-        return $this->salesOnly($sales);
+        $items = Tiktok2Order::linesInWindow($start, $end);
+        $sales = 0.0;
+        if (Schema::hasTable('tiktok_sales_two')) {
+            $sales = (float) DB::table('tiktok_sales_two')
+                ->where('order_date', '>=', $start)
+                ->where('order_date', '<=', $end)
+                ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+                ->value('revenue');
+        }
+        $pft = 0.0;
+        $cogs = 0.0;
+        $qty = 0;
+        $orders = [];
+        $margin = 0.80;
+        $lineSales = 0.0;
+
+        foreach ($items as $item) {
+            $quantity = (int) ($item->quantity ?? 1);
+            if ($quantity <= 0) {
+                continue;
+            }
+            $unitPrice = (float) ($item->sale_price ?? 0);
+            $pm = $this->pm((string) ($item->seller_sku ?? ''));
+            $shipCost = $this->shipCost($pm['ship'], $pm['wt'], $quantity);
+            $lineSales += $unitPrice * $quantity;
+            $qty += $quantity;
+            if (! empty($item->order_id)) {
+                $orders[(string) $item->order_id] = true;
+            }
+            $cogs += $pm['lp'] * $quantity;
+            $pft += (($unitPrice * $margin) - $pm['lp'] - $shipCost) * $quantity;
+        }
+
+        if ($sales <= 0) {
+            $sales = $lineSales;
+        }
+
+        return $this->pack($sales, $lineSales, $pft, $cogs, 0.0, count($orders), $qty, $lineSales);
     }
 
     /**
@@ -700,6 +869,11 @@ class YesterdayMarketplaceMetricsService
     {
         if (! Schema::hasTable('shein_daily_data')) {
             return 0.0;
+        }
+        $latest = DB::table('shein_daily_data')->whereNotNull('order_processed_on')->max('order_processed_on');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            [$start, $end] = $window;
         }
         $sum = 0.0;
         foreach (
@@ -725,6 +899,11 @@ class YesterdayMarketplaceMetricsService
     {
         if (! Schema::hasTable('aliexpress_daily_data')) {
             return 0.0;
+        }
+        $latest = DB::table('aliexpress_daily_data')->whereNotNull('order_date')->max('order_date');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            [$start, $end] = $window;
         }
         $sum = 0.0;
         foreach (
@@ -767,9 +946,7 @@ class YesterdayMarketplaceMetricsService
             ->where(function ($q2) {
                 $q2->whereNull('order_status')
                     ->orWhereRaw('LOWER(order_status) NOT LIKE ?', ['%cancel%']);
-            })
-            ->where('sold_date', '>=', $start)
-            ->where('sold_date', '<=', $end);
+            });
         if ($withShip) {
             $q->where(function ($q3) {
                 $q3->whereNull('buyer_shipping_fee')
@@ -780,7 +957,16 @@ class YesterdayMarketplaceMetricsService
             $q->where('buyer_shipping_fee', '>', 0);
         }
 
-        return (float) $q->selectRaw('COALESCE(SUM(item_price), 0) as revenue')->value('revenue');
+        $latest = (clone $q)->max('sold_date');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            [$start, $end] = $window;
+        }
+
+        return (float) $q->where('sold_date', '>=', $start)
+            ->where('sold_date', '<=', $end)
+            ->selectRaw('COALESCE(SUM(item_price), 0) as revenue')
+            ->value('revenue');
     }
 
     private function topdawgSales(string $date): float
@@ -789,8 +975,17 @@ class YesterdayMarketplaceMetricsService
             return 0.0;
         }
 
+        $latest = DB::table('topdawg_order_metrics')->whereNotNull('order_date')->max('order_date');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            $date = $window[2];
+        }
+
+        [$from, $to] = $this->windowYmdBounds($date);
+
         return (float) DB::table('topdawg_order_metrics')
-            ->whereDate('order_date', $date)
+            ->whereDate('order_date', '>=', $from)
+            ->whereDate('order_date', '<=', $to)
             ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
             ->value('revenue');
     }
@@ -801,8 +996,17 @@ class YesterdayMarketplaceMetricsService
             return 0.0;
         }
 
+        $latest = DB::table('depop_sales_data')->whereNotNull('sale_date')->max('sale_date');
+        $window = $this->latestCompleteDay($latest, 'naive');
+        if ($window !== null) {
+            $date = $window[2];
+        }
+
+        [$from, $to] = $this->windowYmdBounds($date);
+
         return (float) DB::table('depop_sales_data')
-            ->whereDate('sale_date', $date)
+            ->whereDate('sale_date', '>=', $from)
+            ->whereDate('sale_date', '<=', $to)
             ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
             ->value('revenue');
     }
@@ -813,16 +1017,30 @@ class YesterdayMarketplaceMetricsService
             return 0.0;
         }
 
+        $latest = DB::table('vinted_sales_data')->whereNotNull('sale_date')->max('sale_date');
+        $window = $this->latestCompleteDay($latest, 'naive');
+        if ($window !== null) {
+            $date = $window[2];
+        }
+
+        [$from, $to] = $this->windowYmdBounds($date);
+
         return (float) DB::table('vinted_sales_data')
-            ->whereDate('sale_date', $date)
+            ->whereDate('sale_date', '>=', $from)
+            ->whereDate('sale_date', '<=', $to)
             ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
             ->value('revenue');
     }
 
-    private function faireSales(Carbon $start, Carbon $end): float
+    /**
+     * Faire 1-day sales / orders / qty from shopify_raw_orders (same source as All Marketplace).
+     *
+     * @return array<string, mixed>
+     */
+    private function faire(Carbon $start, Carbon $end): array
     {
         if (! Schema::hasTable('shopify_raw_orders')) {
-            return 0.0;
+            return $this->salesOnly(0.0);
         }
         $faireWhere = function ($q) {
             $q->where('source_name', 'faire')
@@ -830,13 +1048,30 @@ class YesterdayMarketplaceMetricsService
                 ->orWhere('tags', 'LIKE', '%Faire%');
         };
 
-        return (float) DB::table('shopify_raw_orders')
+        $latest = DB::table('shopify_raw_orders')
+            ->where($faireWhere)
+            ->whereNotNull('order_date')
+            ->max('order_date');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
+        if ($window !== null) {
+            [$start, $end] = $window;
+        }
+
+        $row = DB::table('shopify_raw_orders')
             ->where($faireWhere)
             ->where('order_date', '>=', $start)
             ->where('order_date', '<=', $end)
             ->where('quantity', '>', 0)
             ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
-            ->value('revenue');
+            ->selectRaw('COALESCE(SUM(quantity), 0) as qty')
+            ->selectRaw('COUNT(DISTINCT COALESCE(NULLIF(TRIM(order_number), ""), CAST(order_id AS CHAR))) as orders')
+            ->first();
+
+        $m = $this->salesOnly((float) ($row->revenue ?? 0));
+        $m['qty'] = (int) ($row->qty ?? 0);
+        $m['orders'] = (int) ($row->orders ?? 0);
+
+        return $m;
     }
 
     private function purchasingPowerSales(Carbon $start, Carbon $end): float
@@ -848,6 +1083,15 @@ class YesterdayMarketplaceMetricsService
                     ->orWhere('tags', 'LIKE', '%Purchasing Power%')
                     ->orWhere('tags', 'LIKE', '%PurchasingPower%');
             };
+
+            $latest = DB::connection('apicentral')->table('shopify_order_items')
+                ->where($ppWhere)
+                ->whereNotNull('order_date')
+                ->max('order_date');
+            $window = $this->latestCompleteDay($latest, 'to_pacific');
+            if ($window !== null) {
+                [$start, $end] = $window;
+            }
 
             return (float) DB::connection('apicentral')->table('shopify_order_items')
                 ->where($ppWhere)
@@ -861,20 +1105,37 @@ class YesterdayMarketplaceMetricsService
         }
     }
 
-    private function reverbSales(string $date): float
+    /**
+     * @return array<string, mixed>
+     */
+    private function reverb(string $date): array
     {
         if (! Schema::hasTable('reverb_daily_data')) {
-            return 0.0;
+            return $this->salesOnly(0.0);
         }
 
-        return (float) DB::table('reverb_daily_data')
-            ->whereDate('order_date', $date)
+        if ($this->alignLatestCompleteDay) {
+            $date = Carbon::now('UTC')->subDay()->toDateString();
+        }
+
+        [$from, $to] = $this->windowYmdBounds($date);
+        $row = DB::table('reverb_daily_data')
+            ->whereDate('order_date', '>=', $from)
+            ->whereDate('order_date', '<=', $to)
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
             ->whereNotNull('sku')->where('sku', '!=', '')
             ->whereNotNull('order_number')->where('order_number', '!=', '')
             ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
-            ->value('revenue');
+            ->selectRaw('COALESCE(SUM(quantity), 0) as qty')
+            ->selectRaw('COUNT(DISTINCT order_number) as orders')
+            ->first();
+
+        $m = $this->salesOnly((float) ($row->revenue ?? 0));
+        $m['qty'] = (int) ($row->qty ?? 0);
+        $m['orders'] = (int) ($row->orders ?? 0);
+
+        return $m;
     }
 
     /**
@@ -902,8 +1163,10 @@ class YesterdayMarketplaceMetricsService
             'pft' => 0.0,
             'cogs' => 0.0,
             'ad_spend' => 0.0,
+            'attributed_ad_sales' => 0.0,
             'orders' => 0,
             'qty' => 0,
+            'views' => null,
             'computed' => false,
         ];
     }
@@ -919,7 +1182,8 @@ class YesterdayMarketplaceMetricsService
         float $adSpend,
         int $orders,
         int $qty,
-        float $adsSales
+        float $adsSales,
+        float $attributedAdSales = 0.0
     ): array {
         return [
             'sales' => round($sales, 2),
@@ -928,6 +1192,7 @@ class YesterdayMarketplaceMetricsService
             'pft' => round($pft, 2),
             'cogs' => round($cogs, 2),
             'ad_spend' => round($adSpend, 2),
+            'attributed_ad_sales' => round($attributedAdSales, 2),
             'orders' => $orders,
             'qty' => $qty,
             'computed' => true,
@@ -946,13 +1211,26 @@ class YesterdayMarketplaceMetricsService
         $pft = (float) ($m['pft'] ?? 0);
         $cogs = (float) ($m['cogs'] ?? 0);
         $adSpend = (float) ($m['ad_spend'] ?? 0);
+        $attributedAdSales = (float) ($m['attributed_ad_sales'] ?? 0);
         $computed = (bool) ($m['computed'] ?? false);
+        $qty = (int) ($m['qty'] ?? 0);
+        $views = $m['views'] ?? null;
+        $views = ($views === null || $views === '') ? null : (int) $views;
+        $cvr = ($views !== null && $views > 0) ? ($qty / $views) * 100 : null;
 
-        $gpft = ($computed && $gpftSales > 0) ? ($pft / $gpftSales) * 100 : null;
+        $gpftBase = $sales > 0 ? $sales : $gpftSales;
+        $adsBase = $sales > 0 ? $sales : $adsSales;
+        $gpft = ($computed && $gpftBase > 0) ? ($pft / $gpftBase) * 100 : null;
         $groi = ($computed && $cogs > 0) ? ($pft / $cogs) * 100 : null;
-        $adsPct = ($computed && $adsSales > 0) ? ($adSpend / $adsSales) * 100 : 0.0;
+        $adsPct = ($computed && $adsBase > 0) ? ($adSpend / $adsBase) * 100 : 0.0;
         $npft = ($gpft !== null) ? $gpft - $adsPct : null;
         $nroi = ($computed && $cogs > 0) ? (($pft - $adSpend) / $cogs) * 100 : null;
+        $acos = null;
+        if ($computed && ($adSpend > 0 || $attributedAdSales > 0)) {
+            $acos = $attributedAdSales > 0
+                ? ($adSpend / $attributedAdSales) * 100
+                : 100.0;
+        }
 
         return [
             'channel' => $name,
@@ -961,51 +1239,108 @@ class YesterdayMarketplaceMetricsService
             'groi' => $groi,
             'nroi' => $nroi,
             'npft' => $npft,
-            'views' => null,
-            'cvr' => null,
+            'ads_pct' => $adsPct,
+            'acos' => $acos,
+            'views' => $views,
+            'cvr' => $cvr,
             'orders' => (int) ($m['orders'] ?? 0),
-            'qty' => (int) ($m['qty'] ?? 0),
+            'qty' => $qty,
             'pft' => $pft,
             'cogs' => $cogs,
             'ad_spend' => $adSpend,
+            'attributed_ad_sales' => $attributedAdSales,
             'gpft_sales' => $gpftSales,
             'computed' => $computed,
         ];
     }
 
-    private function amazonAdSpend(string $date): float
+    /**
+     * 1-day Amazon spend/sales from the same SP+SB campaign tables as /amazon-ads/all.
+     * Uses L1 (the ads-page yesterday pull) — dated daily keys are a thin subset.
+     *
+     * @return array{spend: float, sales: float}
+     */
+    private function amazonAdMetrics(string $date): array
     {
         $spend = 0.0;
+        $sales = 0.0;
         try {
             if (Schema::hasTable('amazon_sp_campaign_reports')) {
-                $spend += (float) DB::table('amazon_sp_campaign_reports')
-                    ->where('report_date_range', $date)
-                    ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-                    ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
-                    ->sum('spend');
-                $spend += (float) DB::table('amazon_sp_campaign_reports')
-                    ->where('report_date_range', $date)
-                    ->where(function ($query) {
-                        $query->whereRaw("campaignName LIKE '%PT'")
-                            ->orWhereRaw("campaignName LIKE '%PT.'");
-                    })
-                    ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
-                    ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
-                    ->sum('spend');
+                $key = $this->adReportKey('amazon_sp_campaign_reports', 'report_date_range', $date);
+                $sp = $this->amazonDistinctCampaignTotals(
+                    'amazon_sp_campaign_reports',
+                    $key,
+                    'COALESCE(cost, spend, 0)',
+                    $this->amazonDailySalesExpr('amazon_sp_campaign_reports')
+                );
+                $spend += $sp['spend'];
+                $sales += $sp['sales'];
             }
             if (Schema::hasTable('amazon_sb_campaign_reports')) {
-                $spend += (float) DB::table('amazon_sb_campaign_reports')
-                    ->where('report_date_range', $date)
-                    ->sum('cost');
+                $key = $this->adReportKey('amazon_sb_campaign_reports', 'report_date_range', $date);
+                $sb = $this->amazonDistinctCampaignTotals(
+                    'amazon_sb_campaign_reports',
+                    $key,
+                    'COALESCE(cost, 0)',
+                    $this->amazonDailySalesExpr('amazon_sb_campaign_reports')
+                );
+                $spend += $sb['spend'];
+                $sales += $sb['sales'];
             }
         } catch (\Throwable $e) {
-            Log::warning('Yesterday Amazon ad spend failed: '.$e->getMessage());
+            Log::warning('Yesterday Amazon ad metrics failed: '.$e->getMessage());
         }
 
-        return $spend;
+        return ['spend' => $spend, 'sales' => $sales];
     }
 
-    private function ebayAdSpend(int $which, string $date): float
+    /**
+     * One row per campaign_id (MAX spend/sales) so re-imported L1/daily rows
+     * do not inflate totals — same distinct rule as /amazon-ads/all badges.
+     *
+     * @return array{spend: float, sales: float}
+     */
+    private function amazonDistinctCampaignTotals(string $table, string $key, string $spendExpr, string $salesExpr): array
+    {
+        $inner = DB::table($table)
+            ->where('report_date_range', $key)
+            ->where(function ($q) {
+                $q->whereNull('campaignStatus')
+                    ->orWhereRaw("UPPER(TRIM(campaignStatus)) != 'ARCHIVED'");
+            })
+            ->selectRaw('campaign_id')
+            ->selectRaw('MAX('.$spendExpr.') as spend')
+            ->selectRaw('MAX('.$salesExpr.') as sales')
+            ->groupBy('campaign_id');
+
+        $row = DB::query()->fromSub($inner, 'amz_ads_c')
+            ->selectRaw('COALESCE(SUM(spend), 0) as spend')
+            ->selectRaw('COALESCE(SUM(sales), 0) as sales')
+            ->first();
+
+        return [
+            'spend' => (float) ($row->spend ?? 0),
+            'sales' => (float) ($row->sales ?? 0),
+        ];
+    }
+
+    private function amazonDailySalesExpr(string $table): string
+    {
+        $cols = Schema::getColumnListing($table);
+        if (in_array('sales1d', $cols, true)) {
+            return 'sales1d';
+        }
+        if (in_array('sales', $cols, true)) {
+            return 'sales';
+        }
+
+        return '0';
+    }
+
+    /**
+     * @return array{spend: float, sales: float}
+     */
+    private function ebayAdMetrics(int $which, string $date): array
     {
         $priority = match ($which) {
             2 => 'ebay_2_priority_reports',
@@ -1019,26 +1354,184 @@ class YesterdayMarketplaceMetricsService
         };
 
         $spend = 0.0;
+        $sales = 0.0;
+        // Never use L1. eBay 2/3 L1 is $289 / $132 from another pull;
+        // pairing that with Aug 12 Y Sales ($94 / $77) would invent 300%+ Ads%.
         try {
             if (Schema::hasTable($priority)) {
+                $key = $this->adReportKey($priority, 'report_range', $date);
                 $row = DB::table($priority)
-                    ->where('report_range', $date)
+                    ->where('report_range', $key)
                     ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend')
+                    ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales')
                     ->first();
                 $spend += (float) ($row->spend ?? 0);
+                $sales += (float) ($row->sales ?? 0);
             }
             if (Schema::hasTable($general)) {
+                $key = $this->adReportKey($general, 'report_range', $date);
                 $row = DB::table($general)
-                    ->where('report_range', $date)
+                    ->where('report_range', $key)
                     ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend')
+                    ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales')
                     ->first();
                 $spend += (float) ($row->spend ?? 0);
+                $sales += (float) ($row->sales ?? 0);
             }
         } catch (\Throwable $e) {
-            Log::warning("Yesterday eBay {$which} ad spend failed: ".$e->getMessage());
+            Log::warning("Yesterday eBay {$which} ad metrics failed: ".$e->getMessage());
         }
 
-        return $spend;
+        return ['spend' => $spend, 'sales' => $sales];
+    }
+
+    /**
+     * @return array{spend: float, sales: float}
+     */
+    private function shopifyGoogleAdMetrics(string $date): array
+    {
+        if (! Schema::hasTable('google_ads_campaigns')) {
+            return ['spend' => 0.0, 'sales' => 0.0];
+        }
+
+        try {
+            $key = $this->googleAdDate($date);
+            [$from, $to] = $this->windowYmdBounds($key);
+            $row = DB::table('google_ads_campaigns')
+                ->whereDate('date', '>=', $from)
+                ->whereDate('date', '<=', $to)
+                ->whereIn('advertising_channel_type', ['SHOPPING', 'SEARCH'])
+                ->whereIn('campaign_status', ['ENABLED', 'PAUSED'])
+                ->selectRaw('COALESCE(SUM(metrics_cost_micros), 0) / 1000000 as spend')
+                ->selectRaw('COALESCE(SUM(ga4_actual_revenue), 0) as sales')
+                ->first();
+
+            return [
+                'spend' => (float) ($row->spend ?? 0),
+                'sales' => (float) ($row->sales ?? 0),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Yesterday Shopify Google ad metrics failed: '.$e->getMessage());
+
+            return ['spend' => 0.0, 'sales' => 0.0];
+        }
+    }
+
+    /**
+     * @return array{spend: float, sales: float}
+     */
+    private function temuAdMetrics(string $table, string $date): array
+    {
+        if (! Schema::hasTable($table)) {
+            return ['spend' => 0.0, 'sales' => 0.0];
+        }
+
+        try {
+            $key = $this->adReportKey($table, 'report_range', $date);
+            $row = DB::table($table)
+                ->where('report_range', $key)
+                ->selectRaw('COALESCE(SUM(spend), 0) as spend')
+                ->selectRaw('COALESCE(SUM(base_price_sales), 0) as sales')
+                ->first();
+
+            return [
+                'spend' => (float) ($row->spend ?? 0),
+                'sales' => (float) ($row->sales ?? 0),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning("Yesterday {$table} ad metrics failed: ".$e->getMessage());
+
+            return ['spend' => 0.0, 'sales' => 0.0];
+        }
+    }
+
+    private function adReportHasDatedKey(string $table, string $column, string $date): bool
+    {
+        try {
+            return Schema::hasTable($table) && DB::table($table)->where($column, $date)->exists();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Spend key for campaign-ads tables.
+     * L7 dashboard prefers L7 (same as /amazon-ads/all and /ebay/campaign-ads L7).
+     * Yesterday prefers L1 — dated daily keys are often a thin subset.
+     */
+    private function adReportKey(string $table, string $column, string $yesterday): string
+    {
+        $prefer = $this->windowDays >= 7 ? 'L7' : 'L1';
+        $cacheKey = $table.'|'.$column.'|'.$yesterday.'|'.$prefer;
+        if (isset($this->adReportKeyCache[$cacheKey])) {
+            return $this->adReportKeyCache[$cacheKey];
+        }
+
+        $key = $yesterday;
+        try {
+            if (DB::table($table)->where($column, $prefer)->exists()) {
+                $key = $prefer;
+            } elseif ($prefer === 'L7' && DB::table($table)->where($column, 'L1')->exists()) {
+                $key = 'L1';
+            } elseif (DB::table($table)->where($column, $yesterday)->exists()) {
+                $key = $yesterday;
+            }
+        } catch (\Throwable $e) {
+            Log::warning("Yesterday ad report key failed for {$table}: ".$e->getMessage());
+        }
+
+        return $this->adReportKeyCache[$cacheKey] = $key;
+    }
+
+    private function googleAdDate(string $yesterday): string
+    {
+        return $yesterday;
+    }
+
+    /**
+     * Same "latest complete day" All Marketplace Master uses for Y Sales:
+     * the Pacific/calendar day before the newest raw timestamp.
+     *
+     * @return array{0: Carbon, 1: Carbon, 2: string}|null
+     */
+    private function latestCompleteDay(?string $latestRaw, string $style = 'to_pacific'): ?array
+    {
+        if (! $this->alignLatestCompleteDay) {
+            return null;
+        }
+        if ($latestRaw === null || $latestRaw === '') {
+            return null;
+        }
+
+        $latest = match ($style) {
+            'as_pacific' => Carbon::parse($latestRaw, self::TZ),
+            'naive' => Carbon::parse($latestRaw),
+            default => Carbon::parse($latestRaw)->timezone(self::TZ),
+        };
+
+        $endDay = $latest->copy()->subDay();
+        $end = $endDay->copy()->endOfDay();
+        $start = $endDay->copy()->subDays(max(1, $this->windowDays) - 1)->startOfDay();
+
+        return [$start, $end, $endDay->toDateString()];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function windowYmdBounds(string $endYmd): array
+    {
+        $end = Carbon::parse($endYmd, self::TZ);
+        $start = $end->copy()->subDays(max(1, $this->windowDays) - 1);
+
+        return [$start->toDateString(), $end->toDateString()];
+    }
+
+    private function ymdInCompleteWindow(string $ymd, string $endYmd): bool
+    {
+        [$from, $to] = $this->windowYmdBounds($endYmd);
+
+        return $ymd >= $from && $ymd <= $to;
     }
 
     /**
@@ -1112,6 +1605,24 @@ class YesterdayMarketplaceMetricsService
         $tWeight = $wt * $quantity;
 
         return $tWeight < 20 ? $ship / $quantity : $ship;
+    }
+
+    /**
+     * @param  array<string, int>  $viewsByChannel
+     */
+    private function viewsForChannel(string $name, array $viewsByChannel): ?int
+    {
+        $key = $this->key($name);
+        $lookup = match ($key) {
+            'shopifyb2c', 'shopify' => 'shopify',
+            default => $key,
+        };
+
+        if (! array_key_exists($lookup, $viewsByChannel)) {
+            return null;
+        }
+
+        return (int) $viewsByChannel[$lookup];
     }
 
     private function key(string $name): string

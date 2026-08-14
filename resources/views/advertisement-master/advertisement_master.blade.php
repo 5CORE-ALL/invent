@@ -154,8 +154,12 @@
             background: #e0f7fa;
         }
 
-        /* ── Badge trend chart modal — full-screen width, pinned to top
-           (same look & sizing as /shopify-ads-master). --}} */
+        /* Badge trend chart modal — full-screen width, pinned to top
+           (same look & sizing as /shopify-ads-master). */
+        #adm-loading, #adm-error {
+            font-size: 13px;
+            padding: 14px 8px;
+        }
         #admTrendsModal.modal {
             --tz-modal-width: 100%;
             --tz-modal-margin: 0.5rem 0;
@@ -208,6 +212,8 @@
                     </div>
 
                     <div id="advertisement-master-wrap">
+                        <div id="adm-loading" class="text-muted">Loading channel metrics…</div>
+                        <div id="adm-error" class="text-danger d-none"></div>
                         <div id="advertisement-master-table"></div>
                     </div>
                 </div>
@@ -342,6 +348,10 @@
             }
 
             const channelLinks = {
+                'Amazon': "{{ route('amazon.ads.all') }}",
+                'Amazon · KW': "{{ route('amazon.ads.all') }}?search=KW",
+                'Amazon · PT': "{{ route('amazon.ads.all') }}?search=PT",
+                'Amazon · HL': "{{ route('amazon.ads.all') }}?source=sb_reports",
                 'Amz': "{{ route('amazon.ads.all') }}",
                 'Amz · KW': "{{ route('amazon.ads.all') }}?search=KW",
                 'Amz · PT': "{{ route('amazon.ads.all') }}?search=PT",
@@ -379,10 +389,33 @@
             }
 
             const dataUrl = "{{ route('advertisement.master.data') }}";
+            const loadingEl = document.getElementById('adm-loading');
+            const errorEl = document.getElementById('adm-error');
+
+            function showAdmError(message) {
+                if (loadingEl) loadingEl.classList.add('d-none');
+                if (errorEl) {
+                    errorEl.textContent = message || 'Failed to load Advertisement Master data. Try Refresh.';
+                    errorEl.classList.remove('d-none');
+                }
+            }
+
+            function showAdmLoading() {
+                if (errorEl) errorEl.classList.add('d-none');
+                if (loadingEl) loadingEl.classList.remove('d-none');
+            }
 
             const table = new Tabulator('#advertisement-master-table', {
                 ajaxURL: dataUrl,
+                ajaxRequestTimeout: 180000,
+                placeholder: 'Loading channel metrics…',
                 ajaxResponse: function (url, params, response) {
+                    if (loadingEl) loadingEl.classList.add('d-none');
+                    if (errorEl) errorEl.classList.add('d-none');
+                    if (!response || Number(response.status) === 500) {
+                        showAdmError((response && response.message) || 'Failed to load Advertisement Master data.');
+                        return [];
+                    }
                     const rows = response.data || [];
                     admSSales = Number(response.total_net_sales || 0);
                     const ssEl = document.getElementById('adm-badge-ssales');
@@ -395,6 +428,9 @@
                     updateBadges(rows);
                     buildAdmChannelOptions(rows);
                     return rows;
+                },
+                ajaxError: function () {
+                    showAdmError('Advertisement Master data request failed or timed out. Try Refresh.');
                 },
                 layout: 'fitColumns',
                 headerSort: true,
@@ -436,6 +472,7 @@
             document.getElementById('adm-refresh').addEventListener('click', function () {
                 document.getElementById('adm-search').value = '';
                 table.clearFilter();
+                showAdmLoading();
                 table.setData(dataUrl);
             });
 
@@ -461,7 +498,7 @@
                 const current = sel.value;
                 sel.innerHTML = '<option value="__total__">All channels</option>'
                     + names.map(function (n) { return '<option value="' + n + '">' + n + '</option>'; }).join('');
-                if ([...sel.options].some(function (o) { return o.value === current; })) sel.value = current;
+                if (Array.prototype.slice.call(sel.options).some(function (o) { return o.value === current; })) sel.value = current;
             }
 
             function fmtAdmValue(metric, v) {
@@ -491,14 +528,17 @@
                     openAdmChart(this.dataset.metric, this.dataset.label || this.dataset.metric.toUpperCase());
                 });
             });
-            document.getElementById('adm-trends')?.addEventListener('click', function () {
+            var admTrendsBtn = document.getElementById('adm-trends');
+            if (admTrendsBtn) admTrendsBtn.addEventListener('click', function () {
                 openAdmChart('spend', 'Spend');
             });
-            document.getElementById('adm-trend-channel')?.addEventListener('change', function () {
+            var admTrendChannel = document.getElementById('adm-trend-channel');
+            if (admTrendChannel) admTrendChannel.addEventListener('change', function () {
                 admSetTrendTitle();
                 renderAdmChart();
             });
-            document.getElementById('adm-trend-days')?.addEventListener('change', loadAdmHistory);
+            var admTrendDays = document.getElementById('adm-trend-days');
+            if (admTrendDays) admTrendDays.addEventListener('change', loadAdmHistory);
 
             // Show/hide the modal — Bootstrap API when available, manual fallback
             // otherwise so it opens even if window.bootstrap isn't ready.
@@ -550,7 +590,7 @@
                 const chSel = document.getElementById('adm-trend-channel');
                 if (chSel) {
                     const wanted = channel || '__total__';
-                    chSel.value = [...chSel.options].some(function (o) { return o.value === wanted; }) ? wanted : '__total__';
+                    chSel.value = Array.prototype.slice.call(chSel.options).some(function (o) { return o.value === wanted; }) ? wanted : '__total__';
                 }
                 admSetTrendTitle();
                 admShowModal();
@@ -592,7 +632,7 @@
 
                 if (!labels.length) {
                     canvas.style.display = 'none';
-                    emptyEl?.classList.remove('d-none');
+                    if (emptyEl) emptyEl.classList.remove('d-none');
                     return;
                 }
                 if (typeof Chart === 'undefined') {
@@ -601,11 +641,11 @@
                     return;
                 }
                 canvas.style.display = '';
-                emptyEl?.classList.add('d-none');
+                if (emptyEl) emptyEl.classList.add('d-none');
 
-                const dataMin = Math.min(...values);
-                const dataMax = Math.max(...values);
-                const sorted  = [...values].sort(function (a, b) { return a - b; });
+                const dataMin = values.length ? Math.min.apply(null, values) : 0;
+                const dataMax = values.length ? Math.max.apply(null, values) : 0;
+                const sorted  = values.slice().sort(function (a, b) { return a - b; });
                 const mid     = Math.floor(sorted.length / 2);
                 const median  = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
                 const range = (dataMax - dataMin) || 1;
@@ -701,7 +741,8 @@
                 });
             }
 
-            document.getElementById('admTrendsModal')?.addEventListener('shown.bs.modal', function () {
+            var admTrendsModal = document.getElementById('admTrendsModal');
+            if (admTrendsModal) admTrendsModal.addEventListener('shown.bs.modal', function () {
                 if (admTrendChart) admTrendChart.resize();
             });
         });
