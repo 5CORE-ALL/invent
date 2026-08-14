@@ -1255,8 +1255,8 @@
                 if (!btn) return;
                 const id = btn.dataset.id;
                 if (btn.classList.contains('btn-del')) {
-                    if (!confirm('Delete this follow-up?')) return;
-                    await fetch(followupBase + '/' + id, {
+                    if (!confirm('Delete this follow-up? Use this for wrong or duplicate entries.')) return;
+                    const delRes = await fetch(followupBase + '/' + id, {
                         method: 'DELETE',
                         headers: {
                             'Accept': 'application/json',
@@ -1264,6 +1264,11 @@
                             'X-Requested-With': 'XMLHttpRequest'
                         }
                     });
+                    const delJson = await delRes.json().catch(() => ({}));
+                    if (!delRes.ok || delJson.success === false) {
+                        alert(delJson.message || 'Could not delete this follow-up.');
+                        return;
+                    }
                     loadTable();
                     return;
                 }
