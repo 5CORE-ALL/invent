@@ -212,6 +212,35 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
+     * Listings mismatch tolerance: ignore a qty gap only when Shopify qty is
+     * higher than marketplace qty, and the gap is at most
+     * max(3 units, 3% of Shopify qty) — whichever is higher.
+     * If marketplace qty is higher than Shopify, it is always a mismatch.
+     * Missing marketplace qty is never treated as within tolerance.
+     */
+    public static function qtyWithinMismatchTolerance(int $shopifyQty, ?int $marketplaceQty): bool
+    {
+        if ($marketplaceQty === null) {
+            return false;
+        }
+        $marketplaceQty = (int) $marketplaceQty;
+        if ($shopifyQty <= 0) {
+            return $marketplaceQty <= 0;
+        }
+        if ($marketplaceQty === $shopifyQty) {
+            return true;
+        }
+        if ($shopifyQty < $marketplaceQty) {
+            return false;
+        }
+
+        $diff = $shopifyQty - $marketplaceQty;
+        $threshold = max(3.0, $shopifyQty * 0.03);
+
+        return $diff <= $threshold + 1e-9;
+    }
+
+    /**
      * Absolute safety clamp before any marketplace API write.
      * If known Shopify qty is <= 0, force marketplace qty to 0.
      */

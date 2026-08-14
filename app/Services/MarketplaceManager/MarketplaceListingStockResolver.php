@@ -704,7 +704,7 @@ final class MarketplaceListingStockResolver
 
             if ($shopifyQty <= 0) {
                 $addZero[] = $sku;
-            } elseif ($shopifyQty === $mpQty) {
+            } elseif (MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty)) {
                 $addMatched[] = $sku;
             } else {
                 $stillMismatch[] = $sku;

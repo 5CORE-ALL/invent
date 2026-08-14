@@ -258,6 +258,12 @@ class TikTok2InventorySyncService
 
             return $empty;
         }
+        if ($shopifyStock !== null && $shopifyStock > 0
+            && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $metric->stock !== null ? (int) $metric->stock : null)) {
+            $empty['skipped'] = 1;
+
+            return $empty;
+        }
 
         if ($dryRun) {
             $empty['updated'] = 1;

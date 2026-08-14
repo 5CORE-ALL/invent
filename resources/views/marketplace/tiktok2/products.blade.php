@@ -8,8 +8,8 @@
         <p class="text-muted mb-3">
             Seller Center <strong>Active</strong> counts <strong>products</strong> (a combined listing is 1). This page counts <strong>Shopify SKUs</strong>.
             Linked here ≈ Active SKU + mismatch + Zero on Shopify (sold-out SKUs are still Active in Seller Center).
-            <strong>Active SKU</strong> = Shopify qty already equals TikTok qty.
-            <strong>Active SKU Mismatch</strong> = qty still differs — use <em>Sync Mismatch inventory now</em>.
+            <strong>Active SKU</strong> = qty matches, or Shopify is higher by at most the higher of 3 units or 3% of Shopify qty.
+            <strong>Active SKU Mismatch</strong> = TikTok qty is higher than Shopify, or the gap is beyond that bar — use <em>Sync Mismatch inventory now</em>.
             App has {{ $counts['tiktok_products'] ?? 0 }} TikTok products / {{ $counts['tiktok_skus'] ?? 0 }} linked SKUs.
             <em>Refresh live</em> warms the listings cache. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
