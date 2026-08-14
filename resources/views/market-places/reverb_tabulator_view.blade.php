@@ -194,7 +194,6 @@
             padding: 0 2px;
             cursor: pointer;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb'])
     </style>
 @endsection
 
@@ -579,11 +578,9 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'reverb'])
 @endsection
 
 @section('script-bottom')
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
 <script>
     /** Shared column visibility — same /tabulator-column-visibility endpoint as Amazon (channel_tabulator_column_settings). */
     const TABULATOR_COLUMN_CHANNEL = 'reverb_tabulator';
@@ -2684,9 +2681,6 @@
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
                     }
                 },
-                // PRMT % / CPN % / Appr / DSC % / Push Prc — reverb_promo_pricing
-                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-
                 {
                     title: "SPRICE",
                     field: "SPRICE",

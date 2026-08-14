@@ -320,7 +320,6 @@
             width: 100%;
             max-width: 100%;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'temu2'])
     </style>
 @endsection
 
@@ -1112,11 +1111,9 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'temu2'])
 @endsection
 
 @section('script-bottom')
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu2'])
 <script>
     // Same margin as /temu-decrease — marketplace_percentages.Temu (TEMU_MARGIN)
     const TEMU_MARGIN = {{ (float) ($temuMargin ?? \App\Services\TemuShopifySalesService::temuMarginDecimal()) }};
@@ -3866,9 +3863,6 @@
                         e.stopPropagation();
                     }
                 },
-                // PRMT % / CPN % / Appr / DSC % / Push Prc — temu2_promo_pricing
-                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-
                 {
                     title: "S PRC",
                     field: "sprice",
