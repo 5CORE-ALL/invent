@@ -13,6 +13,7 @@ use App\Models\PlsListingStatus;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -415,12 +416,71 @@ class PlsController extends Controller
     }
 
     /**
+     * N Map SKU rows from /pls-pricing — same rules as countPlsPricingBadgeTotals.
+     * Used by /map-issues/channel/pls.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float}>
+     */
+    public static function nmapSkuRowsFromPricing(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row) || ! self::isPlsNmapRow($row)) {
+                continue;
+            }
+
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+
+            $inv = (float) ($row['inventory'] ?? 0);
+            $plsInv = (float) ($row['pls_inventory'] ?? 0);
+
+            $out[] = [
+                'sku' => $sku,
+                'channel_sku' => $sku,
+                'inv' => $inv,
+                'channel_inv' => $plsInv,
+                'diff' => abs($inv - $plsInv),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Listed PLS SKU whose Shopify INV does not match PLS stock beyond
+     * max(3 units, 3% of Shopify INV). Marketplace higher than Shopify is always N Map.
+     */
+    public static function isPlsNmapRow(array $row): bool
+    {
+        if (strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M') {
+            return false;
+        }
+
+        $inv = (int) ($row['inventory'] ?? 0);
+        if ($inv <= 0) {
+            return false;
+        }
+
+        $plsInv = array_key_exists('pls_inventory', $row) ? (int) $row['pls_inventory'] : null;
+
+        return ! MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($inv, $plsInv);
+    }
+
+    /**
      * Map / Miss / NMap for pls-pricing badges and all-marketplace-master PLS row.
-     * Matches pls_pricing_view updateSummary() + MAP / N MP column (|INV − PLS INV| ≤ 3).
+     * Matches pls_pricing_view MAP / N MP column.
      *
      * Missing L: INV > 0 and price <= 0 (listed as Missing on pricing page).
-     * N Map: not Missing + INV > 0 + inventory mismatch beyond 3-unit tolerance.
-     * Map: not Missing + INV > 0 + within 3-unit tolerance (MP / green MAP column).
+     * N Map: listed + INV > 0 + Shopify vs PLS stock beyond max(3, 3% of Shopify).
+     *         Always N Map when PLS stock is higher than Shopify.
+     * Map: listed + INV > 0 + within that bar (or exact match).
      */
     public static function countPlsPricingBadgeTotals(iterable $rows): array
     {
@@ -437,7 +497,6 @@ class PlsController extends Controller
             }
 
             $inv = (float) ($row['inventory'] ?? 0);
-            $plsInv = (float) ($row['pls_inventory'] ?? 0);
             $price = (float) ($row['price'] ?? 0);
             $missing = (string) ($row['missing'] ?? '');
 
@@ -445,16 +504,10 @@ class PlsController extends Controller
                 $miss++;
             }
 
-            if ($missing !== 'M') {
-                if ($inv > 0 && $plsInv === 0.0 && $inv > 3) {
+            if ($missing !== 'M' && $inv > 0) {
+                if (self::isPlsNmapRow($row)) {
                     $nmap++;
-                } elseif ($inv > 0 && $plsInv > 0) {
-                    if ($inv !== $plsInv && abs($inv - $plsInv) > 3) {
-                        $nmap++;
-                    } else {
-                        $map++;
-                    }
-                } elseif ($inv > 0 && $plsInv === 0.0 && $inv <= 3) {
+                } else {
                     $map++;
                 }
             }
