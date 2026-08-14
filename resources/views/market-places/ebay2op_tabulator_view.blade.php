@@ -1052,7 +1052,7 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        /** Std Prc vs Amz price (fallback eBay Price): reduce / hold / increase → red / yellow / green. */
+        /** Std Prc vs Amz price (fallback eBay Price): reduce / increase → red / green. Hold (match) = no yellow dot. */
         function ebayStdPrcChangeDotMeta(stdPrc, comparePrice) {
             const sp = parseFloat(stdPrc);
             const ap = parseFloat(comparePrice);
@@ -1065,7 +1065,7 @@
             if (parseFloat(sp2) > parseFloat(ap2)) {
                 return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
             }
-            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+            return null;
         }
 
         function ebayStdPrcChangeDotHtml(stdPrc, comparePrice, sku) {
@@ -2955,10 +2955,6 @@
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                             const comparePrice = amzPrice > 0 ? amzPrice : ebayPrice;
                             const dot = ebayStdPrcChangeDotHtml(std, comparePrice, sku);
-                            if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                    dot + '</span>';
-                            }
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                                 dot + ('$' + std.toFixed(2)) + '</span>';
                         }

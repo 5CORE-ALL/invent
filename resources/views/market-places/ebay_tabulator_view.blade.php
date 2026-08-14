@@ -1425,6 +1425,8 @@
          *  Same value shown for eBay on /all-marketplace-master (per-SKU spend isn't
          *  available in this page's data, so the Ads % column shows the channel figure). */
         const EBAY_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
+        /** Take-home from marketplace_percentages (Ebay). Used when a row has no percentage. */
+        const EBAY_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay1'])
 
@@ -1442,7 +1444,7 @@
             if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
-            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY_TAKEHOME;
             const adsFrac = (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) / 100;
             const grossPft = (price * margin) - ship - lp;
             const adSpend = price * adsFrac;
@@ -1456,7 +1458,7 @@
             const lp = parseFloat(rowData.LP_productmaster) || 0;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
-            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY_TAKEHOME;
             return ((price * margin - ship - lp) / price) * 100;
         }
         function ebayComputeSgroiFromSprice(rowData) {
@@ -1466,7 +1468,7 @@
             if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
-            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY_TAKEHOME;
             return ((price * margin - lp - ship) / lp) * 100;
         }
         /** App base path (XAMPP subdir / public): root-relative "/ebay-data-json" would 404 */
@@ -2267,7 +2269,7 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        /** Std Prc vs Amz price (fallback eBay Price): reduce / hold / increase → red / yellow / green. */
+        /** Std Prc vs Amz price (fallback eBay Price): reduce / increase → red / green. Hold (match) = no yellow dot. */
         function ebayStdPrcChangeDotMeta(stdPrc, comparePrice) {
             const sp = parseFloat(stdPrc);
             const ap = parseFloat(comparePrice);
@@ -2280,7 +2282,7 @@
             if (parseFloat(sp2) > parseFloat(ap2)) {
                 return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
             }
-            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+            return null;
         }
 
         function ebayStdPrcChangeDotHtml(stdPrc, comparePrice, sku) {
@@ -3151,7 +3153,7 @@
                         if (lp <= 0) return null;
                         const ship = parseFloat(rd.Ship_productmaster) || 0;
                         const marginRaw = parseFloat(rd.percentage);
-                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY_TAKEHOME;
                         if (margin <= 0) {
                             return { skipReason: 'Invalid eBay take-home margin' };
                         }
@@ -3181,7 +3183,7 @@
                         if (lp <= 0) return null;
                         const ship = parseFloat(rd.Ship_productmaster) || 0;
                         const marginRaw = parseFloat(rd.percentage);
-                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY_TAKEHOME;
                         const denom = margin - targetFraction;
                         if (denom <= 0) {
                             return { skipReason: `Target GPFT% ${targetGpftPct}% \u2265 eBay take-home margin (~${Math.round(margin * 100)}%)` };
@@ -5018,10 +5020,6 @@
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                             const comparePrice = amzPrice > 0 ? amzPrice : ebayPrice;
                             const dot = ebayStdPrcChangeDotHtml(std, comparePrice, sku);
-                            if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                    dot + '</span>';
-                            }
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                                 dot + ('$' + std.toFixed(2)) + '</span>';
                         }
@@ -5400,7 +5398,7 @@
                             }
                         },
                     },
-                    // PRMT % / CPN % / Appr / DSC % / Push Prc — ebay1 channel_promo_pricing (independent of Amazon)
+                    // PRMT % / CPN % — ebay1 channel_promo_pricing (independent of Amazon)
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
                         title: "S PRC",
@@ -5411,7 +5409,6 @@
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
-                            const currentPrice = parseFloat(rowData['eBay Price']) || 0;
                             const spriceNum = (value != null && value !== '') ? parseFloat(value) :
                                 NaN;
                             const sprice = isNaN(spriceNum) ? 0 : spriceNum;
@@ -5419,14 +5416,6 @@
                             // Blank only when SPRICE is missing or zero (no override)
                             if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) {
                                 return '';
-                            }
-
-                            // When SPRICE matches eBay Price, show "-" — EXCEPT when PRMT%/custom S PRC
-                            // intentionally set it (e.g. Std $24.99 − 1% = $24.74 = listing price).
-                            const prmtApplied = Number(rowData.prmt_pct != null ? rowData.prmt_pct : rowData._prmt_pct_applied) || 0;
-                            const keepVisible = hasCustomSprice === true || prmtApplied > 0;
-                            if (currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2) && !keepVisible) {
-                                return `<span style="color:#adb5bd;" title="Same as eBay Price">-</span>`;
                             }
 
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
@@ -5719,36 +5708,6 @@
                                 ? (l7Val < avg ? 'Below avg L7 (' + avg.toFixed(1) + ')' : 'Avg L7 ' + avg.toFixed(1))
                                 : 'L7 views';
                             return `<span title="${tip}" style="color: ${textColor} !important; font-weight: 600;">${Math.round(l7Val).toLocaleString()}</span> ${arrowBtn}`.trim();
-                        }
-                    },
-                    {
-                        title: "L7 %",
-                        field: "l7_views_chg_pct",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 72,
-                        headerTooltip: "% increase / decrease of L7 Views vs the previous same period (days 8–14). Green = up, red = down. NEW = prior period was 0.",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const cur = parseFloat(row.l7_views) || 0;
-                            const prevRaw = row.l7_views_prev;
-                            const pct = cell.getValue();
-                            // No prior snapshot yet (history < ~7 days of l7_views) → —
-                            if (prevRaw === null || prevRaw === undefined || prevRaw === '') {
-                                return '<span class="text-muted" title="No prior-period L7 snapshot yet">—</span>';
-                            }
-                            const prev = parseFloat(prevRaw) || 0;
-                            if (prev <= 0 && cur > 0) {
-                                return `<span title="Prior period had 0 views" style="color:#28a745; font-weight:700;">NEW</span>`;
-                            }
-                            if (pct === null || pct === undefined || pct === '' || !isFinite(parseFloat(pct))) {
-                                return '<span class="text-muted">—</span>';
-                            }
-                            const v = Math.round(parseFloat(pct));
-                            const color = v > 0 ? '#28a745' : (v < 0 ? '#a00211' : '#6c757d');
-                            const sign = v > 0 ? '+' : '';
-                            const tip = `L7 ${Math.round(cur).toLocaleString()} vs prior ${Math.round(prev).toLocaleString()} (same period, days 8–14)`;
-                            return `<span title="${tip}" style="color:${color}; font-weight:700;">${sign}${v}%</span>`;
                         }
                     },
                     {
@@ -6624,7 +6583,7 @@
 
                 // Advertisement first (views / bids / ads / promote)
                 if (
-                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(f) ||
+                    /^(views|l7_views|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(f) ||
                     /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {
@@ -7148,7 +7107,6 @@
                 'GPFT%': 'GPFT%',
                 'views': 'Views',
                 'l7_views': 'L7 Views',
-                'l7_views_chg_pct': 'L7 %',
                 'nr_req': 'NR/REQ',
                 'SPRICE': 'SPRICE',
                 'SPFT': 'SPFT',

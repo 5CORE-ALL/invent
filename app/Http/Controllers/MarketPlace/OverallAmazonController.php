@@ -456,24 +456,6 @@ class OverallAmazonController extends Controller
             ->groupBy('parent')
             ->map->count();
 
-        // SKU → own ship cost (for summing multi-package / Combo Label QTY ≥ 2)
-        $shipBySkuKey = [];
-        foreach ($productMasters as $pmShipRow) {
-            $shipVals = is_array($pmShipRow->Values)
-                ? $pmShipRow->Values
-                : (is_string($pmShipRow->Values) ? json_decode($pmShipRow->Values, true) : []);
-            if (! is_array($shipVals)) {
-                $shipVals = [];
-            }
-            $ownShip = isset($shipVals['ship'])
-                ? floatval($shipVals['ship'])
-                : (isset($pmShipRow->ship) ? floatval($pmShipRow->ship) : 0.0);
-            $shipKey = $this->normalizeSkuKeyForShipLookup($pmShipRow->sku);
-            if ($shipKey !== '') {
-                $shipBySkuKey[$shipKey] = $ownShip;
-            }
-        }
-
         $result = [];
 
         foreach ($productMasters as $pm) {
@@ -593,10 +575,10 @@ class OverallAmazonController extends Controller
             if ($lp === 0 && isset($pm->lp)) {
                 $lp = floatval($pm->lp);
             }
-            $ownShip = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            // CP Master / Shipping Master already stores calculated combo ship in Values.ship
+            $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
             $labelQty = $this->extractLabelQtyFromValues($values);
-            // Label QTY ≥ 2 ⇒ total ship = sum of package ship costs (Combo components, else ship × qty)
-            $ship = $this->resolveMultiPackageShipCost((string) $pm->sku, $ownShip, $labelQty, $shipBySkuKey);
+            $ownShip = $ship;
 
             $price = isset($row['price']) ? floatval($row['price']) : 0;
             $units_ordered_l30 = isset($row['A_L30']) ? floatval($row['A_L30']) : 0;
@@ -1457,10 +1439,10 @@ class OverallAmazonController extends Controller
             $lp = floatval($pm->lp);
         }
 
-        $ownShip = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+        // CP Master already stores calculated combo ship — use Values.ship as-is
+        $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+        $ownShip = $ship;
         $labelQty = $this->extractLabelQtyFromValues($values);
-        $shipBySkuKey = $this->buildShipBySkuKeyLookupForSku($pm->sku, $ownShip);
-        $ship = $this->resolveMultiPackageShipCost((string) $pm->sku, $ownShip, $labelQty, $shipBySkuKey);
         Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship, 'own_ship' => $ownShip, 'label_qty' => $labelQty]);
 
         // Calculate SGPFT first (using 0.80 for Amazon)

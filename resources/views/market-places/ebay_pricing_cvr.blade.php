@@ -1705,6 +1705,8 @@
     <!--for popup modal script-->
     <script>
         document.body.style.zoom = "80%";
+        // Same take-home as /ebay-tabulator-view (MarketplacePercentage Ebay / 100)
+        const ebayPercentage = {{ ((float) ($ebayPercentage ?? 100)) / 100 }};
 
         function escapeHtml(value) {
             if (value === null || value === undefined) {
@@ -4253,10 +4255,10 @@
                         const LP = parseFloat(item.raw_data.LP) || 0;
                         const SPRICE = parseFloat(updatedValue) || 0;
 
-                        // Calculate Spft% using formula: (SPRICE * 0.77 - LP - SH) / SPRICE
+                        // Same as /ebay-tabulator-view SGPFT: (SPRICE × Ebay% − LP − Ship) / SPRICE
                         let Spft = 0;
                         if (SPRICE !== 0) {
-                            Spft = (SPRICE * 0.74 - LP - SH) / SPRICE;
+                            Spft = (SPRICE * ebayPercentage - LP - SH) / SPRICE;
                         }
 
                         // Update Spft% in cache and local data
@@ -4429,7 +4431,7 @@
 
                                 let Spft = 0;
                                 if (SPRICE !== 0) {
-                                    Spft = (SPRICE * 0.74 - LP - SH) / SPRICE;
+                                    Spft = (SPRICE * ebayPercentage - LP - SH) / SPRICE;
                                 }
 
                                 ebayViewDataCache.updateField(itemId, 'Spft%', Spft);
@@ -5648,8 +5650,8 @@
                     const SPRICE = parseFloat(this.value) || 0;
 
                     if (SPRICE > 0) {
-                        const SPFT = ((SPRICE * 0.74) - LP - SHIP) / SPRICE;
-                        const SROI = ((SPRICE * 0.74) - LP - SHIP) / LP;
+                        const SPFT = ((SPRICE * ebayPercentage) - LP - SHIP) / SPRICE;
+                        const SROI = ((SPRICE * ebayPercentage) - LP - SHIP) / LP;
 
                         $spftInput.val((SPFT * 100).toFixed(2) + '%');
                         $sroiInput.val(isFinite(SROI) ? (SROI * 100).toFixed(2) + '%' : '∞');

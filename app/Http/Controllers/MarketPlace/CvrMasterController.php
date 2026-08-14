@@ -175,6 +175,7 @@ class CvrMasterController extends Controller
         return view("market-places.price_increase_view", [
             "mode" => $mode,
             "demo" => $demo,
+            "ebayTakeHomeMap" => MarketplacePercentage::ebayTakeHomeMap(),
         ]);
     }
 
@@ -196,6 +197,7 @@ class CvrMasterController extends Controller
             'initial_rows' => [],
             'dil_prmt_rules' => $this->pefDefaultDilPrmtRules(),
             'cvr_cpn_rules' => $this->pefDefaultCvrCpnRules(),
+            'ebayTakeHomeMap' => MarketplacePercentage::ebayTakeHomeMap(),
         ]);
     }
 
@@ -1241,13 +1243,10 @@ class CvrMasterController extends Controller
             $ebay2Metrics = Ebay2Metric::whereIn('sku', $skus)->get()->keyBy('sku');
             $ebay3Metrics = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy('sku');
             
-            // Get eBay percentages (default 80% for all eBay stores)
-            $ebay1Marketplace = MarketplacePercentage::where('marketplace', 'Ebay')->first();
-            $ebay1Percentage = $ebay1Marketplace ? ($ebay1Marketplace->percentage / 100) : 0.80;
-
-            // eBay 2 / eBay 3 use fixed 85% take-home — same as their tabulator views
-            $ebay2Percentage = 0.85;
-            $ebay3Percentage = 0.85;
+            // eBay take-home from marketplace_percentages (no hardcoded 0.85 / 0.80 / 1)
+            $ebay1Percentage = MarketplacePercentage::takeHomeDecimal('Ebay');
+            $ebay2Percentage = MarketplacePercentage::takeHomeDecimal('EbayTwo');
+            $ebay3Percentage = MarketplacePercentage::takeHomeDecimal('EbayThree');
 
             // Channel Ads% — same sources as /ebay-tabulator-view, /ebay2-tabulator-view, /ebay3-tabulator-view
             // (PFT% = GPFT% − Ads% on every row)
@@ -3801,9 +3800,7 @@ class CvrMasterController extends Controller
             
             // eBay 1 — channel Ads% on every row (same as /ebay-tabulator-view AD% / PFT%)
             $ebayData = EbayMetric::where('sku', $fullSku)->first();
-            $ebay1Marketplace = MarketplacePercentage::where('marketplace', 'Ebay1')->first()
-                ?? MarketplacePercentage::where('marketplace', 'Ebay')->first();
-            $ebay1Margin = $ebay1Marketplace ? ($ebay1Marketplace->percentage / 100) : 0.85;
+            $ebay1Margin = MarketplacePercentage::takeHomeDecimal('Ebay');
             $ebay1Price = $ebayData->ebay_price ?? 0;
             $ebay1L30 = $ebayData->ebay_l30 ?? 0;
             $ebay1GPFT = $ebay1Price > 0 ? (($ebay1Price * $ebay1Margin - $ship - $lp) / $ebay1Price) * 100 : 0;
@@ -3876,8 +3873,7 @@ class CvrMasterController extends Controller
                     ->first();
             }
             
-            // eBay 2 — fixed 85% margin + channel Ads% on every row (same as /ebay2-tabulator-view)
-            $ebay2Margin = 0.85;
+            $ebay2Margin = MarketplacePercentage::takeHomeDecimal('EbayTwo');
             $ebay2Price = $ebay2Data->ebay_price ?? 0;
             $ebay2L30 = $ebay2Data->ebay_l30 ?? 0;
             // Same normal ship as eBay 1 (Values['ship'], not ebay2_ship)
@@ -3933,11 +3929,10 @@ class CvrMasterController extends Controller
                 'seller_link' => $ebay2Links[1],
             ];
 
-            // eBay 3 — fixed 85% margin + channel Ads% on every row (same as /ebay3-tabulator-view)
             $ebay3SkuNorm = strtoupper(trim((string) $fullSku));
             $ebay3Data = Ebay3Metric::where('sku', $fullSku)->first()
                 ?? Ebay3Metric::whereRaw('UPPER(TRIM(sku)) = ?', [$ebay3SkuNorm])->first();
-            $ebay3Margin = 0.85;
+            $ebay3Margin = MarketplacePercentage::takeHomeDecimal('EbayThree');
             $ebay3Price = $ebay3Data->ebay_price ?? 0;
             $ebay3L30 = $ebay3Data->ebay_l30 ?? 0;
             $ebay3GPFT = $ebay3Price > 0
@@ -6200,14 +6195,11 @@ class CvrMasterController extends Controller
                     $ads = $this->resolveChannelAdsPercentForChart('amazon');
                     break;
                 case 'ebay1':
-                    $mp = MarketplacePercentage::where('marketplace', 'Ebay1')->first()
-                        ?? MarketplacePercentage::where('marketplace', 'Ebay')->first();
-                    $margin = $mp ? ((float) $mp->percentage / 100) : 0.85;
+                    $margin = MarketplacePercentage::takeHomeDecimal('Ebay');
                     $ads = (float) $cmc->getEbayMasterAdsPercent();
                     break;
                 case 'ebay2':
-                    $mp = MarketplacePercentage::where('marketplace', 'Ebay2')->first();
-                    $margin = $mp ? ((float) $mp->percentage / 100) : 0.85;
+                    $margin = MarketplacePercentage::takeHomeDecimal('EbayTwo');
                     $ads = (float) $cmc->getEbaytwoMasterAdsPercent();
                     break;
                 case 'temu':

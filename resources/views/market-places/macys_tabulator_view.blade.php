@@ -2285,7 +2285,7 @@
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
                     }
                 },
-                // PRMT % / CPN % / Appr / DSC % / Push Prc — macys_promo_pricing
+                // PRMT % / CPN % — macys_promo_pricing
                 ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
 
                 {

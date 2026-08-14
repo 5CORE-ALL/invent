@@ -329,16 +329,6 @@ class AmzCvrIssuesController extends Controller
             }
         }
 
-        $shipBySkuKey = [];
-        foreach ($productMasters as $pmShipRow) {
-            $shipVals = $this->decodeValues($pmShipRow->Values);
-            $ownShip = isset($shipVals['ship']) ? (float) $shipVals['ship'] : 0.0;
-            $shipKey = $this->normalizeSkuKeyForShipLookup($pmShipRow->sku);
-            if ($shipKey !== '') {
-                $shipBySkuKey[$shipKey] = $ownShip;
-            }
-        }
-
         $lmpLowestLookup = collect();
         $lmpDetailsLookup = collect();
         try {
@@ -425,9 +415,8 @@ class AmzCvrIssuesController extends Controller
                     break;
                 }
             }
-            $ownShip = isset($values['ship']) ? (float) $values['ship'] : 0.0;
-            $labelQty = $this->extractLabelQtyFromValues($values);
-            $ship = $this->resolveMultiPackageShipCost($sku, $ownShip, $labelQty, $shipBySkuKey);
+            // CP Master already stores calculated combo ship in Values.ship
+            $ship = isset($values['ship']) ? (float) $values['ship'] : 0.0;
 
             // GROI% = ((price × 0.80 - ship - lp) / lp) × 100 — same as Analytics Amz
             $groi = $lp > 0

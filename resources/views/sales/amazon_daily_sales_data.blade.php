@@ -380,12 +380,11 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
+                    headerTooltip: "Shipping cost. Default $6.00 is hidden; only non-default amounts show.",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (!Number.isFinite(value) || Math.abs(value - 6) < 0.005) return '';
+                        return '$' + value.toFixed(2);
                     }
                 },
                 {
