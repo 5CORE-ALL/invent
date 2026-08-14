@@ -1998,6 +1998,14 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
+        // Backup: queue Shopify imports for unpushed MM orders even if fetch jobs are stuck.
+        $schedule->command('mm:dispatch-unpushed-shopify')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('mm-dispatch-unpushed-shopify')
+            ->withoutOverlapping(14)
+            ->appendOutputTo($log);
+
         // $schedule->command('shopify:retry-pending-orders')
             //     ->hourly()
             //     ->timezone('UTC')
@@ -2463,11 +2471,12 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
       
+        // Must run inline in schedule:run — runInBackground() would sit on the 1.3M+ default
+        // queue and never start mm-* workers, so marketplace orders never reach Shopify.
         $schedule->command('queue:ensure-watchdog-daemon')
             ->everyMinute()
             ->name('queue-ensure-watchdog-daemon')
             ->withoutOverlapping(55)
-            ->runInBackground()
             ->appendOutputTo($log);
 
         // After optimize:clear, file-cache shard dirs can vanish; recreate so sidebar badges don't 500.

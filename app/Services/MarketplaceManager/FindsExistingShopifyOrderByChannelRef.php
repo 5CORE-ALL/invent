@@ -115,15 +115,17 @@ trait FindsExistingShopifyOrderByChannelRef
             ]);
 
             if (! $response->successful()) {
-                $msg = 'Shopify duplicate check (name) failed: HTTP '.$response->status();
+                $status = $response->status();
+                $this->rememberDuplicateCheckHttpStatus($status);
+                $msg = 'Shopify duplicate check (name) failed: HTTP '.$status;
 
                 Log::warning($logContext.': REST name search failed', [
                     'name' => $name,
-                    'status' => $response->status(),
+                    'status' => $status,
                     'body' => mb_substr($response->body(), 0, 300),
                 ]);
 
-                return ['id' => null, 'matched_by' => null, 'error' => $msg];
+                return ['id' => null, 'matched_by' => null, 'error' => $msg, 'status' => $status];
             }
 
             $orders = $response->json('orders') ?? [];
@@ -255,14 +257,16 @@ GQL,
             ])->timeout(45)->post('https://'.$storeUrl.'/admin/api/2024-01/graphql.json', $payload);
 
             if (! $response->successful()) {
-                $msg = 'Shopify duplicate check (search) failed: HTTP '.$response->status();
+                $status = $response->status();
+                $this->rememberDuplicateCheckHttpStatus($status);
+                $msg = 'Shopify duplicate check (search) failed: HTTP '.$status;
                 Log::warning($logContext.': GraphQL search failed', [
-                    'status' => $response->status(),
+                    'status' => $status,
                     'query' => $queryStr,
                     'body' => mb_substr($response->body(), 0, 400),
                 ]);
 
-                return ['error' => $msg];
+                return ['error' => $msg, 'status' => $status];
             }
 
             $json = $response->json() ?? [];
@@ -272,6 +276,12 @@ GQL,
                     'query' => $queryStr,
                     'errors' => $json['errors'],
                 ]);
+
+                if (stripos($first, 'throttl') !== false) {
+                    $this->rememberDuplicateCheckHttpStatus(429);
+
+                    return ['error' => 'Shopify duplicate check (search) failed: '.$first, 'status' => 429];
+                }
 
                 return ['error' => 'Shopify duplicate check (search) failed: '.$first];
             }
@@ -412,5 +422,12 @@ GQL,
         }
 
         return $value;
+    }
+
+    protected function rememberDuplicateCheckHttpStatus(int $status): void
+    {
+        if (property_exists($this, 'lastApiStatus')) {
+            $this->lastApiStatus = $status;
+        }
     }
 }

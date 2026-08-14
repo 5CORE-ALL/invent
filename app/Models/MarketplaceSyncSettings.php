@@ -206,8 +206,12 @@ class MarketplaceSyncSettings extends Model
             ],
             'order' => [
                 'fetch_orders' => true,
-                // Amazon FBM only (AFN/FBA never created). Previous sync app stopped 2026-08-06.
-                'auto_import_to_shopify' => $isNewegg || $isShein || $isTopDawg || $isPurchasingPower || $isWayfair || $isBestBuy || $isMacy || $isDoba || $isEbay1 || $isEbay2 || $isEbay3 || $isFaire || $isTikTok2 || $isTikTok || $isAmazon,
+                // All MM channels create Shopify drafts for new orders (Amazon FBM only; pre-cutoff skipped in the sync service).
+                'auto_import_to_shopify' => in_array($marketplace, [
+                    'amazon', 'aliexpress', 'alibaba', 'reverb', 'newegg', 'shein', 'topdawg',
+                    'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba',
+                    'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2',
+                ], true),
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
                 // Shopify label/tracking → declare shipment (ON by default per channel).

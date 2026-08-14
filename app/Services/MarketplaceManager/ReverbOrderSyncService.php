@@ -6,6 +6,7 @@ use App\Models\ReverbOrderMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\ReverbManagerApiService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -423,6 +424,14 @@ class ReverbOrderSyncService
         }
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('reverb', $settings);
+
+        if ((int) DB::table('jobs')->where('queue', 'mm-reverb')->count() === 0) {
+            ReverbOrderMetric::query()
+                ->where('import_status', 'queued')
+                ->whereNull('shopify_order_id')
+                ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
+                ->update(['import_status' => null]);
+        }
 
         $orders = ReverbOrderMetric::query()
             ->whereNull('shopify_order_id')

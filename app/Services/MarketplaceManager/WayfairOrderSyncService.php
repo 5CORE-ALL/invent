@@ -117,19 +117,21 @@ class WayfairOrderSyncService
                 $q->whereNull('import_status')
                     ->orWhereNotIn('import_status', ['queued', 'imported']);
             })
-            ->orderBy('id');
+            ->when(Schema::hasColumn('wayfair_daily_data', 'po_date'), function ($q) {
+                $q->where('po_date', '>=', now()->subDays(14)->toDateString());
+            })
+            ->orderByDesc('id')
+            ->limit(50);
 
         $dispatched = 0;
-        $query->chunkById(50, function ($rows) use (&$dispatched, $paidOnly) {
-            foreach ($rows as $row) {
-                if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('wayfair', $row)) {
-                    continue;
-                }
-                $row->update(['import_status' => 'queued']);
-                ImportWayfairOrderToShopify::dispatch((int) $row->id);
-                $dispatched++;
+        foreach ($query->get() as $row) {
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('wayfair', $row)) {
+                continue;
             }
-        });
+            $row->update(['import_status' => 'queued']);
+            ImportWayfairOrderToShopify::dispatch((int) $row->id);
+            $dispatched++;
+        }
 
         return $dispatched;
     }
