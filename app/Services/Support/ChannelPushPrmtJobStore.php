@@ -3,10 +3,10 @@
 namespace App\Services\Support;
 
 /**
- * File-backed channel Push Prc job state (survives page refresh).
- * Same pattern as AmazonPushPrcJobStore — one job file per channel (ebay1, ebay2, …).
+ * File-backed channel Push PRMT % job state (survives page refresh).
+ * Same queue pattern as ChannelPushPrcJobStore — one job file per channel.
  */
-class ChannelPushPrcJobStore
+class ChannelPushPrmtJobStore
 {
     private const MAX_MESSAGES = 200;
 
@@ -46,7 +46,7 @@ class ChannelPushPrcJobStore
     public function create(array $tasks): array
     {
         $normalized = $this->normalizeTasks($tasks);
-        $queueMsg = 'Push Prc queued ('.count($normalized).' SKU(s)).';
+        $queueMsg = 'Push PRMT% queued ('.count($normalized).' SKU(s)).';
 
         $state = array_merge($this->defaultState(), [
             'id' => date('YmdHis').'_'.bin2hex(random_bytes(4)),
@@ -149,7 +149,7 @@ class ChannelPushPrcJobStore
         $current = $this->load();
         if ($this->isActive($current)) {
             if ($this->isStale($current, 180)) {
-                $this->forceStop('Cleared a stale Push Prc job (no worker was processing it).');
+                $this->forceStop('Cleared a stale Push PRMT% job (no worker was processing it).');
                 $state = $this->create($tasks);
 
                 return ['state' => $state, 'mode' => 'create'];
@@ -299,7 +299,8 @@ class ChannelPushPrcJobStore
             $taskSummaries[] = [
                 'sku' => $task['sku'] ?? null,
                 'status' => $st,
-                'effective' => $task['effective'] ?? null,
+                'prmt' => $task['percent'] ?? $task['prmt'] ?? null,
+                'promotion_id' => $task['promotion_id'] ?? null,
                 'error' => $task['error'] ?? null,
             ];
         }
@@ -340,8 +341,8 @@ class ChannelPushPrcJobStore
             'pct' => $pct,
             'tasks' => $taskSummaries,
             'message' => $done
-                ? "Push Prc done: {$ok} ok, {$fail} failed."
-                : ($state['last_message'] ?? 'Push Prc in progress…'),
+                ? "Push PRMT% done: {$ok} ok, {$fail} failed."
+                : ($state['last_message'] ?? 'Push PRMT% in progress…'),
         ];
     }
 
@@ -357,40 +358,16 @@ class ChannelPushPrcJobStore
                 continue;
             }
             $sku = trim((string) ($task['sku'] ?? ''));
-            $std = isset($task['std']) ? round((float) $task['std'], 2) : 0.0;
-            if ($sku === '' || ! ($std > 0)) {
+            if ($sku === '') {
                 continue;
             }
-            $sale = isset($task['sale']) && is_numeric($task['sale']) ? round((float) $task['sale'], 2) : null;
-            if ($sale !== null && ($sale <= 0 || $sale >= $std)) {
-                $sale = null;
+            $prmt = isset($task['prmt']) ? (int) round((float) $task['prmt']) : 0;
+            if ($prmt < 0) {
+                $prmt = 0;
             }
-            $saleBase = $sale !== null ? $sale : $std;
-            $max = isset($task['max']) && is_numeric($task['max'])
-                ? round((float) $task['max'], 2)
-                : round($std * 1.10, 2);
-            $min = isset($task['min']) && is_numeric($task['min'])
-                ? round((float) $task['min'], 2)
-                : max(0.01, round($saleBase * 0.95, 2));
-            $business = isset($task['business']) && is_numeric($task['business'])
-                ? round((float) $task['business'], 2)
-                : max(0.01, round($saleBase * 0.95, 2));
-            // Listing push price = Std Prc (sale/coupon are separate eBay marketing steps).
-            $effective = isset($task['effective']) && is_numeric($task['effective'])
-                ? round((float) $task['effective'], 2)
-                : $std;
-
             $normalized[] = [
                 'sku' => $sku,
-                'std' => $std,
-                'sale' => $sale,
-                'max' => $max,
-                'min' => $min,
-                'business' => $business,
-                'effective' => $effective,
-                'prmt' => isset($task['prmt']) ? max(0, round((float) $task['prmt'], 2)) : 0,
-                'cpn' => isset($task['cpn']) ? max(0, round((float) $task['cpn'], 2)) : 0,
-                'cvr_disc' => isset($task['cvr_disc']) ? max(0, round((float) $task['cvr_disc'], 2)) : 0,
+                'prmt' => $prmt,
                 'status' => 'pending',
                 'attempts' => 0,
                 'error' => null,
@@ -427,7 +404,7 @@ class ChannelPushPrcJobStore
 
     private function path(): string
     {
-        return storage_path('app/'.$this->channel.'-push-prc/job.json');
+        return storage_path('app/'.$this->channel.'-push-prmt/job.json');
     }
 
     private function ensureDirectory(): void

@@ -252,6 +252,34 @@
             background: #f8f9fa;
             border-top: 2px solid #4361ee;
         }
+        #yesterdayMpTable .ymp-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+        #yesterdayMpTable td.text-end .ymp-cell {
+            justify-content: flex-end;
+            width: 100%;
+        }
+        #yesterdayMpTable .ymp-chart-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex: 0 0 auto;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.12);
+            vertical-align: 0.05em;
+        }
+        #yesterdayMpTable .ymp-chart-dot:hover {
+            transform: scale(1.35);
+            box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.18);
+        }
+        #yesterdayMpTable .ymp-hover-cell {
+            cursor: pointer;
+        }
 
         /* Summary badges — horizontal scroll; each badge keeps full width (no flex-shrink overlap) */
         #summary-stats .ebay2-summary-badge-row {
@@ -3399,7 +3427,7 @@
             });
 
             // Initial load only: set column dot color from last-two values (same red/green/gray logic as chart).
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
             function loadMetricDotTrends(tableData) {
                 if (typeof lastDotColorByKey === 'undefined') return;
                 var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
@@ -5018,7 +5046,44 @@
                 });
             });
 
-            function yMpPct(value, kind) {
+            function yMpEsc(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;');
+            }
+
+            // Same GPFT/NPFT + GROI/NROI bands as the Active Channels table on this page.
+            function yMpBandColor(value, kind) {
+                const v = parseNumber(value);
+                if (v == null || isNaN(v)) return null;
+                if (kind === 'gpft' || kind === 'npft') {
+                    if (v <= 10) return '#a00211';
+                    if (v <= 18) return '#ffc107';
+                    if (v <= 25) return '#3591dc';
+                    if (v <= 40) return '#28a745';
+                    return '#e83e8c';
+                }
+                if (v <= 50) return '#a00211';
+                if (v <= 75) return '#ffc107';
+                if (v <= 125) return '#28a745';
+                return '#8000ff';
+            }
+
+            function yMpChartDot(channel, metric, value, color) {
+                if (!channel || !metric) return '';
+                const hex = color || DEFAULT_DOT_GRAY;
+                const cv = (value != null && !isNaN(parseNumber(value))) ? parseNumber(value) : '';
+                return `<i class="fas fa-circle ymp-chart-dot" data-channel="${yMpEsc(channel)}" data-metric="${yMpEsc(metric)}" data-value="${cv}" style="color:${hex};font-size:8px;" title="Hover for history graph"></i>`;
+            }
+
+            function yMpWrap(channel, metric, value, innerHtml, color) {
+                if (!channel || !metric) return innerHtml;
+                const cv = (value != null && !isNaN(parseNumber(value))) ? parseNumber(value) : '';
+                return `<span class="ymp-cell ymp-hover-cell" data-channel="${yMpEsc(channel)}" data-metric="${yMpEsc(metric)}" data-value="${cv}">${innerHtml}${yMpChartDot(channel, metric, value, color)}</span>`;
+            }
+
+            function yMpPct(value, kind, channel, metric) {
                 if (value === null || value === undefined || value === '') {
                     return '<span class="text-muted">—</span>';
                 }
@@ -5037,19 +5102,26 @@
                     else if (v <= 125) style += 'color:#28a745;';
                     else style += 'color:#8000ff;';
                 }
-                return `<span style="${style}">${Math.round(v)}%</span>`;
+                const color = yMpBandColor(v, kind);
+                return yMpWrap(channel, metric, v, `<span style="${style}">${Math.round(v)}%</span>`, color);
             }
 
-            function yMpMoney(value) {
+            function yMpMoney(value, channel, metric) {
                 const v = parseNumber(value);
                 if (!v) return '<span class="text-muted" title="No Yesterday Sales">NYS</span>';
-                return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(v).toLocaleString('en-US')}</span>`;
+                const color = (typeof getMetricDotColor === 'function' && channel && metric)
+                    ? getMetricDotColor(channel, metric)
+                    : '#0d6efd';
+                return yMpWrap(channel, metric, v, `<span style="font-weight:600;color:#0d6efd;">$${Math.round(v).toLocaleString('en-US')}</span>`, color);
             }
 
-            function yMpInt(value) {
+            function yMpInt(value, channel, metric) {
                 const v = parseNumber(value);
                 if (v == null || isNaN(v) || v === 0) return '<span class="text-muted">—</span>';
-                return Math.round(v).toLocaleString('en-US');
+                const color = (typeof getMetricDotColor === 'function' && channel && metric)
+                    ? getMetricDotColor(channel, metric)
+                    : DEFAULT_DOT_GRAY;
+                return yMpWrap(channel, metric, v, Math.round(v).toLocaleString('en-US'), color);
             }
 
             function yMpCvr(row) {
@@ -5087,20 +5159,21 @@
                     sumQty += qty;
                     sumOrders += orders;
 
-                    const cvrHtml = (cvr == null || cvr === '' || isNaN(parseNumber(cvr)))
+                    const cvrNum = parseNumber(cvr);
+                    const cvrHtml = (cvr == null || cvr === '' || isNaN(cvrNum))
                         ? '<span class="text-muted">—</span>'
-                        : `<span style="font-weight:600;">${Math.round(parseNumber(cvr))}%</span>`;
+                        : yMpWrap(name, 'cvr', cvrNum, `<span style="font-weight:600;">${Math.round(cvrNum)}%</span>`, (typeof getMetricDotColor === 'function' ? getMetricDotColor(name, 'cvr') : DEFAULT_DOT_GRAY));
 
                     return `<tr>
-                        <td class="text-start fw-semibold">${name}</td>
-                        <td class="text-end">${yMpMoney(ySales)}</td>
-                        <td class="text-center">${yMpPct(gpft, 'gpft')}</td>
-                        <td class="text-center">${yMpPct(groi, 'groi')}</td>
-                        <td class="text-center">${yMpPct(nroi, 'nroi')}</td>
-                        <td class="text-center">${yMpPct(npft, 'npft')}</td>
-                        <td class="text-end">${yMpInt(views)}</td>
+                        <td class="text-start fw-semibold">${yMpEsc(name)}</td>
+                        <td class="text-end">${yMpMoney(ySales, name, 'y_sales')}</td>
+                        <td class="text-center">${yMpPct(gpft, 'gpft', name, 'gprofit')}</td>
+                        <td class="text-center">${yMpPct(groi, 'groi', name, 'groi')}</td>
+                        <td class="text-center">${yMpPct(nroi, 'nroi', name, 'nroi')}</td>
+                        <td class="text-center">${yMpPct(npft, 'npft', name, 'npft')}</td>
+                        <td class="text-end">${yMpInt(views, name, 'total_views')}</td>
                         <td class="text-center">${cvrHtml}</td>
-                        <td class="text-end">${yMpInt(orders)}</td>
+                        <td class="text-end">${yMpInt(orders, name, 'l30_orders')}</td>
                     </tr>`;
                 }).join('');
 
@@ -5114,19 +5187,86 @@
                     ? '—'
                     : Math.round(totCvr) + '%';
 
+                const totCvrCell = (totCvr == null || isNaN(totCvr))
+                    ? '—'
+                    : yMpWrap('All', 'cvr', totCvr, totCvrHtml, (typeof getMetricDotColor === 'function' ? getMetricDotColor('All', 'cvr') : DEFAULT_DOT_GRAY));
+
                 $('#yesterdayMpTableBody').html(body || '<tr><td colspan="9" class="text-center text-muted">No channels</td></tr>');
                 $('#yesterdayMpTableFoot').html(`<tr>
                     <td class="text-start">Total</td>
-                    <td class="text-end">${yMpMoney(sumSales)}</td>
-                    <td class="text-center">${yMpPct(totGpft, 'gpft')}</td>
-                    <td class="text-center">${yMpPct(totGroi, 'groi')}</td>
-                    <td class="text-center">${yMpPct(totNroi, 'nroi')}</td>
-                    <td class="text-center">${yMpPct(totNpft, 'npft')}</td>
-                    <td class="text-end">${yMpInt(sumViews)}</td>
-                    <td class="text-center">${totCvrHtml}</td>
-                    <td class="text-end">${yMpInt(sumOrders)}</td>
+                    <td class="text-end">${yMpMoney(sumSales, 'All', 'y_sales')}</td>
+                    <td class="text-center">${yMpPct(totGpft, 'gpft', 'All', 'gprofit')}</td>
+                    <td class="text-center">${yMpPct(totGroi, 'groi', 'All', 'groi')}</td>
+                    <td class="text-center">${yMpPct(totNroi, 'nroi', 'All', 'nroi')}</td>
+                    <td class="text-center">${yMpPct(totNpft, 'npft', 'All', 'npft')}</td>
+                    <td class="text-end">${yMpInt(sumViews, 'All', 'total_views')}</td>
+                    <td class="text-center">${totCvrCell}</td>
+                    <td class="text-end">${yMpInt(sumOrders, 'All', 'l30_orders')}</td>
                 </tr>`);
             }
+
+            let ympHoverTimer = null;
+            function openYmpHistoryChart(channel, metric, value) {
+                if (!channel || !metric || typeof showMetricChart !== 'function') return;
+                const chartEl = document.getElementById('adBreakdownChartModal');
+                const onShown = function() {
+                    if (chartEl) chartEl.style.zIndex = '10050';
+                    const backs = document.querySelectorAll('.modal-backdrop');
+                    const last = backs[backs.length - 1];
+                    if (last) last.style.zIndex = '10040';
+                    if (chartEl) chartEl.removeEventListener('shown.bs.modal', onShown);
+                };
+                if (chartEl) chartEl.addEventListener('shown.bs.modal', onShown);
+                const cv = (value !== undefined && value !== null && value !== '' && !isNaN(Number(value)))
+                    ? Number(value)
+                    : null;
+                showMetricChart(channel, metric, cv);
+            }
+
+            $(document).on('mouseenter', '#yesterdayMpTable .ymp-hover-cell', function() {
+                const chartEl = document.getElementById('adBreakdownChartModal');
+                if (chartEl && chartEl.classList.contains('show')) return;
+                const $el = $(this);
+                const channel = $el.data('channel');
+                const metric = $el.data('metric');
+                const value = $el.data('value');
+                if (!channel || !metric) return;
+                if (ympHoverTimer) clearTimeout(ympHoverTimer);
+                ympHoverTimer = setTimeout(function() {
+                    openYmpHistoryChart(channel, metric, value);
+                }, 500);
+            });
+            $(document).on('mouseleave', '#yesterdayMpTable .ymp-hover-cell', function() {
+                if (ympHoverTimer) {
+                    clearTimeout(ympHoverTimer);
+                    ympHoverTimer = null;
+                }
+            });
+            $(document).on('mousedown', '#yesterdayMpTable .ymp-hover-cell', function() {
+                if (ympHoverTimer) {
+                    clearTimeout(ympHoverTimer);
+                    ympHoverTimer = null;
+                }
+            });
+            $(document).on('click', '#yesterdayMpTable .ymp-hover-cell', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $el = $(this);
+                openYmpHistoryChart($el.data('channel'), $el.data('metric'), $el.data('value'));
+            });
+
+            $('#adBreakdownChartModal').on('hidden.bs.modal', function() {
+                const yEl = document.getElementById('yesterdayMpModal');
+                if (yEl && yEl.classList.contains('show')) {
+                    document.body.classList.add('modal-open');
+                    if (!document.querySelector('.modal-backdrop')) {
+                        const back = document.createElement('div');
+                        back.className = 'modal-backdrop fade show';
+                        back.style.zIndex = '9998';
+                        document.body.appendChild(back);
+                    }
+                }
+            });
 
             function openYesterdayMarketplaceModal() {
                 const el = document.getElementById('yesterdayMpModal');

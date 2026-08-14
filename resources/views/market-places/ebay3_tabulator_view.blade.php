@@ -135,9 +135,12 @@
             padding-right: 0px !important;
         }
 
-        /* Custom pagination label */
+        /* Custom pagination label (same as eBay 1) */
         .tabulator-paginator label {
             margin-right: 5px;
+        }
+        #ebay3-table .tabulator-footer {
+            background: #e6e6e6;
         }
 
         /* Link tooltip styling */
@@ -484,6 +487,9 @@
                         <i class="fas fa-file-export"></i> Export
                     </button>
 
+                    {{-- Dil vs PRMT / Cpn% / Push Prc / sprice ? — independent ebay3 channel_promo_pricing --}}
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay3'])
+
                     {{-- Sbid (Views) — same as /ebay-tabulator-view + /ebay3/campaign-ads --}}
                     <button type="button" class="btn btn-sm pricing-filter-item"
                             style="border:1px solid #6610f2; color:#6610f2;"
@@ -586,9 +592,13 @@
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
                 </div>
-                <div id="ebay3-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
+                <div id="ebay3-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column; min-height: 0;">
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
+                        <span id="custom-pagination-counter"
+                            style="font-size: 13px; color: #555; white-space: nowrap;"></span>
+                    </div>
                     <!-- Table body (scrollable section) -->
-                    <div id="ebay3-table" style="flex: 1;"></div>
+                    <div id="ebay3-table" style="flex: 1; min-height: 0;"></div>
                 </div>
             </div>
         </div>
@@ -847,15 +857,42 @@
 @endsection
 
 @section('script-bottom')
-@include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
 <script>
     /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
     const TABULATOR_COLUMN_CHANNEL = 'ebay3_tabulator';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
     const KW_SPENT = {{ $kwSpent ?? 0 }};
     const PMT_SPENT = {{ $pmtSpent ?? 0 }};
     const TOTAL_ADS_SPENT = KW_SPENT + PMT_SPENT;
     let table = null;
+
+    /** Keep "Showing X–Y of Z rows" in sync with filtered/active set (same as eBay 1). */
+    function ebay3UpdatePaginationCounter() {
+        var $el = $('#custom-pagination-counter');
+        if (!$el.length || !table) return;
+        try {
+            var totalRows = (typeof table.getDataCount === 'function')
+                ? table.getDataCount('active')
+                : ((table.getData('active') || []).length);
+            var pageSize = table.getPageSize();
+            var showAll = pageSize === true || pageSize === 'true'
+                || (typeof pageSize === 'number' && pageSize >= totalRows && totalRows > 0);
+            if (totalRows === 0) {
+                $el.text('No rows');
+            } else if (showAll) {
+                $el.text('Showing all ' + totalRows + ' rows');
+            } else {
+                var currentPage = table.getPage() || 1;
+                var start = (currentPage - 1) * Number(pageSize) + 1;
+                var end = Math.min(currentPage * Number(pageSize), totalRows);
+                $el.text('Showing ' + start + '-' + end + ' of ' + totalRows + ' rows');
+            }
+        } catch (e) {
+            /* ignore */
+        }
+    }
+
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -978,6 +1015,18 @@
         const marginRaw = parseFloat(rowData.percentage);
         const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
         return ((price * margin - lp - ship) / lp) * 100;
+    }
+
+    /** S GPFT / SNPFT use S PRC (SPRICE), not Sprc CPN. */
+    function ebay3ComputeSgpftFromSprice(rowData) {
+        if (!rowData) return null;
+        const price = parseFloat(rowData.SPRICE);
+        if (!isFinite(price) || price <= 0) return null;
+        const lp = parseFloat(rowData.LP_productmaster) || 0;
+        const ship = parseFloat(rowData.Ship_productmaster) || 0;
+        const marginRaw = parseFloat(rowData.percentage);
+        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+        return ((price * margin - ship - lp) / price) * 100;
     }
 
     /**
@@ -1321,6 +1370,10 @@
                 || (target && rowKey === target);
             if (!inGroup) return;
             r.update({ STANDARD_PRICE: std });
+            try {
+                const cell = r.getCell('push_std_prc');
+                if (cell) cell.reformat();
+            } catch (e) { /* ignore */ }
             if (rowKey === target) primaryRow = r;
         });
         return primaryRow;
@@ -1996,33 +2049,27 @@
             const $btn = $('#ebay3-price-mode-btn');
             const selectColumn = table.getColumn('_select');
             syncEbay3DiscountBarForMode();
+            if (selectColumn) selectColumn.show();
             if (decreaseModeActive) {
                 $btn.removeClass('btn-secondary btn-success btn-outline-primary').addClass('btn-danger')
                     .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                selectColumn.show();
                 updateSelectedCount();
                 return;
             }
             if (increaseModeActive) {
                 $btn.removeClass('btn-secondary btn-danger btn-outline-primary').addClass('btn-success')
                     .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                selectColumn.show();
                 updateSelectedCount();
                 return;
             }
             if (samePriceModeActive) {
                 $btn.removeClass('btn-secondary btn-danger btn-success').addClass('btn-outline-primary')
                     .html('<i class="fas fa-equals"></i> Same Price ON');
-                selectColumn.show();
                 updateSelectedCount();
                 return;
             }
             $btn.removeClass('btn-danger btn-success btn-outline-primary').addClass('btn-secondary')
                 .html('<i class="fas fa-exchange-alt"></i> Price %');
-            selectColumn.hide();
-            selectedSkus.clear();
-            $('.sku-select-checkbox').prop('checked', false);
-            $('#select-all-checkbox').prop('checked', false);
             $('#discount-input-container').hide();
             updateSelectedCount();
             updateSelectAllCheckbox();
@@ -3023,10 +3070,14 @@
             },
             ajaxSorting: false,
             layout: "fitDataStretch",
+            height: "100%",
             pagination: true,
             paginationSize: 100,
-            paginationSizeSelector: [10, 25, 50, 100, 200],
-            paginationCounter: "rows",
+            paginationSizeSelector: [25, 50, 100, 200, 500, 1000, true], // true = All (same as eBay 1)
+            paginationCounter: function() {
+                if (typeof ebay3UpdatePaginationCounter === 'function') ebay3UpdatePaginationCounter();
+                return '';
+            },
             columnCalcs: "both",
             dataTree: true,
             dataTreeStartExpanded: false,
@@ -3036,7 +3087,15 @@
             langs: {
                 "default": {
                     "pagination": {
-                        "page_size": "SKU Count"
+                        "page_size": "SKU Count",
+                        "first": "First",
+                        "first_title": "First Page",
+                        "last": "Last",
+                        "last_title": "Last Page",
+                        "prev": "Prev",
+                        "prev_title": "Prev Page",
+                        "next": "Next",
+                        "next_title": "Next Page"
                     }
                 }
             },
@@ -3066,7 +3125,7 @@
                     field: "_select",
                     hozAlign: "center",
                     headerSort: false,
-                    visible: false,
+                    visible: true,
                     frozen: true,
                     width: 50,
                     titleFormatter: function(column) {
@@ -3534,6 +3593,7 @@
                             dot + ('$' + std.toFixed(2)) + '</span>';
                     }
                 },
+                ...(typeof channelPromoPushStdPrcColumn === 'function' ? [channelPromoPushStdPrcColumn()] : []),
                 {
                     title: "Price",
                     field: "eBay Price",
@@ -3863,11 +3923,10 @@
                     title: "S GPFT",
                     field: "SGPFT",
                     hozAlign: "center",
+                    headerTooltip: "S GPFT from S PRC (SPRICE).",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        if (isNaN(percent)) return '';
+                        const percent = ebay3ComputeSgpftFromSprice(cell.getRow().getData());
+                        if (percent === null || !isFinite(percent)) return '';
                         
                         let color = '';
                         if (percent < 10) color = '#a00211';
@@ -3911,13 +3970,10 @@
                     field: "SPFT",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "SNPFT = S GPFT − eBay 3 Ads%, with S GPFT from S PRC.",
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        // SNPFT = S GPFT − Ads% (net of channel ad spend).
-                        const rawGpft = rowData.SGPFT;
-                        if (rawGpft === null || rawGpft === undefined || rawGpft === '') return '';
-                        const sgpft = parseFloat(rawGpft);
-                        if (isNaN(sgpft)) return '';
+                        const sgpft = ebay3ComputeSgpftFromSprice(cell.getRow().getData());
+                        if (sgpft === null || !isFinite(sgpft)) return '';
                         const ads = parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0;
                         const percent = sgpft - ads;
 
@@ -4652,6 +4708,7 @@
             updateCalcValues();
             updateSummary();
             setTimeout(function() {
+                if (typeof ebay3UpdatePaginationCounter === 'function') ebay3UpdatePaginationCounter();
                 updateSelectAllCheckbox();
             }, 100);
         }
@@ -5001,8 +5058,8 @@
             }
 
             if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|dsc|appr|push_prc|sprc_cpn)$/i.test(f) ||
-                /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr)\b/i.test(tl) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|push_prmt|cpn_pct|push_cpn|dsc|appr|push_prc|push_std_prc|sprc_cpn)$/i.test(f) ||
+                /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
                 /^(_accept|\+)$/i.test(t)
             ) {
                 return 'pricing';
@@ -5155,7 +5212,8 @@
                 .then(savedVisibility => {
                     table.getColumns().forEach(col => {
                         const def = col.getDefinition();
-                        if (def.field && savedVisibility[def.field] === false) {
+                        if (!def.field || def.field === '_parent_expand' || def.field === '_select') return;
+                        if (savedVisibility[def.field] === false) {
                             col.hide();
                         }
                     });
@@ -5208,6 +5266,7 @@
         });
 
         table.on('renderComplete', function() {
+            if (typeof ebay3UpdatePaginationCounter === 'function') ebay3UpdatePaginationCounter();
             reorderEbay3ParentRowsBelowSkus();
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
@@ -5216,6 +5275,15 @@
                 });
                 updateSelectAllCheckbox();
             }, 100);
+        });
+
+        table.on('pageLoaded', function() {
+            if (typeof ebay3UpdatePaginationCounter === 'function') ebay3UpdatePaginationCounter();
+            $('.sku-select-checkbox').each(function() {
+                const sku = $(this).data('sku');
+                $(this).prop('checked', selectedSkus.has(sku));
+            });
+            updateSelectAllCheckbox();
         });
 
         // Row checkbox: add/remove SKU from selectedSkus

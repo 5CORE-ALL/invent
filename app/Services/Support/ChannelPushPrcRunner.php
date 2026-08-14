@@ -120,19 +120,8 @@ class ChannelPushPrcRunner
             $prmt = max(0, (float) ($task['prmt'] ?? 0));
             $cpn = max(0, (float) ($task['cpn'] ?? 0));
 
-            $store->update(function (array $state) use ($index, $sku) {
-                $state['current_index'] = $index;
-                $state['current_sku'] = $sku;
-                if (isset($state['tasks'][$index]) && is_array($state['tasks'][$index])) {
-                    $state['tasks'][$index]['status'] = 'pushing';
-                    $state['tasks'][$index]['attempts'] = ((int) ($state['tasks'][$index]['attempts'] ?? 0)) + 1;
-                }
-                $done = ((int) ($state['ok_count'] ?? 0)) + ((int) ($state['fail_count'] ?? 0));
-                $total = (int) ($state['total'] ?? 0);
-                $state['last_message'] = 'Pushing '.($done + 1).'/'.$total.': '.$sku;
-
-                return $state;
-            });
+            $stepTotal = $this->channel === 'ebay1' ? 3 : 1;
+            $this->markPushStep($store, $index, $sku, 1, $stepTotal, 'listing price', true);
 
             $logger->info('Channel Push Prc: 3-step push', [
                 'channel' => $this->channel,
@@ -158,6 +147,7 @@ class ChannelPushPrcRunner
                 ]);
 
                 // 1) Push Std Prc as listing StartPrice
+                $this->markPushStep($store, $index, $sku, 1, $stepTotal, 'listing price');
                 $pushRes = $this->pushPrice($sku, $std);
                 $payload = method_exists($pushRes, 'getData') ? $pushRes->getData(true) : [];
                 $status = method_exists($pushRes, 'getStatusCode') ? $pushRes->getStatusCode() : 200;
@@ -171,11 +161,13 @@ class ChannelPushPrcRunner
                 $stepErrors = [];
                 if ($this->channel === 'ebay1') {
                     // 2) Sale event from PRMT %
+                    $this->markPushStep($store, $index, $sku, 2, $stepTotal, 'sale event');
                     $saleRes = $this->syncEbay1Sale($sku, $prmt, $logger);
                     if (empty($saleRes['success'])) {
                         $stepErrors[] = 'Sale: '.((string) ($saleRes['message'] ?? 'failed'));
                     }
                     // 3) Coupon campaign from CPN %
+                    $this->markPushStep($store, $index, $sku, 3, $stepTotal, 'coupon');
                     $cpnRes = $this->syncEbay1Coupon($sku, $cpn, $logger);
                     if (empty($cpnRes['success'])) {
                         $stepErrors[] = 'Coupon: '.((string) ($cpnRes['message'] ?? 'failed'));
@@ -228,6 +220,7 @@ class ChannelPushPrcRunner
                 $total = (int) ($state['total'] ?? 0);
                 $state['last_message'] = ($ok ? 'OK' : 'Fail')." {$sku} — {$done}/{$total}";
                 $state['current_sku'] = null;
+                $state['current_step'] = 0;
 
                 return $state;
             });
@@ -299,6 +292,33 @@ class ChannelPushPrcRunner
             'ebay3' => app(EbayThreeController::class)->pushEbay3Price($req),
             default => app(EbayController::class)->pushEbayPrice($req),
         };
+    }
+
+    private function markPushStep(
+        ChannelPushPrcJobStore $store,
+        int $index,
+        string $sku,
+        int $step,
+        int $stepTotal,
+        string $label,
+        bool $startTask = false
+    ): void {
+        $store->update(function (array $state) use ($index, $sku, $step, $stepTotal, $label, $startTask) {
+            $state['current_index'] = $index;
+            $state['current_sku'] = $sku;
+            $state['current_step'] = $step;
+            $state['current_step_total'] = max(1, $stepTotal);
+            if ($startTask && isset($state['tasks'][$index]) && is_array($state['tasks'][$index])) {
+                $state['tasks'][$index]['status'] = 'pushing';
+                $state['tasks'][$index]['attempts'] = ((int) ($state['tasks'][$index]['attempts'] ?? 0)) + 1;
+            }
+            $done = ((int) ($state['ok_count'] ?? 0)) + ((int) ($state['fail_count'] ?? 0));
+            $total = (int) ($state['total'] ?? 0);
+            $state['last_message'] = $sku.' · '.$step.'/'.$stepTotal.' '.$label
+                .($total > 1 ? ' ('.($done + 1).'/'.$total.')' : '');
+
+            return $state;
+        });
     }
 
     /**

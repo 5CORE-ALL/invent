@@ -209,9 +209,12 @@
             padding-right: 0px !important;
         }
 
-        /* Custom pagination label */
+        /* Custom pagination label (same as eBay 1) */
         .tabulator-paginator label {
             margin-right: 5px;
+        }
+        #ebay2-table .tabulator-footer {
+            background: #e6e6e6;
         }
 
         /* Status circle indicators */
@@ -629,10 +632,13 @@
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                     </div>
                 </div>
-                <div id="ebay2-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <span id="custom-pagination-counter" style="display: none;"></span>
+                <div id="ebay2-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column; min-height: 0;">
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
+                        <span id="custom-pagination-counter"
+                            style="font-size: 13px; color: #555; white-space: nowrap;"></span>
+                    </div>
                     <!-- Table body (scrollable section) -->
-                    <div id="ebay2-table" style="flex: 1;"></div>
+                    <div id="ebay2-table" style="flex: 1; min-height: 0;"></div>
                 </div>
             </div>
         </div>
@@ -1090,11 +1096,59 @@
             const adSpend = price * adsFrac;
             return ((grossPft - adSpend) / lp) * 100;
         }
+        /** S GPFT / S GROI / SNROI / SNPFT use S PRC (SPRICE), not Sprc CPN. */
+        function ebay2ComputeSgpftFromSprice(rowData) {
+            if (!rowData) return null;
+            const price = parseFloat(rowData.SPRICE);
+            if (!isFinite(price) || price <= 0) return null;
+            const lp = parseFloat(rowData.LP_productmaster) || 0;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const marginRaw = parseFloat(rowData.percentage);
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+            return ((price * margin - ship - lp) / price) * 100;
+        }
+        function ebay2ComputeSgroiFromSprice(rowData) {
+            if (!rowData) return null;
+            const price = parseFloat(rowData.SPRICE);
+            const lp = parseFloat(rowData.LP_productmaster);
+            if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const marginRaw = parseFloat(rowData.percentage);
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+            return ((price * margin - lp - ship) / lp) * 100;
+        }
         let skuMetricsChart = null;
         let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views'
         let currentSku = null;
         let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, valueFmt } for ref panel & plugins
         let table = null; // Global table reference
+
+        /** Keep "Showing X–Y of Z rows" in sync with filtered/active set (same as eBay 1). */
+        function ebay2UpdatePaginationCounter() {
+            var $el = $('#custom-pagination-counter');
+            if (!$el.length || !table) return;
+            try {
+                var totalRows = (typeof table.getDataCount === 'function')
+                    ? table.getDataCount('active')
+                    : ((table.getData('active') || []).length);
+                var pageSize = table.getPageSize();
+                var showAll = pageSize === true || pageSize === 'true'
+                    || (typeof pageSize === 'number' && pageSize >= totalRows && totalRows > 0);
+                if (totalRows === 0) {
+                    $el.text('No rows');
+                } else if (showAll) {
+                    $el.text('Showing all ' + totalRows + ' rows');
+                } else {
+                    var currentPage = table.getPage() || 1;
+                    var start = (currentPage - 1) * Number(pageSize) + 1;
+                    var end = Math.min(currentPage * Number(pageSize), totalRows);
+                    $el.text('Showing ' + start + '-' + end + ' of ' + totalRows + ' rows');
+                }
+            } catch (e) {
+                /* ignore */
+            }
+        }
+
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
         let samePriceModeActive = false;
@@ -1536,6 +1590,10 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                try {
+                    const cell = r.getCell('push_std_prc');
+                    if (cell) cell.reformat();
+                } catch (e) { /* ignore */ }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
@@ -2217,30 +2275,24 @@
                 const $btn = $('#ebay2-price-mode-btn');
                 const selectColumn = table.getColumn('_select');
                 syncEbay2DiscountBarForMode();
+                if (selectColumn) selectColumn.show();
                 if (decreaseModeActive) {
                     $btn.removeClass('btn-secondary btn-success btn-outline-primary').addClass('btn-danger')
                         .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                    selectColumn.show();
                     return;
                 }
                 if (increaseModeActive) {
                     $btn.removeClass('btn-secondary btn-danger btn-outline-primary').addClass('btn-success')
                         .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                    selectColumn.show();
                     return;
                 }
                 if (samePriceModeActive) {
                     $btn.removeClass('btn-secondary btn-danger btn-success').addClass('btn-outline-primary')
                         .html('<i class="fas fa-equals"></i> Same Price ON');
-                    selectColumn.show();
                     return;
                 }
                 $btn.removeClass('btn-danger btn-success btn-outline-primary').addClass('btn-secondary')
                     .html('<i class="fas fa-exchange-alt"></i> Price %');
-                selectColumn.hide();
-                selectedSkus.clear();
-                $('.sku-select-checkbox').prop('checked', false);
-                $('#select-all-checkbox').prop('checked', false);
                 $('#discount-input-container').hide();
                 updateSelectedCount();
                 updateSelectAllCheckbox();
@@ -3493,21 +3545,27 @@
                 },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
+                height: "100%",
                 pagination: true,
                 paginationSize: 100,
-                paginationSizeSelector: [10, 25, 50, 100, 200],
-                paginationCounter: function(pageSize, currentRow, currentPage, totalRows, totalPages) {
-                    var start = currentRow;
-                    var end = Math.min(currentRow + pageSize - 1, totalRows);
-                    var text = "Showing " + start + "-" + end + " of " + totalRows + " rows";
-                    $('#custom-pagination-counter').text(text);
-                    return "";
+                paginationSizeSelector: [25, 50, 100, 200, 500, 1000, true], // true = All (same as eBay 1)
+                paginationCounter: function() {
+                    if (typeof ebay2UpdatePaginationCounter === 'function') ebay2UpdatePaginationCounter();
+                    return '';
                 },
                 columnCalcs: "both",
                 langs: {
                     "default": {
                         "pagination": {
-                            "page_size": "SKU Count"
+                            "page_size": "SKU Count",
+                            "first": "First",
+                            "first_title": "First Page",
+                            "last": "Last",
+                            "last_title": "Last Page",
+                            "prev": "Prev",
+                            "prev_title": "Prev Page",
+                            "next": "Next",
+                            "next_title": "Next Page"
                         }
                     }
                 },
@@ -3570,7 +3628,7 @@
                         field: "_select",
                         hozAlign: "center",
                         headerSort: false,
-                        visible: false,
+                        visible: true,
                         frozen: true,
                         width: 50,
                         titleFormatter: function(column) {
@@ -4081,6 +4139,8 @@
                                 dot + ('$' + std.toFixed(2)) + '</span>';
                         }
                     },
+
+                    ...(typeof channelPromoPushStdPrcColumn === 'function' ? [channelPromoPushStdPrcColumn()] : []),
                    
                     {
                         title: "Price",
@@ -4485,12 +4545,11 @@
                         title: "S GPFT",
                         field: "SGPFT",
                         hozAlign: "center",
+                        headerTooltip: "S GPFT from S PRC (SPRICE), eBay 1 take-home formula.",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
-                            
+                            const percent = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
+
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
@@ -4501,20 +4560,10 @@
                         field: "SGROI",
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "S GROI from S PRC (SPRICE), eBay 1 take-home formula.",
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            let percent = parseFloat(cell.getValue());
-                            // Fallback: compute gross from SPRICE when SGROI not stored yet
-                            if (!isFinite(percent)) {
-                                const sprice = parseFloat(rowData.SPRICE);
-                                const lp = parseFloat(rowData.LP_productmaster);
-                                if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return '';
-                                const ship = parseFloat(rowData.Ship_productmaster) || 0;
-                                const marginRaw = parseFloat(rowData.percentage);
-                                const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
-                                percent = ((sprice * margin - ship - lp) / lp) * 100;
-                            }
-                            if (!isFinite(percent)) return '';
+                            const percent = ebay2ComputeSgroiFromSprice(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
 
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
@@ -4525,8 +4574,7 @@
                         title: "SNROI",
                         field: "SROI",
                         hozAlign: "center",
-                        // Same formula as Amazon SNROI / NROI badge:
-                        // (gross PFT$ − SPRICE×Ads%/100) / LP × 100
+                        headerTooltip: "SNROI from S PRC using eBay 2 Ads%.",
                         sorter: function(a, b, aRow, bRow) {
                             const aNet = ebay2ComputeNetRoi(aRow.getData(), 'SPRICE');
                             const bNet = ebay2ComputeNetRoi(bRow.getData(), 'SPRICE');
@@ -4547,13 +4595,10 @@
                         field: "SPFT",
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "SNPFT = S GPFT − eBay 2 Ads%, with S GPFT from S PRC.",
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            // SNPFT = S GPFT − Ads% (net of channel ad spend).
-                            const rawGpft = rowData.SGPFT;
-                            if (rawGpft === null || rawGpft === undefined || rawGpft === '') return '';
-                            const sgpft = parseFloat(rawGpft);
-                            if (isNaN(sgpft)) return '';
+                            const sgpft = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
+                            if (sgpft === null || !isFinite(sgpft)) return '';
                             const ads = parseFloat(EBAY2_CHANNEL_ADS_PCT) || 0;
                             const percent = sgpft - ads;
 
@@ -5137,8 +5182,9 @@
 
                 updateCalcValues();
                 updateSummary();
-                // Update select all checkbox after filter is applied (matching Amazon approach)
+                // Update select-all + pagination counter after filter is applied (same as eBay 1)
                 setTimeout(function() {
+                    if (typeof ebay2UpdatePaginationCounter === 'function') ebay2UpdatePaginationCounter();
                     updateSelectAllCheckbox();
                 }, 100);
                 } // end runEbay2Filters
@@ -5348,8 +5394,8 @@
                 }
 
                 if (
-                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|dsc|appr|push_prc|sprc_cpn)$/i.test(f) ||
-                    /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr)\b/i.test(tl) ||
+                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|push_prmt|cpn_pct|push_cpn|dsc|appr|push_prc|push_std_prc|sprc_cpn)$/i.test(f) ||
+                    /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
                     /^(_accept|\+)$/i.test(t)
                 ) {
                     return 'pricing';
@@ -5542,6 +5588,7 @@
 
             // Also initialize tooltips when table is rendered (matching Amazon approach)
             table.on('renderComplete', function() {
+                if (typeof ebay2UpdatePaginationCounter === 'function') ebay2UpdatePaginationCounter();
                 setTimeout(function() {
                     // Refresh checkboxes to reflect selectedSkus set
                     $('.sku-select-checkbox').each(function() {
@@ -5555,6 +5602,15 @@
                         new bootstrap.Tooltip(tooltipTriggerEl);
                     });
                 }, 100);
+            });
+
+            table.on('pageLoaded', function() {
+                if (typeof ebay2UpdatePaginationCounter === 'function') ebay2UpdatePaginationCounter();
+                $('.sku-select-checkbox').each(function() {
+                    const sku = $(this).data('sku');
+                    $(this).prop('checked', selectedSkus.has(sku));
+                });
+                updateSelectAllCheckbox();
             });
 
             // Toggle column from dropdown (group header + individual)

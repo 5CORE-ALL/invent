@@ -84,12 +84,21 @@
             min-width: 180px !important;
             max-width: 320px !important;
         }
+        #ch-promo-push-prc-progress.active {
+            margin: 0 !important;
+            padding: 12px 14px !important;
+            min-width: 300px !important;
+            max-width: 440px !important;
+        }
         #ch-promo-push-prc-progress .ch-promo-push-prc-progress-meta {
             font-size: 0.8rem !important;
         }
         #ch-promo-push-prc-progress .ch-promo-push-prc-bar {
             height: 5px !important;
             margin-top: 3px !important;
+        }
+        #ch-promo-push-prc-progress.active .ch-promo-push-prc-bar {
+            height: 10px !important;
         }
         #summary-stats {
             order: -1;
@@ -1439,43 +1448,26 @@
             const adSpend = price * adsFrac;
             return ((grossPft - adSpend) / lp) * 100;
         }
-        /** Sprc CPN = S PRC × (1 − CPN%/100) — used by S GPFT / S GROI / SNROI / SNPFT. */
-        function ebayResolveSprcCpn(rowData) {
+        /** S GPFT / S GROI / SNROI / SNPFT use S PRC (SPRICE), not Sprc CPN. */
+        function ebayComputeSgpftFromSprice(rowData) {
             if (!rowData) return null;
-            if (typeof chPromoSprcCpnValue === 'function') {
-                const v = chPromoSprcCpnValue(rowData);
-                if (v > 0) return v;
-            }
-            const sprice = parseFloat(rowData.SPRICE);
-            if (!isFinite(sprice) || sprice <= 0) return null;
-            const cpn = Math.max(0, Number(rowData.cpn_pct != null ? rowData.cpn_pct : rowData._cpn_pct_applied) || 0);
-            if (cpn <= 0) return sprice;
-            if (cpn >= 100) return null;
-            const v = Math.round(sprice * (1 - (cpn / 100)) * 100) / 100;
-            return v >= 0.01 ? v : null;
-        }
-        function ebayComputeSgpftFromSprcCpn(rowData) {
-            const price = ebayResolveSprcCpn(rowData);
-            if (!(price > 0)) return null;
+            const price = parseFloat(rowData.SPRICE);
+            if (!isFinite(price) || price <= 0) return null;
             const lp = parseFloat(rowData.LP_productmaster) || 0;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
             const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
             return ((price * margin - ship - lp) / price) * 100;
         }
-        function ebayComputeSgroiFromSprcCpn(rowData) {
-            const price = ebayResolveSprcCpn(rowData);
+        function ebayComputeSgroiFromSprice(rowData) {
+            if (!rowData) return null;
+            const price = parseFloat(rowData.SPRICE);
             const lp = parseFloat(rowData.LP_productmaster);
-            if (!(price > 0) || !isFinite(lp) || lp <= 0) return null;
+            if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
             const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
             return ((price * margin - lp - ship) / lp) * 100;
-        }
-        function ebayComputeSnroiFromSprcCpn(rowData) {
-            const price = ebayResolveSprcCpn(rowData);
-            if (!(price > 0)) return null;
-            return ebayComputeNetRoi(Object.assign({}, rowData, { SPRICE: price }), 'SPRICE');
         }
         /** App base path (XAMPP subdir / public): root-relative "/ebay-data-json" would 404 */
         const EBAY_DATA_JSON_URL = @json(url('/ebay-data-json'));
@@ -2327,9 +2319,225 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                try {
+                    const cell = r.getCell('push_std_prc');
+                    if (cell) cell.reformat();
+                } catch (e) { /* ignore */ }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
+        }
+
+        function ebayStdPrcRound2(n) {
+            const v = Number(n);
+            return isFinite(v) ? Math.round(v * 100) / 100 : 0;
+        }
+        function ebayPushStdPrcSku(d) {
+            return String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim();
+        }
+        function ebayStdPrcCurrent(d) {
+            return ebayStdPrcRound2(d && (d.STANDARD_PRICE != null ? d.STANDARD_PRICE : d.standard_price));
+        }
+        function ebayStdPrcLastPushed(d) {
+            return ebayStdPrcRound2(d && d.PUSH_STD_PRC_VALUE);
+        }
+        /** True when Std exists and differs from the last successful Push Std Prc. */
+        function ebayStdPrcNeedsPush(d) {
+            const std = ebayStdPrcCurrent(d);
+            if (!(std > 0)) return false;
+            if (String(d.PUSH_STD_PRC_STATUS || '') === 'error') return true;
+            const last = ebayStdPrcLastPushed(d);
+            if (!(last > 0)) return true;
+            return last.toFixed(2) !== std.toFixed(2);
+        }
+        function ebayPushStdPrcCollectTargets() {
+            if (typeof collectChPromoSelectedRows === 'function') {
+                const selected = collectChPromoSelectedRows();
+                if (selected.length) return selected;
+                if (typeof collectChPromoVisibleRows === 'function') {
+                    return collectChPromoVisibleRows();
+                }
+            }
+            if (typeof table === 'undefined' || !table) return [];
+            return (table.getRows('active') || []).filter(function(row) {
+                const d = row.getData();
+                return d && !d.is_parent_summary && ebayPushStdPrcSku(d);
+            }).map(function(row) {
+                return { row: row, d: row.getData() };
+            });
+        }
+        function ebayRefreshPushStdPrcCell(row) {
+            if (!row) return;
+            if (typeof chPromoRefreshPushStdPrcCell === 'function') {
+                chPromoRefreshPushStdPrcCell(row);
+                return;
+            }
+            try {
+                const cell = row.getCell && row.getCell('push_std_prc');
+                if (cell && typeof cell.reformat === 'function') cell.reformat();
+            } catch (e) { /* ignore */ }
+        }
+        async function ebayPushStdPrcOne(row, opts) {
+            opts = opts || {};
+            const silent = !!opts.silent;
+            const force = !!opts.force;
+            const d = row.getData() || {};
+            const sku = ebayPushStdPrcSku(d);
+            const std = ebayStdPrcCurrent(d);
+            if (!sku || !(std > 0)) {
+                if (!silent) showToast('error', 'Std Prc required');
+                ebayRefreshPushStdPrcCell(row);
+                return { ok: false, skipped: true };
+            }
+            if (!force && !ebayStdPrcNeedsPush(d)) {
+                if (!silent) showToast('info', 'Std Prc unchanged since last push for ' + sku);
+                ebayRefreshPushStdPrcCell(row);
+                return { ok: true, skipped: true };
+            }
+            row.update({ PUSH_STD_PRC_STATUS: 'processing', push_std_prc: 'processing' });
+            if (typeof chPromoRefreshPushStdPrcCell === 'function') {
+                chPromoRefreshPushStdPrcCell(row);
+            } else {
+                try {
+                    const cell = row.getCell && row.getCell('push_std_prc');
+                    if (cell && typeof cell.reformat === 'function') cell.reformat();
+                    const el = row.getElement && row.getElement();
+                    const btn = el && el.querySelector && el.querySelector('.ebay-push-std-prc-btn');
+                    if (btn) {
+                        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                        btn.style.color = '#ffc107';
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            if (!silent && typeof setChPromoPushPrcProgress === 'function') {
+                clearTimeout(setChPromoPushPrcProgress._hideTimer);
+                setChPromoPushPrcProgress({
+                    active: true, done: 0, total: 1, ok: 0, fail: 0, pct: 20,
+                    title: 'Pushing',
+                    msg: sku + ' · Std $' + std.toFixed(2),
+                });
+            }
+            try {
+                const ajax = (typeof pushChannelPriceAjax === 'function')
+                    ? pushChannelPriceAjax(sku, std)
+                    : $.ajax({
+                        url: '/push-ebay-price-tabulator',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: sku, price: std }
+                    });
+                const response = await Promise.resolve(ajax);
+                if (response && response.errors && response.errors.length) {
+                    throw new Error(response.errors[0].message || 'API error');
+                }
+                row.update({
+                    PUSH_STD_PRC_STATUS: 'pushed',
+                    PUSH_STD_PRC_VALUE: std,
+                    'eBay Price': std,
+                    push_std_prc: 'pushed'
+                });
+                if (typeof chPromoRefreshPushStdPrcCell === 'function') chPromoRefreshPushStdPrcCell(row);
+                if (typeof saveChannelPromoFields === 'function') {
+                    try {
+                        await Promise.resolve(saveChannelPromoFields(sku, {
+                            record_push_std_prc: 1,
+                            push_std_prc_value: std
+                        }));
+                    } catch (saveErr) {
+                        console.warn('Push Std Prc listing ok, but last-push record failed', sku, saveErr);
+                    }
+                }
+                if (!silent) {
+                    if (typeof setChPromoPushPrcProgress === 'function') {
+                        setChPromoPushPrcProgress({
+                            active: false, done: 1, total: 1, ok: 1, fail: 0, pct: 100,
+                            title: 'Pushed',
+                            msg: sku + ' · Std $' + std.toFixed(2),
+                        });
+                    }
+                    showToast('success', 'Std Prc $' + std.toFixed(2) + ' pushed to eBay for ' + sku);
+                }
+                return { ok: true };
+            } catch (e) {
+                row.update({ PUSH_STD_PRC_STATUS: 'error', push_std_prc: 'error' });
+                if (typeof chPromoRefreshPushStdPrcCell === 'function') chPromoRefreshPushStdPrcCell(row);
+                if (!silent) {
+                    const msg = (e && e.responseJSON && (e.responseJSON.message || (e.responseJSON.errors && e.responseJSON.errors[0] && e.responseJSON.errors[0].message)))
+                        || (e && e.message)
+                        || 'Failed to push Std Prc';
+                    if (typeof setChPromoPushPrcProgress === 'function') {
+                        setChPromoPushPrcProgress({
+                            active: false, done: 1, total: 1, ok: 0, fail: 1, pct: 100,
+                            title: 'Push failed',
+                            msg: sku + ' · ' + msg,
+                        });
+                    }
+                    showToast('error', msg + ' (' + sku + ')');
+                }
+                return { ok: false };
+            }
+        }
+        let ebayPushStdPrcBusy = false;
+        async function ebayBulkPushStdPrcChanged() {
+            if (ebayPushStdPrcBusy) {
+                showToast('info', 'Push Std Prc already running');
+                return;
+            }
+            const all = ebayPushStdPrcCollectTargets();
+            const targets = all.filter(function(t) { return ebayStdPrcNeedsPush(t.d); });
+            const skipped = all.length - targets.length;
+            if (!targets.length) {
+                showToast('info', skipped
+                    ? ('No Std Prc changes since last push (' + skipped + ' unchanged)')
+                    : 'No SKUs to push');
+                all.forEach(function(t) { ebayRefreshPushStdPrcCell(t.row); });
+                return;
+            }
+            if (!confirm(
+                'Push Std Prc to eBay for ' + targets.length + ' SKU(s) changed since last push'
+                + (skipped ? (' (' + skipped + ' unchanged skipped)') : '') + '?'
+            )) {
+                all.forEach(function(t) { ebayRefreshPushStdPrcCell(t.row); });
+                return;
+            }
+            ebayPushStdPrcBusy = true;
+            let ok = 0, fail = 0;
+            if (typeof setChPromoPushPrcProgress === 'function') {
+                clearTimeout(setChPromoPushPrcProgress._hideTimer);
+                setChPromoPushPrcProgress({
+                    active: true, done: 0, total: targets.length, ok: 0, fail: 0, pct: 5,
+                    title: 'Pushing',
+                    msg: 'Starting ' + targets.length + ' Std Prc…',
+                });
+            }
+            try {
+                for (let i = 0; i < targets.length; i++) {
+                    const sku = ebayPushStdPrcSku(targets[i].d);
+                    if (typeof setChPromoPushPrcProgress === 'function') {
+                        setChPromoPushPrcProgress({
+                            active: true, done: i, total: targets.length, ok: ok, fail: fail,
+                            title: 'Pushing',
+                            msg: sku + ' · Std Prc',
+                        });
+                    }
+                    const res = await ebayPushStdPrcOne(targets[i].row, { silent: true });
+                    if (res && res.ok && !res.skipped) ok++;
+                    else if (!(res && res.skipped)) fail++;
+                }
+            } finally {
+                ebayPushStdPrcBusy = false;
+                if (typeof setChPromoPushPrcProgress === 'function') {
+                    setChPromoPushPrcProgress({
+                        active: false, done: targets.length, total: targets.length, ok: ok, fail: fail, pct: 100,
+                        title: fail && !ok ? 'Push failed' : 'Pushed',
+                        msg: ok + ' ok' + (fail ? (' · ' + fail + ' failed') : ''),
+                    });
+                }
+            }
+            showToast(fail ? 'error' : 'success',
+                'Push Std Prc: ' + ok + ' pushed'
+                + (fail ? (', ' + fail + ' failed') : '')
+                + (skipped ? (', ' + skipped + ' unchanged skipped') : ''));
         }
 
         // Shared LMP modal SP box (lmp-modal-sp.js) → keep grid Std Prc in sync
@@ -4820,6 +5028,102 @@
                     },
 
                     {
+                        title: "Push Std Prc",
+                        field: "push_std_prc",
+                        width: 72,
+                        hozAlign: "center",
+                        vertAlign: "middle",
+                        headerSort: false,
+                        headerTooltip: "Push Std Prc — send Std to the live eBay listing price. Only SKUs whose Std changed since the last push are sent. Click this header to bulk selected (or visible) SKUs.",
+                        titleFormatter: function() {
+                            return '<button type="button" class="btn btn-sm p-0 ebay-push-std-prc-header-btn" '
+                                + 'title="Bulk Push Std Prc for selected SKUs whose Std changed since last push" '
+                                + 'style="border:none;background:none;cursor:pointer;color:#000;'
+                                + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
+                                + 'Push Std Prc</button>';
+                        },
+                        headerClick: function(e) {
+                            if (e.target.closest('.ebay-push-std-prc-header-btn')) {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                ebayBulkPushStdPrcChanged();
+                                return false;
+                            }
+                        },
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData() || {};
+                            if (d.is_parent_summary) return '';
+                            const sku = ebayPushStdPrcSku(d);
+                            if (!sku || String(d.Parent || '').toUpperCase().startsWith('PARENT')) return '';
+                            const std = ebayStdPrcCurrent(d);
+                            if (!(std > 0)) {
+                                return '<span style="color:#adb5bd;" title="Std Prc required">—</span>';
+                            }
+                            const status = String(d.PUSH_STD_PRC_STATUS || '');
+                            const last = ebayStdPrcLastPushed(d);
+                            const needs = ebayStdPrcNeedsPush(d);
+                            let icon = '<i class="fas fa-upload"></i>';
+                            let color = '#FF9900';
+                            let tip = 'Push Std $' + std.toFixed(2) + ' to eBay Price';
+                            if (status === 'processing') {
+                                icon = '<i class="fas fa-spinner fa-spin"></i>';
+                                color = '#ffc107';
+                                tip = 'Pushing Std Prc to eBay…';
+                            } else if (status === 'error') {
+                                icon = '<i class="fa-solid fa-xmark"></i>';
+                                color = '#dc3545';
+                                tip = 'Last Push Std Prc failed — click to retry';
+                            } else if (!needs) {
+                                icon = '<i class="fa-solid fa-check-double"></i>';
+                                color = '#28a745';
+                                tip = 'Already pushed $' + last.toFixed(2)
+                                    + ' — click to push Std to eBay Price again';
+                            } else if (last > 0) {
+                                tip = 'Std changed $' + last.toFixed(2) + ' → $' + std.toFixed(2)
+                                    + ' — click to push to eBay Price';
+                            }
+                            return '<button type="button" class="btn btn-sm p-0 ebay-push-std-prc-btn" '
+                                + 'data-sku="' + escAttr(sku) + '" '
+                                + 'data-price="' + std.toFixed(2) + '" '
+                                + 'title="' + escAttr(tip) + '" '
+                                + 'style="border:none;background:none;cursor:pointer;color:' + color
+                                + ';padding:0;line-height:1;vertical-align:middle;">'
+                                + icon + '</button>';
+                        },
+                        cellClick: function(e, cell) {
+                            const btn = e.target.closest('.ebay-push-std-prc-btn');
+                            if (!btn) return;
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (btn.disabled) return false;
+                            const d = cell.getRow().getData() || {};
+                            if (String(d.PUSH_STD_PRC_STATUS || '') === 'processing') return false;
+                            const selected = (typeof collectChPromoSelectedRows === 'function')
+                                ? collectChPromoSelectedRows()
+                                : [];
+                            const clickedKey = String(ebayPushStdPrcSku(d) || '').trim().toUpperCase();
+                            if (selected.length > 1 && selected.some(function(t) {
+                                return String(ebayPushStdPrcSku(t.d) || '').trim().toUpperCase() === clickedKey;
+                            })) {
+                                if (typeof chPromoPaintPushStdPrcSpinner === 'function') chPromoPaintPushStdPrcSpinner(btn);
+                                else {
+                                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                                    btn.style.color = '#ffc107';
+                                }
+                                ebayBulkPushStdPrcChanged();
+                                return false;
+                            }
+                            if (typeof chPromoPaintPushStdPrcSpinner === 'function') chPromoPaintPushStdPrcSpinner(btn);
+                            else {
+                                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                                btn.style.color = '#ffc107';
+                            }
+                            ebayPushStdPrcOne(cell.getRow(), { force: true });
+                            return false;
+                        }
+                    },
+
+                    {
                         title: "Price",
                         field: "eBay Price",
                         hozAlign: "center",
@@ -5282,9 +5586,9 @@
                         field: "SGPFT",
                         visible: false,
                         hozAlign: "center",
-                        headerTooltip: "S GPFT from Sprc CPN (S PRC − CPN%), not S PRC.",
+                        headerTooltip: "S GPFT from S PRC (SPRICE).",
                         formatter: function(cell) {
-                            const percent = ebayComputeSgpftFromSprcCpn(cell.getRow().getData());
+                            const percent = ebayComputeSgpftFromSprice(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
 
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
@@ -5297,9 +5601,9 @@
                         field: "SGROI",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "S GROI from Sprc CPN (S PRC − CPN%), not S PRC.",
+                        headerTooltip: "S GROI from S PRC (SPRICE).",
                         formatter: function(cell) {
-                            const percent = ebayComputeSgroiFromSprcCpn(cell.getRow().getData());
+                            const percent = ebayComputeSgroiFromSprice(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
 
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
@@ -5311,15 +5615,15 @@
                         title: "SNROI",
                         field: "SROI",
                         hozAlign: "center",
-                        headerTooltip: "SNROI from Sprc CPN (gross PFT$ − Sprc CPN×Ads%/100) / LP × 100.",
+                        headerTooltip: "SNROI from S PRC (gross PFT$ − S PRC×Ads%/100) / LP × 100.",
                         sorter: function(a, b, aRow, bRow) {
-                            const aNet = ebayComputeSnroiFromSprcCpn(aRow.getData());
-                            const bNet = ebayComputeSnroiFromSprcCpn(bRow.getData());
+                            const aNet = ebayComputeNetRoi(aRow.getData(), 'SPRICE');
+                            const bNet = ebayComputeNetRoi(bRow.getData(), 'SPRICE');
                             return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
                                  - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
                         },
                         formatter: function(cell) {
-                            const percent = ebayComputeSnroiFromSprcCpn(cell.getRow().getData());
+                            const percent = ebayComputeNetRoi(cell.getRow().getData(), 'SPRICE');
                             if (percent === null || !isFinite(percent)) return '';
 
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
@@ -5333,9 +5637,9 @@
                         visible: false,
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "SNPFT = S GPFT − Ads%, with S GPFT from Sprc CPN.",
+                        headerTooltip: "SNPFT = S GPFT − Ads%, with S GPFT from S PRC.",
                         formatter: function(cell) {
-                            const sgpft = ebayComputeSgpftFromSprcCpn(cell.getRow().getData());
+                            const sgpft = ebayComputeSgpftFromSprice(cell.getRow().getData());
                             if (sgpft === null || !isFinite(sgpft)) return '';
                             const ads = parseFloat(EBAY_CHANNEL_ADS_PCT) || 0;
                             const percent = sgpft - ads;
@@ -6329,8 +6633,8 @@
 
                 // Pricing
                 if (
-                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|dsc|appr|push_prc|sprc_cpn)$/i.test(f) ||
-                    /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|prmt|cpn|dsc|appr|push\s*prc)\b/i.test(tl) ||
+                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|dsc|appr|push_prc|push_std_prc|sale_event|push_cpn|sprc_cpn)$/i.test(f) ||
+                    /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|prmt|cpn|dsc|appr|push\s*prc|push\s*std\s*prc|sale\s*event|push\s*cpn)\b/i.test(tl) ||
                     /^(_accept|\+)$/i.test(t)
                 ) {
                     return 'pricing';

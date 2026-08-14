@@ -23,7 +23,8 @@ use Illuminate\Support\Facades\Schema;
  * (amazon_data_view.value), stored on each channel's own *_data_view.value.
  *
  * Keys: PEF_PRMT_PCT, PEF_CPN_PCT, PEF_DSC_PCT, PEF_APPR,
- *       PUSH_PRC_STATUS, PUSH_PRC_VALUE, PUSH_PRC_PUSHED_AT
+ *       PUSH_PRC_STATUS, PUSH_PRC_VALUE, PUSH_PRC_PUSHED_AT,
+ *       PUSH_STD_PRC_STATUS, PUSH_STD_PRC_VALUE, PUSH_STD_PRC_PUSHED_AT
  *
  * Never uses amazon_data_view for channel promo fields.
  * Never uses a separate channel_promo_pricing table.
@@ -155,6 +156,14 @@ class ChannelPromoPricingService
         $row['appr'] = $promo['appr'] ?? false;
         $row['PUSH_PRC_STATUS'] = $promo['PUSH_PRC_STATUS'] ?? null;
         $row['PUSH_PRC_VALUE'] = $promo['PUSH_PRC_VALUE'] ?? null;
+        $row['PUSH_STD_PRC_STATUS'] = $promo['PUSH_STD_PRC_STATUS'] ?? null;
+        $row['PUSH_STD_PRC_VALUE'] = $promo['PUSH_STD_PRC_VALUE'] ?? null;
+        $row['PEF_COUPON_PCT'] = $promo['PEF_COUPON_PCT'] ?? null;
+        $row['PEF_COUPON_CODE'] = $promo['PEF_COUPON_CODE'] ?? null;
+        $row['coupon_code'] = $promo['coupon_code'] ?? $promo['PEF_COUPON_CODE'] ?? null;
+        $row['PEF_COUPON_PROMOTION_ID'] = $promo['PEF_COUPON_PROMOTION_ID'] ?? null;
+        $row['PEF_SALE_PCT'] = $promo['PEF_SALE_PCT'] ?? null;
+        $row['PEF_PRMT_PROMOTION_ID'] = $promo['PEF_PRMT_PROMOTION_ID'] ?? null;
         $row['_prmt_pct_applied'] = is_numeric($promo['_prmt_pct_applied'] ?? null)
             ? (float) $promo['_prmt_pct_applied']
             : (is_numeric($prmt) ? (float) $prmt : 0);
@@ -269,6 +278,34 @@ class ChannelPromoPricingService
             } elseif (($existing['PUSH_PRC_STATUS'] ?? null) === 'pushed' && empty($existing['PUSH_PRC_PUSHED_AT'])) {
                 $existing['PUSH_PRC_PUSHED_AT'] = now()->toDateTimeString();
             }
+            if (array_key_exists('push_std_prc_status', $fields)) {
+                $st = $fields['push_std_prc_status'];
+                if ($st === null || $st === '') {
+                    unset($existing['PUSH_STD_PRC_STATUS']);
+                } else {
+                    $existing['PUSH_STD_PRC_STATUS'] = substr((string) $st, 0, 64);
+                }
+            }
+            if (array_key_exists('push_std_prc_value', $fields)) {
+                $val = $fields['push_std_prc_value'];
+                if (is_numeric($val) && (float) $val > 0) {
+                    $existing['PUSH_STD_PRC_VALUE'] = round((float) $val, 2);
+                } else {
+                    unset($existing['PUSH_STD_PRC_VALUE']);
+                }
+            }
+            if (array_key_exists('push_std_prc_pushed_at', $fields)) {
+                $at = $fields['push_std_prc_pushed_at'];
+                if ($at) {
+                    $existing['PUSH_STD_PRC_PUSHED_AT'] = is_string($at)
+                        ? $at
+                        : now()->toDateTimeString();
+                } else {
+                    unset($existing['PUSH_STD_PRC_PUSHED_AT']);
+                }
+            } elseif (($existing['PUSH_STD_PRC_STATUS'] ?? null) === 'pushed' && empty($existing['PUSH_STD_PRC_PUSHED_AT'])) {
+                $existing['PUSH_STD_PRC_PUSHED_AT'] = now()->toDateTimeString();
+            }
 
             $row->sku = $row->sku ?: $skuNorm;
             $row->value = $existing;
@@ -281,6 +318,8 @@ class ChannelPromoPricingService
                 'appr' => false,
                 'PUSH_PRC_STATUS' => null,
                 'PUSH_PRC_VALUE' => null,
+                'PUSH_STD_PRC_STATUS' => null,
+                'PUSH_STD_PRC_VALUE' => null,
                 '_prmt_pct_applied' => 0,
                 '_cpn_pct_applied' => 0,
                 '_dsc_applied' => 0,
@@ -307,16 +346,29 @@ class ChannelPromoPricingService
         $prmt = $this->nullablePct($val['PEF_PRMT_PCT'] ?? null);
         $cpn = $this->nullablePct($val['PEF_CPN_PCT'] ?? null);
         $dsc = $this->nullablePct($val['PEF_DSC_PCT'] ?? null);
+        $couponPct = $this->nullablePct($val['PEF_COUPON_PCT'] ?? null);
+        $couponCode = isset($val['PEF_COUPON_CODE']) ? trim((string) $val['PEF_COUPON_CODE']) : '';
+        $couponPromoId = isset($val['PEF_COUPON_PROMOTION_ID']) ? trim((string) $val['PEF_COUPON_PROMOTION_ID']) : '';
+        $salePct = $this->nullablePct($val['PEF_SALE_PCT'] ?? null);
+        $salePromoId = isset($val['PEF_PRMT_PROMOTION_ID']) ? trim((string) $val['PEF_PRMT_PROMOTION_ID']) : '';
         $hasAny = $prmt !== null || $cpn !== null || $dsc !== null
             || isset($val['PEF_APPR'])
             || isset($val['PUSH_PRC_STATUS'])
-            || isset($val['PUSH_PRC_VALUE']);
+            || isset($val['PUSH_PRC_VALUE'])
+            || isset($val['PUSH_STD_PRC_STATUS'])
+            || isset($val['PUSH_STD_PRC_VALUE'])
+            || $couponPct !== null
+            || $couponCode !== ''
+            || $couponPromoId !== ''
+            || $salePct !== null
+            || $salePromoId !== '';
 
         if (! $hasAny) {
             return null;
         }
 
         $pushVal = $val['PUSH_PRC_VALUE'] ?? null;
+        $pushStdVal = $val['PUSH_STD_PRC_VALUE'] ?? null;
 
         return [
             'prmt_pct' => $prmt,
@@ -327,6 +379,16 @@ class ChannelPromoPricingService
             'PUSH_PRC_VALUE' => (is_numeric($pushVal) && (float) $pushVal > 0)
                 ? round((float) $pushVal, 2)
                 : null,
+            'PUSH_STD_PRC_STATUS' => $val['PUSH_STD_PRC_STATUS'] ?? null,
+            'PUSH_STD_PRC_VALUE' => (is_numeric($pushStdVal) && (float) $pushStdVal > 0)
+                ? round((float) $pushStdVal, 2)
+                : null,
+            'PEF_COUPON_PCT' => $couponPct,
+            'PEF_COUPON_CODE' => $couponCode !== '' ? $couponCode : null,
+            'coupon_code' => $couponCode !== '' ? $couponCode : null,
+            'PEF_COUPON_PROMOTION_ID' => $couponPromoId !== '' ? $couponPromoId : null,
+            'PEF_SALE_PCT' => $salePct,
+            'PEF_PRMT_PROMOTION_ID' => $salePromoId !== '' ? $salePromoId : null,
             '_prmt_pct_applied' => is_numeric($prmt) ? (float) $prmt : 0,
             '_cpn_pct_applied' => is_numeric($cpn) ? (float) $cpn : 0,
             '_dsc_applied' => is_numeric($dsc) ? (float) $dsc : 0,

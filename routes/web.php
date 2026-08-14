@@ -5276,6 +5276,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-push-prc/{channel}', [ChannelPromoPricingController::class, 'queuePushPrc'])->name('channel.push-prc.queue');
     Route::get('/channel-push-prc/{channel}/status', [ChannelPromoPricingController::class, 'pushPrcJobStatus'])->name('channel.push-prc.status');
     Route::post('/channel-push-prc/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushPrc'])->name('channel.push-prc.cancel');
+    Route::post('/channel-push-prmt/{channel}', [ChannelPromoPricingController::class, 'queuePushPrmt'])->name('channel.push-prmt.queue');
+    Route::get('/channel-push-prmt/{channel}/status', [ChannelPromoPricingController::class, 'pushPrmtJobStatus'])->name('channel.push-prmt.status');
+    Route::post('/channel-push-prmt/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushPrmt'])->name('channel.push-prmt.cancel');
+    Route::post('/channel-push-cpn/{channel}', [ChannelPromoPricingController::class, 'queuePushCpn'])->name('channel.push-cpn.queue');
+    Route::get('/channel-push-cpn/{channel}/status', [ChannelPromoPricingController::class, 'pushCpnJobStatus'])->name('channel.push-cpn.status');
+    Route::post('/channel-push-cpn/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushCpn'])->name('channel.push-cpn.cancel');
 
     // ebay db save routes
     Route::post('/ebay/save-nr', [EbayController::class, 'saveNrToDatabase']);

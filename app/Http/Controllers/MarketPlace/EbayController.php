@@ -1390,20 +1390,11 @@ class EbayController extends Controller
                     $sprice = 0;
                 }
                 
-                // Calculate SGPFT/SPFT/SGROI/SROI from Sprc CPN (S PRC − CPN%), not raw SPRICE
-                $cpnPct = is_numeric($row['cpn_pct'] ?? null) ? (float) $row['cpn_pct'] : 0;
-                $metricPrice = $sprice;
-                if ($sprice > 0 && $cpnPct > 0 && $cpnPct < 100) {
-                    $metricPrice = round($sprice * (1 - ($cpnPct / 100)), 2);
-                    if ($metricPrice < 0.01) {
-                        $metricPrice = $sprice;
-                    }
-                }
-                $sgpft = $metricPrice > 0 ? round((($metricPrice * $percentage - $ship - $lp) / $metricPrice) * 100, 2) : 0;
-                $row['SGPFT'] = $metricPrice > 0 ? $sgpft : null;
-                $row['SPFT'] = $metricPrice > 0 ? $sgpft : null;
-                $row['SGROI'] = $metricPrice > 0 ? round($lp > 0 ? (($metricPrice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
-                $row['SROI'] = $metricPrice > 0 ? round($lp > 0 ? (($metricPrice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
+                $sgpft = $sprice > 0 ? round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2) : 0;
+                $row['SGPFT'] = $sprice > 0 ? $sgpft : null;
+                $row['SPFT'] = $sprice > 0 ? $sgpft : null;
+                $row['SGROI'] = $sprice > 0 ? round($lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
+                $row['SROI'] = $sprice > 0 ? round($lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
             } else {
                 // If price is 0, set all to null/0
                 $row['SPRICE'] = null;
@@ -1441,21 +1432,12 @@ class EbayController extends Controller
             if (isset($r->SGPFT) && $r->SGPFT !== null && $r->SGPFT !== '') {
                 $r->SPFT = round((float) $r->SGPFT - $channelAdsPct, 2);
                 $sprice = (float) ($r->SPRICE ?? 0);
-                $cpnPct = is_numeric($r->cpn_pct ?? null) ? (float) $r->cpn_pct : 0;
-                $metricPrice = $sprice;
-                if ($sprice > 0 && $cpnPct > 0 && $cpnPct < 100) {
-                    $metricPrice = round($sprice * (1 - ($cpnPct / 100)), 2);
-                    if ($metricPrice < 0.01) {
-                        $metricPrice = $sprice;
-                    }
-                }
                 $lp = (float) ($r->LP_productmaster ?? 0);
                 $ship = (float) ($r->Ship_productmaster ?? 0);
                 $pct = (float) ($r->percentage ?? 1);
-                if ($metricPrice > 0 && $lp > 0) {
-                    // SNROI from Sprc CPN (not raw SPRICE)
-                    $grossPft = ($metricPrice * $pct) - $ship - $lp;
-                    $adSpend = $metricPrice * ($channelAdsPct / 100);
+                if ($sprice > 0 && $lp > 0) {
+                    $grossPft = ($sprice * $pct) - $ship - $lp;
+                    $adSpend = $sprice * ($channelAdsPct / 100);
                     $r->SROI = round((($grossPft - $adSpend) / $lp) * 100, 2);
                 }
             }
@@ -1829,38 +1811,20 @@ class EbayController extends Controller
         $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
         Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship]);
 
-        $cpnPct = 0;
-        $peekDv = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim($sku))])->first();
-        if ($peekDv) {
-            $peekVal = is_array($peekDv->value) ? $peekDv->value : (json_decode($peekDv->value, true) ?: []);
-            if (is_numeric($peekVal['PEF_CPN_PCT'] ?? null)) {
-                $cpnPct = (float) $peekVal['PEF_CPN_PCT'];
-            }
-        }
-        $metricPrice = $spriceFloat;
-        if ($spriceFloat > 0 && $cpnPct > 0 && $cpnPct < 100) {
-            $metricPrice = round($spriceFloat * (1 - ($cpnPct / 100)), 2);
-            if ($metricPrice < 0.01) {
-                $metricPrice = $spriceFloat;
-            }
-        }
+        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
 
-        // Metrics from Sprc CPN (S PRC − CPN%), not raw SPRICE
-        $sgpft = $metricPrice > 0 ? round((($metricPrice * $percentage - $ship - $lp) / $metricPrice) * 100, 2) : 0;
-        
         // Channel Ads% (TACOS) — same source as /ebay-tabulator-view Ads badge /
         // /all-marketplace-master eBay Ads% (not per-SKU ACOS).
         $adPercent = (float) app(ChannelMasterController::class)->getEbayMasterAdsPercent();
-        
-        // SPFT = SGPFT − Ads%
+
         $spft = round($sgpft - $adPercent, 2);
-        $sgroi = round($lp > 0 ? (($metricPrice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
+        $sgroi = round($lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
         $adDecimal = $adPercent / 100;
         $sroi = round(
-            $lp > 0 ? ((($metricPrice * $percentage - $ship - $lp) - ($metricPrice * $adDecimal)) / $lp) * 100 : 0,
+            $lp > 0 ? ((($spriceFloat * $percentage - $ship - $lp) - ($spriceFloat * $adDecimal)) / $lp) * 100 : 0,
             2
         );
-        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sprc_cpn' => $metricPrice, 'sgpft' => $sgpft, 'sgroi' => $sgroi, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
+        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'sgroi' => $sgroi, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
 
         // Lock + merge so concurrent Dil/CPN promo saves cannot wipe PEF_* / other keys.
         $saved = DB::transaction(function () use ($sku, $spriceFloat, $spft, $sroi, $sgroi, $sgpft) {

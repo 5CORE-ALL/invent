@@ -2,14 +2,20 @@
 
 namespace App\Services;
 
+use App\Models\Ebay2Metric;
+use App\Models\Ebay3Metric;
 use App\Models\EbayDataView;
 use App\Models\EbayMetric;
+use App\Models\EbayThreeDataView;
+use App\Models\EbayTwoDataView;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * eBay1 Sale Event sync via Sell Marketing API (item_price_markdown).
+ * eBay markdown sale-event sync via Sell Marketing API (item_price_markdown).
+ * eBay1, eBay2, eBay3 (Ebay1PromotionService::for($channel)).
  *
  * Push Prc step 2 — PRMT % column:
  * - PRMT% = 10 → Add SKU/listing to the existing 10% sale event (Seller Hub "Add items")
@@ -22,15 +28,89 @@ class Ebay1PromotionService
 {
     private const MARKETPLACE = 'EBAY_US';
 
-    private const DURATION_DAYS = 30;
+    /** Sale events: start now, run 7 days. */
+    private const DURATION_DAYS = 7;
 
     private const DV_PROMO_ID = 'PEF_PRMT_PROMOTION_ID';
 
     private const DV_PRMT_PCT = 'PEF_PRMT_PCT';
 
-    public function __construct(
-        private readonly EbayApiService $ebay
-    ) {}
+    private const DV_SALE_PCT = 'PEF_SALE_PCT';
+
+    /** @var object */
+    private $ebay;
+
+    private readonly string $channel;
+
+    private readonly string $label;
+
+    /** @var array<string, true> */
+    private array $detachedListingIds = [];
+
+    public function __construct(?EbayApiService $ebay = null, string $channel = 'ebay1')
+    {
+        $this->channel = strtolower(trim($channel)) ?: 'ebay1';
+        $this->label = match (true) {
+            $this->isEbay3() => 'eBay3',
+            $this->isEbay2() => 'eBay2',
+            default => 'eBay1',
+        };
+        $this->ebay = $ebay ?? match (true) {
+            $this->isEbay3() => app(EbayThreeApiService::class),
+            $this->isEbay2() => app(Ebay2ApiService::class),
+            default => app(EbayApiService::class),
+        };
+    }
+
+    public static function for(string $channel): self
+    {
+        $channel = strtolower(trim($channel)) ?: 'ebay1';
+
+        return new self(null, $channel);
+    }
+
+    private function isEbay2(): bool
+    {
+        return in_array($this->channel, ['ebay2', 'ebay2op'], true);
+    }
+
+    private function isEbay3(): bool
+    {
+        return $this->channel === 'ebay3';
+    }
+
+    private function findMetric(string $sku): ?object
+    {
+        if ($this->isEbay3()) {
+            return Ebay3Metric::query()->where('sku', $sku)->first()
+                ?: Ebay3Metric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+        }
+        if ($this->isEbay2()) {
+            return Ebay2Metric::query()->where('sku', $sku)->first()
+                ?: Ebay2Metric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+        }
+
+        return EbayMetric::query()->where('sku', $sku)->first()
+            ?: EbayMetric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+    }
+
+    private function findOrNewDataView(string $sku): Model
+    {
+        if ($this->isEbay3()) {
+            return EbayThreeDataView::query()->where('sku', $sku)->first()
+                ?: EbayThreeDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                ?: new EbayThreeDataView(['sku' => $sku]);
+        }
+        if ($this->isEbay2()) {
+            return EbayTwoDataView::query()->where('sku', $sku)->first()
+                ?: EbayTwoDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                ?: new EbayTwoDataView(['sku' => $sku]);
+        }
+
+        return EbayDataView::query()->where('sku', $sku)->first()
+            ?: EbayDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+            ?: new EbayDataView(['sku' => $sku]);
+    }
 
     /**
      * Sync PRMT % to an eBay1 markdown sale event for a SKU.
@@ -44,16 +124,13 @@ class Ebay1PromotionService
             return ['success' => false, 'message' => 'SKU required', 'promotion_id' => null];
         }
 
-        $metric = EbayMetric::query()->where('sku', $sku)->first()
-            ?: EbayMetric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+        $metric = $this->findMetric($sku);
         $itemId = $metric?->item_id ? trim((string) $metric->item_id) : '';
         if ($itemId === '') {
-            return ['success' => false, 'message' => 'eBay1 item_id not found for SKU', 'promotion_id' => null];
+            return ['success' => false, 'message' => $this->label.' item_id not found for SKU', 'promotion_id' => null];
         }
 
-        $dv = EbayDataView::query()->where('sku', $sku)->first()
-            ?: EbayDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
-            ?: new EbayDataView(['sku' => $sku]);
+        $dv = $this->findOrNewDataView($sku);
         $val = is_array($dv->value) ? $dv->value : [];
         $storedPromoId = isset($val[self::DV_PROMO_ID]) ? trim((string) $val[self::DV_PROMO_ID]) : '';
         $apiSku = trim((string) ($metric->sku ?: $sku));
@@ -61,7 +138,7 @@ class Ebay1PromotionService
         try {
             $token = $this->ebay->generateBearerToken();
         } catch (\Throwable $e) {
-            return ['success' => false, 'message' => 'eBay1 token: '.$e->getMessage(), 'promotion_id' => $storedPromoId ?: null];
+            return ['success' => false, 'message' => $this->label.' token: '.$e->getMessage(), 'promotion_id' => $storedPromoId ?: null];
         }
 
         if ($percent <= 0) {
@@ -99,34 +176,36 @@ class Ebay1PromotionService
         $existing = $this->findSaleForPercent($token, $pctInt, $itemId, $apiSku);
         if ($existing !== null) {
             $promoId = (string) $existing['promotion_id'];
-            if (! empty($existing['already_has_listing'])) {
+            if (! empty($existing['already_has_sku'])) {
                 $this->persistDv($dv, $val, $promoId, $pctInt);
 
                 return [
                     'success' => true,
-                    'message' => 'SKU already on '.$pctInt.'% sale event',
+                    'message' => 'Listing already on '.$pctInt.'% sale event',
                     'promotion_id' => $promoId,
                     'percent' => (float) $pctInt,
                 ];
             }
 
             $added = $this->addSkuToSale($token, $promoId, $apiSku, $itemId);
-            if (! $added['success']) {
+            if ($added['success']) {
+                $this->resumeIfNeeded($token, $promoId);
+                $this->persistDv($dv, $val, $promoId, $pctInt);
+
                 return [
-                    'success' => false,
-                    'message' => $added['message'] ?? 'Add item to sale failed',
+                    'success' => true,
+                    'message' => 'Added listing to '.$pctInt.'% sale event',
                     'promotion_id' => $promoId,
+                    'percent' => (float) $pctInt,
                 ];
             }
-            $this->resumeIfNeeded($token, $promoId);
-            $this->persistDv($dv, $val, $promoId, $pctInt);
-
-            return [
-                'success' => true,
-                'message' => 'Added SKU to '.$pctInt.'% sale event',
+            Log::warning('eBay1 add to existing sale failed — will create a new 7-day sale', [
+                'sku' => $sku,
                 'promotion_id' => $promoId,
-                'percent' => (float) $pctInt,
-            ];
+                'error' => $added['message'] ?? '',
+            ]);
+            // Do not abort: Hub rule-based / invalid-discount sales cannot accept Add items.
+            // Create a listing-based PEF sale at this % instead.
         }
 
         $imageUrl = $this->resolvePromotionImageUrl($itemId);
@@ -147,7 +226,7 @@ class Ebay1PromotionService
 
         return [
             'success' => true,
-            'message' => 'Created '.$pctInt.'% sale event and added SKU',
+            'message' => 'Created '.$pctInt.'% sale event and added listing',
             'promotion_id' => $newId,
             'percent' => (float) $pctInt,
         ];
@@ -166,7 +245,7 @@ class Ebay1PromotionService
         string $token,
         string $sku,
         string $itemId,
-        EbayDataView $dv,
+        Model $dv,
         array $val,
         string $storedPromoId,
         ?int $keepPercent = null,
@@ -190,7 +269,7 @@ class Ebay1PromotionService
             if (! in_array($status, ['RUNNING', 'SCHEDULED', 'PAUSED', 'DRAFT'], true)) {
                 continue;
             }
-            if (! $this->saleContainsListing($detail, $itemId, $sku)) {
+            if (! $this->saleContainsSku($detail, $sku, $itemId)) {
                 continue;
             }
             $pct = $this->salePercent($detail);
@@ -226,8 +305,8 @@ class Ebay1PromotionService
         return [
             'success' => true,
             'message' => $foundOn === 0
-                ? 'SKU not on any active eBay1 sale event'
-                : 'SKU removed from eBay1 sale event'.($foundOn > 1 ? 's' : ''),
+                ? ('SKU not on any active '.$this->label.' sale event')
+                : ('SKU removed from '.$this->label.' sale event'.($foundOn > 1 ? 's' : '')),
             'promotion_id' => $removedFrom[0] ?? null,
             'paused' => true,
         ];
@@ -237,7 +316,7 @@ class Ebay1PromotionService
      * Pick the seller's sale event at this PRMT%. Prefer the RUNNING campaign
      * with the most items (the Hub sale), not a tiny PEF-created duplicate.
      *
-     * @return array{promotion_id:string,already_has_listing:bool}|null
+     * @return array{promotion_id:string,already_has_sku:bool}|null
      */
     private function findSaleForPercent(string $token, int $pctInt, string $itemId, string $sku): ?array
     {
@@ -255,16 +334,23 @@ class Ebay1PromotionService
             if (! in_array($status, ['RUNNING', 'SCHEDULED', 'PAUSED'], true)) {
                 continue;
             }
+            $endAt = strtotime((string) ($detail['endDate'] ?? '')) ?: 0;
+            if ($endAt > 0 && $endAt <= time()) {
+                continue;
+            }
             if ($this->salePercent($detail) !== $pctInt) {
                 continue;
             }
+            if ($this->saleIsRuleBased($detail)) {
+                continue;
+            }
 
-            $has = $this->saleContainsListing($detail, $itemId, $sku);
-            $count = count($this->saleListingIds($detail)) + count($this->saleInventoryItems($detail));
+            $has = $this->saleContainsSku($detail, $sku, $itemId);
+            $count = count($this->saleInventoryItems($detail));
             $score = ($status === 'RUNNING' ? 100000 : ($status === 'SCHEDULED' ? 10000 : 0)) + $count;
             $entry = [
                 'promotion_id' => $promoId,
-                'already_has_listing' => $has,
+                'already_has_sku' => $has,
             ];
 
             if ($has) {
@@ -337,7 +423,7 @@ class Ebay1PromotionService
     private function getMarkdown(string $token, string $promoId): ?array
     {
         $resp = $this->http($token)
-            ->get('https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($promoId));
+            ->get('https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($this->markdownApiId($promoId)));
         if (! $resp->successful()) {
             return null;
         }
@@ -351,20 +437,31 @@ class Ebay1PromotionService
      */
     private function createMarkdown(string $token, string $itemId, string $sku, int $pctInt, string $imageUrl): array
     {
-        $payload = $this->markdownPayload($pctInt, $imageUrl, [$itemId], null, null, null);
+        $listingId = $this->markdownListingId($itemId);
+        $payload = $this->markdownPayload(
+            $pctInt,
+            $imageUrl,
+            $listingId !== '' ? [$listingId] : [],
+            null,
+            null,
+            null,
+            null
+        );
         $resp = $this->http($token)
             ->post('https://api.ebay.com/sell/marketing/v1/item_price_markdown', $payload);
 
         if (! $resp->successful() && $resp->status() !== 201) {
             Log::error('eBay1 sale event create failed', [
                 'sku' => $sku,
+                'item_id' => $itemId,
                 'status' => $resp->status(),
                 'body' => mb_substr($resp->body(), 0, 800),
             ]);
+            $msg = $this->ebayErrorMessage($resp);
 
             return [
                 'success' => false,
-                'message' => 'Create failed: '.$this->ebayErrorMessage($resp),
+                'message' => 'Create failed: '.$msg,
                 'promotion_id' => null,
             ];
         }
@@ -398,7 +495,7 @@ class Ebay1PromotionService
         if ($detail === null) {
             return ['success' => false, 'message' => 'Sale event not found: '.$promoId];
         }
-        if ($this->saleContainsListing($detail, $itemId, $sku)) {
+        if ($this->saleContainsSku($detail, $sku, $itemId)) {
             return ['success' => true, 'message' => 'already present'];
         }
 
@@ -407,47 +504,40 @@ class Ebay1PromotionService
             return ['success' => false, 'message' => 'Sale event has no discount %'];
         }
 
-        $usesItems = $this->saleInventoryItems($detail) !== [];
         $listingIds = $this->saleListingIds($detail);
         $items = $this->saleInventoryItems($detail);
+        $lid = $this->markdownListingId($itemId);
 
-        if ($usesItems) {
-            $items[] = $this->inventoryItem($sku);
-            $payload = $this->saleWritePayload($detail, [], $items);
-        } else {
-            if ($itemId !== '') {
-                $listingIds[] = $itemId;
-            }
-            $listingIds = array_values(array_unique(array_filter(array_map('strval', $listingIds))));
-            $payload = $this->saleWritePayload($detail, $listingIds, null);
+        if ($this->saleIsRuleBased($detail) && $listingIds === [] && $items === []) {
+            return ['success' => false, 'message' => 'Sale is rule-based (cannot add a single SKU)'];
+        }
+        if ($lid === '') {
+            return ['success' => false, 'message' => 'Listing id required to add variation listing'];
+        }
+        if (! in_array($lid, array_map(fn ($id) => $this->markdownListingId((string) $id), $listingIds), true)) {
+            $listingIds[] = $lid;
         }
 
-        $resp = $this->http($token)
-            ->put('https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($promoId), $payload);
+        $payload = $this->saleWritePayload($detail, $listingIds, null);
+
+        $wasRunning = strtoupper((string) ($detail['promotionStatus'] ?? '')) === 'RUNNING';
+        $resp = $this->putMarkdown($token, $promoId, $payload);
 
         if ($resp->successful() || $resp->status() === 204) {
             return ['success' => true, 'message' => 'add item ok'];
         }
 
-        // Retry the other inventory shape if Hub stored the opposite type
-        if ($usesItems && $itemId !== '') {
-            $listingIds = $this->saleListingIds($detail);
-            $listingIds[] = $itemId;
-            $payload = $this->saleWritePayload($detail, array_values(array_unique($listingIds)), null);
-            $resp = $this->http($token)
-                ->put('https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($promoId), $payload);
+        if ($wasRunning) {
+            $this->pauseSale($token, $promoId);
+            $pausedDetail = $this->getMarkdown($token, $promoId) ?? $detail;
+            $payload = $this->saleWritePayload($pausedDetail, $listingIds, null);
+            $resp = $this->putMarkdown($token, $promoId, $payload);
             if ($resp->successful() || $resp->status() === 204) {
+                $this->resumeIfNeeded($token, $promoId);
+
                 return ['success' => true, 'message' => 'add item ok'];
             }
-        } elseif (! $usesItems && $sku !== '') {
-            $items = $this->saleInventoryItems($detail);
-            $items[] = $this->inventoryItem($sku);
-            $payload = $this->saleWritePayload($detail, [], $items);
-            $resp = $this->http($token)
-                ->put('https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($promoId), $payload);
-            if ($resp->successful() || $resp->status() === 204) {
-                return ['success' => true, 'message' => 'add item ok'];
-            }
+            $this->resumeIfNeeded($token, $promoId);
         }
 
         Log::error('eBay1 sale event add item failed', [
@@ -457,8 +547,12 @@ class Ebay1PromotionService
             'status' => $resp->status(),
             'body' => mb_substr($resp->body(), 0, 500),
         ]);
+        $msg = $this->ebayErrorMessage($resp);
+        if ($this->isVariationMarkdownError($resp)) {
+            $msg = 'eBay rejected variation SKU '.$sku.'. '.$msg;
+        }
 
-        return ['success' => false, 'message' => 'Add item failed: '.$this->ebayErrorMessage($resp)];
+        return ['success' => false, 'message' => 'Add item failed: '.$msg];
     }
 
     /**
@@ -521,8 +615,7 @@ class Ebay1PromotionService
         }
 
         $payload = $this->saleWritePayload($detail, $writeIds, $writeItems);
-        $resp = $this->http($token)
-            ->put('https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($promoId), $payload);
+        $resp = $this->putMarkdown($token, $promoId, $payload);
 
         if ($resp->successful() || $resp->status() === 204) {
             if ($status === 'RUNNING') {
@@ -551,13 +644,18 @@ class Ebay1PromotionService
             $desc = (string) ($detail['name'] ?? $this->campaignNameForPercent($pct));
         }
 
+        [$start, $end] = $this->saleDateWindow($detail);
+        $status = strtoupper((string) ($detail['promotionStatus'] ?? ''));
+
         $payload = [
             'name' => (string) ($detail['name'] ?? $this->campaignNameForPercent($pct)),
             'description' => $this->clipDescription($desc),
             'marketplaceId' => (string) ($detail['marketplaceId'] ?? self::MARKETPLACE),
-            'startDate' => (string) ($detail['startDate'] ?? now('UTC')->subMinute()->format('Y-m-d\TH:i:s.000\Z')),
-            'endDate' => (string) ($detail['endDate'] ?? now('UTC')->addDays(self::DURATION_DAYS)->format('Y-m-d\TH:i:s.000\Z')),
-            'promotionStatus' => 'SCHEDULED',
+            'startDate' => $start,
+            'endDate' => $end,
+            // RUNNING: only inventory/endDate may change. Forcing SCHEDULED without
+            // the existing discountId makes eBay return "The discount ID is invalid."
+            'promotionStatus' => $status === 'RUNNING' ? 'RUNNING' : 'SCHEDULED',
         ];
 
         foreach (['promotionImageUrl', 'applyFreeShipping', 'autoSelectFutureInventory', 'blockPriceIncreaseInItemRevision', 'priority'] as $key) {
@@ -578,17 +676,85 @@ class Ebay1PromotionService
         if ($inventoryItems !== null) {
             $criterion['inventoryItems'] = array_values($inventoryItems);
         } else {
-            $criterion['listingIds'] = array_values($listingIds);
+            $criterion['listingIds'] = array_values(array_map(
+                fn ($id) => $this->markdownListingId((string) $id),
+                $listingIds
+            ));
         }
 
-        $payload['selectedInventoryDiscounts'] = [
-            [
-                'discountBenefit' => $benefit,
-                'inventoryCriterion' => $criterion,
-            ],
+        $discount = [
+            'discountBenefit' => $benefit,
+            'inventoryCriterion' => $criterion,
         ];
+        $discountId = trim((string) ($first['discountId'] ?? $first['discount_id'] ?? ''));
+        if ($discountId !== '') {
+            $discount['discountId'] = $discountId;
+        }
+        if (array_key_exists('ruleOrder', $first) && $first['ruleOrder'] !== null && $first['ruleOrder'] !== '') {
+            $discount['ruleOrder'] = $first['ruleOrder'];
+        }
+
+        $payload['selectedInventoryDiscounts'] = [$discount];
 
         return $payload;
+    }
+
+    /**
+     * Hub "entire store / category" markdowns use INVENTORY_BY_RULE.
+     * Those discounts cannot take listingIds ("The discount ID is invalid").
+     *
+     * @param  array<string, mixed>  $detail
+     */
+    private function saleIsRuleBased(array $detail): bool
+    {
+        $discounts = $detail['selectedInventoryDiscounts'] ?? [];
+        if (! is_array($discounts)) {
+            return false;
+        }
+        foreach ($discounts as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $crit = is_array($row['inventoryCriterion'] ?? null) ? $row['inventoryCriterion'] : [];
+            $type = strtoupper((string) ($crit['inventoryCriterionType'] ?? ''));
+            if ($type === 'INVENTORY_BY_RULE' || ! empty($crit['ruleCriteria'])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function markdownListingId(string $itemId): string
+    {
+        $id = trim($itemId);
+        if (preg_match('/^v1\\|([^|]+)/', $id, $m)) {
+            return trim((string) $m[1]);
+        }
+
+        return $id;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function putMarkdown(string $token, string $promoId, array $payload): Response
+    {
+        return $this->http($token)
+            ->put(
+                'https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($this->markdownApiId($promoId)),
+                $payload
+            );
+    }
+
+    private function markdownApiId(string $promoId): string
+    {
+        $id = trim($promoId);
+        if ($id !== '' && ! str_contains($id, '@')) {
+            return $id.'@'.self::MARKETPLACE;
+        }
+
+        return $id;
     }
 
     /**
@@ -604,6 +770,7 @@ class Ebay1PromotionService
 
     /**
      * @param  list<string>  $listingIds
+     * @param  list<array<string, mixed>>|null  $inventoryItems
      * @param  array<string, mixed>|null  $existingDetail
      * @return array<string, mixed>
      */
@@ -613,14 +780,22 @@ class Ebay1PromotionService
         array $listingIds,
         ?string $startDate,
         ?string $endDate,
-        ?array $existingDetail
+        ?array $existingDetail,
+        ?array $inventoryItems = null
     ): array {
-        $start = ($startDate !== null && $startDate !== '')
-            ? $startDate
-            : now('UTC')->subMinute()->format('Y-m-d\TH:i:s.000\Z');
-        $end = ($endDate !== null && $endDate !== '')
-            ? $endDate
-            : now('UTC')->addDays(self::DURATION_DAYS)->format('Y-m-d\TH:i:s.000\Z');
+        [$start, $end] = $this->saleDateWindow($existingDetail);
+
+        $criterion = [
+            'inventoryCriterionType' => 'INVENTORY_BY_VALUE',
+        ];
+        if ($inventoryItems !== null && $inventoryItems !== []) {
+            $criterion['inventoryItems'] = array_values($inventoryItems);
+        } else {
+            $criterion['listingIds'] = array_values(array_map(
+                fn ($id) => $this->markdownListingId((string) $id),
+                $listingIds
+            ));
+        }
 
         $payload = [
             'name' => $this->campaignNameForPercent($pctInt),
@@ -636,10 +811,7 @@ class Ebay1PromotionService
                     'discountBenefit' => [
                         'percentageOffItem' => (string) $pctInt,
                     ],
-                    'inventoryCriterion' => [
-                        'inventoryCriterionType' => 'INVENTORY_BY_VALUE',
-                        'listingIds' => array_values($listingIds),
-                    ],
+                    'inventoryCriterion' => $criterion,
                 ],
             ],
         ];
@@ -745,43 +917,81 @@ class Ebay1PromotionService
     }
 
     /**
+     * Listing is on the sale via inventory SKU or shared variation listing ID.
+     *
      * @param  array<string, mixed>  $detail
      */
-    private function saleContainsListing(array $detail, string $itemId, string $sku): bool
+    private function saleContainsSku(array $detail, string $sku, string $itemId = ''): bool
     {
-        if ($itemId !== '' && in_array($itemId, $this->saleListingIds($detail), true)) {
-            return true;
-        }
-        if ($sku === '') {
-            return false;
-        }
         $want = strtoupper(trim($sku));
-        $discounts = $detail['selectedInventoryDiscounts'] ?? [];
-        if (! is_array($discounts)) {
-            return false;
-        }
-        foreach ($discounts as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $crit = is_array($row['inventoryCriterion'] ?? null) ? $row['inventoryCriterion'] : [];
-            foreach (($crit['inventoryItems'] ?? []) as $it) {
-                if (! is_array($it)) {
-                    continue;
-                }
+        if ($want !== '') {
+            foreach ($this->saleInventoryItems($detail) as $it) {
                 $id = strtoupper(trim((string) ($it['inventoryReferenceId'] ?? '')));
                 if ($id !== '' && $id === $want) {
                     return true;
                 }
             }
         }
+        $lid = $this->markdownListingId($itemId);
+        if ($lid === '') {
+            return false;
+        }
+        foreach ($this->saleListingIds($detail) as $existing) {
+            if ($this->markdownListingId((string) $existing) === $lid) {
+                return true;
+            }
+        }
 
         return false;
     }
 
+    /**
+     * Pull a variation listing off listing-ID sales so leftover children (PRMT 0) are not discounted.
+     */
+    private function detachListingIdFromSales(string $token, string $itemId): void
+    {
+        $itemId = $this->markdownListingId($itemId);
+        if ($itemId === '' || isset($this->detachedListingIds[$itemId])) {
+            return;
+        }
+        $this->detachedListingIds[$itemId] = true;
+        foreach ($this->listMarkdownIds($token) as $promoId) {
+            $detail = $this->getMarkdown($token, $promoId);
+            if ($detail === null) {
+                continue;
+            }
+            $status = (string) ($detail['promotionStatus'] ?? '');
+            if (! in_array($status, ['RUNNING', 'SCHEDULED', 'PAUSED', 'DRAFT'], true)) {
+                continue;
+            }
+            $onListing = false;
+            foreach ($this->saleListingIds($detail) as $lid) {
+                if ($this->markdownListingId((string) $lid) === $itemId) {
+                    $onListing = true;
+                    break;
+                }
+            }
+            if (! $onListing) {
+                continue;
+            }
+            $this->removeListingFromSale($token, $promoId, $itemId, '', $detail);
+        }
+    }
+
+    private function isVariationMarkdownError(Response $resp): bool
+    {
+        $body = strtolower($this->ebayErrorMessage($resp).' '.$resp->body());
+
+        return str_contains($body, 'listing with variations')
+            || str_contains($body, 'parent, or main, sku')
+            || str_contains($body, 'variation sku')
+            || str_contains($body, '"errorid":38275')
+            || str_contains($body, 'errorid":38275');
+    }
+
     private function pauseSale(string $token, string $promoId): bool
     {
-        $url = 'https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($promoId).'/pause';
+        $url = 'https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($this->markdownApiId($promoId)).'/pause';
         $resp = $this->http($token)->post($url);
 
         return $resp->successful() || in_array($resp->status(), [204, 400, 409], true);
@@ -789,7 +999,7 @@ class Ebay1PromotionService
 
     private function resumeIfNeeded(string $token, string $promoId): void
     {
-        $url = 'https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($promoId).'/resume';
+        $url = 'https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($this->markdownApiId($promoId)).'/resume';
         try {
             $this->http($token)->timeout(30)->post($url);
         } catch (\Throwable $e) {
@@ -827,7 +1037,7 @@ class Ebay1PromotionService
     /**
      * @param  array<string, mixed>  $val
      */
-    private function persistDv(EbayDataView $dv, array $val, string $promoId, int|float $pct): void
+    private function persistDv(Model $dv, array $val, string $promoId, int|float $pct): void
     {
         if ($promoId !== '') {
             $val[self::DV_PROMO_ID] = $promoId;
@@ -835,6 +1045,7 @@ class Ebay1PromotionService
             unset($val[self::DV_PROMO_ID]);
         }
         $val[self::DV_PRMT_PCT] = (float) $pct;
+        $val[self::DV_SALE_PCT] = (float) $pct;
         if (! $dv->exists) {
             $dv->sku = $dv->sku ?: null;
         }
@@ -865,6 +1076,27 @@ class Ebay1PromotionService
         }
 
         return '';
+    }
+
+    /**
+     * Start = now (eBay needs a start slightly in the future). End = 7 days later.
+     * Running sales keep their original start (eBay rejects start changes).
+     *
+     * @param  array<string, mixed>|null  $existingDetail
+     * @return array{0:string,1:string}
+     */
+    private function saleDateWindow(?array $existingDetail = null): array
+    {
+        $start = now('UTC')->addSeconds(30)->format('Y-m-d\TH:i:s.000\Z');
+        $end = now('UTC')->addDays(self::DURATION_DAYS)->format('Y-m-d\TH:i:s.000\Z');
+
+        $status = strtoupper((string) ($existingDetail['promotionStatus'] ?? ''));
+        $existingStart = trim((string) ($existingDetail['startDate'] ?? ''));
+        if ($status === 'RUNNING' && $existingStart !== '') {
+            $start = $existingStart;
+        }
+
+        return [$start, $end];
     }
 
     private function clipDescription(string $text): string

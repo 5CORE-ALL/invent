@@ -4843,7 +4843,7 @@
                 'image_path', 'E Stock', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
                 'lmp_price', 'STANDARD_PRICE',
-                'prmt_pct', 'cpn_pct', 'dsc', 'appr', 'push_prc', 'sprc_cpn',
+                'prmt_pct', 'push_prmt', 'cpn_pct', 'push_cpn', 'dsc', 'appr', 'push_prc', 'sprc_cpn',
                 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI',
                 'AD_Spend_L30'
             ];

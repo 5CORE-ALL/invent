@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\RunChannelPushCpnJob;
 use App\Jobs\RunChannelPushPrcJob;
+use App\Jobs\RunChannelPushPrmtJob;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Services\ChannelPromoPricingService;
+use App\Services\Support\ChannelPushCpnJobStore;
 use App\Services\Support\ChannelPushPrcJobStore;
+use App\Services\Support\ChannelPushPrmtJobStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +19,12 @@ class ChannelPromoPricingController extends Controller
 {
     /** Channels that support background Push Prc queue (Std listing + sale + coupon). */
     private const PUSH_QUEUE_CHANNELS = ['ebay1', 'ebay2', 'ebay2op', 'ebay3'];
+
+    /** Channels that support background Push PRMT % sale-event queue (chunked). */
+    private const PUSH_PRMT_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
+
+    /** Channels that support background Push CPN % coded-coupon queue (chunked). */
+    private const PUSH_CPN_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
 
     public function __construct(
         private readonly ChannelPromoPricingService $promo
@@ -148,6 +158,373 @@ class ChannelPromoPricingController extends Controller
         ]));
     }
 
+    /**
+     * Queue Push PRMT % jobs in chunks (background markdown sale events).
+     */
+    public function queuePushPrmt(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::PUSH_PRMT_QUEUE_CHANNELS, true) || ! $this->promo->isSupported($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel for Push PRMT% queue'], 422);
+        }
+
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'No items to push'], 400);
+        }
+
+        $tasks = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $tasks[] = [
+                'sku' => $item['sku'] ?? null,
+                'prmt' => $item['prmt'] ?? $item['prmt_pct'] ?? $item['percent'] ?? 0,
+            ];
+        }
+
+        $store = ChannelPushPrmtJobStore::for($channel);
+        $result = $store->createOrAppend($tasks);
+        $state = $result['state'];
+        $mode = $result['mode'];
+        if ((int) ($state['total'] ?? 0) === 0) {
+            return response()->json(['success' => false, 'message' => 'No valid Push PRMT% items (need SKU)'], 400);
+        }
+
+        $this->releaseUniquePrmtJobLock($channel);
+        $spawned = $this->spawnPushPrmtWorker($channel);
+        if (! $spawned) {
+            try {
+                RunChannelPushPrmtJob::dispatch($channel);
+            } catch (\Throwable $e) {
+                Log::error('Channel Push PRMT% queue dispatch failed', [
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $store->update(function (array $s) use ($spawned, $mode) {
+            $s['worker_spawned_at'] = now()->toDateTimeString();
+            $s['last_message'] = $mode === 'append'
+                ? ($spawned
+                    ? ('Appended — worker continuing ('.$s['total'].' total)…')
+                    : ('Appended — waiting for worker ('.$s['total'].' total)'))
+                : ($spawned
+                    ? ('Worker started — pushing PRMT% for '.$s['total'].' SKU(s) in chunks of 10…')
+                    : ('Queued — waiting for worker (run: php artisan channel:push-prmt-run '.$s['channel'].' --sync)'));
+
+            return $s;
+        });
+
+        $api = $store->toApiResponse($store->load());
+
+        return response()->json(array_merge($api, [
+            'success' => true,
+            'mode' => $mode,
+            'worker_spawned' => $spawned,
+            'chunk_size' => 10,
+            'message' => $mode === 'append'
+                ? ('Added to running Push PRMT% queue ('.$api['total'].' total).')
+                : ('Push PRMT% started in background ('.$api['total'].' SKU(s), chunks of 10).'),
+        ]));
+    }
+
+    public function pushPrmtJobStatus(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::PUSH_PRMT_QUEUE_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $store = ChannelPushPrmtJobStore::for($channel);
+        $state = $store->load();
+
+        if ($store->isActive($state) && $store->isStale($state, 180) && ! $this->prmtRunnerLockHeld($channel)) {
+            $this->releaseUniquePrmtJobLock($channel);
+            $kicked = $this->spawnPushPrmtWorker($channel);
+            $store->update(function (array $s) use ($kicked) {
+                $s['last_message'] = $kicked
+                    ? 'Worker re-started after stall — continuing Push PRMT%…'
+                    : 'Push PRMT% stalled — could not start worker.';
+                $s['worker_spawned_at'] = now()->toDateTimeString();
+
+                return $s;
+            });
+            $state = $store->load();
+        }
+
+        return response()->json($store->toApiResponse($state));
+    }
+
+    public function cancelPushPrmt(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::PUSH_PRMT_QUEUE_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $store = ChannelPushPrmtJobStore::for($channel);
+        $job = $store->forceStop('Cancelled by user.');
+        $this->releaseUniquePrmtJobLock($channel);
+
+        return response()->json(array_merge($store->toApiResponse($job), [
+            'success' => true,
+            'message' => 'Push PRMT% cancelled.',
+        ]));
+    }
+
+    /**
+     * Queue Push CPN % jobs in chunks (background public coded coupons).
+     */
+    public function queuePushCpn(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::PUSH_CPN_QUEUE_CHANNELS, true) || ! $this->promo->isSupported($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel for Push CPN% queue'], 422);
+        }
+
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'No items to push'], 400);
+        }
+
+        $tasks = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $tasks[] = [
+                'sku' => $item['sku'] ?? null,
+                'cpn' => $item['cpn'] ?? $item['cpn_pct'] ?? $item['percent'] ?? 0,
+            ];
+        }
+
+        $store = ChannelPushCpnJobStore::for($channel);
+        $result = $store->createOrAppend($tasks);
+        $state = $result['state'];
+        $mode = $result['mode'];
+        if ((int) ($state['total'] ?? 0) === 0) {
+            return response()->json(['success' => false, 'message' => 'No valid Push CPN% items (need SKU)'], 400);
+        }
+
+        $this->releaseUniqueCpnJobLock($channel);
+        $spawned = $this->spawnPushCpnWorker($channel);
+        if (! $spawned) {
+            try {
+                RunChannelPushCpnJob::dispatch($channel);
+            } catch (\Throwable $e) {
+                Log::error('Channel Push CPN% queue dispatch failed', [
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $store->update(function (array $s) use ($spawned, $mode) {
+            $s['worker_spawned_at'] = now()->toDateTimeString();
+            $s['last_message'] = $mode === 'append'
+                ? ($spawned
+                    ? ('Appended — worker continuing ('.$s['total'].' total)…')
+                    : ('Appended — waiting for worker ('.$s['total'].' total)'))
+                : ($spawned
+                    ? ('Worker started — pushing CPN% for '.$s['total'].' SKU(s) in chunks of 10…')
+                    : ('Queued — waiting for worker (run: php artisan channel:push-cpn-run '.$s['channel'].' --sync)'));
+
+            return $s;
+        });
+
+        $api = $store->toApiResponse($store->load());
+
+        return response()->json(array_merge($api, [
+            'success' => true,
+            'mode' => $mode,
+            'worker_spawned' => $spawned,
+            'chunk_size' => 10,
+            'message' => $mode === 'append'
+                ? ('Added to running Push CPN% queue ('.$api['total'].' total).')
+                : ('Push CPN% started in background ('.$api['total'].' SKU(s), chunks of 10).'),
+        ]));
+    }
+
+    public function pushCpnJobStatus(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::PUSH_CPN_QUEUE_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $store = ChannelPushCpnJobStore::for($channel);
+        $state = $store->load();
+
+        if ($store->isActive($state) && $store->isStale($state, 180) && ! $this->cpnRunnerLockHeld($channel)) {
+            $this->releaseUniqueCpnJobLock($channel);
+            $kicked = $this->spawnPushCpnWorker($channel);
+            $store->update(function (array $s) use ($kicked) {
+                $s['last_message'] = $kicked
+                    ? 'Worker re-started after stall — continuing Push CPN%…'
+                    : 'Push CPN% stalled — could not start worker.';
+                $s['worker_spawned_at'] = now()->toDateTimeString();
+
+                return $s;
+            });
+            $state = $store->load();
+        }
+
+        return response()->json($store->toApiResponse($state));
+    }
+
+    public function cancelPushCpn(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::PUSH_CPN_QUEUE_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $store = ChannelPushCpnJobStore::for($channel);
+        $job = $store->forceStop('Cancelled by user.');
+        $this->releaseUniqueCpnJobLock($channel);
+
+        return response()->json(array_merge($store->toApiResponse($job), [
+            'success' => true,
+            'message' => 'Push CPN% cancelled.',
+        ]));
+    }
+
+    private function spawnPushCpnWorker(string $channel): bool
+    {
+        try {
+            if ($this->cpnRunnerLockHeld($channel)) {
+                return true;
+            }
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/'.$channel.'-push-cpn.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' channel:push-cpn-run '.escapeshellarg($channel).' --sync', 'r'));
+
+                return true;
+            }
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' channel:push-cpn-run '.escapeshellarg($channel)
+                .' --sync >> '.escapeshellarg($log).' 2>&1 &';
+            exec($cmd);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Channel Push CPN% worker spawn failed', [
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    private function cpnRunnerLockHeld(string $channel): bool
+    {
+        $lockPath = storage_path('app/'.$channel.'-push-cpn/runner.lock');
+        if (! is_file($lockPath)) {
+            return false;
+        }
+        $h = @fopen($lockPath, 'c+');
+        if (! $h) {
+            return false;
+        }
+        $got = flock($h, LOCK_EX | LOCK_NB);
+        if ($got) {
+            flock($h, LOCK_UN);
+        }
+        fclose($h);
+
+        return ! $got;
+    }
+
+    private function releaseUniqueCpnJobLock(string $channel): void
+    {
+        try {
+            \Illuminate\Support\Facades\Cache::lock(
+                'laravel_unique_job:'.RunChannelPushCpnJob::class.':'.$channel.'-push-cpn'
+            )->forceRelease();
+        } catch (\Throwable) {
+            // ignore
+        }
+    }
+
+    private function spawnPushPrmtWorker(string $channel): bool
+    {
+        try {
+            if ($this->prmtRunnerLockHeld($channel)) {
+                return true;
+            }
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/'.$channel.'-push-prmt.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' channel:push-prmt-run '.escapeshellarg($channel).' --sync', 'r'));
+
+                return true;
+            }
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' channel:push-prmt-run '.escapeshellarg($channel)
+                .' --sync >> '.escapeshellarg($log).' 2>&1 &';
+            // pclose(popen) returns immediately; exec() can wait for the worker on macOS/XAMPP.
+            pclose(popen($cmd, 'r'));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Channel Push PRMT% worker spawn failed', [
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    private function prmtRunnerLockHeld(string $channel): bool
+    {
+        $lockPath = storage_path('app/'.$channel.'-push-prmt/runner.lock');
+        if (! is_file($lockPath)) {
+            return false;
+        }
+        $h = @fopen($lockPath, 'c+');
+        if (! $h) {
+            return false;
+        }
+        $got = flock($h, LOCK_EX | LOCK_NB);
+        if ($got) {
+            flock($h, LOCK_UN);
+        }
+        fclose($h);
+
+        return ! $got;
+    }
+
+    private function releaseUniquePrmtJobLock(string $channel): void
+    {
+        try {
+            \Illuminate\Support\Facades\Cache::lock(
+                'laravel_unique_job:'.RunChannelPushPrmtJob::class.':'.$channel.'-push-prmt'
+            )->forceRelease();
+        } catch (\Throwable) {
+            // ignore
+        }
+    }
+
     private function spawnPushPrcWorker(string $channel): bool
     {
         try {
@@ -227,7 +604,7 @@ class ChannelPromoPricingController extends Controller
         }
 
         $fields = [];
-        foreach (['prmt_pct', 'cpn_pct', 'dsc_pct', 'dsc', 'appr', 'push_prc_status', 'push_prc_value'] as $key) {
+        foreach (['prmt_pct', 'cpn_pct', 'dsc_pct', 'dsc', 'appr', 'push_prc_status', 'push_prc_value', 'push_std_prc_status', 'push_std_prc_value'] as $key) {
             if ($request->exists($key)) {
                 $fields[$key] = $request->input($key);
             }
@@ -238,6 +615,13 @@ class ChannelPromoPricingController extends Controller
                 $fields['push_prc_value'] = $request->input('push_prc_value');
             }
             $fields['push_prc_pushed_at'] = now();
+        }
+        if ($request->boolean('record_push_std_prc')) {
+            $fields['push_std_prc_status'] = 'pushed';
+            if ($request->exists('push_std_prc_value')) {
+                $fields['push_std_prc_value'] = $request->input('push_std_prc_value');
+            }
+            $fields['push_std_prc_pushed_at'] = now();
         }
 
         if ($fields === []) {
@@ -263,6 +647,10 @@ class ChannelPromoPricingController extends Controller
                 'PUSH_PRC_STATUS' => $saved['PUSH_PRC_STATUS'] ?? null,
                 'PUSH_PRC_VALUE' => isset($saved['PUSH_PRC_VALUE']) && is_numeric($saved['PUSH_PRC_VALUE'])
                     ? round((float) $saved['PUSH_PRC_VALUE'], 2)
+                    : null,
+                'PUSH_STD_PRC_STATUS' => $saved['PUSH_STD_PRC_STATUS'] ?? null,
+                'PUSH_STD_PRC_VALUE' => isset($saved['PUSH_STD_PRC_VALUE']) && is_numeric($saved['PUSH_STD_PRC_VALUE'])
+                    ? round((float) $saved['PUSH_STD_PRC_VALUE'], 2)
                     : null,
                 '_prmt_pct_applied' => is_numeric($prmt) ? (float) $prmt : 0,
                 '_cpn_pct_applied' => is_numeric($cpn) ? (float) $cpn : 0,
