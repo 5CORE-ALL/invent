@@ -1568,19 +1568,21 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Wayfair Marketplace Manager
+        // Wayfair Marketplace Manager — Shopify qty → active listings.
+        // 30 min cadence; unique lock + withoutOverlapping skip the next tick if the
+        // previous run is still going (do not dispatch a second overlapping job).
         $schedule->job(new \App\Jobs\SyncInventoryToWayfair)
-            ->everyFourHours()
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('wayfair-sync-inventory')
-            ->withoutOverlapping(200)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('wayfair'))
-            ->everyFifteenMinutes()
+            ->cron('15,45 * * * *')
             ->timezone('Asia/Kolkata')
             ->name('wayfair-sync-mismatch-inventory')
-            ->withoutOverlapping(12)
+            ->withoutOverlapping(14)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('wayfair', '2026-07-07', true))
@@ -2005,6 +2007,14 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('tiktok2-sync-link-map')
             ->withoutOverlapping(55)
+            ->appendOutputTo($log);
+
+        // Backup: queue Shopify imports for unpushed MM orders even if fetch jobs are stuck.
+        $schedule->command('mm:dispatch-unpushed-shopify')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('mm-dispatch-unpushed-shopify')
+            ->withoutOverlapping(14)
             ->appendOutputTo($log);
 
         // $schedule->command('shopify:retry-pending-orders')
@@ -2472,11 +2482,12 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
       
+        // Must run inline in schedule:run — runInBackground() would sit on the 1.3M+ default
+        // queue and never start mm-* workers, so marketplace orders never reach Shopify.
         $schedule->command('queue:ensure-watchdog-daemon')
             ->everyMinute()
             ->name('queue-ensure-watchdog-daemon')
             ->withoutOverlapping(55)
-            ->runInBackground()
             ->appendOutputTo($log);
 
         // After optimize:clear, file-cache shard dirs can vanish; recreate so sidebar badges don't 500.

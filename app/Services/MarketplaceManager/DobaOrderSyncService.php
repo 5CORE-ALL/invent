@@ -117,19 +117,21 @@ class DobaOrderSyncService
                 $q->whereNull('import_status')
                     ->orWhereNotIn('import_status', ['queued', 'imported']);
             })
-            ->orderBy('id');
+            ->when(Schema::hasColumn('doba_daily_data', 'order_time'), function ($q) {
+                $q->where('order_time', '>=', now()->subDays(14));
+            })
+            ->orderByDesc('id')
+            ->limit(50);
 
         $dispatched = 0;
-        $query->chunkById(50, function ($rows) use (&$dispatched, $paidOnly) {
-            foreach ($rows as $row) {
-                if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('doba', $row)) {
-                    continue;
-                }
-                $row->update(['import_status' => 'queued']);
-                ImportDobaOrderToShopify::dispatch((int) $row->id);
-                $dispatched++;
+        foreach ($query->get() as $row) {
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('doba', $row)) {
+                continue;
             }
-        });
+            $row->update(['import_status' => 'queued']);
+            ImportDobaOrderToShopify::dispatch((int) $row->id);
+            $dispatched++;
+        }
 
         return $dispatched;
     }

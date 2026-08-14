@@ -17,9 +17,11 @@ class SyncInventoryToWayfair implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 1;
 
-    public int $timeout = 1700;
+    public int $timeout = 1500;
 
-    public int $uniqueFor = 1800;
+    public int $uniqueFor = 1740;
+
+    public bool $failOnTimeout = false;
 
     public function __construct()
     {

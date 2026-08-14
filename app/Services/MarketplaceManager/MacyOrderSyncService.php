@@ -118,19 +118,21 @@ class MacyOrderSyncService
                 $q->whereNull('import_status')
                     ->orWhereNotIn('import_status', ['queued', 'imported']);
             })
-            ->orderBy('id');
+            ->when(Schema::hasColumn('mirakl_daily_data', 'order_created_at'), function ($q) {
+                $q->where('order_created_at', '>=', now()->subDays(14));
+            })
+            ->orderByDesc('id')
+            ->limit(50);
 
         $dispatched = 0;
-        $query->chunkById(50, function ($rows) use (&$dispatched, $paidOnly) {
-            foreach ($rows as $row) {
-                if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('macy', $row)) {
-                    continue;
-                }
-                $row->update(['import_status' => 'queued']);
-                ImportMacyOrderToShopify::dispatch((int) $row->id);
-                $dispatched++;
+        foreach ($query->get() as $row) {
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('macy', $row)) {
+                continue;
             }
-        });
+            $row->update(['import_status' => 'queued']);
+            ImportMacyOrderToShopify::dispatch((int) $row->id);
+            $dispatched++;
+        }
 
         return $dispatched;
     }

@@ -1388,23 +1388,150 @@ XML;
     }
 
     /**
+     * Push inventory to Wayfair via GraphQL inventory.save (differential feed).
+     *
      * @param  array<int, array{sku: string, quantity: int}>  $items
-     * @return array{pushed: int, failed: int, message: string}
+     * @return array{pushed: int, failed: int, message: string, skus: list<string>}
      */
     public function updateItemInventoryBulk(array $items): array
     {
         if ($items === []) {
-            return ['pushed' => 0, 'failed' => 0, 'message' => 'No items to push.'];
+            return ['pushed' => 0, 'failed' => 0, 'message' => 'No items to push.', 'skus' => []];
         }
 
-        Log::info('WayfairApiService: updateItemInventoryBulk stub — local stock persisted only', [
-            'count' => count($items),
+        try {
+            $token = $this->authenticate();
+        } catch (\Throwable $e) {
+            Log::error('WayfairApiService: inventory push auth failed', ['error' => $e->getMessage()]);
+
+            return [
+                'pushed' => 0,
+                'failed' => count($items),
+                'message' => 'Wayfair auth failed: '.$e->getMessage(),
+                'skus' => [],
+            ];
+        }
+
+        $supplierId = (int) config('services.wayfair.supplier_id', 2603);
+        $mutations = [
+            <<<'GRAPHQL'
+            mutation SaveInventory($inventory: [inventoryInput!]!) {
+              inventory {
+                save(inventory: $inventory, feed_kind: DIFFERENTIAL) {
+                  handle
+                  submittedAt
+                  errors { key message }
+                }
+              }
+            }
+            GRAPHQL,
+            <<<'GRAPHQL'
+            mutation SaveInventory($inventory: [inventoryInput!]!) {
+              inventory {
+                save(inventory: $inventory, feedKind: DIFFERENTIAL) {
+                  handle
+                  submittedAt
+                  errors { key message }
+                }
+              }
+            }
+            GRAPHQL,
+        ];
+
+        $pushed = 0;
+        $failed = 0;
+        $accepted = [];
+        $lastError = null;
+
+        foreach (array_chunk(array_values($items), 50) as $chunk) {
+            $inventory = [];
+            foreach ($chunk as $item) {
+                $sku = trim((string) ($item['sku'] ?? ''));
+                if ($sku === '') {
+                    $failed++;
+                    continue;
+                }
+                $row = [
+                    'supplierPartNumber' => $sku,
+                    'quantityOnHand' => max(0, (int) ($item['quantity'] ?? 0)),
+                ];
+                if ($supplierId > 0) {
+                    $row['supplierId'] = $supplierId;
+                }
+                $inventory[] = $row;
+            }
+            if ($inventory === []) {
+                continue;
+            }
+
+            $save = null;
+            foreach ($mutations as $mutation) {
+                $res = $this->graphqlPost($this->graphqlUrl, $token, $mutation, ['inventory' => $inventory]);
+                if (! empty($res['json']['errors'])) {
+                    $lastError = $this->formatGraphqlErrors($res['json']['errors']);
+                    continue;
+                }
+                if (! $res['ok']) {
+                    $lastError = 'HTTP '.$res['status'].': '.mb_substr((string) $res['body'], 0, 300);
+                    continue;
+                }
+                $save = $res['json']['data']['inventory']['save'] ?? null;
+                if (is_array($save)) {
+                    break;
+                }
+                $lastError = 'Wayfair inventory.save returned no payload.';
+            }
+
+            if (! is_array($save)) {
+                $failed += count($inventory);
+                Log::warning('WayfairApiService: inventory save failed', [
+                    'count' => count($inventory),
+                    'error' => $lastError,
+                ]);
+                continue;
+            }
+
+            $errorKeys = [];
+            foreach (is_array($save['errors'] ?? null) ? $save['errors'] : [] as $err) {
+                if (! is_array($err)) {
+                    continue;
+                }
+                $key = trim((string) ($err['key'] ?? ''));
+                if ($key !== '') {
+                    $errorKeys[strtoupper($key)] = true;
+                }
+                $msg = trim((string) ($err['message'] ?? ''));
+                if ($msg !== '') {
+                    $lastError = $msg;
+                }
+            }
+
+            foreach ($inventory as $row) {
+                $sku = (string) $row['supplierPartNumber'];
+                if (isset($errorKeys[strtoupper($sku)])) {
+                    $failed++;
+                } else {
+                    $pushed++;
+                    $accepted[] = $sku;
+                }
+            }
+        }
+
+        $message = $pushed > 0
+            ? "Pushed {$pushed} inventory row(s) to Wayfair.".($failed > 0 ? " {$failed} failed." : '')
+            : ('Wayfair inventory push failed'.($lastError ? ': '.$lastError : '.'));
+
+        Log::info('WayfairApiService: updateItemInventoryBulk', [
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'handle_error' => $lastError,
         ]);
 
         return [
-            'pushed' => count($items),
-            'failed' => 0,
-            'message' => 'Wayfair inventory API push is not wired yet — updated local wayfair_stock only.',
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'message' => $message,
+            'skus' => $accepted,
         ];
     }
 }

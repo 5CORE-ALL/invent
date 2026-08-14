@@ -6,6 +6,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\TiktokOrder;
 use App\Services\TikTokShopService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -83,12 +84,20 @@ class TikTokOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('tiktok', $settings);
 
-        // Only import open/new orders (like Reverb), not delivered/completed history.
+        if ((int) DB::table('jobs')->where('queue', 'mm-tiktok')->count() === 0) {
+            $this->releaseStuckQueuedImports();
+        }
+
+        // Unpushed orders still need a Shopify draft even after they leave
+        // AWAITING_SHIPMENT (IN_TRANSIT / DELIVERED / COMPLETED). Never import CANCELLED.
         $importableStatuses = [
             'AWAITING_SHIPMENT',
             'PARTIALLY_SHIPPING',
             'AWAITING_COLLECTION',
             'ON_HOLD',
+            'IN_TRANSIT',
+            'DELIVERED',
+            'COMPLETED',
         ];
 
         $orders = TiktokOrder::query()
@@ -99,7 +108,7 @@ class TikTokOrderSyncService
                     ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
             ->orderBy('id')
-            ->limit(50)
+            ->limit(200)
             ->get();
 
         $seenOrderIds = [];
@@ -132,6 +141,14 @@ class TikTokOrderSyncService
         }
 
         return $dispatched;
+    }
+
+    protected function releaseStuckQueuedImports(): void
+    {
+        TiktokOrder::query()
+            ->where('import_status', 'queued')
+            ->whereNull('shopify_order_id')
+            ->update(['import_status' => 'ready']);
     }
 
     protected function upsertOrder(array $order): int

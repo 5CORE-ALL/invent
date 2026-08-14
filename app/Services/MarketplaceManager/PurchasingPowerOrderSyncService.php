@@ -119,19 +119,21 @@ class PurchasingPowerOrderSyncService
                 $q->whereNull('import_status')
                     ->orWhereNotIn('import_status', ['queued', 'imported']);
             })
-            ->orderBy('id');
+            ->when(Schema::hasColumn('purchasing_power_sales', 'date_created'), function ($q) {
+                $q->where('date_created', '>=', now()->subDays(14));
+            })
+            ->orderByDesc('id')
+            ->limit(50);
 
         $dispatched = 0;
-        $query->chunkById(50, function ($rows) use (&$dispatched, $paidOnly) {
-            foreach ($rows as $row) {
-                if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('purchasingpower', $row)) {
-                    continue;
-                }
-                $row->update(['import_status' => 'queued']);
-                ImportPurchasingPowerOrderToShopify::dispatch((int) $row->id);
-                $dispatched++;
+        foreach ($query->get() as $row) {
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('purchasingpower', $row)) {
+                continue;
             }
-        });
+            $row->update(['import_status' => 'queued']);
+            ImportPurchasingPowerOrderToShopify::dispatch((int) $row->id);
+            $dispatched++;
+        }
 
         return $dispatched;
     }

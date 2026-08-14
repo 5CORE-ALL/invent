@@ -26,6 +26,8 @@ class SyncMarketplaceMismatchInventoryJob implements ShouldQueue, ShouldBeUnique
 
     public int $uniqueFor = 600;
 
+    public bool $failOnTimeout = false;
+
     public function __construct(public string $marketplace)
     {
         $this->marketplace = strtolower(trim($this->marketplace));
@@ -33,6 +35,9 @@ class SyncMarketplaceMismatchInventoryJob implements ShouldQueue, ShouldBeUnique
         if (in_array($this->marketplace, ['tiktok', 'tiktok2'], true)) {
             $this->timeout = 1800;
             $this->uniqueFor = 1800;
+        } elseif ($this->marketplace === 'wayfair') {
+            $this->timeout = 1200;
+            $this->uniqueFor = 1500;
         }
     }
 
