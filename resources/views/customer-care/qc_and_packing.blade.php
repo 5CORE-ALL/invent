@@ -446,7 +446,10 @@
 
         /* ── Department / Carrier dropdown filters ───────────────── */
         #dept-filter-select,
-        #carrier-filter-select {
+        #carrier-filter-select,
+        #claimable-filter-select,
+        #claim-filed-filter-select,
+        #claim-received-filter-select {
             font-size: 12px;
             padding: 2px 8px;
             height: 28px;
@@ -454,6 +457,42 @@
             border-radius: 0.375rem;
             border: 1px solid #dee2e6;
             cursor: pointer;
+        }
+
+        #claimable-filter-select,
+        #claim-filed-filter-select,
+        #claim-received-filter-select {
+            min-width: 8.25rem;
+        }
+
+        th.claim-dot-filter-th {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th.claim-dot-filter-th .claim-dot-filter-hint {
+            display: block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin: 3px auto 0;
+            background: #adb5bd;
+        }
+
+        th.claim-dot-filter-th.is-filter-green {
+            color: #198754;
+        }
+
+        th.claim-dot-filter-th.is-filter-red {
+            color: #dc3545;
+        }
+
+        th.claim-dot-filter-th.is-filter-green .claim-dot-filter-hint {
+            background: #198754;
+        }
+
+        th.claim-dot-filter-th.is-filter-red .claim-dot-filter-hint {
+            background: #dc3545;
         }
 
         .orders-hold-col-mp {
@@ -1175,7 +1214,10 @@
         }
 
         .issues-toolbar-header .issues-toolbar-actions #dept-filter-select,
-        .issues-toolbar-header .issues-toolbar-actions #carrier-filter-select {
+        .issues-toolbar-header .issues-toolbar-actions #carrier-filter-select,
+        .issues-toolbar-header .issues-toolbar-actions #claimable-filter-select,
+        .issues-toolbar-header .issues-toolbar-actions #claim-filed-filter-select,
+        .issues-toolbar-header .issues-toolbar-actions #claim-received-filter-select {
             width: auto;
             max-width: min(220px, 100%);
             min-width: 8rem;
@@ -1374,6 +1416,36 @@
                                             <option value="">All Carriers</option>
                                         </select>
                                     @endif
+                                    @if ($showClaimableColumn ?? false)
+                                        <select id="claimable-filter-select" class="form-select form-select-sm"
+                                            data-claim-dot-filter="claimable"
+                                            aria-label="Filter claimable green or red"
+                                            title="Filter Claimable: green or red">
+                                            <option value="">Claimable: All</option>
+                                            <option value="green">Claimable: Green</option>
+                                            <option value="red">Claimable: Red</option>
+                                        </select>
+                                    @endif
+                                    @if ($showClaimFiledColumn ?? false)
+                                        <select id="claim-filed-filter-select" class="form-select form-select-sm"
+                                            data-claim-dot-filter="claim_filed"
+                                            aria-label="Filter claim filed green or red"
+                                            title="Filter Claim Filed: green or red">
+                                            <option value="">Filed: All</option>
+                                            <option value="green">Filed: Green</option>
+                                            <option value="red">Filed: Red</option>
+                                        </select>
+                                    @endif
+                                    @if ($showClaimReceivedColumn ?? false)
+                                        <select id="claim-received-filter-select" class="form-select form-select-sm"
+                                            data-claim-dot-filter="claim_received"
+                                            aria-label="Filter claim received green or red"
+                                            title="Filter Claim Recd: green or red">
+                                            <option value="">Recd: All</option>
+                                            <option value="green">Recd: Green</option>
+                                            <option value="red">Recd: Red</option>
+                                        </select>
+                                    @endif
                                 </div>
                                 {{-- Search bar defaults to ON for every page that includes this
                                      template (c-care issues, label issues, listing issues, other
@@ -1489,10 +1561,16 @@
                                             <th class="orders-hold-col-created-at">Created At</th>
                                         @endif
                                         @if ($showClaimableColumn ?? false)
-                                            <th class="orders-hold-col-claimable text-center">Claim<br>able</th>
+                                            <th class="orders-hold-col-claimable text-center claim-dot-filter-th"
+                                                data-claim-dot-filter="claimable"
+                                                title="Click to filter green or red">Claim<br>able<span
+                                                    class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
                                         @if ($showClaimFiledColumn ?? false)
-                                            <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
+                                            <th class="orders-hold-col-claim-filed text-center claim-dot-filter-th"
+                                                data-claim-dot-filter="claim_filed"
+                                                title="Click to filter green or red">Claim<br>Filed<span
+                                                    class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
                                         @if ($showAmpUsdColumn ?? false)
                                             <th class="orders-hold-col-amp-usd text-center">AMT<br>$</th>
@@ -1501,7 +1579,10 @@
                                             <th class="orders-hold-col-amt-rec text-center">Amt<br>Rec</th>
                                         @endif
                                         @if ($showClaimReceivedColumn ?? false)
-                                            <th class="orders-hold-col-claim-received text-center">Claim<br>Recd</th>
+                                            <th class="orders-hold-col-claim-received text-center claim-dot-filter-th"
+                                                data-claim-dot-filter="claim_received"
+                                                title="Click to filter green or red">Claim<br>Recd<span
+                                                    class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
                                     @endif
                                     @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
@@ -1527,10 +1608,16 @@
                                             <th class="orders-hold-col-created-at">Created At</th>
                                         @endif
                                         @if ($showClaimableColumn ?? false)
-                                            <th class="orders-hold-col-claimable text-center">Claim<br>able</th>
+                                            <th class="orders-hold-col-claimable text-center claim-dot-filter-th"
+                                                data-claim-dot-filter="claimable"
+                                                title="Click to filter green or red">Claim<br>able<span
+                                                    class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
                                         @if ($showClaimFiledColumn ?? false)
-                                            <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
+                                            <th class="orders-hold-col-claim-filed text-center claim-dot-filter-th"
+                                                data-claim-dot-filter="claim_filed"
+                                                title="Click to filter green or red">Claim<br>Filed<span
+                                                    class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
                                         @if ($showAmpUsdColumn ?? false)
                                             <th class="orders-hold-col-amp-usd text-center">AMT<br>$</th>
@@ -1539,7 +1626,10 @@
                                             <th class="orders-hold-col-amt-rec text-center">Amt<br>Rec</th>
                                         @endif
                                         @if ($showClaimReceivedColumn ?? false)
-                                            <th class="orders-hold-col-claim-received text-center">Claim<br>Recd</th>
+                                            <th class="orders-hold-col-claim-received text-center claim-dot-filter-th"
+                                                data-claim-dot-filter="claim_received"
+                                                title="Click to filter green or red">Claim<br>Recd<span
+                                                    class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
                                     @endif
                                 </tr>
@@ -2285,6 +2375,9 @@
             let editingIssueId = null;
             let activeDeptFilter = lockedDepartment || defaultDepartmentFilter || null;
             let activeCarrierFilter = null;
+            let activeClaimableFilter = null;
+            let activeClaimFiledFilter = null;
+            let activeClaimReceivedFilter = null;
 
             if (modalEl && showDispatchExtras) {
                 modalEl.addEventListener('paste', function(pe) {
@@ -2481,6 +2574,81 @@
                 return v === String(activeCarrierFilter).trim().toUpperCase();
             }
 
+            function rowIsClaimable(r) {
+                return r?.claimable !== false && r?.claimable !== 0 && r?.claimable !== '0';
+            }
+
+            function rowIsClaimFiled(r) {
+                return !!r?.claim_filed;
+            }
+
+            function rowIsClaimReceived(r) {
+                return !!r?.claim_received;
+            }
+
+            function rowMatchesClaimDotFilter(isGreen, filter) {
+                if (!filter) return true;
+                return filter === 'green' ? !!isGreen : !isGreen;
+            }
+
+            function rowMatchesActiveClaimDotFilters(r) {
+                return rowMatchesClaimDotFilter(rowIsClaimable(r), activeClaimableFilter) &&
+                    rowMatchesClaimDotFilter(rowIsClaimFiled(r), activeClaimFiledFilter) &&
+                    rowMatchesClaimDotFilter(rowIsClaimReceived(r), activeClaimReceivedFilter);
+            }
+
+            function getClaimDotFilterState(key) {
+                if (key === 'claimable') return activeClaimableFilter;
+                if (key === 'claim_filed') return activeClaimFiledFilter;
+                if (key === 'claim_received') return activeClaimReceivedFilter;
+                return null;
+            }
+
+            function setClaimDotFilterState(key, value) {
+                const next = value || null;
+                if (key === 'claimable') activeClaimableFilter = next;
+                else if (key === 'claim_filed') activeClaimFiledFilter = next;
+                else if (key === 'claim_received') activeClaimReceivedFilter = next;
+                syncClaimDotFilterUi();
+                renderRows();
+            }
+
+            function cycleClaimDotFilter(key) {
+                const cur = getClaimDotFilterState(key);
+                const next = !cur ? 'green' : (cur === 'green' ? 'red' : null);
+                setClaimDotFilterState(key, next);
+            }
+
+            function claimDotFilterTitle(val) {
+                if (val === 'green') return 'Showing green only — click for red';
+                if (val === 'red') return 'Showing red only — click to show all';
+                return 'Click to filter green or red';
+            }
+
+            function syncClaimDotFilterUi() {
+                const map = {
+                    claimable: activeClaimableFilter,
+                    claim_filed: activeClaimFiledFilter,
+                    claim_received: activeClaimReceivedFilter,
+                };
+                Object.keys(map).forEach((key) => {
+                    const val = map[key] || '';
+                    document.querySelectorAll('th[data-claim-dot-filter="' + key + '"]').forEach((th) => {
+                        th.classList.toggle('is-filter-green', val === 'green');
+                        th.classList.toggle('is-filter-red', val === 'red');
+                        th.title = claimDotFilterTitle(val);
+                    });
+                    const sel = document.querySelector('select[data-claim-dot-filter="' + key + '"]');
+                    if (sel && sel.value !== val) {
+                        sel.value = val;
+                    }
+                });
+            }
+
+            function anyClaimDotFilterActive() {
+                return !!(activeClaimableFilter || activeClaimFiledFilter || activeClaimReceivedFilter);
+            }
+
             // Quick-search query (lowercased). Empty string = no search filter.
             let activeSearchQuery = '';
 
@@ -2512,6 +2680,7 @@
                 if (activeDeptFilter) rows = rows.filter(rowMatchesActiveDeptFilter);
                 if (activeCarrierFilter) rows = rows.filter(rowMatchesActiveCarrierFilter);
                 if (activeSearchQuery) rows = rows.filter(rowMatchesSearchQuery);
+                if (anyClaimDotFilterActive()) rows = rows.filter(rowMatchesActiveClaimDotFilters);
                 return rows;
             }
 
@@ -2610,6 +2779,59 @@
             document.getElementById('carrier-filter-select')?.addEventListener('change', (e) => {
                 activeCarrierFilter = e.target.value || null;
                 renderRows();
+            });
+
+            function claimDotFilterLabels(key) {
+                if (key === 'claimable') return { all: 'Claimable: All', green: 'Claimable: Green', red: 'Claimable: Red' };
+                if (key === 'claim_filed') return { all: 'Filed: All', green: 'Filed: Green', red: 'Filed: Red' };
+                return { all: 'Recd: All', green: 'Recd: Green', red: 'Recd: Red' };
+            }
+
+            function rowMatchesClaimDotKey(r, key) {
+                if (key === 'claimable') return rowIsClaimable(r);
+                if (key === 'claim_filed') return rowIsClaimFiled(r);
+                return rowIsClaimReceived(r);
+            }
+
+            function buildClaimDotFilters() {
+                ['claimable', 'claim_filed', 'claim_received'].forEach((key) => {
+                    const sel = document.querySelector('select[data-claim-dot-filter="' + key + '"]');
+                    if (!sel) return;
+                    let greenCount = 0;
+                    let redCount = 0;
+                    holdIssueRows.forEach((r) => {
+                        if (rowMatchesClaimDotKey(r, key)) greenCount += 1;
+                        else redCount += 1;
+                    });
+                    const labels = claimDotFilterLabels(key);
+                    const prev = sel.value !== '' ? sel.value : (getClaimDotFilterState(key) || '');
+                    sel.innerHTML = '';
+                    [
+                        { value: '', label: labels.all + ' (' + holdIssueRows.length + ')' },
+                        { value: 'green', label: labels.green + ' (' + greenCount + ')' },
+                        { value: 'red', label: labels.red + ' (' + redCount + ')' },
+                    ].forEach((optDef) => {
+                        const opt = document.createElement('option');
+                        opt.value = optDef.value;
+                        opt.textContent = optDef.label;
+                        if (optDef.value === prev) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                    sel.value = prev;
+                });
+                syncClaimDotFilterUi();
+            }
+
+            document.querySelectorAll('select[data-claim-dot-filter]').forEach((sel) => {
+                sel.addEventListener('change', (e) => {
+                    setClaimDotFilterState(e.target.getAttribute('data-claim-dot-filter'), e.target.value || null);
+                });
+            });
+
+            document.querySelectorAll('th[data-claim-dot-filter]').forEach((th) => {
+                th.addEventListener('click', () => {
+                    cycleClaimDotFilter(th.getAttribute('data-claim-dot-filter'));
+                });
             });
 
             // Quick-search: debounced filter across SKU / order / tracking /
@@ -3108,6 +3330,8 @@
                         r.claim_received = next;
                     }
                     loadClaimsStats();
+                    buildClaimDotFilters();
+                    if (anyClaimDotFilterActive()) renderRows();
                 } catch (e) {
                     alert(e.message || 'Could not update Claim Recd');
                 }
@@ -3147,6 +3371,8 @@
                         r.claim_filed = next;
                     }
                     loadClaimsStats();
+                    buildClaimDotFilters();
+                    if (anyClaimDotFilterActive()) renderRows();
                 } catch (e) {
                     alert(e.message || 'Could not update claim status');
                 }
@@ -3185,6 +3411,8 @@
                     if (r) {
                         r.claimable = next;
                     }
+                    buildClaimDotFilters();
+                    if (anyClaimDotFilterActive()) renderRows();
                 } catch (e) {
                     alert(e.message || 'Could not update claimable status');
                 }
@@ -4455,12 +4683,14 @@
                     holdIssueRows = Array.isArray(data?.data) ? data.data.map(normalizeRecord) : [];
                     buildDeptFilters();
                     buildCarrierFilters();
+                    buildClaimDotFilters();
                     renderRows();
                     loadClaimsStats();
                 } catch (error) {
                     holdIssueRows = [];
                     buildDeptFilters();
                     buildCarrierFilters();
+                    buildClaimDotFilters();
                     renderRows();
                     loadClaimsStats();
                 }
