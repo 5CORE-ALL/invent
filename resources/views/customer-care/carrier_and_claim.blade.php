@@ -31,6 +31,8 @@
     'createdAtColumnAfterTrack' => true,
     'showClaimsSummaryBadges' => true,
     'showClaimableColumn' => true,
+    // Notes beside Claimable: why the case is not claimable (50 words max).
+    'showClaimableRemarkColumn' => true,
     'showClaimFiledColumn' => true,
     'showAmpUsdColumn' => true,
     // "Amt Rec" (Amount Received) — inline-editable text input that mirrors
@@ -56,7 +58,7 @@
     'mergeCreatedAtIntoCreatedBy' => true,
     // Quick-search input in the toolbar: matches against SKU, order #,
     // tracking, carrier, created-by, issue/action text, marketplace, AMP $,
-    // Amt Rec and department.
+    // Amt Rec, not-claimable notes and department.
     'showSearchBar' => true,
     'searchBarPlaceholder' => 'Search SKU, order, tracking, carrier…',
     // Ord column: clipboard icon only (order # via button title); no hover expand.

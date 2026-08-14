@@ -2178,6 +2178,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.list.patch.claim.filed');
     Route::patch('/customer-care/all-issues/issues/{id}/claimable', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimable'])
         ->name('customer.care.dispatch.issues.list.patch.claimable');
+    Route::patch('/customer-care/all-issues/issues/{id}/claimable-remark', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimableRemark'])
+        ->name('customer.care.dispatch.issues.list.patch.claimable.remark');
     Route::patch('/customer-care/all-issues/issues/{id}/nfe', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateNfe'])
         ->name('customer.care.dispatch.issues.list.patch.nfe');
     Route::patch('/customer-care/all-issues/issues/{id}/amp-usd', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmpUsd'])

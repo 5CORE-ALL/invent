@@ -475,6 +475,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'issue_link'      => ['issue_link', 'link', 'url'],
             'issue_carrier'   => ['issue_carrier', 'carrier'],
             'claimable'       => ['claimable', 'claimable?'],
+            'claimable_remark' => ['claimable_remark', 'claimable remark', 'not claimable reason', 'notes', 'remark'],
             'claim_filed'     => ['claim_filed', 'claim filed'],
             'amp_usd'         => ['amp_usd', 'amt $', 'amt$', 'amt usd', 'amt'],
             'amt_rec'         => ['amt_rec', 'amt rec', 'amount received', 'amt received'],
@@ -500,6 +501,9 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 ? true
                 : self::csvParseBool($claimableRaw);
         }
+        if (Schema::hasColumn($issuesTable, 'claimable_remark')) {
+            $payload['claimable_remark'] = self::clampToMaxWords($get('claimable_remark'), 50);
+        }
         if (Schema::hasColumn($issuesTable, 'claim_filed')) {
             $payload['claim_filed'] = self::csvParseBool($get('claim_filed'));
         }
@@ -514,6 +518,21 @@ class DispatchIssuesController extends IssueBoardControllerBase
         }
 
         return $payload;
+    }
+
+    /** Trim, collapse whitespace, keep at most $maxWords words. Null when blank. */
+    private static function clampToMaxWords(?string $raw, int $maxWords = 50): ?string
+    {
+        $v = trim(preg_replace('/\s+/u', ' ', (string) ($raw ?? '')) ?? '');
+        if ($v === '') {
+            return null;
+        }
+        $words = preg_split('/\s+/u', $v, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (count($words) > $maxWords) {
+            $v = implode(' ', array_slice($words, 0, $maxWords));
+        }
+
+        return $v;
     }
 
     /** Trim → null when blank, optionally cap to a max length. */
@@ -565,6 +584,10 @@ class DispatchIssuesController extends IssueBoardControllerBase
 
         if (Schema::hasColumn($table, 'claimable')) {
             $slice['claimable'] = (bool) ($row->claimable ?? true);
+        }
+        if (property_exists($row, 'claimable_remark')) {
+            $remark = trim((string) ($row->claimable_remark ?? ''));
+            $slice['claimable_remark'] = $remark !== '' ? $remark : null;
         }
 
         return $slice;
@@ -703,6 +726,32 @@ class DispatchIssuesController extends IssueBoardControllerBase
         }
 
         return response()->json(['message' => 'Updated.', 'claimable' => $next]);
+    }
+
+    /**
+     * Inline-edit endpoint for the "Notes" column beside Claimable on the
+     * Carrier Claims board — reason the case is not claimable (50 words max).
+     */
+    public function updateClaimableRemark(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'claimable_remark')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+        $validated = $request->validate(['claimable_remark' => 'nullable|string|max:600']);
+        $value = self::clampToMaxWords($validated['claimable_remark'] ?? null, 50);
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['claimable_remark' => $value, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'claimable_remark' => $value]);
     }
 
     public function updateClaimReceived(Request $request, int $id): JsonResponse

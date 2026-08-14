@@ -4778,11 +4778,8 @@
                     minWidth: 80,
                     headerTooltip: "Organic Product clicks from Seller Center sheet upload only (temu_view_data). No Ads API fallback.",
                     formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const sku = row.sku || '';
                         const value = parseInt(cell.getValue()) || 0;
-                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View O Clicks chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
-                        return `${value.toLocaleString()} ${dotBtn}`.trim();
+                        return value.toLocaleString();
                     }
                 },
                  {

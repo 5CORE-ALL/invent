@@ -48,6 +48,10 @@
         $extraClaimColumns[] = 'claimable';
         $extraClaimSample[]  = 'yes';
     }
+    if ($showClaimableRemarkColumn ?? false) {
+        $extraClaimColumns[] = 'claimable_remark';
+        $extraClaimSample[]  = 'Past filing window';
+    }
     if ($showClaimFiledColumn ?? false) {
         $extraClaimColumns[] = 'claim_filed';
         $extraClaimSample[]  = 'no'; // yes / no
@@ -594,6 +598,36 @@
             max-width: 7.5rem;
             min-width: 5.5rem;
             width: 100%;
+        }
+
+        .orders-hold-table th.orders-hold-col-claimable-remark,
+        .orders-hold-table td.orders-hold-col-claimable-remark {
+            width: 1%;
+            min-width: 10.5rem;
+            max-width: 14rem;
+            vertical-align: middle;
+        }
+
+        .orders-hold-table .carrier-claimable-remark-input {
+            min-width: 9.5rem;
+            width: 100%;
+            min-height: 2.4rem;
+            max-height: 4.6rem;
+            font-size: 11px;
+            line-height: 1.25;
+            resize: vertical;
+        }
+
+        .orders-hold-table .carrier-claimable-remark-input.is-incomplete {
+            border-color: #e05252;
+        }
+
+        .orders-hold-table .claimable-remark-count {
+            font-size: 10px;
+            line-height: 1;
+            color: #6c757d;
+            margin-top: 2px;
+            text-align: right;
         }
 
         .orders-hold-table th.orders-hold-col-claim-received,
@@ -1566,6 +1600,10 @@
                                                 title="Click to filter green or red">Claim<br>able<span
                                                     class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
+                                        @if ($showClaimableRemarkColumn ?? false)
+                                            <th class="orders-hold-col-claimable-remark text-center"
+                                                title="Why this case is not claimable (50 words max)">Notes</th>
+                                        @endif
                                         @if ($showClaimFiledColumn ?? false)
                                             <th class="orders-hold-col-claim-filed text-center claim-dot-filter-th"
                                                 data-claim-dot-filter="claim_filed"
@@ -1613,6 +1651,10 @@
                                                 title="Click to filter green or red">Claim<br>able<span
                                                     class="claim-dot-filter-hint" aria-hidden="true"></span></th>
                                         @endif
+                                        @if ($showClaimableRemarkColumn ?? false)
+                                            <th class="orders-hold-col-claimable-remark text-center"
+                                                title="Why this case is not claimable (50 words max)">Notes</th>
+                                        @endif
                                         @if ($showClaimFiledColumn ?? false)
                                             <th class="orders-hold-col-claim-filed text-center claim-dot-filter-th"
                                                 data-claim-dot-filter="claim_filed"
@@ -1636,7 +1678,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
@@ -1799,6 +1841,7 @@
                         $csvClaimsTail = '';
                         if ($showCarrierColumn ?? false)        { $csvClaimsTail .= ', issue_carrier'; }
                         if ($showClaimableColumn ?? false)      { $csvClaimsTail .= ', claimable'; }
+                        if ($showClaimableRemarkColumn ?? false) { $csvClaimsTail .= ', claimable_remark'; }
                         if ($showClaimFiledColumn ?? false)     { $csvClaimsTail .= ', claim_filed'; }
                         if ($showAmpUsdColumn ?? false)         { $csvClaimsTail .= ', amp_usd'; }
                         if ($showAmtRecColumn ?? false)         { $csvClaimsTail .= ', amt_rec'; }
@@ -2361,6 +2404,7 @@
             const showDispatchExtras = @json((bool) ($showDispatchExtras ?? false));
             const showClaimFiledColumn = @json((bool) ($showClaimFiledColumn ?? false));
             const showClaimableColumn = @json((bool) ($showClaimableColumn ?? false));
+            const showClaimableRemarkColumn = @json((bool) ($showClaimableRemarkColumn ?? false));
             const showAmpUsdColumn = @json((bool) ($showAmpUsdColumn ?? false));
             const showAmtRecColumn = @json((bool) ($showAmtRecColumn ?? false));
             const showClaimReceivedColumn = @json((bool) ($showClaimReceivedColumn ?? false));
@@ -2663,7 +2707,7 @@
                     r.c_action_1, r.c_action_1_remark,
                     r.issue, r.issue_remark,
                     r.marketplace_1, r.department, depts,
-                    r.amp_usd, r.amt_rec, r.total_loss, r.amz_price, r.amz_loss,
+                    r.amp_usd, r.amt_rec, r.claimable_remark, r.total_loss, r.amz_price, r.amz_loss,
                     r.created_by, r.close_note, r.event_type,
                     r.issue_link
                 ];
@@ -3141,6 +3185,95 @@
                     '</button></td>';
             }
 
+            const CLAIMABLE_REMARK_MAX_WORDS = 50;
+
+            function countWords(value) {
+                const t = String(value ?? '').trim();
+                if (!t) return 0;
+                return t.split(/\s+/).filter(Boolean).length;
+            }
+
+            function clampWords(value, maxWords) {
+                const t = String(value ?? '').trim().replace(/\s+/g, ' ');
+                if (!t) return '';
+                const words = t.split(/\s+/).filter(Boolean);
+                return words.length <= maxWords ? t : words.slice(0, maxWords).join(' ');
+            }
+
+            function claimableRemarkCellHtml(row) {
+                const v = clampWords(String(row.claimable_remark ?? ''), CLAIMABLE_REMARK_MAX_WORDS);
+                const words = countWords(v);
+                const needReason = !rowIsClaimable(row) && words === 0;
+                return '<td class="orders-hold-col-claimable-remark">' +
+                    '<textarea class="form-control form-control-sm carrier-claimable-remark-input' +
+                    (needReason ? ' is-incomplete' : '') + '" rows="2" ' +
+                    'data-issue-id="' + escAttr(String(row.id)) + '" ' +
+                    'placeholder="Why not claimable?" ' +
+                    'title="Reason this case is not claimable (50 words max)" ' +
+                    'aria-label="Not claimable reason">' + escapeHtml(v) + '</textarea>' +
+                    '<div class="claimable-remark-count">' + words + '/' + CLAIMABLE_REMARK_MAX_WORDS + '</div>' +
+                    '</td>';
+            }
+
+            function syncClaimableRemarkCount(textarea) {
+                if (!textarea) return;
+                const words = countWords(textarea.value);
+                const countEl = textarea.parentElement
+                    ? textarea.parentElement.querySelector('.claimable-remark-count')
+                    : null;
+                if (countEl) {
+                    countEl.textContent = words + '/' + CLAIMABLE_REMARK_MAX_WORDS;
+                }
+                const id = textarea.getAttribute('data-issue-id');
+                const r = holdIssueRows.find(x => String(x.id) === String(id));
+                const claimable = r ? rowIsClaimable(r) : true;
+                textarea.classList.toggle('is-incomplete', !claimable && words === 0);
+            }
+
+            async function saveClaimableRemarkFromInput(input) {
+                if (!showClaimableRemarkColumn) return;
+                const id = input.getAttribute('data-issue-id');
+                if (!id) return;
+                let newV = clampWords(input.value, CLAIMABLE_REMARK_MAX_WORDS);
+                if (input.value !== newV) {
+                    input.value = newV;
+                }
+                syncClaimableRemarkCount(input);
+                const r = holdIssueRows.find(x => String(x.id) === String(id));
+                const prev = r ? clampWords(String(r.claimable_remark ?? ''), CLAIMABLE_REMARK_MAX_WORDS) : '';
+                if (newV === prev) return;
+                try {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) +
+                        '/claimable-remark', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({
+                            claimable_remark: newV.length ? newV : null
+                        }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    if (r) {
+                        r.claimable_remark = data.claimable_remark ?? newV;
+                    }
+                    if (data.claimable_remark != null && String(data.claimable_remark) !== newV) {
+                        input.value = String(data.claimable_remark);
+                        syncClaimableRemarkCount(input);
+                    }
+                } catch (e) {
+                    alert(e.message || 'Could not save notes');
+                    input.value = prev;
+                    syncClaimableRemarkCount(input);
+                }
+            }
+
             function ampUsdCellHtml(row) {
                 const v = String(row.amp_usd ?? '').slice(0, 6);
                 return '<td class="orders-hold-col-amp-usd">' +
@@ -3410,6 +3543,12 @@
                     const r = holdIssueRows.find(x => String(x.id) === String(id));
                     if (r) {
                         r.claimable = next;
+                    }
+                    const remarkTa = tableBody.querySelector(
+                        '.carrier-claimable-remark-input[data-issue-id="' + String(id) + '"]'
+                    );
+                    if (remarkTa) {
+                        syncClaimableRemarkCount(remarkTa);
                     }
                     buildClaimDotFilters();
                     if (anyClaimDotFilterActive()) renderRows();
@@ -4092,6 +4231,9 @@
                     const isClaimable = d.claimable !== false && d.claimable !== 0 && d.claimable !== '0';
                     claimsRows.push(qcDetailsTextRow('Claimable', isClaimable ? 'Yes' : 'No'));
                 }
+                if (d.claimable_remark != null && String(d.claimable_remark).trim() !== '') {
+                    claimsRows.push(qcDetailsTextRow('Not claimable reason', d.claimable_remark));
+                }
                 if (typeof d.claim_filed !== 'undefined') {
                     claimsRows.push(qcDetailsTextRow('Claim filed', d.claim_filed ? 'Yes' : 'No'));
                 }
@@ -4425,6 +4567,9 @@
                     @if (($showClaimableColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
                         claimableCellHtml(row) +
                     @endif
+                    @if (($showClaimableRemarkColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
+                        claimableRemarkCellHtml(row) +
+                    @endif
                     @if (($showClaimFiledColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
                         claimFiledCellHtml(row) +
                     @endif
@@ -4463,6 +4608,9 @@
                         @endif
                     @if (($showClaimableColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
                         claimableCellHtml(row) +
+                    @endif
+                    @if (($showClaimableRemarkColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
+                        claimableRemarkCellHtml(row) +
                     @endif
                     @if (($showClaimFiledColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
                         claimFiledCellHtml(row) +
@@ -4622,6 +4770,7 @@
                     qc_enhance_status_remark: row?.qc_enhance_status_remark ?? '',
                     claim_filed: !!row?.claim_filed,
                     claimable: row?.claimable === undefined || row?.claimable === null ? true : !!row.claimable,
+                    claimable_remark: row?.claimable_remark != null ? String(row.claimable_remark) : '',
                     amp_usd: row?.amp_usd != null && row?.amp_usd !== '' ? String(row.amp_usd).slice(0, 6) : '',
                     amt_rec: row?.amt_rec != null && row?.amt_rec !== '' ? String(row.amt_rec).slice(0, 6) : '',
                     claim_received: !!row?.claim_received,
@@ -4668,6 +4817,8 @@
                     qc_enhance_issue: row?.qc_enhance_issue ?? '',
                     qc_enhance_action_req: row?.qc_enhance_action_req ?? '',
                     qc_enhance_status_remark: row?.qc_enhance_status_remark ?? '',
+                    claimable: row?.claimable === undefined || row?.claimable === null ? true : !!row.claimable,
+                    claimable_remark: row?.claimable_remark != null ? String(row.claimable_remark) : '',
                 };
             }
 
@@ -4976,6 +5127,7 @@
                     holdIssueRows = holdIssueRows.filter(r => Number(r.id) !== Number(recordId));
                     buildDeptFilters();
                     buildCarrierFilters();
+                    buildClaimDotFilters();
                     renderRows();
                     loadHoldIssueHistoryRows();
                     showAlert(data?.message || 'Hold issue archived successfully.', 'success');
@@ -5360,6 +5512,28 @@
                 if (amtRecInp && tableBody.contains(amtRecInp) && showAmtRecColumn) {
                     saveAmtRecFromInput(amtRecInp);
                 }
+                const remarkInp = event.target.closest('.carrier-claimable-remark-input');
+                if (remarkInp && tableBody.contains(remarkInp) && showClaimableRemarkColumn) {
+                    saveClaimableRemarkFromInput(remarkInp);
+                }
+            });
+
+            tableBody.addEventListener('input', (event) => {
+                const remarkInp = event.target.closest('.carrier-claimable-remark-input');
+                if (!remarkInp || !tableBody.contains(remarkInp) || !showClaimableRemarkColumn) return;
+                if (countWords(remarkInp.value) > CLAIMABLE_REMARK_MAX_WORDS) {
+                    remarkInp.value = clampWords(remarkInp.value, CLAIMABLE_REMARK_MAX_WORDS);
+                }
+                syncClaimableRemarkCount(remarkInp);
+            });
+
+            tableBody.addEventListener('keydown', (event) => {
+                const remarkInp = event.target.closest('.carrier-claimable-remark-input');
+                if (!remarkInp || !tableBody.contains(remarkInp) || !showClaimableRemarkColumn) return;
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    remarkInp.blur();
+                }
             });
 
             tableBody.addEventListener('change', (event) => {
@@ -5546,6 +5720,9 @@
                     activeHeaders.push('Dept');
                 }
                 activeHeaders.push('Created By', 'Created At');
+                if (showClaimableRemarkColumn) {
+                    activeHeaders.push('Not claimable reason');
+                }
                 const activeData = holdIssueRows.map(r => {
                     const row = [r.id, r.sku];
                     if (exportIncludeOrderId) {
@@ -5567,6 +5744,9 @@
                         row.push(r.department || '');
                     }
                     row.push(r.created_by, r.created_at);
+                    if (showClaimableRemarkColumn) {
+                        row.push(r.claimable_remark || '');
+                    }
                     return row;
                 });
 
