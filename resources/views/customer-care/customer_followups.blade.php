@@ -177,6 +177,18 @@
             flex-wrap: nowrap;
         }
 
+        .followup-table-scroll table.table thead th.followup-sl-col,
+        .followup-table-scroll table.table tbody td.followup-sl-col {
+            width: 3.25rem;
+            min-width: 2.75rem;
+            max-width: 3.5rem;
+            padding-left: 4px;
+            padding-right: 4px;
+            vertical-align: middle;
+            font-weight: 600;
+            color: #495057;
+        }
+
         .followup-table-scroll table.table tbody td.order-num-cell {
             word-break: normal;
             overflow: visible;
@@ -455,8 +467,8 @@
                     <div class="followup-table-scroll">
                         <table class="table table-hover mb-0 align-middle">
                             <colgroup>
-                                <col style="width:5%"><col style="width:7.2%"><col
-                                    style="width:26.6%"><col style="width:7.7%"><col style="width:9.2%"><col
+                                <col style="width:3.2%"><col style="width:5%"><col style="width:7.2%"><col
+                                    style="width:25%"><col style="width:7.5%"><col style="width:8.8%"><col
                                     style="width:4.5%"><col
                                     style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%"><col
                                     style="width:3.5%"><col
@@ -464,6 +476,7 @@
                             </colgroup>
                             <thead>
                                 <tr>
+                                    <th scope="col" class="followup-sl-col">SL NO</th>
                                     <th scope="col">Ord</th>
                                     <th scope="col" class="followup-sku-col">SKU</th>
                                     <th scope="col">Follow up issue</th>
@@ -480,7 +493,7 @@
                             </thead>
                             <tbody id="followupTableBody">
                                 <tr>
-                                    <td colspan="12" class="text-center py-4 text-muted">Loading…</td>
+                                    <td colspan="13" class="text-center py-4 text-muted">Loading…</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -825,13 +838,14 @@
 
                     if (!json.data.length) {
                         tbody.innerHTML =
-                            '<tr><td colspan="12" class="text-center py-4 text-muted">No records match filters.</td></tr>';
+                            '<tr><td colspan="13" class="text-center py-4 text-muted">No records match filters.</td></tr>';
                         return;
                     }
 
-                    tbody.innerHTML = json.data.map(row => {
+                    tbody.innerHTML = json.data.map((row, index) => {
                         const overdue = row.overdue ? ' followup-row-overdue' : '';
                         return '<tr class="' + overdue.trim() + '" data-id="' + row.id + '">' +
+                            '<td class="followup-sl-col">' + (index + 1) + '</td>' +
                             orderIdCellHtml(row) +
                             '<td class="followup-sku-col">' + escapeHtml(row.sku) + '</td>' +
                             notesCellHtml(row.notes) +
@@ -861,7 +875,7 @@
                     });
                 } catch (e) {
                     tbody.innerHTML =
-                        '<tr><td colspan="11" class="text-center text-danger py-4">Failed to load data.</td></tr>';
+                        '<tr><td colspan="13" class="text-center text-danger py-4">Failed to load data.</td></tr>';
                 }
             }
 

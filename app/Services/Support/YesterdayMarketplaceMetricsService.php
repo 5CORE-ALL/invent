@@ -144,7 +144,7 @@ class YesterdayMarketplaceMetricsService
             'topdawg' => $this->salesOnly($this->topdawgSales($date)),
             'depop' => $this->salesOnly($this->depopSales($date)),
             'vinted' => $this->salesOnly($this->vintedSales($date)),
-            'faire' => $this->salesOnly($this->faireSales($start, $end)),
+            'faire' => $this->faire($start, $end),
             'purchasingpower' => $this->salesOnly($this->purchasingPowerSales($start, $end)),
             'reverb' => $this->reverb($date),
             default => $this->fallback($name),
@@ -983,10 +983,15 @@ class YesterdayMarketplaceMetricsService
             ->value('revenue');
     }
 
-    private function faireSales(Carbon $start, Carbon $end): float
+    /**
+     * Faire 1-day sales / orders / qty from shopify_raw_orders (same source as All Marketplace).
+     *
+     * @return array<string, mixed>
+     */
+    private function faire(Carbon $start, Carbon $end): array
     {
         if (! Schema::hasTable('shopify_raw_orders')) {
-            return 0.0;
+            return $this->salesOnly(0.0);
         }
         $faireWhere = function ($q) {
             $q->where('source_name', 'faire')
@@ -1003,13 +1008,21 @@ class YesterdayMarketplaceMetricsService
             [$start, $end] = $window;
         }
 
-        return (float) DB::table('shopify_raw_orders')
+        $row = DB::table('shopify_raw_orders')
             ->where($faireWhere)
             ->where('order_date', '>=', $start)
             ->where('order_date', '<=', $end)
             ->where('quantity', '>', 0)
             ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
-            ->value('revenue');
+            ->selectRaw('COALESCE(SUM(quantity), 0) as qty')
+            ->selectRaw('COUNT(DISTINCT COALESCE(NULLIF(TRIM(order_number), ""), CAST(order_id AS CHAR))) as orders')
+            ->first();
+
+        $m = $this->salesOnly((float) ($row->revenue ?? 0));
+        $m['qty'] = (int) ($row->qty ?? 0);
+        $m['orders'] = (int) ($row->orders ?? 0);
+
+        return $m;
     }
 
     private function purchasingPowerSales(Carbon $start, Carbon $end): float

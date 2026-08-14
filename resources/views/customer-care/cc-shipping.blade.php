@@ -978,14 +978,51 @@
                 a.target = '_blank';
                 a.rel = 'noopener noreferrer';
                 a.className = iconColorClass + ' text-decoration-none';
-                a.title = link + ' — double-click to edit';
+                a.title = link + ' — single click opens · double-click or left+right click to edit';
                 a.setAttribute('aria-label', ariaLabel);
                 a.innerHTML = '<i class="fa-solid fa-link" aria-hidden="true"></i>';
-                a.addEventListener('click', ev => ev.stopPropagation());
+
+                // Single left-click opens. Double-left and left+right edit.
+                // Delay the open so the first click of a double-click does not
+                // navigate before dblclick can cancel it.
+                let openTimer = null;
+                let suppressOpen = false;
+                const editLink = () => {
+                    clearTimeout(openTimer);
+                    openTimer = null;
+                    suppressOpen = true;
+                    openScopeLinkModal(channelId, channelName, fieldName, link);
+                };
+                a.addEventListener('click', ev => {
+                    ev.stopPropagation();
+                    ev.preventDefault();
+                    if (suppressOpen || ev.detail > 1) {
+                        suppressOpen = false;
+                        return;
+                    }
+                    clearTimeout(openTimer);
+                    openTimer = setTimeout(() => {
+                        openTimer = null;
+                        window.open(link, '_blank', 'noopener,noreferrer');
+                    }, 280);
+                });
                 a.addEventListener('dblclick', ev => {
                     ev.stopPropagation();
                     ev.preventDefault();
-                    openScopeLinkModal(channelId, channelName, fieldName, link);
+                    editLink();
+                });
+                a.addEventListener('mousedown', ev => {
+                    if (ev.buttons === 3) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        editLink();
+                    }
+                });
+                a.addEventListener('contextmenu', ev => {
+                    if (suppressOpen) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                    }
                 });
                 wrap.appendChild(a);
                 return wrap;

@@ -454,60 +454,74 @@
         }
 
         // ── applyFilters ────────────────────────────────────────────────
+        function amzIsParentRow(d) {
+            return d && (d.is_parent === true || d.is_parent === 1 || d.is_parent === '1');
+        }
+
         function amzApplyFilters() {
-            if (!amzTable) return;
-            amzTable.clearFilter();
+            if (!amzTable || typeof amzTable.setFilter !== 'function') return;
 
             const skuSearch = ($('#amz-sku-search').val() || '').toLowerCase().trim();
-            const rowType   = $('#amz-row-type-filter').val();
-            const invFilter = $('#amz-inv-filter').val();
-            const lqsFilter = $('#amz-score-filter').val();
+            const rowType   = $('#amz-row-type-filter').val() || 'all';
+            const invFilter = $('#amz-inv-filter').val() || 'all';
+            const lqsFilter = $('#amz-score-filter').val() || 'all';
             const dilColor  = $('.amz-dil-item.active').data('color') || 'all';
 
-            if (skuSearch) {
-                amzTable.addFilter(d =>
-                    (d.sku || '').toLowerCase().includes(skuSearch) ||
-                    (d.asin || '').toLowerCase().includes(skuSearch)
-                );
+            const hasAny = !!(skuSearch || rowType !== 'all' || invFilter !== 'all'
+                || lqsFilter !== 'all' || dilColor !== 'all');
+
+            if (!hasAny) {
+                amzTable.clearFilter();
+                return;
             }
 
-            if (rowType === 'parents') {
-                amzTable.addFilter(d => d.is_parent === true);
-            } else if (rowType === 'skus') {
-                amzTable.addFilter(d => !d.is_parent);
-            }
+            // One combined predicate — Tabulator 6.3 often drops stacked addFilter(fn) calls.
+            amzTable.setFilter(function(d) {
+                const isParent = amzIsParentRow(d);
 
-            if (invFilter === 'zero') {
-                amzTable.addFilter(d => (parseInt(d.inv, 10) || 0) === 0);
-            } else if (invFilter === 'more') {
-                amzTable.addFilter(d => (parseInt(d.inv, 10) || 0) > 0);
-            }
+                if (skuSearch) {
+                    const sku    = String(d.sku || '').toLowerCase();
+                    const asin   = String(d.asin || '').toLowerCase();
+                    const parent = String(d.parent || '').toLowerCase();
+                    if (!sku.includes(skuSearch) && !asin.includes(skuSearch) && !parent.includes(skuSearch)) {
+                        return false;
+                    }
+                }
 
-            if (lqsFilter !== 'all') {
-                amzTable.addFilter(function(d) {
-                    if (d.is_parent) return true;
-                    const lqs = parseInt(d.lqs, 10);
-                    if (lqsFilter === 'missing') return !lqs || isNaN(lqs);
-                    if (lqsFilter === '8-10') return lqs >= 8 && lqs <= 10;
-                    if (lqsFilter === '6-7')  return lqs >= 6 && lqs < 8;
-                    if (lqsFilter === '4-5')  return lqs >= 4 && lqs < 6;
-                    if (lqsFilter === '1-3')  return lqs >= 1 && lqs < 4;
-                    return true;
-                });
-            }
+                if (rowType === 'parents' && !isParent) return false;
+                if (rowType === 'skus' && isParent) return false;
 
-            if (dilColor !== 'all') {
-                amzTable.addFilter(function(d) {
-                    const inv   = parseFloat(d.inv)  || 0;
-                    const l30   = parseFloat(d.l30)  || 0;
-                    const dil   = inv === 0 ? 0 : (l30 / inv) * 100;
-                    if (dilColor === 'red')    return dil < 16.66;
-                    if (dilColor === 'yellow') return dil >= 16.66 && dil < 25;
-                    if (dilColor === 'green')  return dil >= 25    && dil < 50;
-                    if (dilColor === 'pink')   return dil >= 50;
-                    return true;
-                });
-            }
+                const inv = parseInt(d.inv, 10) || 0;
+                if (invFilter === 'zero' && inv !== 0) return false;
+                if (invFilter === 'more' && inv <= 0) return false;
+
+                if (lqsFilter !== 'all') {
+                    // Parent rows have no LQS — hide them so the band actually filters the table.
+                    if (isParent) return false;
+                    const lqs = parseFloat(d.lqs);
+                    const hasLqs = d.lqs !== null && d.lqs !== '' && !isNaN(lqs) && lqs > 0;
+                    if (lqsFilter === 'missing') {
+                        if (hasLqs) return false;
+                    } else {
+                        if (!hasLqs) return false;
+                        if (lqsFilter === '8-10' && !(lqs >= 8 && lqs <= 10)) return false;
+                        if (lqsFilter === '6-7'  && !(lqs >= 6 && lqs < 8))  return false;
+                        if (lqsFilter === '4-5'  && !(lqs >= 4 && lqs < 6))  return false;
+                        if (lqsFilter === '1-3'  && !(lqs >= 1 && lqs < 4))  return false;
+                    }
+                }
+
+                if (dilColor !== 'all') {
+                    const l30 = parseFloat(d.l30) || 0;
+                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                    if (dilColor === 'red'    && !(dil < 16.66)) return false;
+                    if (dilColor === 'yellow' && !(dil >= 16.66 && dil < 25)) return false;
+                    if (dilColor === 'green'  && !(dil >= 25 && dil < 50)) return false;
+                    if (dilColor === 'pink'   && !(dil >= 50)) return false;
+                }
+
+                return true;
+            }, {});
         }
 
         function amzNormalizeRows(input) {
@@ -830,7 +844,10 @@
                         }
                     }
                 ],
-                dataLoaded:    function(data)        { amzUpdateSummary(data); },
+                dataLoaded:    function() {
+                    amzApplyFilters();
+                    amzUpdateSummary();
+                },
                 dataFiltered:  function(filters, rows) { amzUpdateSummary(rows); },
                 dataProcessed: function()             { amzUpdateSummary(); },
                 renderComplete: function()            { amzUpdateSummary(); }
