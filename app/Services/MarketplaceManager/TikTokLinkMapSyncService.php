@@ -697,35 +697,7 @@ class TikTokLinkMapSyncService
 
     protected function extractStockFromSkuNode(array $skuNode): ?int
     {
-        $stock = 0;
-        $found = false;
-        $inventory = $skuNode['inventory'] ?? null;
-        if (is_array($inventory)) {
-            $found = true;
-            if (array_is_list($inventory)) {
-                foreach ($inventory as $invRow) {
-                    if (is_array($invRow)) {
-                        $stock += (int) ($invRow['quantity'] ?? $invRow['available_quantity'] ?? 0);
-                    }
-                }
-            } else {
-                $stock += (int) ($inventory['quantity'] ?? $inventory['available_quantity'] ?? 0);
-            }
-        }
-        if (isset($skuNode['stock_infos']) && is_array($skuNode['stock_infos'])) {
-            $found = true;
-            foreach ($skuNode['stock_infos'] as $info) {
-                if (is_array($info)) {
-                    $stock += (int) ($info['available_stock'] ?? $info['quantity'] ?? 0);
-                }
-            }
-        }
-        if (isset($skuNode['quantity']) || isset($skuNode['available_stock'])) {
-            $found = true;
-            $stock += (int) ($skuNode['quantity'] ?? $skuNode['available_stock'] ?? 0);
-        }
-
-        return $found ? $stock : null;
+        return \App\Services\TikTokShopService::skuNodeAvailableQty($skuNode);
     }
 
     protected function intOrNull(mixed $value): ?int

@@ -54,7 +54,7 @@ class TikTokListingsPageBuilder
         $apiError = null;
         $forceLive = $request->boolean('refresh_live');
         $clearCache = $request->boolean('clear_cache');
-        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0, 'tiktok_products' => 0, 'tiktok_skus' => 0];
         $liveLinkTabs = ['matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'];
         $liveService = $this->liveService();
         $label = $this->label();
@@ -107,57 +107,12 @@ class TikTokListingsPageBuilder
         $matchedQty = $classified['matched'] ?? [];
         $mismatchQty = $classified['mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
-
-        if ($mismatchQty !== []) {
-            $liveShopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($mismatchQty);
-            if ($liveShopify === []) {
-                $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
-            }
-            $metricMap = $this->metricMapForSkus($mismatchQty);
-            $productIds = [];
-            $idToSku = [];
-            foreach ($mismatchQty as $sku) {
-                $metric = $metricMap[$sku] ?? null;
-                if (! $this->isLinked($metric, (string) $sku)) {
-                    continue;
-                }
-                $pid = (string) ($metric->product_id ?? '');
-                if ($pid === '') {
-                    continue;
-                }
-                $productIds[] = $pid;
-                $idToSku[$pid] = (string) $sku;
-            }
-            $liveMpByUpper = [];
-            if ($productIds !== []) {
-                foreach ($liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($productIds)), 0, 80)) as $pid => $row) {
-                    $sku = $idToSku[(string) $pid] ?? trim((string) ($row['sku'] ?? ''));
-                    if ($sku === '' || ! array_key_exists('inventory', $row) || $row['inventory'] === null) {
-                        continue;
-                    }
-                    $qty = (int) $row['inventory'];
-                    $liveMpByUpper[strtoupper($sku)] = $qty;
-                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                    if ($norm !== '') {
-                        $liveMpByUpper[$norm] = $qty;
-                    }
-                }
-            }
-            $reconciled = MarketplaceListingStockResolver::reconcileLinkedTabsWithLiveQty(
-                $matchedQty,
-                $mismatchQty,
-                $zeroQty,
-                $liveShopify,
-                $liveMpByUpper
-            );
-            $matchedQty = $reconciled['matched'];
-            $mismatchQty = $reconciled['mismatch'];
-            $zeroQty = $reconciled['zero'];
-            $counts['matched'] = count($matchedQty);
-            $counts['mismatch'] = count($mismatchQty);
-            $counts['zero'] = count($zeroQty);
-            $counts['linked'] = $counts['matched'] + $counts['mismatch'] + $counts['zero'];
-        }
+        $counts['matched'] = count($matchedQty);
+        $counts['mismatch'] = count($mismatchQty);
+        $counts['zero'] = count($zeroQty);
+        $counts['linked'] = $counts['matched'] + $counts['mismatch'] + $counts['zero'];
+        $counts['tiktok_products'] = $this->tiktokProductCount();
+        $counts['tiktok_skus'] = count($linkedSkus);
 
         // TikTok products table has no publish-state column — treat all as active.
         $matchedActive = $matchedQty;
@@ -223,7 +178,7 @@ class TikTokListingsPageBuilder
             $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
         }
 
-        $pageLiveByProduct = [];
+        $pageLive = [];
         if (in_array($linkTab, $liveLinkTabs, true)) {
             $needIds = [];
             foreach ($skus as $sku) {
@@ -234,11 +189,11 @@ class TikTokListingsPageBuilder
                 $needIds[] = (string) $metric->product_id;
             }
             if ($needIds !== []) {
-                $pageLiveByProduct = $liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($needIds)), 0, 50));
+                $pageLive = $liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($needIds)), 0, 50));
             }
         }
 
-        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($metricMap, $stockMap, $liveShopifyQty, $pageLiveByProduct) {
+        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($metricMap, $stockMap, $liveShopifyQty, $pageLive) {
             $sku = (string) $row->sku;
             $metric = $metricMap[$sku] ?? null;
             $linked = $this->isLinked($metric, $sku);
@@ -246,10 +201,18 @@ class TikTokListingsPageBuilder
             $shopifyPrice = $row->b2c_price ?? $row->price ?? null;
             $metricSku = $linked ? (string) ($metric->sku ?? '') : null;
             $pid = $linked ? (string) ($metric->product_id ?? '') : '';
+            $skuId = $linked ? trim((string) ($metric->sku_id ?? '')) : '';
             $mpQty = $linked
                 ? MarketplaceListingStockResolver::qtyFromMap($stockMap, $sku, $metricSku)
                 : null;
-            $live = ($pid !== '' && isset($pageLiveByProduct[$pid])) ? $pageLiveByProduct[$pid] : null;
+            $live = null;
+            if ($skuId !== '' && isset($pageLive[$skuId])) {
+                $live = $pageLive[$skuId];
+            } elseif (isset($pageLive[strtoupper($sku)])) {
+                $live = $pageLive[strtoupper($sku)];
+            } elseif (isset($pageLive[$sku])) {
+                $live = $pageLive[$sku];
+            }
             if ($linked && $live !== null && array_key_exists('inventory', $live) && $live['inventory'] !== null) {
                 $mpQty = (int) $live['inventory'];
             }
@@ -442,6 +405,19 @@ class TikTokListingsPageBuilder
             ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
             ->values()
             ->all();
+    }
+
+    protected function tiktokProductCount(): int
+    {
+        if (! Schema::hasTable($this->table())) {
+            return 0;
+        }
+
+        return (int) ($this->productModel())::query()
+            ->whereNotNull('product_id')
+            ->where('product_id', '!=', '')
+            ->selectRaw('COUNT(DISTINCT product_id) as c')
+            ->value('c');
     }
 
     /**

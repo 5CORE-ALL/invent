@@ -37,6 +37,9 @@ class TikTokShopService
 
     protected bool $ipAllowListBlocked = false;
 
+    /** @var array<string, array<string, mixed>> */
+    protected array $productDetailCache = [];
+
     public function __construct()
     {
         $cfg = config('services.'.$this->configKey, []);
@@ -676,87 +679,140 @@ class TikTokShopService
     }
 
     /**
-     * Get all product inventory - extract from product data (skus array)
-     * TikTok product data includes SKU-level inventory information
+     * One inventory row per seller SKU (never product-total stock).
+     * Combined listings must not copy the sum of variants onto the first SKU.
+     *
+     * @return list<array{product_id: string, sku: string, sku_id: string, available_stock: int, stock: int}>
      */
     public function getAllProductInventory(array $products): array
     {
         $allInventory = [];
-        
+
         if (empty($products)) {
             $this->output('warn', 'getAllProductInventory: No products provided');
+
             return $allInventory;
         }
-        
-        $this->output('info', 'getAllProductInventory: Extracting inventory from ' . count($products) . ' products');
-        
-        // Extract inventory from product data (skus array contains inventory info)
+
+        $this->output('info', 'getAllProductInventory: Extracting SKU inventory from '.count($products).' products');
+
         foreach ($products as $product) {
             $productId = $product['id'] ?? $product['product_id'] ?? null;
-            if (!$productId) {
+            if (! $productId) {
                 continue;
             }
-            
-            // Check if product has skus array with inventory data
-            $skus = $product['skus'] ?? [];
-            
-            if (!empty($skus) && is_array($skus)) {
-                // Sum inventory across SKUs. TikTok shape: skus[].inventory[].quantity
-                $totalStock = 0;
-                foreach ($skus as $sku) {
-                    $stock = 0;
-                    if (isset($sku['inventory']) && is_array($sku['inventory'])) {
-                        if (array_is_list($sku['inventory'])) {
-                            foreach ($sku['inventory'] as $invRow) {
-                                if (is_array($invRow)) {
-                                    $stock += (int) ($invRow['quantity']
-                                        ?? $invRow['available_stock']
-                                        ?? $invRow['stock']
-                                        ?? 0);
-                                }
-                            }
-                        } else {
-                            $stock = (int) ($sku['inventory']['quantity']
-                                ?? $sku['inventory']['available_stock']
-                                ?? $sku['inventory']['stock']
-                                ?? 0);
-                        }
-                    }
-                    if ($stock <= 0) {
-                        $stock = (int) ($sku['available_stock']
-                            ?? $sku['stock']
-                            ?? $sku['inventory_quantity']
-                            ?? $sku['quantity']
-                            ?? 0);
-                    }
-                    $totalStock += $stock;
-                }
 
-                $allInventory[] = [
-                    'product_id' => (string) $productId,
-                    'available_stock' => $totalStock,
-                    'stock' => $totalStock,
-                ];
-            } else {
-                // Try to get inventory from product-level fields
-                $stock = $product['available_stock'] 
-                    ?? $product['stock'] 
-                    ?? $product['inventory_quantity'] 
-                    ?? $product['inventory']['available_stock'] 
-                    ?? 0;
-                
-                if ($stock > 0) {
+            $skus = $product['skus'] ?? [];
+            if (is_array($skus) && $skus !== []) {
+                foreach ($skus as $sku) {
+                    if (! is_array($sku)) {
+                        continue;
+                    }
+                    $sellerSku = trim((string) ($sku['seller_sku'] ?? $sku['sku'] ?? ''));
+                    $skuId = trim((string) ($sku['id'] ?? $sku['sku_id'] ?? ''));
+                    if ($sellerSku === '' && $skuId === '') {
+                        continue;
+                    }
+                    $stock = (int) (self::skuNodeAvailableQty($sku) ?? 0);
                     $allInventory[] = [
-                        'product_id' => (string)$productId,
-                        'available_stock' => (int)$stock,
-                        'stock' => (int)$stock,
+                        'product_id' => (string) $productId,
+                        'sku' => $sellerSku,
+                        'sku_id' => $skuId,
+                        'available_stock' => $stock,
+                        'stock' => $stock,
                     ];
                 }
+
+                continue;
+            }
+
+            $sellerSku = trim((string) ($product['seller_sku'] ?? $product['sku'] ?? ''));
+            $stock = (int) ($product['available_stock']
+                ?? $product['stock']
+                ?? $product['inventory_quantity']
+                ?? (is_array($product['inventory'] ?? null) ? ($product['inventory']['available_stock'] ?? 0) : 0)
+                ?? 0);
+            if ($sellerSku !== '' || $stock > 0) {
+                $allInventory[] = [
+                    'product_id' => (string) $productId,
+                    'sku' => $sellerSku,
+                    'sku_id' => '',
+                    'available_stock' => $stock,
+                    'stock' => $stock,
+                ];
             }
         }
-        
-        $this->output('info', 'getAllProductInventory: Extracted inventory for ' . count($allInventory) . ' products');
+
+        $this->output('info', 'getAllProductInventory: Extracted inventory for '.count($allInventory).' SKUs');
+
         return $allInventory;
+    }
+
+    /**
+     * Available qty for one TikTok SKU node. Prefer warehouse inventory rows;
+     * do not add quantity on top of inventory[] (that double-counts).
+     */
+    public static function skuNodeAvailableQty(array $skuNode): ?int
+    {
+        $rows = self::skuNodeWarehouseRows($skuNode);
+        if ($rows !== []) {
+            $stock = 0;
+            foreach ($rows as $row) {
+                $stock += (int) ($row['quantity'] ?? 0);
+            }
+
+            return $stock;
+        }
+
+        if (isset($skuNode['available_stock'])) {
+            return (int) $skuNode['available_stock'];
+        }
+        if (isset($skuNode['quantity'])) {
+            return (int) $skuNode['quantity'];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    public static function skuNodeWarehouseRows(array $skuNode): array
+    {
+        $out = [];
+        $seen = [];
+
+        foreach (['inventory', 'warehouses', 'stock_infos', 'inventory_list'] as $key) {
+            $inventory = $skuNode[$key] ?? null;
+            if (! is_array($inventory)) {
+                continue;
+            }
+            $rows = array_is_list($inventory) ? $inventory : [$inventory];
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $wid = trim((string) ($row['warehouse_id'] ?? $row['warehouseId'] ?? ($row['warehouse']['id'] ?? '')));
+                if ($wid === '' || isset($seen[$wid])) {
+                    continue;
+                }
+                $seen[$wid] = true;
+                $out[] = [
+                    'warehouse_id' => $wid,
+                    'quantity' => (int) ($row['quantity'] ?? $row['available_quantity'] ?? $row['available_stock'] ?? $row['stock'] ?? 0),
+                ];
+            }
+        }
+
+        $wid = trim((string) ($skuNode['warehouse_id'] ?? $skuNode['warehouseId'] ?? ''));
+        if ($wid !== '' && ! isset($seen[$wid])) {
+            $out[] = [
+                'warehouse_id' => $wid,
+                'quantity' => (int) ($skuNode['quantity'] ?? $skuNode['available_stock'] ?? 0),
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -1640,12 +1696,32 @@ class TikTokShopService
         try {
             $this->client->setAccessToken($this->accessToken);
             $this->ensureShopCipher();
-
-            $warehouseId = $this->resolveDefaultWarehouseId();
             if ($this->ipAllowListBlocked) {
                 return ['success' => false, 'message' => 'Access denied. Your IP address is not in the IP allow list configured for this app.'];
             }
 
+            $skuWarehouses = $this->skuWarehouseInventoryRows($productId, $skuId);
+            if ($skuWarehouses !== []) {
+                $liveTotal = 0;
+                foreach ($skuWarehouses as $row) {
+                    $liveTotal += (int) ($row['quantity'] ?? 0);
+                }
+                if ($liveTotal === max(0, $quantity)) {
+                    return ['success' => true, 'message' => 'Inventory already matches.'];
+                }
+                $rows = $this->inventoryRowsForPushQty($skuWarehouses, $quantity);
+                $result = $this->sendInventoryRows($productId, $skuId, $rows);
+                if (! empty($result['success'])) {
+                    return $result;
+                }
+                $message = (string) ($result['message'] ?? '');
+                $this->rememberIpAllowList($message);
+                if ($this->ipAllowListBlocked) {
+                    return ['success' => false, 'message' => $message];
+                }
+            }
+
+            $warehouseId = $this->resolveDefaultWarehouseId();
             $result = $this->sendProductInventoryUpdate($productId, $skuId, $quantity, $warehouseId);
             if (! empty($result['success'])) {
                 return $result;
@@ -1729,45 +1805,142 @@ class TikTokShopService
         return ['success' => true, 'message' => 'Inventory updated.'];
     }
 
-    protected function warehouseIdFromProductSku(string $productId, string $skuId): ?string
+    /**
+     * @param  list<array{warehouse_id: string, quantity: int}>  $inventoryRows
+     * @return array{success: bool, message: string}
+     */
+    protected function sendInventoryRows(string $productId, string $skuId, array $inventoryRows): array
+    {
+        if ($inventoryRows === []) {
+            return ['success' => false, 'message' => 'No TikTok warehouse rows to update.'];
+        }
+
+        $params = [
+            'skus' => [
+                [
+                    'id' => $skuId,
+                    'inventory' => $inventoryRows,
+                ],
+            ],
+        ];
+
+        try {
+            $response = $this->client->Product->updateInventory($productId, $params);
+            $this->lastResponse = $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
+            return [
+                'success' => false,
+                'message' => (string) ($response['message'] ?? 'TikTok inventory update failed.'),
+            ];
+        }
+
+        return ['success' => true, 'message' => 'Inventory updated.'];
+    }
+
+    /**
+     * @param  list<array{warehouse_id: string, quantity: int}>  $warehouses
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    protected function inventoryRowsForPushQty(array $warehouses, int $quantity): array
+    {
+        $bestWid = '';
+        $bestQty = -1;
+        foreach ($warehouses as $row) {
+            $wid = trim((string) ($row['warehouse_id'] ?? ''));
+            if ($wid === '') {
+                continue;
+            }
+            $q = (int) ($row['quantity'] ?? 0);
+            if ($bestWid === '' || $q > $bestQty) {
+                $bestQty = $q;
+                $bestWid = $wid;
+            }
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($warehouses as $row) {
+            $wid = trim((string) ($row['warehouse_id'] ?? ''));
+            if ($wid === '' || isset($seen[$wid])) {
+                continue;
+            }
+            $seen[$wid] = true;
+            $out[] = [
+                'warehouse_id' => $wid,
+                'quantity' => $wid === $bestWid ? max(0, $quantity) : 0,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    protected function skuWarehouseInventoryRows(string $productId, string $skuId): array
     {
         try {
-            $response = $this->client->Product->getProduct($productId);
-            $data = is_array($response) ? ($response['data'] ?? $response) : [];
+            $data = $this->fetchProductData($productId);
             $skus = is_array($data['skus'] ?? null) ? $data['skus'] : [];
 
             foreach ($skus as $sku) {
-                if (! is_array($sku) || (string) ($sku['id'] ?? '') !== $skuId) {
+                if (! is_array($sku) || (string) ($sku['id'] ?? $sku['sku_id'] ?? '') !== $skuId) {
                     continue;
                 }
-                $wid = trim((string) ($sku['warehouse_id'] ?? $sku['warehouseId'] ?? ''));
-                if ($wid !== '') {
-                    return $wid;
-                }
-                foreach (['inventory', 'warehouses', 'stock_infos', 'inventory_list'] as $key) {
-                    $inventory = $sku[$key] ?? null;
-                    if (! is_array($inventory)) {
-                        continue;
-                    }
-                    $rows = array_is_list($inventory) ? $inventory : [$inventory];
-                    foreach ($rows as $row) {
-                        if (! is_array($row)) {
-                            continue;
-                        }
-                        $wid = trim((string) ($row['warehouse_id'] ?? $row['warehouseId'] ?? ($row['warehouse']['id'] ?? '')));
-                        if ($wid !== '') {
-                            return $wid;
-                        }
-                    }
-                }
+
+                return self::skuNodeWarehouseRows($sku);
             }
+
+            return [];
         } catch (\Throwable $e) {
             $this->rememberIpAllowList($e->getMessage());
-            Log::info('TikTok warehouseIdFromProductSku failed', [
+            Log::info('TikTok skuWarehouseInventoryRows failed', [
                 'product_id' => $productId,
                 'sku_id' => $skuId,
                 'error' => $e->getMessage(),
             ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function fetchProductData(string $productId): array
+    {
+        if (array_key_exists($productId, $this->productDetailCache)) {
+            return $this->productDetailCache[$productId];
+        }
+
+        $response = $this->client->Product->getProduct($productId);
+        $data = is_array($response) ? ($response['data'] ?? $response) : [];
+        if (! is_array($data)) {
+            $data = [];
+        }
+        if (! isset($data['skus']) && is_array($data['data'] ?? null)) {
+            $data = $data['data'];
+        }
+
+        $this->productDetailCache[$productId] = $data;
+
+        return $data;
+    }
+
+    protected function warehouseIdFromProductSku(string $productId, string $skuId): ?string
+    {
+        $rows = $this->skuWarehouseInventoryRows($productId, $skuId);
+        foreach ($rows as $row) {
+            $wid = trim((string) ($row['warehouse_id'] ?? ''));
+            if ($wid !== '') {
+                return $wid;
+            }
         }
 
         return null;

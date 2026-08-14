@@ -6,10 +6,11 @@
         <a href="{{ route('marketplace.manager.show', 'tiktok') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> TikTok Shop Manager</a>
         @include('marketplace._page-heading', ['slug' => 'tiktok', 'heading' => 'TikTok Shop Listings'])
         <p class="text-muted mb-3">
-            <strong>All</strong> = every Shopify live SKU.
-            <strong>Active SKU</strong> = qty matched on TikTok.
-            <strong>SKU Inv Mismatch</strong> = qty differs.
-            <strong>Zero on Shopify</strong> / <strong>Not on TikTok</strong> = unlinked or zero stock.
+            Seller Center <strong>Active</strong> counts <strong>products</strong> (a combined listing is 1). This page counts <strong>Shopify SKUs</strong>.
+            Linked here ≈ Active SKU + SKU Inv Mismatch + Zero on Shopify (sold-out SKUs are still Active in Seller Center).
+            <strong>Active SKU</strong> = Shopify qty already equals TikTok qty.
+            <strong>SKU Inv Mismatch</strong> = qty still differs — use <em>Sync Mismatch inventory now</em>.
+            App has {{ $counts['tiktok_products'] ?? 0 }} TikTok products / {{ $counts['tiktok_skus'] ?? 0 }} linked SKUs.
             <em>Refresh live</em> warms the listings cache. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
@@ -73,7 +74,7 @@
             </div>
             <div class="card-body">
                 @php
-                    $counts = $counts ?? ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+                    $counts = $counts ?? ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0, 'tiktok_products' => 0, 'tiktok_skus' => 0];
                     $qName = urlencode($searchName ?? '');
                     $qSku = urlencode($searchSku ?? '');
                 @endphp

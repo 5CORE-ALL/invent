@@ -100,8 +100,14 @@ class TikTokLiveListingsService
             if ($parsed === null) {
                 continue;
             }
-            $out[$parsed['product_id']] = $parsed;
             $out[$parsed['sku']] = $parsed;
+            $out[strtoupper($parsed['sku'])] = $parsed;
+            if (! empty($parsed['sku_id'])) {
+                $out[(string) $parsed['sku_id']] = $parsed;
+            }
+            if (! isset($out[$parsed['product_id']])) {
+                $out[$parsed['product_id']] = $parsed;
+            }
         }
 
         return $out;
