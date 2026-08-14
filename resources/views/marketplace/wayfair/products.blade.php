@@ -7,8 +7,8 @@
         @include('marketplace._page-heading', ['slug' => 'wayfair', 'heading' => 'Wayfair Listings'])
         <p class="text-muted mb-3">
             Linked tabs: <strong>All</strong> = every Shopify live SKU.
-            <strong>Active SKU / Inactive SKU</strong> = qty matched, split by Wayfair status.
-            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = qty differs, split by Wayfair status.
+            <strong>Active SKU / Inactive SKU</strong> = qty matches, or Shopify is higher by at most the higher of 3 units or 3% of Shopify qty, split by Wayfair status.
+            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = Wayfair qty is higher than Shopify, or the gap is beyond that bar — use <em>Sync Mismatch inventory now</em>.
             <em>Refresh live</em> warms Wayfair status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 

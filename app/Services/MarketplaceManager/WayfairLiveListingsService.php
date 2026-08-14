@@ -13,8 +13,11 @@ class WayfairLiveListingsService
 {
     private const CACHE_KEY = 'mm.wayfair.live_listings.v1';
 
+    private const CACHE_GEN_KEY = 'mm.wayfair.live_listings.gen';
+
     public function clearCache(): void
     {
+        Cache::increment(self::CACHE_GEN_KEY);
         Cache::forget(self::CACHE_KEY);
     }
 
@@ -30,8 +33,13 @@ class WayfairLiveListingsService
             }
         }
 
+        $gen = (int) Cache::get(self::CACHE_GEN_KEY, 0);
         $rows = $this->fetchFromLocal();
-        Cache::put(self::CACHE_KEY, $rows, now()->addHours(6));
+        // Skip writing if inventory persist cleared the cache while we were reading,
+        // otherwise stale wayfair_stock=0 overlays the listings page for 6 hours.
+        if ((int) Cache::get(self::CACHE_GEN_KEY, 0) === $gen) {
+            Cache::put(self::CACHE_KEY, $rows, now()->addHours(6));
+        }
 
         return $rows;
     }

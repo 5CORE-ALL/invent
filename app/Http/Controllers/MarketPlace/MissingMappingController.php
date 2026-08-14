@@ -87,7 +87,7 @@ class MissingMappingController extends Controller
 
         $slug = $resolved['slug'];
         $hasSkuDetail = isset(self::MAP_ISSUE_CHANNELS[$slug])
-            || in_array($slug, ['tiktok', 'tiktokshop', 'tiktok2', 'tiktokshop2', 'temu', 'temu2'], true);
+            || in_array($slug, ['tiktok', 'tiktokshop', 'tiktok2', 'tiktokshop2', 'temu', 'temu2', 'pls'], true);
 
         $channelInvLabel = match (true) {
             in_array($slug, ['tiktok', 'tiktokshop'], true) => 'TikTok 1 inv',
@@ -95,6 +95,7 @@ class MissingMappingController extends Controller
             $slug === 'temu' => 'Temu Inv',
             $slug === 'temu2' => 'Temu 2 Inv',
             $slug === 'shein' => 'Shein Inv',
+            $slug === 'pls' => 'PLS Inv',
             default => 'Channel Inv',
         };
 
@@ -153,6 +154,27 @@ class MissingMappingController extends Controller
                     : [];
                 $rows = is_array($payload['data'] ?? null) ? $payload['data'] : [];
                 $data = collect(SheinController::nmapSkuRowsFromPricing($rows))
+                    ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
+                    ->values();
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $data,
+                    'count' => $data->count(),
+                    'channel' => $resolved['name'],
+                ]);
+            }
+
+            // PLS — SKU list from /pls-pricing (same N Map rules as PLS pricing badges)
+            if ($slug === 'pls') {
+                $raw = app(PlsController::class)->pricingDataJson(
+                    Request::create('/pls-pricing-data-json', 'GET')
+                );
+                $payload = $raw instanceof \Illuminate\Http\JsonResponse
+                    ? json_decode($raw->getContent(), true)
+                    : [];
+                $rows = is_array($payload['data'] ?? null) ? $payload['data'] : (is_array($payload) ? $payload : []);
+                $data = collect(PlsController::nmapSkuRowsFromPricing(is_array($rows) ? $rows : []))
                     ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
                     ->values();
 

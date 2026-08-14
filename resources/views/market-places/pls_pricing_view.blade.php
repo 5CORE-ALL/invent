@@ -319,14 +319,29 @@
         return (row.missing || '') === 'M' && (parseInt(row.inventory) || 0) > 0;
     }
 
-    /** M M — listed, INV>0, INV vs PLS Stock mismatch beyond tolerance. */
+    function plsMismatchIgnoreThreshold(inv) {
+        inv = parseInt(inv) || 0;
+        if (inv <= 0) return 0;
+        return Math.max(3, Math.ceil(inv * 0.03));
+    }
+
+    /** Same as /map-issues: ignore only when Shopify is higher by at most max(3, 3% of INV). */
+    function isPlsQtyMapped(inv, plsInv) {
+        inv = parseInt(inv) || 0;
+        plsInv = parseInt(plsInv) || 0;
+        if (inv <= 0) return plsInv <= 0;
+        if (inv === plsInv) return true;
+        if (inv < plsInv) return false;
+        return (inv - plsInv) <= plsMismatchIgnoreThreshold(inv);
+    }
+
+    /** M M — listed, INV>0, INV vs PLS stock beyond max(3, 3% of Shopify). PLS higher than Shopify is always N Map. */
     function isPlsMissingM(row) {
+        if ((row.missing || '') === 'M') return false;
         const inv = parseInt(row.inventory) || 0;
         const plsInv = parseInt(row.pls_inventory) || 0;
-        if ((row.missing || '') === 'M') return false;
-        if (inv > 0 && plsInv === 0 && inv > 3) return true;
-        if (inv > 0 && plsInv > 0 && inv !== plsInv && Math.abs(inv - plsInv) > 3) return true;
-        return false;
+        if (inv <= 0) return false;
+        return !isPlsQtyMapped(inv, plsInv);
     }
 
     function showToast(message, type = 'info') {
@@ -840,25 +855,19 @@
                         
                         const plsInventory = parseFloat(rowData['pls_inventory']) || 0;
                         const inv = parseFloat(rowData['inventory']) || 0;
-                        
-                        if (inv > 0 && plsInventory === 0) {
-                            if (inv <= 3) {
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (≤3)">MP</span>';
-                            }
-                            return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
+
+                        if (inv <= 0) {
+                            return '';
                         }
-                        
-                        if (inv > 0 && plsInventory > 0) {
-                            if (inv === plsInventory || Math.abs(inv - plsInventory) <= 3) {
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within ≤3: counts as MP">MP</span>';
-                            } else {
-                                const diff = inv - plsInventory;
-                                const sign = diff > 0 ? '+' : '';
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
-                            }
+
+                        if (isPlsQtyMapped(inv, plsInventory)) {
+                            return '<span style="color: #28a745; font-weight: bold;" title="Within max(3, 3% of Shopify) when Shopify is higher">MP</span>';
                         }
-                        
-                        return '';
+
+                        const diff = inv - plsInventory;
+                        const sign = diff > 0 ? '+' : '';
+                        const label = (plsInventory === 0) ? inv : (sign + diff);
+                        return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${label})</span>`;
                     }
                 },
                 {

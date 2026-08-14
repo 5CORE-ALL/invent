@@ -2035,8 +2035,9 @@ class ChannelMasterController extends Controller
     /**
      * Map / Miss / NMap for PLS — same rules as pls-pricing badges.
      * Missing: INV > 0 AND price <= 0
-     * N Map: missing !== 'M' AND ((INV > 0 AND PLS_INV = 0 AND INV > 3) OR (INV > 0 AND PLS_INV > 0 AND |INV - PLS_INV| > 3))
-     * Map: missing !== 'M' AND NOT N Map (difference ≤ 3)
+     * N Map: missing !== 'M' AND INV > 0 AND Shopify vs PLS stock beyond max(3, 3% of Shopify)
+     *         (always N Map when PLS stock is higher than Shopify)
+     * Map: missing !== 'M' AND INV > 0 AND within that bar
      */
     private function getPlsLiveMapMissNMapFromPricingData(): array
     {

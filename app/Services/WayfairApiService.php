@@ -945,10 +945,23 @@ XML;
 
         $error = null;
 
+        $listedOnly = [];
         try {
             $fromSupplier = $this->lookupFromSupplierCatalog(array_values($wanted));
             if ($fromSupplier['items'] !== []) {
-                return $fromSupplier;
+                $hasRealQty = false;
+                foreach ($fromSupplier['items'] as $item) {
+                    if ((int) ($item['quantity'] ?? 0) > 0) {
+                        $hasRealQty = true;
+                        break;
+                    }
+                }
+                // Supplier catalog confirms the SKU is listed but hardcodes qty 0.
+                // Do not treat that as live on-hand — fall through to inventory queries.
+                if ($hasRealQty) {
+                    return $fromSupplier;
+                }
+                $listedOnly = $fromSupplier['items'];
             }
             if (! empty($fromSupplier['error'])) {
                 $error = $fromSupplier['error'];
@@ -982,6 +995,10 @@ XML;
         } catch (\Throwable $e) {
             $error = $error ?: $e->getMessage();
             Log::warning('Wayfair lookupInventoryBySkus PO failed', ['error' => $e->getMessage()]);
+        }
+
+        if ($listedOnly !== []) {
+            return ['items' => $listedOnly, 'source' => 'supplier_catalog', 'error' => $error];
         }
 
         return ['items' => [], 'source' => 'none', 'error' => $error];
@@ -1389,11 +1406,12 @@ XML;
 
     /**
      * Push inventory to Wayfair via GraphQL inventory.save (differential feed).
+     * Always sends dryRun: false so accepted feeds actually update on-hand qty.
      *
      * @param  array<int, array{sku: string, quantity: int}>  $items
      * @return array{pushed: int, failed: int, message: string, skus: list<string>}
      */
-    public function updateItemInventoryBulk(array $items): array
+    public function updateItemInventoryBulk(array $items, string $feedKind = 'DIFFERENTIAL'): array
     {
         if ($items === []) {
             return ['pushed' => 0, 'failed' => 0, 'message' => 'No items to push.', 'skus' => []];
@@ -1413,12 +1431,30 @@ XML;
         }
 
         $supplierId = (int) config('services.wayfair.supplier_id', 2603);
+        $feedKind = strtoupper(trim($feedKind)) === 'TRUE_UP' ? 'TRUE_UP' : 'DIFFERENTIAL';
         $mutations = [
             <<<'GRAPHQL'
-            mutation SaveInventory($inventory: [inventoryInput!]!) {
+            mutation saveInventory($inventory: [inventoryInput]!, $feedKind: inventoryFeedKind) {
               inventory {
-                save(inventory: $inventory, feed_kind: DIFFERENTIAL) {
+                save(inventory: $inventory, feedKind: $feedKind, dryRun: false) {
+                  id
                   handle
+                  status
+                  submittedAt
+                  itemCount
+                  errorCount
+                  errors { key message }
+                }
+              }
+            }
+            GRAPHQL,
+            <<<'GRAPHQL'
+            mutation saveInventory($inventory: [inventoryInput]!, $feedKind: inventoryFeedKind) {
+              inventory {
+                save(inventory: $inventory, feedKind: $feedKind) {
+                  id
+                  handle
+                  status
                   submittedAt
                   errors { key message }
                 }
@@ -1465,8 +1501,14 @@ XML;
             }
 
             $save = null;
-            foreach ($mutations as $mutation) {
-                $res = $this->graphqlPost($this->graphqlUrl, $token, $mutation, ['inventory' => $inventory]);
+            $usedWithFeedKindVar = false;
+            foreach ($mutations as $index => $mutation) {
+                $variables = ['inventory' => $inventory];
+                if ($index < 2) {
+                    $variables['feedKind'] = $feedKind;
+                    $usedWithFeedKindVar = true;
+                }
+                $res = $this->graphqlPost($this->graphqlUrl, $token, $mutation, $variables);
                 if (! empty($res['json']['errors'])) {
                     $lastError = $this->formatGraphqlErrors($res['json']['errors']);
                     continue;
@@ -1487,34 +1529,53 @@ XML;
                 Log::warning('WayfairApiService: inventory save failed', [
                     'count' => count($inventory),
                     'error' => $lastError,
+                    'feed_kind' => $feedKind,
+                    'used_feed_kind_var' => $usedWithFeedKindVar,
                 ]);
                 continue;
             }
 
             $errorKeys = [];
+            $feedLevelError = false;
             foreach (is_array($save['errors'] ?? null) ? $save['errors'] : [] as $err) {
                 if (! is_array($err)) {
                     continue;
                 }
                 $key = trim((string) ($err['key'] ?? ''));
+                $msg = trim((string) ($err['message'] ?? ''));
                 if ($key !== '') {
                     $errorKeys[strtoupper($key)] = true;
+                } elseif ($msg !== '') {
+                    $feedLevelError = true;
                 }
-                $msg = trim((string) ($err['message'] ?? ''));
                 if ($msg !== '') {
                     $lastError = $msg;
                 }
             }
 
+            $errorCount = (int) ($save['errorCount'] ?? 0);
+            $handle = trim((string) ($save['handle'] ?? $save['id'] ?? ''));
+            if ($handle === '' && $errorCount > 0) {
+                $feedLevelError = true;
+            }
+
             foreach ($inventory as $row) {
                 $sku = (string) $row['supplierPartNumber'];
-                if (isset($errorKeys[strtoupper($sku)])) {
+                if ($feedLevelError || isset($errorKeys[strtoupper($sku)])) {
                     $failed++;
                 } else {
                     $pushed++;
                     $accepted[] = $sku;
                 }
             }
+
+            Log::info('WayfairApiService: inventory.save chunk', [
+                'handle' => $handle !== '' ? $handle : null,
+                'status' => $save['status'] ?? null,
+                'item_count' => $save['itemCount'] ?? count($inventory),
+                'error_count' => $errorCount,
+                'accepted' => count($inventory) - count($errorKeys),
+            ]);
         }
 
         $message = $pushed > 0
@@ -1525,6 +1586,7 @@ XML;
             'pushed' => $pushed,
             'failed' => $failed,
             'handle_error' => $lastError,
+            'feed_kind' => $feedKind,
         ]);
 
         return [

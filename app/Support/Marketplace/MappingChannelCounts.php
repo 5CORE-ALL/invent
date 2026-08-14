@@ -193,7 +193,7 @@ class MappingChannelCounts
                 'detail_url' => route('map.issues.channel', ['channel' => $slug]),
                 // mi_key MapIssues channels + pricing loaders that expose SKU detail
                 'has_sku_detail' => isset(self::$sources[$slug]['mi_key'])
-                    || in_array($slug, ['tiktok', 'tiktok2', 'shein'], true),
+                    || in_array($slug, ['tiktok', 'tiktok2', 'shein', 'pls', 'temu', 'temu2'], true),
             ];
         }
 
