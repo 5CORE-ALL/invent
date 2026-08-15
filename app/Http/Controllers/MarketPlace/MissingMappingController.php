@@ -10,6 +10,7 @@ use App\Models\ChannelMaster;
 use App\Support\Badges\AllMarketplaceMasterBadgeCalculator;
 use App\Support\Marketplace\MappingChannelCounts;
 use App\Services\ShopifyPlsTokenService;
+use App\Services\Temu2ApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -100,12 +101,18 @@ class MissingMappingController extends Controller
             default => 'Channel Inv',
         };
 
-        $plsApi = null;
+        $apiStatus = null;
         if ($slug === 'pls') {
             try {
-                $plsApi = app(ShopifyPlsTokenService::class)->pingShopCached();
+                $apiStatus = app(ShopifyPlsTokenService::class)->pingShopCached();
             } catch (\Throwable $e) {
-                $plsApi = ['connected' => false, 'message' => 'PLS API check failed'];
+                $apiStatus = ['connected' => false, 'message' => 'PLS API check failed'];
+            }
+        } elseif ($slug === 'temu2') {
+            try {
+                $apiStatus = app(Temu2ApiService::class)->pingShopCached();
+            } catch (\Throwable $e) {
+                $apiStatus = ['connected' => false, 'message' => 'Temu 2 API check failed'];
             }
         }
 
@@ -115,7 +122,7 @@ class MissingMappingController extends Controller
             'hasSkuDetail' => $hasSkuDetail,
             'mapIssueKey' => self::MAP_ISSUE_CHANNELS[$slug]['flag'] ?? null,
             'channelInvLabel' => $channelInvLabel,
-            'plsApi' => $plsApi,
+            'apiStatus' => $apiStatus,
         ]);
     }
 
@@ -220,11 +227,22 @@ class MissingMappingController extends Controller
                     ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
                     ->values();
 
+                $apiStatus = null;
+                if ($slug === 'temu2') {
+                    try {
+                        $apiStatus = app(Temu2ApiService::class)->pingShopCached();
+                    } catch (\Throwable $e) {
+                        $apiStatus = ['connected' => false, 'message' => 'Temu 2 API check failed'];
+                    }
+                }
+
                 return response()->json([
                     'success' => true,
                     'data' => $data,
                     'count' => $data->count(),
                     'channel' => $resolved['name'],
+                    'api_connected' => $apiStatus !== null ? (bool) ($apiStatus['connected'] ?? false) : null,
+                    'api_label' => $apiStatus !== null ? (string) ($apiStatus['message'] ?? '') : null,
                 ]);
             }
 

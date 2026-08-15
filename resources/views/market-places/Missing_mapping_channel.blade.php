@@ -33,11 +33,11 @@
                         Missing Mapping: <span id="mmc-total-count">0</span>
                     </span>
                     <span class="text-muted small">{{ $channelName }} — SKUs where INV does not match channel stock (N Map). Both sides must have stock.</span>
-                    @if (!empty($plsApi))
-                        @if (!empty($plsApi['connected']))
-                            <span class="badge bg-success" title="{{ $plsApi['message'] ?? '' }}">API connected{{ !empty($plsApi['shop']) ? ' — '.$plsApi['shop'] : '' }}</span>
+                    @if (!empty($apiStatus))
+                        @if (!empty($apiStatus['connected']))
+                            <span class="badge bg-success" title="{{ $apiStatus['message'] ?? '' }}">API connected{{ !empty($apiStatus['shop']) ? ' — '.$apiStatus['shop'] : '' }}</span>
                         @else
-                            <span class="badge bg-danger" title="{{ $plsApi['message'] ?? '' }}">API off</span>
+                            <span class="badge bg-danger" title="{{ $apiStatus['message'] ?? '' }}">API off</span>
                         @endif
                     @endif
                     @if (!empty($hasSkuDetail))
