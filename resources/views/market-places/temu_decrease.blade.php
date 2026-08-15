@@ -911,6 +911,27 @@
                         </select>
                     </div>
 
+                    {{-- Match (M) — Green / Red only. Rows with no LMP are excluded from counts and filter. --}}
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="matchFilterDropdown"
+                            data-bs-toggle="dropdown" data-color="all" aria-expanded="false"
+                            title="Match: Green = S PRC is LMP − $0.01; Red = not matched. No-LMP rows are not counted.">
+                            <span class="status-circle default"></span> Match
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="matchFilterDropdown">
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="all">
+                                    <span class="status-circle default"></span> All Match</a></li>
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="green">
+                                    <span class="status-circle green"></span> <span class="match-filter-green-label">Green (0)</span></a></li>
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="red">
+                                    <span class="status-circle red"></span> <span class="match-filter-red-label">Red (0)</span></a></li>
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="red-">
+                                    <span class="status-circle red"></span> <span class="match-filter-red-minus-label">Diff − (0)</span></a></li>
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="red+">
+                                    <span class="status-circle red"></span> <span class="match-filter-red-plus-label">Diff + (0)</span></a></li>
+                        </ul>
+                    </div>
+
                     {{-- DIL% bracket filter — buckets aligned with /topdawg-tabulator:
                          Red < 25, Green 25–50, Pink ≥ 50. The yellow band (16.7–25%)
                          that used to exist was merged into red so the temu DIL color
@@ -3323,24 +3344,20 @@
 
         $(document).on('change', '#select-all-checkbox', function() {
             const isChecked = $(this).prop('checked');
-            const filteredData = table.getData('active');
-            
-            filteredData.forEach(row => {
-                const sku = row['sku'];
-                if (sku) {
-                    if (isChecked) {
-                        selectedSkus.add(sku);
-                    } else {
-                        selectedSkus.delete(sku);
-                    }
-                }
+            if (!table) return;
+
+            temuCurrentPageSkuRows().forEach(function(row) {
+                const sku = (row.getData() || {}).sku;
+                if (!sku) return;
+                if (isChecked) selectedSkus.add(sku);
+                else selectedSkus.delete(sku);
             });
-            
+
             $('.sku-select-checkbox').each(function() {
                 const sku = $(this).data('sku');
                 $(this).prop('checked', selectedSkus.has(sku));
             });
-            
+            $(this).prop('indeterminate', false);
             updateSelectedCount();
         });
 
@@ -3723,21 +3740,52 @@
             $('#discount-input-container').show();
         }
 
+        /** Current pagination page SKU rows only (not the full filtered set). */
+        function temuCurrentPageSkuRows() {
+            if (!table) return [];
+            let allActive = [];
+            try {
+                allActive = (table.getRows('active') || []).filter(function(row) {
+                    const d = row.getData() || {};
+                    if (typeof isTemuParentRow === 'function' && isTemuParentRow(d)) return false;
+                    return !!d.sku;
+                });
+            } catch (e) {
+                return [];
+            }
+            let pageSize = (typeof table.getPageSize === 'function' ? table.getPageSize() : 0) || 100;
+            const currentPage = (typeof table.getPage === 'function' ? table.getPage() : 1) || 1;
+            if (pageSize === true || pageSize === 'true') return allActive;
+            pageSize = Number(pageSize) || 100;
+            if (pageSize >= allActive.length && allActive.length > 0) return allActive;
+            const start = (currentPage - 1) * pageSize;
+            return allActive.slice(start, start + pageSize);
+        }
+
         function updateSelectAllCheckbox() {
-            if (!table) return;
-            
-            const filteredData = table.getData('active');
-            
-            if (filteredData.length === 0) {
-                $('#select-all-checkbox').prop('checked', false);
+            if (!table) {
+                $('#select-all-checkbox').prop('checked', false).prop('indeterminate', false);
                 return;
             }
-            
-            const filteredSkus = new Set(filteredData.map(row => row['sku']).filter(sku => sku));
-            const allFilteredSelected = filteredSkus.size > 0 && 
-                Array.from(filteredSkus).every(sku => selectedSkus.has(sku));
-            
-            $('#select-all-checkbox').prop('checked', allFilteredSelected);
+            const pageRows = temuCurrentPageSkuRows();
+            if (pageRows.length === 0) {
+                $('#select-all-checkbox').prop('checked', false).prop('indeterminate', false);
+                return;
+            }
+
+            let selectedCount = 0;
+            pageRows.forEach(function(row) {
+                const sku = (row.getData() || {}).sku || '';
+                if (sku && selectedSkus.has(sku)) selectedCount++;
+            });
+
+            if (selectedCount === 0) {
+                $('#select-all-checkbox').prop('checked', false).prop('indeterminate', false);
+            } else if (selectedCount === pageRows.length) {
+                $('#select-all-checkbox').prop('checked', true).prop('indeterminate', false);
+            } else {
+                $('#select-all-checkbox').prop('checked', false).prop('indeterminate', true);
+            }
         }
 
         function roundToRetailPrice(price) {
@@ -4022,6 +4070,33 @@
             const target = temuLmpUndercutSprice(lmp);
             const sprice = temuDisplayedSprice(row);
             return target > 0 && sprice > 0 && Math.abs(sprice - target) < 0.015;
+        }
+        /** Diff % = (LMP − S PRC) / LMP. Positive = S PRC below LMP. */
+        function temuLmpDiffPct(row) {
+            const lmp = typeof getRowLmpL1 === 'function' ? (getRowLmpL1(row) || 0) : 0;
+            const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(row) : 0;
+            if (!(lmp > 0) || !(sprice > 0)) return null;
+            return ((lmp - sprice) / lmp) * 100;
+        }
+        /** Match state: green | red- (Diff < 0) | red+ (Diff > 0) | none (no LMP). */
+        function temuMatchStatus(row) {
+            if (!row || (typeof isTemuParentRow === 'function' && isTemuParentRow(row))) return null;
+            const lmp = typeof getRowLmpL1 === 'function' ? (getRowLmpL1(row) || 0) : 0;
+            if (!(lmp > 0)) return 'none';
+            if (temuSpriceMatchesLmp(row)) return 'green';
+            const diff = temuLmpDiffPct(row);
+            if (diff == null) return 'none';
+            if (diff > 0) return 'red+';
+            if (diff < 0) return 'red-';
+            return 'red';
+        }
+        function temuMatchFilterMatches(status, filter) {
+            if (!status || status === 'none') return false;
+            if (filter === 'green') return status === 'green';
+            if (filter === 'red') return status === 'red' || status === 'red-' || status === 'red+';
+            if (filter === 'red-') return status === 'red-';
+            if (filter === 'red+') return status === 'red+';
+            return false;
         }
 
         function applyLmpToSpriceForRow(tableRow) {
@@ -4377,6 +4452,10 @@
             let greenAlertCount = 0;
             let redAlertCount = 0;
             let spriceLmpAlertCount = 0;
+            let matchGreenCount = 0;
+            let matchRedCount = 0;
+            let matchRedMinusCount = 0;
+            let matchRedPlusCount = 0;
             
             data.forEach(row => {
                 const temuL30 = parseInt(row['temu_l30']) || 0;
@@ -4466,6 +4545,11 @@
                 if (temuSpriceHasLmpAlert(row)) {
                     spriceLmpAlertCount++;
                 }
+                const matchStatus = typeof temuMatchStatus === 'function' ? temuMatchStatus(row) : null;
+                if (matchStatus === 'green') matchGreenCount++;
+                else if (matchStatus === 'red-') { matchRedMinusCount++; matchRedCount++; }
+                else if (matchStatus === 'red+') { matchRedPlusCount++; matchRedCount++; }
+                else if (matchStatus === 'red') matchRedCount++;
                 
                 // Map / Missing M (N Map): listed, REQ, both sides with stock — same rule as /map-issues.
                 // Tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
@@ -4577,6 +4661,10 @@
             // Use .html() so the FontAwesome <i> renders; .text() would HTML-escape it.
             $('#temu-red-alert-badge').html('<i class="fas fa-triangle-exclamation"></i> ' + redAlertCount.toLocaleString());
             $('#temu-sprice-lmp-alert-badge').html('<i class="fas fa-exclamation-triangle"></i> S PRC ' + spriceLmpAlertCount.toLocaleString());
+            $('.match-filter-green-label').text('Green (' + matchGreenCount.toLocaleString() + ')');
+            $('.match-filter-red-label').text('Red (' + matchRedCount.toLocaleString() + ')');
+            $('.match-filter-red-minus-label').text('Diff − (' + matchRedMinusCount.toLocaleString() + ')');
+            $('.match-filter-red-plus-label').text('Diff + (' + matchRedPlusCount.toLocaleString() + ')');
             // CVR badge: use the LIVE qtyPerViews computed from the same totalQuantity
             // and totalViews that drive the QTY and Views badges. Previously this preferred
             // the daily snapshot in temu_badge_daily_data so the badge would visually match
@@ -4779,7 +4867,7 @@
             },
             pagination: true,
             paginationSize: 100,
-            paginationSizeSelector: [10, 25, 50, 100, 200],
+            paginationSizeSelector: [25, 50, 100, 200, 500, 1000, true],
             paginationCounter: "rows",
             initialSort: [
                 {column: "cvr_percent", dir: "asc"}
@@ -5838,7 +5926,7 @@
                     }
                 },
                 {
-                    title: "Push",
+                    title: "Queue",
                     field: "_push",
                     width: 55,
                     hozAlign: "center",
@@ -6141,6 +6229,10 @@
                 },
                 ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
             ]
+        });
+
+        table.on('pageLoaded', function() {
+            updateSelectAllCheckbox();
         });
 
         // Toggle Ads Columns button - Show only columns that match temu/ads page
@@ -6539,6 +6631,13 @@
             if (spriceLmpAlertFilterActive) {
                 table.addFilter(function(data) {
                     return temuSpriceHasLmpAlert(data);
+                });
+            }
+
+            const matchFilter = $('#matchFilterDropdown').data('color') || 'all';
+            if (matchFilter && matchFilter !== 'all') {
+                table.addFilter(function(data) {
+                    return temuMatchFilterMatches(temuMatchStatus(data), matchFilter);
                 });
             }
 
@@ -7205,6 +7304,23 @@
         });
 
         $('#parent-filter, #inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #nr-req-filter, #nrp-filter, #sold-filter').on('change', function() {
+            applyFilters();
+        });
+
+        $(document).on('click', '.match-column-filter', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $item = $(this);
+            const color = $item.data('color') || 'all';
+            const dropdown = $item.closest('.dropdown');
+            const button = dropdown.find('.dropdown-toggle');
+            dropdown.find('.match-column-filter').removeClass('active');
+            $item.addClass('active');
+            button.data('color', color);
+            const statusCircle = $item.find('.status-circle').clone();
+            const matchLabels = { green: ' Green', red: ' Red', 'red-': ' Diff −', 'red+': ' Diff +' };
+            const label = matchLabels[color] || ' Match';
+            button.html('').append(statusCircle).append(label);
             applyFilters();
         });
 
