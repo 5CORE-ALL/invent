@@ -24,7 +24,7 @@ class ChannelPromoPricingController extends Controller
     private const PUSH_PRMT_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
 
     /** Channels that support background Push CPN % coded-coupon queue (chunked). */
-    private const PUSH_CPN_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
+    private const PUSH_CPN_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3', 'temu'];
 
     public function __construct(
         private readonly ChannelPromoPricingService $promo

@@ -3177,10 +3177,10 @@ class TemuController extends Controller
                             $orderTemuShip = (float) $pm->temu_ship;
                         }
                     }
-                    // Same as /temu-decrease: GPFT $ on Full Price; GROI $ on R Price
+                    // Same as /temu-decrease: GPFT $ on Full Price; GROI $ on Temu R Price
                     $rPrice = $base <= 26.99 ? ($base + 2.99) : $base;
                     $salesTotalPftFull += ($fullPrice * $percentage - $orderLp - $orderTemuShip) * $qty;
-                    $salesTotalPft += ($rPrice * $percentage - $orderLp - $orderTemuShip) * $qty;
+                    $salesTotalPft += TemuShopifySalesService::computeGroiProfit($rPrice, $percentage, $orderLp, $orderTemuShip) * $qty;
                     $salesTotalCogs += $orderLp * $qty;
                 }
             }
@@ -3672,12 +3672,12 @@ class TemuController extends Controller
                     ? ($temu1BasePrice <= 26.99 ? $temu1BasePrice + 2.99 : $temu1BasePrice)
                     : 0;
                 
-                // Dollar profit / GROI on Temu R Price; GPFT% on Full Temu Price
-                $profit = $temuPrice * $percentage - $lp - $temuShip;
+                // Dollar profit / GROI on Temu R Price (no 0.88)
+                $profit = TemuShopifySalesService::computeGroiProfit((float) $temuPrice, (float) $percentage, (float) $lp, (float) $temuShip);
                 $profitPercent = $temuFullPrice > 0
                     ? (($temuFullPrice * $percentage - $lp - $temuShip) / $temuFullPrice) * 100
                     : 0;
-                $roiPercent = $lp > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
+                $roiPercent = TemuShopifySalesService::computeGroiPercent((float) $temuPrice, (float) $percentage, (float) $lp, (float) $temuShip);
                 
                 // CVR% = Temu L30 / Views × 100.
                 // Views = Seller Center clicks + Ads Views (same number as the Views column).
@@ -6430,7 +6430,7 @@ class TemuController extends Controller
                 $profitPercent = $temuFullPrice > 0
                     ? (($temuFullPrice * $percentage - $lp - $temuShip) / $temuFullPrice) * 100
                     : 0;
-                $roiPercent = $lp > 0 ? (($temuRPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
+                $roiPercent = TemuShopifySalesService::computeGroiPercent((float) $temuRPrice, (float) $percentage, (float) $lp, (float) $temuShip);
                 $adsPercent = ($spend > 0 && $temuL30 == 0) ? 100 : ($revenue > 0 ? ($spend / $revenue) * 100 : 0);
                 $npftPercent = $adsPercent == 100 ? $profitPercent : $profitPercent - $adsPercent;
                 $nroiPercent = $adsPercent == 100 ? $roiPercent : $roiPercent - $adsPercent;

@@ -250,6 +250,22 @@ class ChannelPromoPricingService
             if (array_key_exists('appr', $fields)) {
                 $existing['PEF_APPR'] = filter_var($fields['appr'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
             }
+            if (array_key_exists('pef_coupon_pct', $fields) || array_key_exists('PEF_COUPON_PCT', $fields)) {
+                $pct = $this->clampPct($fields['pef_coupon_pct'] ?? $fields['PEF_COUPON_PCT'] ?? null);
+                if ($pct === null || $pct <= 0) {
+                    unset($existing['PEF_COUPON_PCT']);
+                } else {
+                    $existing['PEF_COUPON_PCT'] = $pct;
+                }
+            }
+            if (array_key_exists('pef_coupon_code', $fields) || array_key_exists('PEF_COUPON_CODE', $fields)) {
+                $code = trim((string) ($fields['pef_coupon_code'] ?? $fields['PEF_COUPON_CODE'] ?? ''));
+                if ($code === '') {
+                    unset($existing['PEF_COUPON_CODE']);
+                } else {
+                    $existing['PEF_COUPON_CODE'] = $code;
+                }
+            }
             if (array_key_exists('push_prc_status', $fields)) {
                 $st = $fields['push_prc_status'];
                 if ($st === null || $st === '') {

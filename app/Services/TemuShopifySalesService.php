@@ -114,19 +114,44 @@ class TemuShopifySalesService
 
     /**
      * Push base from SPRICE — same as /temu-decrease:
-     *   SPRICE < $35 → (Sprice × 0.88) − 2.99
-     *   SPRICE ≥ $35 → Sprice × 0.88
+     *   SPRICE < $30 → (Sprice − 2.99) × 0.88
+     *   SPRICE ≥ $30 → Sprice × 0.88
      */
     public static function computePushBaseFromSprice(float $sprice): ?float
     {
         if ($sprice <= 0) {
             return null;
         }
-        $push = $sprice < 35
-            ? (($sprice * self::S_RECOVERY_RATE) - 2.99)
+        $push = $sprice < 30
+            ? (($sprice - 2.99) * self::S_RECOVERY_RATE)
             : ($sprice * self::S_RECOVERY_RATE);
 
         return round($push, 2);
+    }
+
+    /**
+     * GROI on Temu R Price (no 0.88):
+     *   Profit = (R Price × margin) − LP − ship
+     *   GROI%  = Profit / LP × 100
+     * R Price = Base, then +$2.99 if Base ≤ $26.99.
+     */
+    public static function computeGroiPercent(float $rPrice, float $margin, float $lp, float $ship): float
+    {
+        if ($rPrice <= 0 || $lp <= 0) {
+            return 0.0;
+        }
+
+        return (self::computeGroiProfit($rPrice, $margin, $lp, $ship) / $lp) * 100;
+    }
+
+    /** Dollar GROI profit on Temu R Price (no 0.88). */
+    public static function computeGroiProfit(float $rPrice, float $margin, float $lp, float $ship): float
+    {
+        if ($rPrice <= 0) {
+            return 0.0;
+        }
+
+        return ($rPrice * $margin) - $lp - $ship;
     }
 
     /** GPFT% on Full Temu Price: (Full × margin − LP − ship) / Full × 100 */

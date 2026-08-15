@@ -232,7 +232,7 @@
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm dropdown-toggle" id="ch-promo-cpn-menu-btn"
                             data-bs-toggle="dropdown" aria-expanded="false"
-                            title="CVR Vs CPN rules + Push CPN% (eBay1 → public coded coupon)">
+                            title="CVR Vs CPN rules + Push CPN%">
                             CVR Vs CPN
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="ch-promo-cpn-menu-btn">
@@ -1484,6 +1484,25 @@
             const d = row.getData() || {};
             const sku = chPromoSku(d);
             const cpn = chPromoCpnInt(d);
+            if (chPromoPushCpnQueueEnabled) {
+                if (!sku || !chPromoIsChildRow(d)) {
+                    if (!silent) chPromoToast('error', 'SKU required');
+                    return { ok: false, skipped: true };
+                }
+                if (cpn > 0 && (cpn < 5 || cpn > 80)) {
+                    if (!silent) chPromoToast('error', 'CPN% must be 5–80 (or 0 to clear)');
+                    return { ok: false, skipped: true };
+                }
+                if (cpn === 0 && chPromoLastCouponPct(d) < 5 && String(d.PUSH_CPN_STATUS || '') !== 'error') {
+                    if (!silent) chPromoToast('info', 'Set CPN% first, then click Push CPN');
+                    return { ok: true, skipped: true };
+                }
+                return queueChannelPushCpnRows([{ row: row, d: d }]).then(function() {
+                    return { ok: true };
+                }).catch(function() {
+                    return { ok: false };
+                });
+            }
             if (!sku || !chPromoIsChildRow(d)) {
                 if (!silent) chPromoToast('error', 'SKU required');
                 return { ok: false, skipped: true };
@@ -1543,6 +1562,33 @@
         }
         let chPromoPushCpnBusy = false;
         async function bulkPushChannelCpn() {
+            if (chPromoPushCpnQueueEnabled) {
+                let targets = collectChPromoSelectedRows();
+                let scopeLabel = 'selected';
+                if (!targets.length) {
+                    targets = collectChPromoVisibleRows();
+                    scopeLabel = 'visible';
+                }
+                const eligible = targets.filter(function(t) {
+                    return chPromoIsChildRow(t.d) && chPromoCpnNeedsPush(t.d);
+                });
+                const skipped = targets.length - eligible.length;
+                if (!eligible.length) {
+                    chPromoToast('info', skipped
+                        ? ('No CPN changes (' + skipped + ' already pushed or CPN% not 5–80)')
+                        : 'No SKUs for Push CPN');
+                    return;
+                }
+                if (!confirm(
+                    'Queue Push CPN for ' + eligible.length + ' ' + scopeLabel + ' SKU(s)?\n\n'
+                    + (CHANNEL_PROMO_CHANNEL === 'temu'
+                        ? 'Saves CPN% and pushes S PRC to Temu in the background (chunks of '
+                            + CH_PROMO_PUSH_CPN_CHUNK + ').\n'
+                        : 'Creates/adds the public coded coupon in the background.\n')
+                    + (skipped ? skipped + ' already matching will be skipped.' : '')
+                )) return;
+                return queueChannelPushCpnRows(eligible);
+            }
             if (CHANNEL_PROMO_CHANNEL !== 'ebay1') {
                 chPromoToast('error', 'Push CPN is eBay1 only');
                 return;
@@ -1664,7 +1710,7 @@
         let chPromoPushPrmtPollTimer = null;
         let chPromoPushPrmtLastToastKey = '';
         let chPromoPushPrmtLastTasks = [];
-        const CH_PROMO_PUSH_CPN_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
+        const CH_PROMO_PUSH_CPN_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3', 'temu'];
         const chPromoPushCpnQueueEnabled = CH_PROMO_PUSH_CPN_QUEUE_CHANNELS.indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
         const CH_PROMO_PUSH_CPN_QUEUE_URL = '/channel-push-cpn/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
         const CH_PROMO_PUSH_CPN_CHUNK = 25;
@@ -1912,6 +1958,21 @@
             if (!isFinite(num) || num < 0) return null;
             return { type: 'percent', value: Math.abs(num) };
         }
+        function chPromoTemuSpriceFromStdPrmtCpn(d, overrides) {
+            const std = chPromoStdBase(d);
+            if (!(std > 0)) return null;
+            const prmt = overrides && overrides.prmt != null
+                ? Math.max(0, Number(overrides.prmt) || 0)
+                : Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
+            const cpn = overrides && overrides.cpn != null
+                ? Math.max(0, Number(overrides.cpn) || 0)
+                : Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
+            const totalDisc = Math.min(99.99, prmt + cpn);
+            const price = totalDisc > 0
+                ? chPromoRound2(std * (1 - (totalDisc / 100)))
+                : chPromoRound2(std);
+            return price >= 0.01 ? price : null;
+        }
         function applyChPromoToSpriceBase(base, promo) {
             if (!(base > 0) || !promo) return null;
             const next = base * (1 - (promo.value / 100));
@@ -2061,8 +2122,19 @@
                             if (response.spft_percent !== undefined) updates['Spft%'] = response.spft_percent;
                             if (response.sroi_percent !== undefined) updates.SROI = response.sroi_percent;
                             if (response.sgroi_percent !== undefined) updates.SGROI = response.sgroi_percent;
+                            if (response.sroi_percent !== undefined) updates.sroi_percent = response.sroi_percent;
+                            if (response.sgprft_percent !== undefined) updates.sgprft_percent = response.sgprft_percent;
+                            if (response.sgpft_percent !== undefined && updates.sgprft_percent == null) {
+                                updates.sgprft_percent = response.sgpft_percent;
+                            }
+                            if (response.spft_percent !== undefined) updates.spft_percent = response.spft_percent;
                         }
                         if (Object.keys(updates).length) row.update(updates);
+                        if (typeof applyTemuSpriceRelatedToRow === 'function' && val > 0) {
+                            applyTemuSpriceRelatedToRow(row, val, response);
+                        } else {
+                            try { row.reformat(); } catch (e) { /* ignore */ }
+                        }
                         if (!silent) chPromoToast('success', 'S PRC / promo updated');
                         resolve(pres || response || null);
                     };
@@ -2525,7 +2597,14 @@
                         continue;
                     }
 
-                    if (ebay1PrmtOnly) {
+                    if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                        // S PRC = Std × (1 − (PRMT% + CPN%)/100)
+                        newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { prmt: prmt });
+                        if (newPrice > 0) {
+                            Object.assign(patch, chPromoSpricePatch(newPrice));
+                            skipSprice = false;
+                        }
+                    } else if (ebay1PrmtOnly) {
                         const std = chPromoStdBase(d);
                         if (std > 0) {
                             newPrice = std;
@@ -2545,19 +2624,6 @@
                             skipSprice = false;
                         } else {
                             newPrice = 0;
-                        }
-                    } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
-                        // PRMT% = 0 → still write S PRC = Std × (1 − CVR%/100), or Std
-                        const std = chPromoStdBase(d);
-                        if (std > 0) {
-                            const cvr = Math.max(0, Number(d.cvr_percent != null ? d.cvr_percent : d.cvr_30) || 0);
-                            newPrice = cvr > 0
-                                ? chPromoRound2(std * (1 - (Math.min(99.99, cvr) / 100)))
-                                : std;
-                            if (newPrice >= 0.01) {
-                                Object.assign(patch, chPromoSpricePatch(newPrice));
-                                skipSprice = false;
-                            }
                         }
                     }
 
@@ -2600,7 +2666,10 @@
                         ? (' from ' + listingCount + ' listing Dil' + (listingCount === 1 ? '' : 's'))
                         : '')
                     + (skipped ? ('; skipped ' + skipped) : '')
-                    + (ebay1PrmtOnly ? ' (S PRC = Std − PRMT%)' : '') + '.'
+                    + (ebay1PrmtOnly ? ' (S PRC = Std − PRMT%)' : '')
+                    + ((CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')
+                        ? ' (S PRC = Std − (PRMT% + CPN%))'
+                        : '') + '.'
             );
         }
 
@@ -2621,8 +2690,22 @@
                 const cpn = chPromoInv(d) === 0 ? 0 : chPromoCpnForCvr(cvr);
                 const sku = chPromoSku(d);
                 if (!(cpn > 0)) {
-                    item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
-                    jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: ebay1 });
+                    if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                        const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: 0 });
+                        if (newPrice > 0) {
+                            item.row.update(Object.assign({
+                                cpn_pct: String(cpn),
+                                _cpn_pct_applied: 0,
+                            }, chPromoSpricePatch(newPrice)));
+                            jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: false });
+                        } else {
+                            item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
+                            jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: false });
+                        }
+                    } else {
+                        item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
+                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: ebay1 });
+                    }
                     skipped++;
                     continue;
                 }
@@ -2630,6 +2713,18 @@
                     // Coupon is at checkout — Apply only fills/saves CPN% (no S PRC rewrite, no eBay API)
                     item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
                     jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: true });
+                } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                    const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: cpn });
+                    if (newPrice > 0) {
+                        item.row.update(Object.assign({
+                            cpn_pct: String(cpn),
+                            _cpn_pct_applied: cpn,
+                        }, chPromoSpricePatch(newPrice)));
+                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: false });
+                    } else {
+                        item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
+                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: false });
+                    }
                 } else {
                     const promo = { type: 'percent', value: cpn };
                     const base = getChPromoDiscountBase(d, '_cpn_pct_applied');
@@ -2811,30 +2906,22 @@
                         patch.appr = false;
                         patch._appr_lmp = null;
                     }
-                    // PRMT cleared → restore S PRC to Std (eBay 1 / Temu)
-                    if (kind === 'prmt' && (
-                        CHANNEL_PROMO_CHANNEL === 'ebay1'
-                        || CHANNEL_PROMO_CHANNEL === 'temu'
-                        || CHANNEL_PROMO_CHANNEL === 'temu2'
+                    // Cleared PRMT/CPN on Temu → S PRC = Std − remaining %
+                    if ((kind === 'prmt' || kind === 'cpn') && (
+                        CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2'
                     )) {
+                        const recalc = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt' ? { prmt: 0 } : { cpn: 0 });
+                        if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
+                    } else if (kind === 'prmt' && CHANNEL_PROMO_CHANNEL === 'ebay1') {
                         const std = chPromoStdBase(d);
-                        if (std > 0) {
-                            if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
-                                const cvr = Math.max(0, Number(d.cvr_percent != null ? d.cvr_percent : d.cvr_30) || 0);
-                                Object.assign(patch, chPromoSpricePatch(
-                                    cvr > 0 ? chPromoRound2(std * (1 - (Math.min(99.99, cvr) / 100))) : std
-                                ));
-                            } else {
-                                Object.assign(patch, chPromoSpricePatch(std));
-                            }
-                        }
+                        if (std > 0) Object.assign(patch, chPromoSpricePatch(std));
                     }
                     item.row.update(patch);
                     const extra = {};
                     if (kind === 'prmt') extra.prmt_pct = 0;
                     if (kind === 'cpn') extra.cpn_pct = 0;
                     if (kind === 'dsc') { extra.dsc = 0; extra.appr = false; }
-                    const savePrice = (kind === 'prmt' && patch.SPRICE != null && (
+                    const savePrice = ((kind === 'prmt' || kind === 'cpn') && patch.SPRICE != null && (
                         CHANNEL_PROMO_CHANNEL === 'ebay1'
                         || CHANNEL_PROMO_CHANNEL === 'temu'
                         || CHANNEL_PROMO_CHANNEL === 'temu2'
@@ -2846,6 +2933,7 @@
                     continue;
                 }
                 // eBay 1 PRMT%: S PRC = Std × (1 − PRMT%/100) only
+                // Temu: S PRC = Std × (1 − (PRMT% + CPN%)/100)
                 let base;
                 let newPrice;
                 if (CHANNEL_PROMO_CHANNEL === 'ebay1' && kind === 'prmt') {
@@ -2853,6 +2941,12 @@
                     newPrice = (base > 0 && promo.value < 100)
                         ? chPromoRound2(base * (1 - (promo.value / 100)))
                         : null;
+                } else if ((CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')
+                    && (kind === 'prmt' || kind === 'cpn')) {
+                    base = chPromoStdBase(d);
+                    newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt'
+                        ? { prmt: promo.value }
+                        : { cpn: promo.value });
                 } else {
                     base = getChPromoDiscountBase(d, fieldMeta.appliedKey);
                     newPrice = applyChPromoToSpriceBase(base, promo);
@@ -2899,7 +2993,8 @@
             const std = chPromoRound2(stdRaw);
             const prmt = Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
             const cpn = Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
-            const totalDisc = Math.min(99.99, prmt);
+            const temuCombo = CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
+            const totalDisc = Math.min(99.99, temuCombo ? (prmt + cpn) : prmt);
             let sale = null;
             if (totalDisc > 0 && totalDisc < 100) {
                 sale = chPromoRound2(std * (1 - (totalDisc / 100)));
@@ -3462,11 +3557,14 @@
                 );
                 return;
             }
+            const temuCombo = CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
             if (!confirm(
                 'Clear S PRC and refill for ' + ready.length + ' ' + scopeLabel + ' SKU(s)?'
                 + (skippedInv ? ('\n(Skip ' + skippedInv + ' with INV = 0)') : '')
-                + '\n\nFormula (same as Push Prc, no marketplace push):\n'
-                + 'S PRC = Std × (1 − PRMT%/100)\n'
+                + '\n\nFormula (no marketplace push):\n'
+                + (temuCombo
+                    ? 'S PRC = Std × (1 − (PRMT% + CPN%)/100)\n'
+                    : 'S PRC = Std × (1 − PRMT%/100)\n')
                 + 'If no discount → S PRC = Std'
             )) return;
 
@@ -3502,9 +3600,12 @@
                     return;
                 }
                 const item = ready[i++];
-                const plan = computeChannelPushPrcPlan(item.row.getData());
+                const rowData = item.row.getData();
+                const plan = computeChannelPushPrcPlan(rowData);
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
-                const fill = chPromoPlanSaleSprice(plan);
+                const fill = (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')
+                    ? (chPromoTemuSpriceFromStdPrmtCpn(rowData) || 0)
+                    : chPromoPlanSaleSprice(plan);
                 if (!plan || !(fill > 0)) {
                     fail++;
                     next();
@@ -3519,21 +3620,32 @@
                             _prmt_pct_applied: plan.prmt,
                             _cpn_pct_applied: plan.cpn,
                         }, chPromoSpricePatch(fill)));
-                        if (saveRes && saveRes.sgpft_percent !== undefined) {
+                        if (saveRes && (saveRes.sgpft_percent !== undefined || saveRes.sgprft_percent !== undefined || saveRes.sroi_percent !== undefined)) {
                             item.row.update({
                                 SGPFT: saveRes.sgpft_percent,
                                 'Spft%': saveRes.spft_percent,
                                 SROI: saveRes.sroi_percent,
                                 SGROI: saveRes.sgroi_percent,
+                                sroi_percent: saveRes.sroi_percent,
+                                sgprft_percent: saveRes.sgprft_percent != null ? saveRes.sgprft_percent : saveRes.sgpft_percent,
+                                spft_percent: saveRes.spft_percent,
                             });
                         }
-                        saveChannelPromoFields(sku, { prmt_pct: plan.prmt }).always(function() {
+                        if (typeof applyTemuSpriceRelatedToRow === 'function') {
+                            applyTemuSpriceRelatedToRow(item.row, fill, saveRes);
+                        } else {
+                            try { item.row.reformat(); } catch (e) { /* ignore */ }
+                        }
+                        saveChannelPromoFields(sku, { prmt_pct: plan.prmt, cpn_pct: plan.cpn }).always(function() {
                             ok++;
                             next();
                         });
                     })
                     .fail(function() {
                         item.row.update(chPromoSpricePatch(fill));
+                        if (typeof applyTemuSpriceRelatedToRow === 'function') {
+                            applyTemuSpriceRelatedToRow(item.row, fill, null);
+                        }
                         fail++;
                         next();
                     });
@@ -4024,14 +4136,16 @@
                 ...(CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay2op' || CHANNEL_PROMO_CHANNEL === 'ebay3'
                     ? [channelPromoPushCpnColumn()]
                     : []),
-                ...(CHANNEL_PROMO_CHANNEL === 'ebay1' ? [{
+                ...(CHANNEL_PROMO_CHANNEL === 'ebay1' || CHANNEL_PROMO_CHANNEL === 'temu' ? [{
                     title: 'Push CPN',
                     field: 'push_cpn',
                     width: 64,
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
-                    headerTooltip: 'Push CPN — create the public coded coupon for this CPN% if needed, then add this SKU. If CPN% changed, removes from the old coupon first. Click header to bulk selected (or visible) SKUs.',
+                    headerTooltip: CHANNEL_PROMO_CHANNEL === 'temu'
+                        ? 'Push CPN — queue this CPN% (bulk from header). Worker saves coupon % and pushes S PRC to Temu.'
+                        : 'Push CPN — create the public coded coupon for this CPN% if needed, then add this SKU. If CPN% changed, removes from the old coupon first. Click header to bulk selected (or visible) SKUs.',
                     titleFormatter: function() {
                         return '<button type="button" class="btn btn-sm p-0 ch-promo-push-cpn-header-btn" '
                             + 'title="Bulk Push CPN for selected SKUs whose CPN% changed" '
@@ -4056,16 +4170,18 @@
                         const status = String(d.PUSH_CPN_STATUS || '');
                         const code = d.PEF_COUPON_CODE || d.coupon_code || '';
                         if (cpn > 0 && (cpn < 5 || cpn > 80)) {
-                            return '<span style="color:#adb5bd;" title="eBay coupon % must be 5–80">—</span>';
+                            return '<span style="color:#adb5bd;" title="CPN% must be 5–80">—</span>';
                         }
                         if (cpn === 0 && last < 5 && status !== 'error') {
-                            return '<span style="color:#adb5bd;" title="Set CPN% then click to create/add coupon">—</span>';
+                            return '<span style="color:#adb5bd;" title="Set CPN% then click to push">—</span>';
                         }
                         let icon = '<i class="fas fa-upload"></i>';
                         let color = '#FF9900';
                         let tip = cpn > 0
-                            ? ('Push ' + cpn + '% public coupon (SAVE' + String(cpn).padStart(2, '0') + 'PCT) for this SKU')
-                            : 'Remove this SKU from coupons';
+                            ? (CHANNEL_PROMO_CHANNEL === 'temu'
+                                ? ('Queue ' + cpn + '% CPN and push S PRC for this SKU')
+                                : ('Push ' + cpn + '% public coupon (SAVE' + String(cpn).padStart(2, '0') + 'PCT) for this SKU'))
+                            : (CHANNEL_PROMO_CHANNEL === 'temu' ? 'Clear pushed CPN% for this SKU' : 'Remove this SKU from coupons');
                         if (status === 'processing') {
                             icon = '<i class="fas fa-spinner fa-spin"></i>';
                             color = '#ffc107';
@@ -4307,6 +4423,13 @@
                         if (CHANNEL_PROMO_CHANNEL === 'ebay1') {
                             return pushEbay1CodedCouponsForTargets(targets);
                         }
+                        if (chPromoPushCpnQueueEnabled) {
+                            const eligible = targets.filter(function(t) {
+                                return chPromoIsChildRow(t.d) && chPromoCpnNeedsPush(t.d);
+                            });
+                            if (!eligible.length) return;
+                            return queueChannelPushCpnRows(eligible);
+                        }
                     })
                     .finally(function() {
                         $btn.prop('disabled', false).html(html);
@@ -4358,6 +4481,12 @@
                 e.preventDefault();
                 clearAndAutopopulateChannelSprice();
             });
+            if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                $('#ch-promo-sprice-recalc-btn').attr(
+                    'title',
+                    'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.'
+                );
+            }
         }
 
         // Export + auto-init

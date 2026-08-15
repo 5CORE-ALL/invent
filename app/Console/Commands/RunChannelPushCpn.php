@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 class RunChannelPushCpn extends Command
 {
-    protected $signature = 'channel:push-cpn-run {channel=ebay2 : Channel key (ebay2, ebay2op, ebay3)} {--sync : Run in this process instead of dispatching to the queue}';
+    protected $signature = 'channel:push-cpn-run {channel=ebay2 : Channel key (ebay2, ebay2op, ebay3, temu)} {--sync : Run in this process instead of dispatching to the queue}';
 
     protected $description = 'Run the channel Push CPN % background worker (coded coupon queue)';
 
