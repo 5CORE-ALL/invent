@@ -15,7 +15,8 @@ class FetchTemuAdsData extends Command
      */
     protected $signature = 'temu:fetch-ads-data 
                             {--period=L30 : Time period (L7, L30 or L60)}
-                            {--goods-id= : Fetch for specific goods ID only}';
+                            {--goods-id= : Fetch for specific goods ID only}
+                            {--reparse : Re-extract Overall metrics from stored raw JSON (no API call)}';
 
     /**
      * The console command description.
@@ -29,17 +30,31 @@ class FetchTemuAdsData extends Command
      */
     public function handle(TemuAdsApiReportService $service)
     {
-        $this->info('Starting Temu Ads Data Fetch...');
-        Log::info('Starting Temu Ads Data Fetch');
-
         $period = strtoupper((string) $this->option('period'));
         $specificGoodsId = $this->option('goods-id') ?: null;
+
+        if ($this->option('reparse')) {
+            $reparsePeriod = $this->input->hasParameterOption('--period') && in_array($period, ['L7', 'L30', 'L60'], true)
+                ? $period
+                : null;
+            $this->info('Reparsing stored Temu ads raw JSON' . ($reparsePeriod ? " ({$reparsePeriod})" : ' (all periods)') . ($specificGoodsId ? " for goods {$specificGoodsId}" : '') . '...');
+            $stats = $service->reparseStored($reparsePeriod, $specificGoodsId);
+            $this->info("✅ Reparsed {$stats['ok']}/{$stats['total']} rows");
+            if ($stats['fail'] > 0) {
+                $this->warn("⚠️  {$stats['fail']} rows failed");
+            }
+
+            return $stats['fail'] > 0 && $stats['ok'] === 0 ? 1 : 0;
+        }
 
         if (! in_array($period, ['L7', 'L30', 'L60'], true)) {
             $this->error('Period must be L7, L30, or L60');
 
             return 1;
         }
+
+        $this->info('Starting Temu Ads Data Fetch...');
+        Log::info('Starting Temu Ads Data Fetch');
 
         try {
             $goodsIds = $service->resolveGoodsIds($specificGoodsId);

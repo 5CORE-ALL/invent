@@ -2477,14 +2477,14 @@
 
     /**
      * Temu / Temu2 push base from SPRICE (WMPNM Dil):
-     *   if SPRICE < $35 → (Sprice × 0.85) − 2.99
-     *   if SPRICE ≥ $35 → (Sprice × 0.85)
+     *   if SPRICE < $30 → (Sprice − 2.99) × 0.85
+     *   if SPRICE ≥ $30 → Sprice × 0.85
      * PFT / ROI still use raw SPRICE / channel price — this is push/display conversion only.
      */
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
-        const push = s < 35 ? ((s * 0.85) - 2.99) : (s * 0.85);
+        const push = s < 30 ? ((s - 2.99) * 0.85) : (s * 0.85);
         if (!(push > 0)) return null;
         return +push.toFixed(2);
     }
@@ -5632,7 +5632,7 @@
             if (!confirm(
                 'Push Temu base $' + pushBase.toFixed(2)
                 + ' (from SPRICE $' + sprice.toFixed(2) + ' × 0.85'
-                + (sprice < 35 ? ' − 2.99' : '')
+                + (sprice < 30 ? ' − 2.99' : '')
                 + ') for SKU: ' + sku + '?'
             )) return;
 

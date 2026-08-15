@@ -209,16 +209,18 @@ class FetchTemuMetrics extends Command
                         continue;
                     }
 
-                    $summary = $data['result']['reportInfo']['reportsSummary'] ?? null;
+                    $reportInfo = $data['result']['reportInfo'] ?? [];
+                    $overall = is_array($reportInfo['summary'] ?? null) ? $reportInfo['summary'] : [];
+                    $adOnly = is_array($reportInfo['reportsSummary'] ?? null) ? $reportInfo['reportsSummary'] : [];
+                    $impr = $overall['imprCnt']['total']['val'] ?? $adOnly['imprCntAll']['val'] ?? 0;
+                    $clicks = $overall['clkCnt']['total']['val'] ?? $adOnly['clkCntAll']['val'] ?? 0;
 
-                    if ($summary) {
-                        if ($label === 'L30') {
-                            $metrics['product_impressions_l30'] = $summary['imprCntAll']['val'] ?? 0;
-                            $metrics['product_clicks_l30'] = $summary['clkCntAll']['val'] ?? 0;
-                        } elseif ($label === 'L60') {
-                            $metrics['product_impressions_l60'] = $summary['imprCntAll']['val'] ?? 0;
-                            $metrics['product_clicks_l60'] = $summary['clkCntAll']['val'] ?? 0;
-                        }
+                    if ($label === 'L30') {
+                        $metrics['product_impressions_l30'] = $impr;
+                        $metrics['product_clicks_l30'] = $clicks;
+                    } elseif ($label === 'L60') {
+                        $metrics['product_impressions_l60'] = $impr;
+                        $metrics['product_clicks_l60'] = $clicks;
                     }
                 }
 

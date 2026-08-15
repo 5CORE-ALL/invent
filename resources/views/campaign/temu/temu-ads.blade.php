@@ -48,7 +48,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Temu Ads (API)',
-        'sub_title' => 'Raw goods ad reports from temu.searchrec.ad.reports.goods.query',
+        'sub_title' => 'Overall goods ad reports (Seller Center Overall clicks/impressions) from temu.searchrec.ad.reports.goods.query',
     ])
 
     <div class="row">

@@ -5268,7 +5268,7 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 80,
-                    headerTooltip: "L7 ad clicks from Temu Ads API (temu_ads_api_reports period=L7). Run: php artisan temu:fetch-ads-api-reports --period=L7",
+                    headerTooltip: "L7 Overall clicks from Temu Ads API (temu_ads_api_reports period=L7). Run: php artisan temu:fetch-ads-api-reports --period=L7",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
                         return value.toLocaleString();

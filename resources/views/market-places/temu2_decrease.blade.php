@@ -447,6 +447,28 @@
                         <option value="red">Red</option>
                     </select>
 
+                    <div class="dropdown d-inline-block pricing-filter-item">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="matchFilterDropdown"
+                            data-bs-toggle="dropdown" data-color="all" aria-expanded="false"
+                            title="Match: Green = S PRC is LMP − $0.01; Red = not matched. Diff ± from Diff column.">
+                            <span class="status-circle default"></span> Match
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="matchFilterDropdown">
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="all">
+                                    <span class="status-circle default"></span> All Match</a></li>
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="green">
+                                    <span class="status-circle green"></span> <span class="match-filter-green-label">Green (0)</span></a></li>
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="red">
+                                    <span class="status-circle red"></span> <span class="match-filter-red-label">Red (0)</span></a></li>
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="red-">
+                                    <span class="status-circle red"></span> <span class="match-filter-red-minus-label">Diff − (0)</span></a></li>
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="red+">
+                                    <span class="status-circle red"></span> <span class="match-filter-red-plus-label">Diff + (0)</span></a></li>
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="none">
+                                    <span class="status-circle default"></span> <span class="match-filter-none-label">No LMP (0)</span></a></li>
+                        </ul>
+                    </div>
+
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Temu Ship) / marketplace%">
@@ -659,7 +681,7 @@
                             <i class="fa fa-trash"></i> Clear SPRICE
                         </button>
                         <button type="button" id="push-temu2-price-btn" class="btn btn-sm btn-success"
-                            title="Push SPRICE→base: (Sprice×0.88)−2.99 if SPRICE&lt;$35; else Sprice×0.88">
+                            title="Push SPRICE→base: (Sprice−2.99)×0.88 if SPRICE&lt;$30; else Sprice×0.88">
                             <i class="fas fa-cloud-upload-alt"></i> Push Prices
                         </button>
                     </div>
@@ -1138,6 +1160,57 @@
     function temu2FullPriceFromRow(rowData) {
         return temu2FullPriceFromBase(parseFloat(rowData && rowData.base_price) || 0);
     }
+    const TEMU_FIXED_ADS_PERCENT = 2.2;
+    function temuAdsPercentForNet() {
+        return TEMU_FIXED_ADS_PERCENT;
+    }
+    function temu2PftDollars(rowData) {
+        const rPrice = temu2RPriceFromRow(rowData);
+        if (!(rPrice > 0)) return null;
+        const lp = parseFloat(rowData && rowData.lp) || 0;
+        const ship = parseFloat(rowData && rowData.temu_ship) || 0;
+        return (rPrice * 0.95) - ship - lp;
+    }
+    function temu2NpftDollars(rowData) {
+        const pft = temu2PftDollars(rowData);
+        if (pft == null) return null;
+        const temuPrice = temu2FullPriceFromRow(rowData);
+        return pft - (temuPrice * (temuAdsPercentForNet() / 100));
+    }
+    function temu2SRPriceFromRow(rowData, spriceOverride) {
+        const sprice = parseFloat(spriceOverride != null ? spriceOverride : (rowData && rowData.sprice)) || 0;
+        if (!(sprice > 0)) return 0;
+        const rPrice = temu2RPriceFromRow(rowData);
+        const fullPrice = temu2FullPriceFromRow(rowData);
+        if (fullPrice > 0 && Math.abs(sprice - fullPrice) < 0.02) return rPrice;
+        if (rPrice > 0 && Math.abs(sprice - rPrice) < 0.02) return rPrice;
+        const candidates = [(sprice - 2.99) / TEMU_FULL_PRICE_MULT, sprice / TEMU_FULL_PRICE_MULT];
+        let best = 0;
+        let bestErr = Infinity;
+        candidates.forEach(function(base) {
+            if (!(base > 0)) return;
+            const rebuilt = temu2FullPriceFromBase(base);
+            const err = Math.abs(rebuilt - sprice);
+            if (err < bestErr) {
+                bestErr = err;
+                best = base;
+            }
+        });
+        return best > 0 ? (best <= 26.99 ? best + 2.99 : best) : 0;
+    }
+    function temu2SpftDollars(rowData, spriceOverride) {
+        const sR = temu2SRPriceFromRow(rowData, spriceOverride);
+        if (!(sR > 0)) return null;
+        const lp = parseFloat(rowData && rowData.lp) || 0;
+        const ship = parseFloat(rowData && rowData.temu_ship) || 0;
+        return (sR * 0.95) - ship - lp;
+    }
+    function temu2SnpftDollars(rowData, spriceOverride) {
+        const spft = temu2SpftDollars(rowData, spriceOverride);
+        if (spft == null) return null;
+        const sprice = parseFloat(spriceOverride != null ? spriceOverride : (rowData && rowData.sprice)) || 0;
+        return spft - ((sprice > 0 ? sprice : 0) * (temuAdsPercentForNet() / 100));
+    }
     // S Recovery / Push base rate = 0.88 (S Profit / SROI / S Temu B Prc)
     const TEMU2_S_RECOVERY_RATE = 0.88;
     function updateTemu2RecoveryBadge(salesTotal) {
@@ -1179,16 +1252,15 @@
     let table = null;
 
     /**
-     * Temu2 push base from SPRICE (same as /price-increase and /temu-decrease):
-     *   if SPRICE < $35 → (Sprice × 0.88) − 2.99
-     *   if SPRICE ≥ $35 → (Sprice × 0.88)
-     * Shown in "S Temu B Prc"; PFT / ROI stay on stored SPRICE.
+     * Temu2 push base from SPRICE (same as /temu-decrease):
+     *   if SPRICE < $30 → (Sprice − 2.99) × 0.88
+     *   if SPRICE ≥ $30 → Sprice × 0.88
      */
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
         const rate = TEMU2_S_RECOVERY_RATE;
-        const push = s < 35 ? ((s * rate) - 2.99) : (s * rate);
+        const push = s < 30 ? ((s - 2.99) * rate) : (s * rate);
         if (!isFinite(push)) return null;
         // Allow ≤0 for display (shown in red); push actions still require push > 0
         return +push.toFixed(2);
@@ -1208,11 +1280,11 @@
         const T = parseFloat(targetPush);
         if (!isFinite(T) || T <= 0) return null;
         const rate = TEMU2_S_RECOVERY_RATE;
-        const sFromLow = (T + 2.99) / rate;
+        const sFromLow = (T / rate) + 2.99;
         const sFromHigh = T / rate;
         const candidates = [];
-        if (sFromLow > 0 && sFromLow < 35) candidates.push(+sFromLow.toFixed(2));
-        if (sFromHigh >= 35) candidates.push(+sFromHigh.toFixed(2));
+        if (sFromLow > 0 && sFromLow < 30) candidates.push(+sFromLow.toFixed(2));
+        if (sFromHigh >= 30) candidates.push(+sFromHigh.toFixed(2));
         if (!candidates.length) {
             if (sFromLow > 0) candidates.push(+sFromLow.toFixed(2));
             if (sFromHigh > 0) candidates.push(+sFromHigh.toFixed(2));
@@ -2157,24 +2229,18 @@
 
         $(document).on('change', '#select-all-checkbox', function() {
             const isChecked = $(this).prop('checked');
-            const filteredData = table.getData('active');
-            
-            filteredData.forEach(row => {
-                const sku = row['sku'];
-                if (sku) {
-                    if (isChecked) {
-                        selectedSkus.add(sku);
-                    } else {
-                        selectedSkus.delete(sku);
-                    }
-                }
+            if (!table) return;
+            temu2CurrentPageSkuRows().forEach(function(row) {
+                const sku = (row.getData() || {}).sku;
+                if (!sku) return;
+                if (isChecked) selectedSkus.add(sku);
+                else selectedSkus.delete(sku);
             });
-            
             $('.sku-select-checkbox').each(function() {
                 const sku = $(this).data('sku');
                 $(this).prop('checked', selectedSkus.has(sku));
             });
-            
+            $(this).prop('indeterminate', false);
             updateSelectedCount();
         });
 
@@ -2429,6 +2495,51 @@
             return null;
         }
 
+        function getTemu2DisplayLmp(row) {
+            const raw = getTemu2RawLmp(row);
+            const recovery = temuLmpRecovery(raw);
+            if (recovery != null && recovery > 0) return recovery;
+            const v = parseFloat(row && row.lmp);
+            return (isFinite(v) && v > 0) ? v : 0;
+        }
+        function temu2DisplayedSprice(row) {
+            const n = parseFloat(row && row.sprice);
+            return (isFinite(n) && n > 0) ? n : 0;
+        }
+        function temu2SpriceMatchesLmp(row) {
+            if (!row || isTemu2ParentRow(row)) return false;
+            const lmp = getTemu2DisplayLmp(row);
+            const target = lmp > 0 ? +(lmp - 0.01).toFixed(2) : 0;
+            const sprice = temu2DisplayedSprice(row);
+            return target > 0 && sprice > 0 && Math.abs(sprice - target) < 0.015;
+        }
+        function temu2LmpDiffPct(row) {
+            const lmp = getTemu2DisplayLmp(row);
+            const sprice = temu2DisplayedSprice(row);
+            if (!(lmp > 0) || !(sprice > 0)) return null;
+            return ((lmp - sprice) / lmp) * 100;
+        }
+        function temu2MatchStatus(row) {
+            if (!row || isTemu2ParentRow(row)) return null;
+            const lmp = getTemu2DisplayLmp(row);
+            if (!(lmp > 0)) return 'none';
+            if (temu2SpriceMatchesLmp(row)) return 'green';
+            const diff = temu2LmpDiffPct(row);
+            if (diff == null) return 'none';
+            if (diff > 0) return 'red+';
+            if (diff < 0) return 'red-';
+            return 'red';
+        }
+        function temu2MatchFilterMatches(status, filter) {
+            if (filter === 'none') return status === 'none';
+            if (!status || status === 'none') return false;
+            if (filter === 'green') return status === 'green';
+            if (filter === 'red') return status === 'red' || status === 'red-' || status === 'red+';
+            if (filter === 'red-') return status === 'red-';
+            if (filter === 'red+') return status === 'red+';
+            return false;
+        }
+
         /** Inverse of stemu = sprice ≤ 26.99 ? sprice + 2.99 : sprice */
         function temu2StemuPriceToSprice(desiredStemuPrice) {
             if (!isFinite(desiredStemuPrice) || desiredStemuPrice <= 0) return null;
@@ -2555,21 +2666,49 @@
             $('#discount-input-container').toggle(count > 0);
         }
 
+        function temu2CurrentPageSkuRows() {
+            if (!table) return [];
+            let allActive = [];
+            try {
+                allActive = (table.getRows('active') || []).filter(function(row) {
+                    const d = row.getData() || {};
+                    if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(d)) return false;
+                    return !!d.sku;
+                });
+            } catch (e) {
+                return [];
+            }
+            let pageSize = (typeof table.getPageSize === 'function' ? table.getPageSize() : 0) || 100;
+            const currentPage = (typeof table.getPage === 'function' ? table.getPage() : 1) || 1;
+            if (pageSize === true || pageSize === 'true') return allActive;
+            pageSize = Number(pageSize) || 100;
+            if (pageSize >= allActive.length && allActive.length > 0) return allActive;
+            const start = (currentPage - 1) * pageSize;
+            return allActive.slice(start, start + pageSize);
+        }
+
         function updateSelectAllCheckbox() {
-            if (!table) return;
-            
-            const filteredData = table.getData('active');
-            
-            if (filteredData.length === 0) {
-                $('#select-all-checkbox').prop('checked', false);
+            if (!table) {
+                $('#select-all-checkbox').prop('checked', false).prop('indeterminate', false);
                 return;
             }
-            
-            const filteredSkus = new Set(filteredData.map(row => row['sku']).filter(sku => sku));
-            const allFilteredSelected = filteredSkus.size > 0 && 
-                Array.from(filteredSkus).every(sku => selectedSkus.has(sku));
-            
-            $('#select-all-checkbox').prop('checked', allFilteredSelected);
+            const pageRows = temu2CurrentPageSkuRows();
+            if (pageRows.length === 0) {
+                $('#select-all-checkbox').prop('checked', false).prop('indeterminate', false);
+                return;
+            }
+            let selectedCount = 0;
+            pageRows.forEach(function(row) {
+                const sku = (row.getData() || {}).sku || '';
+                if (sku && selectedSkus.has(sku)) selectedCount++;
+            });
+            if (selectedCount === 0) {
+                $('#select-all-checkbox').prop('checked', false).prop('indeterminate', false);
+            } else if (selectedCount === pageRows.length) {
+                $('#select-all-checkbox').prop('checked', true).prop('indeterminate', false);
+            } else {
+                $('#select-all-checkbox').prop('checked', false).prop('indeterminate', true);
+            }
         }
 
         function roundToRetailPrice(price) {
@@ -2955,6 +3094,11 @@
             let missingCount = 0;
             let notMappedCount = 0;
             let rowsCount = 0;
+            let matchGreenCount = 0;
+            let matchRedCount = 0;
+            let matchRedMinusCount = 0;
+            let matchRedPlusCount = 0;
+            let matchNoneCount = 0;
 
             // Filtered counts: Rows / 0 Sold / >0 Sold (exclude parent rows from sold badges)
             filteredData.forEach(row => {
@@ -3038,6 +3182,12 @@
                         notMappedCount++;
                     }
                 }
+                const matchStatus = typeof temu2MatchStatus === 'function' ? temu2MatchStatus(row) : null;
+                if (matchStatus === 'green') matchGreenCount++;
+                else if (matchStatus === 'red-') { matchRedMinusCount++; matchRedCount++; }
+                else if (matchStatus === 'red+') { matchRedPlusCount++; matchRedCount++; }
+                else if (matchStatus === 'red') matchRedCount++;
+                else if (matchStatus === 'none') matchNoneCount++;
             });
             Object.keys(viewsByGoodsId).forEach(function(gid) {
                 totalViews += parseInt(viewsByGoodsId[gid], 10) || 0;
@@ -3045,6 +3195,12 @@
             Object.keys(tClicksByGoodsId).forEach(function(gid) {
                 totalTClicks += parseInt(tClicksByGoodsId[gid], 10) || 0;
             });
+
+            $('.match-filter-green-label').text('Green (' + matchGreenCount.toLocaleString() + ')');
+            $('.match-filter-red-label').text('Red (' + matchRedCount.toLocaleString() + ')');
+            $('.match-filter-red-minus-label').text('Diff − (' + matchRedMinusCount.toLocaleString() + ')');
+            $('.match-filter-red-plus-label').text('Diff + (' + matchRedPlusCount.toLocaleString() + ')');
+            $('.match-filter-none-label').text('No LMP (' + matchNoneCount.toLocaleString() + ')');
 
             const avgPrice = totalQty > 0 ? totalPriceWeighted / totalQty : 0;
             // Client-computed like /temu-decrease (do not override GPFT/GROI from sales_summary)
@@ -3166,7 +3322,7 @@
             },
             pagination: true,
             paginationSize: 100,
-            paginationSizeSelector: [10, 25, 50, 100, 200],
+            paginationSizeSelector: [25, 50, 100, 200, 500, 1000, true],
             paginationCounter: "rows",
             initialSort: [
                 {column: "cvr_percent", dir: "asc"}
@@ -3682,10 +3838,13 @@
                     field: "roi_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "GROI% = Gpft / LP. Gpft = (Temu R Price × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
-                        const value = parseFloat(cell.getValue()) || 0;
+                        const pft = typeof temu2PftDollars === 'function' ? temu2PftDollars(rowData) : null;
+                        const lp = parseFloat(rowData.lp) || 0;
+                        const value = (pft != null && lp > 0) ? (pft / lp) * 100 : (parseFloat(cell.getValue()) || 0);
                         const colorClass = getRoiColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="roi_percent" title="View GROI% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6f42c1;"></span></button>` : '';
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
@@ -3695,27 +3854,22 @@
                     title: "GPRFT %",
                     field: "profit_percent",
                     hozAlign: "center",
-                    headerTooltip: "GPFT% on Full Temu Price: (Base × 1.1765) + $2.99 if ≤ $26.99",
+                    headerTooltip: "GPRFT% = Gpft / Temu Price. Gpft = (Temu R Price × 0.95) − Temu Ship − LP",
                     sorter: function(a, b, aRow, bRow) {
                         const calc = (row) => {
+                            const gpft = typeof temu2PftDollars === 'function' ? temu2PftDollars(row) : null;
                             const fullPrice = temu2FullPriceFromRow(row);
-                            if (fullPrice <= 0) return 0;
-                            const lp = parseFloat(row['lp']) || 0;
-                            const temuShip = parseFloat(row['temu_ship']) || 0;
-                            const margin = temuSpriceMargin(row);
-                            return ((fullPrice * margin - lp - temuShip) / fullPrice) * 100;
+                            if (gpft == null || !(fullPrice > 0)) return 0;
+                            return (gpft / fullPrice) * 100;
                         };
                         return calc(aRow.getData()) - calc(bRow.getData());
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
+                        const gpft = typeof temu2PftDollars === 'function' ? temu2PftDollars(rowData) : null;
                         const fullPrice = temu2FullPriceFromRow(rowData);
-                        const lp = parseFloat(rowData['lp']) || 0;
-                        const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const margin = temuSpriceMargin(rowData);
-                        // GPFT% on Full Temu Price
-                        const value = fullPrice > 0 ? ((fullPrice * margin - lp - temuShip) / fullPrice) * 100 : 0;
+                        const value = (gpft != null && fullPrice > 0) ? (gpft / fullPrice) * 100 : 0;
                         const colorClass = getPftColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="profit_percent" title="View GPRFT% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff1493;"></span></button>` : '';
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
@@ -3726,39 +3880,14 @@
                     field: "ads_percent",
                     hozAlign: "center",
                     visible: false,
-                    headerTooltip: "Ads% = Spend ÷ (Full Temu Price × Qty); badge aggregate used when available",
-                    sorter: function(a, b, aRow, bRow) {
-                        const aData = aRow.getData();
-                        const bData = bRow.getData();
-                        const aSpend = parseFloat(aData['spend'] || 0);
-                        const bSpend = parseFloat(bData['spend'] || 0);
-                        const aTemuL30 = parseFloat(aData['temu_l30'] || 0);
-                        const bTemuL30 = parseFloat(bData['temu_l30'] || 0);
-                        let aVal = parseFloat(a || 0);
-                        let bVal = parseFloat(b || 0);
-                        if (aSpend > 0 && aTemuL30 === 0) aVal = 100;
-                        if (bSpend > 0 && bTemuL30 === 0) bVal = 100;
-                        return aVal - bVal;
-                    },
+                    headerTooltip: "ADS% = 2.2% on every row",
+                    sorter: "number",
                     formatter: function(cell) {
-                        const displayVal = (badgeAvgAds != null ? badgeAvgAds : (parseFloat(cell.getValue()) || 0));
+                        const displayVal = typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 2.2;
                         const rowData = cell.getRow().getData();
-                        const spend = parseFloat(rowData['spend'] || 0);
-                        const temuL30 = parseFloat(rowData['temu_l30'] || 0);
-                        let color = '#000';
-                        if (spend > 0 && temuL30 === 0) {
-                            const sku = rowData.sku || '';
-                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ads_percent" title="View ADS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ffc107;"></span></button>` : '';
-                            return `<span style="color: #a00211; font-weight: 600;">100%</span> ${dotBtn}`.trim();
-                        }
-                        if (displayVal == 0 || displayVal == 100) color = '#a00211';
-                        else if (displayVal > 0 && displayVal <= 7) color = '#ff1493';
-                        else if (displayVal > 7 && displayVal <= 14) color = '#28a745';
-                        else if (displayVal > 14 && displayVal <= 21) color = '#ffc107';
-                        else if (displayVal > 21) color = '#a00211';
                         const sku = (rowData && rowData.sku) ? rowData.sku : '';
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ads_percent" title="View ADS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ffc107;"></span></button>` : '';
-                        return `<span style="color: ${color}; font-weight: 600;">${Number(displayVal).toFixed(1)}%</span> ${dotBtn}`.trim();
+                        return `<span style="color: #ff1493; font-weight: 600;">${displayVal.toFixed(1)}%</span> ${dotBtn}`.trim();
                     }
                 },
                 {
@@ -3767,23 +3896,13 @@
                     hozAlign: "center",
                     sorter: "number",
                     visible: false,
-                    headerTooltip: "NPFT% = GPFT% (Full Temu Price) − Ads%",
+                    headerTooltip: "NPFT% = NPFT / Temu Price. NPFT = Gpft − (Temu Price × Ads%)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
-                        const fullPrice = temu2FullPriceFromRow(rowData);
-                        const lp = parseFloat(rowData['lp']) || 0;
-                        const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const margin = temuSpriceMargin(rowData);
-                        const spend = parseFloat(rowData['spend']) || 0;
-                        const temuL30 = parseFloat(rowData['temu_l30']) || 0;
-                        const gpft = fullPrice > 0 ? ((fullPrice * margin - lp - temuShip) / fullPrice) * 100 : 0;
-                        const adsForNpft = (spend > 0 && temuL30 === 0)
-                            ? 100
-                            : ((badgeAvgAds != null && Number.isFinite(Number(badgeAvgAds)))
-                                ? Number(badgeAvgAds)
-                                : (parseFloat(rowData['ads_percent']) || 0));
-                        const value = adsForNpft === 100 ? gpft : (gpft - adsForNpft);
+                        const npft = typeof temu2NpftDollars === 'function' ? temu2NpftDollars(rowData) : null;
+                        const temuPrice = temu2FullPriceFromRow(rowData);
+                        const value = (npft != null && temuPrice > 0) ? (npft / temuPrice) * 100 : 0;
                         const colorClass = getPftColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="npft_percent" title="View NPFT% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #28a745;"></span></button>` : '';
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
@@ -3795,11 +3914,13 @@
                     hozAlign: "center",
                     sorter: "number",
                     visible: false,
-                    headerTooltip: "NROI% = GROI% (R Price) − Ads%",
+                    headerTooltip: "NROI% = NPFT / LP. NPFT = Gpft − (Temu Price × Ads%)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
-                        const value = parseFloat(cell.getValue()) || 0;
+                        const npft = typeof temu2NpftDollars === 'function' ? temu2NpftDollars(rowData) : null;
+                        const lp = parseFloat(rowData.lp) || 0;
+                        const value = (npft != null && lp > 0) ? (npft / lp) * 100 : 0;
                         const colorClass = getRoiColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="nroi_percent" title="View NROI% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
@@ -3849,6 +3970,38 @@
                         }
                     }
                 },
+                {
+                    title: "Diff",
+                    field: "lmp_diff_pct",
+                    hozAlign: "center",
+                    width: 70,
+                    headerTooltip: "S PRC vs LMP: (LMP − S PRC) / LMP. Green = S PRC below LMP, Red = S PRC above LMP.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
+                        const diff = typeof temu2LmpDiffPct === 'function' ? temu2LmpDiffPct(rowData) : null;
+                        if (diff == null) return '<span style="color:#999;">—</span>';
+                        const color = diff < 0 ? '#dc3545' : '#28a745';
+                        const sign = diff > 0 ? '+' : '';
+                        return '<span style="color:' + color + ';font-weight:600;">' + sign + diff.toFixed(1) + '%</span>';
+                    }
+                },
+                {
+                    title: "Match",
+                    field: "lmp_match",
+                    hozAlign: "center",
+                    width: 58,
+                    headerSort: false,
+                    headerTooltip: "Match — Green = S PRC is LMP − $0.01. Red = not matched.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
+                        const status = typeof temu2MatchStatus === 'function' ? temu2MatchStatus(rowData) : null;
+                        if (status === 'none' || !status) return '<span style="color:#adb5bd;" title="No LMP">—</span>';
+                        const color = status === 'green' ? '#28a745' : '#dc3545';
+                        return '<span style="color:' + color + ';font-weight:800;font-size:14px;">M</span>';
+                    }
+                },
                      {
                     title: '<input type="checkbox" id="select-all-checkbox">',
                     field: "_select",
@@ -3894,12 +4047,12 @@
                     }
                 },
                 {
-                    title: "Push",
+                    title: "Queue",
                     field: "_push",
                     width: 55,
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Push base = (Sprice×0.88)−2.99 if SPRICE<$35; else Sprice×0.88",
+                    headerTooltip: "Push base = (Sprice−2.99)×0.88 if SPRICE<$30; else Sprice×0.88",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent) return '';
@@ -3930,7 +4083,7 @@
                     field: "stemu_price",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Push base from SPRICE: (Sprice×0.88)−2.99 if SPRICE<$35; else Sprice×0.88. Negatives in red.",
+                    headerTooltip: "Push base from SPRICE: (Sprice−2.99)×0.88 if SPRICE<$30; else Sprice×0.88. Negatives in red.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const pushBase = temuPushBaseFromSprice(rowData['sprice']);
@@ -3939,19 +4092,35 @@
                     }
                 },
                 {
-                    title: "SROI%",
-                    field: "sroi_percent",
+                    title: "SGROI%",
+                    field: "sgroi_percent",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "SROI = S Profit / LP; S Profit = (S Recovery × marketplace%) − Temu Ship − LP",
+                    headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const lp = parseFloat(rowData['lp']) || 0;
-                        const sProfit = temu2SProfit(rowData);
-                        if (sProfit == null || lp === 0) return '';
-                        const sroi = (sProfit / lp) * 100;
-                        const colorClass = getRoiColor(sroi);
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
+                        const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(rowData) : null;
+                        if (spft == null || !(lp > 0)) return '';
+                        const sgroi = (spft / lp) * 100;
+                        const colorClass = getRoiColor(sgroi);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(sgroi)}%</span>`;
+                    }
+                },
+                {
+                    title: "SNROI%",
+                    field: "sroi_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "SNROI% = SNPFT / LP. SNPFT = SPFT − (S PRC × Ads%)",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const lp = parseFloat(rowData['lp']) || 0;
+                        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(rowData) : null;
+                        if (snpft == null || !(lp > 0)) return '';
+                        const snroi = (snpft / lp) * 100;
+                        const colorClass = getRoiColor(snroi);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(snroi)}%</span>`;
                     }
                 },
                 {
@@ -3959,13 +4128,13 @@
                     field: "sgprft_percent",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "SGPRFT on Full Sprice (= Temu Price): (Sprice × margin − LP − Temu Ship) / Sprice",
+                    headerTooltip: "SGPRFT% = SPFT / S PRC. SPFT = (S R Price × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
-                        const pftProfit = temu2SPftProfit(rowData);
-                        if (sprice <= 0 || pftProfit == null) return '';
-                        const sgprft = (pftProfit / sprice) * 100;
+                        const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(rowData) : null;
+                        if (!(sprice > 0) || spft == null) return '';
+                        const sgprft = (spft / sprice) * 100;
                         const colorClass = getPftColor(sgprft);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sgprft)}%</span>`;
                     }
@@ -3975,36 +4144,13 @@
                     field: "spft_percent",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "SNPFT = SGPRFT − Ads%; both on Full Temu Price / Full Sprice",
+                    headerTooltip: "SPFT% = SNPFT / S PRC. SNPFT = SPFT − (S PRC × Ads%)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
-                        const temuFullPrice = temu2FullPriceFromRow(rowData);
-                        const adsPercentRow = parseFloat(rowData['ads_percent']) || 0;
-                        const spend = parseFloat(rowData['spend']) || 0;
-                        const temuL30 = parseFloat(rowData['temu_l30']) || 0;
-                        const pftProfit = temu2SPftProfit(rowData);
-                        
-                        if (sprice <= 0 || pftProfit == null) return '';
-                        
-                        const isSameAsCurrentTemuPrice = temuFullPrice > 0 && Math.abs(sprice - temuFullPrice) < 0.02;
-
-                        // If S PRC matches Full Temu Price, SPFT must match NPFT exactly.
-                        if (isSameAsCurrentTemuPrice) {
-                            const npftExact = parseFloat(rowData['npft_percent']) || 0;
-                            const colorClass = getPftColor(npftExact);
-                            return `<span class="dil-percent-value ${colorClass}">${Math.round(npftExact)}%</span>`;
-                        }
-                        
-                        const sgprft = (pftProfit / sprice) * 100;
-                        
-                        // Keep SPFT aligned with NPFT logic:
-                        // prefer aggregate ADS% badge value; if spend>0 and no sales (100% case), don't subtract ADS.
-                        const adsForSpft = (badgeAvgAds != null && Number.isFinite(Number(badgeAvgAds)))
-                            ? Number(badgeAvgAds)
-                            : adsPercentRow;
-                        const spft = (spend > 0 && temuL30 === 0) ? sgprft : (sgprft - adsForSpft);
-                        
+                        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(rowData) : null;
+                        if (!(sprice > 0) || snpft == null) return '';
+                        const spft = (snpft / sprice) * 100;
                         const colorClass = getPftColor(spft);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(spft)}%</span>`;
                     }
@@ -4208,6 +4354,10 @@
                     }
                 },
             ]
+        });
+
+        table.on('pageLoaded', function() {
+            updateSelectAllCheckbox();
         });
 
         let temu2ResizeTimer = null;
@@ -4451,6 +4601,14 @@
                 table.addFilter(function(data) {
                     if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     return (parseFloat(data.lmp) || 0) <= 0;
+                });
+            }
+
+            const matchFilter = $('#matchFilterDropdown').data('color') || 'all';
+            if (matchFilter && matchFilter !== 'all') {
+                table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
+                    return temu2MatchFilterMatches(temu2MatchStatus(data), matchFilter);
                 });
             }
 
@@ -4797,6 +4955,22 @@
         });
 
         $('#parent-filter, #inventory-filter, #tl30-filter, #growth-sign-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #sprice-lmp-filter, #prc-lmp-filter, #lmp-filter, #dil-filter').on('change', function() {
+            applyFilters();
+        });
+
+        $(document).on('click', '.match-column-filter', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $item = $(this);
+            const color = $item.data('color') || 'all';
+            const dropdown = $item.closest('.dropdown');
+            const button = dropdown.find('.dropdown-toggle');
+            dropdown.find('.match-column-filter').removeClass('active');
+            $item.addClass('active');
+            button.data('color', color);
+            const statusCircle = $item.find('.status-circle').clone();
+            const matchLabels = { green: ' Green', red: ' Red', 'red-': ' Diff −', 'red+': ' Diff +', none: ' No LMP' };
+            button.html('').append(statusCircle).append(matchLabels[color] || ' Match');
             applyFilters();
         });
 
@@ -5673,9 +5847,10 @@
             }
             if (!confirm(
                 'Push Temu2 base $' + pushBase.toFixed(2)
-                + ' (from SPRICE $' + sprice.toFixed(2) + ' × 0.88'
-                + (sprice < 35 ? ' − 2.99' : '')
-                + ') for SKU: ' + sku + '?'
+                + (sprice < 30
+                    ? ' (from (SPRICE $' + sprice.toFixed(2) + ' − 2.99) × 0.88)'
+                    : ' (from SPRICE $' + sprice.toFixed(2) + ' × 0.88)')
+                + ' for SKU: ' + sku + '?'
             )) return;
 
             pushTemu2PriceForRow(row, sprice).then(function() {
@@ -5798,7 +5973,7 @@
 
             if (!confirm(
                 'Push Temu2 base for ' + items.length + ' SKU(s)?\n'
-                + '(Sprice × 0.88) − 2.99 if SPRICE < $35; else Sprice × 0.88'
+                + '(Sprice − 2.99) × 0.88 if SPRICE < $30; else Sprice × 0.88'
             )) return;
 
             const $btn = $('#push-temu2-price-btn');

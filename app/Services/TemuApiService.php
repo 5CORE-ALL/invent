@@ -696,16 +696,15 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $data = $this->fetchAdsData($goodsId, $range['startTs'], $range['endTs']);
         
         if ($data) {
-            $summary = $data['reportInfo']['reportsSummary'] ?? null;
-            if ($summary) {
-                $results[$goodsId] = [
-                    'impressions' => $summary['imprCntAll']['val'] ?? 0,
-                    'clicks' => $summary['clkCntAll']['val'] ?? 0,
-                    'ctr' => isset($summary['clkCntAll']['val']) && isset($summary['imprCntAll']['val']) && $summary['imprCntAll']['val'] > 0
-                        ? ($summary['clkCntAll']['val'] / $summary['imprCntAll']['val']) * 100
-                        : 0,
-                ];
-            }
+            $overall = is_array($data['reportInfo']['summary'] ?? null) ? $data['reportInfo']['summary'] : [];
+            $adOnly = is_array($data['reportInfo']['reportsSummary'] ?? null) ? $data['reportInfo']['reportsSummary'] : [];
+            $impressions = $overall['imprCnt']['total']['val'] ?? $adOnly['imprCntAll']['val'] ?? 0;
+            $clicks = $overall['clkCnt']['total']['val'] ?? $adOnly['clkCntAll']['val'] ?? 0;
+            $results[$goodsId] = [
+                'impressions' => $impressions,
+                'clicks' => $clicks,
+                'ctr' => $impressions > 0 ? ($clicks / $impressions) * 100 : 0,
+            ];
         }
         
         // Rate limiting - small delay between requests

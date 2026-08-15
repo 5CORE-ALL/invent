@@ -3589,7 +3589,7 @@
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
-        const push = s < 35 ? ((s * TEMU_S_RECOVERY_RATE) - 2.99) : (s * TEMU_S_RECOVERY_RATE);
+        const push = s < 30 ? ((s - 2.99) * TEMU_S_RECOVERY_RATE) : (s * TEMU_S_RECOVERY_RATE);
         if (!(push > 0)) return null;
         return +push.toFixed(2);
     }

@@ -45,7 +45,13 @@
     .es-pct { min-width: 90px; }
     .es-pct .bar { height: 4px; border-radius: 999px; background: #e2e8f0; overflow: hidden; margin-top: .2rem; }
     .es-pct .bar > span { display: block; height: 100%; border-radius: 999px; }
-    .es-not-logged { font-size: .75rem; color: #ea580c; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 999px; padding: .15rem .55rem; }
+    .es-not-logged {
+        appearance: none; font: inherit; line-height: 1.2;
+        font-size: .75rem; color: #ea580c; background: #fff7ed; border: 1px solid #fed7aa;
+        border-radius: 999px; padding: .15rem .55rem; cursor: pointer; user-select: none;
+    }
+    .es-not-logged:hover { background: #ffedd5; border-color: #fdba74; }
+    .es-not-logged.is-active { background: #ea580c; color: #fff; border-color: #ea580c; }
     .es-table-toolbar {
         display: flex;
         align-items: center;
@@ -54,7 +60,22 @@
         width: 100%;
         margin-bottom: 1rem;
     }
+    .es-table-toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        flex: 1;
+        min-width: 0;
+        flex-wrap: wrap;
+    }
     .es-table-toolbar .es-search { max-width: 280px; width: 100%; flex: 0 1 280px; }
+    .es-status-filter {
+        width: auto;
+        min-width: 160px;
+        max-width: 200px;
+        height: 31px;
+        font-size: .85rem;
+    }
     .es-header-actions { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
 </style>
 @endsection
@@ -166,13 +187,20 @@
             <div class="es-card p-3">
                 <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
                     <h6 class="mb-0"><i class="ri-group-line me-1"></i> Team Summary</h6>
-                    @if($not_logged > 0)
-                    <span class="es-not-logged" id="notLoggedBadge">{{ $not_logged }}/{{ $total_employees }} not logged</span>
-                    @endif
+                    <button type="button" class="es-not-logged {{ $not_logged > 0 ? '' : 'd-none' }}" id="notLoggedBadge" aria-pressed="false" title="Show only employees who have not logged">
+                        {{ $not_logged }}/{{ $total_employees }} not logged
+                    </button>
                 </div>
 
                 <div class="es-table-toolbar">
-                    <input type="search" class="form-control form-control-sm es-search" id="employeeSearch" placeholder="Search employees...">
+                    <div class="es-table-toolbar-left">
+                        <input type="search" class="form-control form-control-sm es-search" id="employeeSearch" placeholder="Search employees...">
+                        <select class="form-select form-select-sm es-status-filter" id="statusFilter" aria-label="Status filter">
+                            <option value="all">Status: All</option>
+                            <option value="logged">Status: Logged</option>
+                            <option value="not_logged">Status: Not logged</option>
+                        </select>
+                    </div>
                     <a href="{{ route('attendance.summary.export', request()->query()) }}" class="btn btn-sm btn-primary flex-shrink-0" id="btnDownload">
                         <i class="ri-download-line me-1"></i> Download CSV
                     </a>
@@ -195,7 +223,7 @@
                         </thead>
                         <tbody id="summaryBody">
                             @foreach($rows as $row)
-                            <tr data-name="{{ strtolower($row['name']) }}" data-email="{{ strtolower($row['email']) }}">
+                            <tr data-name="{{ strtolower($row['name']) }}" data-email="{{ strtolower($row['email']) }}" data-has-worked="{{ !empty($row['has_worked']) ? '1' : '0' }}">
                                 <td>
                                     <div class="es-name">{{ $row['name'] }}</div>
                                     <a href="{{ $row['timeline_url'] }}" class="es-timeline-link">Timeline</a>
@@ -242,9 +270,44 @@
     const rangeSelect = document.getElementById('rangeSelect');
     const customRangeFields = document.getElementById('customRangeFields');
     const searchInput = document.getElementById('employeeSearch');
+    const statusFilter = document.getElementById('statusFilter');
+    const notLoggedBadge = document.getElementById('notLoggedBadge');
     const autoRefresh = document.getElementById('autoRefresh');
     const autoRefreshLabel = document.getElementById('autoRefreshLabel');
     let refreshTimer = null;
+
+    function currentStatus() {
+        return statusFilter?.value || 'all';
+    }
+
+    function applyRowFilters() {
+        const q = (searchInput?.value || '').trim().toLowerCase();
+        const status = currentStatus();
+        document.querySelectorAll('#summaryBody tr').forEach(tr => {
+            const name = tr.dataset.name || '';
+            const email = tr.dataset.email || '';
+            const hasWorked = tr.dataset.hasWorked === '1';
+            const matchesSearch = !q || name.includes(q) || email.includes(q);
+            const matchesStatus = status === 'all'
+                || (status === 'logged' && hasWorked)
+                || (status === 'not_logged' && !hasWorked);
+            tr.style.display = (matchesSearch && matchesStatus) ? '' : 'none';
+        });
+        syncBadgeState();
+    }
+
+    function syncBadgeState() {
+        const isNotLogged = currentStatus() === 'not_logged';
+        notLoggedBadge?.classList.toggle('is-active', isNotLogged);
+        notLoggedBadge?.setAttribute('aria-pressed', isNotLogged ? 'true' : 'false');
+    }
+
+    function setStatusFilter(value) {
+        if (statusFilter) {
+            statusFilter.value = value;
+        }
+        applyRowFilters();
+    }
 
     function toggleCustomRange() {
         const isCustom = rangeSelect?.value === 'custom';
@@ -265,13 +328,11 @@
 
     toggleCustomRange();
 
-    searchInput?.addEventListener('input', function() {
-        const q = this.value.trim().toLowerCase();
-        document.querySelectorAll('#summaryBody tr').forEach(tr => {
-            const name = tr.dataset.name || '';
-            const email = tr.dataset.email || '';
-            tr.style.display = (!q || name.includes(q) || email.includes(q)) ? '' : 'none';
-        });
+    searchInput?.addEventListener('input', applyRowFilters);
+    statusFilter?.addEventListener('change', applyRowFilters);
+
+    notLoggedBadge?.addEventListener('click', function() {
+        setStatusFilter(currentStatus() === 'not_logged' ? 'all' : 'not_logged');
     });
 
     function barColor(pct) {
@@ -282,7 +343,7 @@
         const body = document.getElementById('summaryBody');
         if (!body) return;
         body.innerHTML = rows.map(row => `
-            <tr data-name="${(row.name || '').toLowerCase()}" data-email="${(row.email || '').toLowerCase()}">
+            <tr data-name="${(row.name || '').toLowerCase()}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}">
                 <td>
                     <div class="es-name">${row.name}</div>
                     <a href="${row.timeline_url}" class="es-timeline-link">Timeline</a>
@@ -301,9 +362,7 @@
                 <td><span class="es-pill blue-text">${row.including_idle_clock}</span></td>
             </tr>
         `).join('');
-        if (searchInput?.value) {
-            searchInput.dispatchEvent(new Event('input'));
-        }
+        applyRowFilters();
     }
 
     async function refreshData() {
@@ -321,12 +380,12 @@
             document.getElementById('kpiIdle').textContent = data.totals.idle_time;
             document.getElementById('kpiEmployees').textContent = data.totals.employees_worked;
             renderRows(data.rows || []);
-            const badge = document.getElementById('notLoggedBadge');
-            if (badge && data.not_logged > 0) {
-                badge.textContent = data.not_logged + '/' + data.total_employees + ' not logged';
-                badge.classList.remove('d-none');
-            } else if (badge) {
-                badge.classList.add('d-none');
+            if (notLoggedBadge) {
+                notLoggedBadge.textContent = data.not_logged + '/' + data.total_employees + ' not logged';
+                notLoggedBadge.classList.toggle('d-none', !(data.not_logged > 0));
+                if (!(data.not_logged > 0) && currentStatus() === 'not_logged') {
+                    setStatusFilter('all');
+                }
             }
         } catch (_) {}
     }
