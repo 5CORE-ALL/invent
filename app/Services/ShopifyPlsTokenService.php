@@ -27,7 +27,9 @@ class ShopifyPlsTokenService
 
     public function getAccessToken(bool $forceRefresh = false): ?string
     {
-        if (! $forceRefresh) {
+        if ($forceRefresh) {
+            $this->clearCache();
+        } else {
             $cached = Cache::get(self::CACHE_KEY);
             if (is_string($cached) && $cached !== '') {
                 return $cached;
@@ -141,8 +143,11 @@ class ShopifyPlsTokenService
         }
 
         $result = $this->pingShop();
+        $ttl = ! empty($result['connected'])
+            ? max(30, $ttlSeconds)
+            : 45;
         try {
-            Cache::put($key, $result, now()->addSeconds(max(30, $ttlSeconds)));
+            Cache::put($key, $result, now()->addSeconds($ttl));
         } catch (\Throwable $e) {
             // ignore
         }
@@ -169,18 +174,20 @@ class ShopifyPlsTokenService
         $host = preg_replace('#^https?://#', '', (string) $domain);
         $host = rtrim((string) $host, '/');
 
-        try {
-            $request = Http::withHeaders(['X-Shopify-Access-Token' => $token])->timeout(20);
-            if (config('filesystems.default') === 'local' || env('FILESYSTEM_DRIVER') === 'local') {
-                $request = $request->withoutVerifying();
+        $response = $this->requestShop($host, $token);
+        if ($response && in_array($response->status(), [401, 403], true) && $this->hasClientCredentials()) {
+            $token = $this->getAccessToken(true);
+            if (is_string($token) && $token !== '') {
+                $response = $this->requestShop($host, $token);
             }
-            $response = $request->get("https://{$host}/admin/api/2024-01/shop.json");
-        } catch (\Throwable $e) {
+        }
+
+        if ($response === null) {
             return [
                 'connected' => false,
                 'shop' => null,
                 'domain' => $host,
-                'message' => 'PLS API request failed: '.$e->getMessage(),
+                'message' => 'PLS API request failed.',
             ];
         }
 
@@ -203,5 +210,21 @@ class ShopifyPlsTokenService
             'domain' => $myshopify,
             'message' => 'PLS API connected'.($name !== '' ? ' — '.$name : '').' ('.$myshopify.')',
         ];
+    }
+
+    private function requestShop(string $host, string $token): ?\Illuminate\Http\Client\Response
+    {
+        try {
+            $request = Http::withHeaders(['X-Shopify-Access-Token' => $token])->timeout(20);
+            if (config('filesystems.default') === 'local' || env('FILESYSTEM_DRIVER') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+
+            return $request->get("https://{$host}/admin/api/2024-01/shop.json");
+        } catch (\Throwable $e) {
+            Log::warning('Shopify PLS shop ping failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
     }
 }

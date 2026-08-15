@@ -278,6 +278,20 @@ class ShopifyCatalogSyncService
                     sleep(max(2, (int) ($response->header('Retry-After') ?: ($attempt * 2))));
                     continue;
                 }
+                if ($store === 'pls' && in_array($response->status(), [401, 403], true) && $attempt === 1) {
+                    $fresh = app(ShopifyPlsTokenService::class)->getAccessToken(true);
+                    if (is_string($fresh) && $fresh !== '') {
+                        $token = $fresh;
+                        $requestBase = Http::withHeaders([
+                            'X-Shopify-Access-Token' => $token,
+                            'Content-Type' => 'application/json',
+                        ]);
+                        if (config('filesystems.default') === 'local' || env('FILESYSTEM_DRIVER') === 'local') {
+                            $requestBase = $requestBase->withoutVerifying();
+                        }
+                        continue;
+                    }
+                }
                 break;
             }
 
