@@ -146,9 +146,9 @@
                         if (!name) return '';
                         const safeName = escapeHtml(name);
                         let apiBadge = '';
-                        if (String(row.channel_slug || '') === 'pls') {
+                        if (row.api_connected === true || row.api_connected === false || row.api_connected === 1 || row.api_connected === 0 || row.api_connected === '1' || row.api_connected === '0') {
                             const on = row.api_connected === true || row.api_connected === 1 || row.api_connected === '1';
-                            const title = escapeHtml(row.api_label || (on ? 'PLS API connected' : 'PLS API not connected'));
+                            const title = escapeHtml(row.api_label || (on ? 'API connected' : 'API not connected'));
                             apiBadge = on
                                 ? ` <span class="badge bg-success" title="${title}" style="font-size:0.7rem;font-weight:600;">API connected</span>`
                                 : ` <span class="badge bg-danger" title="${title}" style="font-size:0.7rem;font-weight:600;">API off</span>`;

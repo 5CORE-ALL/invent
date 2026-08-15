@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Temu2Metric;
 use App\Models\Temu2Pricing;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -680,5 +681,35 @@ class Temu2ApiService extends TemuApiService
         $res['normalized_urls'] = $videos;
 
         return $res;
+    }
+
+    /**
+     * @return array{connected: bool, shop: ?string, message: string}
+     */
+    public function pingShopCached(int $ttlSeconds = 600): array
+    {
+        $key = 'mm.temu2.api.ping.v1';
+        try {
+            $cached = Cache::get($key);
+            if (is_array($cached) && array_key_exists('connected', $cached)) {
+                return $cached;
+            }
+        } catch (\Throwable $e) {
+            // fall through
+        }
+
+        $ping = $this->testConnection();
+        $result = [
+            'connected' => ! empty($ping['success']),
+            'shop' => null,
+            'message' => (string) ($ping['message'] ?? ($ping['success'] ?? false ? 'Temu 2 API connected' : 'Temu 2 API not connected')),
+        ];
+        try {
+            Cache::put($key, $result, now()->addSeconds(max(30, $ttlSeconds)));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return $result;
     }
 }
