@@ -15,6 +15,8 @@ final class Ebay2LiveListingsService
 {
     public const CACHE_KEY = 'mm.ebay2.live_listings.v1';
 
+    public const CACHE_GEN_KEY = 'mm.ebay2.live_listings.gen';
+
     public const CACHE_TTL_SECONDS = 7200;
 
     public const STATUS_TYPES = [
@@ -27,23 +29,30 @@ final class Ebay2LiveListingsService
      */
     public function all(bool $forceRefresh = false): array
     {
-        if ($forceRefresh) {
-            try {
-                Cache::forget(self::CACHE_KEY);
-            } catch (\Throwable $e) {
-                // ignore
+        if (! $forceRefresh) {
+            $cached = $this->peekCached();
+            if ($cached !== null) {
+                return $cached;
             }
         }
 
+        $gen = 0;
         try {
-            return Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
-                return $this->fetchFromLocal();
-            });
+            $gen = (int) Cache::get(self::CACHE_GEN_KEY, 0);
         } catch (\Throwable $e) {
-            Log::warning('Ebay2LiveListingsService: cache unavailable', ['error' => $e->getMessage()]);
-
-            return $this->fetchFromLocal();
+            $gen = 0;
         }
+
+        $rows = $this->fetchFromLocal();
+        try {
+            if ((int) Cache::get(self::CACHE_GEN_KEY, 0) === $gen) {
+                Cache::put(self::CACHE_KEY, $rows, self::CACHE_TTL_SECONDS);
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return $rows;
     }
 
     /**
@@ -63,6 +72,7 @@ final class Ebay2LiveListingsService
     public function clearCache(): void
     {
         try {
+            Cache::increment(self::CACHE_GEN_KEY);
             Cache::forget(self::CACHE_KEY);
         } catch (\Throwable $e) {
             // ignore
