@@ -27,8 +27,12 @@ class AttendanceService
             ->first();
     }
 
-    public function clockIn(User $user, string $workLocation = 'wfh', ?string $ip = null, ?string $userAgent = null, ?int $deviceId = null, string $clockSource = 'web'): AttendanceSession
+    public function clockIn(User $user, string $workLocation = 'wfh', ?string $ip = null, ?string $userAgent = null, ?int $deviceId = null, string $clockSource = 'desktop'): AttendanceSession
     {
+        if ($clockSource !== 'desktop') {
+            throw new \RuntimeException('Clock-in is only available from the desktop app. Mobile and browser clock-in are not allowed.');
+        }
+
         $existing = $this->activeSession($user);
         if ($existing) {
             return $existing;
@@ -140,7 +144,7 @@ class AttendanceService
         $requestedState = in_array($payload['activity_state'] ?? 'working', ['working', 'idle', 'break'], true)
             ? $payload['activity_state']
             : 'working';
-        $source = in_array($payload['source'] ?? 'web', ['web', 'desktop'], true) ? $payload['source'] : 'web';
+        $source = 'desktop';
 
         // Count idle from OS idle time so old desktop agents (v1.2.x) still capture idle
         // even when they never flip activity_state / never show the idle popup.

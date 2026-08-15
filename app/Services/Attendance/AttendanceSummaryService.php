@@ -2,7 +2,9 @@
 
 namespace App\Services\Attendance;
 
+use App\Models\AttendanceActivityLog;
 use App\Models\AttendancePayrollPeriodLine;
+use App\Models\AttendanceScreenshot;
 use App\Models\AttendanceSession;
 use App\Models\User;
 use Carbon\Carbon;
@@ -24,7 +26,7 @@ class AttendanceSummaryService
         string $to,
         ?string $timezone = null,
     ): array {
-        $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+        $timezone = $timezone ?: AttendanceTimelineService::defaultTimezone();
         $fromAt = Carbon::parse($from, $timezone)->startOfDay();
         $toAt = Carbon::parse($to, $timezone)->endOfDay();
         $now = now()->timezone($timezone);
@@ -47,6 +49,36 @@ class AttendanceSummaryService
             ->get()
             ->groupBy('user_id');
 
+        $activeSessions = $userIds === []
+            ? collect()
+            : AttendanceSession::query()
+                ->whereIn('user_id', $userIds)
+                ->whereIn('status', ['active', 'paused'])
+                ->orderByDesc('started_at')
+                ->get()
+                ->unique('user_id')
+                ->keyBy('user_id');
+
+        $latestLogs = $userIds === []
+            ? collect()
+            : AttendanceActivityLog::query()
+                ->whereIn('id', AttendanceActivityLog::query()
+                    ->selectRaw('MAX(id)')
+                    ->whereIn('user_id', $userIds)
+                    ->groupBy('user_id'))
+                ->get()
+                ->keyBy('user_id');
+
+        $latestShots = $userIds === []
+            ? collect()
+            : AttendanceScreenshot::query()
+                ->whereIn('id', AttendanceScreenshot::query()
+                    ->selectRaw('MAX(id)')
+                    ->whereIn('user_id', $userIds)
+                    ->groupBy('user_id'))
+                ->get()
+                ->keyBy('user_id');
+
         $rows = [];
         $totals = [
             'worked_seconds' => 0,
@@ -65,7 +97,7 @@ class AttendanceSummaryService
             $idle = (int) $stats['idle_seconds'];
             $break = (int) $stats['break_seconds'];
             $worked = $active + $idle;
-            $includingIdle = $worked;
+            $workTime = max(0, $worked - $idle + $manualSeconds);
 
             $activeMinPct = ($active + $idle) > 0 ? (int) round(($active / ($active + $idle)) * 100) : 0;
             $activeSecPct = ($active + $idle + $break) > 0
@@ -74,7 +106,10 @@ class AttendanceSummaryService
 
             $userSessions = $sessionsByUser->get($employee->id, collect());
             $activitySpan = $this->activitySpan($userSessions, $fromAt, $toAt, $now, $timezone);
-            $isLive = $userSessions->contains(fn (AttendanceSession $s) => $s->isActive());
+            $activeSession = $activeSessions->get($employee->id);
+            $isLive = (bool) $activeSession;
+            $live = $this->liveStatus($activeSession, $latestLogs->get($employee->id), $now);
+            $lastShot = $this->lastScreenshotPayload($latestShots->get($employee->id), $timezone);
 
             if ($worked > 0 || $manualSeconds > 0) {
                 $totals['employees_worked']++;
@@ -91,10 +126,19 @@ class AttendanceSummaryService
                 'email' => $employee->email,
                 'designation' => $employee->designation,
                 'is_live' => $isLive,
+                'live_status' => $live['status'],
+                'live_label' => $live['label'],
+                'live_sort' => $live['sort'],
+                'last_image_url' => $lastShot['url'],
+                'last_image_thumb' => $lastShot['thumb'],
+                'last_image_time' => $lastShot['time'],
+                'last_image_label' => $lastShot['label'],
+                'last_image_sort' => $lastShot['sort'],
                 'clock_source' => $userSessions->last()?->clock_source ?? 'desktop',
                 'activity_span' => $activitySpan['label'],
                 'activity_updated' => $activitySpan['updated_label'],
                 'activity_is_live' => $activitySpan['is_live'],
+                'activity_start_minutes' => $this->spanStartMinutes($activitySpan['label']),
                 'worked_seconds' => $worked,
                 'worked_clock' => $this->formatClock($worked),
                 'manual_seconds' => $manualSeconds,
@@ -105,7 +149,10 @@ class AttendanceSummaryService
                 'active_sec_pct' => $activeSecPct,
                 'idle_seconds' => $idle,
                 'idle_clock' => $this->formatClock($idle),
-                'including_idle_clock' => $this->formatClock($includingIdle),
+                'work_time_seconds' => $workTime,
+                'work_time_clock' => $this->formatClock($workTime),
+                'including_idle_seconds' => $workTime,
+                'including_idle_clock' => $this->formatClock($workTime),
                 'has_worked' => $worked > 0 || $manualSeconds > 0,
                 'detail_url' => route('attendance.employee', $employee).'?period=custom&from='.$from.'&to='.$to,
                 'timeline_url' => route('attendance.employee', $employee).'?period=custom&from='.$from.'&to='.$to,
@@ -176,6 +223,61 @@ class AttendanceSummaryService
         ];
     }
 
+    /**
+     * @return array{url: string|null, thumb: string|null, time: string, label: string, sort: int}
+     */
+    private function lastScreenshotPayload(?AttendanceScreenshot $shot, string $timezone): array
+    {
+        if (! $shot?->captured_at) {
+            return ['url' => null, 'thumb' => null, 'time' => '—', 'label' => 'No screenshot', 'sort' => 0];
+        }
+
+        $at = $shot->captured_at->timezone($timezone);
+
+        return [
+            'url' => $shot->imageUrl(),
+            'thumb' => $shot->thumbnailUrl() ?: $shot->imageUrl(),
+            'time' => $at->format('H:i'),
+            'label' => $at->format('M j, h:i A').($shot->activityLabel() ? ' — '.$shot->activityLabel() : ''),
+            'sort' => $shot->captured_at->timestamp,
+        ];
+    }
+
+    /**
+     * @return array{status: string, label: string, sort: int}
+     */
+    private function liveStatus(?AttendanceSession $activeSession, ?AttendanceActivityLog $latestLog, Carbon $now): array
+    {
+        if (! $activeSession) {
+            return ['status' => 'absent', 'label' => 'Absent', 'sort' => 3];
+        }
+
+        $state = $activeSession->last_activity_state
+            ?? ($activeSession->status === 'paused' ? 'break' : 'working');
+        $idleSeconds = (int) ($latestLog?->idle_seconds ?? 0);
+        $staleSeconds = $latestLog?->recorded_at
+            ? max(0, $latestLog->recorded_at->diffInSeconds($now))
+            : max(0, ($activeSession->updated_at ?? $activeSession->started_at)->diffInSeconds($now));
+
+        if ($state === 'idle' || $staleSeconds >= 300) {
+            $idleFor = max($idleSeconds, $staleSeconds);
+            if ($idleFor >= 300) {
+                return ['status' => 'idle', 'label' => 'Idle', 'sort' => 2];
+            }
+        }
+
+        return ['status' => 'working', 'label' => 'Working', 'sort' => 1];
+    }
+
+    private function spanStartMinutes(string $label): int
+    {
+        if (preg_match('/^(\d{1,2}):(\d{2})/', $label, $m)) {
+            return ((int) $m[1] * 60) + (int) $m[2];
+        }
+
+        return -1;
+    }
+
     public function formatClock(int $seconds): string
     {
         $seconds = max(0, $seconds);
@@ -210,13 +312,12 @@ class AttendanceSummaryService
         fputcsv($handle, [
             'Employee',
             'Activity Span',
-            'Total Time Worked',
-            'Meeting Hours',
-            'Manual Entry',
+            'Total Time',
+            'Manual',
             'Active Minutes %',
             'Active Seconds %',
-            'Idle Deduction',
-            'Including Idle',
+            'Idle',
+            'Work Time',
             'Period From',
             'Period To',
         ]);
@@ -226,12 +327,11 @@ class AttendanceSummaryService
                 $row['name'],
                 $row['activity_span'],
                 $row['worked_clock'],
-                $row['meeting_clock'],
                 $row['manual_clock'],
                 $row['active_min_pct'].'%',
                 $row['active_sec_pct'].'%',
                 $row['idle_clock'],
-                $row['including_idle_clock'],
+                $row['work_time_clock'] ?? $row['including_idle_clock'],
                 $from,
                 $to,
             ]);
@@ -246,9 +346,9 @@ class AttendanceSummaryService
 
     public function defaultDateRange(?string $timezone = null): array
     {
-        $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+        $timezone = $timezone ?: AttendanceTimelineService::defaultTimezone();
         $to = now()->timezone($timezone)->toDateString();
-        $from = Carbon::parse($to, $timezone)->subDays(7)->toDateString();
+        $from = Carbon::parse($to, $timezone)->subDays(30)->toDateString();
 
         return [$from, $to];
     }

@@ -13,6 +13,62 @@ class AttendanceTimelineService
 {
   private const WINDOW_SECONDS = 86400;
 
+  public static function defaultTimezone(): string
+  {
+    return (string) config('attendance.timeline_timezone', 'America/Los_Angeles');
+  }
+
+  /**
+   * Day reset in the display timezone that matches 12:30 PM IST.
+   * In California that is 00:00 during PDT and 23:00 during PST.
+   */
+  public static function defaultDayReset(?string $timezone = null): string
+  {
+    $timezone = $timezone ?: self::defaultTimezone();
+    $ist = (string) config('attendance.timeline_day_reset_ist', '12:30');
+
+    return now('Asia/Kolkata')->setTimeFromTimeString($ist)->timezone($timezone)->format('H:i');
+  }
+
+  /**
+   * @return array<string, string>
+   */
+  public static function timezoneOptions(): array
+  {
+    return [
+      'America/Los_Angeles' => 'California (PT)',
+      'Asia/Kolkata' => 'India (IST)',
+      'America/New_York' => 'Ohio (ET)',
+      'Asia/Shanghai' => 'China (CST)',
+    ];
+  }
+
+  /**
+   * @return array<string, string>
+   */
+  public static function dayResetOptions(?string $timezone = null): array
+  {
+    $timezone = $timezone ?: self::defaultTimezone();
+    $istEquivalent = self::defaultDayReset($timezone);
+    $options = [
+      '00:00' => '00:00 to 23:59',
+      '04:00' => '04:00 to 03:59 Next day',
+      '06:00' => '06:00 to 05:59 Next day',
+      '09:00' => '09:00 to 08:59 Next day',
+      '12:30' => '12:30 to 12:29 Next day',
+    ];
+
+    if (! isset($options[$istEquivalent])) {
+      $end = Carbon::createFromFormat('H:i', $istEquivalent)->addDay()->subMinute()->format('H:i');
+      $options[$istEquivalent] = $istEquivalent.' to '.$end.' Next day';
+    }
+
+    $options[$istEquivalent] .= ' (12:30 PM IST)';
+    ksort($options);
+
+    return $options;
+  }
+
   /**
    * @param  Collection<int, User>  $employees
    * @return array{
@@ -26,8 +82,8 @@ class AttendanceTimelineService
    */
   public function teamTimeline(Collection $employees, string $date, ?string $timezone = null, ?string $dayReset = null): array
   {
-    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
-    $dayReset = $dayReset ?: (string) config('attendance.timeline_day_reset', '04:00');
+    $timezone = $timezone ?: self::defaultTimezone();
+    $dayReset = $dayReset ?: self::defaultDayReset($timezone);
 
     [$dayStart, $dayEnd] = $this->dayWindow($date, $timezone, $dayReset);
     [$segStart, $segEnd] = $this->calendarWindow($date, $timezone);
@@ -112,8 +168,8 @@ class AttendanceTimelineService
    */
   public function dayWindow(string $date, ?string $timezone = null, ?string $dayReset = null): array
   {
-    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
-    $dayReset = $dayReset ?: (string) config('attendance.timeline_day_reset', '04:00');
+    $timezone = $timezone ?: self::defaultTimezone();
+    $dayReset = $dayReset ?: self::defaultDayReset($timezone);
 
     $dayStart = Carbon::parse($date.' '.$dayReset, $timezone);
     $dayEnd = $dayStart->copy()->addDay();
@@ -126,7 +182,7 @@ class AttendanceTimelineService
    */
   public function calendarWindow(string $date, ?string $timezone = null): array
   {
-    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+    $timezone = $timezone ?: self::defaultTimezone();
     $start = Carbon::parse($date, $timezone)->startOfDay();
     $end = $start->copy()->endOfDay();
 
@@ -423,7 +479,7 @@ class AttendanceTimelineService
    */
   public function employeePeriodStats(User $employee, string $from, string $to, ?string $timezone = null): array
   {
-    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+    $timezone = $timezone ?: self::defaultTimezone();
     $fromDate = Carbon::parse($from, $timezone)->startOfDay();
     $toDate = Carbon::parse($to, $timezone)->startOfDay();
     $now = now()->timezone($timezone);
@@ -493,8 +549,8 @@ class AttendanceTimelineService
    */
   public function employeeDayDetail(User $employee, string $date, ?string $timezone = null, ?string $dayReset = null): array
   {
-    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
-    $dayReset = $dayReset ?: (string) config('attendance.timeline_day_reset', '04:00');
+    $timezone = $timezone ?: self::defaultTimezone();
+    $dayReset = $dayReset ?: self::defaultDayReset($timezone);
 
     $timeline = $this->teamTimeline(collect([$employee]), $date, $timezone, $dayReset);
     $row = $timeline['rows'][0] ?? null;
@@ -532,11 +588,141 @@ class AttendanceTimelineService
   }
 
   /**
+   * One timeline row per calendar day in the selected period.
+   *
+   * @return array{days: array<int, array<string, mixed>>, axis_hours: array<int, string>, range_label: string}
+   */
+  public function employeePeriodDayRows(
+    User $employee,
+    string $from,
+    string $to,
+    ?string $timezone = null,
+    ?string $dayReset = null,
+  ): array {
+    $timezone = $timezone ?: self::defaultTimezone();
+    $dayReset = $dayReset ?: self::defaultDayReset($timezone);
+
+    $fromDate = Carbon::parse($from, $timezone)->startOfDay();
+    $toDate = Carbon::parse($to, $timezone)->startOfDay();
+    if ($fromDate->gt($toDate)) {
+      [$fromDate, $toDate] = [$toDate, $fromDate];
+    }
+
+    $rangeStart = $fromDate->copy()->startOfDay();
+    $rangeEnd = $toDate->copy()->endOfDay();
+    $now = now()->timezone($timezone);
+    $heartbeatInterval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
+
+    $sessions = $this->sessionsInWindow([$employee->id], $rangeStart, $rangeEnd);
+    $sessionIds = $sessions->pluck('id')->all();
+    $logs = $sessionIds === []
+      ? collect()
+      : AttendanceActivityLog::query()
+        ->whereIn('attendance_session_id', $sessionIds)
+        ->whereBetween('recorded_at', [$rangeStart, $rangeEnd])
+        ->orderBy('recorded_at')
+        ->get();
+
+    $summaries = AttendanceDailySummary::query()
+      ->where('user_id', $employee->id)
+      ->whereBetween('work_date', [$fromDate->toDateString(), $toDate->toDateString()])
+      ->get()
+      ->keyBy(fn (AttendanceDailySummary $s) => $s->work_date->toDateString());
+
+    $days = [];
+    $axisHours = $this->axisLabels($this->dayWindow($fromDate->toDateString(), $timezone, $dayReset)[0]);
+    $cursor = $fromDate->copy();
+
+    while ($cursor->lte($toDate)) {
+      $dateStr = $cursor->toDateString();
+      [$dayStart, $dayEnd] = $this->dayWindow($dateStr, $timezone, $dayReset);
+      [$segStart, $segEnd] = $this->calendarWindow($dateStr, $timezone);
+
+      $daySessions = $sessions->filter(
+        fn (AttendanceSession $s) => $s->started_at->lt($segEnd)
+          && ($s->ended_at === null || $s->ended_at->gt($segStart))
+      )->values();
+      $dayLogs = $logs->filter(
+        fn (AttendanceActivityLog $log) => $log->recorded_at->gte($segStart) && $log->recorded_at->lte($segEnd)
+      )->values();
+
+      $activeSession = $daySessions->first(fn (AttendanceSession $s) => $s->isActive());
+      $summary = $summaries->get($dateStr);
+      $stats = $this->rowStats($daySessions, $summary, $activeSession, $now);
+      $clock = $this->dayClockTimes($daySessions, $summary, (bool) $activeSession, $timezone);
+      $segments = $this->buildDisplaySegments(
+        $daySessions,
+        $dayLogs,
+        $segStart,
+        $segEnd,
+        $activeSession,
+        $now,
+        $heartbeatInterval,
+      );
+
+      $days[] = [
+        'date' => $dateStr,
+        'date_label' => $cursor->format('D, M j, Y'),
+        'is_today' => $dateStr === $now->toDateString(),
+        'day_range_label' => $dayStart->format('d M Y, H:i').' to '.$dayEnd->format('d M Y, H:i'),
+        'axis_hours' => $this->axisLabels($dayStart),
+        'segments' => $segments,
+        'stats' => $stats,
+        'is_live' => (bool) $activeSession,
+        'login_label' => $clock['login_label'],
+        'logout_label' => $clock['logout_label'],
+      ];
+
+      $cursor->addDay();
+    }
+
+    return [
+      'days' => $days,
+      'axis_hours' => $axisHours,
+      'range_label' => $fromDate->equalTo($toDate)
+        ? $fromDate->format('D, M j, Y')
+        : $fromDate->format('D, M j, Y').' — '.$toDate->format('D, M j, Y'),
+    ];
+  }
+
+  /**
+   * @param  Collection<int, AttendanceSession>  $sessions
+   * @return array{login_label: string, logout_label: string}
+   */
+  private function dayClockTimes(
+    Collection $sessions,
+    ?AttendanceDailySummary $summary,
+    bool $isLive,
+    string $timezone,
+  ): array {
+    $loginAt = $summary?->first_clock_in;
+    $logoutAt = $summary?->last_clock_out;
+
+    if (! $loginAt && $sessions->isNotEmpty()) {
+      $loginAt = $sessions->sortBy(fn (AttendanceSession $s) => $s->started_at?->timestamp ?? 0)->first()?->started_at;
+    }
+
+    if (! $isLive && ! $logoutAt && $sessions->isNotEmpty()) {
+      $logoutAt = $sessions
+        ->filter(fn (AttendanceSession $s) => $s->ended_at !== null)
+        ->sortByDesc(fn (AttendanceSession $s) => $s->ended_at?->timestamp ?? 0)
+        ->first()?->ended_at;
+    }
+
+    return [
+      'login_label' => $loginAt ? $loginAt->timezone($timezone)->format('H:i') : '—',
+      'logout_label' => $isLive
+        ? 'Live'
+        : ($logoutAt ? $logoutAt->timezone($timezone)->format('H:i') : '—'),
+    ];
+  }
+
+  /**
    * @return array<int, array{app: string, hits: int, est_minutes: int, is_unproductive: bool, top_window: string|null}>
    */
   public function employeePeriodDesktopApps(User $employee, string $from, string $to, ?string $timezone = null): array
   {
-    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+    $timezone = $timezone ?: self::defaultTimezone();
     $fromAt = Carbon::parse($from, $timezone)->startOfDay();
     $toAt = Carbon::parse($to, $timezone)->endOfDay();
 
@@ -548,7 +734,7 @@ class AttendanceTimelineService
    */
   public function employeePeriodSuspiciousSignals(User $employee, string $from, string $to, ?string $timezone = null): array
   {
-    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+    $timezone = $timezone ?: self::defaultTimezone();
     $fromAt = Carbon::parse($from, $timezone)->startOfDay();
     $toAt = Carbon::parse($to, $timezone)->endOfDay();
     $interval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
@@ -712,7 +898,7 @@ class AttendanceTimelineService
     ?string $timezone = null,
     ?string $dayReset = null,
   ): array {
-    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+    $timezone = $timezone ?: self::defaultTimezone();
     $page = max(1, $page);
     $perPage = max(12, min(96, (int) config('attendance.screenshot_page_size', 48)));
 

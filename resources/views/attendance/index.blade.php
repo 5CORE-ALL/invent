@@ -64,7 +64,7 @@
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
                     <div>
                         <h4 class="mb-1"><i class="ri-time-line me-2 text-primary"></i>My Attendance</h4>
-                        <p class="text-muted mb-0 small">Clock in, track activity, and view your work sessions</p>
+                        <p class="text-muted mb-0 small">View your work sessions. Clock in from the desktop app only.</p>
                     </div>
                     <div class="d-flex flex-wrap gap-2">
                         <a href="{{ route('attendance.agent') }}" class="btn btn-sm btn-primary">
@@ -103,26 +103,10 @@
                         <span class="badge bg-secondary">Not clocked in</span>
                     @endif
                 </div>
-                <div class="d-flex flex-wrap gap-2 mb-3">
-                    <select class="form-select form-select-sm" id="workLocation" style="max-width:140px">
-                        <option value="wfh">WFH</option>
-                        <option value="office">Office</option>
-                        <option value="hybrid">Hybrid</option>
-                    </select>
-                </div>
-                <div class="d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-success clock-btn" id="btnClockIn" {{ $active_session ? 'disabled' : '' }}>
-                        <i class="ri-login-circle-line me-1"></i> Clock In
-                    </button>
-                    <button type="button" class="btn btn-danger clock-btn" id="btnClockOut" {{ $active_session ? '' : 'disabled' }}>
-                        <i class="ri-logout-circle-line me-1"></i> Clock Out
-                    </button>
-                    <button type="button" class="btn btn-outline-warning btn-sm" id="btnPause" {{ ($active_session && $active_session->status === 'active') ? '' : 'disabled' }}>
-                        Take a Break
-                    </button>
-                    <button type="button" class="btn btn-outline-info btn-sm" id="btnResume" {{ ($active_session && $active_session->status === 'paused') ? '' : 'disabled' }}>
-                        Resume
-                    </button>
+                <div class="alert alert-light border small mb-0">
+                    Clock in, clock out, and breaks are only available in the
+                    <a href="{{ route('attendance.agent') }}">desktop app</a>.
+                    Mobile and browser clock-in are not allowed.
                 </div>
                 @if($policy)
                 <hr>
@@ -233,52 +217,14 @@
 @endsection
 
 @section('script')
-<script src="{{ asset('js/attendance-tracker.js') }}?v=1"></script>
 <script>
 (function() {
     const app = document.getElementById('attendanceApp');
-    const csrf = app.dataset.csrf;
     const base = app.dataset.baseUrl;
-
-    async function post(url, body) {
-        const r = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-            body: JSON.stringify(body || {})
-        });
-        return r.json();
-    }
 
     document.getElementById('attDatePicker')?.addEventListener('change', function() {
         window.location.href = base + '?date=' + this.value;
     });
-
-    document.getElementById('btnClockIn')?.addEventListener('click', async function() {
-        const loc = document.getElementById('workLocation').value;
-        const res = await post(base + '/clock-in', { work_location: loc });
-        if (res.ok) location.reload();
-        else alert(res.message || 'Could not clock in');
-    });
-
-    document.getElementById('btnClockOut')?.addEventListener('click', async function() {
-        if (!confirm('Clock out now?')) return;
-        const res = await post(base + '/clock-out');
-        if (res.ok) location.reload();
-    });
-
-    document.getElementById('btnPause')?.addEventListener('click', async function() {
-        await post(base + '/pause');
-        location.reload();
-    });
-
-    document.getElementById('btnResume')?.addEventListener('click', async function() {
-        await post(base + '/resume');
-        location.reload();
-    });
-
-    if (window.AttendanceTracker) {
-        window.AttendanceTracker.init({ baseUrl: base, csrf: csrf });
-    }
 
     function fmt(sec) {
         sec = Math.max(0, parseInt(sec, 10) || 0);

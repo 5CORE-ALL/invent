@@ -91,8 +91,9 @@ return [
     /*
     | Team timeline (monitor) defaults.
     */
-    'timeline_timezone' => env('ATTENDANCE_TIMELINE_TIMEZONE', 'Asia/Kolkata'),
-    'timeline_day_reset' => env('ATTENDANCE_TIMELINE_DAY_RESET', '04:00'),
+    'timeline_timezone' => env('ATTENDANCE_TIMELINE_TIMEZONE', 'America/Los_Angeles'),
+    'timeline_day_reset' => env('ATTENDANCE_TIMELINE_DAY_RESET'),
+    'timeline_day_reset_ist' => env('ATTENDANCE_TIMELINE_DAY_RESET_IST', '12:30'),
 
     /*
     | App names treated as productive / unproductive for scoring.

@@ -35,6 +35,15 @@
     .act-legend span { display: inline-flex; align-items: center; gap: .3rem; font-size: .72rem; color: #64748b; margin-right: .85rem; }
     .act-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
     .act-row-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .25rem; }
+    .act-day { padding: .65rem 0; border-bottom: 1px solid #f1f5f9; }
+    .act-day:last-child { border-bottom: 0; padding-bottom: 0; }
+    .act-day-date { font-size: .82rem; font-weight: 600; color: #0f172a; white-space: nowrap; }
+    .act-day-date .act-today { font-size: .65rem; font-weight: 600; color: #2563eb; margin-left: .35rem; }
+    .act-clock { display: inline-flex; align-items: center; gap: .65rem; font-size: .75rem; font-weight: 500; color: #475569; margin-left: .75rem; }
+    .act-clock .lbl { color: #94a3b8; font-weight: 600; font-size: .65rem; text-transform: uppercase; letter-spacing: .03em; margin-right: .15rem; }
+    .act-clock .val { font-variant-numeric: tabular-nums; font-weight: 700; color: #0f172a; }
+    .act-clock .val.is-live { color: #16a34a; }
+    .act-clock .val.is-empty { color: #94a3b8; font-weight: 500; }
     .act-summary { display: flex; flex-wrap: wrap; gap: .85rem; font-size: .78rem; }
     .act-summary .item { white-space: nowrap; }
     .act-summary .item strong { font-weight: 700; }
@@ -42,6 +51,9 @@
     .act-summary .idle strong, .act-summary .idle span { color: #dc2626; }
     .act-summary .break strong, .act-summary .break span { color: #64748b; }
     .act-summary .total strong, .act-summary .total span { color: #0f172a; }
+    @media (max-width: 768px) {
+        .act-row-head { flex-direction: column; align-items: flex-start; }
+    }
     .act-axis-times { display: flex; justify-content: space-between; font-size: .62rem; color: #94a3b8; margin-bottom: 1px; line-height: 1; }
     .act-track { position: relative; height: 22px; background: #fff; border: 1px solid #e2e8f0; border-radius: 2px; overflow: hidden; }
     .act-track-grid {
@@ -88,8 +100,10 @@
 
 @section('content')
 @php
-    $stats = $day['stats'];
     $periodStats = $period;
+    $activityDays = $activity_days['days'] ?? [];
+    $activityAxis = $activity_days['axis_hours'] ?? ($day['axis_hours'] ?? []);
+    $activityRangeLabel = $activity_days['range_label'] ?? \Carbon\Carbon::parse($date)->format('D, M j, Y');
 @endphp
 <div class="container-fluid" id="employeeActivity"
      data-csrf="{{ csrf_token() }}">
@@ -130,15 +144,15 @@
                         <div>
                             <label class="form-label small text-muted mb-0">Day reset</label>
                             <select name="day_reset" class="form-select form-select-sm">
-                                @foreach(['00:00','04:00','06:00','09:00'] as $reset)
-                                <option value="{{ $reset }}" {{ $day_reset === $reset ? 'selected' : '' }}>{{ $reset }}</option>
+                                @foreach(\App\Services\Attendance\AttendanceTimelineService::dayResetOptions($timezone) as $reset => $label)
+                                <option value="{{ $reset }}" {{ $day_reset === $reset ? 'selected' : '' }}>{{ $label }}</option>
                                 @endforeach
                             </select>
                         </div>
                         <div>
                             <label class="form-label small text-muted mb-0">Timezone</label>
                             <select name="timezone" class="form-select form-select-sm">
-                                @foreach(['Asia/Kolkata' => 'GMT+0530', 'America/Los_Angeles' => 'GMT-0700', 'America/New_York' => 'GMT-0400', 'Asia/Shanghai' => 'GMT+0800'] as $tz => $label)
+                                @foreach(\App\Services\Attendance\AttendanceTimelineService::timezoneOptions() as $tz => $label)
                                 <option value="{{ $tz }}" {{ $timezone === $tz ? 'selected' : '' }}>{{ $label }}</option>
                                 @endforeach
                             </select>
@@ -209,38 +223,54 @@
                 </div>
 
                 <div class="day-focus-label">
-                    @if($from === $to)
-                    Timeline for <strong>{{ \Carbon\Carbon::parse($date)->format('D, M j, Y') }}</strong>
-                    @else
-                    Timeline for <strong>{{ \Carbon\Carbon::parse($date)->format('D, M j, Y') }}</strong>
-                    <span class="text-muted">(latest day in range)</span>
+                    Timeline for <strong>{{ $activityRangeLabel }}</strong>
+                    @if($from !== $to)
+                    · {{ count($activityDays) }} days
                     @endif
-                    · {{ $day['day_range_label'] }}
+                    · {{ $day_reset }} to next day
                 </div>
 
-                <div class="act-summary mb-2">
-                    <span class="item worked"><strong>{{ $stats['worked_label'] }}</strong> <span>Active</span></span>
-                    <span class="item idle"><strong>{{ $stats['idle_label'] }}</strong> <span>Idle</span></span>
-                    <span class="item break"><strong>{{ $stats['break_label'] }}</strong> <span>Break</span></span>
-                    <span class="item total"><strong>{{ $stats['total_label'] }}</strong> <span>Total</span></span>
-                </div>
-
-                <div class="act-axis-times">
-                    @foreach($day['axis_hours'] as $hour)
+                <div class="act-axis-times mb-1">
+                    @foreach($activityAxis as $hour)
                     <span>{{ $hour }}</span>
                     @endforeach
                 </div>
-                <div class="act-track">
-                    <div class="act-track-grid" aria-hidden="true"></div>
-                    @foreach($day['segments'] as $seg)
-                    @php
-                        $color = $seg['color'] ?? ($seg['state'] === 'idle' ? '#ef4444' : ($seg['state'] === 'break' ? '#94a3b8' : '#22c55e'));
-                    @endphp
-                    <div class="act-seg {{ $seg['state'] }}"
-                         style="left:{{ $seg['start_pct'] }}%;width:{{ max($seg['width_pct'], 0.12) }}%;background-color:{{ $color }}"
-                         title="{{ ucfirst($seg['state']) }} · {{ $seg['start_label'] }} – {{ $seg['end_label'] }}"></div>
-                    @endforeach
+
+                @forelse($activityDays as $activityDay)
+                @php $dayStats = $activityDay['stats']; @endphp
+                <div class="act-day">
+                    <div class="act-row-head">
+                        <div class="act-day-date">
+                            @if($activityDay['is_live'])<span class="act-live-dot"></span>@endif
+                            {{ $activityDay['date_label'] }}
+                            @if(!empty($activityDay['is_today']))<span class="act-today">Today</span>@endif
+                            <span class="act-clock">
+                                <span><span class="lbl">In</span><span class="val {{ ($activityDay['login_label'] ?? '—') === '—' ? 'is-empty' : '' }}">{{ $activityDay['login_label'] ?? '—' }}</span></span>
+                                <span><span class="lbl">Out</span><span class="val {{ ($activityDay['logout_label'] ?? '') === 'Live' ? 'is-live' : (($activityDay['logout_label'] ?? '—') === '—' ? 'is-empty' : '') }}">{{ $activityDay['logout_label'] ?? '—' }}</span></span>
+                            </span>
+                        </div>
+                        <div class="act-summary">
+                            <span class="item worked"><strong>{{ $dayStats['worked_label'] }}</strong> <span>Active</span></span>
+                            <span class="item idle"><strong>{{ $dayStats['idle_label'] }}</strong> <span>Idle</span></span>
+                            <span class="item break"><strong>{{ $dayStats['break_label'] }}</strong> <span>Break</span></span>
+                            <span class="item total"><strong>{{ $dayStats['total_label'] }}</strong> <span>Total</span></span>
+                        </div>
+                    </div>
+                    <div class="act-track">
+                        <div class="act-track-grid" aria-hidden="true"></div>
+                        @foreach($activityDay['segments'] as $seg)
+                        @php
+                            $color = $seg['color'] ?? ($seg['state'] === 'idle' ? '#ef4444' : ($seg['state'] === 'break' ? '#94a3b8' : '#22c55e'));
+                        @endphp
+                        <div class="act-seg {{ $seg['state'] }}"
+                             style="left:{{ $seg['start_pct'] }}%;width:{{ max($seg['width_pct'], 0.12) }}%;background-color:{{ $color }}"
+                             title="{{ $activityDay['date_label'] }} · {{ ucfirst($seg['state']) }} · {{ $seg['start_label'] }} – {{ $seg['end_label'] }}"></div>
+                        @endforeach
+                    </div>
                 </div>
+                @empty
+                <p class="text-muted small mb-0">No activity days in this period.</p>
+                @endforelse
             </div>
         </div>
     </div>

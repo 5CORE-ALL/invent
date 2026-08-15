@@ -70,86 +70,41 @@ class AttendanceController extends Controller
 
     public function clockIn(Request $request): JsonResponse
     {
-        $user = $request->user();
-        abort_unless(AttendanceAccess::isInternalEmployee($user), 403);
-
-        $validated = $request->validate([
-            'work_location' => 'nullable|in:wfh,office,hybrid',
-        ]);
-
-        try {
-            $session = $this->attendanceService->clockIn(
-                $user,
-                $validated['work_location'] ?? 'wfh',
-                $request->ip(),
-                $request->userAgent()
-            );
-        } catch (\RuntimeException $e) {
-            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
-        }
-
         return response()->json([
-            'ok' => true,
-            'session' => [
-                'id' => $session->id,
-                'started_at' => $session->started_at->toIso8601String(),
-                'status' => $session->status,
-            ],
-        ]);
+            'ok' => false,
+            'message' => 'Clock-in is only available from the desktop app. Mobile and browser clock-in are not allowed.',
+        ], 422);
     }
 
     public function clockOut(Request $request): JsonResponse
     {
-        $user = $request->user();
-        abort_unless(AttendanceAccess::isInternalEmployee($user), 403);
-
-        $session = $this->attendanceService->clockOut($user);
-
         return response()->json([
-            'ok' => (bool) $session,
-            'session' => $session ? [
-                'id' => $session->id,
-                'ended_at' => $session->ended_at?->toIso8601String(),
-                'active_seconds' => $session->total_active_seconds,
-                'idle_seconds' => $session->total_idle_seconds,
-            ] : null,
-        ]);
+            'ok' => false,
+            'message' => 'Clock-out is only available from the desktop app.',
+        ], 422);
     }
 
     public function heartbeat(Request $request): JsonResponse
     {
-        $user = $request->user();
-        abort_unless(AttendanceAccess::isInternalEmployee($user), 403);
-
-        $validated = $request->validate([
-            'is_active' => 'nullable|boolean',
-            'idle_seconds' => 'nullable|integer|min:0|max:3600',
-            'window_title' => 'nullable|string|max:500',
-            'page_url' => 'nullable|string|max:1000',
-        ]);
-
-        $result = $this->attendanceService->recordHeartbeat($user, $validated);
-
-        return response()->json($result, ($result['ok'] ?? false) ? 200 : 422);
+        return response()->json([
+            'ok' => false,
+            'message' => 'Browser and mobile activity tracking is disabled. Use the desktop app.',
+        ], 422);
     }
 
     public function pause(Request $request): JsonResponse
     {
-        $user = $request->user();
-        abort_unless(AttendanceAccess::isInternalEmployee($user), 403);
-
-        $session = $this->attendanceService->pause($user);
-
-        return response()->json(['ok' => (bool) $session, 'status' => $session?->status]);
+        return response()->json([
+            'ok' => false,
+            'message' => 'Breaks are only available from the desktop app.',
+        ], 422);
     }
 
     public function resume(Request $request): JsonResponse
     {
-        $user = $request->user();
-        abort_unless(AttendanceAccess::isInternalEmployee($user), 403);
-
-        $session = $this->attendanceService->resume($user);
-
-        return response()->json(['ok' => (bool) $session, 'status' => $session?->status]);
+        return response()->json([
+            'ok' => false,
+            'message' => 'Resume is only available from the desktop app.',
+        ], 422);
     }
 }

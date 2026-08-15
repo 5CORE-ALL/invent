@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\Attendance\AttendancePayrollService;
 use App\Services\Attendance\AttendanceService;
+use App\Services\Attendance\AttendanceTimelineService;
 use App\Support\AttendanceAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,8 +25,8 @@ class AttendancePayrollController extends Controller
     {
         abort_unless(AttendanceAccess::canMonitor(), 403);
 
-        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
-        $dayReset = $request->input('day_reset', config('attendance.timeline_day_reset', '04:00'));
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
+        $dayReset = $request->input('day_reset', AttendanceTimelineService::defaultDayReset($timezone));
         $team = $request->input('team', 'all');
 
         [$defaultFrom, $defaultTo] = $this->payrollService->defaultDateRange($timezone);
@@ -96,7 +97,7 @@ class AttendancePayrollController extends Controller
             collect([$user]),
             $validated['from'],
             $validated['to'],
-            $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata')),
+            $request->input('timezone', AttendanceTimelineService::defaultTimezone()),
         );
 
         $row = $rows[0] ?? null;
@@ -112,7 +113,7 @@ class AttendancePayrollController extends Controller
     {
         abort_unless(AttendanceAccess::canMonitor(), 403);
 
-        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
         $team = $request->input('team', 'all');
         $from = $request->input('from', now()->toDateString());
         $to = $request->input('to', now()->toDateString());

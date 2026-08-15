@@ -24,7 +24,7 @@ class AttendancePayrollService
         string $to,
         ?string $timezone = null,
     ): array {
-        $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+        $timezone = $timezone ?: AttendanceTimelineService::defaultTimezone();
         $userIds = $employees->pluck('id')->all();
 
         $profiles = AttendancePayrollProfile::query()
@@ -190,7 +190,7 @@ class AttendancePayrollService
 
     public function defaultDateRange(?string $timezone = null): array
     {
-        $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+        $timezone = $timezone ?: AttendanceTimelineService::defaultTimezone();
         $to = now()->timezone($timezone)->toDateString();
         $from = Carbon::parse($to, $timezone)->subDays(7)->toDateString();
 

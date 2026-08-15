@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\Attendance\AttendanceService;
 use App\Services\Attendance\AttendanceSummaryService;
+use App\Services\Attendance\AttendanceTimelineService;
 use App\Support\AttendanceAccess;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -25,8 +26,8 @@ class AttendanceSummaryController extends Controller
     {
         abort_unless(AttendanceAccess::canMonitor(), 403);
 
-        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
-        $dayReset = $request->input('day_reset', config('attendance.timeline_day_reset', '04:00'));
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
+        $dayReset = $request->input('day_reset', AttendanceTimelineService::defaultDayReset($timezone));
         $team = $request->input('team', 'all');
 
         [$from, $to, $rangeKey] = $this->resolveRange($request, $timezone);
@@ -55,7 +56,7 @@ class AttendanceSummaryController extends Controller
     {
         abort_unless(AttendanceAccess::canMonitor(), 403);
 
-        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
         $team = $request->input('team', 'all');
         [$from, $to] = $this->resolveRange($request, $timezone);
 
@@ -69,7 +70,7 @@ class AttendanceSummaryController extends Controller
     {
         abort_unless(AttendanceAccess::canMonitor(), 403);
 
-        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
         $team = $request->input('team', 'all');
         [$from, $to] = $this->resolveRange($request, $timezone);
 

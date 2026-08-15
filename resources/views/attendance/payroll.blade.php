@@ -94,7 +94,7 @@
                     <div>
                         <label class="form-label small text-muted mb-0">Timezone</label>
                         <select name="timezone" class="form-select form-select-sm">
-                            @foreach(['Asia/Kolkata' => 'GMT+0530', 'America/Los_Angeles' => 'GMT-0700', 'America/New_York' => 'GMT-0400', 'Asia/Shanghai' => 'GMT+0800'] as $tz => $label)
+                            @foreach(\App\Services\Attendance\AttendanceTimelineService::timezoneOptions() as $tz => $label)
                             <option value="{{ $tz }}" {{ $timezone === $tz ? 'selected' : '' }}>{{ $label }}</option>
                             @endforeach
                         </select>
@@ -102,8 +102,8 @@
                     <div>
                         <label class="form-label small text-muted mb-0">Day reset</label>
                         <select name="day_reset" class="form-select form-select-sm">
-                            @foreach(['00:00','04:00','06:00','09:00'] as $reset)
-                            <option value="{{ $reset }}" {{ $day_reset === $reset ? 'selected' : '' }}>{{ $reset }}</option>
+                            @foreach(\App\Services\Attendance\AttendanceTimelineService::dayResetOptions($timezone) as $reset => $label)
+                            <option value="{{ $reset }}" {{ $day_reset === $reset ? 'selected' : '' }}>{{ $label }}</option>
                             @endforeach
                         </select>
                     </div>

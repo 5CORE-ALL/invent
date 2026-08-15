@@ -34,8 +34,8 @@ class AttendanceMonitorController extends Controller
 
         $date = $request->input('date', now()->toDateString());
         $team = $request->input('team', 'all');
-        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
-        $dayReset = $request->input('day_reset', config('attendance.timeline_day_reset', '04:00'));
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
+        $dayReset = $request->input('day_reset', AttendanceTimelineService::defaultDayReset($timezone));
 
         $viewableIds = AttendanceAccess::viewableUserIds();
         $employees = $this->attendanceService->monitorableEmployees($viewableIds);
@@ -69,8 +69,8 @@ class AttendanceMonitorController extends Controller
     {
         abort_unless(AttendanceAccess::canViewUser($user->id), 403);
 
-        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
-        $dayReset = $request->input('day_reset', config('attendance.timeline_day_reset', '04:00'));
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
+        $dayReset = $request->input('day_reset', AttendanceTimelineService::defaultDayReset($timezone));
 
         [$from, $to, $periodKey] = $this->resolveEmployeePeriod($request, $timezone);
 
@@ -78,6 +78,7 @@ class AttendanceMonitorController extends Controller
 
         $period = $this->timelineService->employeePeriodStats($user, $from, $to, $timezone);
         $day = $this->timelineService->employeeDayDetail($user, $date, $timezone, $dayReset);
+        $activityDays = $this->timelineService->employeePeriodDayRows($user, $from, $to, $timezone, $dayReset);
         $desktopApps = $this->timelineService->employeePeriodDesktopApps($user, $from, $to, $timezone);
 
         $policy = AttendancePolicy::resolveForUser($user);
@@ -88,6 +89,7 @@ class AttendanceMonitorController extends Controller
             'title' => $user->name.' — Activity',
             'employee' => $user,
             'day' => $day,
+            'activity_days' => $activityDays,
             'period' => $period,
             'desktop_apps' => $desktopApps,
             'date' => $date,
@@ -205,8 +207,8 @@ class AttendanceMonitorController extends Controller
         abort_unless(AttendanceAccess::canViewUser($user->id), 403);
 
         $date = $request->input('date', now()->toDateString());
-        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
-        $dayReset = $request->input('day_reset', config('attendance.timeline_day_reset', '04:00'));
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
+        $dayReset = $request->input('day_reset', AttendanceTimelineService::defaultDayReset($timezone));
         $page = max(1, (int) $request->input('page', 1));
 
         return response()->json(
@@ -299,8 +301,8 @@ class AttendanceMonitorController extends Controller
 
         $date = $request->input('date', now()->toDateString());
         $team = $request->input('team', 'all');
-        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
-        $dayReset = $request->input('day_reset', config('attendance.timeline_day_reset', '04:00'));
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
+        $dayReset = $request->input('day_reset', AttendanceTimelineService::defaultDayReset($timezone));
         $viewableIds = AttendanceAccess::viewableUserIds();
 
         $employees = $this->attendanceService->monitorableEmployees($viewableIds);
