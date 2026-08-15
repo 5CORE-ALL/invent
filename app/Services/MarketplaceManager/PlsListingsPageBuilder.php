@@ -3,7 +3,6 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Jobs\WarmPlsLiveListingsCache;
-use App\Models\MarketplaceSyncSettings;
 use App\Models\ShopifySku;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\Request;
@@ -292,14 +291,6 @@ class PlsListingsPageBuilder
     {
         @set_time_limit(300);
 
-        $settings = MarketplaceSyncSettings::getFor('pls');
-        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
-            return [
-                'success' => false,
-                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
-            ];
-        }
-
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = $this->liveService();
         $linkedSkus = $this->linkedSkus();
@@ -313,22 +304,7 @@ class PlsListingsPageBuilder
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
 
         if (in_array($scope, ['mismatch', 'active', 'mismatch_active'], true)) {
-            $mismatchNormToSku = [];
-            foreach ($mismatchQty as $sku) {
-                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($n !== '') {
-                    $mismatchNormToSku[$n] = (string) $sku;
-                }
-            }
-            $idx = $this->stateIndexFromCache(
-                $liveService,
-                static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-                count($mismatchNormToSku),
-                $mismatchNormToSku
-            );
-            $mismatch = $idx['ready']
-                ? $catalog->filterSkusByNormalizedAllowList($mismatchQty, $idx['skusByState']['active'] ?? [])
-                : $mismatchQty;
+            $mismatch = $mismatchQty;
         } elseif (in_array($scope, ['mismatch_inactive', 'inactive'], true)) {
             $mismatchNormToSku = [];
             foreach ($mismatchQty as $sku) {
@@ -443,11 +419,6 @@ class PlsListingsPageBuilder
         $sku = trim((string) $row->sku);
         if ($sku === '') {
             return ['success' => false, 'message' => 'SKU is empty.'];
-        }
-
-        $settings = MarketplaceSyncSettings::getFor('pls');
-        if (! ($settings['inventory']['inventory_sync'] ?? false)) {
-            return ['success' => false, 'message' => 'Turn on Inventory sync in settings first.'];
         }
 
         $result = $this->inventoryService()->syncSkusFromShopify([$sku]);

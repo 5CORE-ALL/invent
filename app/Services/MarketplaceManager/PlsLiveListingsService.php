@@ -24,6 +24,11 @@ class PlsLiveListingsService
     {
         Cache::increment(self::CACHE_GEN_KEY);
         Cache::forget(self::CACHE_KEY);
+        try {
+            app(ShopifyCatalogSyncService::class)->forgetCachedInventory('pls');
+        } catch (\Throwable $e) {
+            // ignore
+        }
     }
 
     /**
@@ -165,13 +170,22 @@ class PlsLiveListingsService
                 }
                 foreach ($rows as $row) {
                     $p = $productCache[(int) $row->shopify_catalog_product_id] ?? null;
+                    if (! $p && ! empty($row->shopify_product_id)) {
+                        $p = DB::table('shopify_catalog_products')
+                            ->where('store', 'pls')
+                            ->where('shopify_id', $row->shopify_product_id)
+                            ->first(['id', 'status', 'title']);
+                        if ($p) {
+                            $productCache[(int) $row->shopify_catalog_product_id] = $p;
+                        }
+                    }
                     $mapped = $this->mapRow((object) [
                         'sku' => $row->sku,
                         'shopify_variant_id' => $row->shopify_variant_id,
                         'shopify_product_id' => $row->shopify_product_id,
                         'price' => $row->price,
                         'inventory_quantity' => $row->inventory_quantity,
-                        'status' => $p->status ?? 'active',
+                        'status' => $p->status ?? '',
                         'title' => $p->title ?? null,
                     ], $liveInv);
                     if ($mapped !== null) {

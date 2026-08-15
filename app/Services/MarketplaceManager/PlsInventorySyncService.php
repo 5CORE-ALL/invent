@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\ShopifySku;
+use App\Services\ShopifyCatalogSyncService;
 use App\Services\ShopifyPlsTokenService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +18,7 @@ class PlsInventorySyncService
 {
     private const LOCATION_CACHE_KEY = 'mm.pls.primary_location_id';
 
-    private const API_VERSION = '2024-01';
+    private const API_VERSION = '2025-01';
 
     public function __construct(
         protected ShopifyPlsTokenService $tokenService
@@ -51,6 +52,7 @@ class PlsInventorySyncService
         $failed = 0;
         $skipped = 0;
         $errorSamples = [];
+        $overlay = [];
 
         foreach ($skus as $sku) {
             if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
@@ -68,14 +70,26 @@ class PlsInventorySyncService
             $result = $this->pushSku($sku, max(0, (int) $qty));
             if ($result['success']) {
                 $updated++;
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm !== '') {
+                    $overlay[$norm] = (int) ($result['qty'] ?? $qty);
+                }
             } else {
                 $failed++;
                 $msg = $result['message'] ?? 'Push failed';
                 $errorSamples[$msg] = ($errorSamples[$msg] ?? 0) + 1;
+                Log::warning('PlsInventorySyncService: push failed', [
+                    'sku' => $sku,
+                    'qty' => $qty,
+                    'error' => $msg,
+                ]);
             }
         }
 
         app(PlsLiveListingsService::class)->clearCache();
+        if ($overlay !== []) {
+            app(ShopifyCatalogSyncService::class)->overlayCachedInventory('pls', $overlay);
+        }
 
         $message = "Updated {$updated}, failed {$failed}, skipped {$skipped}.";
         if ($errorSamples !== []) {
@@ -190,7 +204,7 @@ class PlsInventorySyncService
     }
 
     /**
-     * @return array{success: bool, message: string}
+     * @return array{success: bool, message: string, qty?: int}
      */
     protected function pushSku(string $sku, int $qty): array
     {
@@ -209,23 +223,105 @@ class PlsInventorySyncService
             return ['success' => false, 'message' => $variantRes['message']];
         }
 
-        $inventoryItemId = $variantRes['json']['variant']['inventory_item_id'] ?? null;
+        $v = $variantRes['json']['variant'] ?? [];
+        $inventoryItemId = $v['inventory_item_id'] ?? null;
         if (! $inventoryItemId) {
             return ['success' => false, 'message' => 'No inventory_item_id on PLS variant'];
         }
 
-        $locationId = $this->primaryLocationId();
-        if (! $locationId) {
-            return ['success' => false, 'message' => 'No PLS inventory location'];
+        if (strtolower(trim((string) ($v['inventory_management'] ?? ''))) !== 'shopify') {
+            $track = $this->request('PUT', '/inventory_items/'.$inventoryItemId.'.json', [
+                'inventory_item' => [
+                    'id' => (int) $inventoryItemId,
+                    'tracked' => true,
+                ],
+            ]);
+            if (! $track['ok']) {
+                return ['success' => false, 'message' => 'Could not enable inventory tracking: '.$track['message']];
+            }
         }
 
+        $levelsRes = $this->request('GET', '/inventory_items/'.$inventoryItemId.'/inventory_levels.json');
+        $levels = ($levelsRes['ok'] && is_array($levelsRes['json']['inventory_levels'] ?? null))
+            ? $levelsRes['json']['inventory_levels']
+            : [];
+        if ($levels === []) {
+            $fallback = $this->request('GET', '/inventory_levels.json', [
+                'inventory_item_ids' => $inventoryItemId,
+            ]);
+            if ($fallback['ok'] && is_array($fallback['json']['inventory_levels'] ?? null)) {
+                $levels = $fallback['json']['inventory_levels'];
+            }
+        }
+
+        if ($levels === []) {
+            $locationId = $this->primaryLocationId();
+            if (! $locationId) {
+                return ['success' => false, 'message' => 'No PLS inventory location'];
+            }
+            $this->request('POST', '/inventory_levels/connect.json', [
+                'location_id' => $locationId,
+                'inventory_item_id' => $inventoryItemId,
+            ]);
+            $set = $this->setLevel((int) $inventoryItemId, $locationId, $qty);
+            if (! $set['ok']) {
+                return ['success' => false, 'message' => $set['message']];
+            }
+        } else {
+            usort($levels, static function ($a, $b) {
+                return ((int) ($b['available'] ?? 0)) <=> ((int) ($a['available'] ?? 0));
+            });
+            $primaryLoc = (int) ($levels[0]['location_id'] ?? 0);
+            if ($primaryLoc <= 0) {
+                return ['success' => false, 'message' => 'PLS inventory level has no location'];
+            }
+            $set = $this->setLevel((int) $inventoryItemId, $primaryLoc, $qty);
+            if (! $set['ok']) {
+                return ['success' => false, 'message' => $set['message']];
+            }
+            foreach (array_slice($levels, 1) as $level) {
+                $loc = (int) ($level['location_id'] ?? 0);
+                if ($loc <= 0 || (int) ($level['available'] ?? 0) === 0) {
+                    continue;
+                }
+                $this->setLevel((int) $inventoryItemId, $loc, 0);
+            }
+        }
+
+        $confirm = $this->request('GET', "/variants/{$variantId}.json");
+        $actual = $qty;
+        if ($confirm['ok'] && isset($confirm['json']['variant']['inventory_quantity'])) {
+            $actual = (int) $confirm['json']['variant']['inventory_quantity'];
+        }
+
+        if (Schema::hasTable('shopify_catalog_variants')) {
+            DB::table('shopify_catalog_variants')
+                ->where('store', 'pls')
+                ->where('id', $variant->id)
+                ->update([
+                    'inventory_quantity' => $actual,
+                    'updated_at' => now(),
+                ]);
+        }
+
+        return ['success' => true, 'message' => 'Updated', 'qty' => $actual];
+    }
+
+    /**
+     * @return array{ok: bool, message: string}
+     */
+    protected function setLevel(int $inventoryItemId, int $locationId, int $qty): array
+    {
         $set = $this->request('POST', '/inventory_levels/set.json', [
             'location_id' => $locationId,
             'inventory_item_id' => $inventoryItemId,
             'available' => $qty,
         ]);
+        if ($set['ok']) {
+            return ['ok' => true, 'message' => 'ok'];
+        }
 
-        if (! $set['ok'] && str_contains(strtolower($set['message']), 'not stocked')) {
+        if (str_contains(strtolower($set['message']), 'not stocked')) {
             $this->request('POST', '/inventory_levels/connect.json', [
                 'location_id' => $locationId,
                 'inventory_item_id' => $inventoryItemId,
@@ -237,21 +333,7 @@ class PlsInventorySyncService
             ]);
         }
 
-        if (! $set['ok']) {
-            return ['success' => false, 'message' => $set['message']];
-        }
-
-        if (Schema::hasTable('shopify_catalog_variants')) {
-            DB::table('shopify_catalog_variants')
-                ->where('store', 'pls')
-                ->where('id', $variant->id)
-                ->update([
-                    'inventory_quantity' => $qty,
-                    'updated_at' => now(),
-                ]);
-        }
-
-        return ['success' => true, 'message' => 'Updated'];
+        return ['ok' => $set['ok'], 'message' => $set['message']];
     }
 
     protected function catalogVariantForSku(string $sku): ?object
@@ -324,37 +406,49 @@ class PlsInventorySyncService
 
         $path = '/'.ltrim($path, '/');
         $url = 'https://'.$domain.'/admin/api/'.self::API_VERSION.$path;
-
-        $attempt = function (string $accessToken) use ($method, $url, $payload) {
-            $http = Http::withHeaders([
-                'X-Shopify-Access-Token' => $accessToken,
-                'Content-Type' => 'application/json',
-            ])->timeout(45)->connectTimeout(20);
-
-            if (config('filesystems.default') === 'local' || env('FILESYSTEM_DRIVER') === 'local') {
-                $http = $http->withoutVerifying();
-            }
-
-            $method = strtoupper($method);
-            if ($method === 'GET') {
-                return $http->get($url, $payload);
-            }
-
-            return $http->send($method, $url, ['json' => $payload]);
-        };
+        $method = strtoupper($method);
 
         try {
-            $response = $attempt($token);
-            if (in_array($response->status(), [401, 403], true)) {
-                $fresh = $this->tokenService->getAccessToken(true);
-                if (is_string($fresh) && $fresh !== '') {
-                    $response = $attempt($fresh);
+            $response = null;
+            for ($attempt = 1; $attempt <= 6; $attempt++) {
+                $http = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(45)->connectTimeout(20);
+
+                if (config('filesystems.default') === 'local' || env('FILESYSTEM_DRIVER') === 'local') {
+                    $http = $http->withoutVerifying();
                 }
+
+                if ($method === 'GET') {
+                    $response = $http->get($url, $payload);
+                } elseif ($method === 'PUT') {
+                    $response = $http->put($url, $payload);
+                } else {
+                    $response = $http->send($method, $url, ['json' => $payload]);
+                }
+
+                if ($response->status() === 429) {
+                    sleep(max(2, (int) ($response->header('Retry-After') ?: ($attempt * 2))));
+                    continue;
+                }
+                if (in_array($response->status(), [401, 403], true) && $attempt === 1) {
+                    $fresh = $this->tokenService->getAccessToken(true);
+                    if (is_string($fresh) && $fresh !== '') {
+                        $token = $fresh;
+                        continue;
+                    }
+                }
+                break;
             }
         } catch (\Throwable $e) {
             Log::warning('PlsInventorySyncService: request failed', ['path' => $path, 'error' => $e->getMessage()]);
 
             return ['ok' => false, 'json' => [], 'message' => $e->getMessage(), 'status' => 0];
+        }
+
+        if (! $response) {
+            return ['ok' => false, 'json' => [], 'message' => 'Empty PLS API response', 'status' => 0];
         }
 
         $json = $response->json();
