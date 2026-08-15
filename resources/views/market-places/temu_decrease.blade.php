@@ -929,6 +929,8 @@
                                     <span class="status-circle red"></span> <span class="match-filter-red-minus-label">Diff − (0)</span></a></li>
                             <li><a class="dropdown-item match-column-filter" href="#" data-color="red+">
                                     <span class="status-circle red"></span> <span class="match-filter-red-plus-label">Diff + (0)</span></a></li>
+                            <li><a class="dropdown-item match-column-filter" href="#" data-color="none">
+                                    <span class="status-circle default"></span> <span class="match-filter-none-label">No LMP (0)</span></a></li>
                         </ul>
                     </div>
 
@@ -4091,6 +4093,7 @@
             return 'red';
         }
         function temuMatchFilterMatches(status, filter) {
+            if (filter === 'none') return status === 'none';
             if (!status || status === 'none') return false;
             if (filter === 'green') return status === 'green';
             if (filter === 'red') return status === 'red' || status === 'red-' || status === 'red+';
@@ -4456,6 +4459,7 @@
             let matchRedCount = 0;
             let matchRedMinusCount = 0;
             let matchRedPlusCount = 0;
+            let matchNoneCount = 0;
             
             data.forEach(row => {
                 const temuL30 = parseInt(row['temu_l30']) || 0;
@@ -4550,6 +4554,7 @@
                 else if (matchStatus === 'red-') { matchRedMinusCount++; matchRedCount++; }
                 else if (matchStatus === 'red+') { matchRedPlusCount++; matchRedCount++; }
                 else if (matchStatus === 'red') matchRedCount++;
+                else if (matchStatus === 'none') matchNoneCount++;
                 
                 // Map / Missing M (N Map): listed, REQ, both sides with stock — same rule as /map-issues.
                 // Tolerance: < 3 units when 3% of INV < 3, else rounded % > 3.
@@ -4665,6 +4670,7 @@
             $('.match-filter-red-label').text('Red (' + matchRedCount.toLocaleString() + ')');
             $('.match-filter-red-minus-label').text('Diff − (' + matchRedMinusCount.toLocaleString() + ')');
             $('.match-filter-red-plus-label').text('Diff + (' + matchRedPlusCount.toLocaleString() + ')');
+            $('.match-filter-none-label').text('No LMP (' + matchNoneCount.toLocaleString() + ')');
             // CVR badge: use the LIVE qtyPerViews computed from the same totalQuantity
             // and totalViews that drive the QTY and Views badges. Previously this preferred
             // the daily snapshot in temu_badge_daily_data so the badge would visually match
@@ -7318,7 +7324,7 @@
             $item.addClass('active');
             button.data('color', color);
             const statusCircle = $item.find('.status-circle').clone();
-            const matchLabels = { green: ' Green', red: ' Red', 'red-': ' Diff −', 'red+': ' Diff +' };
+            const matchLabels = { green: ' Green', red: ' Red', 'red-': ' Diff −', 'red+': ' Diff +', none: ' No LMP' };
             const label = matchLabels[color] || ' Match';
             button.html('').append(statusCircle).append(label);
             applyFilters();
