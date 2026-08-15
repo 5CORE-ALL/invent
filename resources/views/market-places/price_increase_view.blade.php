@@ -2706,6 +2706,15 @@
 <script src="{{ asset('js/amz-cvr-audit.js') }}"></script>
 <script>
     window.__authUserName = @json(optional(auth()->user())->name ?? optional(auth()->user())->email ?? 'You');
+    /** eBay take-home from marketplace_percentages — no hardcoded 0.85 */
+    const MARKETPLACE_TAKEHOME = @json($ebayTakeHomeMap ?? []);
+    function marketplaceTakeHome(mp) {
+        const key = String(mp || '').toLowerCase();
+        if (!Object.prototype.hasOwnProperty.call(MARKETPLACE_TAKEHOME, key)) return 1;
+        const t = Number(MARKETPLACE_TAKEHOME[key]);
+        if (!isFinite(t)) return 1;
+        return t > 1 ? t / 100 : t;
+    }
     /**
      * ========================================
      * CVR MASTER - TABULATOR VIEW
@@ -4403,11 +4412,13 @@
                 const rawShip = parseFloat(item.ship || 0) || 0;
                 const isSb2bMp = (mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b');
                 const ship = (isPpMp || isTdMp || isFaireMp || isSb2bMp) ? 0 : rawShip;
-                // Doba 0.95; Reverb/eBay2/eBay3 0.85; PPower 0.65; TopDawg/Faire/SB2B from marketplace_percentages; others 0.80
+                // eBay from marketplace_percentages; Doba 0.95; Reverb 0.85; PPower 0.65; others 0.80
+                const isEbay1Mp = ['ebay', 'ebay1', 'ebayone'].includes(mpLower);
                 const isEbay23Mp = ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower);
                 const margin = (item.margin !== null && item.margin !== undefined && item.margin !== '')
                     ? parseFloat(item.margin)
-                    : (isDobaMp ? 0.95 : ((isReverbMp || isEbay23Mp) ? 0.85 : (isPpMp ? 0.65 : (isTdMp ? 0 : 0.80))));
+                    : ((isEbay1Mp || isEbay23Mp) ? marketplaceTakeHome(mpLower)
+                        : (isDobaMp ? 0.95 : ((isReverbMp) ? 0.85 : (isPpMp ? 0.65 : (isTdMp ? 0 : 0.80)))));
                 // TopDawg / Faire / SB2B: SPRICE = (STD × marketplace%) − Ship (same as getBreakdownData / PEF)
                 let sprice = parseFloat(item.sprice || 0);
                 const stdForApply = parseFloat(item.standard_price) || 0;
@@ -7043,9 +7054,11 @@
             const marginAttr = row.attr('data-margin');
             const margin = (marginAttr !== null && marginAttr !== undefined && marginAttr !== '')
                 ? parseFloat(marginAttr)
-                : (mpForMargin === 'doba' ? 0.95
-                    : ((mpForMargin === 'reverb' || ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpForMargin)) ? 0.85
-                        : (isPpEdit ? 0.65 : (isTdEdit ? 0 : 0.80))));
+                : (['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpForMargin)
+                    ? marketplaceTakeHome(mpForMargin)
+                    : (mpForMargin === 'doba' ? 0.95
+                        : ((mpForMargin === 'reverb') ? 0.85
+                            : (isPpEdit ? 0.65 : (isTdEdit ? 0 : 0.80)))));
             const l30 = parseFloat(row.attr('data-l30')) || 0;
             
             const $sgpftSpan = row.find('.calculated-sgpft');
@@ -7982,9 +7995,11 @@
             const marginAttrSave = $row.attr('data-margin');
             const margin = (marginAttrSave !== null && marginAttrSave !== undefined && marginAttrSave !== '')
                 ? parseFloat(marginAttrSave)
-                : (mpLower === 'doba' ? 0.95
-                    : ((mpLower === 'reverb' || ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower)) ? 0.85
-                        : (isPpMp ? 0.65 : (isTdMp ? 0 : 0.80))));
+                : (['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower)
+                    ? marketplaceTakeHome(mpLower)
+                    : (mpLower === 'doba' ? 0.95
+                        : ((mpLower === 'reverb') ? 0.85
+                            : (isPpMp ? 0.65 : (isTdMp ? 0 : 0.80)))));
             const l30 = parseFloat($row.attr('data-l30')) || 0;
             const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
             const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
@@ -8958,8 +8973,10 @@
                 const mpLower = String($tr.attr('data-marketplace') || '').toLowerCase();
                 let margin = parseFloat($tr.attr('data-margin'));
                 if (!(margin > 0)) {
-                    margin = (mpLower === 'doba') ? 0.95
-                        : ((mpLower === 'reverb' || ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower)) ? 0.85 : 0.80);
+                    margin = ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower)
+                        ? marketplaceTakeHome(mpLower)
+                        : ((mpLower === 'doba') ? 0.95
+                            : ((mpLower === 'reverb') ? 0.85 : 0.80));
                 }
                 const computed = computeFn({ lp: lp, ship: ship, margin: margin, marketplace: mpLower });
                 if (!computed || !(computed.newPrice > 0)) {

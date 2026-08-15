@@ -1,5 +1,5 @@
 {{--
-  Dil vs PRMT / CVR vs CPN + PRMT% / CPN% / Appr / DSC% for Amazon tabulator.
+  Dil vs PRMT / CVR vs CPN + PRMT% / CPN% / CVR Disc. / Push Prc for Amazon tabulator.
   Same rules store + endpoints as /pricing-errors-fix (pef_dil_vs_prmt / pef_cvr_vs_cpn).
   Amazon path: discount SPRICE via /save-amazon-sprice (no eBay Marketing APIs).
 --}}
@@ -15,9 +15,7 @@
         .amz-pef-promo-cell.has-val { color: #0f172a; }
         .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"],
         .tabulator-row .tabulator-cell[tabulator-field="cpn_pct"],
-        .tabulator-row .tabulator-cell[tabulator-field="cvr_discount"],
-        .tabulator-row .tabulator-cell[tabulator-field="dsc"],
-        .tabulator-row .tabulator-cell[tabulator-field="appr"] {
+        .tabulator-row .tabulator-cell[tabulator-field="cvr_discount"] {
             padding: 2px 4px !important;
         }
         /* Badge style aligned with CVR vs CPN menu (mint %) */
@@ -1219,44 +1217,6 @@
                             + (dollars > 0 ? (' ≈ $' + dollars.toFixed(2) + ' off Std/Price') : '');
                         return '<span title="' + amzPefEscAttr(tip) + '">'
                             + fmtAmzCvrDiscountBadge(pct) + '</span>';
-                    },
-                },
-                {
-                    title: 'Appr',
-                    field: 'appr',
-                    width: 48,
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    headerSort: false,
-                    headerTooltip: 'Approve — ticks to put LMP gap (Price − LMP) as DSC % off S PRC.',
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData();
-                        if (!amzPefIsChildRow(d)) return '';
-                        const checked = d.appr ? 'checked' : '';
-                        const sku = amzPefSku(d).replace(/"/g, '&quot;');
-                        return '<input type="checkbox" class="amz-pef-appr-cb" data-sku="' + sku + '" ' + checked
-                            + ' title="Approve LMP gap → DSC %">';
-                    },
-                },
-                {
-                    title: 'DSC %',
-                    field: 'dsc',
-                    width: 56,
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    headerSort: false,
-                    editable: function(cell) {
-                        return amzPefIsChildRow(cell.getRow().getData());
-                    },
-                    editor: 'input',
-                    headerTooltip: '% less on S PRC. Filled by Appr (Price − LMP as %) or edit manually.',
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent_summary) return '';
-                        return fmtAmzPefPromoCell(cell.getValue(), '%');
-                    },
-                    cellEdited: function(cell) {
-                        applyAmzPefPromoFromCell(cell, 'dsc');
                     },
                 },
                 {

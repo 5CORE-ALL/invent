@@ -911,9 +911,19 @@
             color: #0a58ca;
         }
         /* Nested History modals must sit above Edit / Slab Rates. */
-        #slabRatesModal,
         #editDimWtModal {
             z-index: 1055;
+        }
+        #slabRatesModal {
+            z-index: 2000 !important;
+        }
+        #slabRatesModal.modal.show {
+            display: block !important;
+            opacity: 1 !important;
+        }
+        #slabRatesModal .modal-dialog {
+            z-index: 2001;
+            transform: none;
         }
         #slabRatesHistoryModal,
         #shippingHistoryModal {
@@ -1566,6 +1576,7 @@
                                 <label for="editFbaManualShip" class="form-label fw-bold">FBA manual ship</label>
                                 <input type="number" step="0.01" class="form-control fw-bold" id="editFbaManualShip" name="fba_manual_ship" placeholder="Manual + send (total)">
                             </div>
+                        </div>
                         <div class="row mb-2">
                             <div class="col-12">
                                 <div class="form-check">
@@ -1789,9 +1800,11 @@
         </div>
     </div>
 
-    <!-- Slab Rates Modal -->
+@endsection
+
+@section('modal')
     <div class="modal fade" id="slabRatesModal" tabindex="-1" aria-labelledby="slabRatesModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header" style="background: linear-gradient(135deg, #1f2937 0%, #111827 100%); color: white;">
                     <h5 class="modal-title" id="slabRatesModalLabel">
@@ -1849,7 +1862,6 @@
                                     <th class="slab-rates-sticky-col" style="font-size: 12px; min-width: 220px;">Weight Slab</th>
                                     <th class="text-center" style="font-size: 12px; width: 70px;"># SKUs</th>
                                     <th class="text-center slab-rates-history-col" style="font-size: 12px;" title="Slab rate change history">History</th>
-                                    <!-- carrier <th>s injected here -->
                                 </tr>
                             </thead>
                             <tbody id="slabRatesBody">
@@ -6736,17 +6748,29 @@
                 }
             }
 
-            function openSlabRatesModal() {
-                if (!Array.isArray(tableData) || tableData.length === 0) {
-                    showToast('warning', 'Data is still loading. Please try again in a moment.');
-                    return;
+            function prepareSlabRatesModal() {
+                try {
+                    buildSlabRatesTable();
+                } catch (e) {
+                    console.error('Failed to build slab rates table', e);
                 }
-                buildSlabRatesTable();
                 const progress = document.getElementById('slabRatesProgress');
                 if (progress) progress.style.display = 'none';
+            }
+
+            function openSlabRatesModal(e) {
+                if (e) e.preventDefault();
                 const modalEl = document.getElementById('slabRatesModal');
-                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-                modal.show();
+                if (!modalEl) return;
+                prepareSlabRatesModal();
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    return;
+                }
+                modalEl.classList.add('show');
+                modalEl.style.display = 'block';
+                modalEl.removeAttribute('aria-hidden');
+                document.body.classList.add('modal-open');
             }
 
             async function applySlabRates() {
@@ -6947,8 +6971,10 @@
             }
 
             function setupSlabRates() {
-                const openBtn = document.getElementById('slabRatesBtn');
-                if (openBtn) openBtn.addEventListener('click', openSlabRatesModal);
+                const modalEl = document.getElementById('slabRatesModal');
+                if (modalEl) {
+                    modalEl.addEventListener('show.bs.modal', prepareSlabRatesModal);
+                }
 
                 const applyBtn = document.getElementById('slabRatesApplyBtn');
                 if (applyBtn) applyBtn.addEventListener('click', applySlabRates);
@@ -7057,6 +7083,28 @@
                 });
             }
         });
+    </script>
+@endsection
+
+@section('script-after-vite')
+    <script>
+        (function () {
+            const btn = document.getElementById('slabRatesBtn');
+            const modalEl = document.getElementById('slabRatesModal');
+            if (!btn || !modalEl) return;
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    return;
+                }
+                modalEl.classList.add('show');
+                modalEl.style.display = 'block';
+                modalEl.removeAttribute('aria-hidden');
+                document.body.classList.add('modal-open');
+            });
+        })();
     </script>
 @endsection
 

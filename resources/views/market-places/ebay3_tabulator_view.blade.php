@@ -334,7 +334,7 @@
             max-width: 100%;
         }
 
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
+        @include('partials.channel-pef-promo-std', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
     </style>
 @endsection
 
@@ -487,8 +487,22 @@
                         <i class="fas fa-file-export"></i> Export
                     </button>
 
-                    {{-- Dil vs PRMT / Cpn% / Push Prc / sprice ? — independent ebay3 channel_promo_pricing --}}
-                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay3'])
+                    {{-- Push Std Prc progress only — no Dil vs PRMT / CVR vs CPN --}}
+                    <div id="ch-promo-push-prc-progress" aria-live="polite" title="Push progress">
+                        <div class="ch-promo-push-prc-progress-head">
+                            <i class="fas fa-spinner fa-spin" id="ch-promo-push-prc-progress-spin"></i>
+                            <span id="ch-promo-push-prc-progress-title">Pushing</span>
+                            <span id="ch-promo-push-prc-progress-pct">0%</span>
+                        </div>
+                        <div class="ch-promo-push-prc-progress-meta">
+                            <span id="ch-promo-push-prc-progress-msg">Ready</span>
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" id="ch-promo-push-prc-cancel-btn"
+                                style="display:none;font-size:11px;line-height:1.2;" title="Cancel remaining Push Std">
+                                Cancel
+                            </button>
+                        </div>
+                        <div class="ch-promo-push-prc-bar"><span id="ch-promo-push-prc-progress-bar"></span></div>
+                    </div>
 
                     {{-- Sbid (Views) — same as /ebay-tabulator-view + /ebay3/campaign-ads --}}
                     <button type="button" class="btn btn-sm pricing-filter-item"
@@ -519,13 +533,13 @@
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-gpft-controls"
-                        title="Target SGPFT% — sets SPRICE = (LP + Ship) / (0.85 − Target GPFT%/100) on every selected row">
+                        title="Target SGPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target SGPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the eBay3 take-home margin (< 85%).">
+                            title="Target SGPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the eBay3 take-home margin (typically < 85%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save SPRICE so SGPFT equals Target for every selected row">
                             <i class="fas fa-calculator"></i>
@@ -853,7 +867,6 @@
     </div>
 
 
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay3'])
 @endsection
 
 @section('script-bottom')
@@ -861,7 +874,8 @@
     /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
     const TABULATOR_COLUMN_CHANNEL = 'ebay3_tabulator';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
+    @include('partials.channel-pef-promo-std', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
+    const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
     const KW_SPENT = {{ $kwSpent ?? 0 }};
     const PMT_SPENT = {{ $pmtSpent ?? 0 }};
     const TOTAL_ADS_SPENT = KW_SPENT + PMT_SPENT;
@@ -1013,7 +1027,7 @@
         if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
         const ship = parseFloat(rowData.Ship_productmaster) || 0;
         const marginRaw = parseFloat(rowData.percentage);
-        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY3_TAKEHOME;
         return ((price * margin - lp - ship) / lp) * 100;
     }
 
@@ -1025,7 +1039,7 @@
         const lp = parseFloat(rowData.LP_productmaster) || 0;
         const ship = parseFloat(rowData.Ship_productmaster) || 0;
         const marginRaw = parseFloat(rowData.percentage);
-        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY3_TAKEHOME;
         return ((price * margin - ship - lp) / price) * 100;
     }
 
@@ -1043,21 +1057,18 @@
         if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
         const ship = parseFloat(rowData.Ship_productmaster) || 0;
         const marginRaw = parseFloat(rowData.percentage);
-        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY3_TAKEHOME;
         const adsFrac = (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) / 100;
         const grossPft = (price * margin) - ship - lp;
         const adSpend = price * adsFrac;
         return ((grossPft - adSpend) / lp) * 100;
     }
 
-    /** True when S PRC would show a distinct dollar amount (not blank / not "-"). */
+    /** True when S PRC has a saved/entered amount (including when it matches Price). */
     function ebay3HasDistinctSprice(rowData) {
         if (!rowData) return false;
         const sprice = parseFloat(rowData.SPRICE);
-        if (!isFinite(sprice) || sprice <= 0) return false;
-        const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
-        if (ebayPrice > 0 && ebayPrice.toFixed(2) === sprice.toFixed(2)) return false;
-        return true;
+        return isFinite(sprice) && sprice > 0;
     }
     const ebay3BadgeDollarMetrics = ['total_pft_amt', 'total_sales_amt', 'total_spend_l30', 'avg_price'];
     const ebay3BadgePctMetrics = ['gpft_percent', 'npft_percent', 'groi_percent', 'nroi_percent', 'tcos_percent', 'cvr_percent'];
@@ -1322,7 +1333,7 @@
         return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
-    /** Std Prc vs Amz price (fallback eBay Price): reduce / hold / increase → red / yellow / green. */
+    /** Std Prc vs Amz price (fallback eBay Price): reduce / increase → red / green. Hold (match) = no yellow dot. */
     function ebayStdPrcChangeDotMeta(stdPrc, comparePrice) {
         const sp = parseFloat(stdPrc);
         const ap = parseFloat(comparePrice);
@@ -1335,7 +1346,7 @@
         if (parseFloat(sp2) > parseFloat(ap2)) {
             return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
         }
-        return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+        return null;
     }
 
     function ebayStdPrcChangeDotHtml(stdPrc, comparePrice, sku) {
@@ -2516,14 +2527,14 @@
         });
 
         /*
-         * Target ROI% / Target GPFT% bulk apply (eBay3, margin = 0.85 fixed)
+         * Target ROI% / Target GPFT% bulk apply (eBay3, margin = row.percentage or EbayThree table)
          * ------------------------------------------------------------------
          * Back-solves SPRICE so the resulting SGROI / SGPFT columns match the entered
          * target (gross only — Ads% / SNROI are not used). eBay3 formulas:
-         *     SGPFT% = ((sprice * 0.85 − ship − lp) / sprice) * 100
-         *     SGROI% = ((sprice * 0.85 − ship − lp) / lp)     * 100
-         *   → sprice = (lp * (1 + ROI%/100)  + ship) / 0.85
-         *   → sprice = (lp + ship) / (0.85 − GPFT%/100)
+         *     SGPFT% = ((sprice * margin − ship − lp) / sprice) * 100
+         *     SGROI% = ((sprice * margin − ship − lp) / lp)     * 100
+         *   → sprice = (lp * (1 + ROI%/100)  + ship) / margin
+         *   → sprice = (lp + ship) / (margin − GPFT%/100)
          * Each save goes through the existing saveSpriceWithRetry() Promise pipeline
          * so SPRICE_STATUS (processing → saved / error) and the server-recomputed
          * SGPFT / SGROI values stay in sync exactly like applyDiscount.
@@ -2551,7 +2562,7 @@
                 if (lp <= 0) { skippedNoLp++; return; }
                 const ship = parseFloat(row['Ship_productmaster']) || 0;
 
-                const EBAY3_MARGIN = 0.85;
+                const EBAY3_MARGIN = (typeof EBAY3_TAKEHOME === 'number' && EBAY3_TAKEHOME > 0) ? EBAY3_TAKEHOME : 1;
                 const computed = computeFn(lp, ship, EBAY3_MARGIN);
                 if (computed == null) { skippedHigh.push(sku); return; }
                 const newSprice = +computed.toFixed(2);
@@ -3585,10 +3596,6 @@
                         const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                         const comparePrice = amzPrice > 0 ? amzPrice : ebayPrice;
                         const dot = ebayStdPrcChangeDotHtml(std, comparePrice, sku);
-                        if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + '</span>';
-                        }
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                             dot + ('$' + std.toFixed(2)) + '</span>';
                     }
@@ -3728,9 +3735,7 @@
                     },
                     width: 50
                 },
-                // PRMT % / CPN % / Appr / DSC % / Push Prc — ebay3_promo_pricing
-                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-                {
+                    {
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
@@ -3739,15 +3744,10 @@
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
                         const hasCustomSprice = rowData.has_custom_sprice;
-                        const currentPrice = parseFloat(rowData['eBay Price']) || 0;
                         const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
                         const sprice = isNaN(spriceNum) ? 0 : spriceNum;
                         
                         if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) return '';
-                        // When SPRICE matches eBay Price, show "-" instead of the same dollar amount
-                        if (currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
-                            return '<span style="color:#adb5bd;" title="Same as eBay Price">-</span>';
-                        }
                         const formattedValue = `$${Number(sprice).toFixed(2)}`;
                         if (hasCustomSprice === false) {
                             return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
@@ -3756,7 +3756,6 @@
                     },
                     width: 80
                 },
-                ...(typeof channelPromoSprcCpnColumn === 'function' ? [channelPromoSprcCpnColumn()] : []),
                 {
                     field: "_accept",
                     hozAlign: "center",
@@ -3896,13 +3895,8 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData.SPRICE);
-                        const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
 
-                        // Match S PRC column: blank when no SPRICE, "-" when same as eBay Price
                         if (!isFinite(sprice) || sprice <= 0) return '';
-                        if (ebayPrice > 0 && ebayPrice.toFixed(2) === sprice.toFixed(2)) {
-                            return '<span style="color:#adb5bd;" title="Same as eBay Price">-</span>';
-                        }
 
                         // Same formula as GROI% (ROI%) but price = S PRC / SPRICE:
                         // ((SPRICE × margin − LP − Ship) / LP) × 100
@@ -5058,7 +5052,7 @@
             }
 
             if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|push_prmt|cpn_pct|push_cpn|dsc|appr|push_prc|push_std_prc|sprc_cpn)$/i.test(f) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|push_std_prc)$/i.test(f) ||
                 /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
                 /^(_accept|\+)$/i.test(t)
             ) {

@@ -97,6 +97,7 @@ class EbayTwoController extends Controller
             : 0.0;
 
         return view('market-places.ebay2_tabulator_view', [
+            'ebayTakeHome'         => MarketplacePercentage::takeHomeDecimal('EbayTwo'),
             'channelAdsPercent'    => $channelAdsPercent,
             'ebayAdSpend'          => round((float) $ebayAdSpend, 2),
             'ordersL30TotalQty'    => $agg['qty'],
@@ -1210,7 +1211,7 @@ class EbayTwoController extends Controller
     private function ensureEbay2ParentPrefixRows(array $result, float $percentage): array
     {
         if ($percentage <= 0) {
-            $percentage = 0.85;
+            $percentage = MarketplacePercentage::takeHomeDecimal('EbayTwo');
         }
 
         $rows = [];
@@ -2934,15 +2935,9 @@ class EbayTwoController extends Controller
         return $sbid > 0 ? $sbid : null;
     }
 
-    /** Same take-home as eBay 1 GROI/GPFT (Ebay marketplace % / 100). */
+    /** Take-home from marketplace_percentages EbayTwo. Default 100 if missing. */
     private function ebay1StyleTakeHomePercent(): float
     {
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay')->first();
-        $percentage = $marketplaceData ? ((float) $marketplaceData->percentage / 100) : 1.0;
-        if ($percentage <= 0) {
-            return 0.85;
-        }
-
-        return $percentage;
+        return MarketplacePercentage::takeHomeDecimal('EbayTwo');
     }
 }

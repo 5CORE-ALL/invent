@@ -365,7 +365,7 @@
             max-width: 100%;
         }
 
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2'])
+        @include('partials.channel-pef-promo-std', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2'])
     </style>
 @endsection
 
@@ -470,8 +470,22 @@
                         <option value="blank">Blank SPRICE only</option>
                     </select>
 
-                    {{-- Dil vs PRMT / Cpn% / Push Prc / sprice ? — independent ebay2 channel_promo_pricing --}}
-                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2'])
+                    {{-- Push Std Prc progress only — no Dil vs PRMT / CVR vs CPN --}}
+                    <div id="ch-promo-push-prc-progress" aria-live="polite" title="Push progress">
+                        <div class="ch-promo-push-prc-progress-head">
+                            <i class="fas fa-spinner fa-spin" id="ch-promo-push-prc-progress-spin"></i>
+                            <span id="ch-promo-push-prc-progress-title">Pushing</span>
+                            <span id="ch-promo-push-prc-progress-pct">0%</span>
+                        </div>
+                        <div class="ch-promo-push-prc-progress-meta">
+                            <span id="ch-promo-push-prc-progress-msg">Ready</span>
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" id="ch-promo-push-prc-cancel-btn"
+                                style="display:none;font-size:11px;line-height:1.2;" title="Cancel remaining Push Std">
+                                Cancel
+                            </button>
+                        </div>
+                        <div class="ch-promo-push-prc-bar"><span id="ch-promo-push-prc-progress-bar"></span></div>
+                    </div>
 
                     {{-- Price (eBay Price) min–max range filter --}}
                     <div class="d-inline-flex align-items-center gap-1 pricing-filter-item"
@@ -1048,7 +1062,6 @@
     </div>
 
 
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2'])
 @endsection
 
     @section('script-bottom')
@@ -1057,7 +1070,7 @@
         /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
         const TABULATOR_COLUMN_CHANNEL = 'ebay2_tabulator';
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
+        @include('partials.channel-pef-promo-std', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
         /** L30 units sold from ebay2_orders (period='l30'). Same value rendered into the
          *  S Qty badge and the eBay 2 row's Qty cell on /all-marketplace-master. Used by
          *  the CVR formula so the page CVR is computed against orders-API ground truth
@@ -1075,6 +1088,8 @@
         const EBAY2_AD_SPEND = {{ (float) ($ebayAdSpend ?? 0) }};
         const ORDERS_L30_NROI = {{ (float) ($ordersL30Nroi ?? 0) }};
         const EBAY2_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
+        /** Take-home from marketplace_percentages (EbayTwo). Used when a row has no percentage. */
+        const EBAY2_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
 
         /**
          * Net ROI — same shape as Amazon NROI / SNROI badge:
@@ -1090,7 +1105,7 @@
             if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
-            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY2_TAKEHOME;
             const adsFrac = (parseFloat(EBAY2_CHANNEL_ADS_PCT) || 0) / 100;
             const grossPft = (price * margin) - ship - lp;
             const adSpend = price * adsFrac;
@@ -1104,7 +1119,7 @@
             const lp = parseFloat(rowData.LP_productmaster) || 0;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
-            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY2_TAKEHOME;
             return ((price * margin - ship - lp) / price) * 100;
         }
         function ebay2ComputeSgroiFromSprice(rowData) {
@@ -1114,7 +1129,7 @@
             if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
-            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY2_TAKEHOME;
             return ((price * margin - lp - ship) / lp) * 100;
         }
         let skuMetricsChart = null;
@@ -1542,7 +1557,7 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        /** Std Prc vs Amz price (fallback eBay Price): reduce / hold / increase → red / yellow / green. */
+        /** Std Prc vs Amz price (fallback eBay Price): reduce / increase → red / green. Hold (match) = no yellow dot. */
         function ebayStdPrcChangeDotMeta(stdPrc, comparePrice) {
             const sp = parseFloat(stdPrc);
             const ap = parseFloat(comparePrice);
@@ -1555,7 +1570,7 @@
             if (parseFloat(sp2) > parseFloat(ap2)) {
                 return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
             }
-            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+            return null;
         }
 
         function ebayStdPrcChangeDotHtml(stdPrc, comparePrice, sku) {
@@ -2373,7 +2388,7 @@
             });
 
             /*
-             * Target ROI% / Target GPFT% bulk apply (eBay2, margin = row.percentage or 0.85)
+             * Target ROI% / Target GPFT% bulk apply (eBay2, margin = row.percentage or EbayTwo table)
              * -----------------------------------------------------------------------------
              * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered
              * target. eBay2's server-side SGPFT formula (EbayTwoController::saveSpriceToDatabase
@@ -2410,7 +2425,7 @@
                     if (lp <= 0) { skippedNoLp++; return; }
                     const ship = parseFloat(row['Ship_productmaster'] ?? row['ebay2_ship']) || 0;
                     const marginRaw = parseFloat(row['percentage']);
-                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY2_TAKEHOME;
 
                     const computed = computeFn(lp, ship, margin);
                     if (computed == null) { skippedHigh.push(sku); return; }
@@ -4131,10 +4146,6 @@
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                             const comparePrice = amzPrice > 0 ? amzPrice : ebayPrice;
                             const dot = ebayStdPrcChangeDotHtml(std, comparePrice, sku);
-                            if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                    dot + '</span>';
-                            }
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                                 dot + ('$' + std.toFixed(2)) + '</span>';
                         }
@@ -4376,8 +4387,6 @@
                             }
                         },
                     },
-                    // PRMT % / CPN % / Appr / DSC % / Push Prc — ebay2_promo_pricing
-                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
                         title: "S PRC",
                         field: "SPRICE",
@@ -4387,15 +4396,8 @@
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
-                            const ebay2Price = parseFloat(rowData['eBay Price']) || 0;
-                            const sprice = parseFloat(value) || 0;
                             
                             if (!value) return '';
-
-                            // When SPRICE matches eBay Price, show "-" instead of the same dollar amount
-                            if (ebay2Price > 0 && sprice > 0 && ebay2Price.toFixed(2) === sprice.toFixed(2)) {
-                                return '<span style="color:#adb5bd;" title="Same as eBay Price">-</span>';
-                            }
 
                             const formattedValue = `$${parseFloat(value).toFixed(2)}`;
                             
@@ -4408,7 +4410,6 @@
                         },
                         width: 80
                     },
-                    ...(typeof channelPromoSprcCpnColumn === 'function' ? [channelPromoSprcCpnColumn()] : []),
                     {
                         field: "_accept",
                         hozAlign: "center",
@@ -5394,7 +5395,7 @@
                 }
 
                 if (
-                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|push_prmt|cpn_pct|push_cpn|dsc|appr|push_prc|push_std_prc|sprc_cpn)$/i.test(f) ||
+                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|push_std_prc)$/i.test(f) ||
                     /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
                     /^(_accept|\+)$/i.test(t)
                 ) {

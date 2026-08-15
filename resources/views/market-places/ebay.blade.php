@@ -4855,10 +4855,10 @@
                         const LP = parseFloat(item.raw_data.LP) || 0;
                         const SPRICE = parseFloat(updatedValue) || 0;
 
-                        // Calculate Spft% using formula: (SPRICE * 0.77 - LP - SH) / SPRICE
+                        // Same as /ebay-tabulator-view SGPFT: (SPRICE × Ebay% − LP − Ship) / SPRICE
                         let Spft = 0;
                         if (SPRICE !== 0) {
-                            Spft = (SPRICE * 0.74 - LP - SH) / SPRICE;
+                            Spft = (SPRICE * ({{ ((float) ($ebayPercentage ?? 100)) / 100 }}) - LP - SH) / SPRICE;
                         }
 
                         // Update Spft% in cache and local data
@@ -5031,7 +5031,7 @@
 
                                 let Spft = 0;
                                 if (SPRICE !== 0) {
-                                    Spft = (SPRICE * 0.74 - LP - SH) / SPRICE;
+                                    Spft = (SPRICE * ({{ ((float) ($ebayPercentage ?? 100)) / 100 }}) - LP - SH) / SPRICE;
                                 }
 
                                 ebayViewDataCache.updateField(itemId, 'Spft%', Spft);

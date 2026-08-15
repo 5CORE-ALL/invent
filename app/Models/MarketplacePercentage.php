@@ -17,6 +17,52 @@ class MarketplacePercentage extends Model
     protected $dates = ['deleted_at'];
 
     /**
+     * Take-home decimal (0–1) from marketplace_percentages.percentage.
+     * First matching marketplace name wins. Default 100 (1.0) when no row exists.
+     */
+    public static function takeHomeDecimal(string ...$marketplaces): float
+    {
+        foreach ($marketplaces as $name) {
+            $name = trim($name);
+            if ($name === '') {
+                continue;
+            }
+            $row = static::query()->where('marketplace', $name)->first();
+            if ($row === null) {
+                continue;
+            }
+            $pct = (float) $row->percentage;
+
+            return $pct > 1 ? $pct / 100 : $pct;
+        }
+
+        return 1.0;
+    }
+
+    /**
+     * eBay channel aliases → take-home decimal from marketplace_percentages.
+     * Names match the table: Ebay, EbayTwo, EbayThree.
+     *
+     * @return array<string, float>
+     */
+    public static function ebayTakeHomeMap(): array
+    {
+        $ebay1 = static::takeHomeDecimal('Ebay');
+        $ebay2 = static::takeHomeDecimal('EbayTwo');
+        $ebay3 = static::takeHomeDecimal('EbayThree');
+
+        return [
+            'ebay' => $ebay1,
+            'ebay1' => $ebay1,
+            'ebayone' => $ebay1,
+            'ebay2' => $ebay2,
+            'ebaytwo' => $ebay2,
+            'ebay3' => $ebay3,
+            'ebaythree' => $ebay3,
+        ];
+    }
+
+    /**
      * Label from `marketplace_percentages.marketplace` for a row in `marketplaces`, when names align.
      * Used by SKU Image Manager so UI matches the percentage master list.
      */

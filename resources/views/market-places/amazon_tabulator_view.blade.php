@@ -5007,7 +5007,7 @@
                         width: 100
                     },
 
-                    // PRMT % / CPN % / Appr / DSC % — same model + rules as /pricing-errors-fix
+                    // PRMT % / CPN % / CVR Disc. / Push Prc — same model + rules as /pricing-errors-fix
                     ...amazonPefPromoColumns(),
 
                     {
@@ -5055,6 +5055,7 @@
                         field: "Ship_productmaster",
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "Shipping cost. Default $6.00 is hidden; only non-default amounts show.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -5062,13 +5063,12 @@
                             if (val == null || val === '') return '';
                             const value = parseFloat(val);
                             if (!Number.isFinite(value)) return '';
+                            // Hide default ship ($6.00) so exceptions stand out
+                            if (Math.abs(value - 6) < 0.005) return '';
                             const labelQty = parseInt(rowData.label_qty, 10);
-                            const ownShip = parseFloat(rowData.Ship_own_productmaster);
                             let tip = '';
                             if (Number.isFinite(labelQty) && labelQty >= 2) {
-                                tip = Number.isFinite(ownShip)
-                                    ? ` title="Label QTY ${labelQty}: total ship (sum of package costs). Own ship $${ownShip.toFixed(2)}"`
-                                    : ` title="Label QTY ${labelQty}: total ship (sum of package costs)"`;
+                                tip = ` title="Label QTY ${labelQty}. Ship is the stored CP Master / Shipping Master value (already includes combo)."`;
                             }
                             return `<span${tip}>$${value.toFixed(2)}</span>`;
                         },
@@ -6768,7 +6768,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|_accept|push_prc|prmt_pct|cpn_pct|cvr_discount|dsc|appr|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|_accept|push_prc|prmt_pct|cpn_pct|cvr_discount|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|s\s*st|pls|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';

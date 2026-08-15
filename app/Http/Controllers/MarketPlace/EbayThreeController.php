@@ -75,6 +75,7 @@ class EbayThreeController extends Controller
             : 0.0;
 
         return view('market-places.ebay3_tabulator_view', [
+            'ebayTakeHome' => MarketplacePercentage::takeHomeDecimal('EbayThree'),
             'kwSpent' => (float) $kwSpent,
             'pmtSpent' => (float) $pmtSpent,
             'channelAdsPercent' => $channelAdsPercent,
@@ -347,8 +348,7 @@ class EbayThreeController extends Controller
 
     public function getViewEbay3DataTabulator(Request $request)
     {
-        // Use fixed margin of 0.85 (85%) as specified
-        $percentage = 0.85;
+        $percentage = MarketplacePercentage::takeHomeDecimal('EbayThree');
         $adUpdates = 0;
 
         // Fetch all product master records
@@ -884,7 +884,7 @@ class EbayThreeController extends Controller
                 // Calculate TacosL30 = AD Spend L30 / Total Sales L30
                 $row['TacosL30'] = $parentSalesL30 > 0 ? round($parentAdSpendL30 / $parentSalesL30, 4) : 0;
                 
-                // Calculate GPFT% = ((Price * 0.85 - Ship - LP) / Price) * 100
+                // Calculate GPFT% = ((Price * take-home - Ship - LP) / Price) * 100
                 $parentGpft = $parentPrice > 0 ? (($parentPrice * $percentage - $parentShip - $parentLp) / $parentPrice) * 100 : 0;
                 $row['GPFT%'] = round($parentGpft, 2);
                 
@@ -897,23 +897,14 @@ class EbayThreeController extends Controller
                     2
                 );
                 
-                // SPRICE calculation for parent - defaults to avg eBay Price
-                $row['SPRICE'] = $parentPrice;
+                // Parent summary: no default SPRICE (same as eBay 1 / 2)
+                $row['SPRICE'] = null;
                 $row['has_custom_sprice'] = false;
-                
-                // Calculate SGPFT based on SPRICE
-                $parentSgpft = $parentPrice > 0 ? (($parentPrice * $percentage - $parentShip - $parentLp) / $parentPrice) * 100 : 0;
-                $row['SGPFT'] = round($parentSgpft, 2);
-                
-                // Calculate SPFT = SGPFT - AD%
-                $row['SPFT'] = round($parentSgpft - $row['AD%'], 2);
-                
-                // SGROI = same formula as GROI%/ROI% using SPRICE; SROI (SNROI) netted later
-                $row['SGROI'] = round(
-                    $parentLp > 0 ? (($parentPrice * $percentage - $parentLp - $parentShip) / $parentLp) * 100 : 0,
-                    2
-                );
-                $row['SROI'] = $row['SGROI'];
+                $row['SPRICE_STATUS'] = null;
+                $row['SGPFT'] = null;
+                $row['SPFT'] = null;
+                $row['SGROI'] = null;
+                $row['SROI'] = null;
                 
                 // Set defaults for PARENT rows
                 $row['NR'] = null;
@@ -1287,7 +1278,7 @@ class EbayThreeController extends Controller
                 // Calculate TacosL30 = AD Spend L30 / Total Sales L30
                 $row['TacosL30'] = $row['T_Sale_l30'] > 0 ? round($adSpendL30 / $row['T_Sale_l30'], 4) : 0;
                 
-                // Calculate GPFT% = ((Price * 0.85 - Ship - LP) / Price) * 100 (using 85% margin)
+                // Calculate GPFT% = ((Price * take-home - Ship - LP) / Price) * 100
                 $gpft = $price > 0 ? (($price * $percentage - $ship - $lp) / $price) * 100 : 0;
                 $row['GPFT%'] = round($gpft, 2);
                 
@@ -1315,50 +1306,29 @@ class EbayThreeController extends Controller
                 $row['percentage'] = $percentage;
                 $row['ad_updates'] = $adUpdates;
 
-                // SPRICE calculation: no CVR condition. Default = eBay Price when price > 0 and not explicitly cleared.
-                $calculatedSprice = null;
-                $skuUpperLookup = strtoupper(trim((string) $sku));
-                $explicitlyCleared = !empty($spriceCleared[$skuUpperLookup]);
-                if ($price > 0 && !$explicitlyCleared) {
-                    $calculatedSprice = round($price, 2);
-                    
-                    // Check for saved SPRICE
-                    $savedSprice = $spriceValues[$sku] ?? null;
-                    
-                    // Check for SPRICE_STATUS in database (pushed/applied/error/account_restricted)
-                    $savedStatus = null;
-                    if (isset($ebayDataViews[$sku])) {
-                        $raw = is_array($ebayDataViews[$sku]->value) 
-                            ? $ebayDataViews[$sku]->value 
-                            : (json_decode($ebayDataViews[$sku]->value, true) ?? []);
-                        if (isset($raw['SPRICE_STATUS'])) {
-                            $savedStatus = $raw['SPRICE_STATUS'];
-                        }
+                // Use saved SPRICE only if it exists in DB; otherwise show nothing (same as eBay 1 / 2)
+                $savedSprice = $spriceValues[$sku] ?? null;
+                $savedStatus = null;
+                if (isset($ebayDataViews[$sku])) {
+                    $raw = is_array($ebayDataViews[$sku]->value)
+                        ? $ebayDataViews[$sku]->value
+                        : (json_decode($ebayDataViews[$sku]->value, true) ?? []);
+                    if (isset($raw['SPRICE_STATUS'])) {
+                        $savedStatus = $raw['SPRICE_STATUS'];
                     }
-                    
-                    // Use saved SPRICE if it exists and differs from calculated
-                    if ($savedSprice !== null && abs($savedSprice - $calculatedSprice) > 0.01) {
-                        $row['SPRICE'] = $savedSprice;
-                        $row['has_custom_sprice'] = true;
-                        $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
-                    } else {
-                        $row['SPRICE'] = $calculatedSprice;
-                        $row['has_custom_sprice'] = false;
-                        $row['SPRICE_STATUS'] = $savedStatus;
-                    }
-                    
-                    $sprice = $row['SPRICE'];
-                    $sgpft = round(
-                        $sprice > 0 ? (($sprice * $percentage - $ship - $lp) / $sprice) * 100 : 0,
-                        2
-                    );
+                }
+
+                if ($savedSprice !== null && $savedSprice > 0) {
+                    $row['SPRICE'] = $savedSprice;
+                    $row['has_custom_sprice'] = true;
+                    $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
+                    $sprice = $savedSprice;
+                    $sgpft = round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2);
                     $row['SGPFT'] = $sgpft;
                     $row['SPFT'] = $sgpft;
-                    // SGROI = same formula as GROI%/ROI% but using SPRICE (S PRC) instead of eBay Price
-                    $row['SGROI'] = round(
-                        $lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0,
-                        2
-                    );
+                    $row['SGROI'] = $lp > 0
+                        ? round((($sprice * $percentage - $lp - $ship) / $lp) * 100, 2)
+                        : 0;
                     // SROI (SNROI) overwritten to net-of-ads in applyEbay3NetSroiToRow
                     $row['SROI'] = $row['SGROI'];
                 } else {
@@ -1368,7 +1338,7 @@ class EbayThreeController extends Controller
                     $row['SGROI'] = null;
                     $row['SGPFT'] = null;
                     $row['has_custom_sprice'] = false;
-                    $row['SPRICE_STATUS'] = null;
+                    $row['SPRICE_STATUS'] = $savedStatus;
                 }
 
                 // Image
@@ -1548,13 +1518,14 @@ class EbayThreeController extends Controller
                 // Calculate PFT %
                 $syntheticParent['PFT %'] = round($gpft - $syntheticParent['AD%'], 2);
                 
-                // SPRICE calculations — SGROI uses same formula as GROI%/ROI% on SPRICE
-                $syntheticParent['SPRICE'] = $avgPrice;
+                // Parent summary: no default SPRICE (same as eBay 1 / 2)
+                $syntheticParent['SPRICE'] = null;
                 $syntheticParent['has_custom_sprice'] = false;
-                $syntheticParent['SGPFT'] = round($gpft, 2);
-                $syntheticParent['SPFT'] = round($gpft - $syntheticParent['AD%'], 2);
-                $syntheticParent['SGROI'] = $avgLp > 0 ? round((($avgPrice * $percentage - $avgLp - $avgShip) / $avgLp) * 100, 2) : 0;
-                $syntheticParent['SROI'] = $syntheticParent['SGROI'];
+                $syntheticParent['SPRICE_STATUS'] = null;
+                $syntheticParent['SGPFT'] = null;
+                $syntheticParent['SPFT'] = null;
+                $syntheticParent['SGROI'] = null;
+                $syntheticParent['SROI'] = null;
                 
                 // Set defaults
                 $syntheticParent['NR'] = null;
@@ -1653,9 +1624,9 @@ class EbayThreeController extends Controller
         $sprice = (float) ($row['SPRICE'] ?? 0);
         $lp = (float) ($row['LP_productmaster'] ?? 0);
         $ship = (float) ($row['Ship_productmaster'] ?? 0);
-        $pct = (float) ($row['percentage'] ?? 0.85);
+        $pct = (float) ($row['percentage'] ?? 0);
         if ($pct <= 0) {
-            $pct = 0.85;
+            $pct = MarketplacePercentage::takeHomeDecimal('EbayThree');
         }
         if ($sprice <= 0 || $lp <= 0) {
             return;
@@ -1857,7 +1828,7 @@ class EbayThreeController extends Controller
         //     return $marketplaceData ? $marketplaceData->percentage : 100; // Default to 100 if not set
         // });
 
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay3')->first();
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
 
         $ebayPercentage = $marketplaceData ? $marketplaceData->percentage : 100;
         $ebayAdUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
@@ -1881,7 +1852,7 @@ class EbayThreeController extends Controller
         $demo = $request->query('demo');
 
         $percentage = Cache::remember('Ebay3', now()->addDays(30), function () {
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay3')->first();
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
             return $marketplaceData ? $marketplaceData->percentage : 100;
         });
 
@@ -1895,7 +1866,7 @@ class EbayThreeController extends Controller
     public function getViewEbay3Data(Request $request)
     {
         // Get percentage and ad_updates from cache or database
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay3')->first();
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
         $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
         $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
         $percentageValue = $percentage / 100;
@@ -2176,7 +2147,7 @@ class EbayThreeController extends Controller
             }
 
             // Current record fetch
-            $marketplace = MarketplacePercentage::where('marketplace', 'Ebay3')->first();
+            $marketplace = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
 
             $percent = $marketplace ? $marketplace->percentage : 100;
             $adUpdates = $marketplace ? ($marketplace->ad_updates ?? 0) : 0;
@@ -2205,7 +2176,7 @@ class EbayThreeController extends Controller
             }
 
             // Save both fields - check for existing record including soft-deleted ones
-            $marketplace = MarketplacePercentage::withTrashed()->where('marketplace', 'Ebay3')->first();
+            $marketplace = MarketplacePercentage::withTrashed()->where('marketplace', 'EbayThree')->first();
             
             if ($marketplace) {
                 // If soft-deleted, restore it first
@@ -2219,7 +2190,7 @@ class EbayThreeController extends Controller
             } else {
                 // Create new record
                 $marketplace = MarketplacePercentage::create([
-                    'marketplace' => 'Ebay3',
+                    'marketplace' => 'EbayThree',
                     'percentage' => $percent,
                     'ad_updates' => $adUpdates,
                 ]);
@@ -2236,7 +2207,7 @@ class EbayThreeController extends Controller
                 'status' => 200,
                 'message' => ucfirst($type ?? 'percentage') . ' updated successfully',
                 'data' => [
-                    'marketplace' => 'Ebay3',
+                    'marketplace' => 'EbayThree',
                     'percentage' => (float) $marketplace->percentage,
                     'ad_updates' => (float) ($marketplace->ad_updates ?? 0)
                 ]
@@ -2612,7 +2583,7 @@ class EbayThreeController extends Controller
         }
 
         // Get current marketplace percentage for Ebay3
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay3')->first();
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1;
         Log::info('Using percentage', ['percentage' => $percentage]);
 
@@ -2636,7 +2607,7 @@ class EbayThreeController extends Controller
         $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
         Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship]);
 
-        $fixedMargin = 0.85;
+        $fixedMargin = MarketplacePercentage::takeHomeDecimal('EbayThree');
         $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $fixedMargin - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
 
         // Channel Ads% (TACOS) — same source as /ebay3-tabulator-view Ads badge /

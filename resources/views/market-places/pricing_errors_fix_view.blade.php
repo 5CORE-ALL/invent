@@ -951,6 +951,7 @@
     const selectedIds = new Set();
     /** Pre-embedded from DB on page render — no Ajax needed on first open */
     const PEF_INITIAL_ROWS = @json($initial_rows ?? []);
+    const MARKETPLACE_TAKEHOME = @json($ebayTakeHomeMap ?? []);
     const PEF_DIL_PRMT_DEFAULTS = @json($dil_prmt_rules ?? []);
     const PEF_CVR_CPN_DEFAULTS = @json($cvr_cpn_rules ?? []);
     /** Full dataset — filters work client-side; Reload refreshes via Ajax */
@@ -1287,17 +1288,22 @@
         );
     }
 
-    /** Channel take-home decimal (0–1). Amazon always 0.80 — same as amazon-tabulator-view. */
+    /** Channel take-home decimal (0–1). eBay from marketplace_percentages (no hardcoded 0.85). */
     function rowMargin(d) {
         const mp = String(d.marketplace || d.channel_key || '').toLowerCase();
         if (mp === 'amazon') return 0.80;
         let m = Number(d.margin || 0);
         if (m > 1) m = m / 100;
         if (m > 0 && m <= 1) return m;
+        if (mp.indexOf('ebay') !== -1) {
+            const key = MARKETPLACE_TAKEHOME.hasOwnProperty(mp) ? mp : 'ebay1';
+            if (!MARKETPLACE_TAKEHOME.hasOwnProperty(key)) return 1;
+            const t = Number(MARKETPLACE_TAKEHOME[key]);
+            if (!isFinite(t)) return 1;
+            return t > 1 ? t / 100 : t;
+        }
         if (mp.indexOf('temu') !== -1) return 0.87;
-        // Doba 0.95 — same as /price-increase & /doba-tabulator
         if (mp.indexOf('doba') !== -1) return 0.95;
-        if (mp.indexOf('ebay') !== -1) return 0.85;
         return 0.80;
     }
 

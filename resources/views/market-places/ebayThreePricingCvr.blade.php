@@ -1505,6 +1505,7 @@
     <!--for popup modal script-->
     <script>
         document.body.style.zoom = "80%";
+        const ebayThreeTakeHome = {{ ((float) ($percentage ?? 100)) / 100 }};
         $(document).ready(function() {
             $('#editPercentBtn').on('click', function() {
                 var $input = $('#updateAllSkusPercent');
@@ -3020,7 +3021,7 @@
                         // Calculate Spft% using new formula: (SPRICE * AMZ - SHIP - LP) / SPRICE
                         let Spft = 0;
                         if (SPRICE !== 0) {
-                            Spft = (SPRICE * 0.71 - SHIP - LP) / SPRICE;
+                            Spft = (SPRICE * ebayThreeTakeHome - SHIP - LP) / SPRICE;
 
                         }
 

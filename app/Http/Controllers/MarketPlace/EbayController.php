@@ -88,6 +88,7 @@ class EbayController extends Controller
             : 0.0;
 
         return view("market-places.ebay_tabulator_view", [
+            'ebayTakeHome'        => MarketplacePercentage::takeHomeDecimal('Ebay'),
             'channelAdsPercent'   => $channelAdsPercent,
             'ebayAdSpend'         => round((float) $ebayAdSpend, 2),
             'ordersL30TotalQty'   => $agg['qty'],
@@ -417,7 +418,7 @@ class EbayController extends Controller
                     "marketplace",
                     "Ebay"
                 )->first();
-                return $marketplaceData ? $marketplaceData->percentage : 100; // Default to 100 if not set
+                return $marketplaceData ? $marketplaceData->percentage : 100;
             }
         );
 
@@ -443,7 +444,7 @@ class EbayController extends Controller
                     "marketplace",
                     "Ebay"
                 )->first();
-                return $marketplaceData ? $marketplaceData->percentage : 100; // Default to 100 if not set
+                return $marketplaceData ? $marketplaceData->percentage : 100;
             }
         );
 
@@ -907,8 +908,8 @@ class EbayController extends Controller
         // 5. Marketplace percentage
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay')->first();
 
-        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1; 
-        $adUpdates  = $marketplaceData ? $marketplaceData->ad_updates : 0;   
+        $percentage = MarketplacePercentage::takeHomeDecimal('Ebay');
+        $adUpdates  = $marketplaceData ? $marketplaceData->ad_updates : 0; 
 
         // 6. Build Result
         $result = [];
@@ -1434,7 +1435,7 @@ class EbayController extends Controller
                 $sprice = (float) ($r->SPRICE ?? 0);
                 $lp = (float) ($r->LP_productmaster ?? 0);
                 $ship = (float) ($r->Ship_productmaster ?? 0);
-                $pct = (float) ($r->percentage ?? 1);
+                $pct = (float) ($r->percentage ?? $percentage);
                 if ($sprice > 0 && $lp > 0) {
                     $grossPft = ($sprice * $pct) - $ship - $lp;
                     $adSpend = $sprice * ($channelAdsPct / 100);
@@ -1784,7 +1785,7 @@ class EbayController extends Controller
 
         // Get current marketplace percentage
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay')->first();
-        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1;
+        $percentage = MarketplacePercentage::takeHomeDecimal('Ebay');
         Log::info('Using percentage', ['percentage' => $percentage]);
 
         // Get ProductMaster for lp and ship
