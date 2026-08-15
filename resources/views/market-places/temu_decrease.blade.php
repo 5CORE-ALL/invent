@@ -6000,7 +6000,7 @@
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Ad Clicks"></i>
                         </div>`;
                     },
-                    visible: false,
+                    visible: false,₹
                     width: 110
                 },
                 {

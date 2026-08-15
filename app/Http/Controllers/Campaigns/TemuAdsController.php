@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Campaigns;
 use App\Http\Controllers\Controller;
 use App\Models\TemuAdsApiReport;
 use App\Services\TemuAdsApiReportService;
+use App\Services\TemuApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
@@ -55,6 +56,7 @@ class TemuAdsController extends Controller
                 'ad_spend' => $r->ad_spend,
                 'roas' => $r->roas,
                 'acos' => $r->acos,
+                'ad_status' => $r->ad_status ?: 'Unknown',
                 'success' => (bool) $r->success,
                 'error_msg' => $r->error_msg,
                 'fetched_at' => optional($r->fetched_at)->toDateTimeString(),
@@ -121,5 +123,84 @@ class TemuAdsController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Create a Temu search ad (temu.searchrec.ad.create).
+     */
+    public function createAd(Request $request, TemuApiService $temuApi)
+    {
+        $request->validate([
+            'goods_id' => 'required|string|max:64',
+            'budget' => 'required|numeric|min:1|max:10000',
+            'roas' => 'required|numeric|min:0.1|max:1000',
+        ]);
+
+        $goodsId = trim((string) $request->input('goods_id'));
+        $budget = (float) $request->input('budget');
+        $roas = (float) $request->input('roas');
+
+        $result = $temuApi->createAd($goodsId, $budget, $roas);
+        if ($result['ok']) {
+            TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => 'Active']);
+        }
+
+        Log::info('TemuAdsController::createAd', [
+            'goods_id' => $goodsId,
+            'budget' => $budget,
+            'roas' => $roas,
+            'ok' => $result['ok'],
+            'error' => $result['error_msg'] ?? null,
+        ]);
+
+        return response()->json([
+            'success' => $result['ok'],
+            'message' => $result['ok']
+                ? "Created Temu ad for goods {$goodsId} (budget \${$budget}, ROAS {$roas})"
+                : ('Create failed: ' . ($result['error_msg'] ?? 'unknown error')),
+            'result' => $result['result'] ?? null,
+        ], $result['ok'] ? 200 : 422);
+    }
+
+    /**
+     * Suggested ROAS from Temu (temu.searchrec.ad.roas.pred).
+     */
+    public function predictRoas(Request $request, TemuApiService $temuApi)
+    {
+        $request->validate([
+            'goods_id' => 'required|string|max:64',
+        ]);
+
+        $goodsId = trim((string) $request->input('goods_id'));
+        $result = $temuApi->predictAdRoas($goodsId);
+
+        return response()->json([
+            'success' => $result['ok'],
+            'message' => $result['ok']
+                ? "ROAS prediction for goods {$goodsId}"
+                : ('Predict failed: ' . ($result['error_msg'] ?? 'unknown error')),
+            'result' => $result['result'] ?? null,
+        ], $result['ok'] ? 200 : 422);
+    }
+
+    /**
+     * Refresh Active/Inactive from Temu ad detail API.
+     */
+    public function refreshStatus(Request $request, TemuAdsApiReportService $service)
+    {
+        $request->validate([
+            'goods_id' => 'nullable|string|max:64',
+        ]);
+
+        $goodsId = $request->input('goods_id') ?: null;
+        $stats = $service->refreshAdStatuses($goodsId);
+
+        return response()->json([
+            'success' => $stats['ok'] > 0 || $stats['total'] === 0,
+            'message' => $stats['total'] === 0
+                ? 'No goods to refresh'
+                : "Updated ad status for {$stats['ok']}/{$stats['total']} goods",
+            'stats' => $stats,
+        ]);
     }
 }

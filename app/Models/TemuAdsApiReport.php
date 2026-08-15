@@ -23,6 +23,7 @@ class TemuAdsApiReport extends Model
         'ad_spend',
         'roas',
         'acos',
+        'ad_status',
         'raw_response',
         'success',
         'error_msg',

@@ -729,6 +729,230 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 }
 
     /**
+     * Create a Temu search ad for one goods ID.
+     * Budget is sent in cents (Temu money unit). ROAS is the target multiple (e.g. 12 = 12x).
+     *
+     * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
+     */
+    public function createAd(string $goodsId, float $budgetDollars, float $roas): array
+    {
+        $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
+        $budgetCents = (int) round($budgetDollars * 100);
+
+        $requestBody = [
+            'type' => 'temu.searchrec.ad.create',
+            'createAdReqs' => [
+                [
+                    'goodsId' => $goodsIdParam,
+                    'budget' => $budgetCents,
+                    'roas' => $roas,
+                ],
+            ],
+        ];
+
+        return $this->postAdsRouter($requestBody, (string) $goodsId);
+    }
+
+    /**
+     * Suggested target ROAS from Temu (temu.searchrec.ad.roas.pred).
+     *
+     * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int}
+     */
+    public function predictAdRoas(string $goodsId): array
+    {
+        $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
+
+        return $this->postAdsRouter([
+            'type' => 'temu.searchrec.ad.roas.pred',
+            'goodsInfoList' => [
+                ['goodsId' => $goodsIdParam],
+            ],
+        ], (string) $goodsId);
+    }
+
+    /**
+     * Ad campaign status for goods IDs (temu.searchrec.ad.detail.query).
+     * Returns map of goods_id => Active|Inactive|Deleted|No ad|Unknown.
+     *
+     * @param  array<int, string|int>  $goodsIds
+     * @return array<string, string>
+     */
+    public function queryAdStatuses(array $goodsIds): array
+    {
+        $ids = [];
+        foreach ($goodsIds as $id) {
+            $id = trim((string) $id);
+            if ($id !== '') {
+                $ids[$id] = is_numeric($id) ? (int) $id : $id;
+            }
+        }
+        if ($ids === []) {
+            return [];
+        }
+
+        $statuses = [];
+        foreach (array_chunk(array_values($ids), 20) as $chunk) {
+            $result = $this->postAdsRouter([
+                'type' => 'temu.searchrec.ad.detail.query',
+                'goodsList' => $chunk,
+            ], (string) $chunk[0]);
+
+            $items = [];
+            if ($result['ok'] && is_array($result['result'] ?? null)) {
+                $payload = $result['result'];
+                $items = $payload['adList']
+                    ?? $payload['adsList']
+                    ?? $payload['goodsList']
+                    ?? $payload['list']
+                    ?? $payload['adInfoList']
+                    ?? null;
+                if (! is_array($items)) {
+                    $items = isset($payload['goodsId']) || isset($payload['status']) || isset($payload['adStatus'])
+                        ? [$payload]
+                        : [];
+                }
+            }
+
+            $seen = [];
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $gid = (string) ($item['goodsId'] ?? $item['goods_id'] ?? '');
+                if ($gid === '') {
+                    continue;
+                }
+                $raw = $item['adStatus'] ?? $item['status'] ?? $item['campaignStatus'] ?? $item['adState'] ?? null;
+                $statuses[$gid] = self::normalizeAdStatus($raw);
+                $seen[$gid] = true;
+            }
+
+            foreach ($chunk as $gid) {
+                $key = (string) $gid;
+                if (! isset($statuses[$key])) {
+                    $statuses[$key] = 'No ad';
+                }
+            }
+
+            usleep(150000);
+        }
+
+        return $statuses;
+    }
+
+    public static function normalizeAdStatus(mixed $raw): string
+    {
+        if (is_array($raw)) {
+            $raw = $raw['val'] ?? $raw['status'] ?? $raw['adStatus'] ?? null;
+        }
+        if ($raw === null || $raw === '') {
+            return 'Unknown';
+        }
+
+        $n = is_numeric($raw) ? (int) $raw : null;
+        $s = strtolower(trim((string) $raw));
+
+        if ($n === 3 || in_array($s, ['3', 'active', 'enable', 'enabled', 'online', 'on', 'running'], true)) {
+            return 'Active';
+        }
+        if ($n === 2 || in_array($s, ['2', 'inactive', 'pause', 'paused', 'offline', 'off', 'stop', 'stopped'], true)) {
+            return 'Inactive';
+        }
+        if ($n === 1 || in_array($s, ['1', 'deleted', 'delete', 'removed'], true)) {
+            return 'Deleted';
+        }
+        if ($n === 0 || in_array($s, ['0', 'none', 'no ad', 'no_ad', 'not_created'], true)) {
+            return 'No ad';
+        }
+
+        return 'Unknown';
+    }
+
+    /**
+     * Signed POST to Temu OpenAPI router for ads endpoints.
+     *
+     * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
+     */
+    protected function postAdsRouter(array $requestBody, string $goodsId): array
+    {
+        $signedRequest = $this->generateSignValue($requestBody);
+        $request = Http::withHeaders([
+            'Content-Type' => 'application/json',
+        ])->timeout(60);
+
+        if (config('filesystems.default') === 'local') {
+            $request = $request->withoutVerifying();
+        }
+
+        try {
+            $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
+            $httpStatus = $response->status();
+            $data = $response->json();
+
+            if ($response->failed() || ! is_array($data)) {
+                Log::error('Temu ads router request failed', [
+                    'type' => $requestBody['type'] ?? null,
+                    'goods_id' => $goodsId,
+                    'status' => $httpStatus,
+                ]);
+
+                return [
+                    'ok' => false,
+                    'result' => is_array($data) ? ($data['result'] ?? $data) : null,
+                    'error_code' => $httpStatus,
+                    'error_msg' => is_array($data) ? (string) ($data['errorMsg'] ?? 'HTTP '.$httpStatus) : 'HTTP '.$httpStatus,
+                    'http_status' => $httpStatus,
+                    'request' => $requestBody,
+                ];
+            }
+
+            if (! ($data['success'] ?? false)) {
+                $errorCode = $data['errorCode'] ?? null;
+                $errorMsg = (string) ($data['errorMsg'] ?? 'Unknown error');
+                Log::error('Temu ads router API error', [
+                    'type' => $requestBody['type'] ?? null,
+                    'goods_id' => $goodsId,
+                    'error' => $errorMsg,
+                    'errorCode' => $errorCode,
+                ]);
+
+                return [
+                    'ok' => false,
+                    'result' => $data['result'] ?? null,
+                    'error_code' => $errorCode,
+                    'error_msg' => trim($errorCode !== null ? "{$errorCode}: {$errorMsg}" : $errorMsg),
+                    'http_status' => $httpStatus,
+                    'request' => $requestBody,
+                ];
+            }
+
+            return [
+                'ok' => true,
+                'result' => $data['result'] ?? $data,
+                'error_code' => null,
+                'error_msg' => null,
+                'http_status' => $httpStatus,
+                'request' => $requestBody,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Temu ads router exception', [
+                'type' => $requestBody['type'] ?? null,
+                'goods_id' => $goodsId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'ok' => false,
+                'result' => null,
+                'error_code' => null,
+                'error_msg' => $e->getMessage(),
+                'http_status' => null,
+                'request' => $requestBody,
+            ];
+        }
+    }
+
+    /**
      * Resolve seller SKU to Temu goodsId (required for update API).
      * Checks TemuPricing and TemuMetric first; if not found, calls list API to find by SKU.
      *
