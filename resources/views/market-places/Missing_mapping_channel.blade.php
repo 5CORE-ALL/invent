@@ -32,7 +32,14 @@
                     <span class="badge bg-danger badge-mmc-stat" style="background-color:#a71d2a !important;">
                         Missing Mapping: <span id="mmc-total-count">0</span>
                     </span>
-                    <span class="text-muted small">{{ $channelName }} — SKUs where INV does not match channel stock (N Map)</span>
+                    <span class="text-muted small">{{ $channelName }} — SKUs where INV does not match channel stock (N Map). Both sides must have stock.</span>
+                    @if (!empty($plsApi))
+                        @if (!empty($plsApi['connected']))
+                            <span class="badge bg-success" title="{{ $plsApi['message'] ?? '' }}">API connected{{ !empty($plsApi['shop']) ? ' — '.$plsApi['shop'] : '' }}</span>
+                        @else
+                            <span class="badge bg-danger" title="{{ $plsApi['message'] ?? '' }}">API off</span>
+                        @endif
+                    @endif
                     @if (!empty($hasSkuDetail))
                         <button type="button" id="mmc-export-btn" class="btn btn-sm btn-success ms-auto" title="Export CSV">
                             <i class="fas fa-file-excel me-1"></i> Export

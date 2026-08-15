@@ -11,9 +11,11 @@ use App\Models\PLSDataView;
 use App\Models\PLSProduct;
 use App\Models\PlsListingStatus;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
+use App\Services\ShopifyCatalogSyncService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -145,6 +147,13 @@ class PlsController extends Controller
             ->get()
             ->groupBy(fn ($item) => ShopifySku::normalizeSkuForShopifyLookup($item->sku));
 
+        $livePlsInv = [];
+        try {
+            $livePlsInv = app(ShopifyCatalogSyncService::class)->cachedInventoryByNormalizedSku('pls');
+        } catch (\Throwable $e) {
+            Log::warning('PlsController: live PLS inventory fetch failed', ['error' => $e->getMessage()]);
+        }
+
         // 6. Get SPRICE, SGPFT, SROI from pls_data_views
         $plsDataViews = $this->buildPlsDataViewLookupByNormalizedSku($skus);
 
@@ -210,11 +219,23 @@ class PlsController extends Controller
             // Get inventory and OV L30 from shopify_skus (like Purchasing Power page)
             $inventory = $shopify ? (int) ($shopify->inv ?? 0) : 0;
             $ovl30 = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
-            
-            // Get PLS inventory from shopify_catalog_variants
-            $plsInventory = $plsCatalogVariants ? $plsCatalogVariants->sum('inventory_quantity') : 0;
-            
-            // Get SPRICE, SGPFT, SROI from pls_data_views
+
+            // Sales data from pls_products (price, L30 for MC L30 column, L60)
+            $price = $plsProduct ? floatval($plsProduct->price) : 0;
+            $plsL30 = $plsProduct ? intval($plsProduct->p_l30) : 0;
+            $l60 = $plsProduct ? intval($plsProduct->p_l60) : 0;
+
+            // Get PLS inventory from live Shopify PLS API (cached), else catalog
+            $onPlsApi = is_array($livePlsInv) && array_key_exists($skuNorm, $livePlsInv);
+            $plsInventory = $onPlsApi
+                ? (int) $livePlsInv[$skuNorm]
+                : ($plsCatalogVariants ? (int) $plsCatalogVariants->sum('inventory_quantity') : 0);
+            if ($price <= 0 && $plsCatalogVariants) {
+                $catalogPrice = floatval($plsCatalogVariants->first()->price ?? 0);
+                if ($catalogPrice > 0) {
+                    $price = $catalogPrice;
+                }
+            }
             $plsDataView = $plsDataViews[$skuNorm] ?? null;
             $sprice = null;
             $sgpft = null;
@@ -233,11 +254,6 @@ class PlsController extends Controller
                     $hasCustomSprice = $sprice !== null && $sprice > 0;
                 }
             }
-            
-            // Sales data from pls_products (price, L30 for MC L30 column, L60)
-            $price = $plsProduct ? floatval($plsProduct->price) : 0;
-            $plsL30 = $plsProduct ? intval($plsProduct->p_l30) : 0;
-            $l60 = $plsProduct ? intval($plsProduct->p_l60) : 0;
             
             $row['image_path'] = $imagePath;
             $row['price'] = $price;
@@ -311,8 +327,8 @@ class PlsController extends Controller
                 : 0;
             
             // Calculate Missing status (same logic as Temu2)
-            // Missing = Not in pls_products OR (in pls_products but INV > 0 and price <= 0)
-            $inPricing = $plsProduct !== null && $price > 0;
+            // Missing = not on PLS Shopify API / catalog and not in pls_products with price
+            $inPricing = ($plsProduct !== null && $price > 0) || $onPlsApi || ($plsCatalogVariants && $plsCatalogVariants->count() > 0);
             $missing = $inPricing ? '' : 'M';
             if ($inPricing && $inventory > 0 && $price <= 0) {
                 $missing = 'M';
@@ -455,7 +471,8 @@ class PlsController extends Controller
 
     /**
      * Listed PLS SKU whose Shopify INV does not match PLS stock beyond
-     * max(3 units, 3% of Shopify INV). Marketplace higher than Shopify is always N Map.
+     * max(3 units, 3% of Shopify INV). Both sides must have stock (Shein/Temu).
+     * Marketplace higher than Shopify is always N Map.
      */
     public static function isPlsNmapRow(array $row): bool
     {
@@ -468,7 +485,14 @@ class PlsController extends Controller
             return false;
         }
 
-        $plsInv = array_key_exists('pls_inventory', $row) ? (int) $row['pls_inventory'] : null;
+        if (! array_key_exists('pls_inventory', $row)) {
+            return false;
+        }
+
+        $plsInv = (int) $row['pls_inventory'];
+        if ($plsInv <= 0) {
+            return false;
+        }
 
         return ! MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($inv, $plsInv);
     }
@@ -477,10 +501,9 @@ class PlsController extends Controller
      * Map / Miss / NMap for pls-pricing badges and all-marketplace-master PLS row.
      * Matches pls_pricing_view MAP / N MP column.
      *
-     * Missing L: INV > 0 and price <= 0 (listed as Missing on pricing page).
-     * N Map: listed + INV > 0 + Shopify vs PLS stock beyond max(3, 3% of Shopify).
-     *         Always N Map when PLS stock is higher than Shopify.
-     * Map: listed + INV > 0 + within that bar (or exact match).
+     * Missing L: INV > 0 and not listed on PLS (API/catalog/price).
+     * N Map: listed + INV > 0 + PLS stock > 0 + beyond max(3, 3% of Shopify).
+     * Map: listed + both sides have stock + within that bar (or exact match).
      */
     public static function countPlsPricingBadgeTotals(iterable $rows): array
     {
@@ -499,12 +522,13 @@ class PlsController extends Controller
             $inv = (float) ($row['inventory'] ?? 0);
             $price = (float) ($row['price'] ?? 0);
             $missing = (string) ($row['missing'] ?? '');
+            $plsInv = (int) ($row['pls_inventory'] ?? 0);
 
-            if ($inv > 0 && $price <= 0) {
+            if ($inv > 0 && ($price <= 0 || $missing === 'M')) {
                 $miss++;
             }
 
-            if ($missing !== 'M' && $inv > 0) {
+            if ($missing !== 'M' && $inv > 0 && $plsInv > 0) {
                 if (self::isPlsNmapRow($row)) {
                     $nmap++;
                 } else {
