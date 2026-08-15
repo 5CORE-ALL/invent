@@ -951,7 +951,7 @@
     const selectedIds = new Set();
     /** Pre-embedded from DB on page render — no Ajax needed on first open */
     const PEF_INITIAL_ROWS = @json($initial_rows ?? []);
-    const MARKETPLACE_TAKEHOME = @json($ebayTakeHomeMap ?? []);
+    const MARKETPLACE_TAKEHOME = @json($ebayTakeHomeMap ?? []); // eBay + Temu + Temu2 from marketplace_percentages
     const PEF_DIL_PRMT_DEFAULTS = @json($dil_prmt_rules ?? []);
     const PEF_CVR_CPN_DEFAULTS = @json($cvr_cpn_rules ?? []);
     /** Full dataset — filters work client-side; Reload refreshes via Ajax */
@@ -1288,21 +1288,20 @@
         );
     }
 
-    /** Channel take-home decimal (0–1). eBay from marketplace_percentages (no hardcoded 0.85). */
+    /** Channel take-home decimal (0–1). eBay / Temu / Temu2 from marketplace_percentages. */
     function rowMargin(d) {
-        const mp = String(d.marketplace || d.channel_key || '').toLowerCase();
-        if (mp === 'amazon') return 0.80;
+        const mp = String(d.marketplace || d.channel_key || '').toLowerCase().replace(/\s+/g, '');
         let m = Number(d.margin || 0);
         if (m > 1) m = m / 100;
         if (m > 0 && m <= 1) return m;
-        if (mp.indexOf('ebay') !== -1) {
-            const key = MARKETPLACE_TAKEHOME.hasOwnProperty(mp) ? mp : 'ebay1';
-            if (!MARKETPLACE_TAKEHOME.hasOwnProperty(key)) return 1;
-            const t = Number(MARKETPLACE_TAKEHOME[key]);
-            if (!isFinite(t)) return 1;
-            return t > 1 ? t / 100 : t;
+        const takehomeKey = MARKETPLACE_TAKEHOME.hasOwnProperty(mp)
+            ? mp
+            : (mp.indexOf('ebay') !== -1 ? 'ebay1' : (mp.indexOf('temu2') !== -1 ? 'temu2' : (mp.indexOf('temu') !== -1 ? 'temu' : '')));
+        if (takehomeKey && MARKETPLACE_TAKEHOME.hasOwnProperty(takehomeKey)) {
+            const t = Number(MARKETPLACE_TAKEHOME[takehomeKey]);
+            if (isFinite(t) && t > 0) return t > 1 ? t / 100 : t;
         }
-        if (mp.indexOf('temu') !== -1) return 0.87;
+        if (mp === 'amazon') return 0.80;
         if (mp.indexOf('doba') !== -1) return 0.95;
         return 0.80;
     }
@@ -1961,12 +1960,41 @@
         finalizeFilterSort(sortSnapshot);
     }
 
+    const TEMU_S_RECOVERY_RATE = 0.88;
+    const TEMU_FULL_PRICE_MULT = 1.1765;
+    function pefIsTemu(d) {
+        return String(d.marketplace || d.channel_key || '').toLowerCase().indexOf('temu') !== -1;
+    }
+    function pefIsTemu2(d) {
+        return String(d.marketplace || d.channel_key || '').toLowerCase().indexOf('temu2') !== -1;
+    }
+    function pefTemuFullPriceFromBase(basePrice) {
+        const b = parseFloat(basePrice) || 0;
+        if (b <= 0) return 0;
+        let full = b * TEMU_FULL_PRICE_MULT;
+        if (full <= 26.99) full += 2.99;
+        return full;
+    }
+    function pefTemuBaseFromRPrice(rPrice) {
+        const r = parseFloat(rPrice) || 0;
+        if (r <= 0) return 0;
+        if (r > 29.98) return r;
+        const base = r - 2.99;
+        return base > 0 ? base : r;
+    }
+    function pefTemuFullPrice(d, rPrice) {
+        const base = Number(d.base_price || 0);
+        if (base > 0) return pefTemuFullPriceFromBase(base);
+        return pefTemuFullPriceFromBase(pefTemuBaseFromRPrice(rPrice));
+    }
+
     /**
-     * Channel-wise PFT/ROI — same formulas as amazon-tabulator-view:
-     *   SGPFT = ((sprice × margin − ship − lp) / sprice) × 100
-     *   Sroi  = SGROI = ((sprice × margin − ship − lp) / lp) × 100
-     *   Snpft = SGPFT − Ads%
-     *   Snroi = (gross$ − sprice×Ads%/100) / lp × 100
+     * Channel-wise PFT/ROI.
+     * Temu/Temu2 match /temu-decrease:
+     *   SGPFT = (SPRICE × margin − ship − lp) / SPRICE
+     *   SROI  = (SPRICE × 0.88 × margin − ship − lp) / LP
+     *   SPFT  = SGPFT − Ads% (skip when Ads%=100; Temu2 Ads%=0)
+     *   SNROI = SROI − Ads%
      */
     function recalcSuggestedForRow(d) {
         const sprice = Number(d.sprice || 0);
@@ -1977,6 +2005,16 @@
         if (!(sprice > 0) || !(margin > 0) || !(lp > 0)) {
             return { sroi: null, sgpft: null, snroi: null, snpft: null };
         }
+        if (pefIsTemu(d)) {
+            const ads = pefIsTemu2(d) ? 0 : adsPct;
+            const pftProfit = (sprice * margin) - lp - ship;
+            const sProfit = (sprice * TEMU_S_RECOVERY_RATE * margin) - lp - ship;
+            const sgpft = round2((pftProfit / sprice) * 100);
+            const sroi = round2((sProfit / lp) * 100);
+            const snpft = ads === 100 ? sgpft : round2(sgpft - ads);
+            const snroi = ads === 100 ? sroi : round2(sroi - ads);
+            return { sroi: sroi, sgpft: sgpft, snroi: snroi, snpft: snpft };
+        }
         const gross = (sprice * margin) - lp - ship;
         const sgpft = round2((gross / sprice) * 100);
         const sroi = round2((gross / lp) * 100); // SGROI (gross)
@@ -1986,7 +2024,7 @@
         return { sroi: sroi, sgpft: sgpft, snroi: snroi, snpft: snpft };
     }
 
-    /** Live Price columns with same channel formulas */
+    /** Live Price columns. Temu GPFT on Full Price; GROI on R Price; NROI = GROI − Ads%. */
     function recalcLiveForRow(d) {
         const price = Number(d.price || 0);
         const lp = Number(d.lp || 0);
@@ -1995,6 +2033,15 @@
         const adsPct = rowAdsPct(d);
         if (!(price > 0) || !(margin > 0) || !(lp > 0)) {
             return { groi: null, gpft: null, nroi: null, npft: null };
+        }
+        if (pefIsTemu(d)) {
+            const ads = pefIsTemu2(d) ? 0 : adsPct;
+            const fullPrice = pefTemuFullPrice(d, price);
+            const gpft = fullPrice > 0 ? round2(((fullPrice * margin - lp - ship) / fullPrice) * 100) : 0;
+            const groi = round2(((price * margin - lp - ship) / lp) * 100);
+            const npft = ads === 100 ? gpft : round2(gpft - ads);
+            const nroi = ads === 100 ? groi : round2(groi - ads);
+            return { groi: groi, gpft: gpft, nroi: nroi, npft: npft };
         }
         const gross = (price * margin) - lp - ship;
         const gpft = round2((gross / price) * 100);
@@ -2488,6 +2535,7 @@
                 ship: match.ship != null ? Number(match.ship) : d.ship,
                 // Prefer breakdown margin; Amazon breakdown sends 0.80
                 margin: match.margin != null ? Number(match.margin) : d.margin,
+                base_price: match.base_price != null ? Number(match.base_price) : d.base_price,
                 ads_pct: d.ads_pct,
                 // Channel L30 sold qty from CVR breakdown
                 l30: match.l30 != null && isFinite(Number(match.l30))
@@ -3541,7 +3589,7 @@
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
-        const push = s < 35 ? ((s * 0.85) - 2.99) : (s * 0.85);
+        const push = s < 35 ? ((s * TEMU_S_RECOVERY_RATE) - 2.99) : (s * TEMU_S_RECOVERY_RATE);
         if (!(push > 0)) return null;
         return +push.toFixed(2);
     }

@@ -2706,10 +2706,14 @@
 <script src="{{ asset('js/amz-cvr-audit.js') }}"></script>
 <script>
     window.__authUserName = @json(optional(auth()->user())->name ?? optional(auth()->user())->email ?? 'You');
-    /** eBay take-home from marketplace_percentages — no hardcoded 0.85 */
+    /** eBay / Temu / Temu2 take-home from marketplace_percentages */
     const MARKETPLACE_TAKEHOME = @json($ebayTakeHomeMap ?? []);
     function marketplaceTakeHome(mp) {
-        const key = String(mp || '').toLowerCase();
+        let key = String(mp || '').toLowerCase().replace(/\s+/g, '');
+        if (!Object.prototype.hasOwnProperty.call(MARKETPLACE_TAKEHOME, key)) {
+            if (key.indexOf('temu2') !== -1) key = 'temu2';
+            else if (key.indexOf('temu') !== -1) key = 'temu';
+        }
         if (!Object.prototype.hasOwnProperty.call(MARKETPLACE_TAKEHOME, key)) return 1;
         const t = Number(MARKETPLACE_TAKEHOME[key]);
         if (!isFinite(t)) return 1;
@@ -2737,16 +2741,57 @@
     let table = null;
 
     /**
-     * Temu / Temu2 push base from SPRICE (Price Increase):
-     *   if SPRICE < $35 → (Sprice × 0.85) − 2.99
-     *   if SPRICE ≥ $35 → (Sprice × 0.85)
-     * PFT / ROI still use raw SPRICE / channel price — this is push/display conversion only.
+     * Temu / Temu2 — same as /temu-decrease:
+     *   Full Price = (Base × 1.1765); +$2.99 if that ≤ $26.99
+     *   S Recovery = SPRICE × 0.88
+     *   SGPFT = (SPRICE × margin − LP − ship) / SPRICE
+     *   SROI  = (S Recovery × margin − LP − ship) / LP
+     *   Push: SPRICE < $35 → (Sprice × 0.88) − 2.99; else Sprice × 0.88
      */
+    const TEMU_S_RECOVERY_RATE = 0.88;
+    const TEMU_FULL_PRICE_MULT = 1.1765;
+    function temuFullPriceFromBase(basePrice) {
+        const b = parseFloat(basePrice) || 0;
+        if (b <= 0) return 0;
+        let full = b * TEMU_FULL_PRICE_MULT;
+        if (full <= 26.99) full += 2.99;
+        return full;
+    }
+    function temuBaseFromRPrice(rPrice) {
+        const r = parseFloat(rPrice) || 0;
+        if (r <= 0) return 0;
+        if (r > 29.98) return r;
+        const base = r - 2.99;
+        return base > 0 ? base : r;
+    }
+    function temuFullPriceFromItem(item) {
+        const base = parseFloat(item && (item.base_price || item.temu_base_price)) || 0;
+        if (base > 0) return temuFullPriceFromBase(base);
+        const price = parseFloat(item && item.price) || 0;
+        return price > 0 ? temuFullPriceFromBase(temuBaseFromRPrice(price)) : 0;
+    }
+    function temuSuggestedPercents(sprice, margin, lp, ship, adsPct, isTemu2) {
+        const s = parseFloat(sprice) || 0;
+        const m = parseFloat(margin) || 0;
+        const l = parseFloat(lp) || 0;
+        const sh = parseFloat(ship) || 0;
+        const ads = isTemu2 ? 0 : (parseFloat(adsPct) || 0);
+        if (!(s > 0) || !(m > 0)) {
+            return { sgpft: 0, sroi: 0, spft: 0, snroi: 0 };
+        }
+        const pftProfit = (s * m) - l - sh;
+        const sProfit = (s * TEMU_S_RECOVERY_RATE * m) - l - sh;
+        const sgpft = (pftProfit / s) * 100;
+        const sroi = l > 0 ? (sProfit / l) * 100 : 0;
+        const spft = ads === 100 ? sgpft : (sgpft - ads);
+        const snroi = ads === 100 ? sroi : (sroi - ads);
+        return { sgpft: sgpft, sroi: sroi, spft: spft, snroi: snroi };
+    }
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
-        const push = s < 35 ? ((s * 0.85) - 2.99) : (s * 0.85);
-        if (!(push > 0)) return null;
+        const push = s < 35 ? ((s * TEMU_S_RECOVERY_RATE) - 2.99) : (s * TEMU_S_RECOVERY_RATE);
+        if (!isFinite(push)) return null;
         return +push.toFixed(2);
     }
 
@@ -4412,12 +4457,12 @@
                 const rawShip = parseFloat(item.ship || 0) || 0;
                 const isSb2bMp = (mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b');
                 const ship = (isPpMp || isTdMp || isFaireMp || isSb2bMp) ? 0 : rawShip;
-                // eBay from marketplace_percentages; Doba 0.95; Reverb 0.85; PPower 0.65; others 0.80
+                // eBay / Temu / Temu2 from marketplace_percentages; Doba 0.95; Reverb 0.85; PPower 0.65; others 0.80
                 const isEbay1Mp = ['ebay', 'ebay1', 'ebayone'].includes(mpLower);
                 const isEbay23Mp = ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower);
                 const margin = (item.margin !== null && item.margin !== undefined && item.margin !== '')
                     ? parseFloat(item.margin)
-                    : ((isEbay1Mp || isEbay23Mp) ? marketplaceTakeHome(mpLower)
+                    : ((isEbay1Mp || isEbay23Mp || isTemuMpRow || isTemu2MpRow) ? marketplaceTakeHome(mpLower)
                         : (isDobaMp ? 0.95 : ((isReverbMp) ? 0.85 : (isPpMp ? 0.65 : (isTdMp ? 0 : 0.80)))));
                 // TopDawg / Faire / SB2B: SPRICE = (STD × marketplace%) − Ship (same as getBreakdownData / PEF)
                 let sprice = parseFloat(item.sprice || 0);
@@ -4448,6 +4493,15 @@
                     }
                 }
 
+                // Temu/Temu2 GPFT% on Full Temu Price — same as /temu-decrease
+                if ((isTemuMpRow || isTemu2MpRow) && price > 0 && margin > 0) {
+                    const fullPrice = temuFullPriceFromItem(item);
+                    if (fullPrice > 0) {
+                        gpft = ((fullPrice * margin - lp - ship) / fullPrice) * 100;
+                        npft = (isTemu2MpRow || tacosCh === 100) ? gpft : (gpft - tacosCh);
+                    }
+                }
+
                 // GROI% = (Price × Margin − LP − Ship) ÷ LP × 100
                 // Doba NROI = GROI (no ads); Temu uses GROI−Ads%; Reverb/others: dollar-ads/LP
                 let groi = 0, nroi = 0;
@@ -4465,13 +4519,12 @@
                 }
                 let sgpft = 0, spft = 0, sroi = 0, snroi = 0;
                 if (sprice > 0) {
-                    // Temu/Temu2: Profit = (Sprice × 0.80) − temu_ship − LP
-                    // SGPFT = Profit/Sprice; SROI = Profit/LP
+                    // Temu/Temu2: SGPFT on SPRICE × margin; SROI on S Recovery × 0.88 — same as /temu-decrease
                     const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
                     const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
-                    const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
+                    const temuSug = isTemuMp ? temuSuggestedPercents(sprice, margin, lp, ship, tacosCh, isTemu2MpRow) : null;
                     sgpft = isTemuMp
-                        ? (temuProfit / sprice) * 100
+                        ? temuSug.sgpft
                         : ((calcSp * margin - ship - lp) / calcSp) * 100;
                     // Doba/Temu2: SPFT = SGPFT; Amazon/eBay/TikTok/Temu/etc: SPFT = SGPFT − channel Ads%
                     // (Ads column shows tacos_ch — must use same value, not SKU AD%)
@@ -4483,7 +4536,7 @@
                         spft = (l30 == 0 ? sgpft : (sgpft - ad));
                     }
                     sroi = isTemuMp
-                        ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                        ? temuSug.sroi
                         : (lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0);
                     // SNROI%: Doba/Temu2 = SROI; Temu = SROI − Ads%; others (incl. Reverb) subtract SPRICE × Ads$
                     if (lp > 0) {
@@ -4609,10 +4662,9 @@
 
                 // Price in red when LMP is available and LMP < Price
                 const lmpForPrice = parseFloat(item.lmp_price);
-                // Temu / Temu2 Price column: display only × 1.1765 (~1/0.85). GPFT / GROI / NROI / NPFT stay on original price.
-                const TEMU_PRICE_DISPLAY_MULT = 1.1765;
+                // Temu / Temu2 Price column: Full Temu Price (Base × 1.1765; +$2.99 if ≤ $26.99)
                 const displayPrice = ((isTemuMpRow || isTemu2MpRow) && price > 0)
-                    ? +(price * TEMU_PRICE_DISPLAY_MULT).toFixed(2)
+                    ? +temuFullPriceFromItem(item).toFixed(2)
                     : price;
                 // Price vs LMP: ≤90% LMP → purple; 90%–LMP → dark green; > LMP → red
                 let priceColorStyle = '';
@@ -4651,7 +4703,7 @@
                     ? '-'
                     : '<span style="' + priceColorStyle + '" title="' +
                         ((isTemuMpRow || isTemu2MpRow) && price > 0
-                            ? ((isTemu2MpRow ? 'Temu2' : 'Temu') + ' Price × 1.1765 (shown). Base calc price: $' + price.toFixed(2))
+                            ? ((isTemu2MpRow ? 'Temu2' : 'Temu') + ' Full Price (Base × 1.1765). R Price: $' + price.toFixed(2))
                             : '') +
                       '">$' + displayPrice.toFixed(2) + '</span>' + priceChartDot;
 
@@ -4679,7 +4731,7 @@
                 html += `
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
                         data-lp="${lp}" data-ship="${(isPpMp || isTdMp || isFaireMp || isSb2bMp) ? applyShip : ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
-                        data-price="${price}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${canEditSprice ? 1 : 0}">
+                        data-price="${price}" data-base-price="${parseFloat(item.base_price || item.temu_base_price) || ''}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${canEditSprice ? 1 : 0}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-center">-</td>
@@ -5843,7 +5895,7 @@
                     field: "stemu_price_display",
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Temu push base from SPRICE: (Sprice×0.85)−2.99 if SPRICE&lt;$35; else Sprice×0.85",
+                    headerTooltip: "Temu push base from SPRICE: (Sprice×0.88)−2.99 if SPRICE&lt;$35; else Sprice×0.88",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary) return '';
@@ -5859,7 +5911,7 @@
                     width: 60,
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Push Temu base = (Sprice×0.85)−2.99 if SPRICE&lt;$35; else Sprice×0.85",
+                    headerTooltip: "Push Temu base = (Sprice×0.88)−2.99 if SPRICE&lt;$35; else Sprice×0.88",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary) return '';
@@ -6527,7 +6579,7 @@
             }
             if (!confirm(
                 'Push Temu base $' + pushBase.toFixed(2)
-                + ' (from SPRICE $' + sprice.toFixed(2) + ' × 0.85'
+                + ' (from SPRICE $' + sprice.toFixed(2) + ' × 0.88'
                 + (sprice < 35 ? ' − 2.99' : '')
                 + ') for SKU: ' + sku + '?'
             )) return;
@@ -6560,7 +6612,7 @@
             }
             if (!confirm(
                 'Push Temu base for ' + items.length + ' SKU(s)?\n'
-                + '(Sprice × 0.85) − 2.99 if SPRICE < $35; else Sprice × 0.85'
+                + '(Sprice × 0.88) − 2.99 if SPRICE < $35; else Sprice × 0.88'
             )) return;
 
             const $btn = $('#pi-push-temu-price-btn');
@@ -7054,7 +7106,7 @@
             const marginAttr = row.attr('data-margin');
             const margin = (marginAttr !== null && marginAttr !== undefined && marginAttr !== '')
                 ? parseFloat(marginAttr)
-                : (['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpForMargin)
+                : (['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree', 'temu', 'temu2', 'temutwo'].includes(mpForMargin)
                     ? marketplaceTakeHome(mpForMargin)
                     : (mpForMargin === 'doba' ? 0.95
                         : ((mpForMargin === 'reverb') ? 0.85
@@ -7074,25 +7126,24 @@
                 const isTemu2Mp = (mpLower === 'temu2');
                 const isNoAdsMp = (mpLower === 'doba' || isPpEdit || isTdEdit || isSheinEdit || isFaireEdit);
                 const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
-                // Temu/Temu2: Profit = (Sprice × 0.80) − ship − LP; SGPFT = Profit/Sprice; SROI = Profit/LP
-                const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
+                const temuSug = isTemuMp ? temuSuggestedPercents(sprice, margin, lp, ship, tacosCh, isTemu2Mp) : null;
                 const sgpft = isTemuMp
-                    ? (temuProfit / sprice) * 100
+                    ? temuSug.sgpft
                     : ((calcSp * margin - ship - lp) / calcSp) * 100;
                 // Doba/Shein: no ads; Amazon/eBay/TikTok/etc: SGPFT − channel Ads% (same as Ads column)
                 const isChannelAdsMp = ovl30UsesChannelAdsForSpft(mpLower);
-                const spft = isNoAdsMp ? sgpft
-                    : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
+                const spft = isTemuMp ? temuSug.spft
+                    : (isNoAdsMp ? sgpft
+                    : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad))));
                 const sroi = isTemuMp
-                    ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                    ? temuSug.sroi
                     : (lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0);
-                const snroi = lp > 0
+                const snroi = isTemuMp ? temuSug.snroi
+                    : (lp > 0
                     ? (isNoAdsMp || isTemu2Mp
                         ? sroi
-                        : (isTemuMp
-                            ? ((tacosCh === 100) ? sroi : (sroi - tacosCh))
-                            : (((calcSp * margin - lp - ship) - calcSp * (tacosCh / 100)) / lp) * 100))
-                    : 0;
+                        : (((calcSp * margin - lp - ship) - calcSp * (tacosCh / 100)) / lp) * 100)
+                    : 0);
                 
                 applyCellColor($sgpftSpan, getSgpftSpftColor(sgpft));
                 $sgpftSpan.text(Math.round(sgpft) + '%');
@@ -7816,23 +7867,23 @@
             const tacosCh = isNoAdsBlur ? 0 : (parseFloat(row.attr('data-tacos-ch')) || 0);
             const marginAttrBlur = row.attr('data-margin');
             const margin = (marginAttrBlur !== null && marginAttrBlur !== undefined && marginAttrBlur !== '')
-                ? parseFloat(marginAttrBlur) : 0.80;
+                ? parseFloat(marginAttrBlur)
+                : ((mpLower === 'temu' || mpLower === 'temu2') ? marketplaceTakeHome(mpLower) : 0.80);
             const l30 = parseFloat(row.attr('data-l30')) || 0;
             const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
             const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
-            
-            // Temu/Temu2: Profit = (Sprice × 0.80) − ship − LP; SGPFT = Profit/Sprice; SROI = Profit/LP
-            const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
+            const temuSugBlur = isTemuMp ? temuSuggestedPercents(sprice, margin, lp, ship, tacosCh, mpLower === 'temu2') : null;
             const sgpft = sprice > 0
                 ? (isTemuMp
-                    ? (temuProfit / sprice) * 100
+                    ? temuSugBlur.sgpft
                     : ((calcSp * margin - ship - lp) / calcSp) * 100)
                 : 0;
             const isChannelAdsMp = ovl30UsesChannelAdsForSpft(mpLower);
-            const spft = isNoAdsBlur ? sgpft
-                : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
+            const spft = isTemuMp ? temuSugBlur.spft
+                : (isNoAdsBlur ? sgpft
+                : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad))));
             const sroi = isTemuMp
-                ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                ? temuSugBlur.sroi
                 : (lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0);
             
             input.css('border-color', '#ff9c00');
@@ -7995,7 +8046,7 @@
             const marginAttrSave = $row.attr('data-margin');
             const margin = (marginAttrSave !== null && marginAttrSave !== undefined && marginAttrSave !== '')
                 ? parseFloat(marginAttrSave)
-                : (['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower)
+                : (['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree', 'temu', 'temu2', 'temutwo'].includes(mpLower)
                     ? marketplaceTakeHome(mpLower)
                     : (mpLower === 'doba' ? 0.95
                         : ((mpLower === 'reverb') ? 0.85
@@ -8003,18 +8054,18 @@
             const l30 = parseFloat($row.attr('data-l30')) || 0;
             const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
             const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
-            // Temu/Temu2: Profit = (Sprice × 0.80) − ship − LP; SGPFT = Profit/Sprice; SROI = Profit/LP
-            const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
+            const temuSugSave = isTemuMp ? temuSuggestedPercents(sprice, margin, lp, ship, tacosCh, mpLower === 'temu2') : null;
             const sgpft = sprice > 0
                 ? (isTemuMp
-                    ? (temuProfit / sprice) * 100
+                    ? temuSugSave.sgpft
                     : ((calcSp * margin - ship - lp) / calcSp) * 100)
                 : 0;
             const isChannelAdsMp = ovl30UsesChannelAdsForSpft(mpLower);
-            const spft = isNoAdsMp ? sgpft
-                : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
+            const spft = isTemuMp ? temuSugSave.spft
+                : (isNoAdsMp ? sgpft
+                : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad))));
             const sroi = isTemuMp
-                ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                ? temuSugSave.sroi
                 : (lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0);
 
             if (!sku || !marketplace) {
@@ -8268,14 +8319,14 @@
                     const ship = parseFloat($tr.attr('data-ship')) || 0;
                     const margin = parseFloat($tr.attr('data-margin')) || 0.80;
                     const isTemuMp = (String(mp).toLowerCase() === 'temu' || String(mp).toLowerCase() === 'temu2');
-                    const temuProfit = isTemuMp ? ((newPrice * 0.80) - ship - lp) : 0;
+                    const temuSugApply = isTemuMp ? temuSuggestedPercents(newPrice, margin, lp, ship, 0, String(mp).toLowerCase() === 'temu2') : null;
                     const sgpft = newPrice > 0
-                        ? (isTemuMp ? (temuProfit / newPrice) * 100 : ((newPrice * margin - ship - lp) / newPrice) * 100)
+                        ? (isTemuMp ? temuSugApply.sgpft : ((newPrice * margin - ship - lp) / newPrice) * 100)
                         : 0;
                     const sroi = isTemuMp
-                        ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                        ? temuSugApply.sroi
                         : (lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0);
-                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: isTemuMp ? 0.80 : margin };
+                    const metrics = { sgpft: sgpft, spft: isTemuMp ? temuSugApply.spft : sgpft, sroi: sroi, margin: margin };
 
                     $input.val(newPrice.toFixed(2)).trigger('input');
                     saveModalSpriceForRow($tr, newPrice, function(ok) {
@@ -8641,14 +8692,14 @@
                     const ship = parseFloat($tr.attr('data-ship')) || 0;
                     const margin = parseFloat($tr.attr('data-margin')) || 0.80;
                     const isTemuMp = (String(mp).toLowerCase() === 'temu' || String(mp).toLowerCase() === 'temu2');
-                    const temuProfit = isTemuMp ? ((newPrice * 0.80) - ship - lp) : 0;
+                    const temuSugApply = isTemuMp ? temuSuggestedPercents(newPrice, margin, lp, ship, 0, String(mp).toLowerCase() === 'temu2') : null;
                     const sgpft = newPrice > 0
-                        ? (isTemuMp ? (temuProfit / newPrice) * 100 : ((newPrice * margin - ship - lp) / newPrice) * 100)
+                        ? (isTemuMp ? temuSugApply.sgpft : ((newPrice * margin - ship - lp) / newPrice) * 100)
                         : 0;
                     const sroi = isTemuMp
-                        ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                        ? temuSugApply.sroi
                         : (lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0);
-                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: isTemuMp ? 0.80 : margin };
+                    const metrics = { sgpft: sgpft, spft: isTemuMp ? temuSugApply.spft : sgpft, sroi: sroi, margin: margin };
 
                     $input.val(newPrice.toFixed(2)).trigger('input');
                     // Primary SKU only here; siblings (incl. INV 0) saved explicitly below
@@ -8770,14 +8821,14 @@
                     const ship = parseFloat($tr.attr('data-ship')) || 0;
                     const margin = parseFloat($tr.attr('data-margin')) || 0.80;
                     const isTemuMp = (String(mp).toLowerCase() === 'temu' || String(mp).toLowerCase() === 'temu2');
-                    const temuProfit = isTemuMp ? ((newPrice * 0.80) - ship - lp) : 0;
+                    const temuSugApply = isTemuMp ? temuSuggestedPercents(newPrice, margin, lp, ship, 0, String(mp).toLowerCase() === 'temu2') : null;
                     const sgpft = newPrice > 0
-                        ? (isTemuMp ? (temuProfit / newPrice) * 100 : ((newPrice * margin - ship - lp) / newPrice) * 100)
+                        ? (isTemuMp ? temuSugApply.sgpft : ((newPrice * margin - ship - lp) / newPrice) * 100)
                         : 0;
                     const sroi = isTemuMp
-                        ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                        ? temuSugApply.sroi
                         : (lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0);
-                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: isTemuMp ? 0.80 : margin };
+                    const metrics = { sgpft: sgpft, spft: isTemuMp ? temuSugApply.spft : sgpft, sroi: sroi, margin: margin };
 
                     $input.val(newPrice.toFixed(2)).trigger('input');
                     saveModalSpriceForRow($tr, newPrice, function(ok) {
@@ -8973,7 +9024,7 @@
                 const mpLower = String($tr.attr('data-marketplace') || '').toLowerCase();
                 let margin = parseFloat($tr.attr('data-margin'));
                 if (!(margin > 0)) {
-                    margin = ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower)
+                    margin = ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree', 'temu', 'temu2', 'temutwo'].includes(mpLower)
                         ? marketplaceTakeHome(mpLower)
                         : ((mpLower === 'doba') ? 0.95
                             : ((mpLower === 'reverb') ? 0.85 : 0.80));
@@ -9035,11 +9086,13 @@
             }
             applyModalTargetBackSolve(function(ctx) {
                 if (!(ctx.lp > 0)) return null;
-                // Temu/Temu2 SROI = Profit/LP → sprice = (LP × (1 + ROI%/100) + ship) / 0.80
+                // Temu/Temu2 SROI = (S Recovery × margin − ship − LP) / LP
+                // → sprice = (LP × (1 + ROI%/100) + ship) / (0.88 × margin)
                 const isTemuMp = ['temu', 'temu2', 'temutwo'].includes(String(ctx.marketplace || '').toLowerCase());
-                const margin = isTemuMp ? 0.80 : ctx.margin;
+                const margin = ctx.margin;
                 if (!(margin > 0)) return null;
-                const candidate = (ctx.lp * (1 + targetRoiPct / 100) + ctx.ship) / margin;
+                const denom = isTemuMp ? (TEMU_S_RECOVERY_RATE * margin) : margin;
+                const candidate = (ctx.lp * (1 + targetRoiPct / 100) + ctx.ship) / denom;
                 if (!isFinite(candidate) || candidate <= 0) return null;
                 return { newPrice: candidate };
             }, 'Target ROI ' + targetRoiPct + '%');
@@ -9059,9 +9112,9 @@
             }
             applyModalTargetBackSolve(function(ctx) {
                 if (!(ctx.lp > 0)) return null;
-                // Temu/Temu2 SGPFT: Profit = (Sprice × 0.80) − ship − LP
+                // Temu/Temu2 SGPFT: (SPRICE × margin − ship − LP) / SPRICE — same as /temu-decrease
                 const isTemuMp = ['temu', 'temu2', 'temutwo'].includes(String(ctx.marketplace || '').toLowerCase());
-                const margin = isTemuMp ? 0.80 : ctx.margin;
+                const margin = ctx.margin;
                 if (!(margin > 0)) return null;
                 const denom = margin - targetGpftPct / 100;
                 if (!(denom > 0)) return null;
@@ -9538,14 +9591,15 @@
                 const mpLower = String(s.marketplace || '').toLowerCase();
                 const sprice = s.suggested;
                 const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
-                const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
+                const temuSugFill = isTemuMp ? temuSuggestedPercents(sprice, margin, lp, ship, tacosCh, mpLower === 'temu2') : null;
                 const sgpft = sprice > 0
-                    ? (isTemuMp ? (temuProfit / sprice) * 100 : ((sprice * margin - ship - lp) / sprice) * 100)
+                    ? (isTemuMp ? temuSugFill.sgpft : ((sprice * margin - ship - lp) / sprice) * 100)
                     : 0;
                 const isChannelAdsMp = ovl30UsesChannelAdsForSpft(mpLower);
-                const spft = (isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
+                const spft = isTemuMp ? temuSugFill.spft
+                    : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
                 const sroi = isTemuMp
-                    ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                    ? temuSugFill.sroi
                     : (lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0);
 
                 $.ajax({
@@ -9620,7 +9674,7 @@
             }
             target.price = price;
             const mpLower = String(target.marketplace || '').toLowerCase();
-            // Temu / Temu2: push base = (Sprice×0.85)−2.99 if SPRICE<$35; else Sprice×0.85
+            // Temu / Temu2: push base = (Sprice×0.88)−2.99 if SPRICE<$35; else Sprice×0.88
             let pushPrice = price;
             if (mpLower === 'temu' || mpLower === 'temu2') {
                 const converted = temuPushBaseFromSprice(price);
@@ -9699,15 +9753,14 @@
 
             $tr.attr('data-price', basePrice);
 
-            // Price cell: Temu/Temu2 display × 1.1765 (same as renderMarketplaceData)
-            const TEMU_PRICE_DISPLAY_MULT = 1.1765;
+            // Price cell: Temu/Temu2 Full Price from pushed base — same as /temu-decrease
             const isTemu = (mpLower === 'temu' || mpLower === 'temu2');
             const displayPrice = (isTemu && basePrice > 0)
-                ? +(basePrice * TEMU_PRICE_DISPLAY_MULT).toFixed(2)
+                ? +temuFullPriceFromBase(basePrice).toFixed(2)
                 : basePrice;
             const $priceTd = $tr.children('td').eq(3);
             const tip = isTemu
-                ? ((mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' Price × 1.1765 (shown). Base calc price: $' + basePrice.toFixed(2))
+                ? ((mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' Full Price (Base × 1.1765). Pushed base: $' + basePrice.toFixed(2))
                 : '';
             const existingDot = $priceTd.find('.pricing-master-chart-link').prop('outerHTML') || '';
             $priceTd.html(
@@ -10051,7 +10104,7 @@
                 }
                 confirmPrice = converted;
                 confirmExtra = ' (from SPRICE $' + price.toFixed(2)
-                    + ' × 0.85' + (price < 35 ? ' − 2.99' : '') + ')';
+                    + ' × 0.88' + (price < 35 ? ' − 2.99' : '') + ')';
             }
 
             if (!confirm(

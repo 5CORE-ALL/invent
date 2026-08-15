@@ -468,9 +468,9 @@
                 saveSpriceUrl: '/temu-pricing/save-sprice',
                 pushPriceUrl: '/temu/push-price',
                 priceField: 'temu_price',
-                cvrField: 'CVR%',
-                dilField: 'Dil%',
-                invField: 'INV',
+                cvrField: 'cvr_percent',
+                dilField: 'dil_percent',
+                invField: 'inventory',
                 skuField: 'sku',
                 saveSpriceMode: 'sku',
             },
@@ -479,9 +479,9 @@
                 saveSpriceUrl: '/temu2-pricing/save-sprice',
                 pushPriceUrl: '/temu2/push-price',
                 priceField: 'temu_price',
-                cvrField: 'CVR%',
-                dilField: 'Dil%',
-                invField: 'INV',
+                cvrField: 'cvr_percent',
+                dilField: 'dil_percent',
+                invField: 'inventory',
                 skuField: 'sku',
                 saveSpriceMode: 'sku',
             },
@@ -1695,7 +1695,7 @@
         }
         function chPromoIsParentRow(d) {
             if (!d || d.is_parent_summary) return false;
-            if (d.is_parent_row) return true;
+            if (d.is_parent_row || d.is_parent) return true;
             const sku = chPromoSku(d);
             return !!(sku && String(sku).toUpperCase().indexOf('PARENT') !== -1);
         }
@@ -1770,7 +1770,7 @@
             });
         }
         function chPromoInv(d) {
-            return Number(d[chPromoCfg.invField || 'INV']) || Number(d.INV) || 0;
+            return Number(d[chPromoCfg.invField || 'INV']) || Number(d.INV) || Number(d.inventory) || 0;
         }
         function chPromoPrice(d) {
             const f = chPromoCfg.priceField;
@@ -1811,6 +1811,14 @@
             if (String(CHANNEL_PROMO_CHANNEL).indexOf('ebay') === 0) {
                 if (inv <= 0) return 0;
                 const ovl30 = Number(d['L30'] != null ? d['L30'] : d.L30) || 0;
+                return (ovl30 / inv) * 100;
+            }
+            // Temu Dil column = (OV L30 / INV) × 100 — already stored as dil_percent
+            if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                let dil = Number(d.dil_percent);
+                if (isFinite(dil)) return dil;
+                if (inv <= 0) return 0;
+                const ovl30 = Number(d.ovl30 != null ? d.ovl30 : d.L30) || 0;
                 return (ovl30 / inv) * 100;
             }
             let dil = Number(d[chPromoCfg.dilField]);
@@ -2538,6 +2546,19 @@
                         } else {
                             newPrice = 0;
                         }
+                    } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                        // PRMT% = 0 → still write S PRC = Std × (1 − CVR%/100), or Std
+                        const std = chPromoStdBase(d);
+                        if (std > 0) {
+                            const cvr = Math.max(0, Number(d.cvr_percent != null ? d.cvr_percent : d.cvr_30) || 0);
+                            newPrice = cvr > 0
+                                ? chPromoRound2(std * (1 - (Math.min(99.99, cvr) / 100)))
+                                : std;
+                            if (newPrice >= 0.01) {
+                                Object.assign(patch, chPromoSpricePatch(newPrice));
+                                skipSprice = false;
+                            }
+                        }
                     }
 
                     item.row.update(patch);
@@ -2790,17 +2811,34 @@
                         patch.appr = false;
                         patch._appr_lmp = null;
                     }
-                    // eBay 1 + PRMT cleared → restore S PRC to Std
-                    if (CHANNEL_PROMO_CHANNEL === 'ebay1' && kind === 'prmt') {
+                    // PRMT cleared → restore S PRC to Std (eBay 1 / Temu)
+                    if (kind === 'prmt' && (
+                        CHANNEL_PROMO_CHANNEL === 'ebay1'
+                        || CHANNEL_PROMO_CHANNEL === 'temu'
+                        || CHANNEL_PROMO_CHANNEL === 'temu2'
+                    )) {
                         const std = chPromoStdBase(d);
-                        if (std > 0) Object.assign(patch, chPromoSpricePatch(std));
+                        if (std > 0) {
+                            if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                                const cvr = Math.max(0, Number(d.cvr_percent != null ? d.cvr_percent : d.cvr_30) || 0);
+                                Object.assign(patch, chPromoSpricePatch(
+                                    cvr > 0 ? chPromoRound2(std * (1 - (Math.min(99.99, cvr) / 100))) : std
+                                ));
+                            } else {
+                                Object.assign(patch, chPromoSpricePatch(std));
+                            }
+                        }
                     }
                     item.row.update(patch);
                     const extra = {};
                     if (kind === 'prmt') extra.prmt_pct = 0;
                     if (kind === 'cpn') extra.cpn_pct = 0;
                     if (kind === 'dsc') { extra.dsc = 0; extra.appr = false; }
-                    const savePrice = (CHANNEL_PROMO_CHANNEL === 'ebay1' && kind === 'prmt' && patch.SPRICE != null)
+                    const savePrice = (kind === 'prmt' && patch.SPRICE != null && (
+                        CHANNEL_PROMO_CHANNEL === 'ebay1'
+                        || CHANNEL_PROMO_CHANNEL === 'temu'
+                        || CHANNEL_PROMO_CHANNEL === 'temu2'
+                    ))
                         ? Number(patch.SPRICE)
                         : chPromoGetSprice(d);
                     await saveChannelSpriceAndPromo(item.row, savePrice, true, extra);
@@ -4179,6 +4217,14 @@
                             + '(Σ OV L30 ÷ Σ INV by variation item id). <strong>Apply</strong> writes <strong>PRMT %</strong> '
                             + 'on the <strong>parent row only</strong> — child SKUs are not changed. '
                             + 'If the listing’s total INV is 0, parent PRMT% is <strong>0</strong>.';
+                    }
+                } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                    const help = document.getElementById('ch-promo-dil-prmt-help');
+                    if (help) {
+                        help.innerHTML = 'Map Dil% slabs to PRMT%. On Temu, Dil is <strong>SKU-wise</strong> '
+                            + '(OV L30 ÷ INV). <strong>Apply</strong> writes <strong>PRMT %</strong> '
+                            + 'on each selected or visible SKU — parent rows are not changed. '
+                            + 'If INV is 0, PRMT% is <strong>0</strong>.';
                     }
                 }
                 renderChPromoDilPrmtModalTable();

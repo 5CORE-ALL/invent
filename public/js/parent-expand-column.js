@@ -385,14 +385,11 @@
             ': $' +
             avg.toFixed(2);
         return (
-            '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.15;" title="' +
+            '<span style="color:#0d6efd;font-weight:700;font-size:13px;" title="' +
             tip +
-            '">' +
-            '<span style="color:#0d6efd;font-weight:700;font-size:13px;">$' +
+            '">$' +
             avg.toFixed(2) +
-            '</span>' +
-            '<span style="color:#6c757d;font-size:10px;font-weight:700;letter-spacing:0.02em;">AVG</span>' +
-            '</div>'
+            '</span>'
         );
     }
 

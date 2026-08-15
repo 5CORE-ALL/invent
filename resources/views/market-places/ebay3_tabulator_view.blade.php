@@ -113,13 +113,13 @@
             display: none !important;
         }
         
-        /* Vertical column headers */
+        /* Vertical column headers — same 64px gap as Amazon */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
             text-orientation: mixed;
             white-space: nowrap;
             transform: rotate(180deg);
-            height: 80px;
+            height: 64px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -128,7 +128,50 @@
         }
         
         .tabulator .tabulator-header .tabulator-col {
-            height: 80px !important;
+            height: 64px !important;
+        }
+
+        /* Dense body rows — same spacing as Amazon */
+        #ebay3-table .tabulator-row {
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+        }
+        #ebay3-table .tabulator-row .tabulator-cell {
+            font-size: 13px !important;
+            line-height: 1.2 !important;
+            height: 36px !important;
+            max-height: 36px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            vertical-align: middle !important;
+        }
+        #ebay3-table .tabulator-row .tabulator-cell span,
+        #ebay3-table .tabulator-row .tabulator-cell a,
+        #ebay3-table .tabulator-row .tabulator-cell div,
+        #ebay3-table .tabulator-row .tabulator-cell button,
+        #ebay3-table .tabulator-row .tabulator-cell label,
+        #ebay3-table .tabulator-row .tabulator-cell input:not([type="checkbox"]):not([type="radio"]),
+        #ebay3-table .tabulator-row .tabulator-cell select,
+        #ebay3-table .tabulator-row .tabulator-cell i {
+            font-size: 13px !important;
+        }
+        #ebay3-table .tabulator-row .tabulator-cell img.hover-thumb {
+            width: 28px !important;
+            height: 28px !important;
+            max-width: 28px !important;
+            max-height: 28px !important;
+            object-fit: cover !important;
+            display: block !important;
+            flex-shrink: 0 !important;
+        }
+        #ebay3-table .tabulator-row .tabulator-cell > div {
+            flex-wrap: nowrap !important;
+            max-width: 100%;
+            overflow: hidden;
         }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -222,45 +265,92 @@
         }
 
         /* Badges above the filter controls + compact filter dropdowns (matches eBay 1 & 2) */
+        .card-body.py-2 {
+            padding-top: 0.35rem !important;
+            padding-bottom: 0.35rem !important;
+        }
+        #ebay3-filter-bar {
+            gap: 4px 6px !important;
+            align-items: center !important;
+        }
+        #ebay3-filter-bar .form-select,
+        #ebay3-filter-bar .form-control,
+        #ebay3-filter-bar .btn,
+        #ebay3-filter-bar .btn-sm,
+        #ebay3-filter-bar .dropdown > .btn {
+            height: 28px !important;
+            min-height: 28px !important;
+            font-size: 0.75rem !important;
+            padding: 0.15rem 0.4rem !important;
+            line-height: 1.2 !important;
+            box-sizing: border-box !important;
+        }
+        #ebay3-filter-bar .form-select {
+            width: auto !important;
+            max-width: 130px;
+            padding-right: 1.35rem !important;
+            padding-left: 0.4rem !important;
+            background-position: right 0.35rem center !important;
+        }
+        #ebay3-filter-bar .pricing-filter-item.border,
+        #ebay3-filter-bar .d-inline-flex.border {
+            height: 28px !important;
+            min-height: 28px !important;
+            padding: 0 4px !important;
+            gap: 4px !important;
+            align-items: center !important;
+        }
+        #ebay3-filter-bar .pricing-filter-item .form-label,
+        #ebay3-filter-bar .d-inline-flex .form-label {
+            font-size: 0.75rem !important;
+            margin-bottom: 0 !important;
+        }
+        #ebay3-filter-bar #target-roi-input,
+        #ebay3-filter-bar #target-gpft-input {
+            width: 48px !important;
+            height: 24px !important;
+            min-height: 24px !important;
+            font-size: 0.75rem !important;
+            padding: 0.1rem 0.25rem !important;
+        }
+
+        /* Summary badges — same height as Amazon (fs-6 + p-2) */
         #summary-stats {
             order: -1;
             padding: 0.5rem 0.7rem !important;
             margin-top: 0 !important;
             margin-bottom: 0.5rem !important;
         }
-        #ebay3-filter-bar .form-select {
-            width: auto !important;
-            max-width: 140px;
-            padding-right: 1.35rem !important;
-            padding-left: 0.5rem !important;
-            background-position: right 0.35rem center !important;
-        }
-        #ebay3-filter-bar { gap: 8px 10px !important; }
-
-        /* Match Ebay 2 summary badge row: single row, shared width, scaled text */
-        #summary-stats .ebay2-summary-badge-row {
-            display: flex;
-            flex-wrap: nowrap;
-            align-items: stretch;
-            gap: clamp(0.2rem, 0.5vw, 0.45rem);
-            width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
-        }
-        #summary-stats .ebay2-summary-badge-row > .badge {
-            flex: 1 1 0;
-            min-width: 0;
-            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
-            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
-            font-weight: bold;
-            box-sizing: border-box;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
+        #summary-stats .d-flex { gap: 8px !important; }
+        #summary-stats .badge {
+            font-size: 1rem !important;
+            padding: 0.5rem !important;
+            font-weight: 700 !important;
+            line-height: 1.5 !important;
+            border-radius: 0.375rem !important;
             white-space: nowrap;
         }
+        #ebay3-filter-bar .ms-2 { margin-left: 0 !important; }
+        #ebay3-filter-bar .p-1 { padding: 0 4px !important; }
+        .ebay3-play-nav {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            padding: 2px 4px;
+            background: #f8f9fa;
+            border-radius: 50px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        }
+        .ebay3-play-nav .btn {
+            width: 28px !important;
+            height: 28px !important;
+            min-height: 28px !important;
+            padding: 0 !important;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+        }
+        .ebay3-play-nav .btn i { font-size: 0.7rem; }
         .green-bg {
             color: #05bd30 !important;
         }
@@ -353,15 +443,35 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-2 d-flex flex-column">
+                <!-- Summary Stats — compact Amazon row (badges first) -->
+                <div id="summary-stats" class="bg-light rounded">
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge bg-danger sold-filter-badge ebay3-hover-chart" data-filter="zero" data-metric="zero_sold_count" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">0 Sold: <span id="zero-sold-count">0</span></span>
+                        <span class="badge sold-filter-badge ebay3-hover-chart" data-filter="sold" data-metric="sold_count" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter · Hover for daily trend">&gt; 0 Sold: <span id="more-sold-count">0</span></span>
+                        <span class="badge bg-success d-none ebay3-badge-chart ebay3-hover-chart" id="total-pft-amt-badge" data-metric="total_pft_amt" style="color: black; font-weight: bold; cursor: pointer;" aria-hidden="true" title="View trend">Total PFT: $0</span>
+                        <span class="badge bg-primary ebay3-badge-chart ebay3-hover-chart" id="total-sales-amt-badge" data-metric="total_sales_amt" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Sales: $0</span>
+                        <span class="badge" id="qty-sold-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="L30 units sold (Σ real ebay3 order quantity, excl. cancelled &amp; fully-refunded). Same value /ebay3/daily-sales shows.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
+                        <span class="badge bg-info ebay3-badge-chart ebay3-hover-chart" id="avg-gpft-badge" data-metric="gpft_percent" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">GPFT: 0%</span>
+                        <span class="badge bg-secondary ebay3-badge-chart ebay3-hover-chart" id="groi-percent-badge" data-metric="groi_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">GROI: 0%</span>
+                        <span class="badge" id="ads-percent-badge" style="background-color: #d63384; color: white; font-weight: bold;" title="TACOS = eBay 3 channel Total Ad Spend (31-day KW + PMT from ebay_3_priority_reports + ebay_3_general_reports — same source as /ebay3/campaign-ads) ÷ real-orders L30 Sales × 100.">Ads: {{ number_format((float) ($channelAdsPercent ?? 0), 1) }}%</span>
+                        <span class="badge" id="npft-percent-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="NPFT% = GPFT% − Ads% (net profit margin after ad spend).">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
+                        <span class="badge" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amz (do not cut Ads% from GROI%).">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
+                        <span class="badge bg-warning ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Prc: $0.00</span>
+                        <span class="badge bg-danger ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="CVR = (real-orders L30 units sold / Σ Views) × 100. Numerator is the orders-API L30 units (same source /ebay3/daily-sales uses), denominator is Σ views across rows with E Stock > 0. Click for trend.">CVR: 0%</span>
+                        <span class="badge bg-info ebay3-badge-chart ebay3-hover-chart" id="total-views-badge" data-metric="total_views" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Views: 0</span>
+                        <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
+                        <span class="badge bg-primary d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
+                    </div>
+                </div>
                 <div class="d-flex align-items-center flex-wrap gap-2" id="ebay3-filter-bar">
-                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 160px; display: inline-block;">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 160px; display: inline-block;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 140px; display: inline-block;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 140px; display: inline-block;">
 
                     <select id="view-mode-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="sku">SKU Only</option>
-                        <option value="parent" selected>Parent Only</option>
-                        <option value="both">Both (Parent + SKU)</option>
+                        <option value="sku">SKUs</option>
+                        <option value="parent" selected>Parents</option>
+                        <option value="both">Both</option>
                     </select>
 
                     <select id="inv-filter" class="form-select form-select-sm"
@@ -380,9 +490,9 @@
 
                     <select id="variation-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all" selected>Variation — All</option>
-                        <option value="red">Variation — Red</option>
-                        <option value="green">Variation — Green</option>
+                        <option value="all" selected>Variation</option>
+                        <option value="red">Var Red</option>
+                        <option value="green">Var Green</option>
                     </select>
 
 
@@ -403,27 +513,25 @@
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <div class="d-flex flex-row flex-nowrap align-items-center gap-1 pricing-filter-item" style="width: auto;">
-                        <select id="gpft-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block; flex-shrink: 0;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0-10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-40">30-40%</option>
-                            <option value="40plus">Above 40%</option>
-                        </select>
-                        <select id="cvr-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block; flex-shrink: 0;">
-                            <option value="all">CVR%</option>
-                            <option value="0-0">0%</option>
-                            <option value="0-3">0-3%</option>
-                            <option value="3-7">3-7%</option>
-                            <option value="7-13">7-13%</option>
-                            <option value="13plus">13%+</option>
-                        </select>
-                    </div>
+                    <select id="gpft-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40plus">Above 40%</option>
+                    </select>
+                    <select id="cvr-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR%</option>
+                        <option value="0-0">0%</option>
+                        <option value="0-3">0-3%</option>
+                        <option value="3-7">3-7%</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
+                    </select>
 
                     <select id="roi-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
@@ -461,20 +569,20 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block pricing-filter-item">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns">
+                            <i class="fa fa-eye"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item">
-                        <i class="fa fa-eye"></i> Show All
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item" title="Show all columns">
+                        <i class="fa fa-eye"></i>
                     </button>
 
                     <button id="ebay3-price-mode-btn" type="button" class="btn btn-sm btn-secondary pricing-filter-item"
                             title="Cycle: Off → Decrease → Increase → Same Price → Off">
-                        <i class="fas fa-exchange-alt"></i> Price %
+                        <i class="fas fa-exchange-alt"></i> Prc Mode
                     </button>
 
                     <button id="clear-sprice-btn" type="button"
@@ -484,7 +592,7 @@
                     </button>
 
                     <button type="button" id="export-section-btn" class="btn btn-sm btn-success pricing-filter-item" title="Export current section (visible columns & filtered data)">
-                        <i class="fas fa-file-export"></i> Export
+                        <i class="fas fa-file-export"></i>
                     </button>
 
                     {{-- Push Std Prc progress only — no Dil vs PRMT / CVR vs CPN --}}
@@ -509,12 +617,12 @@
                             style="border:1px solid #6610f2; color:#6610f2;"
                             data-bs-toggle="modal" data-bs-target="#sbidViewsRuleModal"
                             title="Configure Min/Max caps and the daily ±%/day step per L7 View colour for the S BID column">
-                        <i class="fas fa-eye me-1"></i>Sbid (Views)
+                        <i class="fas fa-eye me-1"></i>Sbid
                     </button>
 
 
                     {{-- Target ROI% bulk control — back-solves SPRICE so SGROI = Target (gross, no Ads%). --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light pricing-filter-item"
                         id="target-roi-controls"
                         title="Target SGROI% — sets SPRICE so S GROI column = Target (gross ROI: fees + shipping, no Ads%)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
@@ -531,7 +639,7 @@
 
                     {{-- Target GPFT% bulk control — back-solves SPRICE for selected rows so SGPFT = Target GPFT%.
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light pricing-filter-item"
                         id="target-gpft-controls"
                         title="Target SGPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
@@ -546,44 +654,6 @@
                         </button>
                     </div>
 
-                    <!-- Play / Pause parent navigation (like pricing-master-cvr) -->
-                    <div class="btn-group align-items-center ms-2 pricing-filter-item" role="group">
-                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
-                            <i class="fas fa-step-backward"></i>
-                        </button>
-                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" title="Play — parents low → high by CVR 30 (SCVR)">
-                            <i class="fas fa-play"></i>
-                        </button>
-                        <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;" title="Pause - show all">
-                            <i class="fas fa-pause"></i>
-                        </button>
-                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
-                            <i class="fas fa-step-forward"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Summary Stats — same badge set/order as Ebay 2 Analytics -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <div class="ebay2-summary-badge-row">
-                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="zero" data-metric="zero_sold_count" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">0 Sold: <span id="zero-sold-count">0</span></span>
-                        <span class="badge fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="sold" data-metric="sold_count" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter · Hover for daily trend">&gt; 0 Sold: <span id="more-sold-count">0</span></span>
-                        <span class="badge bg-success fs-6 p-2 d-none ebay3-badge-chart ebay3-hover-chart" id="total-pft-amt-badge" data-metric="total_pft_amt" style="color: black; font-weight: bold; cursor: pointer;" aria-hidden="true" title="View trend">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="total-sales-amt-badge" data-metric="total_sales_amt" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Sales: $0</span>
-                        <span class="badge fs-6 p-2" id="qty-sold-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="L30 units sold (Σ real ebay3 order quantity, excl. cancelled &amp; fully-refunded). Same value /ebay3/daily-sales shows.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
-                        <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-gpft-badge" data-metric="gpft_percent" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">GPFT: 0%</span>
-                        <span class="badge bg-secondary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="groi-percent-badge" data-metric="groi_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">GROI: 0%</span>
-                        <span class="badge fs-6 p-2" id="ads-percent-badge" style="background-color: #d63384; color: white; font-weight: bold;" title="TACOS = eBay 3 channel Total Ad Spend (31-day KW + PMT from ebay_3_priority_reports + ebay_3_general_reports — same source as /ebay3/campaign-ads) ÷ real-orders L30 Sales × 100.">Ads: {{ number_format((float) ($channelAdsPercent ?? 0), 1) }}%</span>
-                        <span class="badge fs-6 p-2" id="npft-percent-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="NPFT% = GPFT% − Ads% (net profit margin after ad spend).">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
-                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amz (do not cut Ads% from GROI%).">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
-                        <span class="badge bg-warning fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Prc: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="CVR = (real-orders L30 units sold / Σ Views) × 100. Numerator is the orders-API L30 units (same source /ebay3/daily-sales uses), denominator is Σ views across rows with E Stock > 0. Click for trend.">CVR: 0%</span>
-                        <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="total-views-badge" data-metric="total_views" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
-                        <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 ebay3-hover-chart" id="missing-count-badge" data-metric="missing_count" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">M L: 0</span>
-                        <span class="badge bg-warning fs-6 p-2 ebay3-hover-chart" id="inv-stock-badge" data-metric="nmap_count" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">N Map: 0</span>
-                    </div>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -607,7 +677,21 @@
                     </div>
                 </div>
                 <div id="ebay3-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column; min-height: 0;">
-                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 8px; background: #fff; border-bottom: 1px solid #e5e7eb;">
+                        <div class="btn-group ebay3-play-nav" role="group" aria-label="Parent navigation">
+                            <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle" title="Previous parent" disabled>
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button type="button" id="play-auto" class="btn btn-sm btn-success rounded-circle" title="Play — parents low → high by CVR 30 (SCVR)">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button type="button" id="play-pause" class="btn btn-sm btn-success rounded-circle" style="display: none;" title="Pause - show all">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle" title="Next parent" disabled>
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
                         <span id="custom-pagination-counter"
                             style="font-size: 13px; color: #555; white-space: nowrap;"></span>
                     </div>
@@ -979,9 +1063,6 @@
     // Badge filter state variables
     let zeroSoldFilterActive = false;
     let moreSoldFilterActive = false;
-    let missingFilterActive = false;
-    let mapFilterActive = false;
-    let invStockFilterActive = false;
 
     /** Daily snapshot badge chart (amazon_channel_summary_data, channel=ebay3) */
     const ebay3BadgeMetricLabels = {
@@ -998,9 +1079,6 @@
         avg_price: 'Avg price',
         cvr_percent: 'CVR %',
         total_views: 'Views',
-        missing_count: 'Missing',
-        map_count: 'Map',
-        nmap_count: 'N Map',
     };
     // L30 units sold from real ebay3 orders (same source /ebay3/daily-sales uses) — CVR numerator.
     const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
@@ -2080,7 +2158,7 @@
                 return;
             }
             $btn.removeClass('btn-danger btn-success btn-outline-primary').addClass('btn-secondary')
-                .html('<i class="fas fa-exchange-alt"></i> Price %');
+                .html('<i class="fas fa-exchange-alt"></i> Prc Mode');
             $('#discount-input-container').hide();
             updateSelectedCount();
             updateSelectAllCheckbox();
@@ -2871,31 +2949,6 @@
             updateBadgeStyles();
         });
 
-        $('#missing-count-badge').on('click', function() {
-            missingFilterActive = !missingFilterActive;
-            mapFilterActive = false;
-            invStockFilterActive = false;
-            applyFilters();
-            updateBadgeStyles();
-        });
-
-        $('#map-count-badge').on('click', function() {
-            mapFilterActive = !mapFilterActive;
-            missingFilterActive = false;
-            invStockFilterActive = false;
-            applyFilters();
-            updateBadgeStyles();
-        });
-
-        $('#inv-stock-badge').on('click', function() {
-            invStockFilterActive = !invStockFilterActive;
-            missingFilterActive = false;
-            mapFilterActive = false;
-            applyFilters();
-            updateBadgeStyles();
-        });
-
-        // Update badge styles based on active filters
         function updateBadgeStyles() {
             if (zeroSoldFilterActive) {
                 $('.sold-filter-badge[data-filter="zero"]').css('opacity', '1').css('box-shadow', '0 0 10px rgba(220, 53, 69, 0.8)');
@@ -2908,58 +2961,15 @@
             } else {
                 $('.sold-filter-badge[data-filter="sold"]').css('opacity', '0.8').css('box-shadow', 'none');
             }
-
-            if (missingFilterActive) {
-                $('#missing-count-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(220, 53, 69, 0.8)');
-            } else {
-                $('#missing-count-badge').css('opacity', '0.8').css('box-shadow', 'none');
-            }
-
-            if (mapFilterActive) {
-                $('#map-count-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(40, 167, 69, 0.8)');
-            } else {
-                $('#map-count-badge').css('opacity', '0.8').css('box-shadow', 'none');
-            }
-
-            if (invStockFilterActive) {
-                $('#inv-stock-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(255, 193, 7, 0.8)');
-            } else {
-                $('#inv-stock-badge').css('opacity', '0.8').css('box-shadow', 'none');
-            }
         }
 
         // Store all unfiltered data for summary calculations
         let allTableData = [];
-        /** Missing/Map/N Map from last /ebay3-data-json (PHP). Cleared on cell edit so client recomputes. */
-        let ebay3ServerSummary = null;
-
         // Play/Pause parent navigation (like pricing-master-cvr)
         let isPlayNavigationActive = false;
         let currentPlayParentIndex = 0;
         /** While play is active: top-level parents sorted by CVR 30 (SCVR) ascending. */
         let playModeParentList = null;
-
-        /** Coerce /ebay3-data-json "summary" (PHP) — Tabulator/JSON can surface ints as number or string. */
-        function ebay3NormalizeServerSummary(raw) {
-            if (!raw || typeof raw !== 'object') {
-                return null;
-            }
-            const nMapVal = (raw.nMap != null) ? raw.nMap : (raw.n_map != null ? raw.n_map : raw['nMap']);
-            const toNum = function(v) {
-                if (v === null || v === undefined || v === '') {
-                    return NaN;
-                }
-                const n = Number(v);
-                return Number.isFinite(n) ? n : NaN;
-            };
-            const m = toNum(raw.missing);
-            const mp = toNum(raw.map);
-            const nm = toNum(nMapVal);
-            if (isNaN(m) || isNaN(mp) || isNaN(nm)) {
-                return null;
-            }
-            return { missing: m, map: mp, nMap: nm };
-        }
 
         let ebayMpImagePreviewHideTimer = null;
         let ebayMpImagePreviewEl = null;
@@ -3045,19 +3055,13 @@
             ajaxURL: "/ebay3-data-json",
             ajaxResponse: function(url, params, response) {
                 let rows = response;
-                ebay3ServerSummary = null;
                 if (response && !Array.isArray(response) && response.data !== undefined) {
                     rows = response.data;
-                    ebay3ServerSummary = ebay3NormalizeServerSummary(response.summary);
                 } else {
                     rows = Array.isArray(response) ? response : [];
                 }
                 allTableData = rows || [];
-                if (ebay3ServerSummary) {
-                    console.log('eBay3 server summary (badges from PHP):', ebay3ServerSummary, 'root rows:', allTableData.length);
-                } else {
-                    console.log('API Response - Total rows:', allTableData.length, '(Missing/Map/N Map: client — add summary to /ebay3-data-json or check response shape)');
-                }
+                console.log('API Response - Total rows:', allTableData.length);
 
                 // Tree: eBay L30 is on child SKUs under _children — sum whole tree, not just roots
                 let totalL30 = 0;
@@ -3081,6 +3085,7 @@
             },
             ajaxSorting: false,
             layout: "fitDataStretch",
+            rowHeight: 36,
             height: "100%",
             pagination: true,
             paginationSize: 100,
@@ -3410,66 +3415,6 @@
                         return `<span style="color: ${color}; font-weight: bold;">${sign}${growthRounded}%</span>`;
                     }
                 },
-                {
-                    title: "Missing",
-                    field: "Missing",
-                    hozAlign: "center",
-                    width: 70,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const skuUpper = ((rowData['(Child) sku'] || '') + '').toUpperCase();
-                        const isParentRow = skuUpper.includes('PARENT');
-                        const children = rowData._children;
-
-                        function isMissingItemId(itemId) {
-                            return !itemId || itemId === null || itemId === '';
-                        }
-
-                        // Parent row: M if any child would show M; else green dot (including zero children)
-                        if (isParentRow && children && Array.isArray(children)) {
-                            if (children.length > 0) {
-                                const anyChildMissing = children.some(function(ch) {
-                                    return isMissingItemId(ch['eBay_item_id'])
-                                        && !ebay3RowNrReqIsNr(ch);
-                                });
-                                if (anyChildMissing) {
-                                    return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
-                                }
-                            }
-                            return '<span title="All child SKUs have eBay listing" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#28a745;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,0.12);"></span>';
-                        }
-
-                        // Child / leaf: Missing = no eBay3 item_id (exclude NR)
-                        const itemId = rowData['eBay_item_id'];
-                        if (isMissingItemId(itemId) && !ebay3RowNrReqIsNr(rowData)) {
-                            return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
-                        }
-                        return '';
-                    }
-                },
-                {
-                    title: "MAP",
-                    field: "MAP",
-                    hozAlign: "center",
-                    width: 90,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const inv = typeof ebay3Qty === 'function' ? ebay3Qty(rowData['INV']) : (parseFloat(rowData['INV'] || 0) || 0);
-                        const ebayStock = ebay3EbayStockQty(rowData);
-                        const nrReq = String(rowData.nr_req || '').trim();
-
-                        if (inv <= 0 || ebayStock <= 0 || nrReq !== 'REQ') {
-                            return '';
-                        }
-                        if (ebay3RowMapStockMatch(rowData)) {
-                            return '<span style="color: #28a745; font-weight: bold;">MP</span>';
-                        }
-                        const diff = inv - ebayStock;
-                        const sign = diff > 0 ? '+' : '';
-                        return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
-                    }
-                },
-               
                 {
                     title: "View",
                     field: "views",
@@ -4361,42 +4306,6 @@
             return Number.isFinite(n) ? n : 0;
         }
 
-        /** INV (ebay3Qty) vs eBay stock: "mapped" (MP) when |INV − eBay| ≤ 3, both sides &gt; 0. */
-        function ebay3RowMapStockMatch(row) {
-            if (!row) return false;
-            const inv = typeof ebay3Qty === 'function' ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
-            const st = typeof ebay3EbayStockQty === 'function' ? ebay3EbayStockQty(row) : (parseFloat(row['eBay Stock'] || row['E Stock'] || 0) || 0);
-            if (inv <= 0 || st <= 0) return false;
-            return Math.abs(inv - st) <= 3 + 1e-9;
-        }
-
-        /** Map row — same rule as Ebay 2 badge: listed (has item id), REQ, INV>0, eBay stock>0, |INV − eBay| ≤ 3. */
-        function ebay3RowMap(data) {
-            if (!data) return false;
-            if (String(data['(Child) sku'] || '').toUpperCase().includes('PARENT')) return false;
-            const itemId = data['eBay_item_id'];
-            if (!itemId || String(itemId).trim() === '') return false;
-            const inv = typeof ebay3Qty === 'function' ? ebay3Qty(data['INV']) : (parseFloat(data['INV'] || 0) || 0);
-            if (inv <= 0) return false;
-            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
-            const est = typeof ebay3EbayStockQty === 'function' ? ebay3EbayStockQty(data) : (parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0);
-            if (est <= 0) return false;
-            return Math.abs(inv - est) <= 3 + 1e-9;
-        }
-
-        /** N Map row — same rule as Ebay 2 badge: listed, REQ, INV>0, and (eBay stock===0 ? INV>3 : |INV − eBay| > 3). */
-        function ebay3RowNMap(data) {
-            if (!data) return false;
-            if (String(data['(Child) sku'] || '').toUpperCase().includes('PARENT')) return false;
-            const itemId = data['eBay_item_id'];
-            if (!itemId || String(itemId).trim() === '') return false;
-            const inv = typeof ebay3Qty === 'function' ? ebay3Qty(data['INV']) : (parseFloat(data['INV'] || 0) || 0);
-            if (inv <= 0) return false;
-            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
-            const est = typeof ebay3EbayStockQty === 'function' ? ebay3EbayStockQty(data) : (parseFloat(data['eBay Stock'] || data['E Stock'] || 0) || 0);
-            if (est <= 0) return inv > 3;
-            return Math.abs(inv - est) > 3 + 1e-9;
-        }
 
         // Apply filters
         function applyFilters() {
@@ -4646,22 +4555,6 @@
                 });
             }
 
-            // Missing filter - show SKUs missing in eBay
-            if (missingFilterActive) {
-                table.addFilter(function(data) {
-                    // Skip filter for parent rows in tree mode
-                    const sku = data['(Child) sku'] || '';
-                    if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
-                    
-                    const itemId = data['eBay_item_id'];
-                    const invQty = (typeof ebay3Qty === 'function') ? ebay3Qty(data['INV']) : (parseFloat(data['INV'] || 0) || 0);
-                    // Missing L: in stock (INV>0) but not listed on eBay (no item id); exclude NR — Amazon parity
-                    return invQty > 0
-                        && (!itemId || itemId === null || itemId === '')
-                        && !ebay3RowNrReqIsNr(data);
-                });
-            }
-
             // Variation column state: default red; green = user-marked in this browser
             if (variationFilter === 'red') {
                 table.addFilter(function(data) {
@@ -4674,28 +4567,6 @@
                     const sku = data['(Child) sku'] || '';
                     if (!sku) return true;
                     return variationGreenSkus.has(sku);
-                });
-            }
-
-            // Map filter — same rule as Ebay 2 badge
-            if (mapFilterActive) {
-                table.addFilter(function(data) {
-                    // Skip filter for parent rows in tree mode
-                    const sku = data['(Child) sku'] || '';
-                    if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
-
-                    return ebay3RowMap(data);
-                });
-            }
-
-            // N Map filter — same rule as Ebay 2 badge
-            if (invStockFilterActive) {
-                table.addFilter(function(data) {
-                    // Skip filter for parent rows in tree mode
-                    const sku = data['(Child) sku'] || '';
-                    if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
-
-                    return ebay3RowNMap(data);
                 });
             }
 
@@ -4925,9 +4796,6 @@
             let totalEStockSum = 0;
             let zeroSoldCount = 0;
             let moreSoldCount = 0;
-            let missingCount = 0;
-            let mapCount = 0;
-            let invStockCount = 0;
 
             data.forEach(row => {
                 const estock = parseFloat(row['eBay Stock'] || row['E Stock'] || 0) || 0;
@@ -4945,24 +4813,6 @@
                     }
                 }
 
-                const itemId = row['eBay_item_id'];
-                const sku = String(row['(Child) sku'] || '').toUpperCase();
-                const isParentRow = sku.includes('PARENT');
-                const invQty = (typeof ebay3Qty === 'function') ? ebay3Qty(row['INV']) : (parseFloat(row['INV'] || 0) || 0);
-                // Missing L: in stock (INV>0) but not listed on eBay (no item id); exclude NR — Amazon parity
-                if (!isParentRow
-                    && invQty > 0
-                    && (!itemId || itemId === null || itemId === '')
-                    && !ebay3RowNrReqIsNr(row)) {
-                    missingCount++;
-                }
-
-                // Map / N Map — same rule as Ebay 2 badges
-                if (ebay3RowMap(row)) {
-                    mapCount++;
-                } else if (ebay3RowNMap(row)) {
-                    invStockCount++;
-                }
             });
 
             let totalWeightedPrice = 0;
@@ -4990,12 +4840,6 @@
             const prevAvgL7Views = avgL7ViewsGlobal;
             avgL7ViewsGlobal = avgL7Views;
 
-            if (ebay3ServerSummary) {
-                missingCount = ebay3ServerSummary.missing;
-                mapCount = ebay3ServerSummary.map;
-                invStockCount = ebay3ServerSummary.nMap;
-            }
-
             $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
             $('#more-sold-count').text(moreSoldCount.toLocaleString());
             $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt).toLocaleString());
@@ -5017,9 +4861,6 @@
             $('#avg-l7-views-badge').text('L7: ' + avgL7Views.toFixed(1));
             $('#total-inv-badge').text('E Stock: ' + Math.round(totalEStockSum).toLocaleString());
 
-            $('#missing-count-badge').text('M L: ' + missingCount);
-            $('#map-count-badge').text('Map: ' + mapCount);
-            $('#inv-stock-badge').text('N Map: ' + invStockCount);
 
             // Repaint L7 View + S BID colours when the avg changes.
             if (table && Math.abs(prevAvgL7Views - avgL7Views) > 0.0001) {
@@ -5060,8 +4901,8 @@
             }
 
             if (
-                /^(image_path|Parent|\(Child\) sku|INV|L30|rating|links_column|E Stock|Missing|MAP|nr_req|nrp|NRL|NR|eBay L30|eBay L45|eBay L60|growth_percent)$/i.test(f) ||
-                /\b(image|parent|sku|inv|ov\s*l30|links|rating|stock|missing|map|nr\/req|nrp|nrl|nra|growth|e\s*l\d+)\b/i.test(tl)
+                /^(image_path|Parent|\(Child\) sku|INV|L30|rating|links_column|E Stock|nr_req|nrp|NRL|NR|eBay L30|eBay L45|eBay L60|growth_percent)$/i.test(f) ||
+                /\b(image|parent|sku|inv|ov\s*l30|links|rating|stock|nr\/req|nrp|nrl|nra|growth|e\s*l\d+)\b/i.test(tl)
             ) {
                 return 'basics';
             }

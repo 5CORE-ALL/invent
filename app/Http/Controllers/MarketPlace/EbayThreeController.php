@@ -144,11 +144,8 @@ class EbayThreeController extends Controller
             // Auto-save daily summary in background (non-blocking)
             $this->saveDailySummaryIfNeeded($tree);
 
-            $summary = $this->computeEbay3TabulatorSummary($tree);
-
             return response()->json([
                 'data' => $tree,
-                'summary' => $summary,
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching eBay3 data for Tabulator: ' . $e->getMessage());
@@ -209,105 +206,6 @@ class EbayThreeController extends Controller
 
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
         }
-    }
-
-    /**
-     * Same rules as ebay3_tabulator_view.blade.php badges (SKU rows only, no PARENT rows).
-     */
-    private function computeEbay3TabulatorSummary(array $treeData): array
-    {
-        $rows = $this->flattenEbay3TreeForSummary($treeData);
-        $missing = 0;
-        $map = 0;
-        $nMap = 0;
-        $eps = 1e-9;
-
-        foreach ($rows as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $sku = strtoupper((string) ($row['(Child) sku'] ?? ''));
-            if ($sku === '' || str_contains($sku, 'PARENT')) {
-                continue;
-            }
-            $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
-            $rawId = $row['eBay_item_id'] ?? null;
-            $hasItem = $rawId !== null && $rawId !== '' && trim((string) $rawId) !== '';
-            $inv = $this->parseEbay3InvForSummary($row['INV'] ?? 0);
-            $eStock = (float) ($row['eBay Stock'] ?? $row['E Stock'] ?? 0);
-            if (abs($eStock) < $eps) {
-                $eStock = 0.0;
-            }
-
-            // Missing L: in stock (INV>0) but not listed on eBay (no item id); exclude NR — same rule as Amazon "Missing L" badge
-            if ($inv > 0 && ! $hasItem && $nrReq !== 'NR') {
-                $missing++;
-            }
-
-            // Map / N Map — same rule as Ebay 2 badges (listed item, REQ, INV>0)
-            if ($nrReq === 'REQ' && $hasItem && $inv > 0) {
-                if ($eStock > 0) {
-                    if (abs($inv - $eStock) <= 3.0 + $eps) {
-                        $map++;
-                    } else {
-                        $nMap++;
-                    }
-                } elseif ($inv > 3) {
-                    $nMap++;
-                }
-            }
-        }
-
-        return [
-            'missing' => (int) $missing,
-            'map' => (int) $map,
-            'nMap' => (int) $nMap,
-        ];
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $treeData
-     * @return list<array<string, mixed>>
-     */
-    private function flattenEbay3TreeForSummary(array $treeData): array
-    {
-        $out = [];
-        $walk = function ($node) use (&$out, &$walk) {
-            if (! is_array($node)) {
-                return;
-            }
-            $sku = strtoupper((string) ($node['(Child) sku'] ?? ''));
-            if ($sku !== '' && ! str_contains($sku, 'PARENT')) {
-                $out[] = $node;
-            }
-            if (! empty($node['_children']) && is_array($node['_children'])) {
-                foreach ($node['_children'] as $c) {
-                    $walk($c);
-                }
-            }
-        };
-        foreach ($treeData as $root) {
-            $walk($root);
-        }
-
-        return $out;
-    }
-
-    private function parseEbay3InvForSummary(mixed $v): float
-    {
-        if ($v === null || $v === '' || $v === false) {
-            return 0.0;
-        }
-        if (is_int($v) || is_float($v)) {
-            return (float) $v;
-        }
-        $s = preg_replace('/[\s\x{00A0}]+/u', '', (string) $v);
-        $s = str_replace(',', '', $s);
-        if ($s === '' || $s === '—' || $s === '-' || $s === 'N/A' || $s === 'n/a') {
-            return 0.0;
-        }
-
-        return is_numeric($s) ? (float) $s : 0.0;
     }
 
     /**

@@ -90,14 +90,92 @@ class TemuShopifySalesService
     }
 
     /**
-     * FB Prc: +$2.99 per unit when the per-unit base price is ≤ $26.99.
-     *
-     * Gating intentionally matches the /temu-decrease page so GPFT% / GROI%
-     * stay consistent between the order-wise tabulator and the per-SKU
-     * pricing view. Previously this was gated on the line total (base × qty
-     * < 27), which produced different FB prices for the same SKU depending
-     * on order quantity and made the two pages disagree.
+     * Listing base used for Temu Price / R Price / GPFT.
+     * Prefer temu_metrics.base_price; if empty, use recommended_base_price.
      */
+    public static function resolveListingBasePrice(mixed $basePrice, mixed $recommendedBasePrice = null): float
+    {
+        $base = (float) ($basePrice ?? 0);
+        if ($base > 0) {
+            return $base;
+        }
+        $rec = (float) ($recommendedBasePrice ?? 0);
+
+        return $rec > 0 ? $rec : 0.0;
+    }
+
+    /** S Recovery / push-base rate — same as /temu-decrease (not 0.85). */
+    public const S_RECOVERY_RATE = 0.88;
+
+    public static function computeSRecovery(float $sprice): float
+    {
+        return $sprice > 0 ? $sprice * self::S_RECOVERY_RATE : 0.0;
+    }
+
+    /**
+     * Push base from SPRICE — same as /temu-decrease:
+     *   SPRICE < $35 → (Sprice × 0.88) − 2.99
+     *   SPRICE ≥ $35 → Sprice × 0.88
+     */
+    public static function computePushBaseFromSprice(float $sprice): ?float
+    {
+        if ($sprice <= 0) {
+            return null;
+        }
+        $push = $sprice < 35
+            ? (($sprice * self::S_RECOVERY_RATE) - 2.99)
+            : ($sprice * self::S_RECOVERY_RATE);
+
+        return round($push, 2);
+    }
+
+    /** GPFT% on Full Temu Price: (Full × margin − LP − ship) / Full × 100 */
+    public static function computeGpftPercent(float $fullPrice, float $margin, float $lp, float $ship): float
+    {
+        if ($fullPrice <= 0) {
+            return 0.0;
+        }
+
+        return (($fullPrice * $margin - $lp - $ship) / $fullPrice) * 100;
+    }
+
+    /**
+     * SGPFT / SROI / SPFT / SNROI — same as /temu-decrease:
+     *   SGPFT = (SPRICE × margin − LP − ship) / SPRICE
+     *   SROI  = (SPRICE × 0.88 × margin − LP − ship) / LP
+     *   SPFT  = SGPFT − Ads% (skip when Ads% = 100 or $skipAds)
+     *   SNROI = SROI − Ads%
+     *
+     * @return array{sgpft: float, sroi: float, spft: float, snroi: float}
+     */
+    public static function suggestedPercents(
+        float $sprice,
+        float $margin,
+        float $lp,
+        float $ship,
+        float $adsPercent = 0.0,
+        bool $skipAds = false
+    ): array {
+        if ($sprice <= 0 || $margin <= 0) {
+            return ['sgpft' => 0.0, 'sroi' => 0.0, 'spft' => 0.0, 'snroi' => 0.0];
+        }
+        $pftProfit = ($sprice * $margin) - $lp - $ship;
+        $sProfit = ($sprice * self::S_RECOVERY_RATE * $margin) - $lp - $ship;
+        $sgpft = ($pftProfit / $sprice) * 100;
+        $sroi = $lp > 0 ? ($sProfit / $lp) * 100 : 0.0;
+        $ads = $skipAds ? 0.0 : $adsPercent;
+        $spft = ($ads == 100.0) ? $sgpft : ($sgpft - $ads);
+        $snroi = ($ads == 100.0) ? $sroi : ($sroi - $ads);
+
+        return [
+            'sgpft' => round($sgpft, 2),
+            'sroi' => round($sroi, 2),
+            'spft' => round($spft, 2),
+            'snroi' => round($snroi, 2),
+        ];
+    }
+
+    
     public static function computeFbPrice(float $basePrice, int $quantity): float
     {
         if ($quantity <= 0 || $basePrice <= 0) {

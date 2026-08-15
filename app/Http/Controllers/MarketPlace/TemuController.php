@@ -25,6 +25,7 @@ use App\Models\Temu2Pricing;
 use App\Models\Temu2Metric;
 use App\Models\Temu2DataView;
 use App\Models\TemuViewData;
+use App\Models\TemuAdsView;
 use App\Models\TemuViewDataL7;
 use App\Models\TemuViewDataL7ToL14;
 use App\Models\Temu2ViewData;
@@ -3240,6 +3241,15 @@ class TemuController extends Controller
                 $viewDataL7ToL14 = collect();
             }
 
+            // Ads Views: Ads report Clicks (Overall) from Ads Views Upload, matched by goods_id
+            // the same way Views uses temu_view_data.
+            $adsViewsData = Schema::hasTable('temu_ads_views')
+                ? TemuAdsView::selectRaw('goods_id, SUM(clicks) as ads_views')
+                    ->groupBy('goods_id')
+                    ->get()
+                    ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
+                : collect();
+
             $goodsIds = $pricingData->pluck('goods_id')->filter()->unique()->values()->all();
             $campaignRange = $isL7Period ? 'L7' : 'L30';
             // Temu 1 → temu_campaign_reports; Temu 2 → temu2_campaign_reports (from /temu2/ads upload).
@@ -3487,7 +3497,7 @@ class TemuController extends Controller
                 });
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $temu1PricingBySku, $temu2PricingGoodsIdBySku, $promoMap, $lookupStdPrc) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $adsViewsData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $temu1PricingBySku, $temu2PricingGoodsIdBySku, $promoMap, $lookupStdPrc) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3571,6 +3581,8 @@ class TemuController extends Controller
                 // Views 14: no API for Temu 1 L7–L14 window
                 $viewDataL7ToL14Item = $goodsIdKeyForViews ? $viewDataL7ToL14->get($goodsIdKeyForViews) : null;
                 $productClicksL7ToL14 = $viewDataL7ToL14Item ? (int) $viewDataL7ToL14Item->product_clicks : 0;
+                $adsViewsItem = $goodsIdKeyForViews ? $adsViewsData->get($goodsIdKeyForViews) : null;
+                $adsViews = $adsViewsItem ? (int) ($adsViewsItem->ads_views ?? 0) : 0;
                 
                 // Join keys: normalize goods_id so campaign reports match temu_pricing (Excel float issues)
                 $goodsIdKey = $goodsId ? TemuGoodsIdHelper::normalizeKey($goodsId) : null;
@@ -3631,7 +3643,16 @@ class TemuController extends Controller
                 $dilPercent = ($l30 && $inventory > 0) ? round(($l30 / $inventory) * 100, 2) : 0;
                 
                 // Calculate profit - only if item exists in Temu
-                $basePrice = $item ? ($item->base_price ?? 0) : 0;
+                // Empty catalog base_price → recommended_base_price (e.g. CS 04 2W)
+                $catalogBase = $item ? (float) ($item->base_price ?? 0) : 0;
+                $pricingSkuIdEarly = $item && $item->sku_id !== null && $item->sku_id !== ''
+                    ? (string) $item->sku_id
+                    : null;
+                $recommendedForBase = ($item !== null ? ($item->recommended_base_price ?? null) : null)
+                    ?? ($pricingSkuIdEarly !== null && isset($recommendedBySkuId[$pricingSkuIdEarly])
+                        ? $recommendedBySkuId[$pricingSkuIdEarly]
+                        : ($recommendedBySku[$normalizeSku($sku)] ?? null));
+                $basePrice = TemuShopifySalesService::resolveListingBasePrice($catalogBase, $recommendedForBase);
                 
                 // Calculate Temu Price (Base Price + 2.99 if <= 26.99) - only if item exists in Temu
                 if ($item && $basePrice > 0) {
@@ -3658,8 +3679,8 @@ class TemuController extends Controller
                     : 0;
                 $roiPercent = $lp > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
                 
-                // CVR% = Sold / clicks × 100.
-                // Temu 2: T Clicks (O Clicks + Ad Clicks); Temu 1: Product Clicks only.
+                // CVR% = Temu L30 / Views × 100.
+                // Views = Seller Center clicks + Ads Views (same number as the Views column).
                 $tClicks = (int) $productClicks + (int) $adClicks;
                 $tClicksL7 = (int) $productClicksL7 + (int) $adClicksL7;
                 // T Click Growth % = ((T7 daily pace / T30 daily pace) − 1) × 100
@@ -3667,7 +3688,7 @@ class TemuController extends Controller
                 $tClicksGrowth = ($tClicks > 0 && $tClicksL7 > 0)
                     ? round(((($tClicksL7 / 7) / ($tClicks / 30)) - 1) * 100, 1)
                     : null;
-                $cvrDenom = $isTemu2Pricing ? $tClicks : (int) $productClicks;
+                $cvrDenom = (int) $productClicks + (int) $adsViews;
                 $cvrPercent = $cvrDenom > 0 ? ($temuL30 / $cvrDenom) * 100 : 0;
                 // Temu L60 = from L60 sales upload table; Temu 2: sales only (no ad fallback)
                 $temuL60 = $temuL60FromSales > 0
@@ -3889,7 +3910,8 @@ class TemuController extends Controller
                     'profit' => round($profit, 2),
                     'profit_percent' => round($profitPercent, 2),
                     'roi_percent' => round($roiPercent, 2),
-                    'product_clicks' => (int)$productClicks,
+                    'product_clicks' => (int) $productClicks + (int) $adsViews,
+                    'ads_views' => (int) $adsViews,
                     'o_clicks' => (int) $oClicks,
                     'ctr' => round($ctr, 2),
                     'product_clicks_l7' => $productClicksL7,
@@ -3968,6 +3990,7 @@ class TemuController extends Controller
                     if (! isset($goodsIdMetricTotals[$gid])) {
                         $goodsIdMetricTotals[$gid] = [
                             'product_clicks' => (int) ($row['product_clicks'] ?? 0),
+                            'ads_views' => (int) ($row['ads_views'] ?? 0),
                             'o_clicks' => (int) ($row['o_clicks'] ?? 0),
                             'ad_clicks' => (int) ($row['ad_clicks'] ?? 0),
                             'impressions' => (int) ($row['impressions'] ?? 0),
@@ -3989,10 +4012,11 @@ class TemuController extends Controller
                         continue;
                     }
                     $fullO = (int) ($goodsIdMetricTotals[$gid]['product_clicks'] ?? 0);
+                    $fullAdsViews = (int) ($goodsIdMetricTotals[$gid]['ads_views'] ?? 0);
                     $fullSheetO = (int) ($goodsIdMetricTotals[$gid]['o_clicks'] ?? 0);
                     $fullAd = (int) ($goodsIdMetricTotals[$gid]['ad_clicks'] ?? 0);
                     $fullImp = (int) ($goodsIdMetricTotals[$gid]['impressions'] ?? 0);
-                    $fullT = $fullO + $fullAd;
+                    $fullT = $fullSheetO + $fullAd;
                     $spendCents = (int) round(((float) ($goodsIdMetricTotals[$gid]['spend'] ?? 0)) * 100);
                     $spendL30Cents = (int) round(((float) ($goodsIdMetricTotals[$gid]['spend_l30'] ?? 0)) * 100);
 
@@ -4007,6 +4031,7 @@ class TemuController extends Controller
                         $spendL30Share = ($baseSpendL30 + ($i < $remSpendL30 ? 1 : 0)) / 100;
                         // Full SUM(product_clicks) for this Goods ID from uploaded view files
                         $row['product_clicks'] = $fullO;
+                        $row['ads_views'] = $fullAdsViews;
                         $row['o_clicks'] = $fullSheetO;
                         $row['ad_clicks'] = $fullAd;
                         $row['t_clicks'] = $fullT;
@@ -4014,7 +4039,7 @@ class TemuController extends Controller
                         $row['spend'] = round($spendShare, 2);
                         $row['spend_l30'] = round($spendL30Share, 2);
                         $sold = (int) ($row['temu_l30'] ?? 0);
-                        $row['cvr_percent'] = $fullT > 0 ? round(($sold / $fullT) * 100, 2) : 0;
+                        $row['cvr_percent'] = $fullO > 0 ? round(($sold / $fullO) * 100, 2) : 0;
                         $row['cvr_30'] = $row['cvr_percent'];
                         $processedData[$idx] = $row;
                     }
@@ -4084,6 +4109,7 @@ class TemuController extends Controller
 
                     // Parent clicks/spend/impressions = goods_id totals (once per unique goods_id), not sum of children
                     $parentO = 0;
+                    $parentAdsViews = 0;
                     $parentSheetO = 0;
                     $parentAd = 0;
                     $parentImp = 0;
@@ -4093,6 +4119,7 @@ class TemuController extends Controller
                     $parentGrowth = null;
                     foreach ($uniqueChildGoodsIds as $gid) {
                         $parentO += (int) ($goodsIdMetricTotals[$gid]['product_clicks'] ?? 0);
+                        $parentAdsViews += (int) ($goodsIdMetricTotals[$gid]['ads_views'] ?? 0);
                         $parentSheetO += (int) ($goodsIdMetricTotals[$gid]['o_clicks'] ?? 0);
                         $parentAd += (int) ($goodsIdMetricTotals[$gid]['ad_clicks'] ?? 0);
                         $parentImp += (int) ($goodsIdMetricTotals[$gid]['impressions'] ?? 0);
@@ -4103,7 +4130,7 @@ class TemuController extends Controller
                             $parentGrowth = $goodsIdMetricTotals[$gid]['t_clicks_growth'];
                         }
                     }
-                    $parentT = $parentO + $parentAd;
+                    $parentT = $parentSheetO + $parentAd;
                     if (count($uniqueChildGoodsIds) === 1) {
                         // keep single-goods_id growth from child
                     } elseif ($parentT > 0 && $parentT7 > 0) {
@@ -4117,6 +4144,7 @@ class TemuController extends Controller
                     $row['temu_l30'] = $temuL30;
                     $row['temu_l60'] = $temuL60;
                     $row['product_clicks'] = $parentO;
+                    $row['ads_views'] = $parentAdsViews;
                     $row['o_clicks'] = $parentSheetO;
                     $row['ad_clicks'] = $parentAd;
                     $row['t_clicks'] = $parentT;
@@ -4126,8 +4154,8 @@ class TemuController extends Controller
                     $row['spend'] = round($parentSpend, 2);
                     $row['spend_l30'] = round($parentSpendL30, 2);
                     $row['dil_percent'] = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
-                    // Temu 2 parent CVR = Sold / T Clicks (goods_id-level clicks)
-                    $row['cvr_percent'] = $parentT > 0 ? round(($temuL30 / $parentT) * 100, 2) : 0;
+                    // Temu 2 parent CVR = Temu L30 / Views (Views includes Ads Views)
+                    $row['cvr_percent'] = $parentO > 0 ? round(($temuL30 / $parentO) * 100, 2) : 0;
                     $row['cvr_30'] = $row['cvr_percent'];
                     $row['nr_req'] = $hasReq ? 'REQ' : 'NR';
 
@@ -4171,6 +4199,7 @@ class TemuController extends Controller
                     $temuL45 = 0;
                     $temuL60 = 0;
                     $productClicks = 0;
+                    $adsViews = 0;
                     $oClicks = 0;
                     $productClicksL7 = 0;
                     $productClicksL7ToL14 = 0;
@@ -4182,6 +4211,7 @@ class TemuController extends Controller
                         $temuL45 += (int) ($c['temu_l45'] ?? 0);
                         $temuL60 += (int) ($c['temu_l60'] ?? 0);
                         $productClicks += (int) ($c['product_clicks'] ?? 0);
+                        $adsViews += (int) ($c['ads_views'] ?? 0);
                         $oClicks += (int) ($c['o_clicks'] ?? 0);
                         $productClicksL7 += (int) ($c['product_clicks_l7'] ?? 0);
                         $productClicksL7ToL14 += (int) ($c['product_clicks_l7_to_l14'] ?? 0);
@@ -4197,6 +4227,7 @@ class TemuController extends Controller
                     $row['temu_l45'] = $temuL45;
                     $row['temu_l60'] = $temuL60;
                     $row['product_clicks'] = $productClicks;
+                    $row['ads_views'] = $adsViews;
                     $row['o_clicks'] = $oClicks;
                     $row['product_clicks_l7'] = $productClicksL7;
                     $row['product_clicks_l7_to_l14'] = $productClicksL7ToL14;
@@ -4883,6 +4914,282 @@ class TemuController extends Controller
         $writer->save($tempPath);
 
         return response()->download($tempPath, $filename)->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Upload Ads Views (Temu Ads report: ads.txt / xlsx). Writes to temu_ads_views.
+     * Matched on /temu-decrease by goods_id — same join as Views.
+     */
+    public function uploadTemuAdsViews(Request $request)
+    {
+        @set_time_limit(300);
+        $request->validate([
+            'file' => 'required|file|max:10240',
+        ]);
+
+        $file = $request->file('file');
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        $allowed = ['xlsx', 'xls', 'csv', 'tsv', 'txt'];
+        if (! in_array($ext, $allowed, true)) {
+            return back()->with('error', 'Invalid file type. Use .xlsx, .xls, .csv, .tsv, or .txt.');
+        }
+
+        try {
+            $parsed = $this->parseTemuAdsViewsUploadFile($file);
+            $imported = 0;
+            $skipped = (int) ($parsed['skipped'] ?? 0);
+
+            DB::beginTransaction();
+            try {
+                $deletedCount = TemuAdsView::query()->delete();
+                $now = now()->format('Y-m-d H:i:s');
+                $chunks = array_chunk($parsed['rows'], 200);
+                foreach ($chunks as $chunk) {
+                    $insert = [];
+                    foreach ($chunk as $row) {
+                        $insert[] = array_merge($row, [
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ]);
+                    }
+                    TemuAdsView::insert($insert);
+                    $imported += count($insert);
+                }
+                DB::commit();
+
+                return back()->with('success', "Successfully imported $imported Ads Views records! ($skipped skipped, replaced $deletedCount existing rows)");
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu Ads Views: '.$e->getMessage());
+
+            return back()->with('error', 'Error uploading file: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Sample Ads Views file matching the Temu Ads report headers (ads.txt).
+     */
+    public function downloadTemuAdsViewsSample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = [
+            'Goods name',
+            'Goods ID',
+            'SKU',
+            'Spend',
+            'Net total cost',
+            'Base Price Sales (Overall)',
+            'ROAS (Overall)',
+            'ACOS (Overall)',
+            'Cost Per Order (Overall)',
+            'Sub Order Count (Overall)',
+            'Items (Overall)',
+            'Impressions (Overall)',
+            'Clicks (Overall)',
+            'CTR (Overall)',
+            'CVR (Overall)',
+            'Add to cart count (Overall)',
+            'Net Base Price Sales (Overall)',
+            'Net ROAS (Overall)',
+            'Net ACOS (Overall)',
+            'Net Cost Per Order (Overall)',
+            'Net Sub Order Count (Overall)',
+            'Net Items (Overall)',
+        ];
+
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray([
+            ['Sample Product', '610414356172006', 'SKU-1', '$5.08', '$5.08', '$94.98', '18.70', '5.34%', '$2.54', '2', '2', '2,148', '49', '2.28%', '4.08%', '8', '$94.98', '18.70', '5.34%', '$2.54', '2', '2'],
+        ], null, 'A2');
+
+        $writer = new Xlsx($spreadsheet);
+        $filename = 'temu_ads_views_sample.xlsx';
+        $tempPath = storage_path('app/'.$filename);
+        $writer->save($tempPath);
+
+        return response()->download($tempPath, $filename)->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Parse Temu Ads report (ads.txt TSV / Excel) into temu_ads_views rows.
+     *
+     * @return array{rows: array<int, array<string, mixed>>, skipped: int}
+     */
+    private function parseTemuAdsViewsUploadFile($file): array
+    {
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        $path = $file->getRealPath();
+        $sheet = null;
+        $rows = [];
+
+        if (in_array($ext, ['tsv', 'txt', 'csv'], true)) {
+            $delimiter = $ext === 'csv' ? ',' : "\t";
+            $fh = fopen($path, 'rb');
+            if ($fh === false) {
+                throw new \RuntimeException('Could not open '.$file->getClientOriginalName());
+            }
+            while (($row = fgetcsv($fh, 0, $delimiter)) !== false) {
+                $allEmpty = true;
+                foreach ($row as $cell) {
+                    if (trim((string) $cell) !== '') {
+                        $allEmpty = false;
+                        break;
+                    }
+                }
+                if (! $allEmpty) {
+                    $rows[] = $row;
+                }
+            }
+            fclose($fh);
+        } else {
+            $reader = IOFactory::createReaderForFile($path);
+            if (method_exists($reader, 'setReadDataOnly')) {
+                $reader->setReadDataOnly(true);
+            }
+            $spreadsheet = $reader->load($path);
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray(null, false, false, false);
+        }
+
+        if (count($rows) < 2) {
+            throw new \RuntimeException($file->getClientOriginalName().' has no data rows.');
+        }
+
+        $headers = array_map(static function ($h) {
+            if ($h instanceof RichText) {
+                $h = $h->getPlainText();
+            }
+
+            return trim((string) $h);
+        }, array_shift($rows));
+
+        $headerMap = [];
+        foreach ($headers as $idx => $h) {
+            if ($h !== '') {
+                $headerMap[$h] = (int) $idx;
+            }
+        }
+        $goodsIdCol = $headerMap['Goods ID'] ?? $headerMap['Goods id'] ?? 1;
+
+        $col = static function (array $rowData, array $aliases) {
+            foreach ($aliases as $a) {
+                if (array_key_exists($a, $rowData) && $rowData[$a] !== null && $rowData[$a] !== '') {
+                    return $rowData[$a];
+                }
+            }
+
+            return null;
+        };
+        $parseMoney = static function ($value): float {
+            if ($value instanceof RichText) {
+                $value = $value->getPlainText();
+            }
+            if ($value === null || $value === '' || $value === '∞') {
+                return 0.0;
+            }
+
+            return (float) str_replace(['$', ',', ' '], '', (string) $value);
+        };
+        $parsePct = static function ($value): float {
+            if ($value instanceof RichText) {
+                $value = $value->getPlainText();
+            }
+            if ($value === null || $value === '' || $value === '∞') {
+                return 0.0;
+            }
+
+            return (float) str_replace(['%', ',', ' '], '', (string) $value);
+        };
+        $parseInt = static function ($value): int {
+            if ($value instanceof RichText) {
+                $value = $value->getPlainText();
+            }
+            if ($value === null || $value === '' || $value === '∞') {
+                return 0;
+            }
+
+            return (int) str_replace([',', ' '], '', (string) $value);
+        };
+
+        $out = [];
+        $skipped = 0;
+
+        foreach ($rows as $rowIndex => $row) {
+            if (! is_array($row)) {
+                $skipped++;
+                continue;
+            }
+            $first = trim((string) ($row[0] ?? ''));
+            if ($first !== '' && stripos($first, 'Total') === 0) {
+                $skipped++;
+                continue;
+            }
+            if (empty($row[0]) && empty($row[1])) {
+                $skipped++;
+                continue;
+            }
+
+            if (count($row) < count($headers)) {
+                $row = array_pad($row, count($headers), null);
+            } elseif (count($row) > count($headers)) {
+                $row = array_slice($row, 0, count($headers));
+            }
+
+            $rowData = @array_combine($headers, $row);
+            if (! is_array($rowData)) {
+                $skipped++;
+                continue;
+            }
+
+            $goodsId = null;
+            if ($sheet !== null) {
+                $excelRow = $rowIndex + 2;
+                $goodsIdCell = $sheet->getCell(Coordinate::stringFromColumnIndex($goodsIdCol + 1).$excelRow);
+                $goodsId = TemuGoodsIdHelper::fromSpreadsheetCell($goodsIdCell);
+            }
+            if ($goodsId === null || $goodsId === '') {
+                $goodsId = TemuGoodsIdHelper::normalizeKey($col($rowData, ['Goods ID', 'Goods id', 'goods_id']));
+            }
+            if ($goodsId === null || $goodsId === '') {
+                $skipped++;
+                continue;
+            }
+
+            $skuRaw = $col($rowData, ['SKU', 'Sku', 'sku']);
+            $sku = $skuRaw !== null && trim((string) $skuRaw) !== '' ? trim((string) $skuRaw) : null;
+
+            $out[] = [
+                'goods_id' => $goodsId,
+                'sku' => $sku,
+                'goods_name' => $col($rowData, ['Goods name', 'Goods Name', 'goods_name']),
+                'spend' => $parseMoney($col($rowData, ['Spend'])),
+                'net_total_cost' => $parseMoney($col($rowData, ['Net total cost', 'Net Total Cost'])),
+                'base_price_sales' => $parseMoney($col($rowData, ['Base Price Sales (Overall)', 'Base Price Sales'])),
+                'roas' => $parsePct($col($rowData, ['ROAS (Overall)', 'ROAS'])),
+                'acos' => $parsePct($col($rowData, ['ACOS (Overall)', 'ACOS'])),
+                'cost_per_order' => $parseMoney($col($rowData, ['Cost Per Order (Overall)', 'Cost Per Order'])),
+                'sub_order_count' => $parseInt($col($rowData, ['Sub Order Count (Overall)', 'Sub Order Count'])),
+                'items' => $parseInt($col($rowData, ['Items (Overall)', 'Items'])),
+                'impressions' => $parseInt($col($rowData, ['Impressions (Overall)', 'Impressions'])),
+                'clicks' => $parseInt($col($rowData, ['Clicks (Overall)', 'Clicks'])),
+                'ctr' => $parsePct($col($rowData, ['CTR (Overall)', 'CTR'])),
+                'cvr' => $parsePct($col($rowData, ['CVR (Overall)', 'CVR'])),
+                'add_to_cart_count' => $parseInt($col($rowData, ['Add to cart count (Overall)', 'Add to cart count'])),
+                'net_base_price_sales' => $parseMoney($col($rowData, ['Net Base Price Sales (Overall)', 'Net Base Price Sales'])),
+                'net_roas' => $parsePct($col($rowData, ['Net ROAS (Overall)', 'Net ROAS'])),
+                'net_acos' => $parsePct($col($rowData, ['Net ACOS (Overall)', 'Net ACOS'])),
+                'net_cost_per_order' => $parseMoney($col($rowData, ['Net Cost Per Order (Overall)', 'Net Cost Per Order'])),
+                'net_sub_order_count' => $parseInt($col($rowData, ['Net Sub Order Count (Overall)', 'Net Sub Order Count'])),
+                'net_items' => $parseInt($col($rowData, ['Net Items (Overall)', 'Net Items'])),
+            ];
+        }
+
+        return ['rows' => $out, 'skipped' => $skipped];
     }
 
     /**

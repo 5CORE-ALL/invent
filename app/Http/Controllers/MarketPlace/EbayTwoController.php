@@ -107,8 +107,6 @@ class EbayTwoController extends Controller
             'ordersL30Pft'         => $agg['pft'],
             'ordersL30Cogs'        => $agg['cogs'],
             'ordersL30Nroi'        => $ordersL30Nroi,
-            // Missing L badge — same source as /listing-ebaytwo
-            'listingMissingLCount' => \App\Support\Marketplace\EbayTwoListingCounts::missingL(),
         ]);
     }
 

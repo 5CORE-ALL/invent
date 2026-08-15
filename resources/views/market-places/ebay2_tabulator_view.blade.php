@@ -187,13 +187,13 @@
             display: none !important;
         }
         
-        /* Vertical column headers */
+        /* Vertical column headers — same 64px gap as Amazon */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
             text-orientation: mixed;
             white-space: nowrap;
             transform: rotate(180deg);
-            height: 80px;
+            height: 64px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -202,7 +202,50 @@
         }
         
         .tabulator .tabulator-header .tabulator-col {
-            height: 80px !important;
+            height: 64px !important;
+        }
+
+        /* Dense body rows — same spacing as Amazon */
+        #ebay2-table .tabulator-row {
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+        }
+        #ebay2-table .tabulator-row .tabulator-cell {
+            font-size: 13px !important;
+            line-height: 1.2 !important;
+            height: 36px !important;
+            max-height: 36px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            vertical-align: middle !important;
+        }
+        #ebay2-table .tabulator-row .tabulator-cell span,
+        #ebay2-table .tabulator-row .tabulator-cell a,
+        #ebay2-table .tabulator-row .tabulator-cell div,
+        #ebay2-table .tabulator-row .tabulator-cell button,
+        #ebay2-table .tabulator-row .tabulator-cell label,
+        #ebay2-table .tabulator-row .tabulator-cell input:not([type="checkbox"]):not([type="radio"]),
+        #ebay2-table .tabulator-row .tabulator-cell select,
+        #ebay2-table .tabulator-row .tabulator-cell i {
+            font-size: 13px !important;
+        }
+        #ebay2-table .tabulator-row .tabulator-cell img.hover-thumb {
+            width: 28px !important;
+            height: 28px !important;
+            max-width: 28px !important;
+            max-height: 28px !important;
+            object-fit: cover !important;
+            display: block !important;
+            flex-shrink: 0 !important;
+        }
+        #ebay2-table .tabulator-row .tabulator-cell > div {
+            flex-wrap: nowrap !important;
+            max-width: 100%;
+            overflow: hidden;
         }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -313,37 +356,67 @@
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
 
-        /* Badges above the filter controls (matches /amazon & /ebay-tabulator-view) */
+        /* Compact toolbar + badges — same density as Amazon */
+        .ebay2-toolbar-row {
+            gap: 6px 8px !important;
+            align-items: center !important;
+        }
+        .ebay2-toolbar-row .form-select,
+        .ebay2-toolbar-row .form-control,
+        .ebay2-toolbar-row .btn,
+        .ebay2-toolbar-row .btn-sm,
+        .ebay2-toolbar-row .dropdown > .btn {
+            height: 28px !important;
+            min-height: 28px !important;
+            font-size: 0.75rem !important;
+            padding: 0.15rem 0.4rem !important;
+            line-height: 1.2 !important;
+            box-sizing: border-box !important;
+        }
+        .ebay2-toolbar-row .form-select {
+            width: auto !important;
+            max-width: 130px;
+            padding-right: 1.35rem !important;
+            background-position: right 0.35rem center !important;
+        }
+        .ebay2-toolbar-row .pricing-filter-item.border,
+        .ebay2-toolbar-row .d-inline-flex.border {
+            height: 28px !important;
+            min-height: 28px !important;
+            padding: 0 4px !important;
+            gap: 4px !important;
+            align-items: center !important;
+        }
+        .ebay2-toolbar-row .pricing-filter-item .form-label,
+        .ebay2-toolbar-row .d-inline-flex .form-label {
+            font-size: 0.75rem !important;
+            margin-bottom: 0 !important;
+        }
+        .ebay2-toolbar-row #target-roi-input,
+        .ebay2-toolbar-row #target-gpft-input {
+            width: 48px !important;
+            height: 24px !important;
+            min-height: 24px !important;
+            font-size: 0.75rem !important;
+            padding: 0.1rem 0.25rem !important;
+        }
         #summary-stats {
             order: -1;
             padding: 0.5rem 0.7rem !important;
             margin-top: 0 !important;
             margin-bottom: 0.5rem !important;
         }
-        /* Summary badges: one row only; share width; text scales to fit; thin scroll if needed */
-        #summary-stats .ebay2-summary-badge-row {
-            display: flex;
-            flex-wrap: nowrap;
-            align-items: stretch;
-            gap: clamp(0.2rem, 0.5vw, 0.45rem);
-            width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
-        }
-        #summary-stats .ebay2-summary-badge-row > .badge {
-            flex: 1 1 0;
-            min-width: 0;
-            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
-            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
-            font-weight: bold;
-            box-sizing: border-box;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
+        #summary-stats .d-flex { gap: 8px !important; }
+        #summary-stats .badge {
+            font-size: 1rem !important;
+            padding: 0.5rem !important;
+            font-weight: 700 !important;
+            line-height: 1.5 !important;
+            border-radius: 0.375rem !important;
             white-space: nowrap;
         }
+        .ebay2-toolbar-row .ms-2 { margin-left: 0 !important; }
+        .ebay2-toolbar-row .p-1 { padding: 0 4px !important; }
 
         /* Metric history modals — full width (same as /ebay-tabulator-view) */
         #skuMetricsModal.modal {
@@ -385,8 +458,8 @@
         <div class="card shadow-sm">
             <div class="card-body py-2 d-flex flex-column">
                 <div class="d-flex align-items-center flex-wrap gap-2 ebay2-toolbar-row">
-                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 160px; display: inline-block;">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 160px; display: inline-block;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 140px; display: inline-block;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 140px; display: inline-block;">
 
                     <select id="view-mode-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;"
@@ -513,8 +586,8 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block pricing-filter-item">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns">
+                            <i class="fa fa-eye"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
                             <!-- Columns will be populated by JavaScript -->
@@ -522,7 +595,7 @@
                     </div>
                     <button id="ebay2-price-mode-btn" type="button" class="btn btn-sm btn-secondary pricing-filter-item"
                             title="Cycle: Off → Decrease → Increase → Same Price → Off">
-                        <i class="fas fa-exchange-alt"></i> Price %
+                        <i class="fas fa-exchange-alt"></i> Prc Mode
                     </button>
 
                     <button id="clear-sprice-selected-btn" type="button"
@@ -531,8 +604,8 @@
                         <i class="fa fa-trash"></i> Clear SPRICE
                     </button>
 
-                    <button type="button" class="btn btn-sm btn-success pricing-filter-item" data-bs-toggle="modal" data-bs-target="#exportModal">
-                        <i class="fa fa-file-excel"></i> Export
+                    <button type="button" class="btn btn-sm btn-success pricing-filter-item" data-bs-toggle="modal" data-bs-target="#exportModal" title="Export">
+                        <i class="fa fa-file-excel"></i>
                     </button>
 
                     {{-- Sbid Rule — eBay 2 only (ebay2_sbid_slabs), same as /ebay2/campaign-ads --}}
@@ -547,12 +620,12 @@
                             style="border:1px solid #6610f2; color:#6610f2;"
                             data-bs-toggle="modal" data-bs-target="#sbidViewsRuleModal"
                             title="Configure Min/Max caps and the daily ±%/day step per L7 View colour for the S BID column">
-                        <i class="fas fa-eye me-1"></i>Sbid (Views)
+                        <i class="fas fa-eye me-1"></i>Sbid
                     </button>
 
 
                     {{-- Target ROI% bulk control — back-solves SPRICE so SNROI (Amazon NROI formula) = Target. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light pricing-filter-item"
                         id="target-roi-controls"
                         title="Target SNROI% — sets SPRICE so net SROI = Target (accounts for fees, shipping, and Ads%)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
@@ -569,7 +642,7 @@
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light pricing-filter-item"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
@@ -586,45 +659,43 @@
                 </div>
 
                 <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <div class="ebay2-summary-badge-row">
+                <div id="summary-stats" class="bg-light rounded">
+                    <div class="d-flex flex-wrap gap-2">
                         <!-- Sold Filter Badges (Clickable) -->
-                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge" data-filter="zero" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: <span id="zero-sold-count">0</span></span>
-                        <span class="badge fs-6 p-2 sold-filter-badge" data-filter="sold" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter sold items">> 0 Sold: <span id="more-sold-count">0</span></span>
+                        <span class="badge bg-danger sold-filter-badge" data-filter="zero" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: <span id="zero-sold-count">0</span></span>
+                        <span class="badge sold-filter-badge" data-filter="sold" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter sold items">> 0 Sold: <span id="more-sold-count">0</span></span>
                         
                         <!-- Financial Metrics -->
-                        <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;"
+                        <span class="badge bg-success d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total PFT: $0</span>
+                        <span class="badge bg-primary" id="total-sales-amt-badge" style="color: black; font-weight: bold;"
                               title="L30 sales from real eBay 2 orders (tax-inclusive, excl. cancelled & fully-refunded) — same source as /ebay2/daily-sales.">Sales: ${{ number_format((float) ($ordersL30TotalSales ?? 0)) }}</span>
                         {{-- S Qty: L30 units from ebay2_order_items.quantity (period='l30').
                              Same source the /all-marketplace-master Qty column for the EbayTwo row uses,
                              so this page agrees with the master page and with the eBay 1 tabulator's S Qty
                              badge. Static — page filters do not narrow it. --}}
-                        <span class="badge fs-6 p-2" id="qty-sold-badge"
+                        <span class="badge" id="qty-sold-badge"
                               style="background-color: #6f42c1; color: white; font-weight: bold;"
                               title="L30 units sold (Σ ebay2_order_items.quantity for period='l30'). Same value /ebay2/daily-sales shows.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
                         <!-- Percentage Metrics -->
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;"
+                        <span class="badge bg-info" id="avg-gpft-badge" style="color: black; font-weight: bold;"
                               title="GPFT% = Σ T PFT / Σ (qty × unit price) × 100 from real L30 orders — same source as /ebay2/daily-sales.">GPFT: {{ round((float) ($ordersL30Gpft ?? 0)) }}%</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge" style="color: white; font-weight: bold;"
+                        <span class="badge bg-secondary" id="groi-percent-badge" style="color: white; font-weight: bold;"
                               title="GROI% = Σ T PFT / Σ COGS × 100 from real L30 orders — same source as /ebay2/daily-sales.">GROI: {{ round((float) ($ordersL30Groi ?? 0)) }}%</span>
-                        <span class="badge fs-6 p-2" id="ads-percent-badge" style="background-color: #d63384; color: white; font-weight: bold;"
+                        <span class="badge" id="ads-percent-badge" style="background-color: #d63384; color: white; font-weight: bold;"
                               title="TACOS = eBay 2 channel Total Ad Spend (same source as /ebay2/campaign-ads) ÷ real-orders L30 Sales × 100.">Ads: {{ number_format((float) ($channelAdsPercent ?? 0), 1) }}%</span>
-                        <span class="badge fs-6 p-2" id="npft-percent-badge" style="background-color: #0f766e; color: white; font-weight: bold;"
+                        <span class="badge" id="npft-percent-badge" style="background-color: #0f766e; color: white; font-weight: bold;"
                               title="NPFT% = GPFT% − Ads% (net profit margin after ad spend).">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
-                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;"
+                        <span class="badge" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;"
                               title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amz (do not cut Ads% from GROI%).">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
 
                         <!-- eBay Metrics -->
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Prc: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge"
+                        <span class="badge bg-warning" id="avg-price-badge" style="color: black; font-weight: bold;">Prc: $0.00</span>
+                        <span class="badge bg-danger" id="avg-cvr-badge"
                               style="color: white; font-weight: bold;"
                               title="CVR = (S Qty / Σ Views) × 100. Numerator is the orders-API L30 units (same value the S Qty badge shows). Denominator is the sum of 'views' across rows with E Stock > 0.">CVR: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
-                        <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Missing L from /listing-ebaytwo (REQ + INV &gt; 0 + no ebay item id). Click to filter matching rows on this page.">ML: {{ number_format((int) ($listingMissingLCount ?? 0)) }}</span>
-                        <span class="badge fs-6 p-2" id="ebay2-nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;" title="Click to filter: N Map rows (same as MAP column)">N Map: 0</span>
+                        <span class="badge bg-info" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
+                        <span class="badge bg-primary d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
                         
                     </div>
                 </div>
@@ -1076,8 +1147,6 @@
          *  the CVR formula so the page CVR is computed against orders-API ground truth
          *  instead of the laggier ebay_2_metrics.ebay_l30 sum. */
         const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
-        // Missing L badge — same source as /listing-ebaytwo (not in-page row count)
-        const LISTING_MISSING_L_COUNT = {{ (int) ($listingMissingLCount ?? 0) }};
         /** L30 Sales / GPFT% / GROI% from the same real orders /ebay2/daily-sales uses,
          *  so these badges agree with that page (fixed server values). */
         const ORDERS_L30_TOTAL_SALES = {{ (float) ($ordersL30TotalSales ?? 0) }};
@@ -1438,9 +1507,6 @@
         // Badge filter state variables
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
-        let missingFilterActive = false;
-        let mapFilterActive = false;
-        let nmapFilterActive = false;
 
         function rowEbay2StockQty(data) {
             return parseFloat(data['E Stock'] || 0) || 0;
@@ -1485,51 +1551,6 @@
                 '<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="none" stroke="#D97706" stroke-opacity="0.35" stroke-width="0.8"/>' +
                 '</svg>';
         }
-        function isEbay2TabulatorParentRowForMap(data) {
-            return isEbay2TabulatorParentRow(data);
-        }
-        /** N Map — same rule as /map-issues (listed, REQ, INV>0, E Stock>0, outside tolerance). */
-        function isEbay2TabulatorNMapRow(data) {
-            if (isEbay2TabulatorParentRowForMap(data)) return false;
-            const itemId = data['eBay_item_id'];
-            if (!itemId || String(itemId).trim() === '') return false;
-            const inv = parseFloat(data['INV']) || 0;
-            if (inv <= 0) return false;
-            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
-            const ebayStock = rowEbay2StockQty(data);
-            if (ebayStock <= 0) return false; // same as /map-issues: both sides need stock
-            const diff = Math.abs(inv - ebayStock);
-            if (inv * 0.03 < 3) {
-                return diff > 3;
-            }
-            return Math.round((diff / inv) * 100) > 3;
-        }
-        function isEbay2TabulatorMapRow(data) {
-            if (isEbay2TabulatorParentRowForMap(data)) return false;
-            const itemId = data['eBay_item_id'];
-            if (!itemId || String(itemId).trim() === '') return false;
-            const inv = parseFloat(data['INV']) || 0;
-            if (inv <= 0) return false;
-            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
-            const ebayStock = rowEbay2StockQty(data);
-            if (ebayStock <= 0) return false;
-            const diff = Math.abs(inv - ebayStock);
-            if (inv * 0.03 < 3) {
-                return diff <= 3;
-            }
-            return Math.round((diff / inv) * 100) <= 3;
-        }
-        /** Missing L — same rule as /map-issues: not listed (no item id), REQ, INV > 0, non-parent. */
-        function isEbay2MissingL(data) {
-            if (isEbay2TabulatorParentRowForMap(data)) return false;
-            const itemId = data['eBay_item_id'];
-            const notListed = (!itemId || String(itemId).trim() === '');
-            if (!notListed) return false;
-            if (String(data.nr_req || 'REQ').toUpperCase() !== 'REQ') return false;
-            const inv = parseFloat(data['INV']) || 0;
-            return inv > 0;
-        }
-        
         // Toast notification function
         function showToast(message, type = 'info') {
             const toastContainer = document.querySelector('.toast-container');
@@ -2307,7 +2328,7 @@
                     return;
                 }
                 $btn.removeClass('btn-danger btn-success btn-outline-primary').addClass('btn-secondary')
-                    .html('<i class="fas fa-exchange-alt"></i> Price %');
+                    .html('<i class="fas fa-exchange-alt"></i> Prc Mode');
                 $('#discount-input-container').hide();
                 updateSelectedCount();
                 updateSelectAllCheckbox();
@@ -2536,49 +2557,12 @@
             $('.sold-filter-badge[data-filter="zero"], #zero-sold-count-badge').on('click', function() {
                 zeroSoldFilterActive = !zeroSoldFilterActive;
                 moreSoldFilterActive = false;
-                missingFilterActive = false;
-                mapFilterActive = false;
-                nmapFilterActive = false;
                 applyFilters();
             });
 
             $('.sold-filter-badge[data-filter="sold"]').on('click', function() {
                 moreSoldFilterActive = !moreSoldFilterActive;
                 zeroSoldFilterActive = false;
-                missingFilterActive = false;
-                mapFilterActive = false;
-                nmapFilterActive = false;
-                applyFilters();
-            });
-
-            $('#ebay2-missing-count-badge').on('click', function() {
-                missingFilterActive = !missingFilterActive;
-                if (missingFilterActive) {
-                    mapFilterActive = false;
-                    nmapFilterActive = false;
-                }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
-                applyFilters();
-            });
-            $('#ebay2-map-count-badge').on('click', function() {
-                mapFilterActive = !mapFilterActive;
-                if (mapFilterActive) {
-                    missingFilterActive = false;
-                    nmapFilterActive = false;
-                }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
-                applyFilters();
-            });
-            $('#ebay2-nmap-count-badge').on('click', function() {
-                nmapFilterActive = !nmapFilterActive;
-                if (nmapFilterActive) {
-                    missingFilterActive = false;
-                    mapFilterActive = false;
-                }
-                zeroSoldFilterActive = false;
-                moreSoldFilterActive = false;
                 applyFilters();
             });
 
@@ -3560,6 +3544,7 @@
                 },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
+                rowHeight: 36,
                 height: "100%",
                 pagination: true,
                 paginationSize: 100,
@@ -3934,53 +3919,6 @@
                             return `<span style="font-weight: 600;">${value}</span>`;
                         }
                     },
-                    {
-                        title: "Missing L",
-                        field: "Missing",
-                        hozAlign: "center",
-                        width: 70,
-                        headerTooltip: "M when not listed (no eBay item id), REQ, INV > 0 — same as /map-issues.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (isEbay2MissingL(rowData)) {
-                                return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
-                            }
-                            return '';
-                        }
-                    },
-                    {
-                        title: "MAP",
-                        field: "MAP",
-                        hozAlign: "center",
-                        width: 90,
-                        headerTooltip: "MP when within /map-issues tolerance (3 units, or rounded 3% for INV ≥ 100); N MP otherwise (listed rows with E Stock > 0).",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) {
-                                return '';
-                            }
-                            const itemId = rowData['eBay_item_id'];
-                            if (!itemId || itemId === null || itemId === '') {
-                                return '';
-                            }
-                            const ebayStock = parseFloat(rowData['E Stock']) || 0;
-                            const inv = parseFloat(rowData['INV']) || 0;
-                            // Same as /map-issues: both sides must have stock to be Map / N Map.
-                            if (inv > 0 && ebayStock > 0) {
-                                const diff = Math.abs(inv - ebayStock);
-                                const isNotMap = (inv * 0.03 < 3) ? (diff > 3) : (Math.round((diff / inv) * 100) > 3);
-                                if (!isNotMap) {
-                                    return '<span style="color: #28a745; font-weight: bold;">MP</span>';
-                                }
-                                const signedDiff = inv - ebayStock;
-                                const sign = signedDiff > 0 ? '+' : '';
-                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${signedDiff})</span>`;
-                            }
-                            return '';
-                        }
-                    },
-
-                    
                     // {
                     //     title: "eBay L60",
                     //     field: "eBay L60",
@@ -5149,22 +5087,6 @@
                     });
                 }
 
-                if (missingFilterActive) {
-                    table.addFilter(function(data) {
-                        return isEbay2MissingL(data);
-                    });
-                }
-                if (mapFilterActive) {
-                    table.addFilter(function(data) {
-                        return isEbay2TabulatorMapRow(data);
-                    });
-                }
-                if (nmapFilterActive) {
-                    table.addFilter(function(data) {
-                        return isEbay2TabulatorNMapRow(data);
-                    });
-                }
-
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
                         const INV = parseFloat(data['INV'] || 0);
@@ -5326,15 +5248,6 @@
                 const prevAvgL7Views = avgL7ViewsGlobal;
                 avgL7ViewsGlobal = avgL7Views;
 
-                // Map / N Map are counted over the FULL dataset (like /map-issues).
-                // Missing L badge uses /listing-ebaytwo source (LISTING_MISSING_L_COUNT).
-                let mapCount = 0;
-                let nmapCount = 0;
-                table.getData().forEach(row => {
-                    if (isEbay2TabulatorMapRow(row)) mapCount++;
-                    if (isEbay2TabulatorNMapRow(row)) nmapCount++;
-                });
-                
                 // Update all badges
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
                 $('#more-sold-count').text(moreSoldCount.toLocaleString());
@@ -5360,9 +5273,6 @@
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#avg-l7-views-badge').text('L7: ' + avgL7Views.toFixed(1));
                 $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
-                $('#ebay2-missing-count-badge').text('ML: ' + LISTING_MISSING_L_COUNT.toLocaleString());
-                $('#ebay2-map-count-badge').text('Map: ' + mapCount.toLocaleString());
-                $('#ebay2-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
 
                 // Repaint L7 View + S BID colours when the avg changes.
                 if (table && Math.abs(prevAvgL7Views - avgL7Views) > 0.0001) {
@@ -5403,8 +5313,8 @@
                 }
 
                 if (
-                    /^(image_path|Parent|\(Child\) sku|INV|L30|rating|links_column|E Stock|Missing|MAP|nr_req|nrp|NRL|NR|eBay L30|eBay L45|eBay L60|growth_percent)$/i.test(f) ||
-                    /\b(image|parent|sku|inv|ov\s*l30|links|rating|stock|missing|map|nr\/req|nrp|nrl|nra|growth|e\s*l\d+)\b/i.test(tl)
+                    /^(image_path|Parent|\(Child\) sku|INV|L30|rating|links_column|E Stock|nr_req|nrp|NRL|NR|eBay L30|eBay L45|eBay L60|growth_percent)$/i.test(f) ||
+                    /\b(image|parent|sku|inv|ov\s*l30|links|rating|stock|nr\/req|nrp|nrl|nra|growth|e\s*l\d+)\b/i.test(tl)
                 ) {
                     return 'basics';
                 }
@@ -5739,8 +5649,6 @@
                 'GPFT%': 'GPFT%',
                 'views': 'Views',
                 'E Stock': 'E Stock',
-                'Missing': 'Missing L',
-                'MAP': 'MAP',
                 'nr_req': 'NR/REQ',
                 'SPRICE': 'SPRICE',
                 'SPFT': 'SNPFT',

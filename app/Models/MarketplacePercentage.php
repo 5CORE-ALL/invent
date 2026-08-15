@@ -63,6 +63,24 @@ class MarketplacePercentage extends Model
     }
 
     /**
+     * Temu / Temu 2 take-home decimal from marketplace_percentages.
+     * Names match the table: Temu, Temu 2 (aliases TemuTwo / Temu2).
+     *
+     * @return array<string, float>
+     */
+    public static function temuTakeHomeMap(): array
+    {
+        $temu = static::takeHomeDecimal('Temu');
+        $temu2 = static::takeHomeDecimal('Temu 2', 'TemuTwo', 'Temu2');
+
+        return [
+            'temu' => $temu,
+            'temu2' => $temu2,
+            'temutwo' => $temu2,
+        ];
+    }
+
+    /**
      * Label from `marketplace_percentages.marketplace` for a row in `marketplaces`, when names align.
      * Used by SKU Image Manager so UI matches the percentage master list.
      */

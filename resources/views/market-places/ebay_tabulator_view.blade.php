@@ -6,110 +6,23 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        /* Badges + filters share one control size (match form-select-sm / 2nd-row filters) */
-        .ebay-tabulator-page {
-            --ebay-ctrl-h: 31px;
-            --ebay-ctrl-fs: 0.875rem;
-            --ebay-ctrl-pad-y: 0.25rem;
-            --ebay-ctrl-pad-x: 0.5rem;
-            --ebay-ctrl-gap: 6px;
-        }
-        .ebay-tabulator-page .card-body.py-2 {
-            padding-top: 0.4rem !important;
-            padding-bottom: 0.4rem !important;
-        }
-        #ebay-filter-bar {
-            gap: var(--ebay-ctrl-gap) !important;
-            align-items: center !important;
-            row-gap: 6px !important;
-        }
-        #ebay-filter-bar .form-select,
-        #ebay-filter-bar .form-control,
-        #ebay-filter-bar .btn,
-        #ebay-filter-bar .btn-sm,
-        #ebay-filter-bar .dropdown > .btn {
-            width: auto !important;
-            max-width: 160px;
-            min-height: var(--ebay-ctrl-h) !important;
-            height: var(--ebay-ctrl-h) !important;
-            padding: var(--ebay-ctrl-pad-y) var(--ebay-ctrl-pad-x) !important;
-            font-size: var(--ebay-ctrl-fs) !important;
-            line-height: 1.25 !important;
-            box-sizing: border-box !important;
-        }
+        /* Toolbar + badges — same rules as /amazon-tabulator-view */
         #ebay-filter-bar .form-select {
-            padding-right: 1.75rem !important;
-            background-position: right 0.5rem center !important;
-            background-size: 12px 10px !important;
+            width: auto !important;
+            max-width: 130px;
+            padding-right: 1.35rem !important;
+            padding-left: 0.5rem !important;
+            background-position: right 0.35rem center !important;
         }
-        #ebay-filter-bar .btn i,
-        #ebay-filter-bar .dropdown > .btn i {
-            font-size: 0.8rem;
-        }
-        #ebay-filter-bar .pricing-filter-item.border,
-        #ebay-filter-bar .d-inline-flex.border {
-            min-height: var(--ebay-ctrl-h) !important;
-            height: var(--ebay-ctrl-h) !important;
-            padding: 0 4px !important;
-            gap: 4px !important;
-            align-items: center !important;
-            box-sizing: border-box !important;
-        }
-        #ebay-filter-bar .pricing-filter-item .form-label,
-        #ebay-filter-bar .d-inline-flex .form-label {
-            font-size: var(--ebay-ctrl-fs) !important;
-            margin-bottom: 0 !important;
-            line-height: 1.25 !important;
-        }
-        #ebay-filter-bar .pricing-filter-item .form-control,
-        #ebay-filter-bar #target-roi-input,
-        #ebay-filter-bar #target-gpft-input,
-        #ebay-filter-bar #target-price-input {
-            width: 56px !important;
-            max-width: 56px !important;
-            min-height: calc(var(--ebay-ctrl-h) - 4px) !important;
-            height: calc(var(--ebay-ctrl-h) - 4px) !important;
-            padding: 0.15rem 0.3rem !important;
-            font-size: var(--ebay-ctrl-fs) !important;
-        }
-        #ebay-filter-bar .pricing-filter-item .btn,
-        #ebay-filter-bar .d-inline-flex.border .btn {
-            min-height: calc(var(--ebay-ctrl-h) - 4px) !important;
-            height: calc(var(--ebay-ctrl-h) - 4px) !important;
-            padding: 0 0.4rem !important;
-        }
-        #ch-promo-push-prc-progress {
-            margin: 2px 0 0 !important;
-            padding: 4px 8px !important;
-            min-width: 180px !important;
-            max-width: 320px !important;
-        }
-        #ch-promo-push-prc-progress.active {
-            margin: 0 !important;
-            padding: 12px 14px !important;
-            min-width: 300px !important;
-            max-width: 440px !important;
-        }
-        #ch-promo-push-prc-progress .ch-promo-push-prc-progress-meta {
-            font-size: 0.8rem !important;
-        }
-        #ch-promo-push-prc-progress .ch-promo-push-prc-bar {
-            height: 5px !important;
-            margin-top: 3px !important;
-        }
-        #ch-promo-push-prc-progress.active .ch-promo-push-prc-bar {
-            height: 10px !important;
-        }
+        #ebay-filter-bar { gap: 8px 10px !important; }
+        #ebay-filter-bar #sprice-filter { width: 90px !important; }
         #summary-stats {
             order: -1;
-            padding: 0.25rem 0.4rem !important;
+            padding: 0.5rem 0.7rem !important;
             margin-top: 0 !important;
-            margin-bottom: 0.35rem !important;
+            margin-bottom: 0.5rem !important;
         }
-        #summary-stats .ebay2-summary-badge-row,
-        #summary-stats .d-flex {
-            gap: var(--ebay-ctrl-gap) !important;
-        }
+        #summary-stats .d-flex { gap: 8px !important; }
 
         /* Sku Link LMP (mirrors /amazon-tabulator-view) */
         .linked-sku-badge-wrap { display: inline-flex; align-items: center; gap: 2px; }
@@ -279,13 +192,13 @@
             min-width: 0 !important;
         }
 
-        /* Vertical column headers */
+        /* Vertical column headers — same 64px gap as Amazon */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
             text-orientation: mixed;
             white-space: nowrap;
             transform: rotate(180deg);
-            height: 80px;
+            height: 64px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -294,7 +207,7 @@
         }
 
         .tabulator .tabulator-header .tabulator-col {
-            height: 80px !important;
+            height: 64px !important;
         }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -560,14 +473,14 @@
             background-color: #0d6efd;
         }
 
-        /* Summary badges: same height/font as 2nd-row filters (form-select-sm) */
-        #summary-stats .ebay2-summary-badge-row {
-            display: flex;
-            flex-wrap: nowrap;
-            align-items: center;
-            gap: var(--ebay-ctrl-gap, 6px);
-            width: 100%;
-            overflow: hidden;
+        /* Summary badges — same height as Amazon (fs-6 + p-2) */
+        #summary-stats .badge {
+            font-size: 1rem !important;
+            padding: 0.5rem !important;
+            font-weight: 700 !important;
+            line-height: 1.5 !important;
+            border-radius: 0.375rem !important;
+            white-space: nowrap;
         }
 
         /* Image column hover preview (same pattern as forecast.analysis) */
@@ -577,22 +490,6 @@
             z-index: 10050;
         }
 
-        #summary-stats .ebay2-summary-badge-row>.badge {
-            flex: 0 0 auto;
-            min-height: var(--ebay-ctrl-h, 31px) !important;
-            height: var(--ebay-ctrl-h, 31px) !important;
-            font-size: var(--summary-badge-fs, var(--ebay-ctrl-fs, 0.875rem)) !important;
-            line-height: 1.25 !important;
-            padding: 0 var(--ebay-ctrl-pad-x, 0.5rem) !important;
-            font-weight: 700 !important;
-            box-sizing: border-box;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            white-space: nowrap;
-            border-radius: 0.25rem !important;
-        }
         #summary-stats .summary-trend-dot {
             width: 7px !important;
             height: 7px !important;
@@ -768,9 +665,6 @@
                         <option value="blank">Blank SPRICE only</option>
                     </select>
 
-                    {{-- Dil vs PRMT / Cpn% / Push Prc / sprice ? — independent ebay1 channel_promo_pricing --}}
-                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay1'])
-
                     {{-- Sprice/LMP filter — "Red" shows only rows where SPRICE is displayed in red (SPRICE > LMP). --}}
                     <select id="sprice-lmp-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;"
@@ -794,6 +688,28 @@
                         <option value="red">Red (No LMP)</option>
                     </select>
 
+                    <!-- DIL Filter (plain select — matches /amazon-tabulator-view dropdown UI) -->
+                    <select id="dil-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">DIL%</option>
+                        <option value="red">Red &lt;25%</option>
+                        <option value="green">Green 25-50%</option>
+                        <option value="pink">Pink 50%+</option>
+                    </select>
+
+                    <!-- L7 Views colour band filter (same bands as L7 View column) -->
+                    <select id="l7-views-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;"
+                        title="L7 Views vs avg: Red &lt; avg, Green avg–2× avg, Pink ≥ 2× avg">
+                        <option value="all">L7 Views</option>
+                        <option value="red">Red</option>
+                        <option value="green">Green</option>
+                        <option value="pink">Pink</option>
+                    </select>
+
+                    {{-- Dil vs PRMT / Cpn% / Push Prc / sprice ? — same action row as Amazon --}}
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay1'])
+
                     {{-- Target ROI% bulk control — back-solves SPRICE so SGROI = Target. --}}
                     {{-- Formula: sprice = (LP × (1 + Target/100) + Ship) / margin --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
@@ -803,7 +719,7 @@
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
+                            placeholder="30" step="0.1" style="width: 90px;"
                             title="Target SGROI% applied to all selected rows when you click 'Apply SPRICE'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save SPRICE = (LP \u00d7 (1 + Target/100) + Ship) / margin for every selected row">
@@ -820,7 +736,7 @@
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
+                            placeholder="30" step="0.1" style="width: 90px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the eBay take-home margin (e.g. < 85%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save SPRICE = (LP + Ship) / (margin \u2212 Target GPFT%/100) for every selected row">
@@ -844,25 +760,6 @@
                         </button>
                     </div>
 
-                    <!-- DIL Filter (plain select — matches /amazon-tabulator-view dropdown UI) -->
-                    <select id="dil-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">DIL%</option>
-                        <option value="red">Red &lt;25%</option>
-                        <option value="green">Green 25-50%</option>
-                        <option value="pink">Pink 50%+</option>
-                    </select>
-
-                    <!-- L7 Views colour band filter (same bands as L7 View column) -->
-                    <select id="l7-views-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;"
-                        title="L7 Views vs avg: Red &lt; avg, Green avg–2× avg, Pink ≥ 2× avg">
-                        <option value="all">L7 Views</option>
-                        <option value="red">Red</option>
-                        <option value="green">Green</option>
-                        <option value="pink">Pink</option>
-                    </select>
-
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block pricing-filter-item">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -878,7 +775,7 @@
 
                     <button id="ebay-price-mode-btn" type="button" class="btn btn-sm btn-secondary pricing-filter-item"
                         title="Cycle: Off → Decrease → Increase → Same Price → Off">
-                        <i class="fas fa-exchange-alt"></i> Price %
+                        <i class="fas fa-percent"></i> % Prc Mode
                     </button>
 
                     {{-- Export / Import actions merged into one dropdown (matches /amazon-tabulator-view) --}}
@@ -912,72 +809,72 @@
 
                 <!-- Summary Stats (layout matches Ebay 2 Analytics summary row) -->
                 <div id="summary-stats" class="bg-light rounded">
-                    <div class="ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                    <div class="d-flex flex-wrap gap-2" role="group" aria-label="Summary metrics">
                         <!-- Filtered rows count -->
-                        <span class="badge bg-dark" id="rows-count-badge"
+                        <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
                             style="color: white; font-weight: bold;"
                             title="Number of rows currently shown after filters">Rows: 0</span>
 
                         <!-- Sold Filter Badges (badge click = filter; dot click = rolling history) -->
-                        <span class="badge bg-danger ebay1-badge-chart" id="zero-sold-count-badge"
+                        <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="zero-sold-count-badge"
                             data-metric="zero_sold_count" data-live-value="0"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click badge to filter 0 sold (INV>0). Click dot for rolling history.">0 Sold: 0<span class="summary-trend-dot none" data-metric="zero_sold_count" title="Rolling history"></span></span>
-                        <span class="badge ebay1-badge-chart" id="more-sold-count-badge"
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="more-sold-count-badge"
                             data-metric="sold_count" data-live-value="0"
                             style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
                             title="Click badge to filter items with sales (INV>0). Click dot for rolling history.">> 0 Sold: 0<span class="summary-trend-dot none" data-metric="sold_count" title="Rolling history"></span></span>
 
                         <!-- Financial Metrics -->
-                        <span class="badge bg-primary ebay1-badge-chart" id="total-sales-amt-badge"
+                        <span class="badge fs-6 p-2 bg-primary ebay1-badge-chart" id="total-sales-amt-badge"
                             data-metric="total_sales_amt" data-live-value="{{ (float) ($ordersL30TotalSales ?? 0) }}" data-format="money"
                             style="color: black; font-weight: bold; cursor: pointer;"
                             title="L30 sales from real eBay orders. Click dot for rolling history.">Sales: ${{ number_format((float) ($ordersL30TotalSales ?? 0)) }}<span class="summary-trend-dot none" data-metric="total_sales_amt" title="Rolling history"></span></span>
                         
-                        <span class="badge ebay1-badge-chart" id="qty-sold-badge"
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="qty-sold-badge"
                             data-metric="total_ebay_l30" data-live-value="{{ (int) ($ordersL30TotalQty ?? 0) }}"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
                             title="L30 units sold. Click dot for rolling history.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}<span class="summary-trend-dot none" data-metric="total_ebay_l30" title="Rolling history"></span></span>
-                        <span class="badge" id="ebay1-shopify-sales-badge"
+                        <span class="badge fs-6 p-2" id="ebay1-shopify-sales-badge"
                             style="background-color: #0f766e; color: white; font-weight: bold; display: none;"
                             title="eBay1 sales from Shopify raw data (L30, excludes cancelled)">EShp: $0</span>
 
                         <!-- Percentage Metrics -->
-                        <span class="badge bg-info ebay1-badge-chart" id="avg-gpft-badge"
+                        <span class="badge fs-6 p-2 bg-info ebay1-badge-chart" id="avg-gpft-badge"
                             data-metric="gpft_percent" data-live-value="{{ round((float) ($ordersL30Gpft ?? 0)) }}" data-format="pct"
                             style="color: black; font-weight: bold; cursor: pointer;"
                             title="GPFT%. Click dot for rolling history.">GPFT: {{ round((float) ($ordersL30Gpft ?? 0)) }}%<span class="summary-trend-dot none" data-metric="gpft_percent" title="Rolling history"></span></span>
-                        <span class="badge bg-secondary ebay1-badge-chart" id="groi-percent-badge"
+                        <span class="badge fs-6 p-2 bg-secondary ebay1-badge-chart" id="groi-percent-badge"
                             data-metric="groi_percent" data-live-value="{{ round((float) ($ordersL30Groi ?? 0)) }}" data-format="pct"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="GROI%. Click dot for rolling history.">GROI: {{ round((float) ($ordersL30Groi ?? 0)) }}%<span class="summary-trend-dot none" data-metric="groi_percent" title="Rolling history"></span></span>
-                        <span class="badge ebay1-badge-chart" id="ads-percent-badge"
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="ads-percent-badge"
                             data-metric="tcos_percent" data-live-value="{{ round((float) ($channelAdsPercent ?? 0)) }}" data-format="pct" data-invert="1"
                             style="background-color: #d63384; color: white; font-weight: bold; cursor: pointer;"
                             title="Ads%. Lower is better (inverted 3-color). Click dot for rolling history.">Ads {{ round((float) ($channelAdsPercent ?? 0)) }}%<span class="summary-trend-dot none" data-metric="tcos_percent" title="Rolling history"></span></span>
-                        <span class="badge ebay1-badge-chart" id="npft-percent-badge"
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="npft-percent-badge"
                             data-metric="npft_percent" data-live-value="{{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}" data-format="pct"
                             style="background-color: #0f766e; color: white; font-weight: bold; cursor: pointer;"
                             title="NPFT% = GPFT% − Ads%. Click dot for rolling history.">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%<span class="summary-trend-dot none" data-metric="npft_percent" title="Rolling history"></span></span>
-                        <span class="badge ebay1-badge-chart" id="nroi-percent-badge"
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="nroi-percent-badge"
                             data-metric="nroi_percent" data-live-value="{{ round((float) ($ordersL30Nroi ?? 0)) }}" data-format="pct"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
                             title="NROI%. Click dot for rolling history.">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%<span class="summary-trend-dot none" data-metric="nroi_percent" title="Rolling history"></span></span>
 
                         <!-- eBay Metrics -->
-                        <span class="badge bg-danger ebay1-badge-chart" id="avg-cvr-badge"
+                        <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="avg-cvr-badge"
                             data-metric="cvr_percent" data-live-value="0" data-format="pct"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="CVR%. Click dot for rolling history.">CVR: 0%<span class="summary-trend-dot none" data-metric="cvr_percent" title="Rolling history"></span></span>
-                        <span class="badge bg-info ebay1-badge-chart" id="total-views-badge"
+                        <span class="badge fs-6 p-2 bg-info ebay1-badge-chart" id="total-views-badge"
                             data-metric="total_views" data-live-value="0"
                             style="color: black; font-weight: bold; cursor: pointer;"
                             title="Views. Click dot for rolling history.">Views: 0<span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span></span>
-                        <span class="badge ebay1-badge-chart" id="avg-l30-views-badge"
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="avg-l30-views-badge"
                             data-metric="avg_l30_view" data-live-value="0"
                             style="background-color: #20c997; color: black; font-weight: bold; cursor: pointer;"
                             title="A L30 View. Click dot for rolling history.">A L30 View: 0<span class="summary-trend-dot none" data-metric="avg_l30_view" title="Rolling history"></span></span>
-                        <span class="badge ebay1-badge-chart" id="avg-l7-views-badge"
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="avg-l7-views-badge"
                             data-metric="avg_l7_views" data-live-value="0"
                             style="background-color: #0dcaf0; color: black; font-weight: bold; cursor: pointer;"
                             title="Avg L7. Click dot for rolling history.">L7: 0<span class="summary-trend-dot none" data-metric="avg_l7_views" title="Rolling history"></span></span>
@@ -2955,7 +2852,7 @@
                     return;
                 }
                 $btn.removeClass('btn-danger btn-success btn-outline-primary').addClass('btn-secondary')
-                    .html('<i class="fas fa-exchange-alt"></i> Price %');
+                    .html('<i class="fas fa-percent"></i> % Prc Mode');
                 selectColumn.hide();
                 selectedSkus.clear();
                 $('.sku-select-checkbox').prop('checked', false);
@@ -4388,6 +4285,7 @@
                 ajaxURL: EBAY_DATA_JSON_URL,
                 ajaxSorting: false,
                 layout: "fitDataStretch",
+                rowHeight: 36,
                 pagination: true,
                 paginationSize: 100,
                 paginationSizeSelector: [25, 50, 100, 200, 500, 1000, true], // true = All (Amazon-style)
@@ -6529,7 +6427,7 @@
              * font-size only if the row would otherwise overflow, down to a readable minimum.
              */
             function fitSummaryBadges() {
-                const row = document.querySelector('#summary-stats .ebay2-summary-badge-row');
+                const row = document.querySelector('#summary-stats .d-flex');
                 if (!row) return;
                 // Match filter control font (0.875rem); only shrink for width overflow — height stays fixed via CSS
                 const MAX_FS = 0.875;

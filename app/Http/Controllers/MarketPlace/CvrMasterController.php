@@ -175,7 +175,10 @@ class CvrMasterController extends Controller
         return view("market-places.price_increase_view", [
             "mode" => $mode,
             "demo" => $demo,
-            "ebayTakeHomeMap" => MarketplacePercentage::ebayTakeHomeMap(),
+            "ebayTakeHomeMap" => array_merge(
+                MarketplacePercentage::ebayTakeHomeMap(),
+                MarketplacePercentage::temuTakeHomeMap()
+            ),
         ]);
     }
 
@@ -197,7 +200,10 @@ class CvrMasterController extends Controller
             'initial_rows' => [],
             'dil_prmt_rules' => $this->pefDefaultDilPrmtRules(),
             'cvr_cpn_rules' => $this->pefDefaultCvrCpnRules(),
-            'ebayTakeHomeMap' => MarketplacePercentage::ebayTakeHomeMap(),
+            'ebayTakeHomeMap' => array_merge(
+                MarketplacePercentage::ebayTakeHomeMap(),
+                MarketplacePercentage::temuTakeHomeMap()
+            ),
         ]);
     }
 
@@ -1064,6 +1070,9 @@ class CvrMasterController extends Controller
             $temuPricingsAll = collect();
             if (Schema::hasTable('temu_metrics')) {
                 $temuMetricCols = ['sku', 'base_price', 'goods_id', 'quantity'];
+                if (Schema::hasColumn('temu_metrics', 'recommended_base_price')) {
+                    $temuMetricCols[] = 'recommended_base_price';
+                }
                 if (Schema::hasColumn('temu_metrics', 'product_clicks_l30')) {
                     $temuMetricCols[] = 'product_clicks_l30';
                 }
@@ -2120,9 +2129,15 @@ class CvrMasterController extends Controller
 
                 // === TEMU CALCULATIONS (exact formulas from /temu-decrease) ===
                 $temuPricing = $temuPricings->get($sku);
-                $temuBasePrice = $temuPricing ? floatval($temuPricing->base_price ?? 0) : 0;
+                $temuBasePrice = $temuPricing
+                    ? TemuShopifySalesService::resolveListingBasePrice(
+                        $temuPricing->base_price ?? 0,
+                        $temuPricing->recommended_base_price ?? null
+                    )
+                    : 0;
                 // FB Prc: +$2.99 when base ≤ $26.99
                 $temuPrice = $temuBasePrice > 0 ? ($temuBasePrice <= 26.99 ? $temuBasePrice + 2.99 : $temuBasePrice) : 0;
+                $temuFullPrice = TemuShopifySalesService::computeFullTemuPrice((float) $temuBasePrice);
 
                 $temuL30 = (int) ($temuL30ByProductSku[$sku] ?? 0);
 
@@ -2132,9 +2147,9 @@ class CvrMasterController extends Controller
                         if (strtolower($k) === "temu_ship") $temuShip = floatval($v);
                     }
                 }
-                // GPFT% = ((FB × margin − LP − temu_ship) / FB) × 100
-                $temuGPFT = $temuPrice > 0
-                    ? ((($temuPrice * $temuPercentage - $lp - $temuShip) / $temuPrice) * 100)
+                // GPFT% on Full Temu Price — same as /temu-decrease
+                $temuGPFT = $temuFullPrice > 0
+                    ? TemuShopifySalesService::computeGpftPercent($temuFullPrice, $temuPercentage, $lp, $temuShip)
                     : 0;
 
                 // Ads%: every row uses aggregate badge Ads% (~2.6%) — same as /temu-decrease formatter
@@ -2160,8 +2175,11 @@ class CvrMasterController extends Controller
                 $temu2Pricing = $temu2PricingByProductSku[$sku] ?? null;
                 $temu2BasePrice = $temu2Pricing ? floatval($temu2Pricing->base_price ?? 0) : 0;
                 $temu2Price = $temu2BasePrice > 0 ? ($temu2BasePrice <= 26.99 ? $temu2BasePrice + 2.99 : $temu2BasePrice) : 0;
+                $temu2FullPrice = TemuShopifySalesService::computeFullTemuPrice((float) $temu2BasePrice);
                 $temu2L30 = (int) ($temu2L30ByProductSku[$sku] ?? 0);
-                $temu2GPFT = $temu2Price > 0 ? ((($temu2Price * $temuPercentage - $lp - $temuShip) / $temu2Price) * 100) : 0;
+                $temu2GPFT = $temu2FullPrice > 0
+                    ? TemuShopifySalesService::computeGpftPercent($temu2FullPrice, $temuPercentage, $lp, $temuShip)
+                    : 0;
                 // Temu 2: Spend is display-only — no Ads% / NPFT-from-ads (same as /temu2-decrease)
                 $temu2AdSpend = 0.0;
                 $temu2Revenue = $temu2Price * $temu2L30;
@@ -2718,8 +2736,8 @@ class CvrMasterController extends Controller
                         ['marketplace' => 'Ebay1', 'price' => $ebay1Price, 'sprice' => $ebay1Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay1Percentage, 'ad' => $ebay1ChannelAdsPct, 'tacos_ch' => $ebay1ChannelAdsPct, 'l30' => $ebay1L30, 'views' => $ebay1Views, 'cvr' => $pefCvr((float) $ebay1L30, (float) $ebay1Views), 'push_status' => $ebay1St],
                         ['marketplace' => 'Ebay2', 'price' => $ebay2Price, 'sprice' => $ebay2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay2Percentage, 'ad' => $ebay2ChannelAdsPct, 'tacos_ch' => $ebay2ChannelAdsPct, 'l30' => $ebay2L30, 'views' => $ebay2Views, 'cvr' => $pefCvr((float) $ebay2L30, (float) $ebay2Views), 'push_status' => $ebay2St],
                         ['marketplace' => 'Ebay3', 'price' => $ebay3Price, 'sprice' => $ebay3Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay3Percentage, 'ad' => $ebay3ChannelAdsPct, 'tacos_ch' => $ebay3ChannelAdsPct, 'l30' => $ebay3L30, 'views' => $ebay3Views, 'cvr' => $pefCvr((float) $ebay3L30, (float) $ebay3Views), 'push_status' => $ebay3St],
-                        ['marketplace' => 'Temu', 'price' => $temuPrice, 'sprice' => $temuSpPef, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => $temuAD, 'tacos_ch' => $temuAD, 'l30' => $temuL30, 'views' => $temuViews, 'cvr' => $pefCvr((float) $temuL30, (float) $temuViews), 'push_status' => null, 'goods_id' => $goodsId, 'sku_id' => $temuSkuId],
-                        ['marketplace' => 'Temu2', 'price' => $temu2Price, 'sprice' => $temu2Sp, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $temu2L30, 'views' => $temu2Views, 'cvr' => $pefCvr((float) $temu2L30, (float) $temu2Views), 'push_status' => $temu2St, 'goods_id' => $temu2Pricing ? ($temu2Pricing->goods_id ?? null) : null, 'sku_id' => $temu2Pricing ? ($temu2Pricing->sku_id ?? null) : null],
+                        ['marketplace' => 'Temu', 'price' => $temuPrice, 'base_price' => $temuBasePrice, 'sprice' => $temuSpPef, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => $temuAD, 'tacos_ch' => $temuAD, 'l30' => $temuL30, 'views' => $temuViews, 'cvr' => $pefCvr((float) $temuL30, (float) $temuViews), 'push_status' => null, 'goods_id' => $goodsId, 'sku_id' => $temuSkuId],
+                        ['marketplace' => 'Temu2', 'price' => $temu2Price, 'base_price' => $temu2BasePrice, 'sprice' => $temu2Sp, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $temu2L30, 'views' => $temu2Views, 'cvr' => $pefCvr((float) $temu2L30, (float) $temu2Views), 'push_status' => $temu2St, 'goods_id' => $temu2Pricing ? ($temu2Pricing->goods_id ?? null) : null, 'sku_id' => $temu2Pricing ? ($temu2Pricing->sku_id ?? null) : null],
                         ['marketplace' => 'Doba', 'price' => $dobaPrice, 'sprice' => $dobaSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $dobaPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $dobaL30, 'views' => $dobaViews, 'cvr' => $pefCvr((float) $dobaL30, (float) $dobaViews), 'push_status' => $dobaSt],
                         ['marketplace' => 'TikTok', 'price' => $tiktokPrice, 'sprice' => $ttSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktokPercentage, 'ad' => round($tiktokAD, 2), 'tacos_ch' => round($tiktokAD, 2), 'l30' => $tiktokL30, 'views' => $tiktokViews, 'cvr' => $pefCvr((float) $tiktokL30, (float) $tiktokViews), 'push_status' => $ttSt],
                         ['marketplace' => 'TikTok 2', 'price' => $tiktok2Price, 'sprice' => $tt2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktok2Percentage, 'ad' => $tt2AdsPef, 'tacos_ch' => $tt2AdsPef, 'l30' => $tiktok2L30, 'views' => $tiktok2Views, 'cvr' => $pefCvr((float) $tiktok2L30, (float) $tiktok2Views), 'push_status' => $tt2St],
@@ -4602,6 +4620,9 @@ class CvrMasterController extends Controller
             $temuPriceMapOne = [];
             if (Schema::hasTable('temu_metrics')) {
                 $temuMetricColsOne = ['sku', 'base_price', 'goods_id', 'quantity'];
+                if (Schema::hasColumn('temu_metrics', 'recommended_base_price')) {
+                    $temuMetricColsOne[] = 'recommended_base_price';
+                }
                 if (Schema::hasColumn('temu_metrics', 'product_clicks_l30')) {
                     $temuMetricColsOne[] = 'product_clicks_l30';
                 }
@@ -4617,11 +4638,15 @@ class CvrMasterController extends Controller
                 })->first();
             }
             $temuPrice = 0;
+            $temuBasePriceBr = 0;
             if ($temuPricing) {
-                $basePrice = $temuPricing->base_price ?? 0;
+                $temuBasePriceBr = TemuShopifySalesService::resolveListingBasePrice(
+                    $temuPricing->base_price ?? 0,
+                    $temuPricing->recommended_base_price ?? null
+                );
                 // FB Prc — same +$2.99 rule as /temu-decrease
-                $temuPrice = $basePrice > 0
-                    ? TemuShopifySalesService::computeFbPrice((float) $basePrice, 1)
+                $temuPrice = $temuBasePriceBr > 0
+                    ? TemuShopifySalesService::computeFbPrice($temuBasePriceBr, 1)
                     : 0;
             }
             // Views: temu_metrics.product_clicks_l30 (API) — same as /temu-decrease Views
@@ -4656,9 +4681,10 @@ class CvrMasterController extends Controller
                 Log::warning('CVR breakdown Temu L30 (temu_orders / temu-tabulator): ' . $e->getMessage());
             }
 
-            // GPFT% — ((FB × margin − LP − temu_ship) / FB) × 100
-            $temuGPFT = $temuPrice > 0
-                ? round((($temuPrice * $temuMargin - $lp - $temuShip) / $temuPrice) * 100, 2)
+            // GPFT% on Full Temu Price — same as /temu-decrease
+            $temuFullPriceBr = TemuShopifySalesService::computeFullTemuPrice((float) $temuBasePriceBr);
+            $temuGPFT = $temuFullPriceBr > 0
+                ? round(TemuShopifySalesService::computeGpftPercent($temuFullPriceBr, $temuMargin, $lp, $temuShip), 2)
                 : 0;
 
             // Ads%: aggregate badge Ads% on every row (~2.6%) — same as /temu-decrease
@@ -4689,16 +4715,14 @@ class CvrMasterController extends Controller
                 $val = is_array($temuDataView->value) ? $temuDataView->value : json_decode($temuDataView->value, true);
                 if (is_array($val)) {
                     $temuSprice = floatval($val['sprice'] ?? $val['SPRICE'] ?? 0);
-                    // Profit = (Sprice × 0.80) − temu_ship − LP
-                    $temuProfit = $temuSprice * 0.80 - $lp - $temuShip;
-                    $temuSgpft = $temuSprice > 0 ? round(($temuProfit / $temuSprice) * 100, 2) : 0;
-                    $temuSroi = $lp > 0 ? round(($temuProfit / $lp) * 100, 2) : 0;
-                    $temuSpft = ($temuADS == 100) ? $temuSgpft : round($temuSgpft - $temuADS, 2);
+                    $temuSug = TemuShopifySalesService::suggestedPercents(
+                        $temuSprice, $temuMargin, $lp, $temuShip, (float) $temuADS, false
+                    );
                     $temuSuggested = [
                         'sprice' => $temuSprice,
-                        'sgpft' => $temuSgpft,
-                        'sroi' => $temuSroi,
-                        'spft' => $temuSpft,
+                        'sgpft' => $temuSug['sgpft'],
+                        'sroi' => $temuSug['sroi'],
+                        'spft' => $temuSug['spft'],
                     ];
                 }
             }
@@ -4707,6 +4731,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Temu',
                 'sku' => $temuPricing ? $fullSku : 'Not Listed',
                 'price' => $temuPrice,
+                'base_price' => $temuBasePriceBr > 0 ? round($temuBasePriceBr, 2) : null,
                 'views' => $temuViews,
                 'l30' => $temuL30,
                 'gpft' => $temuGPFT,
@@ -4732,6 +4757,7 @@ class CvrMasterController extends Controller
             // Temu2 — same sources as /temu2-decrease
             $temu2PricingRow = null;
             $temu2PriceBr = 0;
+            $temu2BaseBr = 0;
             $temu2L30Br = 0;
             $temu2GPFTBr = 0;
             $temu2NPFTBr = 0;
@@ -4755,8 +4781,9 @@ class CvrMasterController extends Controller
                         $temu2BaseBr = $temu2PricingRow->base_price ?? 0;
                         $temu2PriceBr = $temu2BaseBr > 0 ? ($temu2BaseBr <= 26.99 ? $temu2BaseBr + 2.99 : $temu2BaseBr) : 0;
                     }
-                    $temu2GPFTBr = $temu2PriceBr > 0
-                        ? round((($temu2PriceBr * $temu2Margin - $lp - $temuShip) / $temu2PriceBr) * 100, 2)
+                    $temu2FullBr = TemuShopifySalesService::computeFullTemuPrice((float) $temu2BaseBr);
+                    $temu2GPFTBr = $temu2FullBr > 0
+                        ? round(TemuShopifySalesService::computeGpftPercent($temu2FullBr, $temu2Margin, $lp, $temuShip), 2)
                         : 0;
                     // NPFT recalculated below after channel Ads% (AMM / temu2_campaign_reports)
                     $temu2NPFTBr = $temu2GPFTBr;
@@ -4777,15 +4804,14 @@ class CvrMasterController extends Controller
                         $v2d = is_array($temu2DataView->value) ? $temu2DataView->value : json_decode($temu2DataView->value, true);
                         if (is_array($v2d)) {
                             $suggSp = floatval($v2d['sprice'] ?? $v2d['SPRICE'] ?? 0);
-                            // Profit = (Sprice × 0.80) − temu_ship − LP (Temu2 same as Temu)
-                            $temu2Profit = $suggSp * 0.80 - $lp - $temuShip;
-                            $temu2Sgpft = $suggSp > 0 ? round(($temu2Profit / $suggSp) * 100, 2) : 0;
-                            $temu2Sroi = $lp > 0 ? round(($temu2Profit / $lp) * 100, 2) : 0;
+                            $temu2Sug = TemuShopifySalesService::suggestedPercents(
+                                $suggSp, $temu2Margin, $lp, $temuShip, 0.0, true
+                            );
                             $temu2Suggested = [
                                 'sprice' => $suggSp,
-                                'sgpft' => $temu2Sgpft,
-                                'sroi' => $temu2Sroi,
-                                'spft' => $temu2Sgpft, // Temu2: no ads
+                                'sgpft' => $temu2Sug['sgpft'],
+                                'sroi' => $temu2Sug['sroi'],
+                                'spft' => $temu2Sug['spft'],
                             ];
                         }
                     }
@@ -4807,6 +4833,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Temu2',
                 'sku' => $temu2HasListSignal ? $fullSku : 'Not Listed',
                 'price' => $temu2PriceBr,
+                'base_price' => $temu2BaseBr > 0 ? round((float) $temu2BaseBr, 2) : null,
                 'views' => $temu2ViewsBr,
                 'l30' => $temu2L30Br,
                 'gpft' => $temu2GPFTBr,

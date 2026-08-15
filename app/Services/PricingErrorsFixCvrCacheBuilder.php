@@ -380,8 +380,11 @@ class PricingErrorsFixCvrCacheBuilder
             $success = null;
         }
 
+        $basePrice = isset($item['base_price']) && is_numeric($item['base_price'])
+            ? (float) $item['base_price']
+            : 0.0;
         $metrics = $this->computeLikePriceIncreaseModal(
-            $norm, $price, $sprice, $lp, $ship, $margin, $tacosCh, $l30, $adSku
+            $norm, $price, $sprice, $lp, $ship, $margin, $tacosCh, $l30, $adSku, $basePrice
         );
 
         $goodsId = $item['goods_id'] ?? $item['temu_goods_id'] ?? null;
@@ -432,6 +435,7 @@ class PricingErrorsFixCvrCacheBuilder
             'standard_price' => $standardPrice,
             'dil' => $dil,
             'price' => $price > 0 ? round($price, 2) : null,
+            'base_price' => $basePrice > 0 ? round($basePrice, 2) : null,
             'groi' => $metrics['groi'],
             'nroi' => $metrics['nroi'],
             'gpft' => $metrics['gpft'],
@@ -461,7 +465,7 @@ class PricingErrorsFixCvrCacheBuilder
             'ebay1' => 0.83,
             'ppower' => 0.65,
             'macy', 'macys' => 0.75,
-            'temu', 'temu2' => 1.0,
+            'temu', 'temu2' => TemuShopifySalesService::temuMarginDecimal(),
             default => 0.80,
         };
     }
@@ -480,7 +484,8 @@ class PricingErrorsFixCvrCacheBuilder
         float $margin,
         float $tacosCh,
         float $l30,
-        float $adSku = 0.0
+        float $adSku = 0.0,
+        float $basePrice = 0.0
     ): array {
         $out = [
             'groi' => null, 'nroi' => null, 'gpft' => null, 'npft' => null,
@@ -499,10 +504,21 @@ class PricingErrorsFixCvrCacheBuilder
 
         if ($price > 0 && $lp > 0 && $margin > 0) {
             $gross = ($price * $margin) - $lp - $ship;
-            $gpft = round(($gross / $price) * 100, 2);
             $groi = round(($gross / $lp) * 100, 2);
-            $out['gpft'] = $gpft;
             $out['groi'] = $groi;
+            // Temu/Temu2 GPFT% on Full Temu Price — same as /temu-decrease
+            if ($isTemu || $isTemu2) {
+                $inferredBase = $basePrice > 0
+                    ? $basePrice
+                    : ($price > 29.98 ? $price : max(0.0, $price - 2.99));
+                $full = TemuShopifySalesService::computeFullTemuPrice($inferredBase);
+                $gpft = $full > 0
+                    ? round(TemuShopifySalesService::computeGpftPercent($full, $margin, $lp, $ship), 2)
+                    : 0.0;
+            } else {
+                $gpft = round(($gross / $price) * 100, 2);
+            }
+            $out['gpft'] = $gpft;
 
             // NPFT% = GPFT% − tacos_ch; Temu2/no-ads channels skip subtract
             if ($isNoAds || $isTemu2) {
@@ -523,9 +539,11 @@ class PricingErrorsFixCvrCacheBuilder
             $calcSp = ($isTemuMp && $sprice <= 26.99) ? ($sprice + 2.99) : $sprice;
 
             if ($isTemuMp) {
-                $temuProfit = ($sprice * 0.80) - $ship - $lp;
-                $sgpft = round(($temuProfit / $sprice) * 100, 2);
-                $sroi = round(($temuProfit / $lp) * 100, 2);
+                $temuSug = TemuShopifySalesService::suggestedPercents(
+                    $sprice, $margin, $lp, $ship, $tacosCh, $isTemu2
+                );
+                $sgpft = $temuSug['sgpft'];
+                $sroi = $temuSug['sroi'];
             } else {
                 $sGross = ($calcSp * $margin) - $lp - $ship;
                 $sgpft = round(($sGross / $calcSp) * 100, 2);

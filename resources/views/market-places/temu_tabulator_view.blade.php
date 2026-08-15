@@ -122,7 +122,7 @@
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge"
                             style="color: white; font-weight: bold;"
-                            title="Σ Temu Price × Qty — Temu Price = (Base × 1.136); +$2.99 if ≤ $26.99">Temu Full Price Sales: $0.00</span>
+                            title="Σ Temu Price × Qty — Temu Price = (Base × 1.1765); +$2.99 if ≤ $26.99">Temu Full Price Sales: $0.00</span>
                         <span class="badge fs-6 p-2" id="l60-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">L60 Sales: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                     </div>
@@ -353,7 +353,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 120,
-                    headerTooltip: "Temu Price = (Base × 1.136); +$2.99 if that result ≤ $26.99",
+                    headerTooltip: "Temu Price = (Base × 1.1765); +$2.99 if that result ≤ $26.99",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -521,8 +521,8 @@
             return base <= 26.99 ? base + 2.99 : base;
         }
 
-        // Temu Price = (Base × 1.136); +$2.99 if that result ≤ $26.99
-        const TEMU_PRICE_MULT = 1.136;
+        // Temu Price = (Base × 1.1765); +$2.99 if that result ≤ $26.99 — same as /temu-decrease
+        const TEMU_PRICE_MULT = 1.1765;
         function temuPriceFromBase(basePrice) {
             const b = parseFloat(basePrice) || 0;
             if (b <= 0) return 0;
@@ -549,6 +549,7 @@
             let totalWeightedPrice = 0;
             let totalQuantityForPrice = 0;
             let totalCogs = 0;
+            let totalProfitFull = 0;
 
             data.forEach(row => {
                 // Skip parent rows (like eBay does)
@@ -578,12 +579,12 @@
                 
                 const hasSales = quantity > 0 && basePrice > 0;
                 if (hasSales) {
-                    // Same formula + margin source as getTemuChannelData on /all-marketplace-master:
-                    // GPFT% = ΣPFT ÷ Σ(FB sales), ROI% = ΣPFT ÷ ΣCOGS. Margin from marketplace_percentages.
+                    // Same as /temu-decrease: GROI $ on R Price; GPFT% on Full Temu Price.
                     const pftDecimal = fbPrice > 0 ? (fbPrice * TEMU_MARGIN - lp - temuShip) / fbPrice : 0;
                     totalPft += pftDecimal * fbPrice * quantity;
                     totalL30Sales += quantity * fbPrice;
                     totalTemuFullPriceSales += quantity * temuPrice;
+                    totalProfitFull += (temuPrice * TEMU_MARGIN - lp - temuShip) * quantity;
                     totalCogs += lp * quantity;
                 }
             });
@@ -591,10 +592,9 @@
             // Calculate average price (weighted by quantity, like eBay)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
 
-            // PFT % = Σ PFT $ ÷ Σ Temu Full Price Sales × 100
-            // (Full Price = Base × 1.136; +$2.99 if ≤ $26.99)
+            // GPFT% on Full Temu Price (same as /temu-decrease); ROI% stays on R Price profit / COGS
             const pftPercentage = totalTemuFullPriceSales > 0
-                ? (totalPft / totalTemuFullPriceSales) * 100
+                ? (totalProfitFull / totalTemuFullPriceSales) * 100
                 : 0;
 
             // ROI %: (PFT Total / Total COGS) * 100

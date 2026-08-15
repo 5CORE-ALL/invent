@@ -662,6 +662,14 @@
             width: 100%;
             max-width: 100%;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'temu'])
+        .temu-sprice-lmp-alert {
+            color: #dc3545;
+            font-size: 12px;
+            line-height: 1;
+            margin-left: 4px;
+            cursor: help;
+        }
     </style>
 @endsection
 
@@ -697,6 +705,11 @@
                          when too many badges); switched to `flex-wrap` so the strip
                          simply wraps to a second line on narrow viewports. No scroll bar. --}}
                     <div class="d-flex flex-wrap gap-1 w-100">
+                        <span id="rows-count-badge"
+                              class="badge bg-dark text-center"
+                              style="font-weight:700; color: white !important; font-size:14px; padding:4px 8px;"
+                              title="Rows currently shown (updates when a filter is applied)"
+                              aria-label="Row count">Rows 0</span>
                         <!-- Basic Counts (sales summary = same as tabulator sales page) -->
                         <span id="total-revenue-badge"
                               class="badge bg-success text-center temu-badge-history"
@@ -742,6 +755,11 @@
                               style="background-color: #a00211; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
                               title="Click to filter rows where Temu Price &ge; Amz × 0.85 AND &ge; eBay 1 × 0.90 AND &ge; eBay 2 × 0.90 (uncompetitive)"
                               aria-label="Alert — uncompetitive Temu pricing"><i class="fas fa-triangle-exclamation"></i> 0</span>
+                        <span id="temu-sprice-lmp-alert-badge"
+                              class="badge text-center"
+                              style="background-color: #dc3545; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="S PRC triangle alert — S PRC &gt; LMP. Click to show only those rows."
+                              aria-label="S PRC greater than LMP"><i class="fas fa-exclamation-triangle"></i> S PRC 0</span>
 
                         <!-- Pricing & Performance -->
                         {{-- "Total Views" + "Total Sold" badges removed per product request.
@@ -913,6 +931,9 @@
                         </ul>
                     </div>
 
+                    {{-- Dil vs PRMT / Cpn% / sprice ? — same action row as /ebay-tabulator-view --}}
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'temu'])
+
                     {{-- LMP — set SPRICE so S Temu B Prc (push base) = L1 × 0.99 for selected rows --}}
                     <button type="button" id="apply-lmp-minus-1-toolbar-btn"
                         class="btn btn-sm btn-outline-primary ms-2 fw-bold"
@@ -1024,10 +1045,6 @@
                         <i class="fas fa-link"></i> LMP
                     </a>
 
-                    <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same Price → Off">
-                        INC / DEC
-                    </button>
-                    
                     {{-- All four upload flows merged into a single dropdown.
                          Each item still opens its own modal via data-bs-toggle="modal";
                          the modals themselves were not touched. --}}
@@ -1044,6 +1061,13 @@
                                     data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
                                     <i class="fas fa-eye text-success" style="width: 18px;"></i>
                                     <span>Up View Data</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadAdsViewsModal">
+                                    <i class="fas fa-bullseye text-danger" style="width: 18px;"></i>
+                                    <span>Ads Views Upload</span>
                                 </button>
                             </li>
                             <li>
@@ -1115,28 +1139,32 @@
 
             </div>
             <div class="card-body" style="padding: 0;">
-                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
+                <div id="discount-input-container" class="p-2 bg-light border-bottom">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span id="selected-skus-count" class="badge bg-primary">0 SKUs selected</span>
-                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
-                        <span id="discount-type-select-wrap">
+                        <span id="selected-skus-count" class="badge bg-info">0 SKUs selected</span>
+                        <span id="discount-input-label" class="text-muted small">Same Price ($):</span>
+                        <span id="discount-type-select-wrap" class="d-none">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                             <option value="percentage">Percentage</option>
                             <option value="dollar">Dollar</option>
                         </select>
                         </span>
-                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                               placeholder="Enter %" style="width: 150px;" step="0.01" min="0">
+                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
+                               placeholder="Enter price (e.g. 19.99)" style="width: 170px;" step="0.01" min="0">
                         <button id="apply-discount-btn" class="btn btn-sm btn-warning">
-                            <i class="fas fa-check"></i> Apply 
+                            <i class="fas fa-check"></i> Apply Same Price
                         </button>
-                        <button id="sprc-26-99-btn" class="btn btn-sm btn-primary">
+                        <button type="button" id="apply-sprice-from-std-btn" class="btn btn-sm btn-success"
+                            title="Set S PRC = Std × (1 − (PRMT% + CVR%)/100) for selected SKUs. If both % are 0, S PRC = Std.">
+                            <i class="fas fa-calculator"></i> Apply SPrice
+                        </button>
+                        <button id="sprc-26-99-btn" class="btn btn-sm btn-info">
                             <i class="fas fa-dollar-sign"></i> SPRC 26.99
                         </button>
                         <button type="button" id="clear-sprice-btn" class="btn btn-sm btn-danger">
                             <i class="fas fa-trash"></i> Clear SPRICE
                         </button>
-                        <button type="button" id="push-temu-price-btn" class="btn btn-sm btn-success"
+                        <button type="button" id="push-temu-price-btn" class="btn btn-sm btn-primary"
                             title="Push SPRICE→base: (Sprice×0.88)−2.99 if SPRICE&lt;$35; else Sprice×0.88">
                             <i class="fas fa-cloud-upload-alt"></i> Push Prices
                         </button>
@@ -1402,7 +1430,7 @@
                             <input type="file" class="form-control" id="viewDataFile" name="file" accept=".xlsx,.xls,.csv" required>
                             <div class="form-text">
                                 Seller Center product analytics export (.xlsx / .xls / .csv, max 10MB).
-                                Writes to <code>temu_view_data</code> — this drives the <strong>O Clicks</strong> column (and Views when sheet has a row).
+                                Writes to <code>temu_view_data</code> — this drives the <strong>Views</strong> column when the sheet has a row.
                             </div>
                         </div>
                         <div class="alert alert-info mb-0">
@@ -1418,6 +1446,62 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadViewDataForm" class="btn btn-success">
                         <i class="fas fa-upload me-1"></i>Up View Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ads Views Upload Modal (Temu Ads report → temu_ads_views, matched by goods_id) -->
+    <div class="modal fade" id="uploadAdsViewsModal" tabindex="-1" aria-labelledby="uploadAdsViewsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="uploadAdsViewsModalLabel">
+                        <i class="fas fa-bullseye me-2"></i>Ads Views Upload
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+
+                    <form id="uploadAdsViewsForm" action="{{ route('temu.adsviews.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="adsViewsFile" class="form-label fw-bold">
+                                <i class="fas fa-file-excel text-danger me-1"></i>Choose Ads Report File
+                            </label>
+                            <input type="file" class="form-control" id="adsViewsFile" name="file" accept=".xlsx,.xls,.csv,.tsv,.txt" required>
+                            <div class="form-text">
+                                Temu Ads report export (.xlsx / .xls / .csv / .tsv / .txt, max 10MB).
+                                Writes to <code>temu_ads_views</code> — this drives the <strong>Ads Views</strong> column
+                                (Clicks Overall), matched by <strong>Goods ID</strong> the same way Views is matched.
+                            </div>
+                        </div>
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Replaces existing Ads Views data. Skip the totals row — it is ignored automatically.
+                            <a href="{{ route('temu.adsviews.sample') }}" class="alert-link">
+                                <i class="fas fa-download"></i> Download Sample
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadAdsViewsForm" class="btn btn-danger">
+                        <i class="fas fa-upload me-1"></i>Ads Views Upload
                     </button>
                 </div>
             </div>
@@ -1652,11 +1736,13 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'temu'])
 @endsection
 
 @section('script-bottom')
 <script>
-    const COLUMN_VIS_KEY = "temu_decrease_column_visibility";
+        const COLUMN_VIS_KEY = "temu_decrease_column_visibility";
+        let savedColumnVisibilityMap = {};
     // Temu margin from marketplace_percentages (Temu) — same source as backend GROI/GPFT/SROI
     const TEMU_MARGIN = {{ (float) ($temuMargin ?? \App\Services\TemuShopifySalesService::temuMarginDecimal()) }};
     // Full Temu Price = (Base × 1.1765); if that ≤ $26.99 then +$2.99
@@ -1777,8 +1863,9 @@
     }
     let decreaseModeActive = false;
     let increaseModeActive = false;
-    let samePriceModeActive = false;
+    let samePriceModeActive = true;
     let selectedSkus = new Set();
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu'])
     let soldSpriceBlankFilterActive = false;
     let latestAvgViews = 0;
 
@@ -3043,69 +3130,13 @@
             if (typeof showToast === 'function') showToast('Goods ID copied', 'success');
         });
 
-        // Swap the discount-input panel between %/$ and Same Price modes.
         function syncDiscountInputUi() {
             const $input = $('#discount-percentage-input');
-            if (samePriceModeActive) {
-                $('#discount-type-select-wrap').hide();
-                $('#discount-input-label').removeClass('d-none');
-                $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
-                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
-            } else {
-                $('#discount-type-select-wrap').show();
-                $('#discount-input-label').addClass('d-none');
-                const t = $('#discount-type-select').val();
-                $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
-                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
-            }
+            $('#discount-type-select-wrap').addClass('d-none');
+            $('#discount-input-label').removeClass('d-none');
+            $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
+            $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
         }
-
-        // Discount type dropdown change handler
-        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
-
-        // INC / DEC: one button, cycle Off → DEC → INC → SAME → Off
-        $('#inc-dec-btn').on('click', function() {
-            const selectColumn = table.getColumn('_select');
-            const $btn = $(this);
-
-            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
-                // Off → DEC
-                decreaseModeActive = true;
-                increaseModeActive = false;
-                samePriceModeActive = false;
-                selectColumn.show();
-                $btn.removeClass('btn-secondary btn-success btn-info').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
-            } else if (decreaseModeActive) {
-                // DEC → INC
-                decreaseModeActive = false;
-                increaseModeActive = true;
-                samePriceModeActive = false;
-                $btn.removeClass('btn-danger btn-info btn-secondary').addClass('btn-success')
-                    .html('<i class="fas fa-arrow-up"></i> INC <i class="fas fa-times ms-1" title="Click again for SAME"></i>');
-            } else if (increaseModeActive) {
-                // INC → SAME PRICE
-                decreaseModeActive = false;
-                increaseModeActive = false;
-                samePriceModeActive = true;
-                $btn.removeClass('btn-danger btn-success btn-secondary').addClass('btn-info')
-                    .html('<i class="fas fa-equals"></i> SAME <i class="fas fa-times ms-1" title="Click again to reset"></i>');
-            } else {
-                // SAME → Off
-                decreaseModeActive = false;
-                increaseModeActive = false;
-                samePriceModeActive = false;
-                selectColumn.hide();
-                selectedSkus.clear();
-                soldSpriceBlankFilterActive = false;
-                updateSelectedCount();
-                updateSelectAllCheckbox();
-                applyFilters();
-                $btn.removeClass('btn-danger btn-success btn-info').addClass('btn-secondary')
-                    .html('INC / DEC');
-            }
-            syncDiscountInputUi();
-        });
 
         $(document).on('change', '#select-all-checkbox', function() {
             const isChecked = $(this).prop('checked');
@@ -3153,6 +3184,10 @@
 
         $('#sprc-26-99-btn').on('click', function() {
             applySprice2699();
+        });
+
+        $('#apply-sprice-from-std-btn').on('click', function() {
+            applySpriceFromStdPrmtCvr();
         });
 
         $('#apply-lmp-minus-1-toolbar-btn').on('click', function() {
@@ -3460,6 +3495,7 @@
         let mapBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
         let redAlertFilterActive = false;
+        let spriceLmpAlertFilterActive = false;
 
         // 0 Sold badge just toggles the #sold-filter dropdown so the dropdown stays the
         // single source of truth (mirrors Amazon tabulator). Click again to clear.
@@ -3480,31 +3516,28 @@
             applyFilters();
         });
 
+        $('#temu-sprice-lmp-alert-badge').on('click', function() {
+            spriceLmpAlertFilterActive = !spriceLmpAlertFilterActive;
+            $(this).css('outline', spriceLmpAlertFilterActive ? '3px solid #ffc107' : '');
+            $(this).css('outline-offset', spriceLmpAlertFilterActive ? '2px' : '');
+            applyFilters();
+        });
+
         $('#missing-count-badge').on('click', function() {
             missingBadgeFilterActive = !missingBadgeFilterActive;
             applyFilters();
-            if (table) {
-                if (missingBadgeFilterActive) {
-                    table.getColumn('lmp').show();
-                }
-                // LMP columns stay visible when Missing L is off (no hide)
-            }
         });
 
         $('#not-mapped-count-badge').on('click', function() {
             notMapBadgeFilterActive = !notMapBadgeFilterActive;
             mapBadgeFilterActive = false;
             applyFilters();
-            if (table) {
-                if (notMapBadgeFilterActive) table.getColumn('MAP').show();
-                else table.getColumn('MAP').hide();
-            }
         });
 
         function updateSelectedCount() {
             const count = selectedSkus.size;
             $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-            $('#discount-input-container').toggle(count > 0);
+            $('#discount-input-container').show();
         }
 
         function updateSelectAllCheckbox() {
@@ -3597,10 +3630,6 @@
             const discountValue = parseFloat(String(rawInput).replace(',', '.')) || 0;
             const discountType = $('#discount-type-select').val();
 
-            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
-                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
-                return;
-            }
             if (isNaN(discountValue) || discountValue <= 0) {
                 showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid discount value', 'error');
                 return;
@@ -3797,6 +3826,111 @@
             });
         }
 
+        function temuDisplayedSprice(row) {
+            const n = parseFloat(row && row.sprice);
+            if (isFinite(n) && n > 0) return n;
+            return typeof temuSpriceFromStdPrmtCvr === 'function'
+                ? (temuSpriceFromStdPrmtCvr(row) || 0)
+                : 0;
+        }
+
+        function temuSpriceHasLmpAlert(row) {
+            if (!row || (typeof isTemuParentRow === 'function' && isTemuParentRow(row))) return false;
+            const sprice = temuDisplayedSprice(row);
+            if (!(sprice > 0)) return false;
+            const lmp = typeof getRowLmpL1 === 'function'
+                ? (getRowLmpL1(row) || 0)
+                : (parseFloat(row.lmp) || 0);
+            return lmp > 0 && sprice > lmp;
+        }
+
+        /**
+         * S PRC = Std Prc − PRMT% − CVR%
+         *   = Std × (1 − (PRMT% + CVR%)/100)
+         * If both discounts are 0, S PRC = Std.
+         */
+        function temuSpriceFromStdPrmtCvr(row) {
+            if (!row || isTemuParentRow(row)) return null;
+            const std = parseFloat(row.STANDARD_PRICE != null ? row.STANDARD_PRICE : row.standard_price) || 0;
+            if (!(std > 0)) return null;
+            const prmt = Math.max(0, parseFloat(row.prmt_pct != null ? row.prmt_pct : row._prmt_pct_applied) || 0);
+            const cvr = Math.max(0, parseFloat(row.cvr_percent != null ? row.cvr_percent : row.cvr_30) || 0);
+            const totalDisc = Math.min(99.99, prmt + cvr);
+            const sprice = totalDisc > 0
+                ? +(std * (1 - (totalDisc / 100))).toFixed(2)
+                : +std.toFixed(2);
+            return sprice >= 0.01 ? sprice : null;
+        }
+
+        function applySpriceFromStdPrmtCvr() {
+            if (!table) {
+                showToast('Load data first', 'error');
+                return;
+            }
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            const $btn = $('#apply-sprice-from-std-btn');
+            const btnHtml = $btn.html();
+            const jobs = [];
+            let skipped = 0;
+
+            selectedSkus.forEach(function(sku) {
+                const rows = table.searchRows('sku', '=', sku);
+                if (!rows.length) {
+                    skipped++;
+                    return;
+                }
+                const row = rows[0];
+                const d = row.getData();
+                if (isTemuParentRow(d)) {
+                    skipped++;
+                    return;
+                }
+                const inv = parseFloat(d.inventory) || 0;
+                if (inv <= 0) {
+                    skipped++;
+                    return;
+                }
+                const sprice = temuSpriceFromStdPrmtCvr(d);
+                if (!(sprice > 0)) {
+                    skipped++;
+                    return;
+                }
+                jobs.push({ row: row, sku: sku, sprice: sprice });
+            });
+
+            if (!jobs.length) {
+                showToast('No selected SKUs have Std Prc (skipped ' + skipped + ')', 'error');
+                return;
+            }
+
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+            let ok = 0;
+            let fail = 0;
+
+            function finish() {
+                $btn.prop('disabled', false).html(btnHtml);
+                if (table) table.redraw(true);
+                showToast(
+                    'Apply SPrice: ' + ok + ' SKU(s)'
+                        + (fail ? (', ' + fail + ' failed') : '')
+                        + (skipped ? (', ' + skipped + ' skipped') : ''),
+                    fail && !ok ? 'error' : 'success'
+                );
+            }
+
+            jobs.forEach(function(job) {
+                job.row.update({ sprice: job.sprice, sprice_status: 'processing' });
+                job.row.reformat();
+                saveSpriceWithRetry(job.sku, job.sprice, job.row)
+                    .then(function() { ok++; if (ok + fail === jobs.length) finish(); })
+                    .catch(function() { fail++; if (ok + fail === jobs.length) finish(); });
+            });
+        }
+
         function applySprice2699() {
             if (selectedSkus.size === 0) {
                 showToast('Please select SKUs first', 'error');
@@ -3913,16 +4047,7 @@
                 $(this).prop('checked', selectedSkus.has(sku));
             });
             
-            // Show selection mode if items found
             if (newlySelectedCount > 0 || selectedSkus.size > 0) {
-                const selectColumn = table.getColumn('_select');
-                selectColumn.show();
-                
-                if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
-                    decreaseModeActive = true;
-                    $('#inc-dec-btn').removeClass('btn-secondary btn-info btn-success').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
-                }
-                
                 if (newlySelectedCount > 0) {
                     showToast(`Added ${newlySelectedCount} sold SKU(s) with blank SPRICE to selection (Total: ${selectedSkus.size})`, 'success');
                 } else {
@@ -3978,6 +4103,8 @@
         function updateSummary() {
             // Sum from table directly with no filter: use full dataset (getData("all"))
             const data = table.getData("all");
+            const filteredData = table.getData("active") || [];
+            $('#rows-count-badge').text('Rows ' + filteredData.length.toLocaleString());
             
             let totalProducts = data.length;
             let totalQuantity = 0;
@@ -4008,6 +4135,7 @@
             let moreAmzCount = 0;
             let greenAlertCount = 0;
             let redAlertCount = 0;
+            let spriceLmpAlertCount = 0;
             
             data.forEach(row => {
                 const temuL30 = parseInt(row['temu_l30']) || 0;
@@ -4093,6 +4221,9 @@
                 // Red Alert: opposite — Temu uncompetitive (at/above every reference threshold).
                 if (temuIsRedAlert(row)) {
                     redAlertCount++;
+                }
+                if (temuSpriceHasLmpAlert(row)) {
+                    spriceLmpAlertCount++;
                 }
                 
                 // Map / Missing M (N Map): listed, REQ, both sides with stock — same rule as /map-issues.
@@ -4204,6 +4335,7 @@
             $('#not-mapped-count-badge').text('M-M ' + notMappedCount.toLocaleString());
             // Use .html() so the FontAwesome <i> renders; .text() would HTML-escape it.
             $('#temu-red-alert-badge').html('<i class="fas fa-triangle-exclamation"></i> ' + redAlertCount.toLocaleString());
+            $('#temu-sprice-lmp-alert-badge').html('<i class="fas fa-exclamation-triangle"></i> S PRC ' + spriceLmpAlertCount.toLocaleString());
             // CVR badge: use the LIVE qtyPerViews computed from the same totalQuantity
             // and totalViews that drive the QTY and Views badges. Previously this preferred
             // the daily snapshot in temu_badge_daily_data so the badge would visually match
@@ -4770,30 +4902,28 @@
                     width: 60
                 },
                  {
-                    title: "O Clicks",
-                    field: "o_clicks",
-                    hozAlign: "center",
-                    sorter: "number",
-                    width: 85,
-                    minWidth: 80,
-                    headerTooltip: "Organic Product clicks from Seller Center sheet upload only (temu_view_data). No Ads API fallback.",
-                    formatter: function(cell) {
-                        const value = parseInt(cell.getValue()) || 0;
-                        return value.toLocaleString();
-                    }
-                },
-                 {
                     title: "Views",
                     field: "product_clicks",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Seller Center Product clicks (temu_view_data). Fallback: Ads API clkCntAll when sheet has no row.",
+                    headerTooltip: "Seller Center Product clicks + Ads Views (Clicks Overall), both matched by Goods ID.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const sku = row.sku || '';
                         const value = parseInt(cell.getValue()) || 0;
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View Views chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
                         return `${value.toLocaleString()} ${dotBtn}`.trim();
+                    }
+                },
+                {
+                    title: "Ads Views",
+                    field: "ads_views",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Ads report Clicks (Overall) from Ads Views Upload (temu_ads_views), matched by Goods ID.",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue()) || 0;
+                        return value.toLocaleString();
                     }
                 },
                 {
@@ -5216,38 +5346,6 @@
                         }
                     },
                 },
-                     {
-                    title: '<input type="checkbox" id="select-all-checkbox">',
-                    field: "_select",
-                    headerSort: false,
-                    visible: false,
-                    formatter: function(cell) {
-                        const sku = cell.getRow().getData()['sku'];
-                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isChecked}>`;
-                    },
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                    }
-                },
-                {
-                    title: "S PRC",
-                    field: "sprice",
-                    hozAlign: "center",
-                    editor: "input",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        const rowData = cell.getRow().getData();
-                        const currentPrice = parseFloat(rowData['base_price']) || 0;
-                        const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
-                        const sprice = isNaN(spriceNum) ? 0 : spriceNum;
-
-                        if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) return '';
-                        if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) return '';
-
-                        return `$${sprice.toFixed(2)}`;
-                    }
-                },
                 {
                     title: "S Recovery",
                     field: "s_recovery",
@@ -5665,7 +5763,105 @@
                     },
                     visible: false
                 },
-                
+                {
+                    title: '<input type="checkbox" id="select-all-checkbox">',
+                    field: "_select",
+                    headerSort: false,
+                    visible: true,
+                    formatter: function(cell) {
+                        const sku = cell.getRow().getData()['sku'];
+                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
+                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isChecked}>`;
+                    },
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                    }
+                },
+                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
+                {
+                    title: "Diff",
+                    field: "lmp_diff_pct",
+                    hozAlign: "center",
+                    width: 70,
+                    headerTooltip: "S PRC vs LMP: (LMP − S PRC) / LMP. Green = S PRC below LMP, Red = S PRC above LMP.",
+                    headerSortStartingDir: "desc",
+                    sorter: function(a, b, aRow, bRow) {
+                        const calc = function(rd) {
+                            const lmp = typeof getRowLmpL1 === 'function'
+                                ? (getRowLmpL1(rd) || 0)
+                                : (parseFloat(rd.lmp) || 0);
+                            const sprice = typeof temuDisplayedSprice === 'function'
+                                ? temuDisplayedSprice(rd)
+                                : (parseFloat(rd.sprice) || 0);
+                            if (!(lmp > 0) || !(sprice > 0)) return -Infinity;
+                            return ((lmp - sprice) / lmp) * 100;
+                        };
+                        return calc(aRow.getData()) - calc(bRow.getData());
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (typeof isTemuParentRow === 'function' && isTemuParentRow(rowData)) return '';
+                        const lmp = typeof getRowLmpL1 === 'function'
+                            ? (getRowLmpL1(rowData) || 0)
+                            : (parseFloat(rowData.lmp) || 0);
+                        const sprice = typeof temuDisplayedSprice === 'function'
+                            ? temuDisplayedSprice(rowData)
+                            : (parseFloat(rowData.sprice) || 0);
+                        if (!(lmp > 0) || !(sprice > 0)) {
+                            return '<span style="color:#999;">—</span>';
+                        }
+                        const diff = ((lmp - sprice) / lmp) * 100;
+                        const color = diff < 0 ? '#dc3545' : '#28a745';
+                        const sign = diff > 0 ? '+' : '';
+                        return '<span style="color:' + color + ';font-weight:600;">' + sign + diff.toFixed(1) + '%</span>';
+                    }
+                },
+                {
+                    title: "S PRC",
+                    field: "sprice",
+                    hozAlign: "center",
+                    editor: "input",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
+                        let sprice = isNaN(spriceNum) ? 0 : spriceNum;
+                        // PRMT% = 0 still shows S PRC (Std − CVR%, or Std)
+                        if (!(sprice > 0) && typeof temuSpriceFromStdPrmtCvr === 'function') {
+                            sprice = temuSpriceFromStdPrmtCvr(rowData) || 0;
+                        }
+                        if (!(sprice > 0)) return '';
+
+                        const basePrice = parseFloat(rowData.base_price) || 0;
+                        const rPrice = typeof temuRPriceFromRow === 'function'
+                            ? temuRPriceFromRow(rowData)
+                            : (parseFloat(rowData.temu_price) || 0);
+                        const fullPrice = typeof temuFullPriceFromRow === 'function'
+                            ? temuFullPriceFromRow(rowData)
+                            : (parseFloat(rowData.temu_price_display) || 0);
+                        const sameAsPrice = [basePrice, rPrice, fullPrice].some(function(p) {
+                            return p > 0 && Math.abs(sprice - p) < 0.02;
+                        });
+
+                        const lmp = typeof getRowLmpL1 === 'function'
+                            ? (getRowLmpL1(rowData) || 0)
+                            : (parseFloat(rowData.lmp) || 0);
+                        const overLmp = lmp > 0 && sprice > lmp;
+
+                        const alertHtml = overLmp
+                            ? '<i class="fas fa-exclamation-triangle temu-sprice-lmp-alert" title="S PRC $'
+                                + sprice.toFixed(2) + ' &gt; LMP $' + Number(lmp).toFixed(2) + '"></i>'
+                            : '';
+                        let color = '';
+                        if (sameAsPrice) color = '#ffc107';
+                        else if (overLmp) color = '#dc3545';
+                        const priceHtml = color
+                            ? '<span style="color:' + color + ';font-weight:600;">$' + sprice.toFixed(2) + '</span>'
+                            : ('$' + sprice.toFixed(2));
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;">'
+                            + priceHtml + alertHtml + '</span>';
+                    }
+                },
             ]
         });
 
@@ -5674,7 +5870,7 @@
         let originalColumnVisibility = {}; // Store original visibility state
         
         // Columns to show when ads view is active (matching temu/ads page)
-        const adsColumnFields = ['sku', 'goods_id', 'has_campaign', 'inventory', 'ovl30', 'temu_l30', 'dil_percent', 'nr_req', 'spend', 'ad_clicks', 'acos_ad', 'out_roas_l30', 'in_roas_l30', 'campaign_status'];
+        const adsColumnFields = ['_select', 'sku', 'goods_id', 'has_campaign', 'inventory', 'ovl30', 'temu_l30', 'dil_percent', 'nr_req', 'spend', 'ad_clicks', 'acos_ad', 'out_roas_l30', 'in_roas_l30', 'campaign_status'];
 
         function captureColumnVisibilityState() {
             const state = {};
@@ -5690,13 +5886,35 @@
             if (!table || !state) return;
             table.getColumns().forEach(function(column) {
                 const field = column.getField();
-                if (!field || !Object.prototype.hasOwnProperty.call(state, field)) return;
+                if (!field || field === '_select' || !Object.prototype.hasOwnProperty.call(state, field)) return;
                 if (state[field]) {
                     column.show();
                 } else {
                     column.hide();
                 }
             });
+        }
+
+        /**
+         * Honor the column-box checkboxes after any filter.
+         * Ads-section view keeps its own preset until the user exits it.
+         */
+        function applySelectedColumnVisibility() {
+            if (!table) return;
+            if (typeof adsColumnsVisible !== 'undefined' && adsColumnsVisible) return;
+
+            const boxChecks = document.querySelectorAll('#column-dropdown-menu .col-vis-field-toggle');
+            if (boxChecks.length) {
+                const state = {};
+                boxChecks.forEach(function(cb) {
+                    if (cb.value) state[cb.value] = !!cb.checked;
+                });
+                applyColumnVisibilityState(state);
+                return;
+            }
+            if (savedColumnVisibilityMap && typeof savedColumnVisibilityMap === 'object') {
+                applyColumnVisibilityState(savedColumnVisibilityMap);
+            }
         }
         
         $('#toggle-ads-columns-btn').on('click', function() {
@@ -6040,6 +6258,12 @@
                 });
             }
 
+            if (spriceLmpAlertFilterActive) {
+                table.addFilter(function(data) {
+                    return temuSpriceHasLmpAlert(data);
+                });
+            }
+
             // Not Map (Missing M) badge filter — listed, REQ, both sides with stock, out of tolerance (same as /map-issues).
             if (notMapBadgeFilterActive) {
                 table.addFilter(function(data) {
@@ -6193,17 +6417,7 @@
                 $('#search-result-info').hide();
             }
 
-            // LMP + linked LMP columns: always visible
-            try {
-                table.getColumn('lmp').show();
-                table.getColumn('linked_lmp_skus').show();
-                table.getColumn('linked_lmp_sku_add').show();
-            } catch (e) {}
-            // MAP column: visible only when Missing M badge is active
-            try {
-                if (notMapBadgeFilterActive) table.getColumn('MAP').show();
-                else table.getColumn('MAP').hide();
-            } catch (e) {}
+            applySelectedColumnVisibility();
         }
 
         // ==================== Play/Pause parent navigation (same as pricing-master-cvr) ====================
@@ -7206,7 +7420,7 @@
 
             // Basics — identity / inventory / listing status / views / sold
             if (
-                /^(image_path|parent|sku|links_column|goods_id|inventory|temu_stock|ovl30|dil_percent|temu_l30|missing|MAP|nr_req|nrp|o_clicks|product_clicks|product_clicks_l7|product_clicks_l7_to_l14)$/i.test(f) ||
+                /^(image_path|parent|sku|links_column|goods_id|inventory|temu_stock|ovl30|dil_percent|temu_l30|missing|MAP|nr_req|nrp|product_clicks|ads_views|product_clicks_l7|product_clicks_l7_to_l14)$/i.test(f) ||
                 /\b(image|parent|sku|links|goods|inv|stock|ovl|dil|temu\s*l\d+|missing|map|nrl|req|views|o\s*clicks|nrp)\b/i.test(tl)
             ) {
                 return 'basics';
@@ -7214,7 +7428,7 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|linked_lmp_skus|linked_lmp_sku_add|sprice|s_recovery|_push|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|dsc|appr|push_prc)$/i.test(f) ||
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|lmp_diff_pct|linked_lmp_skus|linked_lmp_sku_add|sprice|s_recovery|_push|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|dsc|appr|push_prc)$/i.test(f) ||
                 /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|push|recovery|prmt|cpn|dsc|appr|push\s*prc)\b/i.test(tl)
             ) {
                 return 'pricing';
@@ -7249,6 +7463,7 @@
             .then(response => response.json())
             .then(savedVisibility => {
                 const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                savedColumnVisibilityMap = map;
 
                 const showAllLi = document.createElement("li");
                 showAllLi.className = "col-vis-full";
@@ -7327,12 +7542,20 @@
 
         function saveColumnVisibilityToServer() {
             const visibility = {};
-            table.getColumns().forEach(col => {
-                const def = col.getDefinition();
-                if (def.field) {
-                    visibility[def.field] = col.isVisible();
-                }
-            });
+            const boxChecks = document.querySelectorAll('#column-dropdown-menu .col-vis-field-toggle');
+            if (boxChecks.length) {
+                boxChecks.forEach(function(cb) {
+                    if (cb.value) visibility[cb.value] = !!cb.checked;
+                });
+            } else {
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field) {
+                        visibility[def.field] = col.isVisible();
+                    }
+                });
+            }
+            savedColumnVisibilityMap = visibility;
 
             fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                 method: 'POST',
@@ -7358,9 +7581,10 @@
             .then(response => response.json())
             .then(savedVisibility => {
                 if (!savedVisibility || typeof savedVisibility !== 'object') return;
+                savedColumnVisibilityMap = savedVisibility;
                 table.getColumns().forEach(col => {
                     const field = col.getField();
-                    if (field && savedVisibility.hasOwnProperty(field)) {
+                    if (field && field !== '_select' && savedVisibility.hasOwnProperty(field)) {
                         if (savedVisibility[field]) {
                             col.show();
                         } else {
