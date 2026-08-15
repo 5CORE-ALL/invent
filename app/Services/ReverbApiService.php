@@ -774,6 +774,407 @@ class ReverbApiService
     }
 
     /**
+     * Apply Reverb's "Drop the Price By" sale % without changing the listing / Std price.
+     * POST /api/my/listings/{id}/sales  { "percentage": N }
+     * percent 0 removes the listing from seller sales.
+     *
+     * @return array{success: bool, message: string, listing_id?: string, percent?: int}
+     */
+    public function applyListingPriceDrop(string $sku, float $percent): array
+    {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return [
+                'success' => false,
+                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
+            ];
+        }
+
+        $pct = (int) round(max(0, $percent));
+        $listingId = $this->getListingIdBySku($sku);
+        if ($listingId === null) {
+            return [
+                'success' => false,
+                'message' => "No Reverb listing found for SKU: {$sku}.",
+            ];
+        }
+
+        if ($pct <= 0) {
+            $cleared = $this->clearListingPriceDrops($token, $listingId);
+            if (! ($cleared['success'] ?? false)) {
+                return array_merge($cleared, ['listing_id' => $listingId, 'percent' => 0]);
+            }
+
+            return [
+                'success' => true,
+                'message' => "Removed Drop the Price By sale for SKU: {$sku}.",
+                'listing_id' => $listingId,
+                'percent' => 0,
+            ];
+        }
+
+        $existing = $this->listingSalePercent($token, $listingId);
+        if ($existing !== null && (int) $existing === $pct) {
+            return [
+                'success' => true,
+                'message' => "SKU {$sku} already has a {$pct}% Drop the Price By sale.",
+                'listing_id' => $listingId,
+                'percent' => $pct,
+            ];
+        }
+
+        if ($existing !== null && (int) $existing !== $pct) {
+            $this->clearListingPriceDrops($token, $listingId);
+        }
+
+        try {
+            $response = $this->reverbApiRequestWithRetry($token, 'POST', '/my/listings/'.$listingId.'/sales', [
+                'percentage' => $pct,
+            ]);
+            if ($response->successful()) {
+                Log::info('Reverb Drop the Price By applied', [
+                    'sku' => $sku,
+                    'listing_id' => $listingId,
+                    'percent' => $pct,
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => "Drop the Price By {$pct}% applied for SKU: {$sku}.",
+                    'listing_id' => $listingId,
+                    'percent' => $pct,
+                ];
+            }
+
+            $body = mb_substr((string) $response->body(), 0, 2000);
+            Log::error('Reverb Drop the Price By failed', [
+                'sku' => $sku,
+                'listing_id' => $listingId,
+                'percent' => $pct,
+                'status' => $response->status(),
+                'body' => $body,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => "Reverb API error (HTTP {$response->status()}): ".$body,
+                'listing_id' => $listingId,
+                'percent' => $pct,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Reverb applyListingPriceDrop exception: '.$e->getMessage(), [
+                'sku' => $sku,
+                'listing_id' => $listingId,
+                'percent' => $pct,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Exception: '.$e->getMessage(),
+                'listing_id' => $listingId,
+                'percent' => $pct,
+            ];
+        }
+    }
+
+    /**
+     * Set Reverb Bump bid % (S Bump% → live Bump%).
+     * PUT /api/bump/v2/bids  { "products": [id], "bid": 0.05 }
+     * percent 0 removes bump via DELETE /api/bump/v2/bids.
+     *
+     * @return array{success: bool, message: string, listing_id?: string, percent?: float, display?: string}
+     */
+    public function applyListingBumpBid(string $sku, float $percent): array
+    {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return [
+                'success' => false,
+                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
+            ];
+        }
+
+        $listingId = $this->getListingIdBySku($sku);
+        if ($listingId === null) {
+            return [
+                'success' => false,
+                'message' => "No Reverb listing found for SKU: {$sku}.",
+            ];
+        }
+
+        $pct = max(0, $percent);
+        if ($pct > 0) {
+            $pct = min(30, max(0.5, $pct));
+            $pct = round($pct * 2) / 2;
+        }
+
+        $productId = is_numeric($listingId) ? (int) $listingId : $listingId;
+        $current = $this->listingBumpPercent($token, $listingId);
+        if ($current !== null && abs($current - $pct) < 0.05) {
+            $display = $pct > 0 ? rtrim(rtrim(number_format($pct, 1, '.', ''), '0'), '.').'%' : '0%';
+            $this->persistBumpBid($sku, $display);
+
+            return [
+                'success' => true,
+                'message' => "SKU {$sku} already has a {$display} Bump bid.",
+                'listing_id' => (string) $listingId,
+                'percent' => $pct,
+                'display' => $display,
+            ];
+        }
+
+        try {
+            if ($pct <= 0) {
+                $response = $this->reverbApiRequestWithRetry($token, 'DELETE', '/bump/v2/bids', [
+                    'products' => [$productId],
+                ]);
+            } else {
+                $response = $this->reverbApiRequestWithRetry($token, 'PUT', '/bump/v2/bids', [
+                    'products' => [$productId],
+                    'bid' => round($pct / 100, 4),
+                ]);
+            }
+
+            if ($response->successful()) {
+                $display = $pct > 0 ? rtrim(rtrim(number_format($pct, 1, '.', ''), '0'), '.').'%' : '0%';
+                $this->persistBumpBid($sku, $display);
+                Log::info('Reverb Bump bid applied', [
+                    'sku' => $sku,
+                    'listing_id' => $listingId,
+                    'percent' => $pct,
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => $pct > 0
+                        ? "Bump {$display} applied for SKU: {$sku}."
+                        : "Removed Bump for SKU: {$sku}.",
+                    'listing_id' => (string) $listingId,
+                    'percent' => $pct,
+                    'display' => $display,
+                ];
+            }
+
+            $body = mb_substr((string) $response->body(), 0, 2000);
+            Log::error('Reverb Bump bid failed', [
+                'sku' => $sku,
+                'listing_id' => $listingId,
+                'percent' => $pct,
+                'status' => $response->status(),
+                'body' => $body,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => "Reverb API error (HTTP {$response->status()}): ".$body,
+                'listing_id' => (string) $listingId,
+                'percent' => $pct,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Reverb applyListingBumpBid exception: '.$e->getMessage(), [
+                'sku' => $sku,
+                'listing_id' => $listingId,
+                'percent' => $pct,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Exception: '.$e->getMessage(),
+                'listing_id' => (string) $listingId,
+                'percent' => $pct,
+            ];
+        }
+    }
+
+    private function listingBumpPercent(string $token, string $listingId): ?float
+    {
+        try {
+            $response = $this->reverbApiRequestWithRetry($token, 'GET', '/listings/'.$listingId.'/bump');
+            if (! $response->successful()) {
+                return null;
+            }
+            $data = $response->json();
+            $current = $data['current_bid'] ?? $data['bump_v2_stats']['current_bid'] ?? null;
+            if (is_array($current)) {
+                if (isset($current['bid_percentage']) && is_numeric($current['bid_percentage'])) {
+                    return round(((float) $current['bid_percentage']) * 100, 2);
+                }
+                $display = (string) ($current['display'] ?? '');
+                if (preg_match('/(\d+(?:\.\d+)?)/', $display, $m)) {
+                    return (float) $m[1];
+                }
+            }
+            if (is_numeric($current)) {
+                $n = (float) $current;
+
+                return $n > 0 && $n <= 1 ? round($n * 100, 2) : $n;
+            }
+            if (is_string($current) && preg_match('/(\d+(?:\.\d+)?)/', $current, $m)) {
+                return (float) $m[1];
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return null;
+    }
+
+    private function persistBumpBid(string $sku, string $display): void
+    {
+        try {
+            if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', 'bump_bid')) {
+                return;
+            }
+            ReverbProduct::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                ->update([
+                    'bump_bid' => $display,
+                    'updated_at' => now(),
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('Reverb persistBumpBid failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Current seller-sale discount % on a listing, or null if none.
+     */
+    private function listingSalePercent(string $token, string $listingId): ?int
+    {
+        try {
+            $response = $this->reverbApiRequestWithRetry($token, 'GET', '/listings/'.$listingId.'/sales');
+            if (! $response->successful()) {
+                return null;
+            }
+            $sales = $response->json('sales');
+            if (! is_array($sales)) {
+                return null;
+            }
+            foreach ($sales as $sale) {
+                if (! is_array($sale)) {
+                    continue;
+                }
+                $pct = $sale['discount_percent'] ?? $sale['percentage'] ?? null;
+                if (is_numeric($pct) && (int) $pct > 0) {
+                    return (int) $pct;
+                }
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    private function clearListingPriceDrops(string $token, string $listingId): array
+    {
+        $removed = false;
+        try {
+            $response = $this->reverbApiRequestWithRetry($token, 'GET', '/listings/'.$listingId.'/sales');
+            $sales = $response->successful() ? $response->json('sales') : [];
+            if (is_array($sales)) {
+                foreach ($sales as $sale) {
+                    if (! is_array($sale)) {
+                        continue;
+                    }
+                    $saleId = $sale['id'] ?? $sale['slug'] ?? null;
+                    if ($saleId === null || $saleId === '') {
+                        continue;
+                    }
+                    $del = $this->reverbApiRequestWithRetry($token, 'DELETE', '/sales/'.$saleId.'/listings', [
+                        'listing_ids' => [(string) $listingId],
+                    ]);
+                    if ($del->successful()) {
+                        $removed = true;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Reverb clearListingPriceDrops listing-sales lookup failed', [
+                'listing_id' => $listingId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $direct = $this->reverbApiRequestWithRetry($token, 'DELETE', '/my/listings/'.$listingId.'/sales');
+            if ($direct->successful()) {
+                $removed = true;
+            }
+        } catch (\Throwable) {
+            // optional fallback
+        }
+
+        return [
+            'success' => true,
+            'message' => $removed ? 'Sale removed.' : 'No Drop the Price By sale to remove.',
+        ];
+    }
+
+    /**
+     * Authenticated Reverb API call with 401 refresh + 429/503 retry.
+     *
+     * @param  array<string, mixed>|null  $payload
+     */
+    private function reverbApiRequestWithRetry(string $token, string $method, string $path, ?array $payload = null, int $maxRetries = 4): Response
+    {
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $url = $apiBase.'/'.ltrim($path, '/');
+        $bearer = $token;
+        $last = null;
+        $method = strtoupper($method);
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            $req = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$bearer,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                    'Content-Type' => 'application/hal+json',
+                ]);
+            $last = match ($method) {
+                'GET' => $req->get($url),
+                'DELETE' => $payload ? $req->withBody(json_encode($payload), 'application/hal+json')->delete($url) : $req->delete($url),
+                'POST' => $req->post($url, $payload ?? []),
+                'PUT' => $req->put($url, $payload ?? []),
+                default => $req->send($method, $url, ['json' => $payload ?? []]),
+            };
+
+            if ($last->successful()) {
+                return $last;
+            }
+            if ($last->status() === 401 && $attempt < $maxRetries - 1) {
+                self::forgetCachedReverbToken();
+                $refreshed = self::getReverbBearerToken(true);
+                if (is_string($refreshed) && $refreshed !== '') {
+                    $bearer = $refreshed;
+                    usleep(400000);
+
+                    continue;
+                }
+            }
+            if (in_array($last->status(), [429, 503], true) && $attempt < $maxRetries - 1) {
+                $waitMs = (int) (500000 * ($attempt + 1));
+                if ($last->status() === 429 && is_numeric($last->header('Retry-After'))) {
+                    $waitMs = min(2_000_000, (int) ((float) $last->header('Retry-After') * 1_000_000));
+                }
+                usleep($waitMs);
+
+                continue;
+            }
+            break;
+        }
+
+        return $last;
+    }
+
+    /**
      * Update product title on Reverb by SKU.
      * Uses getListingIdBySku then PUT to /api/listings/{id} with title.
      *

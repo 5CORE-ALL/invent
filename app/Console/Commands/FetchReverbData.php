@@ -88,16 +88,18 @@ class FetchReverbData extends Command
         // This way, if the new bump-bid API loop is killed (or --skip-bump is used),
         // the table still keeps the most recent bump_bid we knew about per SKU.
         $existingBumpBids = $this->snapshotExistingBumpBids();
+        $existingViews = $this->snapshotExistingViews();
 
         // Prepare bulk update data - Process ALL listed SKUs (not just those with orders).
-        // bump_bid carries forward from the previous snapshot; the bump-bid loop below refreshes it per row.
+        // bump_bid and views (bump impressions) carry forward from the previous snapshot;
+        // the bump loop below refreshes both per row.
         $bulkData = [];
         foreach ($listingMap as $sku => $listing) {
             $r30 = $rL30[$sku] ?? 0;
             $r60 = $rL60[$sku] ?? 0;
 
             $price = $listing['price']['amount'] ?? null;
-            $views = $listing['stats']['views'] ?? null;
+            $views = $existingViews[$sku] ?? 0;
             $rawInventory = (int) ($listing['inventory'] ?? 0);
             $listingId = $listing['id'] ?? null;
             $listingState = $this->resolveListingStateFromApi($listing) ?? 'live';
@@ -126,9 +128,9 @@ class FetchReverbData extends Command
         // STEP 2 of 2 — Refresh bump_bid % per listing, writing back to reverb_products incrementally.
         // Each row UPDATE is committed immediately, so a kill mid-loop only loses the still-pending rows.
         if ($this->option('skip-bump')) {
-            $this->warn('Skipping bump-bid refresh (--skip-bump). Existing bump_bid values were preserved.');
+            $this->warn('Skipping bump-bid refresh (--skip-bump). Existing bump_bid and Views (bump impressions) were preserved.');
         } else {
-            $this->info('Refreshing bump bid % for each listing (writes incrementally; safe to interrupt)...');
+            $this->info('Refreshing bump bid % and impressions for each listing (writes incrementally; safe to interrupt)...');
             $this->refreshBumpBidsInPlace($listingMap);
         }
 
@@ -166,6 +168,35 @@ class FetchReverbData extends Command
                     }
                     // Last write wins per normalized key (table should already be deduped).
                     $snapshot[$key] = $row->bump_bid;
+                }
+            });
+
+        return $snapshot;
+    }
+
+    /**
+     * Carry forward Views (bump impressions) across the table replace.
+     *
+     * @return array<string, int>
+     */
+    protected function snapshotExistingViews(): array
+    {
+        if (! Schema::hasTable('reverb_products')) {
+            return [];
+        }
+
+        $snapshot = [];
+        DB::table('reverb_products')
+            ->select(['id', 'sku', 'views'])
+            ->whereNotNull('sku')
+            ->orderBy('id')
+            ->chunkById(1000, function ($rows) use (&$snapshot) {
+                foreach ($rows as $row) {
+                    $key = $this->normalizeSku($row->sku);
+                    if ($key === '') {
+                        continue;
+                    }
+                    $snapshot[$key] = (int) ($row->views ?? 0);
                 }
             });
 
@@ -257,38 +288,54 @@ class FetchReverbData extends Command
             if ($response->failed()) {
                 continue;
             }
-            $data = $response->json();
+            $data = $response->json() ?? [];
             $currentBid = $data['current_bid'] ?? $data['bump_v2_stats']['current_bid'] ?? null;
             $display = is_array($currentBid) ? ($currentBid['display'] ?? null) : $currentBid;
+            $impressions = $this->extractBumpImpressions($data);
 
             // Clean bump bid to prevent "Data too long for column" (e.g. "5.000000074505806%" -> "5%")
-            if ($display !== null) {
-                if (is_string($display)) {
-                    if (preg_match('/^(\d+(?:\.\d+)?)%/', $display, $matches)) {
-                        $display = $matches[1] . '%';
-                    } else {
-                        $display = substr($display, 0, 10);
-                    }
+            if (is_string($display)) {
+                if (preg_match('/^(\d+(?:\.\d+)?)%/', $display, $matches)) {
+                    $display = $matches[1] . '%';
+                } else {
+                    $display = substr($display, 0, 10);
                 }
+            }
 
-                try {
-                    $affected = DB::table('reverb_products')
-                        ->where('sku', $sku)
-                        ->update([
-                            'bump_bid' => $display,
-                            'updated_at' => now(),
-                        ]);
-                    if ($affected > 0) {
-                        $updated++;
-                    }
-                } catch (\Throwable $e) {
-                    $this->warn("  Failed to persist bump_bid for SKU {$sku}: " . $e->getMessage());
+            $payload = [
+                'views' => $impressions,
+                'updated_at' => now(),
+            ];
+            if ($display !== null && $display !== '') {
+                $payload['bump_bid'] = $display;
+            }
+
+            try {
+                $affected = DB::table('reverb_products')
+                    ->where('sku', $sku)
+                    ->update($payload);
+                if ($affected > 0) {
+                    $updated++;
                 }
+            } catch (\Throwable $e) {
+                $this->warn("  Failed to persist bump stats for SKU {$sku}: " . $e->getMessage());
             }
             usleep(150000); // 0.15s between calls to avoid rate limit
         }
 
-        $this->info("Refreshed bump bid for {$updated} listing(s) (out of {$total} processed).");
+        $this->info("Refreshed bump bid / impressions for {$updated} listing(s) (out of {$total} processed).");
+    }
+
+    /**
+     * Bump impressions from GET /listings/{id}/bump. 0 when the listing was never bumped.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function extractBumpImpressions(array $data): int
+    {
+        $raw = $data['bump_v2_stats']['impressions'] ?? $data['impressions'] ?? 0;
+
+        return is_numeric($raw) && (int) $raw > 0 ? (int) $raw : 0;
     }
 
     protected function fetchAllOrders(): void

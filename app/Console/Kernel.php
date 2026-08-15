@@ -1085,6 +1085,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('reverb:collect-metrics')
+            ->dailyAt('10:05')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-collect-metrics')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         /*
         |--------------------------------------------------------------------------
         | TOPDAWG

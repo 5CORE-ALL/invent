@@ -12,14 +12,10 @@
             '<div class="card-body py-2">' +
                 '<div class="row g-2 align-items-end">' +
                     '<div class="col-auto">' +
-                        '<label class="form-label mb-0 small fw-bold">SP</label>' +
+                        '<label class="form-label mb-0 small fw-bold">Std Prc</label>' +
                         '<input type="number" class="form-control form-control-sm text-end fw-bold lmp-modal-sp-input" ' +
                             'step="0.01" min="0.01" placeholder="0.00" style="width: 7rem;" ' +
-                            'title="Manual Standard Price — use when LMP cannot be determined. Saves to SP / STD PRC.">' +
-                    '</div>' +
-                    '<div class="col-auto small text-muted pb-1">' +
-                        'Standard Price (manual). Saves to <strong>SP</strong> for this SKU and ' +
-                        '<strong>Sku Link LMP</strong> siblings. Use when LMP cannot be determined.' +
+                            'title="Std Prc">' +
                     '</div>' +
                 '</div>' +
             '</div>' +

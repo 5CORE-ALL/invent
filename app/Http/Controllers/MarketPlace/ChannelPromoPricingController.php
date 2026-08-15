@@ -676,7 +676,7 @@ class ChannelPromoPricingController extends Controller
 
         return $this->loadRules(
             $channel.'_dil_vs_prmt',
-            $this->defaultDilPrmtRules(),
+            $this->defaultDilPrmtRules($channel),
             'prmt'
         );
     }
@@ -695,9 +695,45 @@ class ChannelPromoPricingController extends Controller
 
         $rules = $this->persistRules(
             $channel.'_dil_vs_prmt',
-            $this->defaultDilPrmtRules(),
+            $this->defaultDilPrmtRules($channel),
             $incoming,
             'prmt'
+        );
+
+        return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
+    }
+
+    public function dilBumpRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! $this->promo->isSupported($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        return $this->loadRules(
+            $channel === 'reverb' ? $channel.'_views_vs_bump' : $channel.'_dil_vs_bump',
+            $this->defaultDilBumpRules($channel),
+            'bump'
+        );
+    }
+
+    public function saveDilBumpRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! $this->promo->isSupported($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $incoming = $request->input('rules');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+        }
+
+        $rules = $this->persistRules(
+            $channel === 'reverb' ? $channel.'_views_vs_bump' : $channel.'_dil_vs_bump',
+            $this->defaultDilBumpRules($channel),
+            $incoming,
+            'bump'
         );
 
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
@@ -744,8 +780,19 @@ class ChannelPromoPricingController extends Controller
      *
      * @return list<array{key:string,label:string,prmt:float|int}>
      */
-    private function defaultDilPrmtRules(): array
+    private function defaultDilPrmtRules(string $channel = ''): array
     {
+        if ($channel === 'reverb') {
+            return [
+                ['key' => '0-20', 'label' => '0–20%', 'prmt' => 10],
+                ['key' => '20-40', 'label' => '20–40%', 'prmt' => 8],
+                ['key' => '40-60', 'label' => '40–60%', 'prmt' => 5],
+                ['key' => '60-80', 'label' => '60–80%', 'prmt' => 3],
+                ['key' => '80-100', 'label' => '80–100%', 'prmt' => 1],
+                ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
+            ];
+        }
+
         return [
             ['key' => '0-10', 'label' => '0–10%', 'prmt' => 10],
             ['key' => '10-20', 'label' => '10–20%', 'prmt' => 9],
@@ -758,6 +805,43 @@ class ChannelPromoPricingController extends Controller
             ['key' => '80-90', 'label' => '80–90%', 'prmt' => 2],
             ['key' => '90-100', 'label' => '90–100%', 'prmt' => 1],
             ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
+        ];
+    }
+
+    /**
+     * Views → S Bump% defaults (Reverb: 10 Views slabs, 0–100 / 101–200 / …).
+     *
+     * @return list<array{key:string,label:string,bump:float|int}>
+     */
+    private function defaultDilBumpRules(string $channel = ''): array
+    {
+        if ($channel === 'reverb') {
+            return [
+                ['key' => '0-100', 'label' => '0–100', 'bump' => 10],
+                ['key' => '101-200', 'label' => '101–200', 'bump' => 9],
+                ['key' => '201-300', 'label' => '201–300', 'bump' => 8],
+                ['key' => '301-400', 'label' => '301–400', 'bump' => 7],
+                ['key' => '401-500', 'label' => '401–500', 'bump' => 6],
+                ['key' => '501-600', 'label' => '501–600', 'bump' => 5],
+                ['key' => '601-700', 'label' => '601–700', 'bump' => 4],
+                ['key' => '701-800', 'label' => '701–800', 'bump' => 3],
+                ['key' => '801-900', 'label' => '801–900', 'bump' => 2],
+                ['key' => 'gt-900', 'label' => '> 900 (onwards)', 'bump' => 0],
+            ];
+        }
+
+        return [
+            ['key' => '0-10', 'label' => '0–10%', 'bump' => 10],
+            ['key' => '10-20', 'label' => '10–20%', 'bump' => 9],
+            ['key' => '20-30', 'label' => '20–30%', 'bump' => 8],
+            ['key' => '30-40', 'label' => '30–40%', 'bump' => 7],
+            ['key' => '40-50', 'label' => '40–50%', 'bump' => 6],
+            ['key' => '50-60', 'label' => '50–60%', 'bump' => 5],
+            ['key' => '60-70', 'label' => '60–70%', 'bump' => 4],
+            ['key' => '70-80', 'label' => '70–80%', 'bump' => 3],
+            ['key' => '80-90', 'label' => '80–90%', 'bump' => 2],
+            ['key' => '90-100', 'label' => '90–100%', 'bump' => 1],
+            ['key' => 'gt-100', 'label' => '> 100%', 'bump' => 0],
         ];
     }
 

@@ -8,6 +8,7 @@ use App\Models\EbayDataView;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
 use App\Models\MacyDataView;
+use App\Models\ReverbDataView;
 use App\Models\ShopifyB2BDataView;
 use App\Models\Shopifyb2cDataView;
 use App\Models\Temu2DataView;
@@ -62,13 +63,13 @@ class ChannelPromoPricingService
         'shopify_b2c' => Shopifyb2cDataView::class,
         'shopify_b2b' => ShopifyB2BDataView::class,
         'macys' => MacyDataView::class,
+        'reverb' => ReverbDataView::class,
         'walmart' => WalmartDataView::class,
         'wayfair' => WayfairDataView::class,
         'temu' => TemuDataView::class,
         'temu2' => Temu2DataView::class,
         'doba' => DobaDataView::class,
         'doba_withoutship' => DobaWithoutShipDataView::class,
-        // reverb: no dedicated data_view model in repo — mapForSkus/upsert no-op until one exists
     ];
 
     public function isSupported(string $channel): bool
@@ -158,6 +159,8 @@ class ChannelPromoPricingService
         $row['PUSH_PRC_VALUE'] = $promo['PUSH_PRC_VALUE'] ?? null;
         $row['PUSH_STD_PRC_STATUS'] = $promo['PUSH_STD_PRC_STATUS'] ?? null;
         $row['PUSH_STD_PRC_VALUE'] = $promo['PUSH_STD_PRC_VALUE'] ?? null;
+        $row['PUSH_BUMP_STATUS'] = $promo['PUSH_BUMP_STATUS'] ?? null;
+        $row['PUSH_BUMP_VALUE'] = $promo['PUSH_BUMP_VALUE'] ?? null;
         $row['PEF_COUPON_PCT'] = $promo['PEF_COUPON_PCT'] ?? null;
         $row['PEF_COUPON_CODE'] = $promo['PEF_COUPON_CODE'] ?? null;
         $row['coupon_code'] = $promo['coupon_code'] ?? $promo['PEF_COUPON_CODE'] ?? null;
@@ -322,6 +325,34 @@ class ChannelPromoPricingService
             } elseif (($existing['PUSH_STD_PRC_STATUS'] ?? null) === 'pushed' && empty($existing['PUSH_STD_PRC_PUSHED_AT'])) {
                 $existing['PUSH_STD_PRC_PUSHED_AT'] = now()->toDateTimeString();
             }
+            if (array_key_exists('push_bump_status', $fields)) {
+                $st = $fields['push_bump_status'];
+                if ($st === null || $st === '') {
+                    unset($existing['PUSH_BUMP_STATUS']);
+                } else {
+                    $existing['PUSH_BUMP_STATUS'] = substr((string) $st, 0, 64);
+                }
+            }
+            if (array_key_exists('push_bump_value', $fields)) {
+                $val = $fields['push_bump_value'];
+                if (is_numeric($val) && (float) $val >= 0) {
+                    $existing['PUSH_BUMP_VALUE'] = round((float) $val, 2);
+                } else {
+                    unset($existing['PUSH_BUMP_VALUE']);
+                }
+            }
+            if (array_key_exists('push_bump_pushed_at', $fields)) {
+                $at = $fields['push_bump_pushed_at'];
+                if ($at) {
+                    $existing['PUSH_BUMP_PUSHED_AT'] = is_string($at)
+                        ? $at
+                        : now()->toDateTimeString();
+                } else {
+                    unset($existing['PUSH_BUMP_PUSHED_AT']);
+                }
+            } elseif (($existing['PUSH_BUMP_STATUS'] ?? null) === 'pushed' && empty($existing['PUSH_BUMP_PUSHED_AT'])) {
+                $existing['PUSH_BUMP_PUSHED_AT'] = now()->toDateTimeString();
+            }
 
             $row->sku = $row->sku ?: $skuNorm;
             $row->value = $existing;
@@ -373,6 +404,8 @@ class ChannelPromoPricingService
             || isset($val['PUSH_PRC_VALUE'])
             || isset($val['PUSH_STD_PRC_STATUS'])
             || isset($val['PUSH_STD_PRC_VALUE'])
+            || isset($val['PUSH_BUMP_STATUS'])
+            || isset($val['PUSH_BUMP_VALUE'])
             || $couponPct !== null
             || $couponCode !== ''
             || $couponPromoId !== ''
@@ -385,6 +418,7 @@ class ChannelPromoPricingService
 
         $pushVal = $val['PUSH_PRC_VALUE'] ?? null;
         $pushStdVal = $val['PUSH_STD_PRC_VALUE'] ?? null;
+        $pushBumpVal = $val['PUSH_BUMP_VALUE'] ?? null;
 
         return [
             'prmt_pct' => $prmt,
@@ -398,6 +432,10 @@ class ChannelPromoPricingService
             'PUSH_STD_PRC_STATUS' => $val['PUSH_STD_PRC_STATUS'] ?? null,
             'PUSH_STD_PRC_VALUE' => (is_numeric($pushStdVal) && (float) $pushStdVal > 0)
                 ? round((float) $pushStdVal, 2)
+                : null,
+            'PUSH_BUMP_STATUS' => $val['PUSH_BUMP_STATUS'] ?? null,
+            'PUSH_BUMP_VALUE' => is_numeric($pushBumpVal)
+                ? round((float) $pushBumpVal, 2)
                 : null,
             'PEF_COUPON_PCT' => $couponPct,
             'PEF_COUPON_CODE' => $couponCode !== '' ? $couponCode : null,

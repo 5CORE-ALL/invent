@@ -5,11 +5,18 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ReverbProduct;
+use App\Models\ReverbSkuDailyData;
 use App\Models\ShopifySku;
 use App\Models\ReverbSkuCompetitor;
 use App\Models\LmpCompetitorHistory;
+use App\Jobs\RunReverbPushBumpJob;
+use App\Jobs\RunReverbPushPrmtJob;
+use App\Jobs\RunReverbPushStdJob;
 use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
+use App\Services\Support\ReverbPushBumpJobStore;
+use App\Services\Support\ReverbPushPrmtJobStore;
+use App\Services\Support\ReverbPushStdJobStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
@@ -451,6 +458,35 @@ class ReverbController extends Controller
     }
 
     /**
+     * Bulk-save recommended bids (S Bump%) from Views vs Bump apply.
+     */
+    public function saveRecommendedBids(Request $request)
+    {
+        $request->validate([
+            'updates' => 'required|array|min:1',
+            'updates.*.sku' => 'required|string',
+            'updates.*.recommended_bid' => 'nullable|string|max:50',
+        ]);
+
+        $updated = 0;
+        foreach ($request->input('updates', []) as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $recommendedBid = $item['recommended_bid'] ?? null;
+            $value = ($recommendedBid === '' || $recommendedBid === null) ? null : trim((string) $recommendedBid);
+            ReverbProduct::updateOrCreate(
+                ['sku' => $sku],
+                ['recommended_bid' => $value]
+            );
+            $updated++;
+        }
+
+        return response()->json(['success' => true, 'updated' => $updated]);
+    }
+
+    /**
      * Save Bump Req (like NRA: REQ/NR) to reverb_view_data.bump_req column
      */
     public function saveBumpReq(Request $request)
@@ -759,6 +795,145 @@ class ReverbController extends Controller
     }
 
     /**
+     * Per-SKU Views / Price / CVR history for the /reverb-pricing Graph UI (same shape as eBay/Amazon).
+     */
+    public function getMetricsHistory(Request $request): JsonResponse
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        if ($sku === '') {
+            return response()->json(['error' => 'SKU is required'], 400);
+        }
+
+        $days = (int) $request->input('days', 30);
+        $skuNorm = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
+        $skuLookup = ReverbProduct::normalizeSkuForLookup($sku);
+        $skuCandidates = array_values(array_unique(array_filter([
+            $skuNorm,
+            $skuLookup !== '' ? strtoupper($skuLookup) : null,
+        ])));
+
+        $endDate = Carbon::now('America/Los_Angeles')->startOfDay();
+        $startDate = null;
+        if ($days !== 0) {
+            if ($days < 7) {
+                $days = 7;
+            }
+            $startDate = $endDate->copy()->subDays($days - 1);
+        }
+
+        $dataByDate = [];
+        $skuMatchSql = 'UPPER(TRIM(sku)) IN ('.implode(',', array_fill(0, count($skuCandidates), '?')).')';
+
+        try {
+            if (Schema::hasTable('reverb_sku_daily_data')) {
+                $query = ReverbSkuDailyData::query()
+                    ->whereRaw($skuMatchSql, $skuCandidates)
+                    ->where('record_date', '<=', $endDate->toDateString())
+                    ->orderBy('record_date', 'asc');
+                if ($startDate) {
+                    $query->where('record_date', '>=', $startDate->toDateString());
+                }
+
+                foreach ($query->get() as $record) {
+                    $data = is_array($record->daily_data)
+                        ? $record->daily_data
+                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                    $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                    $views = (int) ($data['views'] ?? 0);
+                    $rvL30 = (int) ($data['rv_l30'] ?? 0);
+                    $cvr = $views > 0
+                        ? round(($rvL30 / $views) * 100, 2)
+                        : round((float) ($data['cvr_percent'] ?? 0), 2);
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                        'price' => round((float) ($data['price'] ?? 0), 2),
+                        'views' => $views,
+                        'cvr_percent' => $cvr,
+                        'rv_l30' => $rvL30,
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::info('No Reverb daily metrics data available. Historical data will be populated by reverb:collect-metrics.', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $live = ReverbProduct::query()
+            ->whereRaw($skuMatchSql, $skuCandidates)
+            ->first();
+        if (! $live && $skuLookup !== '') {
+            $map = ReverbProduct::buildLookupByNormalizedSku([$sku]);
+            $live = $map[$skuLookup] ?? null;
+        }
+        if ($live) {
+            $todayKey = $endDate->toDateString();
+            $views = (int) ($live->views ?? 0);
+            $rvL30 = (int) ($live->r_l30 ?? 0);
+            $dataByDate[$todayKey] = [
+                'date' => $todayKey,
+                'date_formatted' => $endDate->format('M d'),
+                'price' => round((float) ($live->price ?? 0), 2),
+                'views' => $views,
+                'cvr_percent' => $views > 0 ? round(($rvL30 / $views) * 100, 2) : 0,
+                'rv_l30' => $rvL30,
+            ];
+        }
+
+        $carry = null;
+        if ($startDate && Schema::hasTable('reverb_sku_daily_data')) {
+            $prior = ReverbSkuDailyData::query()
+                ->whereRaw($skuMatchSql, $skuCandidates)
+                ->where('record_date', '<', $startDate->toDateString())
+                ->orderByDesc('record_date')
+                ->first();
+            if ($prior) {
+                $priorData = is_array($prior->daily_data)
+                    ? $prior->daily_data
+                    : (json_decode($prior->daily_data ?? '{}', true) ?: []);
+                $pViews = (int) ($priorData['views'] ?? 0);
+                $pL30 = (int) ($priorData['rv_l30'] ?? 0);
+                $carry = [
+                    'price' => round((float) ($priorData['price'] ?? 0), 2),
+                    'views' => $pViews,
+                    'cvr_percent' => $pViews > 0
+                        ? round(($pL30 / $pViews) * 100, 2)
+                        : round((float) ($priorData['cvr_percent'] ?? 0), 2),
+                    'rv_l30' => $pL30,
+                ];
+            }
+        }
+
+        if ($startDate) {
+            $filled = [];
+            $currentDate = $startDate->copy();
+            while ($currentDate->lte($endDate)) {
+                $dateKey = $currentDate->format('Y-m-d');
+                if (isset($dataByDate[$dateKey])) {
+                    $carry = $dataByDate[$dateKey];
+                    $filled[$dateKey] = $dataByDate[$dateKey];
+                } elseif ($carry !== null) {
+                    $filled[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'price' => (float) ($carry['price'] ?? 0),
+                        'views' => (int) ($carry['views'] ?? 0),
+                        'cvr_percent' => (float) ($carry['cvr_percent'] ?? 0),
+                        'rv_l30' => (int) ($carry['rv_l30'] ?? 0),
+                    ];
+                }
+                $currentDate->addDay();
+            }
+            $dataByDate = $filled;
+        }
+
+        ksort($dataByDate);
+
+        return response()->json(array_values($dataByDate));
+    }
+
+    /**
      * Full-table totals from reverb_daily_data (L30 days - last 30 days including today).
      */
     public function reverbDailyDataTotalsJson(): JsonResponse
@@ -859,7 +1034,7 @@ class ReverbController extends Controller
             }
         }
 
-        // PRMT%/CPN%/DSC%/Appr/Push Prc — reverb_promo_pricing (site-specific)
+        // PRMT%/CPN%/DSC%/Appr/Push Prc — reverb_data_view (same PEF_* keys as Amazon)
         $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('reverb', $skus);
 
         // Sku Link LMP groups (shared lmp_sku_links — same as Amazon / eBay tabulators)
@@ -2160,5 +2335,481 @@ class ReverbController extends Controller
         }
 
         return $normalized;
+    }
+
+    /**
+     * Queue Std Prc pushes to the Reverb API (background worker).
+     */
+    public function queuePushStd(Request $request): JsonResponse
+    {
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'No items to push'], 400);
+        }
+
+        $tasks = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $tasks[] = [
+                'sku' => $item['sku'] ?? null,
+                'std' => $item['std'] ?? $item['price'] ?? $item['standard_price'] ?? 0,
+            ];
+        }
+
+        $store = ReverbPushStdJobStore::for();
+        $result = $store->createOrAppend($tasks);
+        $state = $result['state'];
+        $mode = $result['mode'];
+        if ((int) ($state['total'] ?? 0) === 0) {
+            return response()->json(['success' => false, 'message' => 'No valid Push Std items (need SKU + Std > 0)'], 400);
+        }
+
+        $this->releaseUniquePushStdJobLock();
+        $spawned = $this->spawnPushStdWorker();
+        if (! $spawned) {
+            try {
+                RunReverbPushStdJob::dispatch();
+            } catch (\Throwable $e) {
+                Log::error('Reverb Push Std queue dispatch failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $store->update(function (array $s) use ($spawned, $mode) {
+            $s['worker_spawned_at'] = now()->toDateTimeString();
+            $s['last_message'] = $mode === 'append'
+                ? ($spawned
+                    ? ('Appended — worker continuing ('.$s['total'].' total)…')
+                    : ('Appended — waiting for worker ('.$s['total'].' total)'))
+                : ($spawned
+                    ? ('Worker started — pushing Std for '.$s['total'].' SKU(s)…')
+                    : ('Queued — waiting for worker (run: php artisan reverb:push-std-run --sync)'));
+
+            return $s;
+        });
+
+        $api = $store->toApiResponse($store->load());
+
+        return response()->json(array_merge($api, [
+            'success' => true,
+            'mode' => $mode,
+            'worker_spawned' => $spawned,
+            'message' => $mode === 'append'
+                ? ('Added to running Push Std queue ('.$api['total'].' total).')
+                : ('Push Std started in background ('.$api['total'].' SKU(s)).'),
+        ]));
+    }
+
+    public function pushStdJobStatus(): JsonResponse
+    {
+        $store = ReverbPushStdJobStore::for();
+        $state = $store->load();
+
+        if ($store->isActive($state) && $store->isStale($state, 180) && ! $this->pushStdRunnerLockHeld()) {
+            $this->releaseUniquePushStdJobLock();
+            $kicked = $this->spawnPushStdWorker();
+            $store->update(function (array $s) use ($kicked) {
+                $s['last_message'] = $kicked
+                    ? 'Worker re-started after stall — continuing Push Std…'
+                    : 'Push Std stalled — could not start worker.';
+                $s['worker_spawned_at'] = now()->toDateTimeString();
+
+                return $s;
+            });
+            $state = $store->load();
+        }
+
+        return response()->json($store->toApiResponse($state));
+    }
+
+    public function cancelPushStd(): JsonResponse
+    {
+        $store = ReverbPushStdJobStore::for();
+        $job = $store->forceStop('Cancelled by user.');
+        $this->releaseUniquePushStdJobLock();
+
+        return response()->json(array_merge($store->toApiResponse($job), [
+            'success' => true,
+            'message' => 'Push Std cancelled.',
+        ]));
+    }
+
+    private function spawnPushStdWorker(): bool
+    {
+        try {
+            if ($this->pushStdRunnerLockHeld()) {
+                return true;
+            }
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/reverb-push-std.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' reverb:push-std-run --sync', 'r'));
+
+                return true;
+            }
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' reverb:push-std-run --sync >> '.escapeshellarg($log).' 2>&1 &';
+            pclose(popen($cmd, 'r'));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Reverb Push Std worker spawn failed', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    private function pushStdRunnerLockHeld(): bool
+    {
+        $lockPath = storage_path('app/reverb-push-std/runner.lock');
+        if (! is_file($lockPath)) {
+            return false;
+        }
+        $h = @fopen($lockPath, 'c+');
+        if (! $h) {
+            return false;
+        }
+        $got = flock($h, LOCK_EX | LOCK_NB);
+        if ($got) {
+            flock($h, LOCK_UN);
+        }
+        fclose($h);
+
+        return ! $got;
+    }
+
+    private function releaseUniquePushStdJobLock(): void
+    {
+        try {
+            Cache::lock('laravel_unique_job:'.RunReverbPushStdJob::class.':reverb-push-std')->forceRelease();
+        } catch (\Throwable) {
+            // ignore
+        }
+    }
+
+    /**
+     * Queue Reverb "Drop the Price By" at PRMT% (listing / Std price unchanged).
+     */
+    public function queuePushPrmt(Request $request): JsonResponse
+    {
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'No items to push'], 400);
+        }
+
+        $tasks = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $tasks[] = [
+                'sku' => $item['sku'] ?? null,
+                'std' => $item['std'] ?? $item['standard_price'] ?? 0,
+                'prmt' => $item['prmt'] ?? $item['prmt_pct'] ?? 0,
+                'price' => $item['price'] ?? null,
+            ];
+        }
+
+        $store = ReverbPushPrmtJobStore::for();
+        $result = $store->createOrAppend($tasks);
+        $state = $result['state'];
+        $mode = $result['mode'];
+        if ((int) ($state['total'] ?? 0) === 0) {
+            return response()->json(['success' => false, 'message' => 'No valid Push Prmt% items (need SKU)'], 400);
+        }
+
+        $this->releaseUniquePushPrmtJobLock();
+        $spawned = $this->spawnPushPrmtWorker();
+        if (! $spawned) {
+            try {
+                RunReverbPushPrmtJob::dispatch();
+            } catch (\Throwable $e) {
+                Log::error('Reverb Push Prmt% queue dispatch failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $store->update(function (array $s) use ($spawned, $mode) {
+            $s['worker_spawned_at'] = now()->toDateTimeString();
+            $s['last_message'] = $mode === 'append'
+                ? ($spawned
+                    ? ('Appended — worker continuing ('.$s['total'].' total)…')
+                    : ('Appended — waiting for worker ('.$s['total'].' total)'))
+                : ($spawned
+                    ? ('Worker started — applying Prmt% for '.$s['total'].' SKU(s)…')
+                    : ('Queued — waiting for worker (run: php artisan reverb:push-prmt-run --sync)'));
+
+            return $s;
+        });
+
+        $api = $store->toApiResponse($store->load());
+
+        return response()->json(array_merge($api, [
+            'success' => true,
+            'mode' => $mode,
+            'worker_spawned' => $spawned,
+            'message' => $mode === 'append'
+                ? ('Added to running Push Prmt% queue ('.$api['total'].' total).')
+                : ('Push Prmt% started in background ('.$api['total'].' SKU(s)).'),
+        ]));
+    }
+
+    public function pushPrmtJobStatus(): JsonResponse
+    {
+        $store = ReverbPushPrmtJobStore::for();
+        $state = $store->load();
+
+        if ($store->isActive($state) && $store->isStale($state, 180) && ! $this->pushPrmtRunnerLockHeld()) {
+            $this->releaseUniquePushPrmtJobLock();
+            $kicked = $this->spawnPushPrmtWorker();
+            $store->update(function (array $s) use ($kicked) {
+                $s['last_message'] = $kicked
+                    ? 'Worker re-started after stall — continuing Push Prmt%…'
+                    : 'Push Prmt% stalled — could not start worker.';
+                $s['worker_spawned_at'] = now()->toDateTimeString();
+
+                return $s;
+            });
+            $state = $store->load();
+        }
+
+        return response()->json($store->toApiResponse($state));
+    }
+
+    public function cancelPushPrmt(): JsonResponse
+    {
+        $store = ReverbPushPrmtJobStore::for();
+        $job = $store->forceStop('Cancelled by user.');
+        $this->releaseUniquePushPrmtJobLock();
+
+        return response()->json(array_merge($store->toApiResponse($job), [
+            'success' => true,
+            'message' => 'Push Prmt% cancelled.',
+        ]));
+    }
+
+    private function spawnPushPrmtWorker(): bool
+    {
+        try {
+            if ($this->pushPrmtRunnerLockHeld()) {
+                return true;
+            }
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/reverb-push-prmt.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' reverb:push-prmt-run --sync', 'r'));
+
+                return true;
+            }
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' reverb:push-prmt-run --sync >> '.escapeshellarg($log).' 2>&1 &';
+            pclose(popen($cmd, 'r'));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Reverb Push Prmt% worker spawn failed', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    private function pushPrmtRunnerLockHeld(): bool
+    {
+        $lockPath = storage_path('app/reverb-push-prmt/runner.lock');
+        if (! is_file($lockPath)) {
+            return false;
+        }
+        $h = @fopen($lockPath, 'c+');
+        if (! $h) {
+            return false;
+        }
+        $got = flock($h, LOCK_EX | LOCK_NB);
+        if ($got) {
+            flock($h, LOCK_UN);
+        }
+        fclose($h);
+
+        return ! $got;
+    }
+
+    private function releaseUniquePushPrmtJobLock(): void
+    {
+        try {
+            Cache::lock('laravel_unique_job:'.RunReverbPushPrmtJob::class.':reverb-push-prmt')->forceRelease();
+        } catch (\Throwable) {
+            // ignore
+        }
+    }
+
+    /**
+     * Queue Reverb Bump bid at S Bump% (live Bump% updated after success).
+     */
+    public function queuePushBump(Request $request): JsonResponse
+    {
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'No items to push'], 400);
+        }
+
+        $tasks = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $tasks[] = [
+                'sku' => $item['sku'] ?? null,
+                'bump' => $item['bump'] ?? $item['recommended_bid'] ?? 0,
+            ];
+        }
+
+        $store = ReverbPushBumpJobStore::for();
+        $result = $store->createOrAppend($tasks);
+        $state = $result['state'];
+        $mode = $result['mode'];
+        if ((int) ($state['total'] ?? 0) === 0) {
+            return response()->json(['success' => false, 'message' => 'No valid Push B% items (need SKU)'], 400);
+        }
+
+        $this->releaseUniquePushBumpJobLock();
+        $spawned = $this->spawnPushBumpWorker();
+        if (! $spawned) {
+            try {
+                RunReverbPushBumpJob::dispatch();
+            } catch (\Throwable $e) {
+                Log::error('Reverb Push B% queue dispatch failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $store->update(function (array $s) use ($spawned, $mode) {
+            $s['worker_spawned_at'] = now()->toDateTimeString();
+            $s['last_message'] = $mode === 'append'
+                ? ($spawned
+                    ? ('Appended — worker continuing ('.$s['total'].' total)…')
+                    : ('Appended — waiting for worker ('.$s['total'].' total)'))
+                : ($spawned
+                    ? ('Worker started — applying Bump% for '.$s['total'].' SKU(s)…')
+                    : ('Queued — waiting for worker (run: php artisan reverb:push-bump-run --sync)'));
+
+            return $s;
+        });
+
+        $api = $store->toApiResponse($store->load());
+
+        return response()->json(array_merge($api, [
+            'success' => true,
+            'mode' => $mode,
+            'worker_spawned' => $spawned,
+            'message' => $mode === 'append'
+                ? ('Added to running Push B% queue ('.$api['total'].' total).')
+                : ('Push B% started in background ('.$api['total'].' SKU(s)).'),
+        ]));
+    }
+
+    public function pushBumpJobStatus(): JsonResponse
+    {
+        $store = ReverbPushBumpJobStore::for();
+        $state = $store->load();
+
+        if ($store->isActive($state) && $store->isStale($state, 180) && ! $this->pushBumpRunnerLockHeld()) {
+            $this->releaseUniquePushBumpJobLock();
+            $kicked = $this->spawnPushBumpWorker();
+            $store->update(function (array $s) use ($kicked) {
+                $s['last_message'] = $kicked
+                    ? 'Worker re-started after stall — continuing Push B%…'
+                    : 'Push B% stalled — could not start worker.';
+                $s['worker_spawned_at'] = now()->toDateTimeString();
+
+                return $s;
+            });
+            $state = $store->load();
+        }
+
+        return response()->json($store->toApiResponse($state));
+    }
+
+    public function cancelPushBump(): JsonResponse
+    {
+        $store = ReverbPushBumpJobStore::for();
+        $job = $store->forceStop('Cancelled by user.');
+        $this->releaseUniquePushBumpJobLock();
+
+        return response()->json(array_merge($store->toApiResponse($job), [
+            'success' => true,
+            'message' => 'Push B% cancelled.',
+        ]));
+    }
+
+    private function spawnPushBumpWorker(): bool
+    {
+        try {
+            if ($this->pushBumpRunnerLockHeld()) {
+                return true;
+            }
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/reverb-push-bump.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' reverb:push-bump-run --sync', 'r'));
+
+                return true;
+            }
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' reverb:push-bump-run --sync >> '.escapeshellarg($log).' 2>&1 &';
+            pclose(popen($cmd, 'r'));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Reverb Push B% worker spawn failed', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    private function pushBumpRunnerLockHeld(): bool
+    {
+        $lockPath = storage_path('app/reverb-push-bump/runner.lock');
+        if (! is_file($lockPath)) {
+            return false;
+        }
+        $h = @fopen($lockPath, 'c+');
+        if (! $h) {
+            return false;
+        }
+        $got = flock($h, LOCK_EX | LOCK_NB);
+        if ($got) {
+            flock($h, LOCK_UN);
+        }
+        fclose($h);
+
+        return ! $got;
+    }
+
+    private function releaseUniquePushBumpJobLock(): void
+    {
+        try {
+            Cache::lock('laravel_unique_job:'.RunReverbPushBumpJob::class.':reverb-push-bump')->forceRelease();
+        } catch (\Throwable) {
+            // ignore
+        }
     }
 }

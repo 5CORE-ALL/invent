@@ -39,13 +39,11 @@ class FetchReverbInventory extends Command
             if (!$sku) continue;
 
             $price = $item['price']['amount'] ?? null;
-            $views = $item['stats']['views'] ?? null;
             $remainingInventory = $item['inventory'] ?? null;
 
             $bulkData[] = [
                 'sku' => $sku,
                 'price' => $price,
-                'views' => $views,
                 'remaining_inventory' => $remainingInventory,
                 'updated_at' => now(),
             ];
@@ -112,12 +110,11 @@ class FetchReverbInventory extends Command
                             ->exists();
 
                         if ($exists) {
-                            // Update only inventory, price, views
+                            // Update only inventory and price — Views is bump impressions from /bump
                             DB::table('reverb_products')
                                 ->where('sku', $item['sku'])
                                 ->update([
                                     'price' => $item['price'],
-                                    'views' => $item['views'],
                                     'remaining_inventory' => $item['remaining_inventory'],
                                     'updated_at' => $item['updated_at'],
                                 ]);
@@ -129,7 +126,7 @@ class FetchReverbInventory extends Command
                                     'r_l30' => 0,
                                     'r_l60' => 0,
                                     'price' => $item['price'],
-                                    'views' => $item['views'],
+                                    'views' => 0,
                                     'remaining_inventory' => $item['remaining_inventory'],
                                     'created_at' => now(),
                                     'updated_at' => $item['updated_at'],
@@ -156,7 +153,6 @@ class FetchReverbInventory extends Command
                             ->where('sku', $item['sku'])
                             ->update([
                                 'price' => $item['price'],
-                                'views' => $item['views'],
                                 'remaining_inventory' => $item['remaining_inventory'],
                                 'updated_at' => $item['updated_at'],
                             ]);
@@ -166,7 +162,7 @@ class FetchReverbInventory extends Command
                             'r_l30' => 0,
                             'r_l60' => 0,
                             'price' => $item['price'],
-                            'views' => $item['views'],
+                            'views' => 0,
                             'remaining_inventory' => $item['remaining_inventory'],
                         ]);
                     }

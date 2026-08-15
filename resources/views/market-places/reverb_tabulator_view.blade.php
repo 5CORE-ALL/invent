@@ -50,27 +50,100 @@
             box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 0 0 5px currentColor;
         }
 
-        /* Column visibility dropdown — 4 columns */
-        .column-dropdown-multicol {
-            min-width: 560px;
-            padding: 6px 4px;
-            column-count: 4;
-            column-gap: 8px;
-            max-height: 420px;
+        /* Column visibility — 4 groups (Basic / Pricing / Advertisement / Other) */
+        #column-dropdown-menu.show,
+        #column-dropdown-menu.column-dropdown-multicol {
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
             overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
+            column-count: unset;
         }
-        .column-dropdown-multicol > li {
-            break-inside: avoid;
-            -webkit-column-break-inside: avoid;
-            page-break-inside: avoid;
-        }
-        .column-dropdown-multicol > li.column-dropdown-span-all {
+        #column-dropdown-menu > li.col-vis-full,
+        #column-dropdown-menu > li.column-dropdown-span-all {
+            list-style: none;
             column-span: all;
-            -webkit-column-span: all;
         }
-        .column-dropdown-multicol .dropdown-item {
-            padding: 3px 10px;
+        #column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 320px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            border-radius: 4px;
+        }
+        #column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+        }
+        #column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+        @media (max-width: 768px) {
+            #column-dropdown-menu .col-vis-groups {
+                grid-template-columns: repeat(2, minmax(140px, 1fr));
+            }
         }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -194,12 +267,311 @@
             padding: 0 2px;
             cursor: pointer;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb'])
+        #reverb-apply-std-price-btn {
+            background: #0d6efd;
+            border-color: #0d6efd;
+            color: #fff;
+        }
+        #reverb-apply-std-price-btn:hover,
+        #reverb-apply-std-price-btn:focus {
+            background: #0b5ed7;
+            border-color: #0a58ca;
+            color: #fff;
+        }
+        #reverb-apply-std-price-btn:disabled { opacity: 0.65; }
+        #reverb-apply-prmt-btn {
+            background: #198754;
+            border-color: #198754;
+            color: #fff;
+        }
+        #reverb-apply-prmt-btn:hover,
+        #reverb-apply-prmt-btn:focus {
+            background: #157347;
+            border-color: #146c43;
+            color: #fff;
+        }
+        #reverb-apply-prmt-btn:disabled { opacity: 0.65; }
+        #reverb-apply-bump-btn {
+            background: #fd7e14;
+            border-color: #fd7e14;
+            color: #fff;
+        }
+        #reverb-apply-bump-btn:hover,
+        #reverb-apply-bump-btn:focus {
+            background: #e8590c;
+            border-color: #d9480f;
+            color: #fff;
+        }
+        #reverb-apply-bump-btn:disabled { opacity: 0.65; }
+        .reverb-push-prmt-btn .fa-spinner,
+        .reverb-push-bump-btn .fa-spinner,
+        .reverb-push-std-btn .fa-spinner {
+            display: inline-block !important;
+            animation: ch-promo-spin 0.75s linear infinite !important;
+        }
+        .tabulator-row .tabulator-cell[tabulator-field="push_std_prc"],
+        .tabulator-row .tabulator-cell[tabulator-field="push_prmt"],
+        .tabulator-row .tabulator-cell[tabulator-field="push_bump"] {
+            padding: 2px 4px !important;
+        }
+        /* Dense body rows — same 36px as Amazon / eBay tabulator */
+        #reverb-table .tabulator-row {
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+        }
+        #reverb-table .tabulator-row .tabulator-cell {
+            font-size: 13px !important;
+            line-height: 1.2 !important;
+            height: 36px !important;
+            max-height: 36px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            vertical-align: middle !important;
+        }
+        #reverb-table .tabulator-row .tabulator-cell span,
+        #reverb-table .tabulator-row .tabulator-cell a,
+        #reverb-table .tabulator-row .tabulator-cell div,
+        #reverb-table .tabulator-row .tabulator-cell button,
+        #reverb-table .tabulator-row .tabulator-cell label,
+        #reverb-table .tabulator-row .tabulator-cell input:not([type="checkbox"]):not([type="radio"]),
+        #reverb-table .tabulator-row .tabulator-cell select,
+        #reverb-table .tabulator-row .tabulator-cell i {
+            font-size: 13px !important;
+            line-height: 1.2 !important;
+        }
+        #reverb-table .tabulator-row .tabulator-cell img.hover-thumb {
+            width: 28px !important;
+            height: 28px !important;
+            max-width: 28px !important;
+            max-height: 28px !important;
+            object-fit: cover !important;
+            display: block !important;
+            flex-shrink: 0 !important;
+        }
+        #reverb-table .tabulator-row .tabulator-cell > div {
+            flex-wrap: nowrap !important;
+            max-width: 100%;
+            overflow: hidden;
+        }
+        #reverb-table .reverb-push-std-btn,
+        #reverb-table .reverb-push-prmt-btn {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            line-height: 1 !important;
+            padding: 0 !important;
+            height: 18px !important;
+            min-height: 0 !important;
+            max-height: 18px !important;
+        }
+        /* LMP Competitors – right-side drawer, full height, 40% width */
+        #lmpModal {
+            z-index: 1065 !important;
+        }
+        #lmpModal .modal-dialog {
+            position: fixed;
+            top: 0;
+            right: 0;
+            left: auto;
+            margin: 0;
+            width: 40%;
+            max-width: 40%;
+            min-width: 380px;
+            height: 100vh;
+            max-height: 100vh;
+            transform: none;
+        }
+        #lmpModal.fade .modal-dialog {
+            transform: translateX(100%);
+            transition: transform 0.25s ease-out;
+        }
+        #lmpModal.show .modal-dialog {
+            transform: translateX(0);
+        }
+        #lmpModal .modal-content {
+            height: 100%;
+            max-height: 100vh;
+            border-radius: 0;
+            border: none;
+            border-left: 1px solid #cbd5e1;
+            display: flex;
+            flex-direction: column;
+        }
+        #lmpModal .modal-header {
+            flex-shrink: 0;
+            padding: 0.6rem 0.85rem;
+        }
+        #lmpModal .modal-title {
+            font-size: 0.95rem;
+            line-height: 1.3;
+        }
+        #lmpModal .modal-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+            padding: 0.6rem;
+        }
+        #lmpModal .table {
+            font-size: 11px;
+            margin-bottom: 0;
+        }
+        #lmpModal .table th,
+        #lmpModal .table td {
+            padding: 0.3rem 0.35rem;
+            vertical-align: middle;
+        }
+        #lmpModal .reverb-lmp-add-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            gap: 8px;
+        }
+        #lmpModal .reverb-lmp-add-row > .reverb-lmp-add-img {
+            flex: 0 0 48px;
+            width: 48px;
+        }
+        /* Views vs Bump — right-side drawer, full height, same modal-md width */
+        #reverbDilVsSBumpModal {
+            z-index: 1066 !important;
+        }
+        #reverbDilVsSBumpModal .modal-dialog {
+            position: fixed;
+            top: 0;
+            right: 0;
+            left: auto;
+            margin: 0;
+            width: 500px;
+            max-width: 500px;
+            height: 100vh;
+            max-height: 100vh;
+            transform: none;
+        }
+        #reverbDilVsSBumpModal.fade .modal-dialog {
+            transform: translateX(100%);
+            transition: transform 0.25s ease-out;
+        }
+        #reverbDilVsSBumpModal.show .modal-dialog {
+            transform: translateX(0);
+        }
+        #reverbDilVsSBumpModal .modal-content {
+            height: 100%;
+            max-height: 100vh;
+            border-radius: 0;
+            border: none;
+            border-left: 1px solid #cbd5e1;
+            display: flex;
+            flex-direction: column;
+        }
+        #reverbDilVsSBumpModal .modal-header,
+        #reverbDilVsSBumpModal .modal-footer {
+            flex-shrink: 0;
+        }
+        #reverbDilVsSBumpModal .modal-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+        }
+        #lmpModal #lmpSkuImage {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            background: #f8f9fa;
+            display: block;
+        }
+        #lmpModal .reverb-lmp-add-row > .reverb-lmp-add-std {
+            flex: 0 0 5.5rem;
+        }
+        #lmpModal .reverb-lmp-add-row > .reverb-lmp-add-id {
+            flex: 0 0 8.5rem;
+        }
+        #lmpModal .reverb-lmp-add-row > .reverb-lmp-add-price,
+        #lmpModal .reverb-lmp-add-row > .reverb-lmp-add-ship {
+            flex: 0 0 5.5rem;
+        }
+        #lmpModal .reverb-lmp-add-row > .reverb-lmp-add-link,
+        #lmpModal .reverb-lmp-add-row > .reverb-lmp-add-title {
+            flex: 1 1 0;
+            min-width: 110px;
+        }
+        #lmpModal .reverb-lmp-add-row > .reverb-lmp-add-btn {
+            flex: 0 0 auto;
+        }
+        #lmpModal .reverb-lmp-add-row .form-label {
+            font-size: 12px;
+            margin-bottom: 2px;
+            white-space: nowrap;
+        }
+        #lmpModal .reverb-lmp-add-row .form-control,
+        #lmpModal .reverb-lmp-add-row .btn {
+            font-size: 13px;
+        }
+        #lmpModal .lmp-modal-sp-box {
+            display: none !important;
+        }
+        #lmpModal .lmp-sp-col-th,
+        #lmpModal .lmp-sp-cell {
+            display: none !important;
+        }
+        #lmpModal .reverb-lmp-ours-row,
+        #lmpModal .reverb-lmp-ours-row > td {
+            background-color: #dbeafe !important;
+            color: #1e3a8a;
+            --bs-table-bg-type: #dbeafe;
+            --bs-table-striped-bg: #dbeafe;
+            --bs-table-hover-bg: #bfdbfe;
+            font-weight: 600;
+        }
+        #lmpModal .reverb-lmp-ours-row:hover > td {
+            background-color: #bfdbfe !important;
+        }
+        #lmpModal .reverb-lmp-ours-row .reverb-lmp-ours-price {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        /* Metric history modal — same Graph UI as Amazon / eBay / Temu */
+        #skuMetricsModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #skuMetricsModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #skuMetricsModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
+        #reverb-s-bump-menu-btn {
+            background: #fd7e14;
+            border-color: #fd7e14;
+            color: #fff;
+        }
+        #reverb-s-bump-menu-btn:hover,
+        #reverb-s-bump-menu-btn:focus,
+        #reverb-s-bump-menu-btn.show {
+            background: #e8590c;
+            border-color: #d9480f;
+            color: #fff;
+        }
     </style>
 @endsection
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 @endsection
 
 @section('content')
@@ -221,7 +593,8 @@
                         <span class="badge bg-info flex-shrink-0" id="npft-badge" style="color: black; font-weight: bold;" title="PFT% = GPFT% − Ads% (same as /amazon-tabulator-view)">PFT: 0%</span>
                         <span class="badge flex-shrink-0" id="groi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Weighted GROI% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×LP) — same method as /temu-decrease, using normal ship">GROI: 0%</span>
                         <span class="badge flex-shrink-0" id="nroi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = (Total PFT − Ad Spend) ÷ COGS × 100; Ad Spend = Ads% × Sales (same as /amazon-tabulator-view)">NROI: 0%</span>
-                        <span class="badge flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of Views for currently filtered rows (same as Amz Sess30 — raw, not ÷10)">Views: 0</span>
+                        <span class="badge flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of bump impressions for currently filtered rows (Reverb GET /listings/{id}/bump → bump_v2_stats.impressions)">Views: 0</span>
+                        <span class="badge flex-shrink-0" id="avg-views-badge" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="Average bump impressions per SKU for currently filtered rows (Σ Views ÷ SKU count)">Avg Views: 0</span>
                         <span class="badge flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views) × 100 — same Amz formula as A_L30 ÷ Sess30">CVR: 0%</span>
                         <span class="badge flex-shrink-0" id="rd-qty-sum-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Sum of RD Qty column (reverb_daily_qty) for currently filtered rows">RD Qty: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 = 0 (same as Amz 0 Sold on A_L30)">0 Sold: 0</span>
@@ -375,6 +748,43 @@
                             </li>
                         </ul>
                     </div>
+
+                    {{-- Dil vs PRMT / Cpn% / sprice ? — same action row as /amazon-tabulator-view --}}
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
+
+                    <div class="btn-group flex-shrink-0">
+                        <button type="button" class="btn btn-sm dropdown-toggle" id="reverb-s-bump-menu-btn"
+                            data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Views vs Bump model — suggest S Bump% from Views">
+                            <i class="fas fa-sliders-h"></i> S Bump
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="reverb-s-bump-menu-btn">
+                            <li>
+                                <a class="dropdown-item" href="#" id="reverb-dil-vs-s-bump-btn">
+                                    <i class="fas fa-sliders-h me-1" style="color:#fd7e14;"></i> Views vs Bump…
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" id="reverb-apply-s-bump-btn">
+                                    <i class="fas fa-magic me-1" style="color:#fd7e14;"></i> Apply S Bump
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <button type="button" class="btn btn-sm flex-shrink-0" id="reverb-apply-std-price-btn"
+                        title="Queue Std Prc to the live Reverb listing via API. Selected SKUs if checked; otherwise all visible with Std &gt; 0 that changed since last push.">
+                        <i class="fas fa-upload"></i> Apply Std Price
+                    </button>
+                    <button type="button" class="btn btn-sm flex-shrink-0" id="reverb-apply-prmt-btn"
+                        title="Queue Reverb Drop the Price By at PRMT%. Listing / Std price is not changed. Selected SKUs if checked; otherwise all visible whose % changed since last push.">
+                        <i class="fas fa-percent"></i> Apply Prmt%
+                    </button>
+                    <button type="button" class="btn btn-sm flex-shrink-0" id="reverb-apply-bump-btn"
+                        title="Queue Reverb Bump bid at S Bump%. Selected SKUs if checked; otherwise all visible whose S Bump% differs from live Bump%.">
+                        <i class="fas fa-upload"></i> Apply Bump
+                    </button>
+
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = row.percentage, default 0.85) --}}
                     <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light flex-shrink-0"
@@ -482,9 +892,9 @@
         </div>
     </div>
 
-    <!-- LMP Competitors Modal (same pattern as ebay/amazon tabulator) -->
-    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <!-- LMP Competitors Modal – right-side drawer -->
+    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="true">
+        <div class="modal-dialog modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title">
@@ -493,46 +903,49 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="card mb-4">
-                        <div class="card-header bg-success text-white">
-                            <h6 class="mb-0"><i class="fa fa-plus-circle"></i> Add New Competitor</h6>
-                        </div>
-                        <div class="card-body">
+                    <div class="card mb-3">
+                        <div class="card-body py-2">
                             <form id="addCompetitorForm">
                                 <input type="hidden" id="addCompSku" name="sku">
-                                <div class="row g-3">
-                                    <div class="col-md-3">
+                                <div class="reverb-lmp-add-row">
+                                    <div class="reverb-lmp-add-img">
+                                        <img id="lmpSkuImage" src="" alt="SKU" title="SKU image">
+                                    </div>
+                                    <div class="reverb-lmp-add-std">
+                                        <label class="form-label" for="reverbLmpStdPrc">Std Prc</label>
+                                        <input type="number" class="form-control form-control-sm text-end fw-bold lmp-modal-sp-input"
+                                            id="reverbLmpStdPrc" step="0.01" min="0.01" placeholder="0.00" title="Std Prc">
+                                    </div>
+                                    <div class="reverb-lmp-add-id">
                                         <label class="form-label">Reverb Item ID *</label>
-                                        <input type="text" class="form-control" id="addCompItemId" name="item_id"
+                                        <input type="text" class="form-control form-control-sm" id="addCompItemId" name="item_id"
                                             required placeholder="e.g., 67894128">
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="reverb-lmp-add-price">
                                         <label class="form-label">Price *</label>
-                                        <input type="number" class="form-control" id="addCompPrice" name="price"
+                                        <input type="number" class="form-control form-control-sm" id="addCompPrice" name="price"
                                             step="0.01" min="0" required placeholder="0.00">
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="reverb-lmp-add-ship">
                                         <label class="form-label">Shipping</label>
-                                        <input type="number" class="form-control" id="addCompShipping"
+                                        <input type="number" class="form-control form-control-sm" id="addCompShipping"
                                             name="shipping_cost" step="0.01" min="0" placeholder="0.00">
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="reverb-lmp-add-link">
                                         <label class="form-label">Product Link</label>
-                                        <input type="url" class="form-control" id="addCompLink" name="product_link"
+                                        <input type="url" class="form-control form-control-sm" id="addCompLink" name="product_link"
                                             placeholder="https://reverb.com/item/...">
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="reverb-lmp-add-title">
+                                        <label class="form-label">Product Title</label>
+                                        <input type="text" class="form-control form-control-sm" id="addCompTitle"
+                                            name="product_title" placeholder="Product title">
+                                    </div>
+                                    <div class="reverb-lmp-add-btn">
                                         <label class="form-label">&nbsp;</label>
-                                        <button type="submit" class="btn btn-success w-100">
+                                        <button type="submit" class="btn btn-success btn-sm text-nowrap">
                                             <i class="fa fa-plus"></i> Add
                                         </button>
-                                    </div>
-                                </div>
-                                <div class="row mt-2">
-                                    <div class="col-12">
-                                        <label class="form-label">Product Title (optional)</label>
-                                        <input type="text" class="form-control" id="addCompTitle"
-                                            name="product_title" placeholder="Product title">
                                     </div>
                                 </div>
                             </form>
@@ -578,6 +991,93 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'reverb'])
+
+    <div class="modal fade" id="reverbDilVsSBumpModal" tabindex="-1" aria-labelledby="reverbDilVsSBumpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="reverbDilVsSBumpModalLabel">
+                        <i class="fas fa-sliders-h me-1"></i> Views vs Bump
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Map <strong>Views</strong> (bump impressions) slabs to <strong>S Bump%</strong> (10 levels: 0–100, 101–200, …).
+                        <strong>Apply</strong> saves the rules and fills <strong>S Bump%</strong> from each row’s Views.
+                        If <strong>INV = 0</strong>, S Bump% is forced to <strong>0</strong>.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="reverb-dil-s-bump-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">Views</th>
+                                    <th style="width:45%;" class="text-end">S Bump%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="reverb-dil-s-bump-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="reverb-dil-s-bump-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-primary" id="reverb-dil-s-bump-apply-btn"
+                        title="Save Views→Bump rules, then fill S Bump% — selected rows if checked, otherwise all visible">
+                        Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SKU Metrics Chart Modal (same Graph UI as Amazon / eBay / Temu) -->
+    <div class="modal fade p-0" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span>Reverb - <span id="modalSkuName"></span> - <span id="skuChartRefLabel">Views</span> <span id="skuChartModalSuffix">(Rolling L30)</span></span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="sku-chart-days-filter" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="skuChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="skuMetricsChart"></canvas>
+                        </div>
+                        <div id="skuChartRefPanel" style="display: flex; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto;">
+                            <div class="sku-ref-col" data-metric="0" style="min-width: 62px; text-align: center; padding: 4px 4px;">
+                                <div style="font-size: 7px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 3px;"><span id="skuChartRefDot" class="sku-col-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF; flex-shrink: 0;"></span><span id="skuChartRefLabelOnly">Views</span></div>
+                                <div style="font-size: 6px; font-weight: 700; color: #dc3545;">High</div><div id="skuCol0High" style="font-size: 10px; font-weight: 700; color: #dc3545;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #6c757d;">Med</div><div id="skuCol0Med" style="font-size: 10px; font-weight: 700; color: #6c757d;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #198754;">Low</div><div id="skuCol0Low" style="font-size: 10px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="skuChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="chart-no-data-message" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No historical data available for this SKU. Data will appear after running the metrics collection command.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -587,7 +1087,7 @@
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     const REVERB_DAILY_TOTALS_URL = @json(url('reverb-daily-data-totals-json'));
     // Columns that stay hidden even when "Show All Columns" is used.
-    const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'];
+    const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'Bump', 'RE_BID'];
     let table = null;
     let allTableData = []; // Full dataset for ParentExpand
     // Reverb channel Ads% (TACOS) — same stored value as /all-marketplace-master (Amazon pattern).
@@ -598,6 +1098,204 @@
     let increaseModeActive = false;
     let samePriceModeActive = false;
     let selectedSkus = new Set();
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
+
+    function reverbPrmtPctOf(d) {
+        const n = parseFloat(d && (d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied));
+        return (isFinite(n) && n > 0) ? n : 0;
+    }
+    function reverbPrmtSalePrice(d) {
+        const std = parseFloat(d && d.STANDARD_PRICE);
+        if (!(isFinite(std) && std > 0)) return 0;
+        const prmt = Math.max(0, reverbPrmtPctOf(d));
+        return +(std * (1 - (prmt / 100))).toFixed(2);
+    }
+    function reverbPushPrmtColumnDef() {
+        return {
+            title: 'Push %',
+            field: 'push_prmt',
+            hozAlign: 'center',
+            vertAlign: 'middle',
+            headerSort: false,
+            width: 52,
+            headerTooltip: 'Push Reverb Drop the Price By at this PRMT%. Listing / Std price is not changed. Click header to bulk selected (or visible) SKUs.',
+            titleFormatter: function() {
+                return '<button type="button" class="btn btn-sm p-0 reverb-push-prmt-header-btn" '
+                    + 'title="Queue Drop the Price By for selected SKUs whose PRMT% changed" '
+                    + 'style="border:none;background:none;cursor:pointer;color:#000;'
+                    + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
+                    + 'Push %</button>';
+            },
+            headerClick: function(e) {
+                if (e.target.closest('.reverb-push-prmt-header-btn')) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (typeof queueReverbPushPrmt === 'function') queueReverbPushPrmt();
+                    return false;
+                }
+            },
+            formatter: function(cell) {
+                const d = cell.getRow().getData() || {};
+                const sku = String(d['(Child) sku'] || d.sku || '').trim();
+                if (!sku || String(sku).toUpperCase().indexOf('PARENT') !== -1 || d.is_parent_summary) {
+                    return '';
+                }
+                const prmt = reverbPrmtPctOf(d);
+                const status = String(d.PUSH_PRC_STATUS || cell.getValue() || '');
+                const last = parseFloat(d.PUSH_PRC_VALUE);
+                const lastOk = isFinite(last) && last >= 0;
+                const needs = status === 'error' || !lastOk || Number(last).toFixed(1) !== Number(prmt).toFixed(1);
+                let icon = '<i class="fas fa-upload"></i>';
+                let color = '#FF9900';
+                let tip = prmt > 0
+                    ? ('Drop the Price By ' + prmt.toFixed(0) + '% on Reverb (listing / Std unchanged)')
+                    : 'Remove Drop the Price By sale on Reverb (listing / Std unchanged)';
+                if (status === 'processing') {
+                    icon = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
+                    color = '#ffc107';
+                    tip = 'Applying Drop the Price By…';
+                } else if (status === 'error') {
+                    icon = '<i class="fa-solid fa-xmark"></i>';
+                    color = '#dc3545';
+                    tip = 'Last Drop the Price By failed — click to retry';
+                } else if (!needs) {
+                    icon = '<i class="fa-solid fa-check-double"></i>';
+                    color = '#28a745';
+                    tip = 'Already pushed Drop the Price By ' + Number(last).toFixed(0) + '% — click to push again';
+                } else if (lastOk) {
+                    tip = 'PRMT% changed ' + Number(last).toFixed(0) + '% → ' + prmt.toFixed(0)
+                        + '% — click to update Drop the Price By';
+                }
+                return '<button type="button" class="btn btn-sm p-0 reverb-push-prmt-btn" '
+                    + 'data-sku="' + sku.replace(/"/g, '&quot;') + '" '
+                    + 'data-prmt="' + prmt.toFixed(0) + '" '
+                    + 'title="' + tip.replace(/"/g, '&quot;') + '" '
+                    + 'style="border:none;background:none;cursor:pointer;color:' + color
+                    + ';padding:0;line-height:1;vertical-align:middle;">'
+                    + icon + '</button>';
+            },
+            cellClick: function(e, cell) {
+                const btn = e.target.closest('.reverb-push-prmt-btn');
+                if (!btn) return;
+                e.stopPropagation();
+                e.preventDefault();
+                if (btn.disabled) return false;
+                const d = cell.getRow().getData() || {};
+                if (String(d.PUSH_PRC_STATUS || '') === 'processing') return false;
+                if (typeof queueReverbPushPrmt === 'function') {
+                    const sku = String(d['(Child) sku'] || '').trim();
+                    const selected = (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.size > 1
+                        && selectedSkus.has(sku));
+                    queueReverbPushPrmt(selected ? null : cell.getRow());
+                }
+                return false;
+            }
+        };
+    }
+    function reverbParseBumpPct(val) {
+        if (val === null || val === undefined || val === '') return 0;
+        const n = parseFloat(String(val).replace(/%/g, ''));
+        return isFinite(n) && n >= 0 ? n : 0;
+    }
+    function reverbSBumpPctOf(d) {
+        return reverbParseBumpPct(d && d.RE_BID);
+    }
+    function reverbLiveBumpPctOf(d) {
+        return reverbParseBumpPct(d && d.Bump);
+    }
+    function reverbPushBumpColumnDef() {
+        return {
+            title: 'Push B%',
+            field: 'push_bump',
+            hozAlign: 'center',
+            vertAlign: 'middle',
+            headerSort: false,
+            width: 52,
+            headerTooltip: 'Push S Bump% to the live Reverb Bump bid. Click header to bulk selected (or visible) SKUs.',
+            titleFormatter: function() {
+                return '<button type="button" class="btn btn-sm p-0 reverb-push-bump-header-btn" '
+                    + 'title="Queue Bump bid for selected SKUs whose S Bump% changed" '
+                    + 'style="border:none;background:none;cursor:pointer;color:#000;'
+                    + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
+                    + 'Push B%</button>';
+            },
+            headerClick: function(e) {
+                if (e.target.closest('.reverb-push-bump-header-btn')) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (typeof queueReverbPushBump === 'function') queueReverbPushBump();
+                    return false;
+                }
+            },
+            formatter: function(cell) {
+                const d = cell.getRow().getData() || {};
+                const sku = String(d['(Child) sku'] || d.sku || '').trim();
+                if (!sku || String(sku).toUpperCase().indexOf('PARENT') !== -1 || d.is_parent_summary) {
+                    return '';
+                }
+                const bump = reverbSBumpPctOf(d);
+                const live = reverbLiveBumpPctOf(d);
+                const status = String(d.PUSH_BUMP_STATUS || cell.getValue() || '');
+                const last = parseFloat(d.PUSH_BUMP_VALUE);
+                const lastOk = isFinite(last) && last >= 0;
+                const needs = status === 'error' || (lastOk
+                    ? Number(last).toFixed(1) !== Number(bump).toFixed(1)
+                    : Number(live).toFixed(1) !== Number(bump).toFixed(1));
+                let icon = '<i class="fas fa-upload"></i>';
+                let color = '#fd7e14';
+                let tip = bump > 0
+                    ? ('Push Bump ' + bump.toFixed(0) + '% to Reverb')
+                    : 'Remove Bump on Reverb';
+                if (status === 'processing') {
+                    icon = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
+                    color = '#ffc107';
+                    tip = 'Applying Bump bid…';
+                } else if (status === 'error') {
+                    icon = '<i class="fa-solid fa-xmark"></i>';
+                    color = '#dc3545';
+                    tip = 'Last Bump push failed — click to retry';
+                } else if (!needs) {
+                    icon = '<i class="fa-solid fa-check-double"></i>';
+                    color = '#28a745';
+                    tip = 'Already pushed Bump ' + (lastOk ? Number(last).toFixed(0) : live.toFixed(0)) + '% — click to push again';
+                } else if (lastOk || live > 0) {
+                    const from = lastOk ? Number(last).toFixed(0) : live.toFixed(0);
+                    tip = 'Bump changed ' + from + '% → ' + bump.toFixed(0) + '% — click to update';
+                }
+                return '<button type="button" class="btn btn-sm p-0 reverb-push-bump-btn" '
+                    + 'data-sku="' + sku.replace(/"/g, '&quot;') + '" '
+                    + 'data-bump="' + bump.toFixed(0) + '" '
+                    + 'title="' + tip.replace(/"/g, '&quot;') + '" '
+                    + 'style="border:none;background:none;cursor:pointer;color:' + color
+                    + ';padding:0;line-height:1;vertical-align:middle;">'
+                    + icon + '</button>';
+            },
+            cellClick: function(e, cell) {
+                const btn = e.target.closest('.reverb-push-bump-btn');
+                if (!btn) return;
+                e.stopPropagation();
+                e.preventDefault();
+                if (btn.disabled) return false;
+                const d = cell.getRow().getData() || {};
+                if (String(d.PUSH_BUMP_STATUS || '') === 'processing') return false;
+                if (typeof queueReverbPushBump === 'function') {
+                    const sku = String(d['(Child) sku'] || '').trim();
+                    const selected = (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.size > 1
+                        && selectedSkus.has(sku));
+                    queueReverbPushBump(selected ? null : cell.getRow());
+                }
+                return false;
+            }
+        };
+    }
+    function reverbChannelPromoColumns() {
+        const cols = typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [];
+        const idx = cols.findIndex(function(c) { return c && c.field === 'prmt_pct'; });
+        const pushCol = reverbPushPrmtColumnDef();
+        if (idx >= 0) cols.splice(idx + 1, 0, pushCol);
+        else cols.unshift(pushCol);
+        return cols;
+    }
 
     /** Take-home margin factor (Reverb ~0.85). */
     function reverbTakeRate(rowData) {
@@ -651,29 +1349,6 @@
             return MetricPctColors.colorForField(field || 'GROI%', percent) || '#dc3545';
         }
         return '#dc3545';
-    }
-
-    /** Std Prc vs Amz/channel price: reduce / hold / increase → red / yellow / green. */
-    function reverbStdPrcChangeDotMeta(stdPrc, comparePrice) {
-        const sp = parseFloat(stdPrc);
-        const ap = parseFloat(comparePrice);
-        if (!isFinite(sp) || sp <= 0 || !isFinite(ap) || ap <= 0) return null;
-        const sp2 = sp.toFixed(2);
-        const ap2 = ap.toFixed(2);
-        if (parseFloat(sp2) < parseFloat(ap2)) {
-            return { kind: 'reduce', color: '#dc3545', title: 'Reduce vs Amz price' };
-        }
-        if (parseFloat(sp2) > parseFloat(ap2)) {
-            return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
-        }
-        return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
-    }
-
-    function reverbStdPrcChangeDotHtml(stdPrc, comparePrice) {
-        const meta = reverbStdPrcChangeDotMeta(stdPrc, comparePrice);
-        if (!meta) return '';
-        return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;' +
-            'background:' + meta.color + ';flex-shrink:0;" title="' + meta.title + ' — Std Prc (shared with Amazon)"></span>';
     }
 
     function applyReverbStandardPriceToLinkedRows(sku, std, appliedSkus) {
@@ -767,7 +1442,262 @@
         }
     }
 
+    let skuMetricsChart = null;
+    let currentSku = null;
+    let currentSkuChartMetric = 'views';
+    let skuChartFirstSeriesStats = null;
+
+    function reverbChartFmtVal(v) {
+        if (currentSkuChartMetric === 'price') {
+            return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US'));
+        }
+        if (currentSkuChartMetric === 'cvr') {
+            return (Number(v) === v ? Number(v).toFixed(1) : v) + '%';
+        }
+        return Math.round(Number(v) || 0).toLocaleString('en-US');
+    }
+
+    function initSkuMetricsChart() {
+        const canvas = document.getElementById('skuMetricsChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        const ctx = canvas.getContext('2d');
+
+        const medianLinePlugin = {
+            id: 'reverbMedianLine',
+            afterDraw(chart) {
+                if (!skuChartFirstSeriesStats || skuChartFirstSeriesStats.median === undefined) return;
+                const yScale = chart.scales.y;
+                const xScale = chart.scales.x;
+                const cctx = chart.ctx;
+                const yPixel = yScale.getPixelForValue(skuChartFirstSeriesStats.median);
+                cctx.save();
+                cctx.setLineDash([6, 4]);
+                cctx.strokeStyle = '#6c757d';
+                cctx.lineWidth = 1.2;
+                cctx.beginPath();
+                cctx.moveTo(xScale.left, yPixel);
+                cctx.lineTo(xScale.right, yPixel);
+                cctx.stroke();
+                cctx.restore();
+            }
+        };
+
+        const valueLabelsPlugin = {
+            id: 'reverbValueLabels',
+            afterDatasetsDraw(chart) {
+                if (!chart.data.datasets.length) return;
+                const dataset = chart.data.datasets[0];
+                const meta = chart.getDatasetMeta(0);
+                const cctx = chart.ctx;
+                cctx.save();
+                cctx.font = 'bold 7px Inter, system-ui, sans-serif';
+                cctx.textAlign = 'center';
+                cctx.textBaseline = 'bottom';
+                const valueFmt = (skuChartFirstSeriesStats && skuChartFirstSeriesStats.valueFmt) ? skuChartFirstSeriesStats.valueFmt : reverbChartFmtVal;
+                const labelColors = skuChartFirstSeriesStats && skuChartFirstSeriesStats.labelColors ? skuChartFirstSeriesStats.labelColors : [];
+                meta.data.forEach((point, i) => {
+                    const val = dataset.data[i];
+                    if (val == null) return;
+                    const offsetY = (i % 2 === 0) ? -7 : -14;
+                    cctx.fillStyle = labelColors[i] || '#6c757d';
+                    cctx.fillText(valueFmt(val), point.x, point.y + offsetY);
+                });
+                cctx.restore();
+            }
+        };
+
+        skuMetricsChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Views',
+                    data: [],
+                    borderColor: '#0000FF',
+                    backgroundColor: 'rgba(0,0,255,0.1)',
+                    borderWidth: 1.5,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    tension: 0.3,
+                    fill: true,
+                    spanGaps: true
+                }]
+            },
+            plugins: [medianLinePlugin, valueLabelsPlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    title: { display: false },
+                    tooltip: {
+                        enabled: true,
+                        mode: 'index',
+                        intersect: false,
+                        titleFont: { size: 10 },
+                        bodyFont: { size: 10 },
+                        padding: 6,
+                        callbacks: {
+                            label: function(context) {
+                                const v = context.parsed.y;
+                                if (v == null) return '';
+                                if (currentSkuChartMetric === 'price') return 'Price: $' + Number(v).toFixed(2);
+                                if (currentSkuChartMetric === 'cvr') return 'CVR%: ' + Number(v).toFixed(1) + '%';
+                                return 'Views: ' + Math.round(v).toLocaleString('en-US');
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: true,
+                        ticks: { font: { size: 9 }, callback: function(v) {
+                            if (currentSkuChartMetric === 'price') return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v));
+                            if (currentSkuChartMetric === 'cvr') return v.toFixed(0) + '%';
+                            return Math.round(v).toLocaleString('en-US');
+                        } }
+                    }
+                }
+            }
+        });
+    }
+
+    function loadSkuMetricsData(sku, days = 30, metricOverride) {
+        const chartMetric = metricOverride != null ? metricOverride : (currentSkuChartMetric || 'views');
+        $('#skuChartLoading').show();
+        $('#skuChartContainer').hide();
+        $('#chart-no-data-message').hide();
+        const daysNum = days === 0 || days === '0' ? 0 : (parseInt(days, 10) || 30);
+        fetch(`/reverb-metrics-history?days=${daysNum}&sku=${encodeURIComponent(sku)}`)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                $('#skuChartLoading').hide();
+                if (!skuMetricsChart) return;
+                function setSkuRefCol(high, med, low, fmt) {
+                    const refRed = '#dc3545', refGray = '#6c757d', refGreen = '#198754';
+                    const hEl = document.getElementById('skuCol0High');
+                    const mEl = document.getElementById('skuCol0Med');
+                    const lEl = document.getElementById('skuCol0Low');
+                    if (hEl) { hEl.textContent = fmt(high); hEl.style.color = high === 0 ? refGreen : high > 0 ? refRed : refGray; }
+                    if (mEl) { mEl.textContent = fmt(med); mEl.style.color = med === 0 ? refGreen : med > 0 ? refRed : refGray; }
+                    if (lEl) { lEl.textContent = fmt(low); lEl.style.color = low === 0 ? refGreen : low > 0 ? refRed : refGray; }
+                }
+                function statsForArr(arr) {
+                    const valid = arr.filter(v => v != null && !isNaN(v));
+                    if (valid.length === 0) return { min: 0, max: 0, median: 0 };
+                    const min = Math.min(...valid);
+                    const max = Math.max(...valid);
+                    const sorted = [...valid].sort((a, b) => a - b);
+                    const mid = Math.floor(sorted.length / 2);
+                    const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                    return { min, max, median };
+                }
+                if (!data || data.length === 0) {
+                    skuChartFirstSeriesStats = null;
+                    const h = document.getElementById('skuCol0High');
+                    const m = document.getElementById('skuCol0Med');
+                    const l = document.getElementById('skuCol0Low');
+                    if (h) h.textContent = '-';
+                    if (m) m.textContent = '-';
+                    if (l) l.textContent = '-';
+                    skuMetricsChart.data.labels = [];
+                    skuMetricsChart.data.datasets[0].data = [];
+                    skuMetricsChart.update('active');
+                    $('#skuChartContainer').hide();
+                    $('#chart-no-data-message').show();
+                    return;
+                }
+                $('#chart-no-data-message').hide();
+                $('#skuChartContainer').show();
+                const labels = data.map(d => d.date_formatted || d.date || '');
+                const metric = chartMetric;
+                const isCvr = metric === 'cvr';
+                const isViews = metric === 'views';
+                const values = isCvr
+                    ? data.map(d => Number(d.cvr_percent) || 0)
+                    : isViews
+                        ? data.map(d => Number(d.views) || 0)
+                        : data.map(d => Number(d.price) || 0);
+                const metricLabels = { price: 'Price', views: 'Views', cvr: 'CVR%' };
+                const metricColors = { price: '#adb5bd', views: '#0000FF', cvr: '#008000' };
+                const bgColors = { price: 'rgba(108,117,125,0.08)', views: 'rgba(0,0,255,0.1)', cvr: 'rgba(0,128,0,0.1)' };
+                const labelText = metricLabels[metric] || 'Views';
+                const color = metricColors[metric] || '#0000FF';
+                const refLabelEl = document.getElementById('skuChartRefLabel');
+                const refLabelOnlyEl = document.getElementById('skuChartRefLabelOnly');
+                const refDotEl = document.getElementById('skuChartRefDot');
+                if (refLabelEl) refLabelEl.textContent = labelText;
+                if (refLabelOnlyEl) refLabelOnlyEl.textContent = labelText;
+                if (refDotEl) refDotEl.style.background = color;
+                const cvrFmt = v => (Number(v) === v ? Number(v).toFixed(1) : v) + '%';
+                const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
+                const refFmt = isCvr ? cvrFmt : isViews ? intFmt : reverbChartFmtVal;
+                skuMetricsChart.data.labels = labels;
+                skuMetricsChart.data.datasets[0].data = values;
+                skuMetricsChart.data.datasets[0].label = labelText;
+                skuMetricsChart.data.datasets[0].borderColor = color;
+                skuMetricsChart.data.datasets[0].backgroundColor = bgColors[metric] || 'rgba(0,0,255,0.1)';
+                if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y && skuMetricsChart.options.scales.y.ticks) {
+                    skuMetricsChart.options.scales.y.ticks.callback = function(v) {
+                        if (metric === 'price') return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v));
+                        if (metric === 'cvr') return v.toFixed(0) + '%';
+                        return Math.round(v).toLocaleString('en-US');
+                    };
+                }
+                const s0 = statsForArr(values);
+                setSkuRefCol(s0.max, s0.median, s0.min, refFmt);
+                const refRed = '#dc3545';
+                const refGray = '#6c757d';
+                const refGreen = '#198754';
+                const dotColors = values.map((v, i) => {
+                    if (i === 0) return refGray;
+                    return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? refRed : refGray;
+                });
+                const labelColors = values.map(v => v === 0 ? refGreen : v > 0 ? refRed : refGray);
+                skuChartFirstSeriesStats = { values, median: s0.median, dataMin: s0.min, dataMax: s0.max, dotColors, labelColors, valueFmt: refFmt };
+                skuMetricsChart.data.datasets[0].pointBackgroundColor = dotColors;
+                skuMetricsChart.data.datasets[0].pointBorderColor = dotColors;
+                skuMetricsChart.data.datasets[0].pointBorderWidth = 1.5;
+                skuMetricsChart.update('active');
+            })
+            .catch(error => {
+                $('#skuChartLoading').hide();
+                skuChartFirstSeriesStats = null;
+                const h = document.getElementById('skuCol0High');
+                const m = document.getElementById('skuCol0Med');
+                const l = document.getElementById('skuCol0Low');
+                if (h) h.textContent = '-';
+                if (m) m.textContent = '-';
+                if (l) l.textContent = '-';
+                $('#skuChartContainer').hide();
+                $('#chart-no-data-message').show();
+                console.error('Error loading Reverb SKU metrics:', error);
+            });
+    }
+
     $(document).ready(function() {
+        try { initSkuMetricsChart(); } catch (e) { console.error('Reverb: SKU chart init failed', e); }
+
+        $('#sku-chart-days-filter').on('change', function() {
+            const daysNum = parseInt($(this).val(), 10);
+            const rangeLabel = daysNum === 0 ? 'Lifetime' : 'L' + daysNum;
+            const metricLabels = { cvr: 'CVR%', views: 'Views', price: 'Price' };
+            const metricLabel = metricLabels[currentSkuChartMetric] || 'Views';
+            $('#skuChartModalSuffix').text('(Rolling ' + rangeLabel + ')');
+            if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0, currentSkuChartMetric);
+        });
+
         $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
         $('#bulk-op-select').on('change', function() { applyBulkOpSelection(); });
 
@@ -1055,6 +1985,7 @@
         const missingHiddenColumnFields = [
             'RV Price',
             'GPFT%', 'ROI%', 'NPFT', 'NROI', 'SPRICE', 'SGPFT', 'SROI', 'SNPFT', 'SNROI',
+            'prmt_pct', 'push_prmt', 'cpn_pct', 'push_std_prc',
             'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
             'Views', 'CVR',
             'L30', 'RV Dil%', 'MAP', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
@@ -1376,6 +2307,189 @@
             }
             
             showToast(message, updatedCount > 0 ? 'success' : 'warning');
+        }
+
+        const REVERB_DIL_S_BUMP_DEFAULTS = [
+            { key: '0-100', label: '0–100', bump: 10 },
+            { key: '101-200', label: '101–200', bump: 9 },
+            { key: '201-300', label: '201–300', bump: 8 },
+            { key: '301-400', label: '301–400', bump: 7 },
+            { key: '401-500', label: '401–500', bump: 6 },
+            { key: '501-600', label: '501–600', bump: 5 },
+            { key: '601-700', label: '601–700', bump: 4 },
+            { key: '701-800', label: '701–800', bump: 3 },
+            { key: '801-900', label: '801–900', bump: 2 },
+            { key: 'gt-900', label: '> 900 (onwards)', bump: 0 },
+        ];
+        let reverbDilSBumpRules = REVERB_DIL_S_BUMP_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+
+        function reverbFormatSBump(val) {
+            if (val === null || val === undefined || val === '') return '';
+            const raw = String(val).trim();
+            if (raw === '') return '';
+            const n = parseFloat(raw.replace(/%/g, ''));
+            if (!isFinite(n)) return raw;
+            return String(Math.round(n)) + '%';
+        }
+        function reverbViewsSlabKey(views) {
+            const n = Number(views);
+            if (!isFinite(n) || n < 0) return '0-100';
+            if (n > 900) return 'gt-900';
+            if (n >= 801) return '801-900';
+            if (n >= 701) return '701-800';
+            if (n >= 601) return '601-700';
+            if (n >= 501) return '501-600';
+            if (n >= 401) return '401-500';
+            if (n >= 301) return '301-400';
+            if (n >= 201) return '201-300';
+            if (n >= 101) return '101-200';
+            return '0-100';
+        }
+        function reverbBumpForViews(views) {
+            const key = reverbViewsSlabKey(views);
+            const rule = reverbDilSBumpRules.find(function(r) { return r.key === key; });
+            const n = rule ? Number(rule.bump) : 0;
+            return isFinite(n) && n >= 0 ? n : 0;
+        }
+        function renderReverbDilSBumpModalTable() {
+            const $tb = $('#reverb-dil-s-bump-tbody').empty();
+            reverbDilSBumpRules.forEach(function(r, idx) {
+                const bump = isFinite(Number(r.bump)) ? Number(r.bump) : 0;
+                $tb.append(
+                    '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                    + '<td>' + String(r.label || r.key) + '</td>'
+                    + '<td class="text-end">'
+                    + '<input type="number" class="form-control form-control-sm reverb-dil-s-bump-input" '
+                    + 'min="0" step="0.1" value="' + bump + '" data-idx="' + idx + '">'
+                    + '</td></tr>'
+                );
+            });
+        }
+        function readReverbDilSBumpRulesFromModal() {
+            $('#reverb-dil-s-bump-tbody tr').each(function() {
+                const key = String($(this).attr('data-key') || '');
+                const val = parseFloat($(this).find('.reverb-dil-s-bump-input').val());
+                const rule = reverbDilSBumpRules.find(function(r) { return r.key === key; });
+                if (!rule) return;
+                rule.bump = (isFinite(val) && val >= 0) ? val : 0;
+            });
+            return reverbDilSBumpRules.map(function(r) {
+                return { key: r.key, label: r.label, bump: Number(r.bump) || 0 };
+            });
+        }
+        async function loadReverbDilSBumpRules() {
+            $('#reverb-dil-s-bump-status').text('Loading…');
+            try {
+                const res = await $.ajax({
+                    url: '/channel-promo-pricing/reverb/dil-bump',
+                    method: 'GET',
+                    dataType: 'json',
+                });
+                if (res && Array.isArray(res.rules) && res.rules.length) {
+                    reverbDilSBumpRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                }
+                renderReverbDilSBumpModalTable();
+                $('#reverb-dil-s-bump-status').text(res && res.is_default
+                    ? 'Using first-time defaults. Apply to save & fill S Bump%.'
+                    : 'Saved Views vs Bump rules loaded.');
+            } catch (e) {
+                renderReverbDilSBumpModalTable();
+                $('#reverb-dil-s-bump-status').text('Could not load saved rules — showing defaults.');
+            }
+        }
+        async function saveReverbDilSBumpRules() {
+            const rules = readReverbDilSBumpRulesFromModal();
+            await $.ajax({
+                url: '/channel-promo-pricing/reverb/dil-bump',
+                method: 'POST',
+                dataType: 'json',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                data: { rules: rules, _token: csrfToken() },
+            });
+            reverbDilSBumpRules = rules.map(function(r) { return Object.assign({}, r); });
+        }
+        function collectReverbSBumpTargets() {
+            if (typeof collectChPromoSelectedRows === 'function') {
+                const selected = collectChPromoSelectedRows();
+                if (selected.length) return { targets: selected, label: 'selected' };
+            }
+            if (typeof collectChPromoVisibleRows === 'function') {
+                return { targets: collectChPromoVisibleRows(), label: 'all visible' };
+            }
+            if (!table) return { targets: [], label: 'visible' };
+            const rows = table.getRows('active') || [];
+            const targets = [];
+            rows.forEach(function(row) {
+                const d = row.getData() || {};
+                const sku = String(d['(Child) sku'] || '').trim();
+                if (!sku || String(sku).toUpperCase().indexOf('PARENT') !== -1 || d.is_parent_summary || d.is_parent) return;
+                targets.push({ row: row, d: d });
+            });
+            return { targets: targets, label: 'all visible' };
+        }
+        async function applyReverbSBumpToTargets(targets, label) {
+            if (!targets.length) {
+                showToast('No rows to apply S Bump', 'error');
+                return;
+            }
+            const updates = [];
+            let filled = 0;
+            for (let i = 0; i < targets.length; i++) {
+                const job = targets[i];
+                const d = job.d || (job.row && job.row.getData()) || {};
+                const sku = String(d['(Child) sku'] || '').trim();
+                if (!sku) continue;
+                const inv = (typeof chPromoInv === 'function') ? chPromoInv(d) : (parseFloat(d.INV) || 0);
+                const views = parseFloat(d.Views) || 0;
+                const bump = inv === 0 ? 0 : reverbBumpForViews(views);
+                const value = reverbFormatSBump(bump);
+                try {
+                    await Promise.resolve(job.row.update({ RE_BID: value }));
+                    if (typeof job.row.reformat === 'function') job.row.reformat();
+                } catch (e) { /* ignore */ }
+                updates.push({ sku: sku, recommended_bid: value || null });
+                filled++;
+            }
+            if (updates.length) {
+                await $.ajax({
+                    url: '/reverb-save-recommended-bids',
+                    method: 'POST',
+                    dataType: 'json',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                    contentType: 'application/json',
+                    data: JSON.stringify({ updates: updates }),
+                });
+            }
+            showToast('Views vs Bump (' + label + '): S Bump% → ' + filled + ' row(s)', 'success');
+        }
+        async function saveAndApplyReverbSBump() {
+            if (!$('#reverb-dil-s-bump-tbody tr').length) {
+                await loadReverbDilSBumpRules();
+            }
+            const collected = collectReverbSBumpTargets();
+            let targets = collected.targets;
+            let label = collected.label;
+            if (!targets.length) {
+                showToast('No rows to apply S Bump', 'error');
+                return;
+            }
+            if (label === 'all visible') {
+                if (!confirm('No rows selected — save rules and apply Views→Bump to all ' + targets.length + ' visible row(s)?')) {
+                    return;
+                }
+            }
+            const $btn = $('#reverb-dil-s-bump-apply-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+            try {
+                await saveReverbDilSBumpRules();
+                await applyReverbSBumpToTargets(targets, label);
+                $('#reverbDilVsSBumpModal').modal('hide');
+            } catch (xhr) {
+                showToast('S Bump apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'), 'error');
+            } finally {
+                $btn.prop('disabled', false).html(html);
+            }
         }
 
         // Save recommended bid (RE BID) to database
@@ -1811,9 +2925,45 @@
             });
         }
 
+        function reverbSkuRowData(sku) {
+            const key = String(sku || '').trim().toUpperCase();
+            if (!key) return null;
+            const match = function(d) {
+                if (!d) return false;
+                return String(d['(Child) sku'] || d.sku || d.SKU || '').trim().toUpperCase() === key;
+            };
+            if (typeof table !== 'undefined' && table && table.getRows) {
+                const rows = (function() {
+                    try { return table.getRows('all') || []; } catch (e) { return table.getRows() || []; }
+                })();
+                for (let i = 0; i < rows.length; i++) {
+                    const d = rows[i].getData && rows[i].getData();
+                    if (match(d)) return d;
+                }
+            }
+            if (typeof allTableData !== 'undefined' && Array.isArray(allTableData)) {
+                for (let i = 0; i < allTableData.length; i++) {
+                    if (match(allTableData[i])) return allTableData[i];
+                }
+            }
+            return null;
+        }
+        function reverbSkuImageUrl(sku) {
+            const d = reverbSkuRowData(sku);
+            return d ? String(d.image_path || d.Image || d.image || '').trim() : '';
+        }
+        function setReverbLmpSkuImage(sku) {
+            const url = reverbSkuImageUrl(sku);
+            const img = document.getElementById('lmpSkuImage');
+            if (!img) return;
+            img.src = url || '';
+            img.style.visibility = url ? 'visible' : 'hidden';
+            img.alt = sku ? ('SKU ' + sku) : 'SKU';
+        }
         function loadReverbCompetitorsModal(sku, linkedLmpSkus) {
             $('#lmpSku').text(sku);
             $('#addCompSku').val(sku);
+            setReverbLmpSkuImage(sku);
             $('#addCompItemId').val('');
             $('#addCompPrice').val('');
             $('#addCompShipping').val('');
@@ -1834,17 +2984,11 @@
                 traditional: true,
                 data: { sku: sku, linked_lmp_skus: currentLmpData.linkedLmpSkus },
                 success: function(response) {
-                    if (response.success && response.competitors && response.competitors.length > 0) {
-                        currentLmpData.competitors = response.competitors;
-                        currentLmpData.lowestPrice = response.lowest_price;
-                        renderReverbCompetitorsList(response.competitors, response.lowest_price);
-                    } else {
-                        $('#lmpDataList').html(`
-                            <div class="alert alert-warning">
-                                <i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!
-                            </div>
-                        `);
-                    }
+                    const comps = (response && response.success && Array.isArray(response.competitors))
+                        ? response.competitors : [];
+                    currentLmpData.competitors = comps;
+                    currentLmpData.lowestPrice = response && response.lowest_price;
+                    renderReverbCompetitorsList(comps, currentLmpData.lowestPrice);
                 },
                 error: function() {
                     $('#lmpDataList').html(`
@@ -1856,19 +3000,63 @@
             });
         }
 
+        function reverbOurProductRowHtml(d) {
+            if (!d) return '';
+            const sku = String(d['(Child) sku'] || d.sku || currentLmpData.sku || '').trim();
+            const price = parseFloat(d['RV Price'] || d.price || 0) || 0;
+            const img = String(d.image_path || d.Image || d.image || '').trim();
+            const link = String(d['B Link'] || d['S Link'] || '').trim();
+            const imageCell = img
+                ? `<img src="${escAttr(img)}" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:4px;" loading="lazy">`
+                : '<span class="text-muted">—</span>';
+            const priceHtml = price > 0
+                ? ('<span class="reverb-lmp-ours-price">$' + price.toFixed(2) + '</span>'
+                    + ' <span class="badge bg-primary">5 CORE</span>')
+                : '<span class="text-muted">—</span> <span class="badge bg-primary">5 CORE</span>';
+            const actionHtml = link
+                ? ('<a href="' + escAttr(link) + '" target="_blank" class="btn btn-sm btn-info" title="Open our listing">'
+                    + '<i class="fa fa-external-link"></i></a>')
+                : '<span class="text-muted small">—</span>';
+            return '<tr class="reverb-lmp-ours-row">'
+                + '<td>' + imageCell + '</td>'
+                + '<td>' + priceHtml + '</td>'
+                + '<td class="text-muted">—</td>'
+                + '<td>' + (price > 0 ? ('<strong>$' + price.toFixed(2) + '</strong>') : '<span class="text-muted">—</span>') + '</td>'
+                + '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+                + escAttr(sku || 'Our product') + '</td>'
+                + '<td>' + actionHtml + '</td>'
+                + '</tr>';
+        }
         function renderReverbCompetitorsList(competitors, lowestPrice) {
-            if (!competitors || competitors.length === 0) {
-                $('#lmpDataList').html(`
-                    <div class="alert alert-info"><i class="fa fa-info-circle"></i> No competitors found for this SKU</div>
-                `);
-                return;
-            }
+            const list = Array.isArray(competitors) ? competitors.slice() : [];
+            list.sort(function(a, b) {
+                const pa = parseFloat(a && a.total_price);
+                const pb = parseFloat(b && b.total_price);
+                const aOk = isFinite(pa);
+                const bOk = isFinite(pb);
+                if (!aOk && !bOk) return 0;
+                if (!aOk) return 1;
+                if (!bOk) return -1;
+                return pa - pb;
+            });
+            const ours = reverbSkuRowData(currentLmpData.sku);
+            const ourPrice = ours ? (parseFloat(ours['RV Price'] || ours.price || 0) || 0) : 0;
+            const ourHtml = reverbOurProductRowHtml(ours || { '(Child) sku': currentLmpData.sku });
+
             let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
             html += `<thead class="table-dark"><tr>
-                <th>Image</th><th>Item ID</th><th>Price</th><th>Shipping</th><th>Total</th><th>Title</th><th>Actions</th>
+                <th>Image</th><th>Price</th><th>Shipping</th><th>Total</th><th>Title</th><th>Actions</th>
             </tr></thead><tbody>`;
-            competitors.forEach(function(item) {
-                const isLowest = Math.abs(parseFloat(item.total_price) - parseFloat(lowestPrice)) < 0.01;
+
+            let inserted = false;
+            list.forEach(function(item) {
+                const total = parseFloat(item.total_price);
+                if (!inserted && ourPrice > 0 && isFinite(total) && total >= ourPrice) {
+                    html += ourHtml;
+                    inserted = true;
+                }
+                const isLowest = lowestPrice != null && isFinite(total)
+                    && Math.abs(total - parseFloat(lowestPrice)) < 0.01;
                 const rowClass = isLowest ? 'table-success' : '';
                 const badge = isLowest ? '<span class="badge bg-success ms-2">Lowest</span>' : '';
                 const productLink = item.link || `https://reverb.com/item/${item.item_id}`;
@@ -1877,7 +3065,6 @@
                     : '<span class="text-muted">—</span>';
                 html += `<tr class="${rowClass}">
                     <td>${imageCell}</td>
-                    <td><span class="text-primary" style="font-weight:600;font-size:11px;">${escAttr(item.item_id || 'N/A')}</span></td>
                     <td>$${parseFloat(item.price || 0).toFixed(2)}</td>
                     <td>${parseFloat(item.shipping_cost || 0) === 0 ? '<span class="badge bg-info">FREE</span>' : '$' + parseFloat(item.shipping_cost).toFixed(2)}</td>
                     <td><strong>$${parseFloat(item.total_price || 0).toFixed(2)}</strong> ${badge}</td>
@@ -1893,6 +3080,10 @@
                     </td>
                 </tr>`;
             });
+            if (!inserted) html += ourHtml;
+            if (!list.length && !ourHtml) {
+                html += '<tr><td colspan="6" class="text-muted text-center">No competitors found yet. Add your first competitor above!</td></tr>';
+            }
             html += '</tbody></table></div>';
             $('#lmpDataList').html(html);
         }
@@ -2042,6 +3233,7 @@
                 return response;
             },
             layout: "fitDataStretch",
+            rowHeight: 36,
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -2083,7 +3275,7 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value) {
-                            return `<img src="${value}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;">`;
+                            return `<img src="${value}" alt="Product" class="hover-thumb" style="width: 28px; height: 28px; object-fit: cover;">`;
                         }
                         return '';
                     },
@@ -2254,28 +3446,6 @@
                     headerSort: false
                 },
                 {
-                    title: "Bump Req",
-                    field: "bump_req",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 70,
-                    visible: false,
-                    formatter: function(cell) {
-                        let value = cell.getValue();
-                        if (value === null || value === undefined || value === '' || String(value).trim() === '') {
-                            value = 'REQ';
-                        }
-                        return `<select class="form-select form-select-sm bump-req-dropdown" 
-                            style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px;">
-                            <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
-                            <option value="NR" ${value === 'NR' ? 'selected' : ''}>🔴</option>
-                        </select>`;
-                    },
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                    }
-                },
-                {
                     title: "Bump%",
                     field: "Bump",
                     hozAlign: "center",
@@ -2297,10 +3467,12 @@
                     editorParams: { placeholder: "e.g. 5%" },
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        if (value === null || value === undefined || value === '') return '<span class="text-muted">-</span>';
-                        return `<span style="font-weight: 600;">${value}</span>`;
+                        const shown = reverbFormatSBump(value);
+                        if (!shown) return '<span class="text-muted">-</span>';
+                        return `<span style="font-weight: 600;">${shown}</span>`;
                     }
                 },
+                reverbPushBumpColumnDef(),
                 {
                     title: "Missing L",
                     field: "Missing",
@@ -2336,13 +3508,19 @@
                 {
                     title: "Views",
                     field: "Views",
+                    headerTooltip: "Bump impressions from Reverb GET /listings/{id}/bump (bump_v2_stats.impressions). Never-bumped listings = 0.",
                     hozAlign: "center",
-                    width: 50,
+                    width: 62,
                     sorter: "number",
                     formatter: function(cell) {
-                        // Raw views (Amazon Sess30 style) — no ÷10
-                        const views = parseFloat(cell.getValue()) || 0;
-                        return Math.round(views).toLocaleString();
+                        const row = cell.getRow().getData();
+                        const sku = row['(Child) sku'] || '';
+                        const isParent = !!(row.is_parent_summary || row.is_parent || (sku && String(sku).toUpperCase().indexOf('PARENT') !== -1));
+                        const views = Math.round(parseFloat(cell.getValue()) || 0);
+                        const dotBtn = (sku && !isParent)
+                            ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="views" title="View Views chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>`
+                            : '';
+                        return `${views.toLocaleString()} ${dotBtn}`.trim();
                     }
                 },
                 {
@@ -2397,7 +3575,7 @@
                     title: "Std Prc",
                     field: "STANDARD_PRICE",
                     hozAlign: "center",
-                    headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Editable; saves to all Sku Link LMP siblings. Dot vs Amz price.",
+                    headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Editable; saves to all Sku Link LMP siblings.",
                     editor: "input",
                     width: 70,
                     sorter: "number",
@@ -2413,16 +3591,88 @@
                         const value = cell.getValue();
                         const std = parseFloat(value) || 0;
                         if (!value || std <= 0) return '';
-                        const amzPrice = parseFloat(rowData['A Price'] || rowData.a_price || rowData.amazon_price || 0) || 0;
-                        const channelPrice = parseFloat(rowData['RV Price'] || rowData.price || 0) || 0;
-                        const comparePrice = amzPrice > 0 ? amzPrice : channelPrice;
-                        const dot = reverbStdPrcChangeDotHtml(std, comparePrice);
-                        if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + '</span>';
+                        return '$' + std.toFixed(2);
+                    }
+                },
+                {
+                    title: "Push Std",
+                    field: "push_std_prc",
+                    hozAlign: "center",
+                    vertAlign: "middle",
+                    headerSort: false,
+                    width: 55,
+                    headerTooltip: "Push Std Prc to the live Reverb listing via API. Only SKUs whose Std changed since the last push are queued. Click the header to bulk selected (or visible) SKUs.",
+                    titleFormatter: function() {
+                        return '<button type="button" class="btn btn-sm p-0 reverb-push-std-header-btn" '
+                            + 'title="Queue Push Std for selected SKUs whose Std changed since last push" '
+                            + 'style="border:none;background:none;cursor:pointer;color:#000;'
+                            + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
+                            + 'Push Std</button>';
+                    },
+                    headerClick: function(e) {
+                        if (e.target.closest('.reverb-push-std-header-btn')) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (typeof queueReverbPushStd === 'function') queueReverbPushStd();
+                            return false;
                         }
-                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                            dot + ('$' + std.toFixed(2)) + '</span>';
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        const sku = String(d['(Child) sku'] || d.sku || '').trim();
+                        if (!sku || String(sku).toUpperCase().indexOf('PARENT') !== -1 || d.is_parent_summary) {
+                            return '';
+                        }
+                        const std = parseFloat(d.STANDARD_PRICE);
+                        if (!(std > 0)) {
+                            return '<span style="color:#adb5bd;" title="Std Prc required">—</span>';
+                        }
+                        const status = String(d.PUSH_STD_PRC_STATUS || cell.getValue() || '');
+                        const last = parseFloat(d.PUSH_STD_PRC_VALUE);
+                        const lastOk = isFinite(last) && last > 0;
+                        const needs = status === 'error' || !lastOk || last.toFixed(2) !== std.toFixed(2);
+                        let icon = '<i class="fas fa-upload"></i>';
+                        let color = '#FF9900';
+                        let tip = 'Push Std $' + std.toFixed(2) + ' to Reverb';
+                        if (status === 'processing') {
+                            icon = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
+                            color = '#ffc107';
+                            tip = 'Pushing Std to Reverb…';
+                        } else if (status === 'error') {
+                            icon = '<i class="fa-solid fa-xmark"></i>';
+                            color = '#dc3545';
+                            tip = 'Last Push Std failed — click to retry';
+                        } else if (!needs) {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            color = '#28a745';
+                            tip = 'Already pushed $' + last.toFixed(2) + ' — click to push again';
+                        } else if (lastOk) {
+                            tip = 'Std changed $' + last.toFixed(2) + ' → $' + std.toFixed(2)
+                                + ' — click to push to Reverb';
+                        }
+                        return '<button type="button" class="btn btn-sm p-0 reverb-push-std-btn" '
+                            + 'data-sku="' + sku.replace(/"/g, '&quot;') + '" '
+                            + 'data-price="' + std.toFixed(2) + '" '
+                            + 'title="' + tip.replace(/"/g, '&quot;') + '" '
+                            + 'style="border:none;background:none;cursor:pointer;color:' + color
+                            + ';padding:0;line-height:1;vertical-align:middle;">'
+                            + icon + '</button>';
+                    },
+                    cellClick: function(e, cell) {
+                        const btn = e.target.closest('.reverb-push-std-btn');
+                        if (!btn) return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (btn.disabled) return false;
+                        const d = cell.getRow().getData() || {};
+                        if (String(d.PUSH_STD_PRC_STATUS || '') === 'processing') return false;
+                        if (typeof queueReverbPushStd === 'function') {
+                            const sku = String(d['(Child) sku'] || '').trim();
+                            const selected = (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.size > 1
+                                && selectedSkus.has(sku));
+                            queueReverbPushStd(selected ? null : cell.getRow());
+                        }
+                        return false;
                     }
                 },
                 {
@@ -2458,6 +3708,7 @@
                     field: "A Price",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue());
                         if (value === null || value === 0 || isNaN(value)) {
@@ -2487,31 +3738,26 @@
                         const linkedSkusAttr = escAttr(JSON.stringify(linkedSkus));
                         const rvPrice = parseFloat(rowData['RV Price']) || 0;
 
-                        let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
-
                         if (!lmpPrice && totalCompetitors === 0) {
-                            html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
+                            return `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
                                 style="color: #999; text-decoration: none; cursor: pointer; font-size: 12px;" title="Add competitors">N/A</a>`;
-                        } else if (lmpPrice) {
+                        }
+
+                        if (lmpPrice) {
                             const finalPrice = parseFloat(lmpPrice) || 0;
                             const priceColor = (rvPrice > 0 && finalPrice < rvPrice) ? '#dc3545' : '#28a745';
-                            html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">$${finalPrice.toFixed(2)}</span>`;
+                            let html = `<span style="color: ${priceColor}; font-weight: 600;">$${finalPrice.toFixed(2)}</span>`;
+                            if (totalCompetitors > 0) {
+                                html += ` <a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
+                                    title="View ${totalCompetitors} competitor${totalCompetitors === 1 ? '' : 's'}"
+                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-weight: 600;">(${totalCompetitors})</a>`;
+                            }
+                            return html;
                         }
 
-                        if (totalCompetitors > 0) {
-                            html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
-                                style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
-                                <i class="fa fa-eye"></i> View ${totalCompetitors}
-                            </a>`;
-                        } else if (lmpPrice) {
-                            html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
-                                style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
-                                <i class="fa fa-plus"></i> Add
-                            </a>`;
-                        }
-
-                        html += '</div>';
-                        return html;
+                        return `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
+                            title="View ${totalCompetitors} competitor${totalCompetitors === 1 ? '' : 's'}"
+                            style="color: #007bff; text-decoration: none; cursor: pointer; font-weight: 600;">(${totalCompetitors})</a>`;
                     },
                     width: 100
                 },
@@ -2681,6 +3927,7 @@
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
                     }
                 },
+                ...(typeof reverbChannelPromoColumns === 'function' ? reverbChannelPromoColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "SPRICE",
                     field: "SPRICE",
@@ -2938,32 +4185,6 @@
             });
         });
 
-        // Bump Req dropdown change handler (like NRA)
-        $(document).on('change', '.bump-req-dropdown', function() {
-            const $cell = $(this).closest('.tabulator-cell');
-            const $rowEl = $cell.closest('.tabulator-row');
-            const row = table.getRow($rowEl[0]);
-            const rowData = row.getData();
-            const sku = rowData['(Child) sku'];
-            const newValue = $(this).val();
-            $.ajax({
-                url: '{{ url("/reverb-save-bump-req") }}',
-                method: 'POST',
-                data: {
-                    sku: sku,
-                    bump_req: newValue,
-                    _token: '{{ csrf_token() }}'
-                },
-                success: function(response) {
-                    showToast(`${sku}: Bump Req updated to ${newValue}`, 'success');
-                    row.update({ bump_req: newValue });
-                },
-                error: function(xhr) {
-                    showToast(`Failed to update Bump Req for ${sku}`, 'error');
-                }
-            });
-        });
-
         // SPRICE cell edited - save to database
         table.on('cellEdited', function(cell) {
             const field = cell.getField();
@@ -3045,6 +4266,37 @@
             navigator.clipboard.writeText(sku).then(() => {
                 showToast(`Copied: ${sku}`, 'success');
             });
+        });
+
+        $('#reverb-dil-vs-s-bump-btn').on('click', function(e) {
+            e.preventDefault();
+            loadReverbDilSBumpRules();
+            $('#reverbDilVsSBumpModal').modal('show');
+        });
+        $('#reverb-dil-s-bump-apply-btn').on('click', function() {
+            saveAndApplyReverbSBump();
+        });
+        $('#reverb-apply-s-bump-btn').on('click', function(e) {
+            e.preventDefault();
+            saveAndApplyReverbSBump();
+        });
+
+        $(document).on('click', '.view-sku-chart', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const el = e.target.closest ? e.target.closest('.view-sku-chart') : this;
+            const sku = el.getAttribute('data-sku') || $(el).data('sku');
+            if (!sku) return;
+            currentSkuChartMetric = el.getAttribute('data-metric') || 'views';
+            currentSku = sku;
+            $('#modalSkuName').text(sku);
+            const metricLabels = { price: 'Price', views: 'Views', cvr: 'CVR%' };
+            $('#skuChartRefLabel').text(metricLabels[currentSkuChartMetric] || 'Views');
+            $('#skuChartModalSuffix').text('(Rolling L30)');
+            $('#sku-chart-days-filter').val('30');
+            $('#chart-no-data-message').hide();
+            loadSkuMetricsData(sku, 30, currentSkuChartMetric);
+            $('#skuMetricsModal').modal('show');
         });
 
         // Push one SKU SPRICE to Reverb (Amazon-style icon click — no confirm)
@@ -3551,7 +4803,9 @@
             $('#nroi-badge').text(`NROI: ${Math.round(nroiPct)}%`);
             // Amazon formula: Σ units ÷ Σ views × 100 (no Views÷10)
             const overallCvr = totalViewsRaw > 0 ? (totalRvL30 / totalViewsRaw) * 100 : 0;
+            const avgViews = data.length > 0 ? totalViewsRaw / data.length : 0;
             $('#total-views-badge').text(`Views: ${Math.round(totalViewsRaw).toLocaleString()}`);
+            $('#avg-views-badge').text(`Avg Views: ${Math.round(avgViews).toLocaleString()}`);
             $('#avg-cvr-badge').text(`CVR: ${overallCvr.toFixed(1)}%`);
             $('#rd-qty-sum-badge').text(`RD Qty: ${totalRdQty.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
@@ -3566,38 +4820,888 @@
                 || '';
         }
 
+        // ==================== Apply Std Price / Push Std queue ====================
+        const REVERB_PUSH_STD_QUEUE_URL = '/reverb-push-std';
+        let reverbPushStdPollTimer = null;
+        let reverbPushStdLastTasks = [];
+
+        function reverbPushStdSku(d) {
+            return String((d && (d['(Child) sku'] || d.sku)) || '').trim();
+        }
+        function reverbPushStdSkuKey(sku) {
+            return String(sku || '').trim().toUpperCase();
+        }
+        function reverbPushStdCurrent(d) {
+            const n = parseFloat(d && d.STANDARD_PRICE);
+            return (isFinite(n) && n > 0) ? +n.toFixed(2) : 0;
+        }
+        function reverbPushStdLast(d) {
+            const n = parseFloat(d && d.PUSH_STD_PRC_VALUE);
+            return (isFinite(n) && n > 0) ? +n.toFixed(2) : 0;
+        }
+        function reverbPushStdNeedsPush(d) {
+            const std = reverbPushStdCurrent(d);
+            if (!(std > 0)) return false;
+            if (String((d && d.PUSH_STD_PRC_STATUS) || '') === 'error') return true;
+            const last = reverbPushStdLast(d);
+            if (!(last > 0)) return true;
+            return last.toFixed(2) !== std.toFixed(2);
+        }
+        function reverbPushStdIsChild(d) {
+            const sku = reverbPushStdSku(d);
+            return !!(d && !d.is_parent_summary && sku && sku.toUpperCase().indexOf('PARENT') === -1);
+        }
+        function reverbEachTableRow(fn) {
+            if (typeof chPromoEachTableRow === 'function') {
+                chPromoEachTableRow(fn);
+                return;
+            }
+            if (!table || typeof fn !== 'function') return;
+            let rows = [];
+            try { rows = table.getRows('all') || []; } catch (e) { rows = []; }
+            if (!rows.length) {
+                try { rows = table.getRows() || []; } catch (e) { rows = []; }
+            }
+            rows.forEach(function(row) {
+                try { fn(row, row.getData() || {}); } catch (e) { /* ignore */ }
+            });
+        }
+        function reverbSyncRowInDataset(sku, patch) {
+            const key = reverbPushStdSkuKey(sku);
+            if (!key || !patch) return;
+            if (typeof allTableData !== 'undefined' && Array.isArray(allTableData)) {
+                allTableData.forEach(function(row) {
+                    if (reverbPushStdSkuKey(reverbPushStdSku(row)) === key) {
+                        Object.assign(row, patch);
+                    }
+                });
+            }
+        }
+        function reverbPaintPushStdIcon(row) {
+            if (!row) return;
+            try {
+                const cell = row.getCell && row.getCell('push_std_prc');
+                if (cell && typeof cell.reformat === 'function') cell.reformat();
+            } catch (e) { /* ignore */ }
+            try {
+                const d = row.getData() || {};
+                const el = (row.getElement && row.getElement()) || null;
+                const btn = el && el.querySelector && el.querySelector('.reverb-push-std-btn');
+                if (!btn) return;
+                const status = String(d.PUSH_STD_PRC_STATUS || d.push_std_prc || '');
+                const std = reverbPushStdCurrent(d);
+                const last = reverbPushStdLast(d);
+                if (status === 'processing') {
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
+                    btn.style.color = '#ffc107';
+                    btn.title = 'Pushing Std to Reverb…';
+                } else if (status === 'error') {
+                    btn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                    btn.style.color = '#dc3545';
+                    btn.title = 'Last Push Std failed — click to retry';
+                } else if (status === 'pushed' && last > 0 && std > 0 && last.toFixed(2) === std.toFixed(2)) {
+                    btn.innerHTML = '<i class="fa-solid fa-check-double"></i>';
+                    btn.style.color = '#28a745';
+                    btn.title = 'Already pushed $' + last.toFixed(2);
+                }
+            } catch (e) { /* ignore */ }
+        }
+        function reverbPushStdUpdateRow(row, patch) {
+            if (!row || !patch) return;
+            const sku = reverbPushStdSku(row.getData() || {});
+            reverbSyncRowInDataset(sku, patch);
+            const paint = function() { reverbPaintPushStdIcon(row); };
+            try {
+                const p = row.update(patch);
+                if (p && typeof p.then === 'function') p.then(paint).catch(paint);
+                else paint();
+            } catch (e) {
+                paint();
+            }
+        }
+        function reverbPushStdRefreshCell(row) {
+            reverbPaintPushStdIcon(row);
+        }
+        function reverbPushStdCollectTargets(singleRow) {
+            if (singleRow) {
+                const d = singleRow.getData() || {};
+                return reverbPushStdIsChild(d) ? [{ row: singleRow, d: d }] : [];
+            }
+            if (typeof collectChPromoSelectedRows === 'function') {
+                const selected = collectChPromoSelectedRows();
+                if (selected.length) return selected;
+            }
+            if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.size) {
+                const keys = new Set();
+                selectedSkus.forEach(function(s) { keys.add(reverbPushStdSkuKey(s)); });
+                return (table.getRows() || []).filter(function(row) {
+                    const d = row.getData() || {};
+                    return reverbPushStdIsChild(d) && keys.has(reverbPushStdSkuKey(reverbPushStdSku(d)));
+                }).map(function(row) { return { row: row, d: row.getData() }; });
+            }
+            if (typeof collectChPromoVisibleRows === 'function') {
+                return collectChPromoVisibleRows();
+            }
+            return (table.getRows('active') || []).filter(function(row) {
+                return reverbPushStdIsChild(row.getData());
+            }).map(function(row) { return { row: row, d: row.getData() }; });
+        }
+        function applyReverbPushStdTaskStatuses(tasks) {
+            if (!table || !Array.isArray(tasks)) return;
+            reverbPushStdLastTasks = tasks;
+            const bySku = {};
+            tasks.forEach(function(t) {
+                const k = reverbPushStdSkuKey(t && t.sku);
+                if (k) bySku[k] = t;
+            });
+            reverbEachTableRow(function(row, d) {
+                const t = bySku[reverbPushStdSkuKey(reverbPushStdSku(d))];
+                if (!t) return;
+                const st = String(t.status || '');
+                const std = parseFloat(t.std);
+                const patch = {};
+                if (st === 'pushing' || st === 'pending' || st === 'queued') {
+                    patch.PUSH_STD_PRC_STATUS = 'processing';
+                    patch.push_std_prc = 'processing';
+                } else if (st === 'ok') {
+                    patch.PUSH_STD_PRC_STATUS = 'pushed';
+                    patch.push_std_prc = 'pushed';
+                    if (isFinite(std) && std > 0) {
+                        patch.PUSH_STD_PRC_VALUE = std;
+                        patch['RV Price'] = std;
+                    }
+                } else if (st === 'failed') {
+                    patch.PUSH_STD_PRC_STATUS = 'error';
+                    patch.push_std_prc = 'error';
+                }
+                if (Object.keys(patch).length) reverbPushStdUpdateRow(row, patch);
+            });
+        }
+        function paintReverbPushStdProgress(resp) {
+            if (typeof setChPromoPushPrcProgress !== 'function') return;
+            const active = !!(resp && resp.active);
+            const total = Number(resp && resp.total) || 0;
+            const done = Number(resp && resp.done_count) || 0;
+            const ok = Number(resp && resp.ok_count) || 0;
+            const fail = Number(resp && resp.fail_count) || 0;
+            const pct = Number(resp && resp.pct) || 0;
+            const sku = resp && resp.job && resp.job.current_sku;
+            setChPromoPushPrcProgress({
+                active: active,
+                done: done,
+                total: total,
+                ok: ok,
+                fail: fail,
+                pct: pct,
+                cancelable: active,
+                title: active ? 'Pushing Std' : (fail && !ok ? 'Push Std failed' : 'Pushed Std'),
+                msg: (resp && resp.message) || (sku ? ('Std · ' + sku) : ''),
+            });
+        }
+        function stopReverbPushStdPoll() {
+            if (reverbPushStdPollTimer) {
+                clearInterval(reverbPushStdPollTimer);
+                reverbPushStdPollTimer = null;
+            }
+        }
+        function startReverbPushStdPoll() {
+            stopReverbPushStdPoll();
+            const tick = function() {
+                $.ajax({
+                    url: REVERB_PUSH_STD_QUEUE_URL + '/status',
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    timeout: 15000,
+                }).done(function(resp) {
+                    if (resp && Array.isArray(resp.tasks)) applyReverbPushStdTaskStatuses(resp.tasks);
+                    paintReverbPushStdProgress(resp);
+                    if (!(resp && resp.active)) stopReverbPushStdPoll();
+                }).fail(function() { /* keep polling */ });
+            };
+            tick();
+            reverbPushStdPollTimer = setInterval(tick, 1500);
+        }
+        function queueReverbPushStd(singleRow) {
+            if (!table) {
+                showToast('Load data first', 'error');
+                return;
+            }
+            const all = reverbPushStdCollectTargets(singleRow || null);
+            const forceOne = !!singleRow;
+            const targets = all.filter(function(t) {
+                return reverbPushStdCurrent(t.d) > 0 && (forceOne || reverbPushStdNeedsPush(t.d));
+            });
+            const skipped = all.length - targets.length;
+            if (!targets.length) {
+                showToast(skipped
+                    ? ('No Std Prc changes since last push (' + skipped + ' unchanged)')
+                    : 'No SKUs with Std Prc to push', 'info');
+                return;
+            }
+            const scope = singleRow ? 'this SKU' : (targets.length + ' SKU(s)');
+            if (!confirm('Apply Std Price to Reverb for ' + scope
+                + (skipped && !singleRow ? (' (' + skipped + ' unchanged skipped)') : '') + '?')) {
+                return;
+            }
+            const items = targets.map(function(t) {
+                return { sku: reverbPushStdSku(t.d), std: reverbPushStdCurrent(t.d) };
+            });
+            targets.forEach(function(t) {
+                reverbPushStdUpdateRow(t.row, { PUSH_STD_PRC_STATUS: 'processing', push_std_prc: 'processing' });
+            });
+            const $btn = $('#reverb-apply-std-price-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Queuing…');
+            $.ajax({
+                url: REVERB_PUSH_STD_QUEUE_URL,
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                data: { items: items, _token: csrfToken() },
+            }).done(function(resp) {
+                if (resp && Array.isArray(resp.tasks)) applyReverbPushStdTaskStatuses(resp.tasks);
+                paintReverbPushStdProgress(resp);
+                showToast((resp && resp.message) || 'Push Std queued', 'success');
+                startReverbPushStdPoll();
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to queue Push Std';
+                showToast(msg, 'error');
+                targets.forEach(function(t) {
+                    reverbPushStdUpdateRow(t.row, { PUSH_STD_PRC_STATUS: 'error', push_std_prc: 'error' });
+                });
+            }).always(function() {
+                $btn.prop('disabled', false).html(html);
+            });
+        }
+        window.queueReverbPushStd = queueReverbPushStd;
+
+        $('#reverb-apply-std-price-btn').on('click', function(e) {
+            e.preventDefault();
+            queueReverbPushStd();
+        });
+        $('#ch-promo-push-prc-cancel-btn').on('click.reverbstd', function(e) {
+            if (!reverbPushStdPollTimer) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            $.ajax({
+                url: REVERB_PUSH_STD_QUEUE_URL + '/cancel',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                data: { _token: csrfToken() },
+            }).done(function(resp) {
+                stopReverbPushStdPoll();
+                if (resp && Array.isArray(resp.tasks)) applyReverbPushStdTaskStatuses(resp.tasks);
+                paintReverbPushStdProgress(Object.assign({}, resp, { active: false }));
+                showToast((resp && resp.message) || 'Push Std cancelled', 'info');
+            });
+        });
+        $.ajax({
+            url: REVERB_PUSH_STD_QUEUE_URL + '/status',
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            timeout: 15000,
+        }).done(function(resp) {
+            if (resp && Array.isArray(resp.tasks) && resp.tasks.length) {
+                applyReverbPushStdTaskStatuses(resp.tasks);
+            }
+            if (resp && resp.active) startReverbPushStdPoll();
+        });
+        if (table && table.on) {
+            table.on('dataLoaded', function() {
+                if (reverbPushStdLastTasks && reverbPushStdLastTasks.length) {
+                    applyReverbPushStdTaskStatuses(reverbPushStdLastTasks);
+                }
+                if (reverbPushPrmtLastTasks && reverbPushPrmtLastTasks.length) {
+                    applyReverbPushPrmtTaskStatuses(reverbPushPrmtLastTasks);
+                }
+            });
+            table.on('renderComplete', function() {
+                reverbEachTableRow(function(row, d) {
+                    const st = String(d.PUSH_STD_PRC_STATUS || d.push_std_prc || '');
+                    if (st === 'processing' || st === 'pushed' || st === 'error') {
+                        reverbPaintPushStdIcon(row);
+                    }
+                    if (typeof reverbPaintPushPrmtIcon === 'function') {
+                        const pst = String(d.PUSH_PRC_STATUS || d.push_prmt || '');
+                        if (pst === 'processing' || pst === 'pushed' || pst === 'error') {
+                            reverbPaintPushPrmtIcon(row);
+                        }
+                    }
+                });
+            });
+        }
+
+        // ==================== Apply Prmt% / Push % queue ====================
+        const REVERB_PUSH_PRMT_QUEUE_URL = '/reverb-push-prmt';
+        let reverbPushPrmtPollTimer = null;
+        let reverbPushPrmtLastTasks = [];
+
+        function reverbPushPrmtNeedsPush(d) {
+            const prmt = reverbPrmtPctOf(d);
+            if (String((d && d.PUSH_PRC_STATUS) || '') === 'error') return true;
+            const last = parseFloat(d && d.PUSH_PRC_VALUE);
+            if (!isFinite(last) || last < 0) return prmt > 0;
+            return Number(last).toFixed(1) !== Number(prmt).toFixed(1);
+        }
+        function reverbPaintPushPrmtIcon(row) {
+            if (!row) return;
+            try {
+                const cell = row.getCell && row.getCell('push_prmt');
+                if (cell && typeof cell.reformat === 'function') cell.reformat();
+            } catch (e) { /* ignore */ }
+            try {
+                const d = row.getData() || {};
+                const el = (row.getElement && row.getElement()) || null;
+                const btn = el && el.querySelector && el.querySelector('.reverb-push-prmt-btn');
+                if (!btn) return;
+                const status = String(d.PUSH_PRC_STATUS || d.push_prmt || '');
+                const prmt = reverbPrmtPctOf(d);
+                const last = parseFloat(d.PUSH_PRC_VALUE);
+                const lastOk = isFinite(last) && last >= 0;
+                if (status === 'processing') {
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
+                    btn.style.color = '#ffc107';
+                    btn.title = 'Applying Drop the Price By…';
+                } else if (status === 'error') {
+                    btn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                    btn.style.color = '#dc3545';
+                    btn.title = 'Last Drop the Price By failed — click to retry';
+                } else if (status === 'pushed' && lastOk && Number(last).toFixed(1) === Number(prmt).toFixed(1)) {
+                    btn.innerHTML = '<i class="fa-solid fa-check-double"></i>';
+                    btn.style.color = '#28a745';
+                    btn.title = 'Already pushed Drop the Price By ' + Number(last).toFixed(0) + '%';
+                }
+            } catch (e) { /* ignore */ }
+        }
+        function reverbPushPrmtUpdateRow(row, patch) {
+            if (!row || !patch) return;
+            const sku = reverbPushStdSku(row.getData() || {});
+            reverbSyncRowInDataset(sku, patch);
+            const paint = function() { reverbPaintPushPrmtIcon(row); };
+            try {
+                const p = row.update(patch);
+                if (p && typeof p.then === 'function') p.then(paint).catch(paint);
+                else paint();
+            } catch (e) {
+                paint();
+            }
+        }
+        function reverbPushPrmtRefreshCell(row) {
+            reverbPaintPushPrmtIcon(row);
+        }
+        function applyReverbPushPrmtTaskStatuses(tasks) {
+            if (!table || !Array.isArray(tasks)) return;
+            reverbPushPrmtLastTasks = tasks;
+            const bySku = {};
+            tasks.forEach(function(t) {
+                const k = reverbPushStdSkuKey(t && t.sku);
+                if (k) bySku[k] = t;
+            });
+            reverbEachTableRow(function(row, d) {
+                const t = bySku[reverbPushStdSkuKey(reverbPushStdSku(d))];
+                if (!t) return;
+                const st = String(t.status || '');
+                const prmtVal = parseFloat(t.prmt != null ? t.prmt : t.price);
+                const patch = {};
+                if (st === 'pushing' || st === 'pending' || st === 'queued') {
+                    patch.PUSH_PRC_STATUS = 'processing';
+                    patch.push_prmt = 'processing';
+                } else if (st === 'ok') {
+                    patch.PUSH_PRC_STATUS = 'pushed';
+                    patch.push_prmt = 'pushed';
+                    if (isFinite(prmtVal) && prmtVal >= 0) {
+                        patch.PUSH_PRC_VALUE = prmtVal;
+                    }
+                    if (t.prmt != null) patch.prmt_pct = String(t.prmt);
+                } else if (st === 'failed') {
+                    patch.PUSH_PRC_STATUS = 'error';
+                    patch.push_prmt = 'error';
+                }
+                if (Object.keys(patch).length) reverbPushPrmtUpdateRow(row, patch);
+            });
+        }
+        function paintReverbPushPrmtProgress(resp) {
+            if (typeof setChPromoPushPrcProgress !== 'function') return;
+            const active = !!(resp && resp.active);
+            const total = Number(resp && resp.total) || 0;
+            const done = Number(resp && resp.done_count) || 0;
+            const ok = Number(resp && resp.ok_count) || 0;
+            const fail = Number(resp && resp.fail_count) || 0;
+            const pct = Number(resp && resp.pct) || 0;
+            const sku = resp && resp.job && resp.job.current_sku;
+            setChPromoPushPrcProgress({
+                active: active,
+                done: done,
+                total: total,
+                ok: ok,
+                fail: fail,
+                pct: pct,
+                cancelable: active,
+                title: active ? 'Applying Prmt%' : (fail && !ok ? 'Prmt% failed' : 'Prmt% applied'),
+                msg: (resp && resp.message) || (sku ? ('Prmt% · ' + sku) : ''),
+            });
+        }
+        function stopReverbPushPrmtPoll() {
+            if (reverbPushPrmtPollTimer) {
+                clearInterval(reverbPushPrmtPollTimer);
+                reverbPushPrmtPollTimer = null;
+            }
+        }
+        function startReverbPushPrmtPoll() {
+            stopReverbPushPrmtPoll();
+            const tick = function() {
+                $.ajax({
+                    url: REVERB_PUSH_PRMT_QUEUE_URL + '/status',
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    timeout: 15000,
+                }).done(function(resp) {
+                    if (resp && Array.isArray(resp.tasks)) applyReverbPushPrmtTaskStatuses(resp.tasks);
+                    paintReverbPushPrmtProgress(resp);
+                    if (!(resp && resp.active)) stopReverbPushPrmtPoll();
+                }).fail(function() { /* keep polling */ });
+            };
+            tick();
+            reverbPushPrmtPollTimer = setInterval(tick, 1500);
+        }
+        function queueReverbPushPrmt(singleRow) {
+            if (!table) {
+                showToast('Load data first', 'error');
+                return;
+            }
+            const all = reverbPushStdCollectTargets(singleRow || null);
+            const forceOne = !!singleRow;
+            const targets = all.filter(function(t) {
+                return forceOne || reverbPushPrmtNeedsPush(t.d);
+            });
+            const skipped = all.length - targets.length;
+            if (!targets.length) {
+                showToast(skipped
+                    ? ('No PRMT% Drop the Price By changes since last push (' + skipped + ' unchanged)')
+                    : 'No SKUs to apply Prmt%', 'info');
+                return;
+            }
+            const scope = singleRow ? 'this SKU' : (targets.length + ' SKU(s)');
+            if (!confirm('Apply Reverb Drop the Price By at PRMT% for ' + scope
+                + '?\n\nListing / Std price will not change.'
+                + (skipped && !singleRow ? ('\n(' + skipped + ' unchanged skipped)') : ''))) {
+                return;
+            }
+            const items = targets.map(function(t) {
+                return {
+                    sku: reverbPushStdSku(t.d),
+                    std: reverbPushStdCurrent(t.d),
+                    prmt: reverbPrmtPctOf(t.d)
+                };
+            });
+            targets.forEach(function(t) {
+                try {
+                    reverbPushPrmtUpdateRow(t.row, { PUSH_PRC_STATUS: 'processing', push_prmt: 'processing' });
+                } catch (e) { /* ignore */ }
+                reverbPushPrmtRefreshCell(t.row);
+            });
+            const $btn = $('#reverb-apply-prmt-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Queuing…');
+            $.ajax({
+                url: REVERB_PUSH_PRMT_QUEUE_URL,
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                data: { items: items, _token: csrfToken() },
+            }).done(function(resp) {
+                if (resp && Array.isArray(resp.tasks)) applyReverbPushPrmtTaskStatuses(resp.tasks);
+                paintReverbPushPrmtProgress(resp);
+                showToast((resp && resp.message) || 'Push Prmt% queued', 'success');
+                startReverbPushPrmtPoll();
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to queue Apply Prmt%';
+                showToast(msg, 'error');
+                targets.forEach(function(t) {
+                    reverbPushPrmtUpdateRow(t.row, { PUSH_PRC_STATUS: 'error', push_prmt: 'error' });
+                });
+            }).always(function() {
+                $btn.prop('disabled', false).html(html);
+            });
+        }
+        window.queueReverbPushPrmt = queueReverbPushPrmt;
+
+        $('#reverb-apply-prmt-btn').on('click', function(e) {
+            e.preventDefault();
+            queueReverbPushPrmt();
+        });
+
+        // ==================== Apply Bump / Push B% queue ====================
+        const REVERB_PUSH_BUMP_QUEUE_URL = '/reverb-push-bump';
+        let reverbPushBumpPollTimer = null;
+
+        function reverbPushBumpNeedsPush(d) {
+            const bump = reverbSBumpPctOf(d);
+            if (String((d && d.PUSH_BUMP_STATUS) || '') === 'error') return true;
+            const last = parseFloat(d && d.PUSH_BUMP_VALUE);
+            if (isFinite(last) && last >= 0) {
+                return Number(last).toFixed(1) !== Number(bump).toFixed(1);
+            }
+            const live = reverbLiveBumpPctOf(d);
+            if (Number(live).toFixed(1) !== Number(bump).toFixed(1)) return true;
+            return bump > 0 && !isFinite(last);
+        }
+        function reverbPaintPushBumpIcon(row) {
+            if (!row) return;
+            try {
+                const cell = row.getCell && row.getCell('push_bump');
+                if (cell && typeof cell.reformat === 'function') cell.reformat();
+            } catch (e) { /* ignore */ }
+        }
+        function reverbPushBumpUpdateRow(row, patch) {
+            if (!row || !patch) return;
+            const sku = reverbPushStdSku(row.getData() || {});
+            reverbSyncRowInDataset(sku, patch);
+            const paint = function() { reverbPaintPushBumpIcon(row); };
+            try {
+                const p = row.update(patch);
+                if (p && typeof p.then === 'function') p.then(paint).catch(paint);
+                else paint();
+            } catch (e) {
+                paint();
+            }
+        }
+        function applyReverbPushBumpTaskStatuses(tasks) {
+            if (!table || !Array.isArray(tasks)) return;
+            const bySku = {};
+            tasks.forEach(function(t) {
+                const k = reverbPushStdSkuKey(t && t.sku);
+                if (k) bySku[k] = t;
+            });
+            reverbEachTableRow(function(row, d) {
+                const t = bySku[reverbPushStdSkuKey(reverbPushStdSku(d))];
+                if (!t) return;
+                const st = String(t.status || '');
+                const bumpVal = parseFloat(t.bump);
+                const patch = {};
+                if (st === 'pushing' || st === 'pending' || st === 'queued') {
+                    patch.PUSH_BUMP_STATUS = 'processing';
+                    patch.push_bump = 'processing';
+                } else if (st === 'ok') {
+                    patch.PUSH_BUMP_STATUS = 'pushed';
+                    patch.push_bump = 'pushed';
+                    if (isFinite(bumpVal) && bumpVal >= 0) {
+                        patch.PUSH_BUMP_VALUE = bumpVal;
+                        patch.Bump = (typeof reverbFormatSBump === 'function')
+                            ? reverbFormatSBump(bumpVal)
+                            : (String(Math.round(bumpVal)) + '%');
+                    }
+                } else if (st === 'failed') {
+                    patch.PUSH_BUMP_STATUS = 'error';
+                    patch.push_bump = 'error';
+                }
+                if (Object.keys(patch).length) reverbPushBumpUpdateRow(row, patch);
+            });
+        }
+        function paintReverbPushBumpProgress(resp) {
+            if (typeof setChPromoPushPrcProgress !== 'function') return;
+            const active = !!(resp && resp.active);
+            const total = Number(resp && resp.total) || 0;
+            const done = Number(resp && resp.done_count) || 0;
+            const ok = Number(resp && resp.ok_count) || 0;
+            const fail = Number(resp && resp.fail_count) || 0;
+            const pct = Number(resp && resp.pct) || 0;
+            const sku = resp && resp.job && resp.job.current_sku;
+            setChPromoPushPrcProgress({
+                active: active,
+                done: done,
+                total: total,
+                ok: ok,
+                fail: fail,
+                pct: pct,
+                cancelable: active,
+                title: active ? 'Applying Bump%' : (fail && !ok ? 'Bump% failed' : 'Bump% applied'),
+                msg: (resp && resp.message) || (sku ? ('Bump% · ' + sku) : ''),
+            });
+        }
+        function stopReverbPushBumpPoll() {
+            if (reverbPushBumpPollTimer) {
+                clearInterval(reverbPushBumpPollTimer);
+                reverbPushBumpPollTimer = null;
+            }
+        }
+        function startReverbPushBumpPoll() {
+            stopReverbPushBumpPoll();
+            const tick = function() {
+                $.ajax({
+                    url: REVERB_PUSH_BUMP_QUEUE_URL + '/status',
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    timeout: 15000,
+                }).done(function(resp) {
+                    if (resp && Array.isArray(resp.tasks)) applyReverbPushBumpTaskStatuses(resp.tasks);
+                    paintReverbPushBumpProgress(resp);
+                    if (!(resp && resp.active)) stopReverbPushBumpPoll();
+                }).fail(function() { /* keep polling */ });
+            };
+            tick();
+            reverbPushBumpPollTimer = setInterval(tick, 1500);
+        }
+        function queueReverbPushBump(singleRow) {
+            if (!table) {
+                showToast('Load data first', 'error');
+                return;
+            }
+            const all = reverbPushStdCollectTargets(singleRow || null);
+            const forceOne = !!singleRow;
+            const targets = all.filter(function(t) {
+                return forceOne || reverbPushBumpNeedsPush(t.d);
+            });
+            const skipped = all.length - targets.length;
+            if (!targets.length) {
+                showToast(skipped
+                    ? ('No S Bump% changes since last push (' + skipped + ' unchanged)')
+                    : 'No SKUs to apply Bump', 'info');
+                return;
+            }
+            const scope = singleRow ? 'this SKU' : (targets.length + ' SKU(s)');
+            if (!confirm('Push Reverb Bump bid at S Bump% for ' + scope + '?'
+                + (skipped && !singleRow ? ('\n(' + skipped + ' unchanged skipped)') : ''))) {
+                return;
+            }
+            const items = targets.map(function(t) {
+                return {
+                    sku: reverbPushStdSku(t.d),
+                    bump: reverbSBumpPctOf(t.d)
+                };
+            });
+            targets.forEach(function(t) {
+                try {
+                    reverbPushBumpUpdateRow(t.row, { PUSH_BUMP_STATUS: 'processing', push_bump: 'processing' });
+                } catch (e) { /* ignore */ }
+            });
+            const $btn = $('#reverb-apply-bump-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Queuing…');
+            $.ajax({
+                url: REVERB_PUSH_BUMP_QUEUE_URL,
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                data: { items: items, _token: csrfToken() },
+            }).done(function(resp) {
+                if (resp && Array.isArray(resp.tasks)) applyReverbPushBumpTaskStatuses(resp.tasks);
+                paintReverbPushBumpProgress(resp);
+                showToast((resp && resp.message) || 'Push B% queued', 'success');
+                startReverbPushBumpPoll();
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to queue Apply Bump';
+                showToast(msg, 'error');
+                targets.forEach(function(t) {
+                    reverbPushBumpUpdateRow(t.row, { PUSH_BUMP_STATUS: 'error', push_bump: 'error' });
+                });
+            }).always(function() {
+                $btn.prop('disabled', false).html(html);
+            });
+        }
+        window.queueReverbPushBump = queueReverbPushBump;
+
+        $('#reverb-apply-bump-btn').on('click', function(e) {
+            e.preventDefault();
+            queueReverbPushBump();
+        });
+        $('#ch-promo-push-prc-cancel-btn').on('click.reverbbump', function(e) {
+            if (!reverbPushBumpPollTimer) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            $.ajax({
+                url: REVERB_PUSH_BUMP_QUEUE_URL + '/cancel',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                data: { _token: csrfToken() },
+            }).done(function(resp) {
+                stopReverbPushBumpPoll();
+                if (resp && Array.isArray(resp.tasks)) applyReverbPushBumpTaskStatuses(resp.tasks);
+                paintReverbPushBumpProgress(Object.assign({}, resp, { active: false }));
+                showToast((resp && resp.message) || 'Push B% cancelled', 'info');
+            });
+        });
+        $.ajax({
+            url: REVERB_PUSH_BUMP_QUEUE_URL + '/status',
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            timeout: 15000,
+        }).done(function(resp) {
+            if (resp && Array.isArray(resp.tasks) && resp.tasks.length) {
+                applyReverbPushBumpTaskStatuses(resp.tasks);
+            }
+            if (resp && resp.active) startReverbPushBumpPoll();
+        });
+        $('#ch-promo-push-prc-cancel-btn').on('click.reverbprmt', function(e) {
+            if (!reverbPushPrmtPollTimer) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            $.ajax({
+                url: REVERB_PUSH_PRMT_QUEUE_URL + '/cancel',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                data: { _token: csrfToken() },
+            }).done(function(resp) {
+                stopReverbPushPrmtPoll();
+                if (resp && Array.isArray(resp.tasks)) applyReverbPushPrmtTaskStatuses(resp.tasks);
+                paintReverbPushPrmtProgress(Object.assign({}, resp, { active: false }));
+                showToast((resp && resp.message) || 'Push Prmt% cancelled', 'info');
+            });
+        });
+        $.ajax({
+            url: REVERB_PUSH_PRMT_QUEUE_URL + '/status',
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            timeout: 15000,
+        }).done(function(resp) {
+            if (resp && Array.isArray(resp.tasks) && resp.tasks.length) {
+                applyReverbPushPrmtTaskStatuses(resp.tasks);
+            }
+            if (resp && resp.active) startReverbPushPrmtPoll();
+        });
+
+        const COL_VIS_CATEGORY_KEYS = ['basic', 'pricing', 'advertisement', 'other'];
+        const COL_VIS_CATEGORY_LABELS = {
+            basic: 'Basic',
+            pricing: 'Pricing',
+            advertisement: 'Advertisement',
+            other: 'Other'
+        };
+        const COL_VIS_BASIC = {
+            Parent: 1, image_path: 1, '(Child) sku': 1, links_column: 1, INV: 1, L30: 1,
+            'RV Dil%': 1, 'RV L30': 1, reverb_daily_qty: 1, reverb_daily_qty_x_subtotal: 1,
+            reverb_daily_qty_x_amount: 1, 'R Stock': 1, Missing: 1, MAP: 1, Views: 1, CVR: 1, nr_req: 1
+        };
+        const COL_VIS_PRICING = {
+            STANDARD_PRICE: 1, push_std_prc: 1, 'RV Price': 1, 'A Price': 1, lmp_price: 1,
+            linked_lmp_skus: 1, linked_lmp_sku_add: 1, 'ROI%': 1, 'GPFT%': 1, NPFT: 1, NROI: 1,
+            Profit: 1, 'Sales L30': 1, LP_productmaster: 1, Ship_productmaster: 1, prmt_pct: 1,
+            push_prmt: 1, cpn_pct: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
+        };
+        const COL_VIS_ADS = {
+            Missing_Ad: 1, Bump: 1, RE_BID: 1, push_bump: 1
+        };
+        function reverbColVisPlainTitle(def) {
+            const field = def && def.field ? String(def.field) : '';
+            if (field === 'push_std_prc') return 'Push Std';
+            if (field === 'push_prmt') return 'Push %';
+            if (field === 'push_bump') return 'Push B%';
+            if (field === 'prmt_pct') return 'PRMT %';
+            if (field === 'cpn_pct') return 'CPN %';
+            if (field === 'push_price') return 'Push';
+            const raw = (def && def.title != null) ? def.title : field;
+            const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            return t || field;
+        }
+        function classifyReverbColumn(field, title) {
+            const f = String(field || '');
+            const t = String(title || '').toLowerCase();
+            if (COL_VIS_ADS[f] || /\b(ads?|bump|bid|campaign)\b/i.test(t)) return 'advertisement';
+            if (COL_VIS_PRICING[f] || /\b(price|prc|lmp|roi|gpft|pft|nroi|sprice|sroi|sgpft|snpft|snroi|prmt|cpn|ship|profit|sales|push)\b/i.test(t)) {
+                return 'pricing';
+            }
+            if (COL_VIS_BASIC[f] || t === 'p' || /\b(parent|image|sku|inv|dil|views?|cvr|nr\/?req|map|links?|stock)\b/i.test(t)) {
+                return 'basic';
+            }
+            return 'other';
+        }
+        function syncReverbGroupHeaderCheckbox(groupEl) {
+            if (!groupEl) return;
+            const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+            const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+            if (!headerCb || !itemCbs.length) return;
+            let checked = 0;
+            itemCbs.forEach(function(cb) { if (cb.checked) checked++; });
+            headerCb.checked = checked === itemCbs.length;
+            headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+        }
         /**
-         * Build Columns dropdown (4-col). Same as Amazon/Shopify B2C:
-         * checkbox state prefers saved server map, else current column visibility.
+         * Build Columns dropdown — Basic / Pricing / Advertisement / Other.
+         * Header checkbox selects / deselects the whole group.
          */
         function buildColumnDropdown(savedVisibility) {
             const menu = document.getElementById('column-dropdown-menu');
             if (!menu || !table) return;
 
             const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
-            let html = `<li class="dropdown-item column-dropdown-span-all">
-                            <a class="fw-bold" href="#" id="show-all-columns-btn" style="text-decoration: none; color: inherit;">
-                                <i class="fa fa-eye"></i> Show All Columns</a>
-                        </li>
-                        <li class="column-dropdown-span-all"><hr class="dropdown-divider"></li>`;
+            menu.innerHTML = '';
 
-            table.getColumns().forEach(col => {
-                const def = col.getDefinition();
-                const field = def.field;
-                const title = def.title;
-                if (!field || field === '_select' || !title) return;
+            const showAllLi = document.createElement('li');
+            showAllLi.className = 'dropdown-item column-dropdown-span-all';
+            showAllLi.innerHTML = '<a class="fw-bold" href="#" id="show-all-columns-btn" style="text-decoration: none; color: inherit;">'
+                + '<i class="fa fa-eye"></i> Show All Columns</a>';
+            menu.appendChild(showAllLi);
 
-                const isVisible = map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible();
-                const label = String(title).replace(/<[^>]*>/g, '');
-                html += `<li class="dropdown-item">
-                    <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                        <input type="checkbox" class="column-toggle" data-field="${field}" ${isVisible ? 'checked' : ''}>
-                        ${label}
-                    </label>
-                </li>`;
+            const divider = document.createElement('li');
+            divider.className = 'column-dropdown-span-all';
+            divider.innerHTML = '<hr class="dropdown-divider">';
+            menu.appendChild(divider);
+
+            const groupsLi = document.createElement('li');
+            groupsLi.className = 'col-vis-full';
+            const groupsWrap = document.createElement('div');
+            groupsWrap.className = 'col-vis-groups';
+
+            const lists = {};
+            const groupEls = {};
+            COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                const group = document.createElement('div');
+                group.className = 'col-vis-group';
+                group.dataset.category = cat;
+
+                const titleEl = document.createElement('label');
+                titleEl.className = 'col-vis-group-title';
+                const groupCb = document.createElement('input');
+                groupCb.type = 'checkbox';
+                groupCb.className = 'col-vis-group-toggle';
+                groupCb.dataset.group = cat;
+                groupCb.title = 'Select / deselect all in ' + COL_VIS_CATEGORY_LABELS[cat];
+                titleEl.appendChild(groupCb);
+                titleEl.appendChild(document.createTextNode(COL_VIS_CATEGORY_LABELS[cat]));
+                group.appendChild(titleEl);
+
+                const list = document.createElement('ul');
+                list.className = 'col-vis-group-list';
+                list.dataset.category = cat;
+                group.appendChild(list);
+                groupsWrap.appendChild(group);
+                lists[cat] = list;
+                groupEls[cat] = group;
             });
 
-            menu.innerHTML = html;
+            table.getColumns().forEach(function(col) {
+                const def = col.getDefinition();
+                const field = def.field;
+                if (!field || field === '_select') return;
+                const title = reverbColVisPlainTitle(def);
+                if (!title) return;
+                const cat = classifyReverbColumn(field, title);
+                const isVisible = map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible();
+
+                const li = document.createElement('li');
+                li.className = 'col-vis-item';
+                li.dataset.field = field;
+                li.dataset.group = cat;
+
+                const label = document.createElement('label');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = field;
+                checkbox.setAttribute('data-field', field);
+                checkbox.className = 'col-vis-field-toggle';
+                checkbox.dataset.group = cat;
+                checkbox.checked = isVisible;
+
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(' ' + title));
+                label.title = title;
+                li.appendChild(label);
+                lists[cat].appendChild(li);
+            });
+
+            COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                syncReverbGroupHeaderCheckbox(groupEls[cat]);
+            });
+
+            groupsLi.appendChild(groupsWrap);
+            menu.appendChild(groupsLi);
         }
 
         /** Persist visibility to channel_tabulator_column_settings (shared — same as Amazon). */
@@ -3653,6 +5757,8 @@
                         const col = table.getColumn(field);
                         if (col) col.hide();
                     });
+                    const aPrcCol = table.getColumn('A Price');
+                    if (aPrcCol) aPrcCol.hide();
                     buildColumnDropdown(map);
                 })
                 .catch(err => {
@@ -3682,9 +5788,27 @@
             }, 100);
         });
 
-        // Toggle column from dropdown — save immediately (Amazon pattern).
+        // Toggle column / group from dropdown — save immediately (Amazon pattern).
         document.getElementById('column-dropdown-menu').addEventListener('change', function(e) {
             if (e.target.type !== 'checkbox') return;
+            if (e.target.classList.contains('col-vis-group-toggle')) {
+                const checked = e.target.checked;
+                const groupEl = e.target.closest('.col-vis-group');
+                const itemCbs = groupEl
+                    ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]')
+                    : [];
+                itemCbs.forEach(function(cb) {
+                    const field = cb.getAttribute('data-field') || cb.value;
+                    cb.checked = checked;
+                    const col = table.getColumn(field);
+                    if (!col) return;
+                    if (checked) col.show();
+                    else col.hide();
+                });
+                e.target.indeterminate = false;
+                saveColumnVisibilityToServer();
+                return;
+            }
             const field = e.target.getAttribute('data-field') || e.target.dataset.field;
             if (!field) return;
             const col = table.getColumn(field);
@@ -3694,7 +5818,13 @@
             } else {
                 col.hide();
             }
+            syncReverbGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
             saveColumnVisibilityToServer();
+        });
+        document.getElementById('column-dropdown-menu').addEventListener('click', function(e) {
+            if (e.target.closest('label') || e.target.type === 'checkbox') {
+                e.stopPropagation();
+            }
         });
 
         // Show All Columns (ads-only columns stay hidden).

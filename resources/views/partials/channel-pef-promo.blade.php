@@ -435,7 +435,7 @@
                 saveSpriceUrl: '/reverb-save-sprice',
                 pushPriceUrl: null,
                 priceField: 'RV Price',
-                cvrField: 'CVR%',
+                cvrField: 'CVR',
                 dilField: 'RV Dil%',
                 invField: 'INV',
                 skuField: '(Child) sku',
@@ -1668,7 +1668,7 @@
             await Promise.all(workers);
         }
 
-        const CH_PEF_DIL_PRMT_DEFAULTS = [
+        const CH_PEF_DIL_PRMT_DEFAULTS_FULL = [
             { key: '0-10', label: '0–10%', prmt: 10 },
             { key: '10-20', label: '10–20%', prmt: 9 },
             { key: '20-30', label: '20–30%', prmt: 8 },
@@ -1681,6 +1681,17 @@
             { key: '90-100', label: '90–100%', prmt: 1 },
             { key: 'gt-100', label: '> 100%', prmt: 0 },
         ];
+        const CH_PEF_DIL_PRMT_DEFAULTS_REVERB = [
+            { key: '0-20', label: '0–20%', prmt: 10 },
+            { key: '20-40', label: '20–40%', prmt: 8 },
+            { key: '40-60', label: '40–60%', prmt: 5 },
+            { key: '60-80', label: '60–80%', prmt: 3 },
+            { key: '80-100', label: '80–100%', prmt: 1 },
+            { key: 'gt-100', label: '> 100%', prmt: 0 },
+        ];
+        const CH_PEF_DIL_PRMT_DEFAULTS = CHANNEL_PROMO_CHANNEL === 'reverb'
+            ? CH_PEF_DIL_PRMT_DEFAULTS_REVERB
+            : CH_PEF_DIL_PRMT_DEFAULTS_FULL;
         const CH_PEF_CVR_CPN_DEFAULTS = [
             { key: 'eq-0', label: '0%', cpn: 10 },
             { key: '0.01-1', label: '0.01–1%', cpn: 9 },
@@ -1867,6 +1878,14 @@
                 const ovl30 = Number(d.ovl30 != null ? d.ovl30 : d.L30) || 0;
                 return (ovl30 / inv) * 100;
             }
+            // Reverb Dil column = (L30 / INV) × 100 — already stored as RV Dil% (0–100)
+            if (CHANNEL_PROMO_CHANNEL === 'reverb') {
+                let dil = Number(d['RV Dil%']);
+                if (isFinite(dil)) return dil;
+                if (inv <= 0) return 0;
+                const l30 = Number(d.L30) || 0;
+                return (l30 / inv) * 100;
+            }
             let dil = Number(d[chPromoCfg.dilField]);
             if (!isFinite(dil)) {
                 const l30 = Number(d['eBay L30'] || d.L30 || d['MC L30'] || d['W_L30'] || d['B2B L30'] || 0) || 0;
@@ -1940,8 +1959,10 @@
             if (isFinite(cvr) && cvr >= 0) return cvr;
             cvr = Number(d.SCVR);
             if (isFinite(cvr) && cvr >= 0) return cvr;
+            cvr = Number(d.CVR);
+            if (isFinite(cvr) && cvr >= 0) return cvr;
             const views = Number(d.Views || d.Sess30 || d.views || 0) || 0;
-            const l30 = Number(d['eBay L30'] || d['B2B L30'] || d['MC L30'] || d['W_L30'] || d.L30 || 0) || 0;
+            const l30 = Number(d['RV L30'] || d['eBay L30'] || d['B2B L30'] || d['MC L30'] || d['W_L30'] || d.L30 || 0) || 0;
             return views > 0 ? chPromoRound2((l30 / views) * 100) : 0;
         }
         function parseChPromoPercentAmount(raw) {
@@ -2245,6 +2266,15 @@
 
         function chPromoDilSlabKey(dil) {
             const n = Number(dil);
+            if (CHANNEL_PROMO_CHANNEL === 'reverb') {
+                if (!isFinite(n) || n < 0) return '0-20';
+                if (n > 100) return 'gt-100';
+                if (n >= 80) return '80-100';
+                if (n >= 60) return '60-80';
+                if (n >= 40) return '40-60';
+                if (n >= 20) return '20-40';
+                return '0-20';
+            }
             if (!isFinite(n) || n < 0) return '0-10';
             if (n > 100) return 'gt-100';
             if (n >= 90) return '90-100';
@@ -4340,6 +4370,15 @@
                         help.innerHTML = 'Map Dil% slabs to PRMT%. On Temu, Dil is <strong>SKU-wise</strong> '
                             + '(OV L30 ÷ INV). <strong>Apply</strong> writes <strong>PRMT %</strong> '
                             + 'on each selected or visible SKU — parent rows are not changed. '
+                            + 'If INV is 0, PRMT% is <strong>0</strong>.';
+                    }
+                } else if (CHANNEL_PROMO_CHANNEL === 'reverb') {
+                    const help = document.getElementById('ch-promo-dil-prmt-help');
+                    if (help) {
+                        help.innerHTML = 'Map Dil% slabs to PRMT% (6 levels). On Reverb, Dil is <strong>SKU-wise</strong> '
+                            + '(L30 ÷ INV, same as <strong>RV Dil%</strong>). Defaults: <strong>0–20% → 10</strong> down to '
+                            + '<strong>&gt; 100% → 0</strong>. <strong>Apply</strong> writes '
+                            + '<strong>PRMT %</strong> on each selected or visible SKU — parent rows are not changed. '
                             + 'If INV is 0, PRMT% is <strong>0</strong>.';
                     }
                 }
