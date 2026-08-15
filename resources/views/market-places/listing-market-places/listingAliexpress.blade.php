@@ -657,9 +657,9 @@
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
                 const itemId = String(item.ae_product_id || '').trim();
-                // Automated: NRL from AliexpressDataView; Listed from aliexpress_metric.product_id
+                // Automated: NRL from AliexpressDataView; Listed from product_id OR pricing table
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                const listed = itemId ? 'Listed' : 'Pending';
+                const listed = (item.listed === 'Listed' || itemId) ? 'Listed' : 'Pending';
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',
@@ -845,14 +845,15 @@
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
 
-            // Missing Listing logic (same as /aliexpress-pricing): has AliExpress product id = Listed
+            // Listed = real product_id or sku already in aliexpress_pricing_prices
             const itemId = String(data.ae_product_id || '').trim();
-            if (itemId) {
-                return `<span class="listing-listed-tick" title="Listed (aliexpress_metric.product_id)" aria-label="Listed">
+            if (data.listed === 'Listed' || itemId) {
+                const via = itemId ? 'aliexpress_metric.product_id' : 'aliexpress_pricing_prices';
+                return `<span class="listing-listed-tick" title="Listed (${via})" aria-label="Listed">
                     <i class="fas fa-check"></i>
                 </span>`;
             }
-            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no aliexpress product id">Missing L</span>`;
+            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — not on AliExpress">Missing L</span>`;
         }
 
         $(document).ready(function () {
