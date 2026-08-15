@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Services\MarketplaceManager\Ebay2InventorySyncService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\MarketplaceMismatchInventoryPass;
 use Illuminate\Bus\Queueable;
@@ -48,6 +49,15 @@ class SyncMarketplaceMismatchInventoryJob implements ShouldQueue, ShouldBeUnique
 
     public function handle(MarketplaceMismatchInventoryPass $pass): void
     {
+        if ($this->marketplace === 'ebay2'
+            && Ebay2InventorySyncService::isTradingLimited()) {
+            Log::info('SyncMarketplaceMismatchInventoryJob: skipped eBay 2 (Trading API 518 cooldown)', [
+                'until' => Ebay2InventorySyncService::tradingLimitMessage(),
+            ]);
+
+            return;
+        }
+
         Log::info('SyncMarketplaceMismatchInventoryJob: starting', [
             'marketplace' => $this->marketplace,
         ]);
