@@ -9,6 +9,7 @@ use App\Http\Controllers\MarketPlace\TikTokPricingController;
 use App\Models\ChannelMaster;
 use App\Support\Badges\AllMarketplaceMasterBadgeCalculator;
 use App\Support\Marketplace\MappingChannelCounts;
+use App\Services\ShopifyPlsTokenService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -99,12 +100,22 @@ class MissingMappingController extends Controller
             default => 'Channel Inv',
         };
 
+        $plsApi = null;
+        if ($slug === 'pls') {
+            try {
+                $plsApi = app(ShopifyPlsTokenService::class)->pingShopCached();
+            } catch (\Throwable $e) {
+                $plsApi = ['connected' => false, 'message' => 'PLS API check failed'];
+            }
+        }
+
         return view('market-places.Missing_mapping_channel', [
             'channelSlug' => $slug,
             'channelName' => $resolved['name'],
             'hasSkuDetail' => $hasSkuDetail,
             'mapIssueKey' => self::MAP_ISSUE_CHANNELS[$slug]['flag'] ?? null,
             'channelInvLabel' => $channelInvLabel,
+            'plsApi' => $plsApi,
         ]);
     }
 
@@ -178,11 +189,20 @@ class MissingMappingController extends Controller
                     ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
                     ->values();
 
+                $plsApi = ['connected' => false, 'message' => 'PLS API check failed'];
+                try {
+                    $plsApi = app(ShopifyPlsTokenService::class)->pingShopCached();
+                } catch (\Throwable $e) {
+                    // keep default
+                }
+
                 return response()->json([
                     'success' => true,
                     'data' => $data,
                     'count' => $data->count(),
                     'channel' => $resolved['name'],
+                    'api_connected' => (bool) ($plsApi['connected'] ?? false),
+                    'api_label' => (string) ($plsApi['message'] ?? ''),
                 ]);
             }
 

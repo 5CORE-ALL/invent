@@ -5,8 +5,11 @@ namespace App\Services;
 use App\Models\ShopifyCatalogProduct;
 use App\Models\ShopifyCatalogVariant;
 use App\Models\ShopifySku;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class ShopifyCatalogSyncService
 {
@@ -192,6 +195,143 @@ class ShopifyCatalogSyncService
             'pruned_variants' => $prunedVariants,
             'completed' => $completedFully,
         ];
+    }
+
+    /**
+     * Live Shopify inventory keyed by normalized SKU (PLS or main). Cached so
+     * /map-issues and /pls-pricing do not page the Admin API on every request.
+     *
+     * @return array<string, int>
+     */
+    public function cachedInventoryByNormalizedSku(string $store, int $ttlSeconds = 900): array
+    {
+        $store = $store === 'pls' ? 'pls' : 'main';
+        $key = 'mm.shopify.'.$store.'.inv.by_norm_sku.v1';
+
+        try {
+            $cached = Cache::get($key);
+            if (is_array($cached) && $cached !== []) {
+                return $cached;
+            }
+        } catch (\Throwable $e) {
+            // fall through to live pull
+        }
+
+        $map = $this->pullInventoryByNormalizedSku($store);
+        if ($map !== []) {
+            try {
+                Cache::put($key, $map, now()->addSeconds(max(60, $ttlSeconds)));
+            } catch (\Throwable $e) {
+                // ignore cache write
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Page Admin API products and return normalized SKU => available qty.
+     * Also writes inventory_quantity back onto shopify_catalog_variants when the variant exists.
+     *
+     * @return array<string, int>
+     */
+    public function pullInventoryByNormalizedSku(string $store): array
+    {
+        $store = $store === 'pls' ? 'pls' : 'main';
+        [$domain, $token] = $this->credentials($store);
+        if (! $domain || ! $token) {
+            return [];
+        }
+
+        $domain = preg_replace('#^https?://#', '', (string) $domain);
+        $domain = rtrim($domain, '/');
+
+        $requestBase = Http::withHeaders([
+            'X-Shopify-Access-Token' => $token,
+            'Content-Type' => 'application/json',
+        ]);
+        if (config('filesystems.default') === 'local' || env('FILESYSTEM_DRIVER') === 'local') {
+            $requestBase = $requestBase->withoutVerifying();
+        }
+
+        $pageInfo = null;
+        $hasMore = true;
+        $qtyByNorm = [];
+        $qtyByVariantId = [];
+
+        while ($hasMore) {
+            $queryParams = [
+                'limit' => 250,
+                'fields' => 'id,variants',
+            ];
+            if ($pageInfo) {
+                $queryParams['page_info'] = $pageInfo;
+            }
+
+            $response = null;
+            for ($attempt = 1; $attempt <= 6; $attempt++) {
+                $response = $requestBase->timeout(90)->get(
+                    "https://{$domain}/admin/api/2025-01/products.json",
+                    $queryParams
+                );
+                if ($response->status() === 429) {
+                    sleep(max(2, (int) ($response->header('Retry-After') ?: ($attempt * 2))));
+                    continue;
+                }
+                break;
+            }
+
+            if (! $response || ! $response->successful()) {
+                Log::warning('ShopifyCatalogSyncService: inventory page failed', [
+                    'store' => $store,
+                    'status' => $response ? $response->status() : null,
+                ]);
+                break;
+            }
+
+            foreach ($response->json()['products'] ?? [] as $product) {
+                foreach ($product['variants'] ?? [] as $variant) {
+                    $vid = (int) ($variant['id'] ?? 0);
+                    $qty = (int) ($variant['inventory_quantity'] ?? 0);
+                    if ($vid > 0) {
+                        $qtyByVariantId[$vid] = $qty;
+                    }
+                    $sku = trim((string) ($variant['sku'] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                    if ($norm === '') {
+                        continue;
+                    }
+                    $qtyByNorm[$norm] = ($qtyByNorm[$norm] ?? 0) + $qty;
+                }
+            }
+
+            $pageInfo = $this->nextPageInfo($response);
+            $hasMore = (bool) $pageInfo;
+            if ($hasMore) {
+                usleep(250000);
+            }
+        }
+
+        if ($qtyByVariantId !== [] && Schema::hasTable('shopify_catalog_variants')) {
+            $now = now();
+            foreach (array_chunk($qtyByVariantId, 200, true) as $chunk) {
+                foreach ($chunk as $vid => $qty) {
+                    DB::table('shopify_catalog_variants')
+                        ->where('store', $store)
+                        ->where('shopify_variant_id', $vid)
+                        ->update([
+                            'inventory_quantity' => $qty,
+                            'updated_at' => $now,
+                            'synced_at' => $now,
+                        ]);
+                }
+            }
+        }
+
+        return $qtyByNorm;
     }
 
     /**

@@ -335,12 +335,12 @@
         return (inv - plsInv) <= plsMismatchIgnoreThreshold(inv);
     }
 
-    /** M M — listed, INV>0, INV vs PLS stock beyond max(3, 3% of Shopify). PLS higher than Shopify is always N Map. */
+    /** M M — listed, both INV>0 and PLS stock>0, beyond max(3, 3% of Shopify). PLS higher than Shopify is always N Map. */
     function isPlsMissingM(row) {
         if ((row.missing || '') === 'M') return false;
         const inv = parseInt(row.inventory) || 0;
         const plsInv = parseInt(row.pls_inventory) || 0;
-        if (inv <= 0) return false;
+        if (inv <= 0 || plsInv <= 0) return false;
         return !isPlsQtyMapped(inv, plsInv);
     }
 
@@ -856,7 +856,7 @@
                         const plsInventory = parseFloat(rowData['pls_inventory']) || 0;
                         const inv = parseFloat(rowData['inventory']) || 0;
 
-                        if (inv <= 0) {
+                        if (inv <= 0 || plsInventory <= 0) {
                             return '';
                         }
 
@@ -866,7 +866,7 @@
 
                         const diff = inv - plsInventory;
                         const sign = diff > 0 ? '+' : '';
-                        const label = (plsInventory === 0) ? inv : (sign + diff);
+                        const label = sign + diff;
                         return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${label})</span>`;
                     }
                 },

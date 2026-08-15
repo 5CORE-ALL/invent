@@ -124,4 +124,84 @@ class ShopifyPlsTokenService
                 ?? config('services.prolightsounds.access_token');
         }
     }
+
+    /**
+     * @return array{connected: bool, shop: ?string, domain: ?string, message: string}
+     */
+    public function pingShopCached(int $ttlSeconds = 600): array
+    {
+        $key = 'mm.shopify.pls.api.ping.v1';
+        try {
+            $cached = Cache::get($key);
+            if (is_array($cached) && array_key_exists('connected', $cached)) {
+                return $cached;
+            }
+        } catch (\Throwable $e) {
+            // fall through
+        }
+
+        $result = $this->pingShop();
+        try {
+            Cache::put($key, $result, now()->addSeconds(max(30, $ttlSeconds)));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array{connected: bool, shop: ?string, domain: ?string, message: string}
+     */
+    public function pingShop(): array
+    {
+        $domain = $this->getDomain();
+        $token = $this->getAccessToken();
+        if (! $domain || ! $token) {
+            return [
+                'connected' => false,
+                'shop' => null,
+                'domain' => $domain,
+                'message' => 'PLS Shopify credentials missing.',
+            ];
+        }
+
+        $host = preg_replace('#^https?://#', '', (string) $domain);
+        $host = rtrim((string) $host, '/');
+
+        try {
+            $request = Http::withHeaders(['X-Shopify-Access-Token' => $token])->timeout(20);
+            if (config('filesystems.default') === 'local' || env('FILESYSTEM_DRIVER') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->get("https://{$host}/admin/api/2024-01/shop.json");
+        } catch (\Throwable $e) {
+            return [
+                'connected' => false,
+                'shop' => null,
+                'domain' => $host,
+                'message' => 'PLS API request failed: '.$e->getMessage(),
+            ];
+        }
+
+        if (! $response->successful()) {
+            return [
+                'connected' => false,
+                'shop' => null,
+                'domain' => $host,
+                'message' => 'PLS API HTTP '.$response->status(),
+            ];
+        }
+
+        $shop = $response->json('shop') ?? [];
+        $name = trim((string) ($shop['name'] ?? ''));
+        $myshopify = trim((string) ($shop['myshopify_domain'] ?? $host));
+
+        return [
+            'connected' => true,
+            'shop' => $name !== '' ? $name : $myshopify,
+            'domain' => $myshopify,
+            'message' => 'PLS API connected'.($name !== '' ? ' — '.$name : '').' ('.$myshopify.')',
+        ];
+    }
 }
