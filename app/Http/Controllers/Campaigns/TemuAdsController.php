@@ -37,6 +37,9 @@ class TemuAdsController extends Controller
         $clickSum = (int) $records->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
 
         $rows = $records->map(function (TemuAdsApiReport $r) {
+            $clicks = (int) ($r->clicks ?? 0);
+            $orders = (int) ($r->order_pay_cnt ?? 0);
+
             return [
                 'id' => $r->id,
                 'goods_id' => $r->goods_id,
@@ -45,6 +48,7 @@ class TemuAdsController extends Controller
                 'impressions' => $r->impressions,
                 'clicks' => $r->clicks,
                 'ctr' => $r->ctr,
+                'cvr' => $clicks > 0 ? round($orders / $clicks * 100, 2) : 0,
                 'cart_cnt' => $r->cart_cnt,
                 'order_pay_cnt' => $r->order_pay_cnt,
                 'order_pay_amt' => $r->order_pay_amt,

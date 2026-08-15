@@ -164,16 +164,10 @@ class FetchTemuMetrics extends Command
             $startTs = Carbon::yesterday()->startOfDay()->timestamp * 1000;
             $endTs = Carbon::yesterday()->endOfDay()->timestamp * 1000;
 
-            $ranges = [
-                'L30' => [
-                    'startTs' => Carbon::now()->subDays(30)->startOfDay()->timestamp * 1000,
-                    'endTs' => Carbon::yesterday()->endOfDay()->timestamp * 1000,
-                ],
-                'L60' => [
-                    'startTs' => Carbon::now()->subDays(60)->startOfDay()->timestamp * 1000,
-                    'endTs' => Carbon::now()->subDays(31)->endOfDay()->timestamp * 1000,
-                ],
-            ];
+            $ranges = array_intersect_key(
+                app(TemuApiService::class)->adsPeriodRanges(),
+                array_flip(['L30', 'L60'])
+            );
 
 
             foreach ($goodsIds as $goodId) {

@@ -567,17 +567,41 @@ public function fetchAdsData($goodsId, $startTs = null, $endTs = null)
 }
 
 /**
+ * Seller Center "Last N days" windows (America/Los_Angeles, inclusive of today).
+ * L30 matches Data Report Last 30 days (e.g. 07/17–08/15 when today is 08/15).
+ * L60 is the prior 30-day comparison window (e.g. 06/17–07/16).
+ */
+public function adsPeriodRanges(): array
+{
+    $today = Carbon::now();
+
+    return [
+        'L7' => [
+            'startTs' => $today->copy()->subDays(6)->startOfDay()->timestamp * 1000,
+            'endTs' => $today->copy()->endOfDay()->timestamp * 1000,
+        ],
+        'L30' => [
+            'startTs' => $today->copy()->subDays(29)->startOfDay()->timestamp * 1000,
+            'endTs' => $today->copy()->endOfDay()->timestamp * 1000,
+        ],
+        'L60' => [
+            'startTs' => $today->copy()->subDays(59)->startOfDay()->timestamp * 1000,
+            'endTs' => $today->copy()->subDays(30)->endOfDay()->timestamp * 1000,
+        ],
+    ];
+}
+
+/**
  * Same as fetchAdsData but returns error details for storage/UI.
  *
  * @return array{ok: bool, result: ?array, error_code: mixed, error_msg: ?string, http_status: ?int}
  */
 public function fetchAdsDataDetailed($goodsId, $startTs = null, $endTs = null): array
 {
-    if ($startTs === null) {
-        $startTs = Carbon::now()->subDays(30)->startOfDay()->timestamp * 1000;
-    }
-    if ($endTs === null) {
-        $endTs = Carbon::yesterday()->endOfDay()->timestamp * 1000;
+    if ($startTs === null || $endTs === null) {
+        $l30 = $this->adsPeriodRanges()['L30'];
+        $startTs = $startTs ?? $l30['startTs'];
+        $endTs = $endTs ?? $l30['endTs'];
     }
 
     // Temu expects numeric goodsId (same as updateTitle / other goods APIs)
@@ -679,17 +703,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 {
     $results = [];
     
-    $ranges = [
-        'L30' => [
-            'startTs' => Carbon::now()->subDays(30)->startOfDay()->timestamp * 1000,
-            'endTs' => Carbon::yesterday()->endOfDay()->timestamp * 1000,
-        ],
-        'L60' => [
-            'startTs' => Carbon::now()->subDays(60)->startOfDay()->timestamp * 1000,
-            'endTs' => Carbon::now()->subDays(31)->endOfDay()->timestamp * 1000,
-        ],
-    ];
-
+    $ranges = $this->adsPeriodRanges();
     $range = $ranges[$period] ?? $ranges['L30'];
 
     foreach ($goodsIds as $goodsId) {

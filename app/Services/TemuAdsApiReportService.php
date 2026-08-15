@@ -19,23 +19,11 @@ class TemuAdsApiReportService
 
     /**
      * Date ranges used for L7 / L30 / L60 snapshots (ms timestamps).
+     * Same windows as Temu Seller Center Data Report (Last 7 / Last 30 / prior 30).
      */
     public function periodRanges(): array
     {
-        return [
-            'L7' => [
-                'startTs' => Carbon::now()->subDays(7)->startOfDay()->timestamp * 1000,
-                'endTs' => Carbon::yesterday()->endOfDay()->timestamp * 1000,
-            ],
-            'L30' => [
-                'startTs' => Carbon::now()->subDays(30)->startOfDay()->timestamp * 1000,
-                'endTs' => Carbon::yesterday()->endOfDay()->timestamp * 1000,
-            ],
-            'L60' => [
-                'startTs' => Carbon::now()->subDays(60)->startOfDay()->timestamp * 1000,
-                'endTs' => Carbon::now()->subDays(31)->endOfDay()->timestamp * 1000,
-            ],
-        ];
+        return $this->temuApiService->adsPeriodRanges();
     }
 
     /**

@@ -168,12 +168,12 @@ class FetchTemu2Metrics extends Command
 
             $ranges = [
                 'L30' => [
-                    'startTs' => Carbon::now()->subDays(30)->startOfDay()->timestamp * 1000,
-                    'endTs' => Carbon::yesterday()->endOfDay()->timestamp * 1000,
+                    'startTs' => Carbon::now()->subDays(29)->startOfDay()->timestamp * 1000,
+                    'endTs' => Carbon::now()->endOfDay()->timestamp * 1000,
                 ],
                 'L60' => [
-                    'startTs' => Carbon::now()->subDays(60)->startOfDay()->timestamp * 1000,
-                    'endTs' => Carbon::now()->subDays(31)->endOfDay()->timestamp * 1000,
+                    'startTs' => Carbon::now()->subDays(59)->startOfDay()->timestamp * 1000,
+                    'endTs' => Carbon::now()->subDays(30)->endOfDay()->timestamp * 1000,
                 ],
             ];
 

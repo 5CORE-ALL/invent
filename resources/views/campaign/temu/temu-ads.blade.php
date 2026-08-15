@@ -48,7 +48,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Temu Ads (API)',
-        'sub_title' => 'Overall goods ad reports (Seller Center Overall clicks/impressions) from temu.searchrec.ad.reports.goods.query',
+        'sub_title' => 'Matches Temu Data Report Overall (Last 30 days includes today, US Pacific)',
     ])
 
     <div class="row">
@@ -215,9 +215,14 @@
                       headerFilterParams: { values: { L7: 'L7', L30: 'L30', L60: 'L60', '': '' } } },
                     { title: 'Goods ID', field: 'goods_id', width: 150, headerFilter: 'input' },
                     { title: 'SKU', field: 'sku', width: 140, headerFilter: 'input' },
-                    { title: 'Impressions', field: 'impressions', width: 120, hozAlign: 'right', formatter: numFmt, sorter: 'number' },
-                    { title: 'Clicks', field: 'clicks', width: 100, hozAlign: 'right', formatter: numFmt, sorter: 'number' },
-                    { title: 'CTR', field: 'ctr', width: 90, hozAlign: 'right', formatter: pctFmt, sorter: 'number' },
+                    { title: 'Impressions', field: 'impressions', width: 120, hozAlign: 'right', formatter: numFmt, sorter: 'number',
+                      headerTooltip: 'Impressions (Overall) — same as Temu Data Report' },
+                    { title: 'Clicks', field: 'clicks', width: 100, hozAlign: 'right', formatter: numFmt, sorter: 'number',
+                      headerTooltip: 'Clicks (Overall) — same as Temu Data Report' },
+                    { title: 'CTR', field: 'ctr', width: 90, hozAlign: 'right', formatter: pctFmt, sorter: 'number',
+                      headerTooltip: 'CTR (Overall)' },
+                    { title: 'CVR', field: 'cvr', width: 90, hozAlign: 'right', formatter: pctFmt, sorter: 'number',
+                      headerTooltip: 'CVR (Overall) = Orders ÷ Clicks' },
                     { title: 'Cart', field: 'cart_cnt', width: 90, hozAlign: 'right', formatter: numFmt, sorter: 'number' },
                     { title: 'Orders', field: 'order_pay_cnt', width: 90, hozAlign: 'right', formatter: numFmt, sorter: 'number' },
                     { title: 'Order $', field: 'order_pay_amt', width: 110, hozAlign: 'right', formatter: moneyFmt, sorter: 'number' },
