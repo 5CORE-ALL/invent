@@ -141,11 +141,20 @@
                     minWidth: 260,
                     formatter: function(cell) {
                         const name = (cell.getValue() || '').trim();
-                        const url = (cell.getRow().getData().detail_url || '').trim();
+                        const row = cell.getRow().getData() || {};
+                        const url = (row.detail_url || '').trim();
                         if (!name) return '';
                         const safeName = escapeHtml(name);
-                        if (!url) return safeName;
-                        return `<a href="${escapeHtml(url)}" class="mm-channel-link" title="Open Missing Mapping ${safeName}">${safeName}</a>`;
+                        let apiBadge = '';
+                        if (String(row.channel_slug || '') === 'pls') {
+                            const on = row.api_connected === true || row.api_connected === 1 || row.api_connected === '1';
+                            const title = escapeHtml(row.api_label || (on ? 'PLS API connected' : 'PLS API not connected'));
+                            apiBadge = on
+                                ? ` <span class="badge bg-success" title="${title}" style="font-size:0.7rem;font-weight:600;">API connected</span>`
+                                : ` <span class="badge bg-danger" title="${title}" style="font-size:0.7rem;font-weight:600;">API off</span>`;
+                        }
+                        if (!url) return safeName + apiBadge;
+                        return `<a href="${escapeHtml(url)}" class="mm-channel-link" title="Open Missing Mapping ${safeName}">${safeName}</a>${apiBadge}`;
                     },
                 },
                 {
