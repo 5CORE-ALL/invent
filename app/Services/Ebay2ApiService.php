@@ -2312,6 +2312,106 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
     }
 
     /**
+     * Up to 4 inventory rows per Trading API call (eBay ReviseInventoryStatus max).
+     *
+     * @param  list<array{item_id: string, sku?: string|null, quantity: int, price?: float|null}>  $items
+     * @return array{success: bool, message: string, data?: array, ended?: bool}
+     */
+    public function reviseInventoryStatusMany(array $items): array
+    {
+        $rows = [];
+        foreach (array_slice(array_values($items), 0, 4) as $item) {
+            $itemId = trim((string) ($item['item_id'] ?? ''));
+            if ($itemId === '') {
+                continue;
+            }
+            $rows[] = [
+                'item_id' => $itemId,
+                'sku' => trim((string) ($item['sku'] ?? '')),
+                'quantity' => max(0, (int) ($item['quantity'] ?? 0)),
+                'price' => isset($item['price']) && is_numeric($item['price']) && (float) $item['price'] > 0
+                    ? (float) $item['price']
+                    : null,
+            ];
+        }
+        if ($rows === []) {
+            return ['success' => false, 'message' => 'No inventory rows to revise.'];
+        }
+        if (count($rows) === 1) {
+            $one = $rows[0];
+
+            return $this->reviseInventoryStatus(
+                $one['item_id'],
+                $one['quantity'],
+                $one['sku'] !== '' ? $one['sku'] : null,
+                $one['price']
+            );
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $this->generateBearerToken() ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+            foreach ($rows as $row) {
+                $status = $xml->addChild('InventoryStatus');
+                $status->addChild('ItemID', $row['item_id']);
+                if ($row['sku'] !== '') {
+                    $status->addChild('SKU', $row['sku']);
+                }
+                $status->addChild('Quantity', (string) $row['quantity']);
+                if ($row['price'] !== null) {
+                    $status->addChild('StartPrice', number_format($row['price'], 2, '.', ''));
+                }
+            }
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME' => $this->devId,
+                'X-EBAY-API-APP-NAME' => $this->appId,
+                'X-EBAY-API-CERT-NAME' => $this->certId,
+                'X-EBAY-API-CALL-NAME' => 'ReviseInventoryStatus',
+                'X-EBAY-API-SITEID' => $this->siteId,
+                'Content-Type' => 'text/xml',
+            ];
+
+            $response = $this->tradingHttp(60)
+                ->withHeaders($headers)
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.', 'raw' => $body];
+            }
+
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            $msg = $this->flattenEbayErrors($data);
+            if ($ack === 'Success' || $ack === 'Warning') {
+                return [
+                    'success' => true,
+                    'quantity_confirmed' => true,
+                    'message' => 'Inventory updated.',
+                    'data' => $data,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'ended' => $this->listingLooksEnded($msg),
+                'message' => $msg !== '' ? $msg : 'ReviseInventoryStatus failed.',
+                'data' => $data,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Qty-only variation revise (no StartPrice) when ReviseInventoryStatus is a no-op.
      *
      * @return array{success: bool, message: string, data?: array, ended?: bool}

@@ -1799,10 +1799,10 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('ebay2'))
-            ->everyFifteenMinutes()
+            ->hourly()
             ->timezone('Asia/Kolkata')
             ->name('ebay2-sync-mismatch-inventory')
-            ->withoutOverlapping(12)
+            ->withoutOverlapping(50)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay2', '2026-07-07', true))
