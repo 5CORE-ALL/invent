@@ -60,6 +60,8 @@ final class MarketplaceListingStockResolver
 
     public const CHANNEL_TIKTOK2 = 'tiktok2';
 
+    public const CHANNEL_PLS = 'pls';
+
     public static function shopifyQtyFromRow(?ShopifySku $row): ?int
     {
         if (! $row) {
@@ -913,6 +915,8 @@ final class MarketplaceListingStockResolver
         } elseif ($channel === self::CHANNEL_FAIRE) {
             // Faire products API only (faire_metric.inventory) — no product_stock_mappings fallback.
             self::hydrateFromPricing($map, $keys, 'faire');
+        } elseif ($channel === self::CHANNEL_PLS) {
+            self::hydrateFromPlsCatalog($map, $keys);
         }
 
         return $map;
@@ -1326,8 +1330,24 @@ final class MarketplaceListingStockResolver
 
     /**
      * @param  array<string, int>  $map
-     * @param  array<int, string>  $keys
+     * @param  list<string>  $keys
      */
+    protected static function hydrateFromPlsCatalog(array &$map, array $keys): void
+    {
+        if ($keys === [] || ! Schema::hasTable('shopify_catalog_variants')) {
+            return;
+        }
+
+        DB::table('shopify_catalog_variants')
+            ->where('store', 'pls')
+            ->whereIn('sku', $keys)
+            ->whereNotNull('inventory_quantity')
+            ->get(['sku', 'inventory_quantity'])
+            ->each(function ($row) use (&$map) {
+                self::put($map, (string) $row->sku, (int) $row->inventory_quantity);
+            });
+    }
+
     protected static function hydrateFromTikTokProducts(array &$map, array $keys, string $table): void
     {
         if ($keys === [] || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'stock')) {

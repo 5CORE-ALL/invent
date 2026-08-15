@@ -15,7 +15,7 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'pls') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Shopify PLS Manager</a>
         @include('marketplace._page-heading', ['slug' => 'pls', 'heading' => 'Shopify PLS Sync Settings', 'mb' => 'mb-3'])
-        <p class="text-muted mb-3">PLS is a Shopify store. Catalog/pricing/sales pull via Admin API. B2C→PLS inventory push is not implemented.</p>
+        <p class="text-muted mb-3">PLS is a Shopify store. Catalog, pricing, and sales pull via Admin API. Inventory sync pushes B2C Shopify qty onto PLS listings.</p>
 
         @include('marketplace.pls._nav', ['active' => 'settings'])
 
@@ -27,7 +27,7 @@
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="pricing[price_sync]" value="1" {{ ($settings['pricing']['price_sync'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Sync prices from B2C to PLS <span class="text-muted">(push not implemented)</span></span>
+                            <span class="form-check-label">Sync prices from B2C to PLS</span>
                         </label>
                     </div>
                 </div>
@@ -39,7 +39,7 @@
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="inventory[inventory_sync]" value="1" {{ ($settings['inventory']['inventory_sync'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Sync stock from B2C to PLS <span class="text-muted">(push not implemented)</span></span>
+                            <span class="form-check-label">Sync stock from B2C to PLS (mismatch listings + Sync inventory now)</span>
                         </label>
                     </div>
                     <input type="hidden" name="inventory[min_quantity]" value="0">

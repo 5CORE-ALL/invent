@@ -153,6 +153,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'faire') {
             return app(FaireSyncController::class)->pullProductFromFaire($shopifySku);
         }
+        if ($marketplace === 'pls') {
+            return app(PlsSyncController::class)->pullProductFromPls($shopifySku);
+        }
 
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
     }
@@ -219,6 +222,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'tiktok2') {
             return app(TikTok2SyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'pls') {
+            return app(PlsSyncController::class)->pushProductInventory($shopifySku);
         }
 
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
