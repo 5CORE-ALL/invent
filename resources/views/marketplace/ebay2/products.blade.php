@@ -7,8 +7,8 @@
         @include('marketplace._page-heading', ['slug' => 'ebay2', 'heading' => 'eBay 2 Listings'])
         <p class="text-muted mb-3">
             Linked tabs: <strong>All</strong> = every Shopify live SKU.
-            <strong>Active SKU / Inactive SKU</strong> = qty matched, split by eBay 2 status.
-            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = qty differs, split by eBay 2 status.
+            <strong>Active SKU / Inactive SKU</strong> = qty matches, or Shopify is higher by at most the higher of 3 units or 3% of Shopify qty, split by eBay 2 status.
+            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = eBay 2 qty is higher than Shopify, or the gap is beyond that bar — use <em>Sync Mismatch inventory now</em>.
             <em>Refresh live</em> warms eBay 2 status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
@@ -376,12 +376,18 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             totals.failed += data.failed || 0;
             totals.skipped += data.skipped || 0;
             offset = data.offset || offset;
+            if (data.rate_limited || /518|usage limit/i.test(String(data.message || ''))) {
+                finish((data.message || 'eBay 2 API usage limit.')
+                    + '\nStopped so more calls are not burned. Wait a few minutes, then Sync Mismatch again.'
+                    + '\nUpdated: ' + totals.updated + ', Failed: ' + totals.failed + ', Skipped: ' + totals.skipped);
+                return;
+            }
             if (data.done) {
                 alert((data.message || 'Done.') + '\nUpdated: ' + totals.updated + ', Failed: ' + totals.failed + ', Skipped: ' + totals.skipped);
                 location.reload();
                 return;
             }
-            setTimeout(tick, 400);
+            setTimeout(tick, 1200);
         }).catch(function (err) {
             // One automatic retry helps recover from short gateway/timeout blips.
             if (retries < 1) {
