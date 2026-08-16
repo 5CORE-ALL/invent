@@ -4,7 +4,7 @@
     <!-- Brand Logo Light (PRODUCT MANAGER text removed) -->
     <a href="javascript:void(0)" class="logo logo-light sidebar-logo-static" aria-label="Application logo">
         <span class="logo">
-            <img src="{{ asset('images/5core-logo-sidebar.png') }}" alt="5 Core" class="sidebar-brand-logo">
+            @include('layouts.shared.brand-wordmark')
         </span>
     </a>
 
@@ -16,7 +16,7 @@
     <!-- Brand Logo Dark -->
     <a href="javascript:void(0)" class="logo logo-dark sidebar-logo-static" aria-label="Application logo">
         <span class="logo">
-            <img src="{{ asset('images/5core-logo-sidebar.png') }}" alt="5 Core" class="sidebar-brand-logo">
+            @include('layouts.shared.brand-wordmark')
         </span>
     </a>
 
@@ -3168,12 +3168,11 @@
         visibility: visible !important;
     }
 
-    .leftside-menu .sidebar-brand-logo {
-        width: 200px;
-        max-width: 90%;
-        height: auto;
-        display: block;
+    .leftside-menu .sidebar-brand-logo,
+    .leftside-menu .brand-wordmark {
+        display: inline-flex;
         margin: 0.5rem auto;
+        max-width: 100%;
     }
 
     .sidebar-menu-search-wrap #searchMenuItem {
@@ -3239,38 +3238,16 @@
             opacity: 1;
         }
 
-        /* 5 Core logo hot-zone: only this opens a hidden sidebar on hover */
-        #sidebar-logo-hover {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: fixed;
-            top: 8px;
-            left: 8px;
-            width: 160px;
-            height: 40px;
-            z-index: 1056;
-            background: transparent;
-            padding: 0;
-            cursor: pointer;
-        }
-
-        #sidebar-logo-hover img {
-            width: 100%;
-            height: auto;
-            display: block;
-            pointer-events: none;
-        }
-
-        /* Hide dark topbar text brand so it does not stack under the red logo */
+        /* Keep the topbar wordmark in normal flow so it never covers the menu icon */
         body.desktop-sidebar-collapsible .logo-topbar {
-            display: none !important;
+            display: flex !important;
+            float: none;
+            line-height: 1;
+            padding: 0;
         }
 
-        body.desktop-sidebar-collapsible.desktop-menu-open #sidebar-logo-hover {
-            visibility: hidden;
-            opacity: 0;
-            pointer-events: none;
+        #sidebar-logo-hover {
+            display: none !important;
         }
     }
 
@@ -3537,27 +3514,26 @@
             openDesktopSidebar();
         };
 
-        // 5 Core logo hot zone (sidebar is pointer-events:none when hidden)
-        var logoHover = document.getElementById('sidebar-logo-hover');
-        if (!logoHover) {
-            logoHover = document.createElement('div');
-            logoHover.id = 'sidebar-logo-hover';
-            logoHover.setAttribute('aria-hidden', 'true');
-            logoHover.setAttribute('title', 'Open menu');
-            var logoImg = document.createElement('img');
-            logoImg.src = @json(asset('images/5core-logo-sidebar.png'));
-            logoImg.alt = '5 Core';
-            logoHover.appendChild(logoImg);
-            body.appendChild(logoHover);
+        // Use the in-flow topbar logo (never overlay the hamburger)
+        var logoHover = document.querySelector('.logo-topbar');
+        var existingOverlay = document.getElementById('sidebar-logo-hover');
+        if (existingOverlay && existingOverlay.parentNode) {
+            existingOverlay.parentNode.removeChild(existingOverlay);
         }
 
         body.classList.add('desktop-sidebar-collapsible');
         html.setAttribute('data-sidenav-size', 'full');
         closeDesktopSidebar();
 
-        // Open only when hovering the 5 Core logo
-        logoHover.addEventListener('mouseenter', showOnHover);
-        logoHover.addEventListener('mouseleave', function() {
+        if (logoHover) {
+            logoHover.addEventListener('mouseenter', showOnHover);
+            logoHover.addEventListener('mouseleave', function() {
+                if (!isDesktop()) return;
+                scheduleHide();
+            });
+        }
+        toggleBtn.addEventListener('mouseenter', showOnHover);
+        toggleBtn.addEventListener('mouseleave', function() {
             if (!isDesktop()) return;
             scheduleHide();
         });

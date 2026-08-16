@@ -4,35 +4,22 @@
 <!-- ========== Topbar Start ========== -->
 <div class="navbar-custom">
     <div class="topbar container-fluid">
-        <div class="d-flex align-items-center gap-1">
-
-            <!-- Topbar Brand Logo -->
-            <div class="logo-topbar">
-                <!-- Logo light -->
-                <a href="{{ route('any', 'index') }}" class="logo-light" aria-label="{{ $__topbarBrand }}">
-                    <span class="logo-lg">
-                        <img src="{{ asset('images/5core-logo-sidebar.png') }}" alt="{{ $__topbarBrand }}" style="height: 34px; width: auto;">
-                    </span>
-                    <span class="logo-sm">
-                        <img src="{{ asset('images/5core-logo-sidebar.png') }}" alt="{{ $__topbarBrand }}" style="height: 22px; width: auto;">
-                    </span>
-                </a>
-
-                <!-- Logo Dark -->
-                <a href="{{ route('any', 'index') }}" class="logo-dark" aria-label="{{ $__topbarBrand }}">
-                    <span class="logo-lg">
-                        <img src="{{ asset('images/5core-logo-sidebar.png') }}" alt="{{ $__topbarBrand }}" style="height: 34px; width: auto;">
-                    </span>
-                    <span class="logo-sm">
-                        <img src="{{ asset('images/5core-logo-sidebar.png') }}" alt="{{ $__topbarBrand }}" style="height: 22px; width: auto;">
-                    </span>
-                </a>
-            </div>
+        <div class="d-flex align-items-center gap-2 topbar-brand-row">
 
             <!-- Sidebar Menu Toggle Button -->
             <button class="button-toggle-menu" type="button">
                 <i class="ri-menu-line"></i>
             </button>
+
+            <!-- Topbar Brand Logo -->
+            <div class="logo-topbar">
+                <a href="{{ route('any', 'index') }}" class="logo-light" aria-label="{{ $__topbarBrand }}">
+                    @include('layouts.shared.brand-wordmark')
+                </a>
+                <a href="{{ route('any', 'index') }}" class="logo-dark" aria-label="{{ $__topbarBrand }}">
+                    @include('layouts.shared.brand-wordmark')
+                </a>
+            </div>
 
             <!-- Horizontal Menu Toggle Button -->
             <button class="navbar-toggle" data-bs-toggle="collapse" data-bs-target="#topnav-menu-content">
@@ -57,6 +44,51 @@
         @include('layouts.shared.world-clocks-inline')
 
         <style>
+            .topbar-brand-row {
+                min-width: 0;
+            }
+            .topbar-brand-row .button-toggle-menu {
+                flex-shrink: 0;
+                width: 44px;
+                z-index: 2;
+            }
+            .logo-topbar {
+                float: none !important;
+                display: flex !important;
+                align-items: center;
+                line-height: 1;
+                padding: 0 0.15rem 0 0;
+                flex-shrink: 0;
+            }
+            .logo-topbar a {
+                text-decoration: none;
+            }
+            .brand-wordmark {
+                display: inline-flex;
+                align-items: baseline;
+                gap: 0.28em;
+                font-family: "Arial Black", Impact, "Franklin Gothic Bold", sans-serif;
+                font-style: italic;
+                font-weight: 900;
+                color: #e10600;
+                line-height: 1;
+                white-space: nowrap;
+                letter-spacing: 0;
+            }
+            .brand-wordmark__five {
+                letter-spacing: 0;
+            }
+            .brand-wordmark__core {
+                letter-spacing: 0.16em;
+                margin-right: -0.08em;
+            }
+            .logo-topbar .brand-wordmark {
+                font-size: 26px;
+            }
+            .leftside-menu .brand-wordmark {
+                font-size: 34px;
+            }
+
             .topbar-dar-btn {
                 display: inline-flex;
                 align-items: center;

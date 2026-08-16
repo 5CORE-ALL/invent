@@ -87,34 +87,47 @@ class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
     }
 
     /**
-     * Sidebar Missing Listing badge — same Missing L total as /missing-listing
-     * (sum of each channel listing page Pending / Missing L).
+     * Sidebar Missing Listing badge — cached total only.
+     * Never recomputes listing pages during HTML render.
      */
     public static function missingLCountForSidebar(): int
     {
+        foreach ([
+            \App\Support\Marketplace\ListingChannelCounts::TOTAL_CACHE_KEY,
+            self::MISSING_L_CACHE_KEY,
+        ] as $key) {
+            try {
+                $cached = Cache::get($key);
+                if ($cached !== null) {
+                    return (int) $cached;
+                }
+            } catch (\Throwable $e) {
+                // File cache dirs may be missing mid-request after optimize:clear.
+            }
+        }
+
         try {
-            return \App\Support\Marketplace\ListingChannelCounts::totalMissingL(true);
+            return (int) round((float) (BadgeData::dataForPage(self::PAGE_NAME, ['missing_l' => 0])['missing_l'] ?? 0));
         } catch (\Throwable $e) {
             return 0;
         }
     }
 
-    /** Sidebar Missing Mapping badge — same N Map total as /map-issues (pricing pages). */
+    /** Sidebar Missing Mapping badge — cached N Map only (never live pricing-page scans). */
     public static function nmapCountForSidebar(): int
     {
-        try {
-            return \App\Support\Marketplace\MappingChannelCounts::totalNmap(true);
-        } catch (\Throwable $e) {
-            // fall through
-        }
-
-        try {
-            $cached = Cache::get(self::NMAP_CACHE_KEY);
-            if ($cached !== null) {
-                return (int) $cached;
+        foreach ([
+            \App\Support\Marketplace\MappingChannelCounts::TOTAL_CACHE_KEY,
+            self::NMAP_CACHE_KEY,
+        ] as $key) {
+            try {
+                $cached = Cache::get($key);
+                if ($cached !== null) {
+                    return (int) $cached;
+                }
+            } catch (\Throwable $e) {
+                // File cache dirs may be missing mid-request after optimize:clear.
             }
-        } catch (\Throwable $e) {
-            // File cache dirs may be missing mid-request after optimize:clear.
         }
 
         try {

@@ -458,7 +458,7 @@ class ReverbController extends Controller
     }
 
     /**
-     * Bulk-save recommended bids (S Bump%) from Views vs Bump apply.
+     * Bulk-save recommended bids (S Bump%) from Sold vs Bump apply.
      */
     public function saveRecommendedBids(Request $request)
     {

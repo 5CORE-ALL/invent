@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\ChannelMasterSummary;
 use App\Models\MarketplaceDailyMetric;
 use App\Services\Support\YesterdayMarketplaceMetricsService;
+use App\Support\Marketplace\ChannelMasterViewsGuard;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 
@@ -116,6 +117,12 @@ class RebuildChannelMasterSnapshot extends Command
             }
             $sd['l30_orders'] = (float) ($m->total_orders ?? 0);
             $sd['total_quantity'] = (float) ($m->total_quantity ?? 0);
+            $sd['total_views'] = ChannelMasterViewsGuard::stabilize(
+                $key,
+                (float) ($sd['total_views'] ?? 0),
+                (float) $sd['total_quantity'],
+                $date
+            );
             $sd['gprofit_percent'] = (float) ($m->pft_percentage ?? 0);
             $sd['groi_percent'] = (float) ($m->roi_percentage ?? 0);
             $sd['npft_percent'] = round((float) ($m->n_pft ?? 0), 2);
@@ -209,6 +216,15 @@ class RebuildChannelMasterSnapshot extends Command
                 $existing->save();
             }
             $updated++;
+        }
+
+        if (! $dry) {
+            foreach (['ebay', 'ebaytwo', 'ebaythree'] as $repairChannel) {
+                $fixed = ChannelMasterViewsGuard::repairChannel($repairChannel);
+                if ($fixed > 0) {
+                    $this->info("Carried collapsed views forward on {$fixed} {$repairChannel} day(s)");
+                }
+            }
         }
 
         $label = Carbon::parse($date, 'America/Los_Angeles')->subDay()->toDateString();

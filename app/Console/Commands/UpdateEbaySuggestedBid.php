@@ -4,10 +4,8 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
-use App\Models\EbayGeneralReport;
 use App\Models\EbayMetric;
 use App\Models\ProductMaster;
-use App\Models\ShopifySku;
 use App\Services\CronMonitor\CronExecutionContext;
 use Exception;
 use GuzzleHttp\Client;
@@ -117,19 +115,10 @@ class UpdateEbaySuggestedBid extends Command
                 return strtoupper($sku);
             };
 
-            $this->info('Loading Shopify and eBay metrics data...');
-            $shopifyData = [];
+            $this->info('Loading eBay metrics data...');
             $ebayMetrics = collect();
             
             if (!empty($skus)) {
-                // Normalize ShopifySku data keys
-                $shopifyRaw = ShopifySku::whereIn("sku", $skus)->get();
-                $shopifyData = collect();
-                foreach ($shopifyRaw as $item) {
-                    $normalizedKey = $normalizeSku($item->sku);
-                    $shopifyData[$normalizedKey] = $item;
-                }
-                
                 $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get();
             }
             DB::connection()->disconnect();
@@ -177,26 +166,22 @@ class UpdateEbaySuggestedBid extends Command
                 return self::SUCCESS;
             }
 
-            // Get L30 data (clicks and sales) from ebaygeneral report for CVR calculation
-            $this->info('Loading eBay general report data...');
-            $ebayGeneralL30 = EbayGeneralReport::select('listing_id', 'clicks', 'sales')
-                ->where('report_range', 'L30')
-                ->get()
-                ->keyBy('listing_id');
-            
-        // Load Sbid Rule slabs (ebay1_sbid_slabs) — For L7 Views / CVR → S Bid.
-        // Rules are evaluated top to bottom; the first rule whose filled ranges all match wins.
+        // Load View VS SBID slabs (ebay1_sbid_slabs) — For L7 Views → S Bid.
+        // Same 0–100 / 101–200 / … / >1000 rules as /ebay-tabulator-view.
         $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
-        $sbidSlabs = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
-        if (! is_array($sbidSlabs) || $sbidSlabs === []) {
-            // Same built-in defaults as EbayController::defaultSbidSlabRules().
-            $sbidSlabs = [
-                ['label' => 'Rule 1', 'l7_views_min' => null, 'l7_views_max' => null, 'cvr_min' => 0, 'cvr_max' => 0, 'sbid' => 15],
-                ['label' => 'Rule 2', 'l7_views_min' => 0, 'l7_views_max' => 36, 'cvr_min' => 0.01, 'cvr_max' => 1000, 'sbid' => 10],
-                ['label' => 'Rule 3', 'l7_views_min' => 36, 'l7_views_max' => null, 'cvr_min' => 7, 'cvr_max' => 1000, 'sbid' => 5],
-            ];
+        $slabDecoded = $slabRow ? json_decode($slabRow->rule, true) : null;
+        $sbidSlabs = is_array($slabDecoded['rules'] ?? null) ? $slabDecoded['rules'] : [];
+        $esBidOverride = isset($slabDecoded['es_bid']) && $slabDecoded['es_bid'] !== '' && $slabDecoded['es_bid'] !== null
+            ? (float) $slabDecoded['es_bid']
+            : 0.0;
+        if (! is_array($sbidSlabs) || $this->sbidSlabsNeedViewStepMigrate($sbidSlabs)) {
+            $sbidSlabs = $this->defaultSbidSlabRules();
+            DB::table('ebay_sbid_rules')->updateOrInsert(
+                ['key' => 'ebay1_sbid_slabs'],
+                ['rule' => json_encode(['rules' => $sbidSlabs, 'es_bid' => $esBidOverride > 0 ? $esBidOverride : null]), 'updated_at' => now()]
+            );
         }
-        $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (For L7 Views / CVR → S Bid)');
+        $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (EL30=0 → ES Bid; else For L7 Views → S Bid)');
 
         // Process ProductMaster data in chunks and update campaign listings
         $this->info('Processing bid updates based on Sbid Rule slabs...');
@@ -208,11 +193,10 @@ class UpdateEbaySuggestedBid extends Command
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy("sku", "asc")
             ->chunk($chunkSize, function ($productMasters) use (
-                $shopifyData, 
                 $ebayMetricsNormalized, 
                 $campaignListings,
                 $sbidSlabs,
-                $ebayGeneralL30, 
+                $esBidOverride,
                 &$updatedListings,
                 &$bidProcessedCount,
                 $normalizeSku,
@@ -220,32 +204,33 @@ class UpdateEbaySuggestedBid extends Command
             ) {
                 foreach ($productMasters as $pm) {
                     $normalizedSku = $normalizeSku($pm->sku);
-                    $shopify = $shopifyData[$normalizedSku] ?? null;
                     $ebayMetric = $ebayMetricsNormalized[$normalizedSku] ?? null;
 
                     if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
                         $listing = $campaignListings[$ebayMetric->item_id];
 
-                        $soldL30  = (float) ($ebayMetric->ebay_l30 ?? 0);   // Esold
-                        $views    = (float) ($ebayMetric->views ?? 0);      // Views L30
-                        $l7Views  = (float) ($ebayMetric->l7_views ?? 0);   // For L7 Views
-                        $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0; // CVR
+                        $l7Views = (float) ($ebayMetric->l7_views ?? 0);
+                        $el30 = (float) ($ebayMetric->ebay_l30 ?? 0);
 
-                        // DIL = (L30 sold / inventory) * 100, from Shopify data
-                        $inv = (float) ($shopify->inv ?? 0);
-                        $qty = (float) ($shopify->quantity ?? 0);
-                        $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
-
-                        // S Bid from Sbid Rule slabs (same as /ebay-tabulator-view S BID column).
-                        $newBid = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $sbidSlabs);
+                        // EL30 = 0 → ES Bid (editable override, else row suggested_bid).
+                        // Otherwise View VS SBID slabs (same as /ebay-tabulator-view S BID column).
+                        if ($el30 <= 0) {
+                            $newBid = $esBidOverride > 0
+                                ? $esBidOverride
+                                : (float) ($listing->suggested_bid ?? 0);
+                        } else {
+                            $newBid = $this->resolveSlabBid($l7Views, $sbidSlabs);
+                        }
 
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku;
 
                         if ($newBid <= 0) {
-                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | E L30: {$soldL30} | CVR: " . round($scvr, 2) . " | Dil: " . round($dil, 2) . " → No matching Sbid Rule slab (skipped)");
+                            $why = $el30 <= 0 ? 'EL30=0 and no ES Bid' : 'No matching View VS SBID slab';
+                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | EL30: {$el30} | L7 Views: {$l7Views} → {$why} (skipped)");
                         } else {
-                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | E L30: {$soldL30} | CVR: " . round($scvr, 2) . " | Dil: " . round($dil, 2) . " | SBID: {$newBid}");
+                            $via = $el30 <= 0 ? 'ES Bid' : 'slab';
+                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | EL30: {$el30} | L7 Views: {$l7Views} | {$via}: {$newBid}");
                             $updatedListings++;
                         }
                     }
@@ -516,29 +501,57 @@ class UpdateEbaySuggestedBid extends Command
     }
 
     /**
-     * Get bid from dynamic SCVR bands rule.
-     * Bands sorted ascending by scvr_max — first band where scvr <= scvr_max wins.
+     * Default View VS SBID slabs: 0–100, 101–200, … 901–1000, then >1000.
+     * Same as EbayController::defaultSbidSlabRules().
      *
-     * Returns 0.0 when SCVR (CVR) is 0 — no L30 sales means we have no signal,
-     * so no SBID is pushed for that listing. Callers must treat 0 as "skip".
+     * @return array<int, array<string, mixed>>
      */
+    private function defaultSbidSlabRules(): array
+    {
+        $rules = [];
+        $bid = 15;
+        for ($i = 0; $i < 10; $i++) {
+            $min = $i === 0 ? 0 : ($i * 100) + 1;
+            $max = ($i + 1) * 100;
+            $rules[] = [
+                'label' => $min . '–' . $max,
+                'l7_views_min' => $min,
+                'l7_views_max' => $max,
+                'sbid' => $bid,
+            ];
+            $bid--;
+        }
+        $rules[] = [
+            'label' => '>1000',
+            'l7_views_min' => 1001,
+            'l7_views_max' => null,
+            'sbid' => $bid,
+        ];
+
+        return $rules;
+    }
+
+    /** True when stored slabs are not yet the 0–100 / 101–200 / … / >1000 set. */
+    private function sbidSlabsNeedViewStepMigrate(array $rules): bool
+    {
+        if ($rules === [] || count($rules) < 11) {
+            return true;
+        }
+        $first = $rules[0] ?? [];
+
+        return (float) ($first['l7_views_min'] ?? -1) !== 0.0
+            || (float) ($first['l7_views_max'] ?? -1) !== 100.0;
+    }
+
     /**
-     * Combined SCVR + DIL bid.
-     * If EITHER the SCVR value or the DIL value lands in its Pink (catch-all / last)
-     * band, the Pink bid is pushed (e.g. 2.1). This applies even if BOTH are Pink.
-     * Otherwise the normal SCVR rule decides (and still skips when SCVR = 0).
-     */
-    /**
-     * Resolve S Bid from the Sbid Rule slabs. Each slab carries optional min/max
-     * ranges on CVR and For L7 Views plus an sbid value.
-     * The first slab whose filled ranges all contain the row's values wins.
+     * Resolve S Bid from View VS SBID slabs (For L7 Views only).
+     * The first slab whose L7 Views range contains the row wins.
      * Returns 0 when no slab matches (caller treats 0 as "skip").
      */
-    private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, float $l7Views, array $slabs): float
+    private function resolveSlabBid(float $l7Views, array $slabs): float
     {
         foreach ($slabs as $s) {
-            if ($this->slabInRange($cvr,   $s['cvr_min']   ?? null, $s['cvr_max']   ?? null)
-                && $this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
+            if ($this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
                 return (float) ($s['sbid'] ?? 0);
             }
         }

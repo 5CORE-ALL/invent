@@ -792,12 +792,12 @@
                         </ul>
                     </div>
 
-                    {{-- Sbid Rule button — multi-rule editor that decides the S Bid column
-                         from CVR / Dil / Esold / Views L30 conditions. --}}
+                    {{-- View VS SBID — multi-rule editor that decides the S Bid column
+                         from For L7 Views ranges. --}}
                     <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item"
                             data-bs-toggle="modal" data-bs-target="#sbidRuleModal"
-                            title="Build rules on For L7 Views / CVR that set the S Bid column">
-                        <i class="fas fa-sliders-h me-1"></i>Sbid Rule
+                            title="Build rules on For L7 Views that set the S Bid column">
+                        <i class="fas fa-sliders-h me-1"></i>View VS SBID
                     </button>
 
                     <button id="clear-sprice-selected-btn" type="button"
@@ -1033,7 +1033,7 @@
                     </div>
                 </div>
                 <div class="modal-body p-2">
-                    <div id="skuChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                    <div id="skuChartContainer" style="height: 38vh; display: flex; align-items: stretch;">
                         <div style="flex: 1; min-width: 0; position: relative;">
                             <canvas id="skuMetricsChart"></canvas>
                         </div>
@@ -1080,7 +1080,7 @@
                     </div>
                 </div>
                 <div class="modal-body p-2">
-                    <div id="ebay1ChartContainer" style="height: 22vh; display: none; align-items: stretch;">
+                    <div id="ebay1ChartContainer" style="height: 38vh; display: none; align-items: stretch;">
                         <div style="flex: 1; min-width: 0; position: relative;">
                             <canvas id="ebay1MetricChart"></canvas>
                         </div>
@@ -1106,18 +1106,6 @@
                     <div id="ebay1ChartNoData" class="text-center py-3" style="display: none;">
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0" id="ebay1ChartNoDataMsg">No daily snapshots yet. Open this page on separate days to build history (auto-saved from summary).</p>
-                    </div>
-                    <div id="ebay1HistoryTableWrap" style="display: none;">
-                        <table class="table table-sm table-striped table-hover mb-0" id="ebay1HistoryTable">
-                            <thead class="table-light sticky-top">
-                                <tr>
-                                    <th>Date</th>
-                                    <th class="text-end">Value</th>
-                                    <th class="text-end">Δ vs prior</th>
-                                </tr>
-                            </thead>
-                            <tbody id="ebay1HistoryTableBody"></tbody>
-                        </table>
                     </div>
                 </div>
             </div>
@@ -1186,10 +1174,9 @@
     </div>
 
     {{-- ═══════════════════════════════════════════════════════════════════════
-         Sbid Rule Modal — build multiple rules that decide the S Bid column.
-         Each rule is a horizontal row of min/max ranges on 4 factors
-         (CVR, Dil, Esold, Views L30) plus the S Bid to apply. Rules are evaluated
-         top to bottom; the first rule whose ranges all match a row wins.
+         View VS SBID Modal — build multiple rules that decide the S Bid column.
+         Each rule is a min/max range on For L7 Views plus the S Bid to apply.
+         Rules are evaluated top to bottom; the first matching rule wins.
          Storage: ebay_sbid_rules.key = 'ebay1_sbid_slabs' (via /ebay-one/sbid-slab-rule).
     ══════════════════════════════════════════════════════════════════════════ --}}
     <div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
@@ -1207,24 +1194,32 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="sbidRuleModalLabel">
-                        <i class="fas fa-sliders-h me-2 text-primary"></i>Sbid Rule
+                        <i class="fas fa-sliders-h me-2 text-primary"></i>View VS SBID
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                        <label for="sbid-es-bid-input" class="form-label mb-0 small fw-semibold">ES Bid (%)</label>
+                        <input type="number" id="sbid-es-bid-input" step="0.1" min="0"
+                               class="form-control form-control-sm text-end fw-semibold" style="width:88px;"
+                               placeholder="—" title="Editable. Used only when eBay L30 (EL30) is 0. Leave blank to use each row's ES BID.">
+                        <span class="small text-muted">Only for EL30 = 0.
+                            <span id="sbid-es-bid-count" class="fw-semibold"></span>
+                        </span>
+                    </div>
                     <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle" id="sbid-slab-rule-table" style="min-width: 720px;">
+                        <table class="table table-sm table-bordered align-middle" id="sbid-slab-rule-table" style="min-width: 520px;">
                             <thead class="table-light">
                                 <tr>
                                     <th rowspan="2" style="width:34px;" class="text-center align-middle">#</th>
-                                    <th rowspan="2" style="min-width:110px;" class="align-middle">Label</th>
                                     <th colspan="2" class="text-center">For L7 Views</th>
-                                    <th colspan="2" class="text-center">CVR %</th>
+                                    <th rowspan="2" style="width:72px;" class="align-middle text-center"
+                                        title="SKU rows whose L7 Views fall in this slab (first matching slab wins)">Count</th>
                                     <th rowspan="2" style="width:100px;" class="align-middle text-center">S Bid (%)</th>
                                     <th rowspan="2" style="width:44px;" class="align-middle"></th>
                                 </tr>
                                 <tr>
-                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
                                     <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
                                 </tr>
                             </thead>
@@ -1238,12 +1233,6 @@
                         <i class="fas fa-plus me-1"></i>Add rule / slab
                     </button>
 
-                    <div class="alert alert-info small py-2 mb-0">
-                        <i class="fas fa-info-circle me-1"></i>
-                        Rules are evaluated <strong>top to bottom</strong> — the first rule where all filled
-                        ranges match a row sets that row's <strong>S Bid</strong>. Leave a Min/Max blank to ignore it.
-                        <code>CVR = (eBay L30 / Views) &times; 100</code>, <code>For L7 Views = L7 View</code>.
-                    </div>
                     <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
                 </div>
                 <div class="modal-footer py-2 d-flex justify-content-between">
@@ -1305,6 +1294,9 @@
          *  formula so the page CVR is computed against orders-API ground truth instead
          *  of the laggier ebay_metrics.ebay_l30 sum. */
         const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
+        /** Last trusted E Stock > 0 views from channel_master. If today's live
+         *  sum collapses (>25% drop, qty flat), CVR uses this denominator. */
+        const LAST_GOOD_CVR_VIEWS = {{ (float) ($lastGoodCvrViews ?? 0) }};
         /** L30 sales from ebay_orders (period='l30', tax-inclusive, excl. cancelled &
          *  fully-refunded). Same value /ebay/daily-sales shows. Rendered as the Sales
          *  badge so this page agrees with that page instead of the per-SKU datasheet. */
@@ -1420,10 +1412,123 @@
         function ebay1FmtChartVal(v, metricKey) {
             const n = Number(v);
             if (!isFinite(n)) return '—';
-            const fmt = metricKey ? ebay1MetricFormat(metricKey) : 'number';
+            const key = (metricKey || '').toString();
+            const fmt = key ? ebay1MetricFormat(key) : 'number';
+            const isPct = fmt === 'pct' || /percent|cvr|pct/i.test(key);
             if (fmt === 'money') return '$' + Math.round(n).toLocaleString('en-US');
-            if (fmt === 'pct') return Math.round(n) + '%';
+            if (isPct) return n.toFixed(1) + '%';
             return Math.round(n).toLocaleString('en-US');
+        }
+
+        function ebay1TodayPtDate() {
+            try {
+                return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+            } catch (e) {
+                const d = new Date();
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            }
+        }
+
+        /** Last completed Pacific day — same as Active Channel (snapshot − 1). */
+        function ebay1LastCompletedPtDate() {
+            const d = new Date(ebay1TodayPtDate() + 'T12:00:00');
+            d.setDate(d.getDate() - 1);
+            return ebay1Ymd(d);
+        }
+
+        /** Chart tick: Carbon `M d` in Pacific (e.g. "Aug 15"). */
+        function ebay1ChartDateLabel(ymd) {
+            const d = new Date((ymd || ebay1LastCompletedPtDate()) + 'T12:00:00');
+            return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', timeZone: 'UTC' });
+        }
+
+        function ebay1LimitChartDays(rows) {
+            return ebay1FillEveryDate(rows);
+        }
+
+        function ebay1ChartXTicks(labelCount) {
+            return {
+                maxRotation: 90,
+                minRotation: 90,
+                autoSkip: false,
+                autoSkipPadding: 0,
+                font: { size: labelCount > 45 ? 9 : 10, weight: '600' },
+                callback: function(value) {
+                    return this.getLabelForValue(value);
+                }
+            };
+        }
+
+        function ebay1Ymd(d) {
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        function ebay1FillEveryDate(rows, daysOverride) {
+            const days = daysOverride != null ? (parseInt(daysOverride, 10) || 0) : (parseInt(ebay1ChartDays, 10) || 0);
+            const src = Array.isArray(rows) ? rows.slice() : [];
+            if (days <= 0) return src;
+            const byDate = {};
+            src.forEach(function(r) {
+                const key = r.full_date || r.date || '';
+                if (key && /^\d{4}-\d{2}-\d{2}$/.test(key)) byDate[key] = r;
+            });
+            const end = new Date(ebay1LastCompletedPtDate() + 'T12:00:00');
+            const windowKeys = [];
+            for (let i = days - 1; i >= 0; i--) {
+                const d = new Date(end);
+                d.setDate(end.getDate() - i);
+                windowKeys.push({ key: ebay1Ymd(d), date: d });
+            }
+            const startKey = windowKeys[0].key;
+            let carry = null;
+            Object.keys(byDate).sort().forEach(function(k) {
+                if (k < startKey) carry = byDate[k];
+            });
+            if (!carry) {
+                for (let i = 0; i < windowKeys.length; i++) {
+                    if (byDate[windowKeys[i].key]) {
+                        carry = byDate[windowKeys[i].key];
+                        break;
+                    }
+                }
+            }
+            const out = [];
+            windowKeys.forEach(function(item) {
+                if (byDate[item.key]) carry = byDate[item.key];
+                if (!carry) return;
+                const label = ebay1ChartDateLabel(item.key);
+                out.push({
+                    date: label,
+                    full_date: item.key,
+                    value: carry.value
+                });
+            });
+            return out.length ? out : src.slice(-days);
+        }
+
+        function ebay1OverlayLiveBadgeValue(mapped, metricKey) {
+            const rows = Array.isArray(mapped) ? mapped.slice() : [];
+            const $b = $('#summary-stats .ebay1-badge-chart[data-metric="' + metricKey + '"]').first();
+            let live = parseFloat($b.attr('data-live-value'));
+            if (!isFinite(live)) live = parseFloat($b.data('live-value'));
+            if (!isFinite(live)) return ebay1LimitChartDays(rows);
+            const asOf = ebay1LastCompletedPtDate();
+            const asOfLabel = ebay1ChartDateLabel(asOf);
+            const last = rows.length ? rows[rows.length - 1] : null;
+            // Don't paint a partial-scan / old-definition cliff onto Views.
+            if ((metricKey === 'total_views' || metricKey === 'avg_l30_view')
+                && last && last.value > 0 && live > 0
+                && (live < last.value * 0.85 || live > last.value * 1.35)) {
+                live = last.value;
+            }
+            if (last && (last.full_date === asOf || last.date === asOfLabel)) {
+                last.value = live;
+                last.full_date = asOf;
+                last.date = asOfLabel;
+            } else {
+                rows.push({ date: asOfLabel, full_date: asOf, value: live });
+            }
+            return ebay1LimitChartDays(rows);
         }
 
         function ebay1TrendClass(curr, prev, invert) {
@@ -1487,43 +1592,6 @@
             });
         }
 
-        function renderEbay1HistoryTable(data, metricKey) {
-            const $wrap = $('#ebay1HistoryTableWrap');
-            const $tbody = $('#ebay1HistoryTableBody');
-            $tbody.empty();
-            if (!data || !data.length) {
-                $wrap.hide();
-                return;
-            }
-            const invert = !!ebay1BadgeInvertMetrics[metricKey];
-            // Newest first for the table
-            const rows = data.slice().reverse();
-            rows.forEach(function(row, idx) {
-                // prior in chronological sense = next item in reversed list (older)
-                const older = rows[idx + 1];
-                const curr = parseFloat(row.value);
-                const prev = older ? parseFloat(older.value) : NaN;
-                let deltaHtml = '<span class="text-muted">—</span>';
-                if (isFinite(curr) && isFinite(prev)) {
-                    const d = curr - prev;
-                    const cls = ebay1TrendClass(curr, prev, invert);
-                    const sign = d > 0 ? '+' : '';
-                    const fmt = ebay1MetricFormat(metricKey);
-                    const dLabel = fmt === 'pct' ? (sign + Math.round(d) + '%')
-                        : (fmt === 'money' ? (sign + '$' + Math.round(d).toLocaleString('en-US'))
-                        : (sign + Math.round(d).toLocaleString('en-US')));
-                    deltaHtml = '<span class="hist-dot ' + cls + '"></span><span style="font-weight:600;">' + dLabel + '</span>';
-                }
-                const dateLabel = row.full_date || row.date || '';
-                $tbody.append(
-                    '<tr><td>' + dateLabel + '</td>'
-                    + '<td class="text-end fw-semibold">' + ebay1FmtChartVal(curr, metricKey) + '</td>'
-                    + '<td class="text-end">' + deltaHtml + '</td></tr>'
-                );
-            });
-            $wrap.show();
-        }
-
         function openEbay1ChartModal() {
             const modalEl = document.getElementById('ebay1MetricChartModal');
             if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
@@ -1565,7 +1633,6 @@
             }
             $('#ebay1ChartNoData').hide();
             $('#ebay1ChartContainer').hide();
-            $('#ebay1HistoryTableWrap').hide();
             $('#ebay1ChartLoading').show();
 
             if (ebay1ChartMode === 'sku') {
@@ -1588,9 +1655,9 @@
                             };
                         }).filter(function(d) { return d.date !== ''; });
                         if (mapped.length > 0) {
+                            const series = ebay1LimitChartDays(mapped);
                             $('#ebay1ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
-                            renderEbay1MetricChart(mapped);
-                            renderEbay1HistoryTable(mapped, ebay1ChartMetricKey);
+                            renderEbay1MetricChart(series);
                         } else {
                             $('#ebay1ChartNoData').show();
                         }
@@ -1614,11 +1681,17 @@
                     ebay1ChartAjax = null;
                     $('#ebay1ChartLoading').hide();
                     if (resp.success && resp.data && resp.data.length > 0) {
+                        const series = ebay1OverlayLiveBadgeValue(resp.data, ebay1ChartMetricKey);
                         $('#ebay1ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
-                        renderEbay1MetricChart(resp.data);
-                        renderEbay1HistoryTable(resp.data, ebay1ChartMetricKey);
+                        renderEbay1MetricChart(series);
                     } else {
-                        $('#ebay1ChartNoData').show();
+                        const series = ebay1OverlayLiveBadgeValue([], ebay1ChartMetricKey);
+                        if (series.length) {
+                            $('#ebay1ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                            renderEbay1MetricChart(series);
+                        } else {
+                            $('#ebay1ChartNoData').show();
+                        }
                     }
                 },
                 error: function(xhr, status) {
@@ -1638,6 +1711,14 @@
                 ebay1ChartInstance.destroy();
             }
 
+            const seenDates = {};
+            data = (data || []).filter(function(d) {
+                const k = d.full_date || d.date || '';
+                if (!k || seenDates[k]) return false;
+                seenDates[k] = true;
+                return true;
+            });
+
             const labels = data.map(function(d) { return d.date; });
             const values = data.map(function(d) { return d.value; });
 
@@ -1647,8 +1728,9 @@
             const mid = Math.floor(sorted.length / 2);
             const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
             const range = dataMax - dataMin || 1;
-            const yMin = Math.max(0, dataMin - range * 0.1);
-            const yMax = dataMax + range * 0.1;
+            const yPad = Math.max(range * 0.28, Math.abs(dataMax) * 0.08, range * 0.1);
+            const yMin = Math.max(0, dataMin - range * 0.12);
+            const yMax = dataMax + yPad;
 
             document.getElementById('ebay1ChartHighest').textContent = ebay1FmtChartVal(dataMax, ebay1ChartMetricKey);
             document.getElementById('ebay1ChartMedian').textContent = ebay1FmtChartVal(median, ebay1ChartMetricKey);
@@ -1683,28 +1765,41 @@
 
             const valueLabelsPlugin = {
                 id: 'ebay1ValueLabels',
-                afterDatasetsDraw: function(chart) {
+                afterDraw: function(chart) {
                     const dataset = chart.data.datasets[0];
                     const meta = chart.getDatasetMeta(0);
                     const c = chart.ctx;
                     if (!dataset || !meta || !meta.data) return;
-                    c.save();
-                    c.font = 'bold 9px Inter, system-ui, sans-serif';
-                    c.textAlign = 'center';
-                    c.textBaseline = 'bottom';
+                    const lastIdx = meta.data.length - 1;
+                    const anchors = [];
                     meta.data.forEach(function(point, i) {
                         if (point == null || point.skip) return;
-                        const txt = ebay1FmtChartVal(dataset.data[i]);
-                        const offsetY = (i % 2 === 0) ? -8 : -16;
-                        const py = point.y + offsetY;
+                        const txt = ebay1FmtChartVal(dataset.data[i], ebay1ChartMetricKey);
+                        let offsetY = (i % 2 === 0) ? -14 : -32;
+                        if (i === lastIdx) {
+                            offsetY = (lastIdx % 2 === 0) ? -32 : -14;
+                        }
+                        if (i > 0 && anchors.length) {
+                            const prev = anchors[anchors.length - 1];
+                            if (Math.abs(point.x - prev.x) < 42 && Math.abs((point.y + offsetY) - prev.y) < 16) {
+                                offsetY = (offsetY === -14) ? -34 : -14;
+                            }
+                        }
+                        anchors.push({ x: point.x, y: point.y + offsetY });
+                        c.save();
+                        c.font = 'bold 13px Inter, system-ui, sans-serif';
+                        c.textAlign = 'left';
+                        c.textBaseline = 'middle';
                         c.lineJoin = 'round';
                         c.lineWidth = 3;
-                        c.strokeStyle = 'rgba(255,255,255,0.92)';
-                        c.strokeText(txt, point.x, py);
+                        c.strokeStyle = 'rgba(255,255,255,0.95)';
                         c.fillStyle = labelColors[i];
-                        c.fillText(txt, point.x, py);
+                        c.translate(point.x + 3, point.y + offsetY);
+                        c.rotate(-35 * Math.PI / 180);
+                        c.strokeText(txt, 0, 0);
+                        c.fillText(txt, 0, 0);
+                        c.restore();
                     });
-                    c.restore();
                 }
             };
 
@@ -1730,20 +1825,21 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: { padding: { top: 22, left: 2, right: 2, bottom: 2 } },
+                    clip: false,
+                    layout: { padding: { top: 44, left: 8, right: 22, bottom: 28 } },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
-                            titleFont: { size: 10 },
-                            bodyFont: { size: 10 },
-                            padding: 6,
+                            titleFont: { size: 13 },
+                            bodyFont: { size: 13 },
+                            padding: 8,
                             callbacks: {
                                 label: function(context) {
                                     const idx = context.dataIndex;
-                                    const parts = ['Value: ' + ebay1FmtChartVal(context.raw)];
+                                    const parts = ['Value: ' + ebay1FmtChartVal(context.raw, ebay1ChartMetricKey)];
                                     if (idx > 0) {
                                         const diff = context.raw - values[idx - 1];
-                                        parts.push('vs prior: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + ebay1FmtChartVal(Math.abs(diff)));
+                                        parts.push('vs prior: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + ebay1FmtChartVal(Math.abs(diff), ebay1ChartMetricKey));
                                     }
                                     return parts;
                                 }
@@ -1754,9 +1850,12 @@
                         y: {
                             min: yMin,
                             max: yMax,
-                            ticks: { font: { size: 9 }, callback: function(v) { return ebay1FmtChartVal(v); } }
+                            ticks: { font: { size: 13, weight: '600' }, callback: function(v) { return ebay1FmtChartVal(v, ebay1ChartMetricKey); } }
                         },
-                        x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } } }
+                        x: {
+                            offset: true,
+                            ticks: ebay1ChartXTicks(labels.length)
+                        }
                     }
                 }
             });
@@ -2049,9 +2148,10 @@
             document.getElementById('sku-link-lmp-save-btn')?.addEventListener('click', function () { saveLinkedSkuFromModal(); });
         });
 
-        // S Bid is driven by the Sbid Rule slabs (CVR / Dil / Esold / Views L30 → S Bid).
-        // Populated from /ebay-one/sbid-slab-rule; see the Sbid Rule modal.
+        // S Bid is driven by View VS SBID slabs (For L7 Views → S Bid).
+        // Populated from /ebay-one/sbid-slab-rule; see the View VS SBID modal.
         let currentSbidSlabRules = [];
+        let currentSbidEsBid = null;
 
         function sbidSlabInRange(val, min, max) {
             if (min !== null && min !== undefined && min !== '' && val < parseFloat(min)) return false;
@@ -2060,19 +2160,23 @@
         }
 
         function getCombinedSbid(rowData) {
-            const esold = parseFloat(rowData['eBay L30']) || 0;
-            const views = parseFloat(rowData.views) || 0;
-            const l7Views = parseFloat(rowData.l7_views) || 0;
-            const inv = parseFloat(rowData.INV) || 0;
-            const ovl30 = parseFloat(rowData['L30']) || 0;
-            const cvr = views > 0 ? (esold / views) * 100 : 0;
-            const dil = inv > 0 ? (ovl30 / inv) * 100 : 0;
+            const el30 = parseFloat(rowData['eBay L30']) || 0;
+            if (el30 <= 0) {
+                const override = parseFloat(currentSbidEsBid);
+                const esBid = (isFinite(override) && override > 0)
+                    ? override
+                    : (parseFloat(rowData.ca_suggested_bid) || 0);
+                if (isFinite(esBid) && esBid > 0) {
+                    return { bid: esBid, color: '#0dcaf0', skip: false, via: 'es_bid' };
+                }
+                return { bid: 0, color: '#6c757d', skip: true, via: 'es_bid' };
+            }
 
+            const l7Views = parseFloat(rowData.l7_views) || 0;
             const rules = currentSbidSlabRules || [];
             for (let i = 0; i < rules.length; i++) {
                 const r = rules[i];
-                if (sbidSlabInRange(cvr, r.cvr_min, r.cvr_max)
-                    && sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
+                if (sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
                     const bid = parseFloat(r.sbid);
                     if (isFinite(bid) && bid > 0) {
                         return { bid: bid, color: '#0d6efd', skip: false };
@@ -2555,7 +2659,7 @@
                         if (val == null || !point) return;
                         const txt = String(valueFmt(val));
                         c.save();
-                        c.font = 'bold 11px Inter, system-ui, sans-serif';
+                        c.font = 'bold 13px Inter, system-ui, sans-serif';
                         c.fillStyle = '#000000';
                         c.strokeStyle = 'rgba(255,255,255,0.95)';
                         c.lineWidth = 3;
@@ -2592,7 +2696,7 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: { padding: { top: 36, left: 4, right: 14, bottom: 2 } },
+                    layout: { padding: { top: 36, left: 8, right: 16, bottom: 28 } },
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { display: false },
@@ -2601,9 +2705,9 @@
                             enabled: true,
                             mode: 'index',
                             intersect: false,
-                            titleFont: { size: 10 },
-                            bodyFont: { size: 10 },
-                            padding: 6,
+                            titleFont: { size: 13 },
+                            bodyFont: { size: 13 },
+                            padding: 8,
                             callbacks: {
                                 label: function(context) {
                                     return 'Price: ' + skuChartFmtVal(context.parsed.y || 0);
@@ -2613,7 +2717,8 @@
                     },
                     scales: {
                         x: {
-                            ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } }
+                            offset: true,
+                            ticks: ebay1ChartXTicks(30)
                         },
                         y: {
                             type: 'linear',
@@ -2621,7 +2726,7 @@
                             position: 'left',
                             beginAtZero: true,
                             ticks: {
-                                font: { size: 9 },
+                                font: { size: 13, weight: '600' },
                                 callback: function(v) {
                                     return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US'));
                                 }
@@ -2682,19 +2787,22 @@
                         return;
                     }
 
-                    const labels = data.map(d => d.date_formatted || d.date || '');
                     const isCvr = currentSkuChartMetric === 'cvr';
                     const isViews = currentSkuChartMetric === 'views';
                     const isL7 = currentSkuChartMetric === 'l7_views';
                     const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
                     const cvrFmt = v => (Number(v) === v ? Number(v).toFixed(1) : v) + '%';
-                    const values = isCvr
-                        ? data.map(d => Number(d.cvr_percent) || 0)
-                        : isViews
-                            ? data.map(d => Number(d.views) || 0)
-                            : isL7
-                                ? data.map(d => Number(d.l7_views) || 0)
-                                : data.map(d => Number(d.price) || 0);
+                    const valueField = isCvr ? 'cvr_percent' : isViews ? 'views' : isL7 ? 'l7_views' : 'price';
+                    const mapped = data.map(function(d) {
+                        return {
+                            date: d.date_formatted || d.date || '',
+                            full_date: d.date || '',
+                            value: Number(d[valueField]) || 0
+                        };
+                    });
+                    const filled = ebay1FillEveryDate(mapped, daysNum);
+                    const labels = filled.map(function(d) { return d.date; });
+                    const values = filled.map(function(d) { return d.value; });
 
                     const refLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View' };
                     const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
@@ -2705,6 +2813,10 @@
                     if (refLabelEl) refLabelEl.textContent = refLabelText;
                     if (refDotEl) refDotEl.style.background = refColors[currentSkuChartMetric] || '#adb5bd';
 
+                    if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.x) {
+                        skuMetricsChart.options.scales.x.offset = true;
+                        skuMetricsChart.options.scales.x.ticks = ebay1ChartXTicks(labels.length);
+                    }
                     skuMetricsChart.data.labels = labels;
                     skuMetricsChart.data.datasets[0].data = values;
                     skuMetricsChart.data.datasets[0].label = refLabelText + (currentSkuChartMetric === 'price' ? ' (USD)' : '');
@@ -5627,17 +5739,19 @@
                         field: "ca_suggested_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "S Bid from Sbid Rule slabs (For L7 Views / CVR). Red if S BID > Ads% badge, otherwise green.",
+                        headerTooltip: "EL30 = 0 → ES Bid. Otherwise View VS SBID slabs (For L7 Views). Red if S BID > Ads% badge, otherwise green.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
                         formatter: function(cell) {
                             const res = getCombinedSbid(cell.getRow().getData());
                             if (res.skip) {
-                                return '<span class="text-muted" title="No matching Sbid Rule slab" style="font-size:11px;">—</span>';
+                                const tip = res.via === 'es_bid' ? 'EL30 is 0 but no ES Bid' : 'No matching View VS SBID slab';
+                                return `<span class="text-muted" title="${tip}" style="font-size:11px;">—</span>`;
                             }
-                            const color = res.bid > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
-                            return `<span style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
+                            const color = res.via === 'es_bid' ? '#0dcaf0' : (res.bid > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745');
+                            const tip = res.via === 'es_bid' ? 'ES Bid (EL30 = 0)' : 'View VS SBID slab';
+                            return `<span title="${tip}" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
                         }
                     },
                     {
@@ -6366,6 +6480,10 @@
                 const prevAvgL7Views = avgL7ViewsGlobal;
                 avgL7ViewsGlobal = avgL7Views;
                 
+                if (LAST_GOOD_CVR_VIEWS > 0 && totalViews > 0
+                    && totalViews < LAST_GOOD_CVR_VIEWS * 0.85) {
+                    totalViews = LAST_GOOD_CVR_VIEWS;
+                }
                 const avgCVR = totalViews > 0 ? (ORDERS_L30_TOTAL_QTY / totalViews * 100) : 0;
 
                 // Preserve trend dots when updating badge labels
@@ -7939,7 +8057,7 @@
         })();
 
         // ════════════════════════════════════════════════════════════════════
-        // Sbid Rule modal — build multiple rules on CVR / Dil / Esold / Views L30
+        // View VS SBID modal — build multiple rules on For L7 Views
         // that decide the S Bid column. Storage: ebay_sbid_rules.key = 'ebay1_sbid_slabs'.
         // ════════════════════════════════════════════════════════════════════
         (function() {
@@ -7950,14 +8068,62 @@
                 return (v === null || v === undefined || v === '' || isNaN(v)) ? '' : v;
             }
 
-            function rangeInputs(rule, key) {
+            function autofillSbidSlabMins(rules) {
+                if (!rules || !rules.length) return;
+                for (let i = 1; i < rules.length; i++) {
+                    const prevMax = rules[i - 1].l7_views_max;
+                    if (prevMax !== null && prevMax !== undefined && prevMax !== '' && !isNaN(prevMax)) {
+                        rules[i].l7_views_min = parseFloat(prevMax) + 1;
+                    }
+                }
+            }
+
+            function rangeInputs(rule, key, idx) {
+                const minLocked = (idx > 0 && key === 'l7_views')
+                    ? ' readonly tabindex="-1" style="background:#f8f9fa;" title="Auto: previous Max + 1"'
+                    : '';
                 return `
                     <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
                                value="${numAttr(rule[key + '_min'])}" data-field="${key}_min"
-                               onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>
+                               onchange="window.sbidSlabUpdate(this)" placeholder="—"${minLocked}></td>
                     <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
                                value="${numAttr(rule[key + '_max'])}" data-field="${key}_max"
                                onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>`;
+            }
+
+            function getSbidSlabSkuRows() {
+                if (typeof table === 'undefined' || !table) return [];
+                try {
+                    const rows = table.getData('active') || table.getData() || [];
+                    return rows.filter(function(d) {
+                        return typeof ebayIsParentRowData === 'function' ? !ebayIsParentRowData(d) : true;
+                    });
+                } catch (e) {
+                    return [];
+                }
+            }
+
+            function countRowsBySlab(rules) {
+                const counts = rules.map(function() { return 0; });
+                let esCount = 0;
+                getSbidSlabSkuRows().forEach(function(d) {
+                    const el30 = parseFloat(d['eBay L30']) || 0;
+                    if (el30 <= 0) {
+                        esCount++;
+                        return;
+                    }
+                    const l7 = parseFloat(d.l7_views) || 0;
+                    for (let i = 0; i < rules.length; i++) {
+                        const r = rules[i];
+                        if (sbidSlabInRange(l7, r.l7_views_min, r.l7_views_max)) {
+                            counts[i]++;
+                            break;
+                        }
+                    }
+                });
+                const esCountEl = document.getElementById('sbid-es-bid-count');
+                if (esCountEl) esCountEl.textContent = esCount ? '(' + esCount + ' SKUs)' : '';
+                return counts;
             }
 
             function renderSbidSlabRules(rules) {
@@ -7965,19 +8131,20 @@
                 if (!tbody) return;
                 tbody.innerHTML = '';
                 if (!rules.length) {
-                    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted small py-3">
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted small py-3">
                         No rules yet — click <strong>Add rule / slab</strong> to create one.</td></tr>`;
                     return;
                 }
+                autofillSbidSlabMins(rules);
+                const slabCounts = countRowsBySlab(rules);
                 rules.forEach(function(rule, i) {
                     const tr = document.createElement('tr');
                     tr.setAttribute('data-idx', i);
+                    const count = slabCounts[i] || 0;
                     tr.innerHTML = `
                         <td class="text-center text-muted small">${i + 1}</td>
-                        <td><input type="text" class="form-control form-control-sm" value="${(rule.label || '').replace(/"/g, '&quot;')}"
-                                   data-field="label" onchange="window.sbidSlabUpdate(this)" placeholder="Rule ${i + 1}"></td>
-                        ${rangeInputs(rule, 'l7_views')}
-                        ${rangeInputs(rule, 'cvr')}
+                        ${rangeInputs(rule, 'l7_views', i)}
+                        <td class="text-center fw-semibold" title="SKU rows in this slab">${count}</td>
                         <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
                                    value="${numAttr(rule.sbid)}" data-field="sbid"
                                    onchange="window.sbidSlabUpdate(this)"></td>
@@ -7994,10 +8161,9 @@
                 const idx = parseInt(tr.getAttribute('data-idx'), 10);
                 const field = el.dataset.field;
                 if (!currentSbidSlabRules[idx]) return;
-                if (field === 'label') {
-                    currentSbidSlabRules[idx][field] = el.value;
-                } else {
-                    currentSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                currentSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                if (field === 'l7_views_min' || field === 'l7_views_max') {
+                    renderSbidSlabRules(currentSbidSlabRules);
                 }
             };
 
@@ -8008,11 +8174,23 @@
 
             $(document).on('click', '#sbid-slab-add-rule-btn', function() {
                 currentSbidSlabRules.push({
-                    label: '', cvr_min: null, cvr_max: null,
                     l7_views_min: null, l7_views_max: null, sbid: 2.1
                 });
                 renderSbidSlabRules(currentSbidSlabRules);
             });
+
+            function readEsBidInput() {
+                const el = document.getElementById('sbid-es-bid-input');
+                if (!el || el.value === '') return null;
+                const n = parseFloat(el.value);
+                return (isFinite(n) && n > 0) ? n : null;
+            }
+
+            function writeEsBidInput(val) {
+                const el = document.getElementById('sbid-es-bid-input');
+                if (!el) return;
+                el.value = (val === null || val === undefined || val === '' || isNaN(val)) ? '' : val;
+            }
 
             function loadSbidSlabRules() {
                 $.ajax({
@@ -8021,6 +8199,9 @@
                     dataType: 'json',
                     success: function(data) {
                         currentSbidSlabRules = (data && Array.isArray(data.rules)) ? data.rules : [];
+                        currentSbidEsBid = (data && data.es_bid != null && data.es_bid !== '') ? parseFloat(data.es_bid) : null;
+                        if (!isFinite(currentSbidEsBid) || currentSbidEsBid <= 0) currentSbidEsBid = null;
+                        writeEsBidInput(currentSbidEsBid);
                         renderSbidSlabRules(currentSbidSlabRules);
                         if (table) table.redraw(true);
                     },
@@ -8030,9 +8211,15 @@
                 });
             }
 
+            $(document).on('input change', '#sbid-es-bid-input', function() {
+                currentSbidEsBid = readEsBidInput();
+                if (table) table.redraw(true);
+            });
+
             const sbidModalEl = document.getElementById('sbidRuleModal');
             if (sbidModalEl) {
                 sbidModalEl.addEventListener('show.bs.modal', function() {
+                    writeEsBidInput(currentSbidEsBid);
                     renderSbidSlabRules(currentSbidSlabRules);
                 });
             }
@@ -8054,11 +8241,29 @@
                         'Accept': 'application/json'
                     },
                     contentType: 'application/json',
-                    data: JSON.stringify({ rules: currentSbidSlabRules || [], _token: csrf }),
+                    data: JSON.stringify({
+                        rules: (currentSbidSlabRules || []).map(function(r) {
+                            return {
+                                label: r.label || '',
+                                l7_views_min: r.l7_views_min,
+                                l7_views_max: r.l7_views_max,
+                                sbid: r.sbid
+                            };
+                        }),
+                        es_bid: readEsBidInput(),
+                        _token: csrf
+                    }),
                     success: function(resp) {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
                         if (resp.rule && Array.isArray(resp.rule.rules)) currentSbidSlabRules = resp.rule.rules;
+                        if (resp.rule && resp.rule.es_bid != null) {
+                            currentSbidEsBid = parseFloat(resp.rule.es_bid);
+                            if (!isFinite(currentSbidEsBid) || currentSbidEsBid <= 0) currentSbidEsBid = null;
+                        } else {
+                            currentSbidEsBid = readEsBidInput();
+                        }
+                        writeEsBidInput(currentSbidEsBid);
                         if (table) table.redraw(true);
                         if (typeof showToast === 'function') showToast('success', 'Sbid Rule saved');
                         setTimeout(() => { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);

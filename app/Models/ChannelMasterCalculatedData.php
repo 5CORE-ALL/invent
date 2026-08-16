@@ -136,4 +136,33 @@ class ChannelMasterCalculatedData extends Model
     {
         return self::max('calculated_at');
     }
+
+    public const FAST_PAYLOAD_CACHE_PREFIX = 'amm_fast_payload_v1';
+
+    public const FAST_PAYLOAD_CACHE_VERSION_KEY = 'amm_fast_payload_ver';
+
+    /**
+     * Versioned cache key so channel:calculate-data can invalidate all fast payloads.
+     *
+     * @param  array<string, mixed>  $parts
+     */
+    public static function fastPayloadCacheKey(array $parts): string
+    {
+        $ver = (int) \Cache::get(self::FAST_PAYLOAD_CACHE_VERSION_KEY, 1);
+
+        return self::FAST_PAYLOAD_CACHE_PREFIX.':v'.$ver.':'.md5(json_encode($parts));
+    }
+
+    public static function bumpFastPayloadCache(): void
+    {
+        try {
+            if (\Cache::has(self::FAST_PAYLOAD_CACHE_VERSION_KEY)) {
+                \Cache::increment(self::FAST_PAYLOAD_CACHE_VERSION_KEY);
+            } else {
+                \Cache::put(self::FAST_PAYLOAD_CACHE_VERSION_KEY, 2, now()->addDay());
+            }
+        } catch (\Throwable $e) {
+            // File cache dirs may be missing after optimize:clear.
+        }
+    }
 }

@@ -6,6 +6,7 @@ use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\ChannelMasterCalculatedData;
 use App\Http\Controllers\Channels\ChannelMasterController;
+use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Models\LqsHistory;
 use App\Models\ProductMaster;
 use App\Services\CronMonitor\CronExecutionContext;
@@ -170,6 +171,7 @@ class CalculateChannelMasterData extends Command
                 $this->storeSummaryData($response, $calculatedAt);
                 $this->calculateAndStoreLqsData($calculatedAt, $chunkSize);
                 $this->calculateAndStoreOnSeaTransitData($calculatedAt);
+                ChannelMasterCalculatedData::bumpFastPayloadCache();
 
                 return self::SUCCESS;
             } catch (\Exception $e) {
@@ -275,7 +277,11 @@ class CalculateChannelMasterData extends Command
             'map' => (int) ($data['Map'] ?? 0),
             'miss' => (int) ($data['Miss'] ?? 0),
             'nmap' => (int) ($data['NMap'] ?? 0),
-            'total_views' => (int) ($data['Total Views'] ?? 0),
+            'total_views' => (int) ChannelMasterViewsGuard::stabilize(
+                strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($data['Channel '] ?? $data['Channel'] ?? '')))),
+                $parseNumber($data['Total Views'] ?? 0),
+                (float) ($data['Qty'] ?? 0)
+            ),
             'listing_cvr' => array_key_exists('CVR', $data) && $data['CVR'] !== null && $data['CVR'] !== ''
                 ? $parseNumber($data['CVR'])
                 : null,

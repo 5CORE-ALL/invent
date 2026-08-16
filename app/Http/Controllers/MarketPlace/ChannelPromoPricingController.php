@@ -711,7 +711,7 @@ class ChannelPromoPricingController extends Controller
         }
 
         return $this->loadRules(
-            $channel === 'reverb' ? $channel.'_views_vs_bump' : $channel.'_dil_vs_bump',
+            $channel === 'reverb' ? $channel.'_sold_vs_bump' : $channel.'_dil_vs_bump',
             $this->defaultDilBumpRules($channel),
             'bump'
         );
@@ -730,7 +730,7 @@ class ChannelPromoPricingController extends Controller
         }
 
         $rules = $this->persistRules(
-            $channel === 'reverb' ? $channel.'_views_vs_bump' : $channel.'_dil_vs_bump',
+            $channel === 'reverb' ? $channel.'_sold_vs_bump' : $channel.'_dil_vs_bump',
             $this->defaultDilBumpRules($channel),
             $incoming,
             'bump'
@@ -809,7 +809,7 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * Views → S Bump% defaults (Reverb: 10 Views slabs, 0–100 / 101–200 / …).
+     * Sold (RV L30) → S Bump% defaults (Reverb: 10 sold slabs, 0 / 1 / … / > 10).
      *
      * @return list<array{key:string,label:string,bump:float|int}>
      */
@@ -817,16 +817,16 @@ class ChannelPromoPricingController extends Controller
     {
         if ($channel === 'reverb') {
             return [
-                ['key' => '0-100', 'label' => '0–100', 'bump' => 10],
-                ['key' => '101-200', 'label' => '101–200', 'bump' => 9],
-                ['key' => '201-300', 'label' => '201–300', 'bump' => 8],
-                ['key' => '301-400', 'label' => '301–400', 'bump' => 7],
-                ['key' => '401-500', 'label' => '401–500', 'bump' => 6],
-                ['key' => '501-600', 'label' => '501–600', 'bump' => 5],
-                ['key' => '601-700', 'label' => '601–700', 'bump' => 4],
-                ['key' => '701-800', 'label' => '701–800', 'bump' => 3],
-                ['key' => '801-900', 'label' => '801–900', 'bump' => 2],
-                ['key' => 'gt-900', 'label' => '> 900 (onwards)', 'bump' => 0],
+                ['key' => '0', 'label' => '0', 'bump' => 10],
+                ['key' => '1', 'label' => '1', 'bump' => 9],
+                ['key' => '2', 'label' => '2', 'bump' => 8],
+                ['key' => '3', 'label' => '3', 'bump' => 7],
+                ['key' => '4', 'label' => '4', 'bump' => 6],
+                ['key' => '5', 'label' => '5', 'bump' => 5],
+                ['key' => '6', 'label' => '6', 'bump' => 4],
+                ['key' => '7', 'label' => '7', 'bump' => 3],
+                ['key' => '8-10', 'label' => '8–10', 'bump' => 2],
+                ['key' => 'gt-10', 'label' => '> 10', 'bump' => 0],
             ];
         }
 
