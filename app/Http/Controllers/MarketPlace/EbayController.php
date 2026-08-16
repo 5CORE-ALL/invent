@@ -2735,9 +2735,11 @@ class EbayController extends Controller
     }
 
     /**
-     * Rewrite SKU chart CVR for every day with the same formula:
-     * rolling L30 order qty ÷ guarded views. Reject scan-glitch views
-     * (collapse or explosion) so the last day cannot cliff vs the series.
+     * Rewrite SKU chart CVR with the same formula as the CVR 30 column:
+     * rolling L30 order qty ÷ listing views. Live ebay_metrics views are the
+     * trusted denominator (what the table uses). Snapshot views are kept only
+     * when they stay in band vs live — a lone collapsed snapshot (e.g. 18 vs
+     * live 106) must not produce a 27% chart against a 4.7% table.
      *
      * @param  array<string, array<string, mixed>>  $dataByDate
      */
@@ -2748,50 +2750,40 @@ class EbayController extends Controller
             ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
             ->first();
         $liveViews = $live ? (int) ($live->views ?? 0) : 0;
+        $liveL30 = $live ? (int) ($live->ebay_l30 ?? 0) : 0;
 
-        $carryViews = 0;
-        $carryQty = 0.0;
-        foreach ($dataByDate as $row) {
-            $v = (int) ($row['views'] ?? 0);
-            if ($v > 0) {
-                $carryViews = $v;
-                $carryQty = (float) ($row['ebay_l30'] ?? 0);
-                break;
+        $trustedViews = $liveViews;
+        if ($trustedViews <= 0) {
+            foreach ($dataByDate as $row) {
+                $v = (int) ($row['views'] ?? 0);
+                if ($v > 0) {
+                    $trustedViews = $v;
+                    break;
+                }
             }
         }
 
         foreach ($dataByDate as $dateKey => &$row) {
             $qty = $this->ebay1RollingL30OrderQty($dailyQty, $dateKey);
-            $candidate = (int) ($row['views'] ?? 0);
-            if ($dateKey === $asOfEnd && $liveViews > 0) {
-                $candidate = $liveViews;
+            $snapViews = (int) ($row['views'] ?? 0);
+            $views = $trustedViews;
+            if ($snapViews > 0 && $trustedViews > 0
+                && ! ChannelMasterViewsGuard::isUnstable((float) $snapViews, (float) $trustedViews)) {
+                $views = $snapViews;
+            } elseif ($snapViews > 0 && $trustedViews <= 0) {
+                $views = $snapViews;
             }
-            $views = $this->ebay1GuardSkuViews($candidate, $carryViews, (float) $qty, $carryQty);
+            if ($dateKey === $asOfEnd && $liveViews > 0) {
+                $views = $liveViews;
+                $qty = $liveL30;
+            }
             if ($views > 0) {
-                $carryViews = $views;
-                $carryQty = (float) $qty;
                 $row['cvr_percent'] = round(($qty / $views) * 100, 2);
                 $row['ebay_l30'] = $qty;
                 $row['views'] = $views;
             }
         }
         unset($row);
-    }
-
-    /** Keep SKU views when they stay within the channel scan-glitch band. */
-    private function ebay1GuardSkuViews(int $candidate, int $baseline, float $candidateQty = 0.0, float $baselineQty = 0.0): int
-    {
-        if ($candidate <= 0) {
-            return $baseline;
-        }
-        if ($baseline <= 0) {
-            return $candidate;
-        }
-        if (ChannelMasterViewsGuard::isUnstable((float) $candidate, (float) $baseline, $candidateQty, $baselineQty)) {
-            return $baseline;
-        }
-
-        return $candidate;
     }
 
     /** Rolling L30 qty as of $asOfDate — same window as app:fetch-ebay-orders (asOf − 30 days through asOf). */
