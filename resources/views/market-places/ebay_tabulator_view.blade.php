@@ -835,6 +835,14 @@
                             data-metric="total_ebay_l30" data-live-value="{{ (int) ($ordersL30TotalQty ?? 0) }}"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
                             title="L30 units sold. Click dot for rolling history.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}<span class="summary-trend-dot none" data-metric="total_ebay_l30" title="Rolling history"></span></span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="dil-ov-badge"
+                            data-metric="dil_ov_percent" data-live-value="0" data-format="pct"
+                            style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;"
+                            title="Dil Ov = Total Sold ÷ Total Inv Available × 100. Click for rolling history.">Dil Ov: 0%<span class="summary-trend-dot none" data-metric="dil_ov_percent" title="Rolling history"></span></span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="dil-eb1-badge"
+                            data-metric="dil_eb1_percent" data-live-value="0" data-format="pct"
+                            style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;"
+                            title="Dil EB1 = Total Sold In eBay ÷ Total Inv × 100. Click for rolling history.">Dil EB1: 0%<span class="summary-trend-dot none" data-metric="dil_eb1_percent" title="Rolling history"></span></span>
                         <span class="badge fs-6 p-2" id="ebay1-shopify-sales-badge"
                             style="background-color: #0f766e; color: white; font-weight: bold; display: none;"
                             title="eBay1 sales from Shopify raw data (L30, excludes cancelled)">EShp: $0</span>
@@ -1387,6 +1395,8 @@
             total_views: 'Views',
             avg_l30_view: 'A L30 View',
             avg_l7_views: 'L7',
+            dil_ov_percent: 'Dil Ov',
+            dil_eb1_percent: 'Dil EB1',
         };
         /** Metrics where lower is better → invert 3-color (up=red, down=green) */
         const ebay1BadgeInvertMetrics = { tcos_percent: true };
@@ -1515,8 +1525,10 @@
             const asOf = ebay1LastCompletedPtDate();
             const asOfLabel = ebay1ChartDateLabel(asOf);
             const last = rows.length ? rows[rows.length - 1] : null;
-            // Don't paint a partial-scan / old-definition cliff onto Views.
-            if ((metricKey === 'total_views' || metricKey === 'avg_l30_view')
+            // Don't paint a partial-scan / old-definition cliff onto the last day.
+            if ((metricKey === 'total_views' || metricKey === 'avg_l30_view'
+                    || metricKey === 'cvr_percent' || metricKey === 'avg_l7_views'
+                    || metricKey === 'dil_ov_percent' || metricKey === 'dil_eb1_percent')
                 && last && last.value > 0 && live > 0
                 && (live < last.value * 0.85 || live > last.value * 1.35)) {
                 live = last.value;
@@ -1559,6 +1571,16 @@
             $dot.attr('class', 'summary-trend-dot ' + cls).attr('title', tip);
         }
 
+        function applyEbay1DilBadgeTone($el, metricKey, currentVal) {
+            if (!$el || !$el.length) return;
+            const prev = ebay1BadgePrevDay && ebay1BadgePrevDay[metricKey];
+            const down = isFinite(currentVal) && prev != null && isFinite(prev) && (currentVal - prev) < -0.05;
+            $el.css({
+                backgroundColor: down ? '#dc3545' : '#198754',
+                color: '#fff'
+            });
+        }
+
         function syncEbay1SummaryTrendDots() {
             $('#summary-stats .ebay1-badge-chart[data-metric]').each(function() {
                 const metric = $(this).data('metric');
@@ -1566,6 +1588,9 @@
                 let live = parseFloat($(this).attr('data-live-value'));
                 if (!isFinite(live)) live = parseFloat($(this).data('live-value'));
                 applyEbay1SummaryTrendDot(metric, live);
+                if (metric === 'dil_ov_percent' || metric === 'dil_eb1_percent') {
+                    applyEbay1DilBadgeTone($(this), metric, live);
+                }
             });
         }
 
@@ -1648,14 +1673,18 @@
                         const rows = Array.isArray(resp) ? resp : (resp && resp.data ? resp.data : []);
                         const field = ebay1ChartMetricKey === 'l7_views' ? 'l7_views' : 'views';
                         const mapped = (rows || []).map(function(d) {
+                            const raw = d[field];
+                            const has = raw !== null && raw !== undefined && raw !== '';
                             return {
                                 date: d.date_formatted || d.date || '',
-                                full_date: d.date || d.date_formatted || '',
-                                value: parseFloat(d[field]) || 0,
+                                full_date: d.date || '',
+                                value: has ? parseFloat(raw) : null,
                             };
-                        }).filter(function(d) { return d.date !== ''; });
+                        }).filter(function(d) {
+                            return d.date && d.full_date && d.value != null && isFinite(d.value);
+                        });
                         if (mapped.length > 0) {
-                            const series = ebay1LimitChartDays(mapped);
+                            const series = ebay1FillEveryDate(mapped, days);
                             $('#ebay1ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
                             renderEbay1MetricChart(series);
                         } else {
@@ -2794,11 +2823,15 @@
                     const cvrFmt = v => (Number(v) === v ? Number(v).toFixed(1) : v) + '%';
                     const valueField = isCvr ? 'cvr_percent' : isViews ? 'views' : isL7 ? 'l7_views' : 'price';
                     const mapped = data.map(function(d) {
+                        const raw = d[valueField];
+                        const has = raw !== null && raw !== undefined && raw !== '';
                         return {
                             date: d.date_formatted || d.date || '',
                             full_date: d.date || '',
-                            value: Number(d[valueField]) || 0
+                            value: has ? Number(raw) : null
                         };
+                    }).filter(function(d) {
+                        return d.date && d.full_date && d.value != null && isFinite(d.value);
                     });
                     const filled = ebay1FillEveryDate(mapped, daysNum);
                     const labels = filled.map(function(d) { return d.date; });
@@ -6508,6 +6541,35 @@
                 setSummaryBadge($('#ads-percent-badge'), 'Ads ' + Math.round(EBAY_CHANNEL_ADS_PCT) + '%', Math.round(EBAY_CHANNEL_ADS_PCT));
                 setSummaryBadge($('#total-sales-amt-badge'), 'Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString(), Math.round(ORDERS_L30_TOTAL_SALES));
                 setSummaryBadge($('#qty-sold-badge'), 'Qty: ' + Math.round(ORDERS_L30_TOTAL_QTY).toLocaleString(), Math.round(ORDERS_L30_TOTAL_QTY));
+
+                let totalInvAvailable = 0;
+                let totalEbaySold = 0;
+                allData.forEach(function(row) {
+                    const isParent = row.is_parent_summary === true ||
+                        (row['Parent'] && String(row['Parent']).toUpperCase().startsWith('PARENT'));
+                    if (isParent) return;
+                    const inv = parseFloat(row['INV'] || 0);
+                    if (inv > 0) totalInvAvailable += inv;
+                    totalEbaySold += parseFloat(row['eBay L30'] || 0);
+                });
+                const dilOv = totalInvAvailable > 0
+                    ? (ORDERS_L30_TOTAL_QTY / totalInvAvailable) * 100
+                    : 0;
+                const dilEb1 = totalInvAvailable > 0
+                    ? (totalEbaySold / totalInvAvailable) * 100
+                    : 0;
+                const $dilOv = $('#dil-ov-badge');
+                setSummaryBadge($dilOv, 'Dil Ov: ' + Math.round(dilOv) + '%', Math.round(dilOv));
+                $dilOv.attr('title', 'Dil Ov = Total Sold (' + Math.round(ORDERS_L30_TOTAL_QTY).toLocaleString()
+                    + ') ÷ Total Inv Available (' + Math.round(totalInvAvailable).toLocaleString()
+                    + ') × 100. Click for rolling history.');
+                const $dilEb1 = $('#dil-eb1-badge');
+                setSummaryBadge($dilEb1, 'Dil EB1: ' + Math.round(dilEb1) + '%', Math.round(dilEb1));
+                $dilEb1.attr('title', 'Dil EB1 = Total Sold In eBay (' + Math.round(totalEbaySold).toLocaleString()
+                    + ') ÷ Total Inv (' + Math.round(totalInvAvailable).toLocaleString()
+                    + ') × 100. Click for rolling history.');
+                applyEbay1DilBadgeTone($dilOv, 'dil_ov_percent', Math.round(dilOv));
+                applyEbay1DilBadgeTone($dilEb1, 'dil_eb1_percent', Math.round(dilEb1));
 
                 setSummaryBadge($('#avg-cvr-badge'), 'CVR: ' + avgCVR.toFixed(1) + '%', parseFloat(avgCVR.toFixed(1)));
                 setSummaryBadge($('#total-views-badge'), 'Views: ' + totalViews.toLocaleString(), totalViews);

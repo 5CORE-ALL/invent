@@ -15,6 +15,9 @@ class ChannelMasterViewsGuard
     /** Treat a views drop larger than this (vs the last good day) as a scan glitch. */
     public const COLLAPSE_RATIO = 0.85;
 
+    /** Treat a views jump larger than this (vs the last good day) as a scan glitch. */
+    public const EXPLOSION_RATIO = 1.35;
+
     /** If qty also falls by more than this, the views drop may be real. */
     public const QTY_REAL_DROP_RATIO = 0.80;
 
@@ -60,6 +63,25 @@ class ChannelMasterViewsGuard
         }
 
         return true;
+    }
+
+    public static function isExploded(float $candidateViews, float $baselineViews): bool
+    {
+        if ($baselineViews <= 0 || $candidateViews <= 0) {
+            return false;
+        }
+
+        return $candidateViews > $baselineViews * self::EXPLOSION_RATIO;
+    }
+
+    public static function isUnstable(
+        float $candidateViews,
+        float $baselineViews,
+        float $candidateQty = 0.0,
+        float $baselineQty = 0.0
+    ): bool {
+        return self::isCollapsed($candidateViews, $baselineViews, $candidateQty, $baselineQty)
+            || self::isExploded($candidateViews, $baselineViews);
     }
 
     /**
