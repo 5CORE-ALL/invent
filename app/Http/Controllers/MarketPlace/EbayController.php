@@ -619,6 +619,7 @@ class EbayController extends Controller
         // Latest snapshot before today (exact yesterday when collect ran; otherwise last known day).
         $todayPt = Carbon::now('America/Los_Angeles')->toDateString();
         $priceYesterdayBySku = [];
+        $priceYesterdayDateBySku = [];
         $invYesterdayBySku = [];
         $l30YesterdayBySku = [];
         $latestPriorRows = DB::table('ebay_sku_daily_data as d')
@@ -626,7 +627,7 @@ class EbayController extends Controller
                 $join->on('d.sku', '=', 'x.sku')->on('d.record_date', '=', 'x.max_date');
             })
             ->addBinding($todayPt, 'join')
-            ->select('d.sku', 'd.daily_data')
+            ->select('d.sku', 'd.daily_data', 'd.record_date')
             ->get();
         foreach ($latestPriorRows as $hist) {
             $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($hist->sku ?? ''));
@@ -637,6 +638,10 @@ class EbayController extends Controller
                 ? $hist->daily_data
                 : (json_decode($hist->daily_data ?? '{}', true) ?: []);
             $priceYesterdayBySku[$norm] = round((float) ($data['price'] ?? 0), 2);
+            $recDate = $hist->record_date ?? null;
+            $priceYesterdayDateBySku[$norm] = $recDate
+                ? Carbon::parse($recDate, 'America/Los_Angeles')->toDateString()
+                : null;
             if (array_key_exists('ovl30', $data)) {
                 $l30YesterdayBySku[$norm] = (int) $data['ovl30'];
             }
@@ -1026,6 +1031,7 @@ class EbayController extends Controller
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
             $pmNorm = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
             $row['price_yesterday'] = $priceYesterdayBySku[$pmNorm] ?? null;
+            $row['price_yesterday_date'] = $priceYesterdayDateBySku[$pmNorm] ?? null;
             // inv_yesterday / l30_yesterday already set above with INV / L30
             $row['eBay Stock'] = $ebayMetric->ebay_stock ?? 0;
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
@@ -2786,6 +2792,33 @@ class EbayController extends Controller
         unset($row);
     }
 
+    /**
+     * After the last collected price snapshot, use the live table price
+     * (same as the Price column). Avoids a 3-week stale plateau then a
+     * last-day cliff when ebay:collect-metrics has not run.
+     *
+     * @param  array<string, array<string, mixed>>  $dataByDate
+     */
+    private function ebay1ApplySkuLivePrice(array &$dataByDate, string $skuNorm, string $asOfEnd, ?string $lastSnapAsOf): void
+    {
+        $live = EbayMetric::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+            ->first();
+        $livePrice = $live ? round((float) ($live->ebay_price ?? 0), 2) : 0.0;
+        if ($livePrice <= 0) {
+            return;
+        }
+
+        foreach ($dataByDate as $dateKey => &$row) {
+            if ($dateKey === $asOfEnd || ($lastSnapAsOf !== null && $dateKey > $lastSnapAsOf)) {
+                $row['price'] = $livePrice;
+            } elseif ($lastSnapAsOf === null) {
+                $row['price'] = $livePrice;
+            }
+        }
+        unset($row);
+    }
+
     /** Rolling L30 qty as of $asOfDate — same window as app:fetch-ebay-orders (asOf − 30 days through asOf). */
     private function ebay1RollingL30OrderQty(array $dailyQty, string $asOfDate): int
     {
@@ -3183,6 +3216,18 @@ class EbayController extends Controller
             Log::info('No eBay daily metrics data available. Historical data will be populated by metrics collection command.');
         }
 
+        // Last real snapshot as-of (before live overlay) — days after this
+        // have no collect, so Price must use the live table value, not a
+        // 3-week-old carry that cliffs on the last day.
+        $lastSnapAsOf = null;
+        if ($skuNorm) {
+            foreach ($dataByDate as $d => $row) {
+                if (! empty($row['recorded']) && (float) ($row['price'] ?? 0) > 0) {
+                    $lastSnapAsOf = $d;
+                }
+            }
+        }
+
         // Overlay live price (and L7 only when it does not cliff) on the last
         // completed Pacific day. Views / CVR stay on the snapshot series —
         // ebay1ApplySkuOrderCvr recomputes them with the same guarded formula.
@@ -3254,6 +3299,7 @@ class EbayController extends Controller
                     $carry = $row;
                 }
             }
+            $leadCarry = $carry;
             $filled = [];
             $currentDate = $startDate->copy();
             while ($currentDate->lte($endDate)) {
@@ -3279,25 +3325,30 @@ class EbayController extends Controller
                 $currentDate->addDay();
             }
             $dataByDate = $filled;
+            // Leading holes: inherit the pre-window snapshot only — never the
+            // live last-day price (that painted $19.67 onto Jul 16).
             $cursor = $startDate->copy();
             while ($cursor->lte($endDate)) {
                 $dateKey = $cursor->format('Y-m-d');
-                if (! isset($dataByDate[$dateKey])) {
+                if (! isset($dataByDate[$dateKey]) && $leadCarry !== null) {
                     $dataByDate[$dateKey] = [
                         'date' => $dateKey,
                         'date_formatted' => $cursor->format('M d'),
-                        'price' => (float) ($carry['price'] ?? 0),
-                        'views' => 0,
-                        'l7_views' => 0,
-                        'cvr_percent' => null,
-                        'ad_percent' => 0,
-                        'ebay_l30' => 0,
+                        'price' => (float) ($leadCarry['price'] ?? 0),
+                        'views' => (int) ($leadCarry['views'] ?? 0),
+                        'l7_views' => (int) ($leadCarry['l7_views'] ?? 0),
+                        'cvr_percent' => $leadCarry['cvr_percent'] !== null
+                            ? (float) $leadCarry['cvr_percent']
+                            : null,
+                        'ad_percent' => (float) ($leadCarry['ad_percent'] ?? 0),
+                        'ebay_l30' => (int) ($leadCarry['ebay_l30'] ?? 0),
                         'recorded' => false,
                     ];
                 }
                 $cursor->addDay();
             }
             $this->ebay1ApplySkuOrderCvr($dataByDate, $skuNorm, $endDate->toDateString());
+            $this->ebay1ApplySkuLivePrice($dataByDate, $skuNorm, $endDate->toDateString(), $lastSnapAsOf);
         } elseif (! empty($dataByDate) && $startDate) {
             // Aggregate (no SKU) — fill interior gaps only, still no $0 invent for avg_price
             $realKeys = array_keys($dataByDate);

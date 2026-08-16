@@ -5169,7 +5169,7 @@
                         field: "eBay Price",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Price vs yesterday (PT): green = up, red = down, gray = same / no yesterday. Click price or dot for chart.",
+                        headerTooltip: "Price vs yesterday PT when a snapshot exists; otherwise vs last recorded day. Green = up, red = down, gray = same. Click price or dot for chart.",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             const rowData = cell.getRow().getData();
@@ -5178,19 +5178,27 @@
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
                             const yesterday = parseFloat(rowData.price_yesterday);
                             const hasYesterday = isFinite(yesterday) && yesterday > 0;
+                            const yDate = String(rowData.price_yesterday_date || '');
+                            const yestPt = (typeof ebay1LastCompletedPtDate === 'function') ? ebay1LastCompletedPtDate() : '';
+                            const isActualYesterday = yDate !== '' && yDate === yestPt;
+                            const vsWhen = isActualYesterday
+                                ? ('yesterday ($' + yesterday.toFixed(2) + ')')
+                                : (yDate
+                                    ? ('last recorded ' + (typeof ebay1ChartDateLabel === 'function' ? ebay1ChartDateLabel(yDate) : yDate) + ' ($' + yesterday.toFixed(2) + ')')
+                                    : ('last recorded ($' + yesterday.toFixed(2) + ')'));
 
-                            // Green if price > yesterday, red if <, gray otherwise (same / missing)
+                            // Green if price > last recorded, red if <, gray otherwise (same / missing)
                             let dotColor = '#6c757d';
                             let dotTip = hasYesterday
-                                ? ('Same as yesterday ($' + yesterday.toFixed(2) + ')')
-                                : 'No yesterday price yet';
+                                ? ('Same as ' + vsWhen)
+                                : 'No prior price snapshot yet';
                             if (hasYesterday && value > 0) {
                                 if (value > yesterday) {
                                     dotColor = '#28a745';
-                                    dotTip = 'Up vs yesterday ($' + yesterday.toFixed(2) + ')';
+                                    dotTip = 'Up vs ' + vsWhen;
                                 } else if (value < yesterday) {
                                     dotColor = '#a00211';
-                                    dotTip = 'Down vs yesterday ($' + yesterday.toFixed(2) + ')';
+                                    dotTip = 'Down vs ' + vsWhen;
                                 }
                             }
                             const dotBtn = (sku && !isParent)
