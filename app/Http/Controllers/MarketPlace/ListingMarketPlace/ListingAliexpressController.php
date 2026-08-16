@@ -5,7 +5,6 @@ namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 use App\Http\Controllers\Controller;
 use App\Models\AliexpressDataView;
 use App\Models\AliexpressListingStatus;
-use App\Models\AliexpressMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\Marketplace\AliexpressListingCounts;
@@ -52,14 +51,11 @@ class ListingAliexpressController extends Controller
                 return [strtoupper(trim((string) $row->sku)) => $row->value];
             });
 
-        // Missing Listing / Listed — aliexpress_metric.product_id (like ebay_2_metrics.item_id)
-        $aeMetrics = AliexpressMetric::whereIn('sku', $skus)
-            ->get(['sku', 'product_id'])
-            ->mapWithKeys(function ($row) {
-                return [strtolower(trim((string) $row->sku)) => $row];
-            });
+        // Listed = real aliexpress_metric.product_id OR sku in aliexpress_pricing_prices
+        $metricsByNorm = AliexpressListingCounts::metricsByNormalizedSku();
+        $pricingByNorm = AliexpressListingCounts::pricingSkusByNormalizedSku();
 
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $aeMetrics) {
+        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $metricsByNorm, $pricingByNorm) {
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
             $skuUpper = strtoupper(trim($childSku));
@@ -82,10 +78,9 @@ class ListingAliexpressController extends Controller
                 $nrValues->has($skuUpper) ? $nrValues->get($skuUpper) : null
             );
 
-            $metric = $aeMetrics->get($skuLower);
-            $productId = AliexpressListingCounts::normalizeProductId($metric?->product_id ?? null, $childSku);
-            $item->ae_product_id = $productId !== '' ? $productId : null;
-            $item->listed = $item->ae_product_id ? 'Listed' : 'Pending';
+            $resolved = AliexpressListingCounts::resolveListed($childSku, $metricsByNorm, $pricingByNorm);
+            $item->ae_product_id = $resolved['product_id'] !== '' ? $resolved['product_id'] : null;
+            $item->listed = $resolved['listed'] ? 'Listed' : 'Pending';
 
             return $item;
         })->values();
@@ -287,9 +282,8 @@ class ListingAliexpressController extends Controller
                 ->get(['sku', 'value'])
                 ->mapWithKeys(fn ($row) => [strtoupper(trim((string) $row->sku)) => $row->value]);
 
-            $aeMetrics = AliexpressMetric::whereIn('sku', $skus)
-                ->get(['sku', 'product_id'])
-                ->mapWithKeys(fn ($row) => [strtolower(trim((string) $row->sku)) => $row]);
+            $metricsByNorm = AliexpressListingCounts::metricsByNormalizedSku();
+            $pricingByNorm = AliexpressListingCounts::pricingSkusByNormalizedSku();
 
             foreach ($productMasters as $product) {
                 $sku = (string) $product->sku;
@@ -307,18 +301,15 @@ class ListingAliexpressController extends Controller
                 $nrReq = AliexpressListingCounts::nrReqFromDataView(
                     $nrValues->has($skuUpper) ? $nrValues->get($skuUpper) : null
                 );
-                $productId = AliexpressListingCounts::normalizeProductId(
-                    $aeMetrics->get($skuLower)?->product_id ?? null,
-                    $sku
-                );
+                $resolved = AliexpressListingCounts::resolveListed($sku, $metricsByNorm, $pricingByNorm);
 
                 fputcsv($file, [
                     'sku' => $sku,
                     'nr_req' => $nrReq,
-                    'listed' => $productId !== '' ? 'Listed' : 'Pending',
+                    'listed' => $resolved['listed'] ? 'Listed' : 'Pending',
                     'buyer_link' => $value['buyer_link'] ?? '',
                     'seller_link' => $value['seller_link'] ?? '',
-                    'ae_product_id' => $productId,
+                    'ae_product_id' => $resolved['product_id'],
                 ]);
             }
 

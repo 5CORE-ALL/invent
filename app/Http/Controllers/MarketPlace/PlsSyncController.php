@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\RunMarketplaceInventorySyncJob;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\PLSProduct;
 use App\Models\PlsSale;
+use App\Services\MarketplaceManager\PlsListingsPageBuilder;
+use App\Services\MarketplaceManager\PlsLiveListingsService;
 use App\Services\ShopifyPlsTokenService;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
@@ -157,8 +160,14 @@ class PlsSyncController extends Controller
                 ], 500);
             }
 
+            app(PlsLiveListingsService::class)->clearCache();
+
             return response()->json([
                 'success' => true,
+                'done' => true,
+                'page' => 1,
+                'total_page' => 1,
+                'total_upserted' => $variantCount,
                 'message' => "PLS catalog synced ({$variantCount} variant rows with SKU).",
                 'count' => $variantCount,
                 'output' => $output,
@@ -285,32 +294,28 @@ class PlsSyncController extends Controller
 
     public function syncProducts(Request $request): View
     {
-        $searchSku = trim((string) $request->input('search_sku', ''));
-        $apiError = null;
+        return app(PlsListingsPageBuilder::class)->syncProducts($request);
+    }
 
-        if (! Schema::hasTable('pls_products')) {
-            $products = new LengthAwarePaginator([], 0, 50, 1);
-            $apiError = 'Table pls_products missing. Run Sync catalog + Refresh pricing.';
-        } else {
-            $q = PLSProduct::query()->orderByDesc('updated_at')->orderByDesc('id');
-            if ($searchSku !== '') {
-                $q->where('sku', 'like', '%'.$searchSku.'%');
-            }
-            $products = $q->paginate(50)->withQueryString();
-        }
+    public function showProduct(int $shopifySkuId): View
+    {
+        return app(PlsListingsPageBuilder::class)->showProduct($shopifySkuId);
+    }
 
-        $catalogCount = Schema::hasTable('shopify_catalog_variants')
-            ? (int) DB::table('shopify_catalog_variants')->where('store', 'pls')->whereNotNull('sku')->where('sku', '!=', '')->count()
-            : 0;
+    public function pushProductInventory(int $shopifySkuId): JsonResponse
+    {
+        $result = app(PlsListingsPageBuilder::class)->pushProductInventory($shopifySkuId);
+        $ok = ! empty($result['success']);
 
-        return view('marketplace.pls.products', [
-            'products' => $products,
-            'title' => 'Shopify PLS — Listings',
-            'searchSku' => $searchSku,
-            'apiError' => $apiError,
-            'catalogCount' => $catalogCount,
-            'connected' => $this->apiConfig->isConfigured('pls') || $this->tokenService->isConfigured(),
-        ]);
+        return response()->json($result, $ok ? 200 : 422);
+    }
+
+    public function pullProductFromPls(int $shopifySkuId): JsonResponse
+    {
+        $result = app(PlsListingsPageBuilder::class)->pullProductFromPls($shopifySkuId);
+        $ok = ! empty($result['success']);
+
+        return response()->json($result, $ok ? 200 : 422);
     }
 
     public function syncOrders(Request $request): View
@@ -414,15 +419,35 @@ class PlsSyncController extends Controller
 
     public function syncInventoryNow(): JsonResponse
     {
+        $settings = MarketplaceSyncSettings::getFor('pls');
+        if (! ($settings['inventory']['inventory_sync'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Inventory sync is disabled in Shopify PLS settings. Enable it first.',
+            ], 422);
+        }
+
+        if (! $this->tokenService->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Shopify PLS is not connected.',
+            ], 401);
+        }
+
+        RunMarketplaceInventorySyncJob::dispatch('pls');
+
         return response()->json([
-            'success' => false,
-            'message' => 'B2C → PLS inventory push is not implemented in Marketplace Manager. PLS is itself a Shopify store — use Sync catalog / Refresh pricing to pull data.',
-        ], 422);
+            'success' => true,
+            'message' => 'Inventory sync job queued (Shopify B2C → PLS). Check back shortly.',
+        ]);
     }
 
-    public function syncMismatchInventoryNow(): JsonResponse
+    public function syncMismatchInventoryNow(Request $request): JsonResponse
     {
-        return $this->syncInventoryNow();
+        $result = app(PlsListingsPageBuilder::class)->syncMismatchInventoryNow($request);
+        $status = (! empty($result['success'])) ? 200 : 422;
+
+        return response()->json($result, $status);
     }
 
     public function syncTrackingNow(): JsonResponse

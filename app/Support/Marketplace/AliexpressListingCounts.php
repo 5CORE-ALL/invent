@@ -4,18 +4,21 @@ namespace App\Support\Marketplace;
 
 use App\Models\AliexpressDataView;
 use App\Models\AliexpressMetric;
+use App\Models\AliexpressPricingPrice;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Aliexpress listing status counts — same pattern as /listing-ebaytwo.
  *
  * Rules (per ProductMaster SKU, deleted_at null):
  * - skip PARENT SKUs
- * - skip INV <= 0 (Shopify)
+ * - skip INV <= 0 (shopify_skus.inv — Product Master, not live catalog)
  * - nr_req from AliexpressDataView.value.NRL (NRL/NR → NR, else REQ)
- * - listed from aliexpress_metric.product_id (non-empty real id = Listed)
- * - Missing L (Pending) = REQ and no product_id
+ * - listed if real aliexpress_metric.product_id OR sku in aliexpress_pricing_prices
+ *   (normalized SKU: spaces / hyphens / case)
+ * - Missing L (Pending) = REQ and not listed
  */
 class AliexpressListingCounts
 {
@@ -35,11 +38,8 @@ class AliexpressListingCounts
                 return [strtoupper(trim((string) $row->sku)) => $row->value];
             });
 
-        $metrics = AliexpressMetric::whereIn('sku', $skus)
-            ->get(['sku', 'product_id'])
-            ->mapWithKeys(function ($row) {
-                return [strtolower(trim((string) $row->sku)) => $row];
-            });
+        $metricsByNorm = self::metricsByNormalizedSku();
+        $pricingByNorm = self::pricingSkusByNormalizedSku();
 
         $reqCount = 0;
         $nrlCount = 0;
@@ -64,9 +64,8 @@ class AliexpressListingCounts
                 $nrlCount++;
             }
 
-            $metric = $metrics->get(strtolower($sku));
-            $productId = self::normalizeProductId($metric?->product_id, $sku);
-            if ($productId !== '') {
+            $resolved = self::resolveListed($sku, $metricsByNorm, $pricingByNorm);
+            if ($resolved['listed']) {
                 $listedCount++;
             } elseif ($nrReq === 'REQ') {
                 $missingL++;
@@ -85,6 +84,97 @@ class AliexpressListingCounts
     public static function missingL(): int
     {
         return self::counts()['MissingL'];
+    }
+
+    /**
+     * Real AE product id + listed flag (metric id or pricing-table SKU).
+     *
+     * @param  array<string, string>  $metricsByNorm
+     * @param  array<string, string>  $pricingByNorm
+     * @return array{product_id: string, listed: bool}
+     */
+    public static function resolveListed(string $sku, array $metricsByNorm, array $pricingByNorm): array
+    {
+        $productId = self::productIdForSku($sku, $metricsByNorm);
+        $listed = $productId !== '' || self::inPricing($sku, $pricingByNorm);
+
+        return [
+            'product_id' => $productId,
+            'listed' => $listed,
+        ];
+    }
+
+    /**
+     * @return array<string, string> normalized SKU => real product_id
+     */
+    public static function metricsByNormalizedSku(): array
+    {
+        $byNorm = [];
+        if (! Schema::hasTable('aliexpress_metric')) {
+            return $byNorm;
+        }
+
+        AliexpressMetric::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use (&$byNorm) {
+                foreach ($rows as $row) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    $id = self::normalizeProductId($row->product_id, (string) $row->sku);
+                    if ($norm !== '' && $id !== '' && ! isset($byNorm[$norm])) {
+                        $byNorm[$norm] = $id;
+                    }
+                }
+            });
+
+        return $byNorm;
+    }
+
+    /**
+     * @return array<string, string> normalized SKU => pricing-table SKU
+     */
+    public static function pricingSkusByNormalizedSku(): array
+    {
+        $byNorm = [];
+        if (! Schema::hasTable('aliexpress_pricing_prices')) {
+            return $byNorm;
+        }
+
+        AliexpressPricingPrice::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use (&$byNorm) {
+                foreach ($rows as $row) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    if ($norm !== '' && ! isset($byNorm[$norm])) {
+                        $byNorm[$norm] = trim((string) $row->sku);
+                    }
+                }
+            });
+
+        return $byNorm;
+    }
+
+    /**
+     * @param  array<string, string>  $metricsByNorm
+     */
+    public static function productIdForSku(string $sku, array $metricsByNorm): string
+    {
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+        return ($norm !== '' && isset($metricsByNorm[$norm])) ? $metricsByNorm[$norm] : '';
+    }
+
+    /**
+     * @param  array<string, string>  $pricingByNorm
+     */
+    public static function inPricing(string $sku, array $pricingByNorm): bool
+    {
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+        return $norm !== '' && isset($pricingByNorm[$norm]);
     }
 
     /**

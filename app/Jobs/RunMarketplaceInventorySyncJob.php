@@ -73,6 +73,7 @@ class RunMarketplaceInventorySyncJob implements ShouldQueue, ShouldBeUnique
             'temu2' => app(\App\Services\MarketplaceManager\Temu2InventorySyncService::class)->syncFromShopify(false),
             'topdawg' => app(\App\Services\MarketplaceManager\TopDawgInventorySyncService::class)->syncFromShopify(false),
             'purchasingpower' => app(\App\Services\MarketplaceManager\PurchasingPowerInventorySyncService::class)->syncFromShopify(false),
+            'pls' => app(\App\Services\MarketplaceManager\PlsInventorySyncService::class)->syncFromShopify(false),
             default => ['updated' => 0, 'failed' => 0, 'message' => 'Unknown marketplace: '.$slug],
         };
 

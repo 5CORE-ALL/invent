@@ -229,6 +229,47 @@ class ShopifyCatalogSyncService
         return $map;
     }
 
+    public function forgetCachedInventory(string $store): void
+    {
+        $store = $store === 'pls' ? 'pls' : 'main';
+        try {
+            Cache::forget('mm.shopify.'.$store.'.inv.by_norm_sku.v1');
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
+     * After a PLS qty push, keep the overlay cache in line so listings don't
+     * keep showing the pre-push live qty.
+     *
+     * @param  array<string, int>  $qtyByNormalizedSku
+     */
+    public function overlayCachedInventory(string $store, array $qtyByNormalizedSku): void
+    {
+        $store = $store === 'pls' ? 'pls' : 'main';
+        if ($qtyByNormalizedSku === []) {
+            return;
+        }
+        $key = 'mm.shopify.'.$store.'.inv.by_norm_sku.v1';
+        try {
+            $map = Cache::get($key);
+            if (! is_array($map)) {
+                $map = [];
+            }
+            foreach ($qtyByNormalizedSku as $norm => $qty) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $norm);
+                if ($n === '') {
+                    continue;
+                }
+                $map[$n] = (int) $qty;
+            }
+            Cache::put($key, $map, now()->addMinutes(15));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
     /**
      * Page Admin API products and return normalized SKU => available qty.
      * Also writes inventory_quantity back onto shopify_catalog_variants when the variant exists.
