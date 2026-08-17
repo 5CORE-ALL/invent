@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\FaireMetric;
 use App\Services\FaireApiService;
+use App\Support\Marketplace\MappingChannelCounts;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -76,12 +77,14 @@ class FaireLinkMapSyncService
         }
 
         $pageUpserted = 0;
+        $pageSkus = [];
         foreach ($products as $product) {
             if (! is_array($product)) {
                 continue;
             }
-            $pageUpserted += $this->upsertProduct($product);
+            $pageUpserted += $this->upsertProduct($product, $pageSkus);
         }
+        $this->hydrateInventoryFromFaireApi($pageSkus);
 
         $totalUpserted = (int) ($state['total_upserted'] ?? 0) + $pageUpserted;
         $done = count($products) < $pageSize;
@@ -99,6 +102,10 @@ class FaireLinkMapSyncService
             'done' => $done,
             'error' => false,
         ]);
+
+        if ($done) {
+            $this->clearListingCaches();
+        }
 
         return [
             'success' => true,
@@ -137,6 +144,8 @@ class FaireLinkMapSyncService
             $page++;
         } while ($page <= 200);
 
+        $this->clearListingCaches();
+
         return [
             'success' => true,
             'message' => $lastMessage,
@@ -146,8 +155,9 @@ class FaireLinkMapSyncService
 
     /**
      * @param  array<string, mixed>  $product
+     * @param  list<string>  $pageSkus
      */
-    protected function upsertProduct(array $product): int
+    protected function upsertProduct(array $product, array &$pageSkus = []): int
     {
         $productId = trim((string) ($product['id'] ?? ''));
         $name = trim((string) ($product['name'] ?? $product['title'] ?? ''));
@@ -161,6 +171,7 @@ class FaireLinkMapSyncService
                 'sku' => $sku,
                 'id' => $productId,
                 'available_quantity' => $product['available_quantity'] ?? null,
+                'on_hand_quantity' => $product['on_hand_quantity'] ?? null,
                 'wholesale_price_cents' => data_get($product, 'wholesale_price_cents'),
                 'wholesale_price' => $product['wholesale_price'] ?? null,
             ]];
@@ -175,10 +186,9 @@ class FaireLinkMapSyncService
             if ($sku === '') {
                 continue;
             }
+            $pageSkus[] = $sku;
 
-            $qty = data_get($variant, 'available_quantity')
-                ?? data_get($variant, 'on_hand_quantity')
-                ?? data_get($variant, 'inventory');
+            $qty = $this->faireApi->extractOnHandQuantity($variant);
             // Wholesale only — no retail_price fallback
             $priceMinor = data_get($variant, 'wholesale_price.amount_minor')
                 ?? data_get($variant, 'wholesale_price_cents');
@@ -191,8 +201,8 @@ class FaireLinkMapSyncService
             if ($price !== null) {
                 $payload['price'] = $price;
             }
-            if (is_numeric($qty)) {
-                $payload['inventory'] = max(0, (int) $qty);
+            if ($qty !== null) {
+                $payload['inventory'] = $qty;
             }
 
             FaireMetric::updateOrCreate(
@@ -204,6 +214,49 @@ class FaireLinkMapSyncService
         }
 
         return $count;
+    }
+
+    /**
+     * Faire products list often omits stock — fill faire_metric.inventory from
+     * GET /product-inventory/by-skus so listings Faire Qty is not blank.
+     *
+     * @param  list<string>  $skus
+     */
+    protected function hydrateInventoryFromFaireApi(array $skus): void
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
+            $skus
+        ), static fn ($sku) => $sku !== '')));
+        if ($skus === []) {
+            return;
+        }
+
+        $live = $this->faireApi->getInventoryBySkus($skus);
+        foreach ($live as $sku => $row) {
+            if (! is_array($row) || ! array_key_exists('qty', $row)) {
+                continue;
+            }
+            FaireMetric::query()->where('sku', $sku)->update([
+                'inventory' => max(0, (int) $row['qty']),
+            ]);
+        }
+    }
+
+    protected function clearListingCaches(): void
+    {
+        try {
+            app(FaireLiveListingsService::class)->clearCache();
+        } catch (\Throwable $e) {
+            // ignore
+        }
+        try {
+            Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'faire');
+            Cache::forget(MappingChannelCounts::TOTAL_CACHE_KEY);
+            Cache::forget('mapping_channel_nmap_v2:faire');
+        } catch (\Throwable $e) {
+            // ignore
+        }
     }
 
     /**

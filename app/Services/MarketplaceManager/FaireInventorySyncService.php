@@ -8,6 +8,8 @@ use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
 use App\Services\FaireApiService;
 use App\Services\ShopifyApiService;
+use App\Support\Marketplace\MappingChannelCounts;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -21,9 +23,11 @@ class FaireInventorySyncService
     /**
      * @param  array<int, string>  $skus
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
+     * @param  bool  $exactShopifyQty  When true (mismatch button / mismatch pass), push the
+     *                                 listings Shopify qty with no percent or max cap.
      * @return array{updated: int, failed: int, skipped: int, message: string}
      */
-    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null, bool $exactShopifyQty = false): array
     {
         $skus = array_values(array_unique(array_filter(array_map(
             static fn ($sku) => trim((string) $sku),
@@ -60,6 +64,12 @@ class FaireInventorySyncService
             $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
+
+        if ($exactShopifyQty) {
+            foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
+                $shopifyQty[$key] = (int) $qty;
+            }
+        }
 
         // Match Faire rows by normalized SKU (Shopify often stores NBSP; Faire uses normal spaces).
         $metrics = FaireMetric::query()
@@ -101,7 +111,9 @@ class FaireInventorySyncService
             }
             $pushQty = $shopifyStock === null
                 ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                : ($exactShopifyQty
+                    ? MarketplaceLiveInventoryRules::pushQtyFromLiveShopify($shopifyStock)
+                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty));
 
             $inventoryRows[] = [
                 'product_id' => $productId,
@@ -121,24 +133,28 @@ class FaireInventorySyncService
         }
 
         $invResult = $this->pushInventoryRows($inventoryRows);
-        if (! empty($invResult['success'])) {
-            // Do NOT write Shopify push qty into faire_metric.inventory —
-            // that field is Faire API live stock (link-map). N Map would always collapse.
+        $pushed = (int) ($invResult['pushed'] ?? 0);
+        $failed = (int) ($invResult['failed'] ?? ($pushed > 0 ? 0 : count($inventoryRows)));
+        $updatedSkus = $invResult['updated_skus'] ?? [];
+
+        if ($pushed > 0) {
+            $this->persistFaireMetricInventory($inventoryRows, $updatedSkus);
             $this->updateLocalPlatformQuantities($inventoryRows);
+            $this->clearListingCaches();
 
             return [
-                'updated' => (int) ($invResult['pushed'] ?? count($inventoryRows)),
-                'failed' => (int) ($invResult['failed'] ?? 0),
+                'updated' => $pushed,
+                'failed' => $failed,
                 'skipped' => $skipped,
-                'message' => 'Synced '.((int) ($invResult['pushed'] ?? 0)).' SKU(s) to Faire from live Shopify.',
+                'message' => $invResult['message'] ?? ('Synced '.$pushed.' SKU(s) to Faire from live Shopify.'),
             ];
         }
 
         $this->updateLocalPlatformQuantities($inventoryRows, false);
 
         return [
-            'updated' => (int) ($invResult['pushed'] ?? 0),
-            'failed' => (int) ($invResult['failed'] ?? count($inventoryRows)),
+            'updated' => 0,
+            'failed' => $failed > 0 ? $failed : count($inventoryRows),
             'skipped' => $skipped,
             'message' => $invResult['message'] ?? 'Faire inventory update failed.',
         ];
@@ -303,8 +319,9 @@ class FaireInventorySyncService
             $updated = (int) ($invResult['pushed'] ?? 0);
             $failed = (int) ($invResult['failed'] ?? 0);
             if ($updated > 0) {
-                // Keep faire_metric.inventory as Faire API stock (link-map only).
+                $this->persistFaireMetricInventory($inventoryRows, $invResult['updated_skus'] ?? []);
                 $this->updateLocalPlatformQuantities($inventoryRows);
+                $this->clearListingCaches();
             } elseif ($failed > 0) {
                 Log::warning('FaireInventorySyncService: inventory push failed', $invResult);
             }
@@ -345,7 +362,7 @@ class FaireInventorySyncService
 
     /**
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $inventoryRows
-     * @return array{success: bool, pushed: int, failed: int, message?: string}
+     * @return array{success: bool, pushed: int, failed: int, message?: string, updated_skus?: list<string>}
      */
     protected function pushInventoryRows(array $inventoryRows): array
     {
@@ -354,6 +371,7 @@ class FaireInventorySyncService
             $items[] = [
                 'seller_part_number' => (string) $row['sku_code'],
                 'quantity' => (int) $row['inventory'],
+                'product_id' => (string) ($row['product_id'] ?? ''),
             ];
         }
 
@@ -364,6 +382,7 @@ class FaireInventorySyncService
             'pushed' => (int) ($bulk['pushed'] ?? 0),
             'failed' => (int) ($bulk['failed'] ?? 0),
             'message' => $bulk['error_message'] ?? $bulk['message'] ?? null,
+            'updated_skus' => $bulk['updated_skus'] ?? [],
         ];
     }
 
@@ -416,12 +435,58 @@ class FaireInventorySyncService
     }
 
     /**
-     * @deprecated Live Faire stock is written by FaireLinkMapSyncService into faire_metric.inventory only.
+     * After Faire accepts a push, store that qty as Faire listings stock.
+     *
+     * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
+     * @param  list<string>  $updatedSkus
+     */
+    protected function persistFaireMetricInventory(array $rows, array $updatedSkus = []): void
+    {
+        $allow = [];
+        foreach ($updatedSkus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $allow[strtoupper($sku)] = true;
+            }
+        }
+
+        foreach ($rows as $row) {
+            $sku = trim((string) $row['sku_code']);
+            if ($sku === '') {
+                continue;
+            }
+            if ($allow !== [] && ! isset($allow[strtoupper($sku)])) {
+                continue;
+            }
+            FaireMetric::query()->where('sku', $sku)->update([
+                'inventory' => max(0, (int) $row['inventory']),
+            ]);
+        }
+    }
+
+    protected function clearListingCaches(): void
+    {
+        try {
+            app(FaireLiveListingsService::class)->clearCache();
+        } catch (\Throwable $e) {
+            // ignore
+        }
+        try {
+            Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'faire');
+            Cache::forget(MappingChannelCounts::TOTAL_CACHE_KEY);
+            Cache::forget('mapping_channel_nmap_v2:faire');
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
+     * @deprecated Live Faire stock is written by FaireLinkMapSyncService / persistFaireMetricInventory.
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
      */
     protected function updateLocalStock(array $rows): void
     {
-        // Intentionally no-op: do not overwrite API-sourced faire_metric.inventory with Shopify push qty.
+        $this->persistFaireMetricInventory($rows);
     }
 
     /**
