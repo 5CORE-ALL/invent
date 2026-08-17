@@ -267,7 +267,7 @@
             padding: 0 2px;
             cursor: pointer;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb'])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
         #reverb-apply-std-price-btn {
             background: #0d6efd;
             border-color: #0d6efd;
@@ -749,8 +749,8 @@
                         </ul>
                     </div>
 
-                    {{-- Dil vs PRMT / Cpn% / sprice ? — same action row as /amazon-tabulator-view --}}
-                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
+                    {{-- Dil vs PRMT / sprice ? — CVR vs CPN / CPN% removed on /reverb-pricing --}}
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
 
                     <div class="btn-group flex-shrink-0">
                         <button type="button" class="btn btn-sm dropdown-toggle" id="reverb-s-bump-menu-btn"
@@ -991,7 +991,7 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'reverb'])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'reverb', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
 
     <div class="modal fade" id="reverbDilVsSBumpModal" tabindex="-1" aria-labelledby="reverbDilVsSBumpModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-md">
@@ -1098,7 +1098,7 @@
     let increaseModeActive = false;
     let samePriceModeActive = false;
     let selectedSkus = new Set();
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
 
     function reverbPrmtPctOf(d) {
         const n = parseFloat(d && (d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied));
@@ -1290,9 +1290,11 @@
     }
     function reverbChannelPromoColumns() {
         const cols = typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [];
-        const idx = cols.findIndex(function(c) { return c && c.field === 'prmt_pct'; });
+        const zeroIdx = cols.findIndex(function(c) { return c && c.field === 'zero_sold_prmt'; });
+        const prmtIdx = cols.findIndex(function(c) { return c && c.field === 'prmt_pct'; });
         const pushCol = reverbPushPrmtColumnDef();
-        if (idx >= 0) cols.splice(idx + 1, 0, pushCol);
+        const after = zeroIdx >= 0 ? zeroIdx : prmtIdx;
+        if (after >= 0) cols.splice(after + 1, 0, pushCol);
         else cols.unshift(pushCol);
         return cols;
     }
@@ -1335,6 +1337,24 @@
         return ((grossPft - adSpend) / lp) * 100;
     }
 
+    /**
+     * Dil color — Red <25, Green 25–50, Pink 50%+ (OV L30 ÷ INV).
+     * 0 Sold (RV L30 = 0) still uses these colors; Dil vs PRMT has a separate PRMT% per color.
+     */
+    function reverbDilColorBand(d) {
+        const inv = parseFloat(d && d.INV) || 0;
+        const ovL30 = parseFloat(d && d.L30) || 0;
+        const dil = inv === 0 ? 0 : (ovL30 / inv) * 100;
+        if (dil < 25) return 'red';
+        if (dil < 50) return 'green';
+        return 'pink';
+    }
+    function reverbDilColorHex(band) {
+        if (band === 'red') return '#a00211';
+        if (band === 'green') return '#28a745';
+        if (band === 'pink') return '#e83e8c';
+        return '#6c757d';
+    }
     /** PFT / SNPFT color via MetricPctColors (GPFT bands by default; pass field for NPFT). */
     function reverbPftColor(percent, field) {
         if (window.MetricPctColors) {
@@ -1985,7 +2005,7 @@
         const missingHiddenColumnFields = [
             'RV Price',
             'GPFT%', 'ROI%', 'NPFT', 'NROI', 'SPRICE', 'SGPFT', 'SROI', 'SNPFT', 'SNROI',
-            'prmt_pct', 'push_prmt', 'cpn_pct', 'push_std_prc',
+            'prmt_pct', 'zero_sold_prmt', 'push_prmt', 'push_std_prc',
             'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
             'Views', 'CVR',
             'L30', 'RV Dil%', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
@@ -3359,17 +3379,13 @@
                         const rowData = cell.getRow().getData();
                         const INV = parseFloat(rowData.INV) || 0;
                         const OVL30 = parseFloat(rowData['L30']) || 0;
-                        
-                        if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
-                        
-                        const dil = (OVL30 / INV) * 100;
-                        let color = '';
-                        
-                        if (dil < 25) color = '#a00211';
-                        else if (dil >= 25 && dil < 50) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                        const dil = INV === 0 ? 0 : (OVL30 / INV) * 100;
+                        const band = reverbDilColorBand(rowData);
+                        const color = reverbDilColorHex(band);
+                        if (INV === 0) {
+                            return '<span style="color: #6c757d;" title="INV = 0">0%</span>';
+                        }
+                        return `<span style="color: ${color}; font-weight: 600;" title="Dil = OV L30 ÷ INV">${Math.round(dil)}%</span>`;
                     },
                     width: 50
                 },
@@ -4529,17 +4545,10 @@
                 });
             }
 
-            // DIL filter (calculated as L30 / INV * 100)
+            // DIL filter — Red / Green / Pink
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const inv = parseFloat(data['INV']) || 0;
-                    const l30 = parseFloat(data['L30']) || 0;
-                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                    
-                    if (dilFilter === 'red') return dil < 25;
-                    if (dilFilter === 'green') return dil >= 25 && dil < 50;
-                    if (dilFilter === 'pink') return dil >= 50;
-                    return true;
+                    return reverbDilColorBand(data) === dilFilter;
                 });
             }
 
@@ -5534,7 +5543,7 @@
             STANDARD_PRICE: 1, push_std_prc: 1, 'RV Price': 1, 'A Price': 1, lmp_price: 1,
             linked_lmp_skus: 1, linked_lmp_sku_add: 1, 'ROI%': 1, 'GPFT%': 1, NPFT: 1, NROI: 1,
             Profit: 1, 'Sales L30': 1, LP_productmaster: 1, Ship_productmaster: 1, prmt_pct: 1,
-            push_prmt: 1, cpn_pct: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
+            zero_sold_prmt: 1, push_prmt: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
         };
         const COL_VIS_ADS = {
             Missing_Ad: 1, Bump: 1, RE_BID: 1, push_bump: 1
@@ -5545,7 +5554,7 @@
             if (field === 'push_prmt') return 'Push %';
             if (field === 'push_bump') return 'Push B%';
             if (field === 'prmt_pct') return 'PRMT %';
-            if (field === 'cpn_pct') return 'CPN %';
+            if (field === 'zero_sold_prmt') return '0 Sold';
             if (field === 'push_price') return 'Push';
             const raw = (def && def.title != null) ? def.title : field;
             const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();

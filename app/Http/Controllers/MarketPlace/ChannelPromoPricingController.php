@@ -784,6 +784,9 @@ class ChannelPromoPricingController extends Controller
     {
         if ($channel === 'reverb') {
             return [
+                ['key' => '0-sold-red', 'label' => '0 Sold · Red (<25%)', 'prmt' => 10],
+                ['key' => '0-sold-green', 'label' => '0 Sold · Green (25–50%)', 'prmt' => 8],
+                ['key' => '0-sold-pink', 'label' => '0 Sold · Pink (50%+)', 'prmt' => 3],
                 ['key' => '0-20', 'label' => '0–20%', 'prmt' => 10],
                 ['key' => '20-40', 'label' => '20–40%', 'prmt' => 8],
                 ['key' => '40-60', 'label' => '40–60%', 'prmt' => 5],
