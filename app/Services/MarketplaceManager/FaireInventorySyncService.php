@@ -71,20 +71,37 @@ class FaireInventorySyncService
             }
         }
 
-        // Match Faire rows by normalized SKU (Shopify often stores NBSP; Faire uses normal spaces).
+        // Match Faire rows by normalized SKU, but do not also push hyphen
+        // aliases (ND-58) when the exact requested SKU (ND 58) is already mapped.
+        $exactMetricSkus = FaireMetric::query()
+            ->whereIn('sku', $skus)
+            ->pluck('sku')
+            ->map(static fn ($s) => (string) $s)
+            ->all();
+        $exactSet = array_flip($exactMetricSkus);
+
         $metrics = FaireMetric::query()
             ->whereNotNull('product_id')
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'product_id')
             ->get()
-            ->filter(function (FaireMetric $metric) use ($wantedNorms, $skus) {
+            ->filter(function (FaireMetric $metric) use ($wantedNorms, $skus, $exactSet) {
                 $raw = (string) $metric->sku;
-                if (in_array($raw, $skus, true)) {
+                if (in_array($raw, $skus, true) || isset($exactSet[$raw])) {
                     return true;
                 }
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+                if ($norm === '' || ! isset($wantedNorms[$norm])) {
+                    return false;
+                }
+                foreach ($skus as $requested) {
+                    if (ShopifySku::normalizeSkuForShopifyLookup($requested) === $norm
+                        && isset($exactSet[$requested])) {
+                        return false;
+                    }
+                }
 
-                return $norm !== '' && isset($wantedNorms[$norm]);
+                return true;
             })
             ->values();
 

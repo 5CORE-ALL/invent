@@ -234,12 +234,44 @@ class FaireLinkMapSyncService
 
         $live = $this->faireApi->getInventoryBySkus($skus);
         foreach ($live as $sku => $row) {
-            if (! is_array($row) || ! array_key_exists('qty', $row)) {
+            if (! is_array($row) || ! array_key_exists('qty', $row) || $row['qty'] === null) {
                 continue;
             }
             FaireMetric::query()->where('sku', $sku)->update([
                 'inventory' => max(0, (int) $row['qty']),
             ]);
+        }
+
+        $missing = [];
+        foreach ($skus as $sku) {
+            if (! isset($live[$sku])) {
+                $missing[] = $sku;
+            }
+        }
+        if ($missing === []) {
+            return;
+        }
+
+        $productIds = FaireMetric::query()
+            ->whereIn('sku', $missing)
+            ->whereNotNull('product_id')
+            ->where('product_id', '!=', '')
+            ->pluck('product_id', 'sku');
+        $seenProducts = [];
+        foreach ($productIds as $sku => $productId) {
+            $productId = trim((string) $productId);
+            if ($productId === '' || isset($seenProducts[$productId])) {
+                continue;
+            }
+            $seenProducts[$productId] = true;
+            foreach ($this->faireApi->getInventoryByProductId($productId) as $faireSku => $row) {
+                if (! is_array($row) || $row['qty'] === null) {
+                    continue;
+                }
+                FaireMetric::query()->where('sku', $faireSku)->update([
+                    'inventory' => max(0, (int) $row['qty']),
+                ]);
+            }
         }
     }
 
