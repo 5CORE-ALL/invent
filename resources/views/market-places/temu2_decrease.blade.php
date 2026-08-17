@@ -608,7 +608,7 @@
                         <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-sales-amt-badge"
                             data-badge-metric="total_sales" data-badge-label="Sales"
                             style="color: black; font-weight: bold; cursor: pointer;"
-                            title="L30 sales on Full Temu Price: (Base × 1.1765) + $2.99 if ≤ $26.99">Sales: $0</span>
+                            title="L30 sales on Full Temu Price: (Base × 1.1364) + $2.99 if ≤ $26.99">Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-recovery-badge"
                             style="color: white; font-weight: bold;"
                             title="Recovery Price = Sales × 0.88 (Full Temu Price × 0.88 × Qty)">Recovery: $0</span>
@@ -681,7 +681,7 @@
                             <i class="fa fa-trash"></i> Clear SPRICE
                         </button>
                         <button type="button" id="push-temu2-price-btn" class="btn btn-sm btn-success"
-                            title="Push SPRICE→base: (Sprice−2.99)×0.88 if SPRICE&lt;$30; else Sprice×0.88">
+                            title="Push SPRICE→base: inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)">
                             <i class="fas fa-cloud-upload-alt"></i> Push Prices
                         </button>
                     </div>
@@ -1143,13 +1143,13 @@
         const marginRaw = parseFloat(rowData && rowData.percentage);
         return (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
     }
-    const TEMU_FULL_PRICE_MULT = 1.1765;
+    const TEMU_FULL_PRICE_MULT = 1.1364;
     function temu2RPriceFromRow(rowData) {
         const basePrice = parseFloat(rowData && rowData.base_price) || 0;
         if (basePrice > 0) return basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
         return parseFloat(rowData && rowData.temu_price) || 0;
     }
-    /** Full Temu Price from Base: (base × 1.1765), then +$2.99 if ≤ $26.99 */
+    /** Full Temu Price from Base: (base × 1.1364), then +$2.99 if ≤ $26.99 */
     function temu2FullPriceFromBase(basePrice) {
         const b = parseFloat(basePrice) || 0;
         if (b <= 0) return 0;
@@ -1159,6 +1159,25 @@
     }
     function temu2FullPriceFromRow(rowData) {
         return temu2FullPriceFromBase(parseFloat(rowData && rowData.base_price) || 0);
+    }
+    function temu2BaseFromFullPrice(full) {
+        const f = parseFloat(full) || 0;
+        if (!(f > 0)) return 0;
+        const candidates = [(f - 2.99) / TEMU_FULL_PRICE_MULT, f / TEMU_FULL_PRICE_MULT];
+        let best = 0;
+        let bestErr = Infinity;
+        candidates.forEach(function(base) {
+            if (!(base > 0)) return;
+            const rebuilt = temu2FullPriceFromBase(base);
+            const err = Math.abs(rebuilt - f);
+            if (err < bestErr - 1e-6) {
+                bestErr = err;
+                best = base;
+            } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
+                best = base;
+            }
+        });
+        return best;
     }
     const TEMU_FIXED_ADS_PERCENT = 2.2;
     function temuAdsPercentForNet() {
@@ -1211,7 +1230,7 @@
         const sprice = parseFloat(spriceOverride != null ? spriceOverride : (rowData && rowData.sprice)) || 0;
         return spft - ((sprice > 0 ? sprice : 0) * (temuAdsPercentForNet() / 100));
     }
-    // S Recovery / Push base rate = 0.88 (S Profit / SROI / S Temu B Prc)
+    // S Recovery rate = 0.88 (S Profit / SROI). S Temu B Prc inverts Temu Price.
     const TEMU2_S_RECOVERY_RATE = 0.88;
     function updateTemu2RecoveryBadge(salesTotal) {
         const recovery = Math.round((Number(salesTotal) || 0) * TEMU2_S_RECOVERY_RATE);
@@ -1252,17 +1271,13 @@
     let table = null;
 
     /**
-     * Temu2 push base from SPRICE (same as /temu-decrease):
-     *   if SPRICE < $30 → (Sprice − 2.99) × 0.88
-     *   if SPRICE ≥ $30 → Sprice × 0.88
+     * Temu2 push base from SPRICE — inverse of Temu Price (same as /temu-decrease).
      */
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
-        const rate = TEMU2_S_RECOVERY_RATE;
-        const push = s < 30 ? ((s - 2.99) * rate) : (s * rate);
+        const push = temu2BaseFromFullPrice(s);
         if (!isFinite(push)) return null;
-        // Allow ≤0 for display (shown in red); push actions still require push > 0
         return +push.toFixed(2);
     }
     function temu2FormatMoney(amount, opts) {
@@ -1274,33 +1289,15 @@
         return `<span style="${style}">$${n.toFixed(2)}</span>`;
     }
     /**
-     * Inverse of temuPushBaseFromSprice — SPRICE that yields target S Temu B Prc (push base).
+     * Inverse of temuPushBaseFromSprice — SPRICE that yields target S Temu B Prc.
+     * Same as Temu Price from Base.
      */
     function temuSpriceFromPushBase(targetPush) {
         const T = parseFloat(targetPush);
         if (!isFinite(T) || T <= 0) return null;
-        const rate = TEMU2_S_RECOVERY_RATE;
-        const sFromLow = (T / rate) + 2.99;
-        const sFromHigh = T / rate;
-        const candidates = [];
-        if (sFromLow > 0 && sFromLow < 30) candidates.push(+sFromLow.toFixed(2));
-        if (sFromHigh >= 30) candidates.push(+sFromHigh.toFixed(2));
-        if (!candidates.length) {
-            if (sFromLow > 0) candidates.push(+sFromLow.toFixed(2));
-            if (sFromHigh > 0) candidates.push(+sFromHigh.toFixed(2));
-        }
-        let best = null;
-        let bestErr = Infinity;
-        candidates.forEach(function(s) {
-            const p = temuPushBaseFromSprice(s);
-            if (p == null) return;
-            const err = Math.abs(p - T);
-            if (err < bestErr) {
-                bestErr = err;
-                best = s;
-            }
-        });
-        return best;
+        const full = temu2FullPriceFromBase(T);
+        if (!(full > 0)) return null;
+        return +full.toFixed(2);
     }
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -3749,12 +3746,12 @@
                     field: "temu_price_display",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Temu Price = (Base × 1.1765); +$2.99 if that result ≤ $26.99",
+                    headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     formatter: function(cell) {
                         const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
                         if (basePrice === 0) return '$0.00';
                         const displayPrice = +temu2FullPriceFromBase(basePrice).toFixed(2);
-                        return `<span title="(Base × 1.1765)${(basePrice * TEMU_FULL_PRICE_MULT) <= 26.99 ? ' + $2.99' : ''}">$${displayPrice.toFixed(2)}</span>`;
+                        return `<span title="(Base × 1.1364)${(basePrice * TEMU_FULL_PRICE_MULT) <= 26.99 ? ' + $2.99' : ''}">$${displayPrice.toFixed(2)}</span>`;
                     }
                 },
                 {
@@ -4052,7 +4049,7 @@
                     width: 55,
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Push base = (Sprice−2.99)×0.88 if SPRICE<$30; else Sprice×0.88",
+                    headerTooltip: "Push base = inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent) return '';
@@ -4083,7 +4080,7 @@
                     field: "stemu_price",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Push base from SPRICE: (Sprice−2.99)×0.88 if SPRICE<$30; else Sprice×0.88. Negatives in red.",
+                    headerTooltip: "Push base = inverse of Temu Price: undo +$2.99 (if applied) then ÷ 1.1364. Matches Base Price when SPRICE = Temu Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const pushBase = temuPushBaseFromSprice(rowData['sprice']);
@@ -5778,7 +5775,7 @@
 
         updateCampaignPeriodUi();
 
-        // --- Temu2 price push: SPRICE → base via (×0.88)−2.99 if SPRICE<$35; else ×0.88 ---
+        // --- Temu2 price push: SPRICE → base via inverse of Temu Price ---
         function pushTemu2PriceForRow(row, price) {
             const data = row.getData();
             const sku = data.sku;
@@ -5847,9 +5844,7 @@
             }
             if (!confirm(
                 'Push Temu2 base $' + pushBase.toFixed(2)
-                + (sprice < 30
-                    ? ' (from (SPRICE $' + sprice.toFixed(2) + ' − 2.99) × 0.88)'
-                    : ' (from SPRICE $' + sprice.toFixed(2) + ' × 0.88)')
+                + ' (inverse of Temu Price from SPRICE $' + sprice.toFixed(2) + ')'
                 + ' for SKU: ' + sku + '?'
             )) return;
 
@@ -5973,7 +5968,7 @@
 
             if (!confirm(
                 'Push Temu2 base for ' + items.length + ' SKU(s)?\n'
-                + '(Sprice − 2.99) × 0.88 if SPRICE < $30; else Sprice × 0.88'
+                + 'Base = inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)'
             )) return;
 
             const $btn = $('#push-temu2-price-btn');

@@ -2787,7 +2787,7 @@ class TemuController extends Controller
             $qty = (int)($row->quantity_purchased ?? 0);
             $base = (float)($row->base_price_total ?? 0);
             $totalQuantity += $qty;
-            // Full Temu Price = (base × 1.1765); +$2.99 if that ≤ $26.99
+            // Full Temu Price = (base × 1.1364); +$2.99 if that ≤ $26.99
             $totalRevenue += TemuShopifySalesService::computeFullTemuPrice($base) * $qty;
         }
         return [
@@ -3145,7 +3145,7 @@ class TemuController extends Controller
                 $base = (float)($row->base_price_total ?? 0);
                 $salesTotalQuantity += $qty;
 
-                // Full Temu Price = (base × 1.1765); +$2.99 if that ≤ $26.99 — Sales / GPFT
+                // Full Temu Price = (base × 1.1364); +$2.99 if that ≤ $26.99 — Sales / GPFT
                 $fullPrice = TemuShopifySalesService::computeFullTemuPrice($base);
                 $salesTotalRevenue += $fullPrice * $qty;
 
@@ -3660,7 +3660,7 @@ class TemuController extends Controller
                 } else {
                     $temuPrice = 0;
                 }
-                // Full Temu Price = (base × 1.1765); +$2.99 if ≤ $26.99 — GPFT / NPFT; GROI stays on R Price
+                // Full Temu Price = (base × 1.1364); +$2.99 if ≤ $26.99 — GPFT / NPFT; GROI stays on R Price
                 $temuFullPrice = TemuShopifySalesService::computeFullTemuPrice((float) $basePrice);
 
                 // Temu 1 base/listing price for the same SKU. Only populated on the Temu 2

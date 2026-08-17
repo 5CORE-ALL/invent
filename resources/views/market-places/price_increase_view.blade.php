@@ -2742,20 +2742,39 @@
 
     /**
      * Temu / Temu2 — same as /temu-decrease:
-     *   Full Price = (Base × 1.1765); +$2.99 if that ≤ $26.99
+     *   Full Price = (Base × 1.1364); +$2.99 if that ≤ $26.99
      *   S Recovery = SPRICE × 0.88
      *   SGPFT = (SPRICE × margin − LP − ship) / SPRICE
      *   SROI  = (S Recovery × margin − LP − ship) / LP
-     *   Push: SPRICE < $30 → (Sprice − 2.99) × 0.88; else Sprice × 0.88
+     *   Push base = inverse of Full Price
      */
     const TEMU_S_RECOVERY_RATE = 0.88;
-    const TEMU_FULL_PRICE_MULT = 1.1765;
+    const TEMU_FULL_PRICE_MULT = 1.1364;
     function temuFullPriceFromBase(basePrice) {
         const b = parseFloat(basePrice) || 0;
         if (b <= 0) return 0;
         let full = b * TEMU_FULL_PRICE_MULT;
         if (full <= 26.99) full += 2.99;
         return full;
+    }
+    function temuBaseFromFullPrice(full) {
+        const f = parseFloat(full) || 0;
+        if (!(f > 0)) return 0;
+        const candidates = [(f - 2.99) / TEMU_FULL_PRICE_MULT, f / TEMU_FULL_PRICE_MULT];
+        let best = 0;
+        let bestErr = Infinity;
+        candidates.forEach(function(base) {
+            if (!(base > 0)) return;
+            const rebuilt = temuFullPriceFromBase(base);
+            const err = Math.abs(rebuilt - f);
+            if (err < bestErr - 1e-6) {
+                bestErr = err;
+                best = base;
+            } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
+                best = base;
+            }
+        });
+        return best;
     }
     function temuBaseFromRPrice(rPrice) {
         const r = parseFloat(rPrice) || 0;
@@ -2790,7 +2809,7 @@
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
-        const push = s < 30 ? ((s - 2.99) * TEMU_S_RECOVERY_RATE) : (s * TEMU_S_RECOVERY_RATE);
+        const push = temuBaseFromFullPrice(s);
         if (!isFinite(push)) return null;
         return +push.toFixed(2);
     }
@@ -4662,7 +4681,7 @@
 
                 // Price in red when LMP is available and LMP < Price
                 const lmpForPrice = parseFloat(item.lmp_price);
-                // Temu / Temu2 Price column: Full Temu Price (Base × 1.1765; +$2.99 if ≤ $26.99)
+                // Temu / Temu2 Price column: Full Temu Price (Base × 1.1364; +$2.99 if ≤ $26.99)
                 const displayPrice = ((isTemuMpRow || isTemu2MpRow) && price > 0)
                     ? +temuFullPriceFromItem(item).toFixed(2)
                     : price;
@@ -4703,7 +4722,7 @@
                     ? '-'
                     : '<span style="' + priceColorStyle + '" title="' +
                         ((isTemuMpRow || isTemu2MpRow) && price > 0
-                            ? ((isTemu2MpRow ? 'Temu2' : 'Temu') + ' Full Price (Base × 1.1765). R Price: $' + price.toFixed(2))
+                            ? ((isTemu2MpRow ? 'Temu2' : 'Temu') + ' Full Price (Base × 1.1364). R Price: $' + price.toFixed(2))
                             : '') +
                       '">$' + displayPrice.toFixed(2) + '</span>' + priceChartDot;
 
@@ -5895,7 +5914,7 @@
                     field: "stemu_price_display",
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Temu push base from SPRICE: (Sprice−2.99)×0.88 if SPRICE&lt;$30; else Sprice×0.88",
+                    headerTooltip: "Temu push base = inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary) return '';
@@ -5911,7 +5930,7 @@
                     width: 60,
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Push Temu base = (Sprice−2.99)×0.88 if SPRICE&lt;$30; else Sprice×0.88",
+                    headerTooltip: "Push Temu base = inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary) return '';
@@ -6579,9 +6598,8 @@
             }
             if (!confirm(
                 'Push Temu base $' + pushBase.toFixed(2)
-                + ' (from SPRICE $' + sprice.toFixed(2) + ' × 0.88'
-                + (sprice < 30 ? ' − 2.99' : '')
-                + ') for SKU: ' + sku + '?'
+                + ' (inverse of Temu Price from SPRICE $' + sprice.toFixed(2) + ')'
+                + ' for SKU: ' + sku + '?'
             )) return;
 
             pushPiTemuPriceForRow(row, sprice).then(function() {
@@ -6612,7 +6630,7 @@
             }
             if (!confirm(
                 'Push Temu base for ' + items.length + ' SKU(s)?\n'
-                + '(Sprice − 2.99) × 0.88 if SPRICE < $30; else Sprice × 0.88'
+                + 'Base = inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)'
             )) return;
 
             const $btn = $('#pi-push-temu-price-btn');
@@ -9674,7 +9692,7 @@
             }
             target.price = price;
             const mpLower = String(target.marketplace || '').toLowerCase();
-            // Temu / Temu2: push base = (Sprice−2.99)×0.88 if SPRICE<$30; else Sprice×0.88
+            // Temu / Temu2: push base = inverse of Temu Price
             let pushPrice = price;
             if (mpLower === 'temu' || mpLower === 'temu2') {
                 const converted = temuPushBaseFromSprice(price);
@@ -9760,7 +9778,7 @@
                 : basePrice;
             const $priceTd = $tr.children('td').eq(3);
             const tip = isTemu
-                ? ((mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' Full Price (Base × 1.1765). Pushed base: $' + basePrice.toFixed(2))
+                ? ((mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' Full Price (Base × 1.1364). Pushed base: $' + basePrice.toFixed(2))
                 : '';
             const existingDot = $priceTd.find('.pricing-master-chart-link').prop('outerHTML') || '';
             $priceTd.html(
@@ -10103,9 +10121,7 @@
                     return;
                 }
                 confirmPrice = converted;
-                confirmExtra = price < 30
-                    ? ' (from (SPRICE $' + price.toFixed(2) + ' − 2.99) × 0.88)'
-                    : ' (from SPRICE $' + price.toFixed(2) + ' × 0.88)';
+                confirmExtra = ' (inverse of Temu Price from SPRICE $' + price.toFixed(2) + ')';
             }
 
             if (!confirm(

@@ -70,9 +70,12 @@ class TemuShopifySalesService
         return self::marginDecimalFromMarketplace('Temu 2', 'TemuTwo', 'Temu2');
     }
 
+    /** Full Temu Price multiplier — inverse of S Recovery 0.88. */
+    public const FULL_PRICE_MULT = 1.1364;
+
     /**
      * Full Temu Price (listing / Sales / GPFT):
-     *   (base × 1.1765); if that result ≤ $26.99 then +$2.99.
+     *   (base × 1.1364); if that result ≤ $26.99 then +$2.99.
      * Not the same as Temu R Price (base + $2.99 when base ≤ $26.99).
      */
     public static function computeFullTemuPrice(float $basePrice): float
@@ -81,12 +84,40 @@ class TemuShopifySalesService
             return 0.0;
         }
 
-        $full = $basePrice * 1.1765;
+        $full = $basePrice * self::FULL_PRICE_MULT;
         if ($full <= 26.99) {
             $full += 2.99;
         }
 
         return $full;
+    }
+
+    /**
+     * Invert Full Temu Price back to listing base (S Temu B Prc / push base).
+     */
+    public static function computeBaseFromFullTemuPrice(float $fullPrice): float
+    {
+        if ($fullPrice <= 0) {
+            return 0.0;
+        }
+
+        $candidates = [($fullPrice - 2.99) / self::FULL_PRICE_MULT, $fullPrice / self::FULL_PRICE_MULT];
+        $best = 0.0;
+        $bestErr = INF;
+        foreach ($candidates as $base) {
+            if ($base <= 0) {
+                continue;
+            }
+            $err = abs(self::computeFullTemuPrice($base) - $fullPrice);
+            if ($err < $bestErr - 1e-6) {
+                $bestErr = $err;
+                $best = $base;
+            } elseif (abs($err - $bestErr) <= 1e-6 && $base > $best) {
+                $best = $base;
+            }
+        }
+
+        return $best;
     }
 
     /**
@@ -104,7 +135,7 @@ class TemuShopifySalesService
         return $rec > 0 ? $rec : 0.0;
     }
 
-    /** S Recovery / push-base rate — same as /temu-decrease (not 0.85). */
+    /** S Recovery rate — same as /temu-decrease (not used for push base). */
     public const S_RECOVERY_RATE = 0.88;
 
     public static function computeSRecovery(float $sprice): float
@@ -113,20 +144,16 @@ class TemuShopifySalesService
     }
 
     /**
-     * Push base from SPRICE — same as /temu-decrease:
-     *   SPRICE < $30 → (Sprice − 2.99) × 0.88
-     *   SPRICE ≥ $30 → Sprice × 0.88
+     * Push base from SPRICE — inverse of Temu Price (same as /temu-decrease S Temu B Prc).
      */
     public static function computePushBaseFromSprice(float $sprice): ?float
     {
         if ($sprice <= 0) {
             return null;
         }
-        $push = $sprice < 30
-            ? (($sprice - 2.99) * self::S_RECOVERY_RATE)
-            : ($sprice * self::S_RECOVERY_RATE);
+        $base = self::computeBaseFromFullTemuPrice($sprice);
 
-        return round($push, 2);
+        return $base > 0 ? round($base, 2) : null;
     }
 
     /**

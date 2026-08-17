@@ -122,7 +122,7 @@
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge"
                             style="color: white; font-weight: bold;"
-                            title="Σ Temu Price × Qty — Temu Price = (Base × 1.1765); +$2.99 if ≤ $26.99">Temu Full Price Sales: $0.00</span>
+                            title="Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if ≤ $26.99">Temu Full Price Sales: $0.00</span>
                         <span class="badge fs-6 p-2" id="l60-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">L60 Sales: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                     </div>
@@ -353,7 +353,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 120,
-                    headerTooltip: "Temu Price = (Base × 1.1765); +$2.99 if that result ≤ $26.99",
+                    headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -521,8 +521,8 @@
             return base <= 26.99 ? base + 2.99 : base;
         }
 
-        // Temu Price = (Base × 1.1765); +$2.99 if that result ≤ $26.99 — same as /temu-decrease
-        const TEMU_PRICE_MULT = 1.1765;
+        // Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99 — same as /temu-decrease
+        const TEMU_PRICE_MULT = 1.1364;
         function temuPriceFromBase(basePrice) {
             const b = parseFloat(basePrice) || 0;
             if (b <= 0) return 0;

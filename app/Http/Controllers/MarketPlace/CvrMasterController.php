@@ -6044,11 +6044,11 @@ class CvrMasterController extends Controller
         $byDateKey = $this->loadChannelPriceHistoryByDate($sku, $marketplace, $days);
 
         if ($metric === 'price') {
-            // Temu / Temu2 modal Price cells show base × 1.1765 — convert history to displayed Price
+            // Temu / Temu2 modal Price cells show Full Temu Price — convert history to displayed Price
             if (in_array($marketplace, ['temu', 'temu2'], true)) {
                 foreach ($byDateKey as $k => $v) {
                     if ((float) $v > 0) {
-                        $byDateKey[$k] = round((float) $v * 1.1765, 2);
+                        $byDateKey[$k] = round(TemuShopifySalesService::computeFullTemuPrice((float) $v), 2);
                     }
                 }
             }
@@ -6060,7 +6060,7 @@ class CvrMasterController extends Controller
             } else {
                 $live = $this->resolveLiveChannelPriceForChart($sku, $marketplace);
                 if ($live !== null && in_array($marketplace, ['temu', 'temu2'], true)) {
-                    $live = round($live * 1.1765, 2);
+                    $live = round(TemuShopifySalesService::computeFullTemuPrice($live), 2);
                 }
             }
             if ($live !== null && $live > 0) {

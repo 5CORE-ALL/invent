@@ -1961,7 +1961,7 @@
     }
 
     const TEMU_S_RECOVERY_RATE = 0.88;
-    const TEMU_FULL_PRICE_MULT = 1.1765;
+    const TEMU_FULL_PRICE_MULT = 1.1364;
     function pefIsTemu(d) {
         return String(d.marketplace || d.channel_key || '').toLowerCase().indexOf('temu') !== -1;
     }
@@ -1974,6 +1974,25 @@
         let full = b * TEMU_FULL_PRICE_MULT;
         if (full <= 26.99) full += 2.99;
         return full;
+    }
+    function pefTemuBaseFromFullPrice(full) {
+        const f = parseFloat(full) || 0;
+        if (!(f > 0)) return 0;
+        const candidates = [(f - 2.99) / TEMU_FULL_PRICE_MULT, f / TEMU_FULL_PRICE_MULT];
+        let best = 0;
+        let bestErr = Infinity;
+        candidates.forEach(function(base) {
+            if (!(base > 0)) return;
+            const rebuilt = pefTemuFullPriceFromBase(base);
+            const err = Math.abs(rebuilt - f);
+            if (err < bestErr - 1e-6) {
+                bestErr = err;
+                best = base;
+            } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
+                best = base;
+            }
+        });
+        return best;
     }
     function pefTemuBaseFromRPrice(rPrice) {
         const r = parseFloat(rPrice) || 0;
@@ -3585,11 +3604,11 @@
         return mp;
     }
 
-    /** Temu / Temu2 push base — same as /price-increase. */
+    /** Temu / Temu2 push base — inverse of Temu Price (same as /temu-decrease). */
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
-        const push = s < 30 ? ((s - 2.99) * TEMU_S_RECOVERY_RATE) : (s * TEMU_S_RECOVERY_RATE);
+        const push = pefTemuBaseFromFullPrice(s);
         if (!(push > 0)) return null;
         return +push.toFixed(2);
     }

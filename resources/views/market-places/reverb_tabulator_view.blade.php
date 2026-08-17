@@ -1988,7 +1988,7 @@
             'prmt_pct', 'push_prmt', 'cpn_pct', 'push_std_prc',
             'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
             'Views', 'CVR',
-            'L30', 'RV Dil%', 'MAP', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
+            'L30', 'RV Dil%', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
         ];
 
         // Remember each column's visibility before the filter hid it, so we can restore it
@@ -3466,38 +3466,6 @@
                     }
                 },
                 reverbPushBumpColumnDef(),
-                {
-                    title: "Missing L",
-                    field: "Missing",
-                    hozAlign: "center",
-                    width: 70,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === 'M') {
-                            return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
-                        }
-                        return '';
-                    }
-                },
-                {
-                    title: "MAP",
-                    field: "MAP",
-                    hozAlign: "center",
-                    width: 90,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        
-                        if (!value) return '';
-                        
-                        if (value === 'Map') {
-                            return '<span style="color: #28a745; font-weight: bold; background-color: #d4edda; padding: 2px 6px; border-radius: 3px;">MAP</span>';
-                        } else if (value.includes('N Map|')) {
-                            const diff = value.split('|')[1];
-                            return `<span style="color: #dc3545; font-weight: bold; background-color: #f8d7da; padding: 2px 6px; border-radius: 3px;">N MP (${diff})</span>`;
-                        }
-                        return '';
-                    }
-                },
                 {
                     title: "Views",
                     field: "Views",
@@ -5560,7 +5528,7 @@
         const COL_VIS_BASIC = {
             Parent: 1, image_path: 1, '(Child) sku': 1, links_column: 1, INV: 1, L30: 1,
             'RV Dil%': 1, 'RV L30': 1, reverb_daily_qty: 1, reverb_daily_qty_x_subtotal: 1,
-            reverb_daily_qty_x_amount: 1, 'R Stock': 1, Missing: 1, MAP: 1, Views: 1, CVR: 1, nr_req: 1
+            reverb_daily_qty_x_amount: 1, 'R Stock': 1, Views: 1, CVR: 1, nr_req: 1
         };
         const COL_VIS_PRICING = {
             STANDARD_PRICE: 1, push_std_prc: 1, 'RV Price': 1, 'A Price': 1, lmp_price: 1,

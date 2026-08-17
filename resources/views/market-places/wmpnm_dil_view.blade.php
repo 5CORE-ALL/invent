@@ -3870,8 +3870,8 @@
 
                 // Price in red when LMP is available and LMP < Price
                 const lmpForPrice = parseFloat(item.lmp_price);
-                // Temu / Temu2 Price column: display only × 1.1765 (~1/0.85). GPFT / GROI / NROI / NPFT stay on original price.
-                const TEMU_PRICE_DISPLAY_MULT = 1.1765;
+                // Temu / Temu2 Price column: display only × 1.1364 (~1/0.88). GPFT / GROI / NROI / NPFT stay on original price.
+                const TEMU_PRICE_DISPLAY_MULT = 1.1364;
                 const displayPrice = ((isTemuMpRow || isTemu2MpRow) && price > 0)
                     ? +(price * TEMU_PRICE_DISPLAY_MULT).toFixed(2)
                     : price;
@@ -3910,7 +3910,7 @@
                     ? '-'
                     : '<span style="' + priceColorStyle + '" title="' +
                         ((isTemuMpRow || isTemu2MpRow) && price > 0
-                            ? ((isTemu2MpRow ? 'Temu2' : 'Temu') + ' Price × 1.1765 (shown). Base calc price: $' + price.toFixed(2))
+                            ? ((isTemu2MpRow ? 'Temu2' : 'Temu') + ' Price × 1.1364 (shown). Base calc price: $' + price.toFixed(2))
                             : '') +
                       '">$' + displayPrice.toFixed(2) + '</span>' + priceChartDot;
 
@@ -7606,15 +7606,15 @@
 
             $tr.attr('data-price', basePrice);
 
-            // Price cell: Temu/Temu2 display × 1.1765 (same as renderMarketplaceData)
-            const TEMU_PRICE_DISPLAY_MULT = 1.1765;
+            // Price cell: Temu/Temu2 display × 1.1364 (same as renderMarketplaceData)
+            const TEMU_PRICE_DISPLAY_MULT = 1.1364;
             const isTemu = (mpLower === 'temu' || mpLower === 'temu2');
             const displayPrice = (isTemu && basePrice > 0)
                 ? +(basePrice * TEMU_PRICE_DISPLAY_MULT).toFixed(2)
                 : basePrice;
             const $priceTd = $tr.children('td').eq(3);
             const tip = isTemu
-                ? ((mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' Price × 1.1765 (shown). Base calc price: $' + basePrice.toFixed(2))
+                ? ((mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' Price × 1.1364 (shown). Base calc price: $' + basePrice.toFixed(2))
                 : '';
             const existingDot = $priceTd.find('.pricing-master-chart-link').prop('outerHTML') || '';
             $priceTd.html(
