@@ -824,8 +824,11 @@ final class MarketplaceListingStockResolver
     }
 
     /**
-     * Prefer warm live-listings inventory; fall back to local stock for SKUs
-     * the live payload omitted or left null.
+     * Tab classification stock map. Local DB qty is what listings columns use
+     * after inventory sync; warm live cache (often a 6h snapshot of the same
+     * tables) only fills SKUs local omitted or left null so equal Shopify /
+     * marketplace qtys are not stuck on Mismatch.
+     * Reverb/AliExpress pages that need API-first call mergeLocalAndLiveStockMaps($local, $live) themselves.
      *
      * @param  array<int, array{sku?: string, inventory?: int|null}>|null  $liveRows
      * @param  array<string, int>  $localMap
@@ -834,8 +837,8 @@ final class MarketplaceListingStockResolver
     public static function classifyStockMapFromLiveOrLocal(?array $liveRows, array $localMap): array
     {
         return self::mergeLocalAndLiveStockMaps(
-            $localMap,
-            self::stockMapFromLiveListingRows($liveRows)
+            self::stockMapFromLiveListingRows($liveRows),
+            $localMap
         );
     }
 
