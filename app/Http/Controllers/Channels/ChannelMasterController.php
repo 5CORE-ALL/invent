@@ -12990,6 +12990,27 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Canonical key plus legacy spellings stored on older ChannelMasterSummary rows.
+     *
+     * @return list<string>
+     */
+    private function allMarketplaceSnapshotLookupKeys(?string $name): array
+    {
+        $canonical = $this->allMarketplaceSnapshotKey($name);
+        $aliases = [
+            'bestbuyusa' => ['bestbuyusa', 'bestbuy'],
+            'ebaytwo' => ['ebaytwo', 'ebay2'],
+            'ebaythree' => ['ebaythree', 'ebay3'],
+            'shopifyb2c' => ['shopifyb2c', 'shopify'],
+            'tiktokshop' => ['tiktokshop', 'tiktok'],
+            'tiktokshop2' => ['tiktokshop2', 'tiktok2'],
+            'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace'],
+        ];
+
+        return array_values(array_unique($aliases[$canonical] ?? [$canonical]));
+    }
+
+    /**
      * Normalise a channel name to a canonical key so duplicate / aliased names
      * (e.g. "TikTok 2" vs "Tiktok Shop 2") resolve to the same logo / seller link.
      */
@@ -14193,6 +14214,9 @@ class ChannelMasterController extends Controller
     {
         try {
             $channel = strtolower(str_replace([' ', '-', '&', '/'], '', trim($request->input('channel', ''))));
+            if ($channel !== '' && $channel !== 'all') {
+                $channel = $this->allMarketplaceSnapshotKey($channel);
+            }
             $metric = $request->input('metric', 'l30_sales');
             $days = intval($request->input('days', 32));
             $useL7Window = intval($request->input('window', 0)) >= 7 || $metric === 'l7_sales';
@@ -14253,7 +14277,7 @@ class ChannelMasterController extends Controller
             $query = \App\Models\ChannelMasterSummary::orderBy('snapshot_date', 'asc');
 
             if (!$isAll) {
-                $query->where('channel', $channel);
+                $query->whereIn('channel', $this->allMarketplaceSnapshotLookupKeys($channel));
             }
 
             if ($days > 0) {
@@ -14263,6 +14287,17 @@ class ChannelMasterController extends Controller
             }
 
             $history = $query->get();
+
+            // One row per Pacific date + canonical channel (bestbuy vs bestbuyusa, etc.).
+            $history = $history->groupBy(function ($row) {
+                return $this->allMarketplaceSnapshotKey((string) $row->channel) . '|' . $row->snapshot_date;
+            })->map(function ($rows) {
+                $canonical = $this->allMarketplaceSnapshotKey((string) $rows->first()->channel);
+
+                return $rows->first(function ($row) use ($canonical) {
+                    return strtolower(str_replace([' ', '-', '&', '/'], '', (string) $row->channel)) === $canonical;
+                }) ?? $rows->first();
+            })->values();
 
             if ($history->isEmpty()) {
                 return response()->json(['success' => true, 'data' => []]);
@@ -14593,9 +14628,9 @@ class ChannelMasterController extends Controller
         try {
             $channelsParam = $request->input('channels', '');
             // Same normalization as chart and table save: normalized key (temu, amazon, etc.)
-            $channelKeys = array_filter(array_map(function ($c) {
-                return strtolower(str_replace([' ', '-', '&', '/'], '', trim($c)));
-            }, explode(',', $channelsParam)));
+            $channelKeys = array_values(array_unique(array_filter(array_map(function ($c) {
+                return $this->allMarketplaceSnapshotKey($c);
+            }, explode(',', $channelsParam)))));
 
             if (empty($channelKeys)) {
                 return response()->json(['success' => true, 'channels' => (object)[]]);
@@ -14648,12 +14683,18 @@ class ChannelMasterController extends Controller
             // differs from today's.
             $snapshotWindow = $useL7Window ? 36 : 30;
             $historyFrom = now('America/Los_Angeles')->subDays($snapshotWindow + 10)->toDateString();
-            $cmsByChannel = \App\Models\ChannelMasterSummary::whereIn('channel', $channelKeys)
+            $lookupKeys = [];
+            foreach ($channelKeys as $key) {
+                foreach ($this->allMarketplaceSnapshotLookupKeys($key) as $alias) {
+                    $lookupKeys[] = $alias;
+                }
+            }
+            $cmsByChannel = \App\Models\ChannelMasterSummary::whereIn('channel', array_values(array_unique($lookupKeys)))
                 ->where('snapshot_date', '>=', $historyFrom)
                 ->orderBy('snapshot_date', 'desc')
                 ->get()
                 ->groupBy(function ($row) {
-                    return strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $row->channel)));
+                    return $this->allMarketplaceSnapshotKey((string) $row->channel);
                 });
 
             foreach ($channelKeys as $channel) {
@@ -14662,6 +14703,18 @@ class ChannelMasterController extends Controller
                 }
 
                 $cmsRows = ($cmsByChannel->get($channel) ?? collect())
+                    ->groupBy(function ($row) {
+                        return (string) $row->snapshot_date;
+                    })
+                    ->map(function ($rows) use ($channel) {
+                        return $rows->first(function ($row) use ($channel) {
+                            return strtolower(str_replace([' ', '-', '&', '/'], '', (string) $row->channel)) === $channel;
+                        }) ?? $rows->first();
+                    })
+                    ->sortByDesc(function ($row) {
+                        return (string) $row->snapshot_date;
+                    })
+                    ->values()
                     ->take($snapshotWindow)
                     ->filter(function ($row) use ($useL7Window) {
                         if ($row->isFullChannelSnapshot()) {
@@ -15221,6 +15274,7 @@ class ChannelMasterController extends Controller
             'temu2' => 'Temu 2',
             'macys' => 'Macys',
             'bestbuyusa' => 'Best Buy USA',
+            'bestbuy' => 'Best Buy USA',
             'reverb' => 'Reverb',
             'doba' => 'Doba',
             'pls' => 'PLS',
@@ -15458,7 +15512,7 @@ class ChannelMasterController extends Controller
             $today = now('America/Los_Angeles')->toDateString();
             
             foreach ($channelData as $row) {
-                $channelName = strtolower(str_replace([' ', '-', '&', '/'], '', trim($row['Channel '] ?? '')));
+                $channelName = $this->allMarketplaceSnapshotKey($row['Channel '] ?? '');
                 
                 if (!$channelName) continue;
                 

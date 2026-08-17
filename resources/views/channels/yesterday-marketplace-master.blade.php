@@ -353,6 +353,25 @@
             };
             return aliases[k] || k;
         }
+        function metricChartDotColors(values, isInverted) {
+            var gray = '#6c757d';
+            var green = '#28a745';
+            var red = '#dc3545';
+            var eps = 0.0001;
+            return values.map(function(v, i) {
+                if (i === 0) return gray;
+                var prev = null;
+                for (var j = i - 1; j >= 0; j--) {
+                    if (Math.abs(values[j] - v) > eps) {
+                        prev = values[j];
+                        break;
+                    }
+                }
+                if (prev === null) return gray;
+                if (isInverted) return v < prev ? green : red;
+                return v > prev ? green : red;
+            });
+        }
         function getMetricDotColor(channelName, metricKey) {
             var k = snapshotChannelKey(channelName) + '_' + (metricKey || '');
             return lastDotColorByKey[k] || DEFAULT_DOT_GRAY;
@@ -578,11 +597,7 @@
             document.getElementById('adChartMedian').textContent = fmtVal(median);
             document.getElementById('adChartLowest').textContent = fmtVal(dataMin);
             const isInverted = currentChartMetric === 'ads_pct';
-            const dotColors = values.map((v, i) => {
-                if (i === 0) return '#6c757d';
-                if (isInverted) return v < values[i - 1] ? '#28a745' : (v > values[i - 1] ? '#dc3545' : '#6c757d');
-                return v > values[i - 1] ? '#28a745' : (v < values[i - 1] ? '#dc3545' : '#6c757d');
-            });
+            const dotColors = metricChartDotColors(values, isInverted);
             const labelColors = values.map(v => v === 0 ? '#198754' : (v > 0 ? '#dc3545' : '#6c757d'));
             const medianLinePlugin = {
                 id: 'medianLine',
