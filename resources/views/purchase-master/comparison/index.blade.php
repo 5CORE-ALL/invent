@@ -629,6 +629,13 @@
         padding: 2px;
         text-align: center;
         line-height: 0;
+        overflow: hidden;
+        max-width: 100%;
+    }
+
+    .cd-sheet-table td:has(img),
+    .cd-sheet-table td:has(.cd-sheet-cell-image) {
+        overflow: hidden;
     }
 
     .cd-sheet-table .cd-sheet-img-ph {
@@ -1421,15 +1428,18 @@
         line-height: 0;
     }
 
-    .cd-sheet-table .cd-sheet-img {
-        max-width: 120px;
-        max-height: 80px;
-        width: auto;
-        height: auto;
-        object-fit: contain;
+    .cd-sheet-table .cd-sheet-img,
+    .cd-sheet-table td img,
+    .cd-sheet-table .cd-sheet-cell img {
+        max-width: 120px !important;
+        max-height: 80px !important;
+        width: auto !important;
+        height: auto !important;
+        object-fit: contain !important;
         display: block;
         margin: 0 auto;
         pointer-events: none;
+        vertical-align: middle;
     }
 
     .cd-sheet-table .cd-sheet-cell:focus {
@@ -6650,6 +6660,143 @@ document.addEventListener('DOMContentLoaded', function () {
         return (cell.innerText || cell.textContent || '').replace(/\s+/g, ' ').trim();
     }
 
+    function canPasteSheetImageIntoCell(cell) {
+        if (!cell) {
+            return false;
+        }
+        const colIndex = parseInt(cell.dataset.col, 10);
+        const rowIndex = parseInt(cell.dataset.row, 10);
+        if (Number.isNaN(colIndex) || Number.isNaN(rowIndex)) {
+            return false;
+        }
+        if (isSheetSpecColumn(colIndex) || isSheetCriticalColumn(colIndex) || isSheetQcColumn(colIndex)) {
+            return false;
+        }
+        if (isCompanyNameRow(rowIndex, currentSheetCells) || isCommRow(rowIndex, currentSheetCells)) {
+            return false;
+        }
+        return true;
+    }
+
+    function resolveSheetPasteCell(eventTarget) {
+        const fromTarget = eventTarget && eventTarget.closest
+            ? eventTarget.closest('.cd-sheet-cell')
+            : null;
+        if (fromTarget) {
+            return fromTarget;
+        }
+        if (selectedSheetCell) {
+            return document.querySelector(
+                `.cd-sheet-cell[data-row="${selectedSheetCell.row}"][data-col="${selectedSheetCell.col}"]`
+            );
+        }
+        return null;
+    }
+
+    function getClipboardImageFile(clipboardData) {
+        if (!clipboardData) {
+            return null;
+        }
+        const items = clipboardData.items;
+        if (items) {
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type && items[i].type.indexOf('image/') === 0) {
+                    const file = items[i].getAsFile();
+                    if (file) {
+                        return file;
+                    }
+                }
+            }
+        }
+        const files = clipboardData.files;
+        if (files) {
+            for (let i = 0; i < files.length; i++) {
+                if (files[i].type && files[i].type.indexOf('image/') === 0) {
+                    return files[i];
+                }
+            }
+        }
+        return null;
+    }
+
+    function getClipboardHtmlImageSrc(clipboardData) {
+        const html = clipboardData && clipboardData.getData ? (clipboardData.getData('text/html') || '') : '';
+        if (!html || html.length > 2000000) {
+            return '';
+        }
+        const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+        return match ? match[1].trim() : '';
+    }
+
+    function fitSheetCellImageEl(img) {
+        if (!img) {
+            return;
+        }
+        img.removeAttribute('width');
+        img.removeAttribute('height');
+        img.classList.add('cd-sheet-img');
+        img.style.maxWidth = '120px';
+        img.style.maxHeight = '80px';
+        img.style.width = 'auto';
+        img.style.height = 'auto';
+        img.style.objectFit = 'contain';
+        img.style.display = 'block';
+        img.style.margin = '0 auto';
+    }
+
+    function renderPastedSheetImagePreview(cell, previewUrl, storedValue) {
+        const rowIndex = parseInt(cell.dataset.row, 10);
+        const colIndex = parseInt(cell.dataset.col, 10);
+        const td = cell.closest('td');
+        if (!td || Number.isNaN(rowIndex) || Number.isNaN(colIndex)) {
+            return false;
+        }
+        if (currentSheetCells[rowIndex]) {
+            currentSheetCells[rowIndex][colIndex] = storedValue;
+        }
+        const token = storedValue.startsWith('data:image/')
+            ? `[embedded-image:${rowIndex}:${colIndex}]`
+            : storedValue;
+        td.innerHTML = `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(token)}" data-embedded="1" title="Product photo">
+            <img src="${escapeHtmlAttr(previewUrl)}" class="cd-sheet-img" alt="Product photo">
+        </div>`;
+        return true;
+    }
+
+    function applyPastedImageFileToSheetCell(cell, file) {
+        const previewUrl = URL.createObjectURL(file);
+        const reader = new FileReader();
+        reader.onload = function () {
+            const dataUrl = String(reader.result || '');
+            if (!dataUrl.startsWith('data:image/')) {
+                URL.revokeObjectURL(previewUrl);
+                setSheetStatus('Could not read pasted image.', true);
+                return;
+            }
+            renderPastedSheetImagePreview(cell, previewUrl, dataUrl);
+            scheduleAutoSaveComparisonSheet(400, { rerender: true, refreshTable: false });
+        };
+        reader.onerror = function () {
+            URL.revokeObjectURL(previewUrl);
+            setSheetStatus('Could not read pasted image.', true);
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function applyPastedImageSrcToSheetCell(cell, src) {
+        if (src.startsWith('data:image/')) {
+            fetch(src).then(function (response) { return response.blob(); }).then(function (blob) {
+                applyPastedImageFileToSheetCell(cell, blob);
+            }).catch(function () {
+                renderPastedSheetImagePreview(cell, src, src);
+                scheduleAutoSaveComparisonSheet(400, { rerender: true, refreshTable: false });
+            });
+            return;
+        }
+        convertSheetCellValue(cell, src, false);
+        scheduleAutoSaveComparisonSheet(1000, { rerender: false, refreshTable: false });
+    }
+
     function convertSheetCellValue(cell, value, forceText) {
         const rowIndex = parseInt(cell.dataset.row, 10);
         const colIndex = parseInt(cell.dataset.col, 10);
@@ -11491,19 +11638,60 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('comparison-cd-delete-col-btn')?.addEventListener('click', deleteSheetColumn);
 
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('paste', function (e) {
-        const cell = e.target.closest('.cd-sheet-cell[contenteditable="true"]');
-        if (!cell) return;
+        const cell = resolveSheetPasteCell(e.target);
+        if (!cell || !canPasteSheetImageIntoCell(cell)) {
+            const editable = e.target.closest('.cd-sheet-cell[contenteditable="true"]');
+            if (!editable) return;
+            const colIndex = parseInt(editable.dataset.col, 10);
+            if (isSheetSpecColumn(colIndex)) return;
+            if (isCompanyNameRow(parseInt(editable.dataset.row, 10), currentSheetCells)) return;
+            const pasted = (e.clipboardData || window.clipboardData)?.getData('text')?.replace(/\s+/g, ' ').trim();
+            if (!pasted || !isSheetLinkUrl(pasted)) return;
+            e.preventDefault();
+            convertSheetCellValue(editable, pasted, false);
+            scheduleAutoSaveComparisonSheet(1000, { rerender: false, refreshTable: false });
+            return;
+        }
 
-        const colIndex = parseInt(cell.dataset.col, 10);
-        if (isSheetSpecColumn(colIndex)) return;
-        if (isCompanyNameRow(parseInt(cell.dataset.row, 10), currentSheetCells)) return;
+        const clipboard = e.clipboardData || window.clipboardData;
+        const imageFile = getClipboardImageFile(clipboard);
+        if (imageFile) {
+            e.preventDefault();
+            applyPastedImageFileToSheetCell(cell, imageFile);
+            return;
+        }
 
-        const pasted = (e.clipboardData || window.clipboardData)?.getData('text')?.replace(/\s+/g, ' ').trim();
-        if (!pasted || !isSheetLinkUrl(pasted)) return;
+        const htmlSrc = getClipboardHtmlImageSrc(clipboard);
+        if (htmlSrc && (htmlSrc.startsWith('data:image/') || isSheetImageUrl(htmlSrc))) {
+            e.preventDefault();
+            applyPastedImageSrcToSheetCell(cell, htmlSrc);
+            return;
+        }
 
-        e.preventDefault();
-        convertSheetCellValue(cell, pasted, false);
-        scheduleAutoSaveComparisonSheet(1000, { rerender: false, refreshTable: false });
+        const pasted = clipboard?.getData('text')?.replace(/\s+/g, ' ').trim();
+        if (pasted && isSheetLinkUrl(pasted)) {
+            e.preventDefault();
+            convertSheetCellValue(cell, pasted, false);
+            scheduleAutoSaveComparisonSheet(1000, { rerender: false, refreshTable: false });
+            return;
+        }
+
+        // Browser-default paste (screenshot / rich HTML): shrink any raw <img> so it stays in-cell.
+        window.setTimeout(function () {
+            const liveCell = (cell && cell.isConnected) ? cell : resolveSheetPasteCell(cell);
+            if (!liveCell || !liveCell.querySelectorAll) {
+                return;
+            }
+            const imgs = liveCell.querySelectorAll('img');
+            if (!imgs.length) {
+                return;
+            }
+            imgs.forEach(fitSheetCellImageEl);
+            const src = imgs[0].getAttribute('src') || imgs[0].src || '';
+            if (src.startsWith('data:image/') || isSheetImageUrl(src)) {
+                applyPastedImageSrcToSheetCell(liveCell, src);
+            }
+        }, 0);
     }, true);
 
     // Do not autosave on every keystroke — that re-read/rebuild loop hangs the page.
