@@ -1680,6 +1680,14 @@ class FaireSyncController extends Controller
             $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $metric->sku);
             if ($norm !== '' && ! isset($byNorm[$norm])) {
                 $byNorm[$norm] = $metric;
+            } elseif ($norm !== '' && isset($byNorm[$norm])) {
+                $existing = (string) $byNorm[$norm]->sku;
+                $existingNorm = ShopifySku::normalizeSkuForShopifyLookup($existing);
+                // Prefer the exact listing (ND 58) over a hyphen alias (ND-58).
+                if ($existingNorm !== strtoupper(trim($existing))
+                    && $norm === strtoupper(trim((string) $metric->sku))) {
+                    $byNorm[$norm] = $metric;
+                }
             }
         }
 

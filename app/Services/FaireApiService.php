@@ -219,6 +219,35 @@ class FaireApiService
     }
 
     /**
+     * Read on-hand qty (and variant ids) from GET /products/{id} when the
+     * inventory-by-SKU endpoint omits a listing.
+     *
+     * @return array<string, array{qty: int|null, product_variant_id: string, product_id: string}>
+     */
+    public function getInventoryByProductId(string $productId): array
+    {
+        $info = $this->getProductInfo($productId);
+        if (empty($info['success']) || ! is_array($info['data'] ?? null)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($this->extractSkuRowsFromProductInfo($info['data'], $productId) as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $out[$sku] = [
+                'qty' => isset($row['inventory']) && $row['inventory'] !== null ? (int) $row['inventory'] : null,
+                'product_variant_id' => trim((string) ($row['product_variant_id'] ?? '')),
+                'product_id' => trim((string) ($row['product_id'] ?? $productId)),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  list<array{sku: string, on_hand_quantity: int, product_variant_id?: string}>  $inventories
      * @return array{success: bool, message: string, status?: int|null}
      */
@@ -590,6 +619,7 @@ class FaireApiService
             $rows[] = [
                 'sku' => $sku,
                 'product_id' => (string) ($info['id'] ?? $productId),
+                'product_variant_id' => trim((string) ($variant['id'] ?? $variant['product_variant_id'] ?? '')),
                 'inventory' => is_numeric($qty) ? (int) $qty : null,
                 'price' => is_numeric($priceCents) ? round(((float) $priceCents) / 100, 2) : null,
                 'product_name' => $productName ?? ($info['name'] ?? null),
@@ -733,7 +763,17 @@ class FaireApiService
             $variantId = trim((string) ($live[$sku]['product_variant_id'] ?? ''));
         }
         if ($variantId === '' && $productId !== '') {
-            $variantId = $this->findVariantIdForSku($productId, $sku);
+            $fromProduct = $this->getInventoryByProductId($productId);
+            $variantId = trim((string) ($fromProduct[$sku]['product_variant_id'] ?? ''));
+            if ($variantId === '') {
+                $want = $this->normalizeFaireSku($sku);
+                foreach ($fromProduct as $candSku => $row) {
+                    if ($this->normalizeFaireSku((string) $candSku) === $want) {
+                        $variantId = trim((string) ($row['product_variant_id'] ?? ''));
+                        break;
+                    }
+                }
+            }
         }
         if ($variantId === '') {
             return $bySku;
@@ -758,22 +798,26 @@ class FaireApiService
         if (! is_array($variants)) {
             return '';
         }
-        $want = strtoupper(preg_replace('/\s+/u', ' ', str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $sku)) ?? '');
+        $want = $this->normalizeFaireSku($sku);
         foreach ($variants as $variant) {
             if (! is_array($variant)) {
                 continue;
             }
-            $cand = strtoupper(preg_replace('/\s+/u', ' ', str_replace(
-                ["\xc2\xa0", "\xe2\x80\xaf"],
-                ' ',
-                (string) ($variant['sku'] ?? '')
-            )) ?? '');
-            if ($cand === $want) {
+            if ($this->normalizeFaireSku((string) ($variant['sku'] ?? '')) === $want) {
                 return trim((string) ($variant['id'] ?? $variant['product_variant_id'] ?? ''));
             }
         }
 
         return '';
+    }
+
+    protected function normalizeFaireSku(string $sku): string
+    {
+        $sku = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $sku);
+        $sku = strtoupper(preg_replace('/[-\x{2010}-\x{2015}_]+/u', ' ', $sku) ?? $sku);
+        $sku = preg_replace('/\s+/u', ' ', trim($sku)) ?? '';
+
+        return $sku;
     }
 
     /**
