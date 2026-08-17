@@ -6,7 +6,6 @@ use App\Models\ChannelMaster;
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\ShopifyPlsTokenService;
 use App\Services\Support\MarketplaceApiConfigService;
-use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +20,7 @@ class MappingChannelCounts
 {
     public const TOTAL_CACHE_KEY = 'mapping_pages_nmap_total_v2';
 
-    public const TOTAL_TITAS_CACHE_KEY = 'mapping_pages_titas_total_v1';
+    public const TOTAL_TITAS_CACHE_KEY = 'mapping_pages_titas_total_v2';
 
     /**
      * Channels shown on /map-issues.
@@ -176,8 +175,8 @@ class MappingChannelCounts
     public static function collectApiStatuses(): array
     {
         $config = app(MarketplaceApiConfigService::class);
-        $today = TaskBusinessTime::today()->toDateString();
-        $tz = TaskBusinessTime::tz();
+        $tz = 'Asia/Kolkata';
+        $freshAfter = Carbon::now($tz)->subHours(26);
         $out = [];
 
         foreach (array_keys(self::$sources) as $slug) {
@@ -202,7 +201,7 @@ class MappingChannelCounts
 
             $last = self::latestListingTimestamp($slug);
             $lastLabel = $last?->timezone($tz)->format('Y-m-d H:i');
-            $updatedToday = $last !== null && $last->timezone($tz)->toDateString() === $today;
+            $updatedToday = $last !== null && $last->gte($freshAfter);
 
             if (! $linked) {
                 $out[$slug] = [
@@ -219,14 +218,14 @@ class MappingChannelCounts
                     'api_status' => 'green',
                     'api_connected' => true,
                     'api_updated_at' => $lastLabel,
-                    'api_label' => trim(($linkNote !== '' ? $linkNote.' · ' : 'API linked · ').'updated today ('.$lastLabel.')'),
+                    'api_label' => trim(($linkNote !== '' ? $linkNote.' · ' : 'API linked · ').'updated within 24h ('.$lastLabel.' IST)'),
                 ];
                 continue;
             }
 
             $stale = $lastLabel !== null
-                ? 'last update '.$lastLabel.' (not today)'
-                : 'no daily update found';
+                ? 'last update '.$lastLabel.' IST (older than 24h)'
+                : 'no daily inventory sync found';
             $out[$slug] = [
                 'api_status' => 'yellow',
                 'api_connected' => true,
@@ -240,35 +239,83 @@ class MappingChannelCounts
 
     private static function latestListingTimestamp(string $slug): ?Carbon
     {
-        $tables = match ($slug) {
+        $latest = null;
+
+        foreach (self::listingFreshnessTables($slug) as $table) {
+            $ts = self::maxTableTimestamp($table);
+            if ($ts !== null && ($latest === null || $ts->gt($latest))) {
+                $latest = $ts;
+            }
+        }
+
+        $cronAt = self::latestCronTimestamp($slug);
+        if ($cronAt !== null && ($latest === null || $cronAt->gt($latest))) {
+            $latest = $cronAt;
+        }
+
+        return $latest;
+    }
+
+    /**
+     * Tables the daily inventory / link-map jobs actually write (not ads metric sheets).
+     *
+     * @return list<string>
+     */
+    private static function listingFreshnessTables(string $slug): array
+    {
+        return match ($slug) {
             'ebay' => ['ebay_metrics'],
-            'ebay2' => ['ebay_2_metrics', 'ebay2_metrics'],
-            'ebay3' => ['ebay_3_metrics', 'ebay3_metrics'],
-            'amazon' => ['amazon_metrics'],
-            'reverb' => ['reverb_metric', 'reverb_metrics'],
-            'macys' => ['macy_metrics'],
-            'bestbuy' => ['bestbuy_metrics'],
+            'ebay2' => ['ebay_2_metrics'],
+            'ebay3' => ['ebay_3_metrics'],
+            'amazon' => ['amazon_listing_statuses'],
+            'reverb' => ['reverb_metric', 'reverb_pricing_prices'],
+            'macys' => ['macy_products', 'macys_price_data'],
+            'bestbuy' => ['bestbuy_usa_products', 'bestbuy_usa_listing_statuses'],
             'temu' => ['temu_metrics'],
-            'temu2' => ['temu2_metrics'],
-            'shein' => ['shein_metric', 'shein_metrics'],
-            'newegg' => ['newegg_metric', 'newegg_metrics'],
-            'aliexpress' => ['aliexpress_metric'],
-            'pls' => ['shopify_pls_metrics', 'pls_products'],
-            'wayfair' => ['wayfair_metrics'],
-            'faire' => ['faire_metric', 'faire_metrics'],
-            'topdawg' => ['topdawg_metrics', 'topdawg_products'],
-            'tiktok' => ['tiktok_metrics', 'tiktok_products'],
-            'tiktok2' => ['tiktok_products_two'],
+            'temu2' => ['temu2_metrics', 'temu2_listing_statuses'],
+            'shein' => ['shein_metric', 'shein_pricing_prices', 'shein_listing_statuses'],
+            'newegg' => ['newegg_metric', 'newegg_pricing_prices'],
+            'aliexpress' => ['aliexpress_metric', 'aliexpress_pricing_prices', 'aliexpress_listing_statuses'],
+            'pls' => ['pls_products', 'pls_listing_statuses', 'shopify_catalog_variants'],
+            'wayfair' => ['wayfair_pricing_prices'],
+            'faire' => ['faire_metric', 'faire_listing_statuses'],
+            'topdawg' => ['topdawg_products'],
+            'tiktok' => ['tiktok_products', 'tiktok_shop_listing_statuses'],
+            'tiktok2' => ['tiktok_products_two', 'tiktok_two_shop_listing_statuses'],
             default => [],
         };
+    }
 
-        $latest = null;
-        foreach ($tables as $table) {
-            try {
-                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'updated_at')) {
+    /**
+     * @return list<string>
+     */
+    private static function cronJobNames(string $slug): array
+    {
+        $key = match ($slug) {
+            'ebay' => 'ebay1',
+            'macys' => 'macy',
+            default => $slug,
+        };
+
+        return [
+            $key.'-sync-inventory',
+            $key.'-sync-mismatch-inventory',
+            $key.'-sync-link-map',
+        ];
+    }
+
+    private static function maxTableTimestamp(string $table): ?Carbon
+    {
+        try {
+            if (! Schema::hasTable($table)) {
+                return null;
+            }
+            $latest = null;
+            foreach (['updated_at', 'last_synced_at', 'last_sync_at'] as $col) {
+                if (! Schema::hasColumn($table, $col)) {
                     continue;
                 }
-                $raw = DB::table($table)->max('updated_at');
+                $raw = DB::table($table)->max($col);
                 if ($raw === null || $raw === '') {
                     continue;
                 }
@@ -276,12 +323,48 @@ class MappingChannelCounts
                 if ($latest === null || $ts->gt($latest)) {
                     $latest = $ts;
                 }
-            } catch (\Throwable $e) {
-                Log::warning('MappingChannelCounts API timestamp failed for '.$table.': '.$e->getMessage());
             }
-        }
 
-        return $latest;
+            return $latest;
+        } catch (\Throwable $e) {
+            Log::warning('MappingChannelCounts API timestamp failed for '.$table.': '.$e->getMessage());
+
+            return null;
+        }
+    }
+
+    private static function latestCronTimestamp(string $slug): ?Carbon
+    {
+        try {
+            if (! Schema::hasTable('cron_execution_logs')) {
+                return null;
+            }
+            $names = self::cronJobNames($slug);
+            $q = DB::table('cron_execution_logs')
+                ->where(function ($q) use ($names) {
+                    $q->whereIn('job_name', $names);
+                    if (Schema::hasColumn('cron_execution_logs', 'command')) {
+                        $q->orWhereIn('command', $names);
+                    }
+                });
+            if (Schema::hasColumn('cron_execution_logs', 'status')) {
+                $q->whereIn('status', ['success', 'recovered', 'partial_success', 'running']);
+            }
+            $raw = null;
+            if (Schema::hasColumn('cron_execution_logs', 'finished_at')) {
+                $raw = (clone $q)->max('finished_at');
+            }
+            if (($raw === null || $raw === '') && Schema::hasColumn('cron_execution_logs', 'started_at')) {
+                $raw = (clone $q)->max('started_at');
+            }
+            if ($raw === null || $raw === '') {
+                return null;
+            }
+
+            return Carbon::parse((string) $raw);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**

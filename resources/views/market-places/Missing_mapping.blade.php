@@ -175,7 +175,7 @@
                     width: 80,
                     hozAlign: "center",
                     headerHozAlign: "center",
-                    headerTooltip: "Green: API linked and updated today. Yellow: linked but not updated today. Red: not linked.",
+                    headerTooltip: "Green: API linked and inventory synced in the last 24h. Yellow: linked but last sync is older than 24h. Red: not linked.",
                     sorter: function(a, b) {
                         const rank = { green: 0, yellow: 1, red: 2 };
                         return (rank[a] ?? 9) - (rank[b] ?? 9);
