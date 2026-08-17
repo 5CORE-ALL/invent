@@ -16,6 +16,7 @@ use App\Models\BestbuySkuCompetitor;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\LmpCompetitorHistory;
+use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -83,6 +84,8 @@ class BestBuyPricingController extends Controller
             ->unique()
             ->values()
             ->all();
+
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('bestbuy', $skus);
 
         // Sku Link LMP groups + BestbuySkuCompetitor lookup (same as Reverb / Amazon tabulators)
         try {
@@ -377,6 +380,7 @@ class BestBuyPricingController extends Controller
                 ->values()
                 ->toArray();
             $row['lmp_entries_total'] = $allLmpEntries->count();
+            $row = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $pm->sku);
 
             $result[] = (object) $row;
         }

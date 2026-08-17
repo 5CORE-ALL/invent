@@ -7,6 +7,7 @@ use App\Models\DobaWithoutShipDataView;
 use App\Models\EbayDataView;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
+use App\Models\BestbuyUSADataView;
 use App\Models\MacyDataView;
 use App\Models\ReverbDataView;
 use App\Models\ShopifyB2BDataView;
@@ -41,6 +42,7 @@ class ChannelPromoPricingService
         'shopify_b2c',
         'shopify_b2b',
         'macys',
+        'bestbuy',
         'reverb',
         'walmart',
         'wayfair',
@@ -63,6 +65,7 @@ class ChannelPromoPricingService
         'shopify_b2c' => Shopifyb2cDataView::class,
         'shopify_b2b' => ShopifyB2BDataView::class,
         'macys' => MacyDataView::class,
+        'bestbuy' => BestbuyUSADataView::class,
         'reverb' => ReverbDataView::class,
         'walmart' => WalmartDataView::class,
         'wayfair' => WayfairDataView::class,

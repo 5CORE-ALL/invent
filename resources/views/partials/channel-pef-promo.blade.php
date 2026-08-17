@@ -510,6 +510,19 @@
                 dilField: 'MC Dil%',
                 invField: 'INV',
                 skuField: '(Child) sku',
+                soldField: 'MC L30',
+                saveSpriceMode: 'sku',
+            },
+            bestbuy: {
+                label: 'Best Buy',
+                saveSpriceUrl: '/bestbuy-save-sprice',
+                pushPriceUrl: null,
+                priceField: 'BB Price',
+                cvrField: 'CVR%',
+                dilField: 'BB Dil%',
+                invField: 'INV',
+                skuField: '(Child) sku',
+                soldField: 'BB L30',
                 saveSpriceMode: 'sku',
             },
             reverb: {
@@ -521,6 +534,7 @@
                 dilField: 'RV Dil%',
                 invField: 'INV',
                 skuField: '(Child) sku',
+                soldField: 'RV L30',
                 saveSpriceMode: 'updates',
             },
             walmart: {
@@ -1740,7 +1754,7 @@
             { key: '80-100', label: '80–100%', prmt: 1 },
             { key: 'gt-100', label: '> 100%', prmt: 0 },
         ];
-        const CH_PEF_DIL_PRMT_DEFAULTS = CHANNEL_PROMO_CHANNEL === 'reverb'
+        const CH_PEF_DIL_PRMT_DEFAULTS = CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES
             ? CH_PEF_DIL_PRMT_DEFAULTS_REVERB
             : CH_PEF_DIL_PRMT_DEFAULTS_FULL;
         const CH_PEF_CVR_CPN_DEFAULTS = [
@@ -2001,6 +2015,13 @@
                 const l30 = Number(d.L30) || 0;
                 return (l30 / inv) * 100;
             }
+            // Macys / Best Buy Dil column = (OV L30 / INV) × 100
+            if (CHANNEL_PROMO_CHANNEL === 'macys' || CHANNEL_PROMO_CHANNEL === 'macy'
+                || CHANNEL_PROMO_CHANNEL === 'bestbuy') {
+                if (inv <= 0) return 0;
+                const ovl30 = Number(d['L30'] != null ? d['L30'] : d.L30) || 0;
+                return (ovl30 / inv) * 100;
+            }
             let dil = Number(d[chPromoCfg.dilField]);
             if (!isFinite(dil)) {
                 const l30 = Number(d['eBay L30'] || d.L30 || d['MC L30'] || d['W_L30'] || d['B2B L30'] || 0) || 0;
@@ -2110,7 +2131,7 @@
             return price >= 0.01 ? price : null;
         }
         function chPromoReverbComboEnabled() {
-            return CHANNEL_PROMO_CHANNEL === 'reverb' && CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES;
+            return !!CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES;
         }
         function chPromoZeroSoldPrmtInt(d) {
             return Math.max(0, Number(d && (d.zero_sold_prmt != null && d.zero_sold_prmt !== ''
@@ -2414,7 +2435,7 @@
 
         function chPromoDilSlabKey(dil) {
             const n = Number(dil);
-            if (CHANNEL_PROMO_CHANNEL === 'reverb') {
+            if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
                 if (!isFinite(n) || n < 0) return '0-20';
                 if (n > 100) return 'gt-100';
                 if (n >= 80) return '80-100';
@@ -2457,11 +2478,16 @@
             if (band === 'pink') return '#e83e8c';
             return '#6c757d';
         }
+        function chPromoSoldFieldLabel() {
+            return chPromoCfg.soldField || 'L30';
+        }
         function chPromoReverbSoldQty(d) {
+            const f = chPromoCfg.soldField;
+            if (f) return Number(d && d[f]) || 0;
             return Number(d && (d['RV L30'] != null ? d['RV L30'] : d.RV_L30)) || 0;
         }
         function chPromoIsZeroSoldRow(d) {
-            return CHANNEL_PROMO_CHANNEL === 'reverb' && chPromoReverbSoldQty(d) <= 0;
+            return !!CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES && chPromoReverbSoldQty(d) <= 0;
         }
         function chPromoIsZeroSoldRuleKey(key) {
             return String(key || '').indexOf('0-sold-') === 0;
@@ -2556,6 +2582,13 @@
                 });
                 if (res && Array.isArray(res.rules) && res.rules.length) {
                     chPromoDilPrmtRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                }
+                if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
+                    const have = {};
+                    chPromoDilPrmtRules.forEach(function(r) { have[r.key] = true; });
+                    CH_PEF_DIL_PRMT_DEFAULTS_REVERB.forEach(function(d) {
+                        if (!have[d.key]) chPromoDilPrmtRules.push(Object.assign({}, d));
+                    });
                 }
                 renderChPromoDilPrmtModalTable();
                 renderChPromoZeroSoldPrmtModalTable();
@@ -2770,14 +2803,15 @@
             let applyTargets = targets.slice();
             let prmtForRow = chPromoPrmtForRow;
             let listingCount = 0;
-            if (CHANNEL_PROMO_CHANNEL === 'reverb' && !ebayParentDil) {
+            if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES && !ebayParentDil) {
+                const soldLabel = chPromoSoldFieldLabel();
                 if (opts.zeroSoldOnly) {
                     applyTargets = applyTargets.filter(function(item) {
                         return chPromoIsZeroSoldRow(item.row.getData());
                     });
                     prmtForRow = chPromoPrmtForZeroSoldRow;
                     if (!applyTargets.length) {
-                        chPromoToast('error', 'No 0 Sold rows (RV L30 = 0) to apply');
+                        chPromoToast('error', 'No 0 Sold rows (' + soldLabel + ' = 0) to apply');
                         return;
                     }
                 } else {
@@ -2788,7 +2822,7 @@
                         return chPromoInv(d) === 0 ? 0 : chPromoPrmtForDil(chPromoDil(d));
                     };
                     if (!applyTargets.length) {
-                        chPromoToast('error', 'No sold rows (RV L30 > 0) to apply — use 0 Sold for unsold SKUs');
+                        chPromoToast('error', 'No sold rows (' + soldLabel + ' > 0) to apply — use 0 Sold for unsold SKUs');
                         return;
                     }
                 }
@@ -4309,7 +4343,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
-                    headerTooltip: '0 Sold Dil color PRMT% (RV L30 = 0). Red <25%, Green 25–50%, Pink 50%+.',
+                    headerTooltip: '0 Sold Dil color PRMT% (' + chPromoSoldFieldLabel() + ' = 0). Red <25%, Green 25–50%, Pink 50%+.',
                     editable: function(cell) {
                         const d = cell.getRow().getData() || {};
                         return chPromoIsChildRow(d) && chPromoIsZeroSoldRow(d) && chPromoInv(d) > 0;
@@ -4689,11 +4723,12 @@
                             + 'on each selected or visible SKU — parent rows are not changed. '
                             + 'If INV is 0, PRMT% is <strong>0</strong>.';
                     }
-                } else if (CHANNEL_PROMO_CHANNEL === 'reverb') {
+                } else if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
-                        help.innerHTML = 'Map Dil% slabs to PRMT% for <strong>sold</strong> SKUs (RV L30 &gt; 0). '
-                            + 'Dil is SKU-wise (L30 ÷ INV). <strong>0 Sold</strong> uses the separate '
+                        help.innerHTML = 'Map Dil% slabs to PRMT% for <strong>sold</strong> SKUs ('
+                            + chPromoSoldFieldLabel() + ' &gt; 0). '
+                            + 'Dil is SKU-wise (OV L30 ÷ INV). <strong>0 Sold</strong> uses the separate '
                             + '<strong>0 Sold</strong> button (Dil Color Red / Green / Pink). '
                             + '<strong>Apply</strong> writes <strong>PRMT %</strong> on each selected or visible sold SKU. '
                             + 'If INV is 0, PRMT% is <strong>0</strong>.';

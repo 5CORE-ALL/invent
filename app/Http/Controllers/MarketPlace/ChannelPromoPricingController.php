@@ -785,7 +785,7 @@ class ChannelPromoPricingController extends Controller
      */
     private function defaultDilPrmtRules(string $channel = ''): array
     {
-        if ($channel === 'reverb') {
+        if (in_array($channel, ['reverb', 'macys', 'macy', 'bestbuy'], true)) {
             return [
                 ['key' => '0-sold-red', 'label' => '0 Sold · Red (<25%)', 'prmt' => 10],
                 ['key' => '0-sold-green', 'label' => '0 Sold · Green (25–50%)', 'prmt' => 8],

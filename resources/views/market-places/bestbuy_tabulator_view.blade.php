@@ -70,6 +70,7 @@
             padding: 0 2px;
             cursor: pointer;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'bestbuy', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
     </style>
 @endsection
 
@@ -189,6 +190,7 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'bestbuy', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
 
                     <button id="mode-toggle-btn" class="btn btn-sm btn-secondary"
                         title="Click to cycle: Prc Mode → Decrease → Increase">
@@ -420,10 +422,12 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'bestbuy', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
 @endsection
 
 @section('script-bottom')
 <script>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'bestbuy', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
     const COLUMN_VIS_KEY = "bestbuy_tabulator_column_visibility";
     /** Same as Temu / Macys / eBay: |INV − BB INV| ≤ this counts as MAP, not a mapping issue. */
     const BB_INV_MAP_TOLERANCE = 3;
@@ -2035,6 +2039,7 @@
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
                     }
                 },
+                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                 {
                     title: "SPRICE",
                     field: "SPRICE",
