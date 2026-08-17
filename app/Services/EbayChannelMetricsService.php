@@ -3,7 +3,10 @@
 namespace App\Services;
 
 use App\Models\ChannelMaster;
+use App\Models\Ebay1OrderMetric;
 use App\Models\Ebay2Order;
+use App\Models\Ebay2OrderMetric;
+use App\Models\Ebay3DailyData;
 use App\Models\EbayOrder;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\MarketplacePercentage;
@@ -12,6 +15,8 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Shared eBay 1 / 2 / 3 metrics for:
@@ -408,5 +413,189 @@ class EbayChannelMetricsService
             'l60_profit' => (float) $l60['total_profit'],
             'l60_cogs' => (float) $l60['total_cogs'],
         ];
+    }
+
+    /**
+     * Pacific-yesterday sales. eBay 1/2 prefer ebay{1,2}_order_metrics (synced every
+     * 30 min) so a missed app:fetch-ebay-orders run cannot zero Y Sales.
+     */
+    public static function computeYSales(int $which): ?float
+    {
+        $yesterday = Carbon::yesterday(self::TZ)->toDateString();
+
+        return self::sumSalesForPacificDates($which, $yesterday, $yesterday);
+    }
+
+    /**
+     * Seven Pacific days ending yesterday — same order-total rules as computeYSales().
+     */
+    public static function computeL7Sales(int $which): ?float
+    {
+        $end = Carbon::yesterday(self::TZ)->toDateString();
+        $start = Carbon::yesterday(self::TZ)->subDays(6)->toDateString();
+
+        return self::sumSalesForPacificDates($which, $start, $end);
+    }
+
+    /**
+     * @return float|null null only when the source tables are missing / unreadable
+     */
+    public static function sumSalesForPacificDates(int $which, string $fromYmd, string $toYmd): ?float
+    {
+        try {
+            if ($which === 3) {
+                return self::sumEbay3SalesForPacificDates($fromYmd, $toYmd);
+            }
+
+            if ($which !== 1 && $which !== 2) {
+                return null;
+            }
+
+            $payloads = self::loadEbayOrderPayloads($which, $fromYmd, $toYmd);
+            $total = 0.0;
+            foreach ($payloads as $raw) {
+                $sale = self::ebayPayloadSaleIfInPacificRange($raw, $fromYmd, $toYmd);
+                if ($sale !== null) {
+                    $total += $sale;
+                }
+            }
+
+            return round($total, 2);
+        } catch (\Throwable $e) {
+            Log::warning("EbayChannelMetricsService::sumSalesForPacificDates({$which}) failed: ".$e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * One raw Fulfillment-API order per order_id. Live metrics first, then ebay_orders.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private static function loadEbayOrderPayloads(int $which, string $fromYmd, string $toYmd): array
+    {
+        $padFrom = Carbon::parse($fromYmd, self::TZ)->subDay()->startOfDay();
+        $padTo = Carbon::parse($toYmd, self::TZ)->addDay()->endOfDay();
+
+        $byOrder = [];
+        $metricsModel = $which === 1 ? Ebay1OrderMetric::class : Ebay2OrderMetric::class;
+        $metricsTable = $which === 1 ? 'ebay1_order_metrics' : 'ebay2_order_metrics';
+
+        if (Schema::hasTable($metricsTable)) {
+            $rows = $metricsModel::query()
+                ->whereBetween('order_date', [$padFrom, $padTo])
+                ->whereNotNull('raw_payload')
+                ->get(['order_id', 'raw_payload']);
+
+            foreach ($rows as $row) {
+                $oid = trim((string) $row->order_id);
+                if ($oid === '' || isset($byOrder[$oid])) {
+                    continue;
+                }
+                $raw = is_array($row->raw_payload)
+                    ? $row->raw_payload
+                    : json_decode((string) $row->raw_payload, true);
+                if (is_array($raw)) {
+                    $byOrder[$oid] = $raw;
+                }
+            }
+        }
+
+        if ($byOrder !== []) {
+            return $byOrder;
+        }
+
+        $orderModel = $which === 1 ? EbayOrder::class : Ebay2Order::class;
+        $orderTable = $which === 1 ? 'ebay_orders' : 'ebay2_orders';
+        if (! Schema::hasTable($orderTable)) {
+            return [];
+        }
+
+        $orders = $orderModel::query()
+            ->whereIn('period', ['l30', 'l60'])
+            ->whereBetween('order_date', [$padFrom, $padTo])
+            ->get(['ebay_order_id', 'order_date', 'raw_data']);
+
+        foreach ($orders as $order) {
+            $oid = trim((string) $order->ebay_order_id);
+            if ($oid === '' || isset($byOrder[$oid])) {
+                continue;
+            }
+            $raw = is_array($order->raw_data)
+                ? $order->raw_data
+                : json_decode((string) $order->raw_data, true);
+            if (is_array($raw)) {
+                $byOrder[$oid] = $raw;
+            }
+        }
+
+        return $byOrder;
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     */
+    private static function ebayPayloadSaleIfInPacificRange(array $raw, string $fromYmd, string $toYmd): ?float
+    {
+        $cs = $raw['cancelStatus']['cancelState'] ?? '';
+        $ps = $raw['orderPaymentStatus'] ?? '';
+        if ($cs === 'CANCELED' || $ps === 'FULLY_REFUNDED') {
+            return null;
+        }
+
+        $created = $raw['creationDate'] ?? null;
+        if (! $created) {
+            return null;
+        }
+
+        $day = Carbon::parse($created)->setTimezone(self::TZ)->toDateString();
+        if ($day < $fromYmd || $day > $toYmd) {
+            return null;
+        }
+
+        $base = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
+        $car = 0.0;
+        foreach (($raw['lineItems'] ?? []) as $li) {
+            if (! is_array($li)) {
+                continue;
+            }
+            foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
+                $car += (float) ($t['amount']['value'] ?? 0);
+            }
+        }
+
+        return round($base + $car, 2);
+    }
+
+    private static function sumEbay3SalesForPacificDates(string $fromYmd, string $toYmd): float
+    {
+        $byOrder = [];
+        Ebay3DailyData::query()
+            ->where('period', 'l30')
+            ->whereDate('creation_date', '>=', $fromYmd)
+            ->whereDate('creation_date', '<=', $toYmd)
+            ->get()
+            ->each(function ($row) use (&$byOrder, $fromYmd, $toYmd) {
+                if (($row->cancel_status ?? '') === 'CANCELED' || ($row->order_payment_status ?? '') === 'FULLY_REFUNDED') {
+                    return;
+                }
+                $day = $row->creation_date ? Carbon::parse($row->creation_date)->format('Y-m-d') : null;
+                if ($day === null || $day < $fromYmd || $day > $toYmd) {
+                    return;
+                }
+                $oid = (string) $row->order_id;
+                if (! isset($byOrder[$oid])) {
+                    $byOrder[$oid] = ['total_price' => (float) ($row->total_price ?? 0), 'car' => 0.0];
+                }
+                $byOrder[$oid]['car'] += (float) ($row->ebay_collect_and_remit_tax ?? 0);
+            });
+
+        $total = 0.0;
+        foreach ($byOrder as $v) {
+            $total += round($v['total_price'] + $v['car'], 2);
+        }
+
+        return round($total, 2);
     }
 }

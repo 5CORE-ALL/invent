@@ -33,28 +33,50 @@ class FetchEbayOrders extends Command
         $token = $this->getToken();
         if (! $token) {
             $this->error('Token error');
-            return;
+            return self::FAILURE;
         }
 
         $dateRanges = $this->dateRanges();
 
         $this->info('Fetching orders for L30 and L60...');
 
-        $l30Orders = $this->fetchOrders($token, $dateRanges['l30']);
-        $l60Orders = $this->fetchOrders($token, $dateRanges['l60']);
+        $l30 = $this->fetchOrders($token, $dateRanges['l30']);
+        if (! $l30['ok']) {
+            $this->error('L30 fetch failed — leaving existing ebay_orders untouched');
+            return self::FAILURE;
+        }
 
-        $this->info("Fetched " . count($l30Orders) . " L30 orders and " . count($l60Orders) . " L60 orders");
+        $l60 = $this->fetchOrders($token, $dateRanges['l60']);
+        if (! $l60['ok']) {
+            $this->error('L60 fetch failed — leaving existing ebay_orders untouched');
+            return self::FAILURE;
+        }
 
-        $deletedL30 = EbayOrder::where('period', 'l30')->delete();
-        $this->info("Deleted {$deletedL30} old L30 orders");
+        if (count($l30['orders']) === 0) {
+            $this->error('L30 fetch returned 0 orders — leaving existing ebay_orders untouched');
+            return self::FAILURE;
+        }
 
-        $deletedL60 = EbayOrder::where('period', 'l60')->delete();
-        $this->info("Deleted {$deletedL60} old L60 orders");
+        $this->info('Fetched '.count($l30['orders']).' L30 orders and '.count($l60['orders']).' L60 orders');
 
-        $this->insertOrders($l30Orders, 'l30');
-        $this->insertOrders($l60Orders, 'l60');
+        $keepIds = [];
+        $this->insertOrders($l30['orders'], 'l30', $keepIds);
+        $this->insertOrders($l60['orders'], 'l60', $keepIds);
 
-        $this->info('✅ eBay Orders inserted');
+        if ($keepIds !== []) {
+            $staleIds = EbayOrder::whereIn('period', ['l30', 'l60'])
+                ->whereNotIn('ebay_order_id', $keepIds)
+                ->pluck('id');
+            if ($staleIds->isNotEmpty()) {
+                EbayOrderItem::whereIn('ebay_order_id', $staleIds)->delete();
+                EbayOrder::whereIn('id', $staleIds)->delete();
+                $this->info('Removed '.$staleIds->count().' orders that aged out of L30/L60');
+            }
+        }
+
+        $this->info('✅ eBay Orders upserted');
+
+        return self::SUCCESS;
     }
 
     private function dateRanges()
@@ -107,7 +129,10 @@ class FetchEbayOrders extends Command
         }
     }
 
-    private function fetchOrders($token, $range)
+    /**
+     * @return array{ok: bool, orders: array<int, array<string, mixed>>}
+     */
+    private function fetchOrders($token, $range): array
     {
         $orders = [];
         $from = $range['start']->copy()->utc()->format('Y-m-d\TH:i:s.000\Z');
@@ -116,20 +141,25 @@ class FetchEbayOrders extends Command
         $url = "https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[{$from}..{$to}]&limit=200";
 
         do {
-            $r = Http::withToken($token)->get($url);
+            $r = Http::withToken($token)->timeout(60)->get($url);
             if ($r->failed()) {
-                $this->error('Failed to fetch orders: ' . $r->body());
-                break;
+                $this->error('Failed to fetch orders: '.$r->body());
+
+                return ['ok' => false, 'orders' => $orders];
             }
 
             $orders = array_merge($orders, $r['orders'] ?? []);
             $url = $r['next'] ?? null;
         } while ($url);
 
-        return $orders;
+        return ['ok' => true, 'orders' => $orders];
     }
 
-    private function insertOrders($orders, $period)
+    /**
+     * @param  array<int, array<string, mixed>>  $orders
+     * @param  array<int, string>  $keepIds
+     */
+    private function insertOrders($orders, $period, array &$keepIds)
     {
         foreach ($orders as $order) {
             // "Total sales (includes taxes)" = pricingSummary.total (buyer-paid, after
@@ -145,8 +175,14 @@ class FetchEbayOrders extends Command
             $orderTotal = round($baseTotal + $carTax, 2);
 
             // Insert order
+            $orderId = (string) ($order['orderId'] ?? '');
+            if ($orderId === '') {
+                continue;
+            }
+            $keepIds[] = $orderId;
+
             $orderRecord = EbayOrder::updateOrCreate(
-                ['ebay_order_id' => $order['orderId']],
+                ['ebay_order_id' => $orderId],
                 [
                     'order_date' => Carbon::parse($order['creationDate']),
                     'status' => $order['orderFulfillmentStatus'],

@@ -311,7 +311,6 @@
             animation: ch-promo-spin 0.75s linear infinite !important;
         }
         .tabulator-row .tabulator-cell[tabulator-field="push_std_prc"],
-        .tabulator-row .tabulator-cell[tabulator-field="push_prmt"],
         .tabulator-row .tabulator-cell[tabulator-field="push_bump"] {
             padding: 2px 4px !important;
         }
@@ -708,6 +707,10 @@
                                 <a class="fw-bold" href="#" id="show-all-columns-btn" style="text-decoration: none; color: inherit;">
                                     <i class="fa fa-eye"></i> Show All Columns</a>
                             </li>
+                            <li class="dropdown-item column-dropdown-span-all">
+                                <a class="fw-bold" href="#" id="show-default-columns-btn" style="text-decoration: none; color: inherit;">
+                                    <i class="fa fa-undo"></i> Show Default Columns</a>
+                            </li>
                             <li class="column-dropdown-span-all"><hr class="dropdown-divider"></li>
                             <!-- Column toggles populated by JavaScript below this divider -->
                         </ul>
@@ -1088,6 +1091,19 @@
     const REVERB_DAILY_TOTALS_URL = @json(url('reverb-daily-data-totals-json'));
     // Columns that stay hidden even when "Show All Columns" is used.
     const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'Bump', 'RE_BID'];
+    // Designed default view (column defs with visible:false). Used by Show Default Columns.
+    const reverbDefaultHiddenFields = {
+        Parent: 1,
+        Missing_Ad: 1,
+        Bump: 1,
+        RE_BID: 1,
+        'A Price': 1,
+        Profit: 1,
+        'Sales L30': 1,
+        LP_productmaster: 1,
+        Ship_productmaster: 1,
+        _select: 1,
+    };
     let table = null;
     let allTableData = []; // Full dataset for ParentExpand
     // Reverb channel Ads% (TACOS) — same stored value as /all-marketplace-master (Amazon pattern).
@@ -1109,88 +1125,6 @@
         if (!(isFinite(std) && std > 0)) return 0;
         const prmt = Math.max(0, reverbPrmtPctOf(d));
         return +(std * (1 - (prmt / 100))).toFixed(2);
-    }
-    function reverbPushPrmtColumnDef() {
-        return {
-            title: 'Push %',
-            field: 'push_prmt',
-            hozAlign: 'center',
-            vertAlign: 'middle',
-            headerSort: false,
-            width: 52,
-            headerTooltip: 'Push Reverb Drop the Price By at this PRMT%. Listing / Std price is not changed. Click header to bulk selected (or visible) SKUs.',
-            titleFormatter: function() {
-                return '<button type="button" class="btn btn-sm p-0 reverb-push-prmt-header-btn" '
-                    + 'title="Queue Drop the Price By for selected SKUs whose PRMT% changed" '
-                    + 'style="border:none;background:none;cursor:pointer;color:#000;'
-                    + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
-                    + 'Push %</button>';
-            },
-            headerClick: function(e) {
-                if (e.target.closest('.reverb-push-prmt-header-btn')) {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    if (typeof queueReverbPushPrmt === 'function') queueReverbPushPrmt();
-                    return false;
-                }
-            },
-            formatter: function(cell) {
-                const d = cell.getRow().getData() || {};
-                const sku = String(d['(Child) sku'] || d.sku || '').trim();
-                if (!sku || String(sku).toUpperCase().indexOf('PARENT') !== -1 || d.is_parent_summary) {
-                    return '';
-                }
-                const prmt = reverbPrmtPctOf(d);
-                const status = String(d.PUSH_PRC_STATUS || cell.getValue() || '');
-                const last = parseFloat(d.PUSH_PRC_VALUE);
-                const lastOk = isFinite(last) && last >= 0;
-                const needs = status === 'error' || !lastOk || Number(last).toFixed(1) !== Number(prmt).toFixed(1);
-                let icon = '<i class="fas fa-upload"></i>';
-                let color = '#FF9900';
-                let tip = prmt > 0
-                    ? ('Drop the Price By ' + prmt.toFixed(0) + '% on Reverb (listing / Std unchanged)')
-                    : 'Remove Drop the Price By sale on Reverb (listing / Std unchanged)';
-                if (status === 'processing') {
-                    icon = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
-                    color = '#ffc107';
-                    tip = 'Applying Drop the Price By…';
-                } else if (status === 'error') {
-                    icon = '<i class="fa-solid fa-xmark"></i>';
-                    color = '#dc3545';
-                    tip = 'Last Drop the Price By failed — click to retry';
-                } else if (!needs) {
-                    icon = '<i class="fa-solid fa-check-double"></i>';
-                    color = '#28a745';
-                    tip = 'Already pushed Drop the Price By ' + Number(last).toFixed(0) + '% — click to push again';
-                } else if (lastOk) {
-                    tip = 'PRMT% changed ' + Number(last).toFixed(0) + '% → ' + prmt.toFixed(0)
-                        + '% — click to update Drop the Price By';
-                }
-                return '<button type="button" class="btn btn-sm p-0 reverb-push-prmt-btn" '
-                    + 'data-sku="' + sku.replace(/"/g, '&quot;') + '" '
-                    + 'data-prmt="' + prmt.toFixed(0) + '" '
-                    + 'title="' + tip.replace(/"/g, '&quot;') + '" '
-                    + 'style="border:none;background:none;cursor:pointer;color:' + color
-                    + ';padding:0;line-height:1;vertical-align:middle;">'
-                    + icon + '</button>';
-            },
-            cellClick: function(e, cell) {
-                const btn = e.target.closest('.reverb-push-prmt-btn');
-                if (!btn) return;
-                e.stopPropagation();
-                e.preventDefault();
-                if (btn.disabled) return false;
-                const d = cell.getRow().getData() || {};
-                if (String(d.PUSH_PRC_STATUS || '') === 'processing') return false;
-                if (typeof queueReverbPushPrmt === 'function') {
-                    const sku = String(d['(Child) sku'] || '').trim();
-                    const selected = (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.size > 1
-                        && selectedSkus.has(sku));
-                    queueReverbPushPrmt(selected ? null : cell.getRow());
-                }
-                return false;
-            }
-        };
     }
     function reverbParseBumpPct(val) {
         if (val === null || val === undefined || val === '') return 0;
@@ -1290,13 +1224,8 @@
     }
     function reverbChannelPromoColumns() {
         const cols = typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [];
-        const zeroIdx = cols.findIndex(function(c) { return c && c.field === 'zero_sold_prmt'; });
-        const prmtIdx = cols.findIndex(function(c) { return c && c.field === 'prmt_pct'; });
-        const pushCol = reverbPushPrmtColumnDef();
-        const after = zeroIdx >= 0 ? zeroIdx : prmtIdx;
-        if (after >= 0) cols.splice(after + 1, 0, pushCol);
-        else cols.unshift(pushCol);
-        return cols;
+        // S PRC already has its own Push column — do not show Push % / push_prmt.
+        return cols.filter(function(c) { return !c || c.field !== 'push_prmt'; });
     }
 
     /** Take-home margin factor (Reverb ~0.85). */
@@ -2005,7 +1934,7 @@
         const missingHiddenColumnFields = [
             'RV Price',
             'GPFT%', 'ROI%', 'NPFT', 'NROI', 'SPRICE', 'SGPFT', 'SROI', 'SNPFT', 'SNROI',
-            'prmt_pct', 'zero_sold_prmt', 'push_prmt', 'push_std_prc',
+            'prmt_pct', 'zero_sold_prmt', 'push_std_prc',
             'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
             'Views', 'CVR',
             'L30', 'RV Dil%', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
@@ -5543,7 +5472,7 @@
             STANDARD_PRICE: 1, push_std_prc: 1, 'RV Price': 1, 'A Price': 1, lmp_price: 1,
             linked_lmp_skus: 1, linked_lmp_sku_add: 1, 'ROI%': 1, 'GPFT%': 1, NPFT: 1, NROI: 1,
             Profit: 1, 'Sales L30': 1, LP_productmaster: 1, Ship_productmaster: 1, prmt_pct: 1,
-            zero_sold_prmt: 1, push_prmt: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
+            zero_sold_prmt: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
         };
         const COL_VIS_ADS = {
             Missing_Ad: 1, Bump: 1, RE_BID: 1, push_bump: 1
@@ -5551,10 +5480,9 @@
         function reverbColVisPlainTitle(def) {
             const field = def && def.field ? String(def.field) : '';
             if (field === 'push_std_prc') return 'Push Std';
-            if (field === 'push_prmt') return 'Push %';
             if (field === 'push_bump') return 'Push B%';
             if (field === 'prmt_pct') return 'PRMT %';
-            if (field === 'zero_sold_prmt') return '0 Sold';
+            if (field === 'zero_sold_prmt') return '0 Sold PRMT%';
             if (field === 'push_price') return 'Push';
             const raw = (def && def.title != null) ? def.title : field;
             const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -5599,6 +5527,12 @@
                 + '<i class="fa fa-eye"></i> Show All Columns</a>';
             menu.appendChild(showAllLi);
 
+            const showDefaultLi = document.createElement('li');
+            showDefaultLi.className = 'dropdown-item column-dropdown-span-all';
+            showDefaultLi.innerHTML = '<a class="fw-bold" href="#" id="show-default-columns-btn" style="text-decoration: none; color: inherit;">'
+                + '<i class="fa fa-undo"></i> Show Default Columns</a>';
+            menu.appendChild(showDefaultLi);
+
             const divider = document.createElement('li');
             divider.className = 'column-dropdown-span-all';
             divider.innerHTML = '<hr class="dropdown-divider">';
@@ -5639,7 +5573,7 @@
             table.getColumns().forEach(function(col) {
                 const def = col.getDefinition();
                 const field = def.field;
-                if (!field || field === '_select') return;
+                if (!field || field === '_select' || field === 'push_prmt') return;
                 const title = reverbColVisPlainTitle(def);
                 if (!title) return;
                 const cat = classifyReverbColumn(field, title);
@@ -5729,6 +5663,9 @@
                     });
                     const aPrcCol = table.getColumn('A Price');
                     if (aPrcCol) aPrcCol.hide();
+                    try {
+                        if (table.getColumn('push_prmt')) table.deleteColumn('push_prmt');
+                    } catch (e) { /* already gone */ }
                     buildColumnDropdown(map);
                 })
                 .catch(err => {
@@ -5739,6 +5676,9 @@
 
         // Wait for table to be built — apply saved columns first (same as Amazon).
         table.on('tableBuilt', function() {
+            try {
+                if (table.getColumn('push_prmt')) table.deleteColumn('push_prmt');
+            } catch (e) { /* already gone */ }
             applyColumnVisibilityFromServer();
             loadReverbDailyTotalsBadges();
         });
@@ -5797,6 +5737,19 @@
             }
         });
 
+        function applyReverbDefaultColumnVisibility() {
+            if (!table) return;
+            table.getColumns().forEach(function(col) {
+                const field = col.getDefinition().field;
+                if (!field) return;
+                if (field === '_select' || reverbDefaultHiddenFields[field] || adsOnlyColumnFields.indexOf(field) !== -1) {
+                    col.hide();
+                    return;
+                }
+                col.show();
+            });
+        }
+
         // Show All Columns (ads-only columns stay hidden).
         $('#column-dropdown-menu').on('click', '#show-all-columns-btn', function(e) {
             e.preventDefault();
@@ -5810,6 +5763,15 @@
                     col.show();
                 }
             });
+            buildColumnDropdown();
+            saveColumnVisibilityToServer();
+        });
+
+        // Restore designed defaults (0 Sold PRMT% on; Push % gone; ads / A Prc / LP / Ship hidden).
+        $('#column-dropdown-menu').on('click', '#show-default-columns-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            applyReverbDefaultColumnVisibility();
             buildColumnDropdown();
             saveColumnVisibilityToServer();
         });

@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Schema;
  * Per-channel PRMT%/CPN%/DSC%/Appr/Push Prc — same JSON key format as Amazon
  * (amazon_data_view.value), stored on each channel's own *_data_view.value.
  *
- * Keys: PEF_PRMT_PCT, PEF_CPN_PCT, PEF_DSC_PCT, PEF_APPR,
+ * Keys: PEF_PRMT_PCT, PEF_ZERO_SOLD_PRMT_PCT, PEF_CPN_PCT, PEF_DSC_PCT, PEF_APPR,
  *       PUSH_PRC_STATUS, PUSH_PRC_VALUE, PUSH_PRC_PUSHED_AT,
  *       PUSH_STD_PRC_STATUS, PUSH_STD_PRC_VALUE, PUSH_STD_PRC_PUSHED_AT
  *
@@ -148,11 +148,13 @@ class ChannelPromoPricingService
 
         $prmt = $promo['prmt_pct'] ?? null;
         $cpn = $promo['cpn_pct'] ?? null;
+        $zeroSold = $promo['zero_sold_prmt'] ?? null;
 
         $dsc = $promo['dsc'] ?? null;
 
         $row['prmt_pct'] = $prmt !== null ? (string) $prmt : null;
         $row['cpn_pct'] = $cpn !== null ? (string) $cpn : null;
+        $row['zero_sold_prmt'] = $zeroSold !== null ? (string) $zeroSold : null;
         $row['dsc'] = $dsc !== null && $dsc !== '' ? (string) $dsc : null;
         $row['appr'] = $promo['appr'] ?? false;
         $row['PUSH_PRC_STATUS'] = $promo['PUSH_PRC_STATUS'] ?? null;
@@ -170,6 +172,9 @@ class ChannelPromoPricingService
         $row['_prmt_pct_applied'] = is_numeric($promo['_prmt_pct_applied'] ?? null)
             ? (float) $promo['_prmt_pct_applied']
             : (is_numeric($prmt) ? (float) $prmt : 0);
+        $row['_zero_sold_prmt_applied'] = is_numeric($promo['_zero_sold_prmt_applied'] ?? null)
+            ? (float) $promo['_zero_sold_prmt_applied']
+            : (is_numeric($zeroSold) ? (float) $zeroSold : 0);
         $row['_cpn_pct_applied'] = is_numeric($promo['_cpn_pct_applied'] ?? null)
             ? (float) $promo['_cpn_pct_applied']
             : (is_numeric($cpn) ? (float) $cpn : 0);
@@ -232,6 +237,14 @@ class ChannelPromoPricingService
                     unset($existing['PEF_PRMT_PCT']);
                 } else {
                     $existing['PEF_PRMT_PCT'] = $pct;
+                }
+            }
+            if (array_key_exists('zero_sold_prmt', $fields)) {
+                $pct = $this->clampPct($fields['zero_sold_prmt']);
+                if ($pct === null) {
+                    unset($existing['PEF_ZERO_SOLD_PRMT_PCT']);
+                } else {
+                    $existing['PEF_ZERO_SOLD_PRMT_PCT'] = $pct;
                 }
             }
             if (array_key_exists('cpn_pct', $fields)) {
@@ -360,6 +373,7 @@ class ChannelPromoPricingService
 
             return $this->mapFromValue($existing) ?? [
                 'prmt_pct' => null,
+                'zero_sold_prmt' => null,
                 'cpn_pct' => null,
                 'dsc' => null,
                 'appr' => false,
@@ -368,6 +382,7 @@ class ChannelPromoPricingService
                 'PUSH_STD_PRC_STATUS' => null,
                 'PUSH_STD_PRC_VALUE' => null,
                 '_prmt_pct_applied' => 0,
+                '_zero_sold_prmt_applied' => 0,
                 '_cpn_pct_applied' => 0,
                 '_dsc_applied' => 0,
                 'sku' => (string) $row->sku,
@@ -391,6 +406,7 @@ class ChannelPromoPricingService
     private function mapFromValue(array $val): ?array
     {
         $prmt = $this->nullablePct($val['PEF_PRMT_PCT'] ?? null);
+        $zeroSold = $this->nullablePct($val['PEF_ZERO_SOLD_PRMT_PCT'] ?? null);
         $cpn = $this->nullablePct($val['PEF_CPN_PCT'] ?? null);
         $dsc = $this->nullablePct($val['PEF_DSC_PCT'] ?? null);
         $couponPct = $this->nullablePct($val['PEF_COUPON_PCT'] ?? null);
@@ -398,7 +414,7 @@ class ChannelPromoPricingService
         $couponPromoId = isset($val['PEF_COUPON_PROMOTION_ID']) ? trim((string) $val['PEF_COUPON_PROMOTION_ID']) : '';
         $salePct = $this->nullablePct($val['PEF_SALE_PCT'] ?? null);
         $salePromoId = isset($val['PEF_PRMT_PROMOTION_ID']) ? trim((string) $val['PEF_PRMT_PROMOTION_ID']) : '';
-        $hasAny = $prmt !== null || $cpn !== null || $dsc !== null
+        $hasAny = $prmt !== null || $zeroSold !== null || $cpn !== null || $dsc !== null
             || isset($val['PEF_APPR'])
             || isset($val['PUSH_PRC_STATUS'])
             || isset($val['PUSH_PRC_VALUE'])
@@ -422,6 +438,7 @@ class ChannelPromoPricingService
 
         return [
             'prmt_pct' => $prmt,
+            'zero_sold_prmt' => $zeroSold,
             'cpn_pct' => $cpn,
             'dsc' => $dsc,
             'appr' => filter_var($val['PEF_APPR'] ?? false, FILTER_VALIDATE_BOOLEAN),
@@ -444,6 +461,7 @@ class ChannelPromoPricingService
             'PEF_SALE_PCT' => $salePct,
             'PEF_PRMT_PROMOTION_ID' => $salePromoId !== '' ? $salePromoId : null,
             '_prmt_pct_applied' => is_numeric($prmt) ? (float) $prmt : 0,
+            '_zero_sold_prmt_applied' => is_numeric($zeroSold) ? (float) $zeroSold : 0,
             '_cpn_pct_applied' => is_numeric($cpn) ? (float) $cpn : 0,
             '_dsc_applied' => is_numeric($dsc) ? (float) $dsc : 0,
         ];

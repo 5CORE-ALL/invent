@@ -954,6 +954,71 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Cheap Y Sales / L7 overlay for the all-marketplace-master fast path.
+     */
+    private function overlayLiveEbayYSalesOnChannelRows(array $rows): array
+    {
+        $displayToWhich = [
+            'eBay' => 1,
+            'EbayTwo' => 2,
+            'EbayThree' => 3,
+        ];
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name === '' || ! isset($displayToWhich[$name])) {
+                continue;
+            }
+
+            $which = $displayToWhich[$name];
+            $ySales = $this->computeEbayYSalesLikeAmazon($which);
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+            $l7Sales = $this->computeEbayL7SalesLikeAmazon($which);
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Overlay Pacific-yesterday Y Sales for channels that used "latest order − 1 day"
+     * and could show $0 on a day that actually had sales (AliExpress, Faire, Mercari, TopDawg).
+     */
+    private function overlayLiveStaleYSalesOnChannelRows(array $rows): array
+    {
+        $live = [
+            'Aliexpress' => fn () => $this->computeAliexpressYSalesLikeAmazon(),
+            'Faire' => fn () => $this->computeFaireYSalesLikeAmazon(),
+            'Mercari w ship' => fn () => $this->computeMercariYSalesLikeAmazon(true),
+            'Mercari wo ship' => fn () => $this->computeMercariYSalesLikeAmazon(false),
+            'TopDawg' => fn () => $this->computeTopDawgYSalesLikeAmazon(),
+        ];
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name === '' || ! isset($live[$name])) {
+                continue;
+            }
+            try {
+                $value = $live[$name]();
+                if ($value !== null) {
+                    $row['Y Sales'] = $value;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Live Y Sales overlay failed for '.$name.': '.$e->getMessage());
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
      * Live L30/L60 from shopify_order_items — same windows as /pp-sales-stats and getPurchasingPowerChannelData().
      *
      * @return array{l30_sales: float, l30_orders: int, qty: int, l60_sales: float, l60_orders: int, pft: float, cogs: float, l60_pft: float, l60_cogs: float}|null
@@ -4206,6 +4271,11 @@ class ChannelMasterController extends Controller
             'shopify' => fn () => $this->computeShopifyDirectYSalesLikeAmazon(),
             'fbmarketplace' => fn () => $this->computeFbMarketplaceYSalesLikeAmazon(),
             'tiktok2' => fn () => $this->computeTiktokTwoYSalesLikeAmazon(),
+            'aliexpress' => fn () => $this->computeAliexpressYSalesLikeAmazon(),
+            'faire' => fn () => $this->computeFaireYSalesLikeAmazon(),
+            'mercariwship' => fn () => $this->computeMercariYSalesLikeAmazon(true),
+            'mercariwoship' => fn () => $this->computeMercariYSalesLikeAmazon(false),
+            'topdawg' => fn () => $this->computeTopDawgYSalesLikeAmazon(),
         ];
 
         foreach ($live as $key => $fn) {
@@ -4744,10 +4814,12 @@ class ChannelMasterController extends Controller
                 ];
             })->toArray();
 
-            // Cheap defaults only. Live overlays (Amazon/Temu/eBay pricing scans, Shopify
-            // rebuilds, etc.) belong in channel:calculate-data — they made this page take
-            // tens of seconds. Cron already writes those values into this table.
+            // Cheap defaults only. Heavy overlays belong in channel:calculate-data.
+            // eBay Y/L7 is a small date-window read of ebay{1,2}_order_metrics so a
+            // missed daily fetch cannot leave yesterday at $0 until the next rebuild.
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
+            $formattedData = $this->overlayLiveEbayYSalesOnChannelRows($formattedData);
+            $formattedData = $this->overlayLiveStaleYSalesOnChannelRows($formattedData);
 
             if (! $section && ! $paginate) {
                 \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::syncNmapFromChannelRows($formattedData);
@@ -5650,63 +5722,7 @@ class ChannelMasterController extends Controller
      */
     private function computeEbayYSalesLikeAmazon(int $which): ?float
     {
-        // Yesterday's sales — SAME basis as /ebay{,2,3}/daily-sales "Y Sales":
-        // per-order total (pricingSummary.total + eBay collect-and-remit tax), counted once
-        // per order, excluding CANCELED and FULLY_REFUNDED, for the Pacific calendar day
-        // "yesterday". Keeps the all-marketplace-master eBay Y Sales in step with the order pages.
-        $tz = 'America/Los_Angeles';
-        $yesterday = Carbon::yesterday($tz)->toDateString();
-
-        try {
-            if ($which === 1 || $which === 2) {
-                $model = $which === 1 ? \App\Models\EbayOrder::class : \App\Models\Ebay2Order::class;
-                $total = 0.0;
-                $model::where('period', 'l30')->get()->each(function ($order) use (&$total, $tz, $yesterday) {
-                    $raw = is_array($order->raw_data) ? $order->raw_data : json_decode((string) $order->raw_data, true);
-                    if (!is_array($raw)) return;
-                    $cs = $raw['cancelStatus']['cancelState'] ?? '';
-                    $ps = $raw['orderPaymentStatus'] ?? '';
-                    if ($cs === 'CANCELED' || $ps === 'FULLY_REFUNDED') return;
-                    $created = $raw['creationDate'] ?? $order->order_date;
-                    if (!$created) return;
-                    if (Carbon::parse($created)->setTimezone($tz)->toDateString() !== $yesterday) return;
-                    $base = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
-                    $car = 0.0;
-                    foreach (($raw['lineItems'] ?? []) as $li) {
-                        foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
-                            $car += (float) ($t['amount']['value'] ?? 0);
-                        }
-                    }
-                    $total += round($base + $car, 2);
-                });
-                return round($total, 2);
-            }
-
-            if ($which === 3) {
-                // ebay3_daily_data is per line item; creation_date is already stored in Pacific.
-                // Order total = total_price (order-level, repeated per line) + Σ CAR tax per order.
-                $byOrder = [];
-                \App\Models\Ebay3DailyData::where('period', 'l30')->get()->each(function ($row) use (&$byOrder, $yesterday) {
-                    if (($row->cancel_status ?? '') === 'CANCELED' || ($row->order_payment_status ?? '') === 'FULLY_REFUNDED') return;
-                    $day = $row->creation_date ? Carbon::parse($row->creation_date)->format('Y-m-d') : null;
-                    if ($day !== $yesterday) return;
-                    $oid = $row->order_id;
-                    if (!isset($byOrder[$oid])) {
-                        $byOrder[$oid] = ['total_price' => (float) ($row->total_price ?? 0), 'car' => 0.0];
-                    }
-                    $byOrder[$oid]['car'] += (float) ($row->ebay_collect_and_remit_tax ?? 0);
-                });
-                $total = 0.0;
-                foreach ($byOrder as $v) {
-                    $total += round($v['total_price'] + $v['car'], 2);
-                }
-                return round($total, 2);
-            }
-        } catch (\Throwable $e) {
-            Log::warning("computeEbayYSalesLikeAmazon({$which}) failed: " . $e->getMessage());
-        }
-
-        return null;
+        return EbayChannelMetricsService::computeYSales($which);
     }
 
     /**
@@ -5831,7 +5847,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Faire: wholesale else retail × quantity; day before latest order_date (matches calculateFaireMetrics).
+     * Faire: price × quantity for Pacific calendar yesterday (same clock as Amazon Y Sales).
      */
     private function computeFaireYSalesLikeAmazon(): ?float
     {
@@ -5845,17 +5861,7 @@ class ChannelMasterController extends Controller
               ->orWhere('tags', 'LIKE', '%Faire%');
         };
 
-        $latestRaw = DB::table('shopify_raw_orders')
-            ->where($faireWhere)
-            ->whereNotNull('order_date')
-            ->max('order_date');
-        if (!$latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific   = $latestPacific->copy()->subDay()->endOfDay();
+        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
         $sum = (float) DB::table('shopify_raw_orders')
             ->where($faireWhere)
@@ -6001,14 +6007,7 @@ class ChannelMasterController extends Controller
             $q->where('buyer_shipping_fee', '>', 0);
         }
 
-        $latestRaw = (clone $q)->max('sold_date');
-        if (!$latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
         $sum = (float) (clone $q)
             ->where('sold_date', '>=', $yStartPacific)
@@ -6020,7 +6019,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * TopDawg: sum amount on order_date = Pacific day before latest order_date.
+     * TopDawg: sum amount for Pacific calendar yesterday.
      */
     private function computeTopDawgYSalesLikeAmazon(): ?float
     {
@@ -6028,13 +6027,7 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        $latestRaw = DB::table('topdawg_order_metrics')->whereNotNull('order_date')->max('order_date');
-        if (!$latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yDate = $latestPacific->copy()->subDay()->toDateString();
+        [, , $yDate] = $this->pacificYesterdayBounds();
 
         $sum = (float) DB::table('topdawg_order_metrics')
             ->whereDate('order_date', $yDate)
@@ -6093,22 +6086,40 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * AliExpress: line revenue on Pacific day before latest order_date (product_total → supply_price → order_amount; same filters as calculateAliexpressMetrics).
+     * AliExpress: Pacific calendar yesterday. Prefers aliexpress_order_metrics (30-min sync).
      */
     private function computeAliexpressYSalesLikeAmazon(): ?float
     {
+        [$yStart, $yEnd] = $this->pacificYesterdayBounds();
+
+        $isCancelled = function (string $status): bool {
+            $status = strtolower($status);
+
+            return str_contains($status, 'refund')
+                || str_contains($status, 'return')
+                || str_contains($status, 'cancel')
+                || str_contains($status, 'closed');
+        };
+
+        if (Schema::hasTable('aliexpress_order_metrics')) {
+            $sum = 0.0;
+            $rows = DB::table('aliexpress_order_metrics')
+                ->where('order_date', '>=', $yStart)
+                ->where('order_date', '<=', $yEnd)
+                ->get(['status', 'amount']);
+            foreach ($rows as $row) {
+                if ($isCancelled((string) ($row->status ?? ''))) {
+                    continue;
+                }
+                $sum += (float) ($row->amount ?? 0);
+            }
+
+            return round($sum, 2);
+        }
+
         if (! Schema::hasTable('aliexpress_daily_data')) {
             return null;
         }
-
-        $latestRaw = DB::table('aliexpress_daily_data')->whereNotNull('order_date')->max('order_date');
-        if (! $latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStart = $latestPacific->copy()->subDay()->startOfDay();
-        $yEnd = $latestPacific->copy()->subDay()->endOfDay();
 
         $sum = 0.0;
         foreach (
@@ -6117,11 +6128,7 @@ class ChannelMasterController extends Controller
                 ->where('order_date', '<=', $yEnd)
                 ->cursor() as $row
         ) {
-            $status = strtolower((string) ($row->order_status ?? ''));
-            if (str_contains($status, 'refund')
-                || str_contains($status, 'return')
-                || str_contains($status, 'cancel')
-                || str_contains($status, 'closed')) {
+            if ($isCancelled((string) ($row->order_status ?? ''))) {
                 continue;
             }
             if (empty($row->sku_code) || empty($row->order_id)) {
@@ -6213,6 +6220,18 @@ class ChannelMasterController extends Controller
             ->value('revenue');
 
         return round($sum, 2);
+    }
+
+    /**
+     * Pacific calendar yesterday — same clock as Amazon Y Sales.
+     *
+     * @return array{0: Carbon, 1: Carbon, 2: string} [startOfDay, endOfDay, Y-m-d]
+     */
+    private function pacificYesterdayBounds(): array
+    {
+        $yday = Carbon::yesterday('America/Los_Angeles');
+
+        return [$yday->copy()->startOfDay(), $yday->copy()->endOfDay(), $yday->toDateString()];
     }
 
     /**
@@ -6329,57 +6348,7 @@ class ChannelMasterController extends Controller
      */
     private function computeEbayL7SalesLikeAmazon(int $which): ?float
     {
-        if ($which === 1) {
-            $latestRaw = DB::table('ebay_orders')
-                ->where(function ($q) {
-                    $q->whereNull('status')->orWhere('status', '!=', 'CANCELLED');
-                })
-                ->max('order_date');
-        } elseif ($which === 2) {
-            $latestRaw = DB::table('ebay2_orders')
-                ->where(function ($q) {
-                    $q->whereNull('status')->orWhere('status', '!=', 'CANCELLED');
-                })
-                ->max('order_date');
-        } elseif ($which === 3) {
-            $latestRaw = DB::table('ebay3_daily_data')->max('creation_date');
-        } else {
-            return null;
-        }
-
-        if (!$latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
-
-        if ($which === 1) {
-            $sum = (float) DB::table('ebay_orders as o')
-                ->join('ebay_order_items as i', 'o.id', '=', 'i.ebay_order_id')
-                ->where('o.order_date', '>=', $l7StartPacific)
-                ->where('o.order_date', '<=', $l7EndPacific)
-                ->where(function ($q) {
-                    $q->whereNull('o.status')->orWhere('o.status', '!=', 'CANCELLED');
-                })
-                ->sum('i.price');
-        } elseif ($which === 2) {
-            $sum = (float) DB::table('ebay2_orders as o')
-                ->join('ebay2_order_items as i', 'o.id', '=', 'i.ebay2_order_id')
-                ->where('o.order_date', '>=', $l7StartPacific)
-                ->where('o.order_date', '<=', $l7EndPacific)
-                ->where(function ($q) {
-                    $q->whereNull('o.status')->orWhere('o.status', '!=', 'CANCELLED');
-                })
-                ->sum('i.price');
-        } else {
-            $sum = (float) DB::table('ebay3_daily_data')
-                ->where('creation_date', '>=', $l7StartPacific)
-                ->where('creation_date', '<=', $l7EndPacific)
-                ->sum('unit_price');
-        }
-
-        return round($sum, 2);
+        return EbayChannelMetricsService::computeL7Sales($which);
     }
 
     private function computeDobaL7SalesLikeAmazon(): ?float

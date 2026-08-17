@@ -596,21 +596,28 @@ class Kernel extends ConsoleKernel
         | EBAY JOBS
         |--------------------------------------------------------------------------
         */
-        $ist($schedule->command('app:fetch-ebay-orders')
-            ->dailyAt('09:35')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-ebay-orders')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // Not wrapped in $ist() — a delayed scheduler tick after 20:00 IST must still
+        // be allowed to refresh ebay_orders. Short mutex so a hung run cannot block
+        // the next slot for 24h (that is why 09:35 IST was missed Aug 14–17).
+        foreach (['09:35', '13:35', '18:35'] as $slot) {
+            $schedule->command('app:fetch-ebay-orders')
+                ->dailyAt($slot)
+                ->timezone('Asia/Kolkata')
+                ->name('fetch-ebay-orders-'.str_replace(':', '', $slot))
+                ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
 
-        $ist($schedule->command('app:fetch-ebay2-orders')
-            ->dailyAt('09:40')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-ebay2-orders')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
+        foreach (['09:40', '13:40', '18:40'] as $slot) {
+            $schedule->command('app:fetch-ebay2-orders')
+                ->dailyAt($slot)
+                ->timezone('Asia/Kolkata')
+                ->name('fetch-ebay2-orders-'.str_replace(':', '', $slot))
+                ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
 
        
         $ist($schedule->command('ebay3:daily --days=60')

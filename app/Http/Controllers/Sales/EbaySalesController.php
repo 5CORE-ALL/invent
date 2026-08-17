@@ -7,6 +7,7 @@ use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\EbayOrder;
 use App\Models\ProductMaster;
 use App\Models\ChannelMasterCalculatedData;
+use App\Services\EbayChannelMetricsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -18,30 +19,7 @@ class EbaySalesController extends Controller
         // exclusions the Total Sales badge uses (pricingSummary.total + collect-and-remit
         // tax; skip CANCELED and FULLY_REFUNDED). Mirrors Amazon's "Y Sales" badge.
         $tz = 'America/Los_Angeles';
-        $yesterday = \Carbon\Carbon::yesterday($tz)->toDateString();
-        $ySales = 0.0;
-        try {
-            EbayOrder::where('period', 'l30')->get()->each(function ($order) use (&$ySales, $tz, $yesterday) {
-                $raw = is_array($order->raw_data) ? $order->raw_data : json_decode((string) $order->raw_data, true);
-                if (!is_array($raw)) return;
-                $cs = $raw['cancelStatus']['cancelState'] ?? '';
-                $ps = $raw['orderPaymentStatus'] ?? '';
-                if ($cs === 'CANCELED' || $ps === 'FULLY_REFUNDED') return;
-                $created = $raw['creationDate'] ?? $order->order_date;
-                if (!$created) return;
-                if (\Carbon\Carbon::parse($created)->setTimezone($tz)->toDateString() !== $yesterday) return;
-                $base = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
-                $carTax = 0.0;
-                foreach (($raw['lineItems'] ?? []) as $li) {
-                    foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
-                        $carTax += (float) ($t['amount']['value'] ?? 0);
-                    }
-                }
-                $ySales += round($base + $carTax, 2);
-            });
-        } catch (\Throwable $e) {
-            Log::warning('Ebay Y Sales failed: ' . $e->getMessage());
-        }
+        $ySales = (float) (EbayChannelMetricsService::computeYSales(1) ?? 0);
 
         // Ads spend / TACOS — same source as /all-marketplace-master eBay row and
         // /ebay-tabulator-view Ads badge (KW + PMT via campaign reports).

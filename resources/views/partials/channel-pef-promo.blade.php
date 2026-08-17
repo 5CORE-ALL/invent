@@ -2109,6 +2109,28 @@
                 : chPromoRound2(std);
             return price >= 0.01 ? price : null;
         }
+        function chPromoReverbComboEnabled() {
+            return CHANNEL_PROMO_CHANNEL === 'reverb' && CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES;
+        }
+        function chPromoZeroSoldPrmtInt(d) {
+            return Math.max(0, Number(d && (d.zero_sold_prmt != null && d.zero_sold_prmt !== ''
+                ? d.zero_sold_prmt : d._zero_sold_prmt_applied)) || 0);
+        }
+        function chPromoReverbSpriceFromStdBothPrmt(d, overrides) {
+            const std = chPromoStdBase(d);
+            if (!(std > 0)) return null;
+            const prmt = overrides && overrides.prmt != null
+                ? Math.max(0, Number(overrides.prmt) || 0)
+                : Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
+            const zeroSold = overrides && overrides.zeroSold != null
+                ? Math.max(0, Number(overrides.zeroSold) || 0)
+                : chPromoZeroSoldPrmtInt(d);
+            const totalDisc = Math.min(99.99, prmt + zeroSold);
+            const price = totalDisc > 0
+                ? chPromoRound2(std * (1 - (totalDisc / 100)))
+                : chPromoRound2(std);
+            return price >= 0.01 ? price : null;
+        }
         function applyChPromoToSpriceBase(base, promo) {
             if (!(base > 0) || !promo) return null;
             const next = base * (1 - (promo.value / 100));
@@ -2205,6 +2227,9 @@
             if (extra.prmt_pct !== undefined && extra.prmt_pct !== null) {
                 promoFields.prmt_pct = Number(extra.prmt_pct) || 0;
             }
+            if (extra.zero_sold_prmt !== undefined && extra.zero_sold_prmt !== null) {
+                promoFields.zero_sold_prmt = Number(extra.zero_sold_prmt) || 0;
+            }
             if (extra.cpn_pct !== undefined && extra.cpn_pct !== null) {
                 promoFields.cpn_pct = Number(extra.cpn_pct) || 0;
             }
@@ -2221,6 +2246,10 @@
                         updates.prmt_pct = String(pres.prmt_pct);
                         updates._prmt_pct_applied = Number(pres.prmt_pct) || 0;
                     }
+                    if (pres.zero_sold_prmt !== undefined && pres.zero_sold_prmt !== null) {
+                        updates.zero_sold_prmt = String(pres.zero_sold_prmt);
+                        updates._zero_sold_prmt_applied = Number(pres.zero_sold_prmt) || 0;
+                    }
                     if (pres.cpn_pct !== undefined && pres.cpn_pct !== null) {
                         updates.cpn_pct = String(pres.cpn_pct);
                         updates._cpn_pct_applied = Number(pres.cpn_pct) || 0;
@@ -2234,6 +2263,10 @@
                     if (promoFields.prmt_pct !== undefined) {
                         updates.prmt_pct = String(promoFields.prmt_pct);
                         updates._prmt_pct_applied = Number(promoFields.prmt_pct) || 0;
+                    }
+                    if (promoFields.zero_sold_prmt !== undefined) {
+                        updates.zero_sold_prmt = String(promoFields.zero_sold_prmt);
+                        updates._zero_sold_prmt_applied = Number(promoFields.zero_sold_prmt) || 0;
                     }
                     if (promoFields.cpn_pct !== undefined) {
                         updates.cpn_pct = String(promoFields.cpn_pct);
@@ -2810,14 +2843,15 @@
                     if (!chPromoIsChildRow(d) && !isParent) { skipped++; continue; }
                     const prmt = prmtForRow(d);
                     const sku = chPromoSku(d);
-                    const prevPrmt = Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0;
+                    const prevPrmt = opts.zeroSoldOnly
+                        ? chPromoZeroSoldPrmtInt(d)
+                        : (Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
                     const prevSprice = chPromoGetSprice(d);
                     let newPrice = 0;
                     let skipSprice = true;
-                    let patch = { prmt_pct: String(prmt), _prmt_pct_applied: prmt };
-                    if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
-                        patch.zero_sold_prmt = chPromoIsZeroSoldRow(d) ? String(prmt) : '';
-                    }
+                    let patch = opts.zeroSoldOnly
+                        ? { zero_sold_prmt: String(prmt), _zero_sold_prmt_applied: prmt }
+                        : { prmt_pct: String(prmt), _prmt_pct_applied: prmt };
 
                     if (isParent) {
                         item.row.update(patch);
@@ -2850,6 +2884,14 @@
                                 newPrice = chPromoRound2(std * (1 - (prmt / 100)));
                                 if (!(newPrice >= 0.01)) newPrice = std;
                             }
+                            Object.assign(patch, chPromoSpricePatch(newPrice));
+                            skipSprice = false;
+                        }
+                    } else if (chPromoReverbComboEnabled()) {
+                        newPrice = chPromoReverbSpriceFromStdBothPrmt(d, opts.zeroSoldOnly
+                            ? { zeroSold: prmt }
+                            : { prmt: prmt });
+                        if (newPrice > 0) {
                             Object.assign(patch, chPromoSpricePatch(newPrice));
                             skipSprice = false;
                         }
@@ -2888,18 +2930,22 @@
             const conc = (CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8;
             await chPromoMapLimit(jobs, conc, async function(job) {
                 if (!job.sku) return;
+                const extra = opts.zeroSoldOnly
+                    ? { zero_sold_prmt: job.prmt }
+                    : { prmt_pct: job.prmt };
                 try {
                     if (job.skipSprice) {
-                        await Promise.resolve(saveChannelPromoFields(job.sku, { prmt_pct: job.prmt }));
+                        await Promise.resolve(saveChannelPromoFields(job.sku, extra));
                         return;
                     }
-                    await saveChannelSpriceAndPromo(job.row, job.price, true, { prmt_pct: job.prmt });
+                    await saveChannelSpriceAndPromo(job.row, job.price, true, extra);
                 } catch (e) { /* keep going */ }
             });
 
             chPromoToast(
                 (filled ? 'success' : 'error'),
-                (opts.zeroSoldOnly ? '0 Sold Dil Color' : 'Dil vs PRMT') + ' (' + label + '): PRMT % → ' + filled + (ebayParentDil ? ' parent' : '') + ' row(s)'
+                (opts.zeroSoldOnly ? '0 Sold Dil Color' : 'Dil vs PRMT') + ' (' + label + '): '
+                    + (opts.zeroSoldOnly ? '0 Sold PRMT%' : 'PRMT %') + ' → ' + filled + (ebayParentDil ? ' parent' : '') + ' row(s)'
                     + (ebayParentDil && listingCount
                         ? (' from ' + listingCount + ' listing Dil' + (listingCount === 1 ? '' : 's'))
                         : '')
@@ -2907,6 +2953,9 @@
                     + (ebay1PrmtOnly ? ' (S PRC = Std − PRMT%)' : '')
                     + ((CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')
                         ? ' (S PRC = Std − (PRMT% + CPN%))'
+                        : '')
+                    + (chPromoReverbComboEnabled()
+                        ? ' (S PRC = Std − (PRMT% + 0 Sold PRMT%))'
                         : '') + '.'
             );
         }
@@ -3150,6 +3199,9 @@
                     )) {
                         const recalc = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt' ? { prmt: 0 } : { cpn: 0 });
                         if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
+                    } else if (kind === 'prmt' && chPromoReverbComboEnabled()) {
+                        const recalc = chPromoReverbSpriceFromStdBothPrmt(d, { prmt: 0 });
+                        if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
                     } else if (kind === 'prmt' && CHANNEL_PROMO_CHANNEL === 'ebay1') {
                         const std = chPromoStdBase(d);
                         if (std > 0) Object.assign(patch, chPromoSpricePatch(std));
@@ -3163,6 +3215,7 @@
                         CHANNEL_PROMO_CHANNEL === 'ebay1'
                         || CHANNEL_PROMO_CHANNEL === 'temu'
                         || CHANNEL_PROMO_CHANNEL === 'temu2'
+                        || chPromoReverbComboEnabled()
                     ))
                         ? Number(patch.SPRICE)
                         : chPromoGetSprice(d);
@@ -3185,6 +3238,9 @@
                     newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt'
                         ? { prmt: promo.value }
                         : { cpn: promo.value });
+                } else if (chPromoReverbComboEnabled() && kind === 'prmt') {
+                    base = chPromoStdBase(d);
+                    newPrice = chPromoReverbSpriceFromStdBothPrmt(d, { prmt: promo.value });
                 } else {
                     base = getChPromoDiscountBase(d, fieldMeta.appliedKey);
                     newPrice = applyChPromoToSpriceBase(base, promo);
@@ -3231,8 +3287,10 @@
             const std = chPromoRound2(stdRaw);
             const prmt = Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
             const cpn = Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
+            const zeroSold = chPromoReverbComboEnabled() ? chPromoZeroSoldPrmtInt(d) : 0;
             const temuCombo = CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
-            const totalDisc = Math.min(99.99, temuCombo ? (prmt + cpn) : prmt);
+            const reverbCombo = chPromoReverbComboEnabled();
+            const totalDisc = Math.min(99.99, temuCombo ? (prmt + cpn) : (reverbCombo ? (prmt + zeroSold) : prmt));
             let sale = null;
             if (totalDisc > 0 && totalDisc < 100) {
                 sale = chPromoRound2(std * (1 - (totalDisc / 100)));
@@ -3250,6 +3308,7 @@
                 min: min,
                 business: business,
                 prmt: prmt,
+                zeroSold: zeroSold,
                 totalDisc: totalDisc,
                 cpn: cpn,
                 effective: std,
@@ -3778,13 +3837,16 @@
                 return;
             }
             const temuCombo = CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
+            const reverbCombo = chPromoReverbComboEnabled();
             if (!confirm(
                 'Clear S PRC and refill for ' + ready.length + ' ' + scopeLabel + ' SKU(s)?'
                 + (skippedInv ? ('\n(Skip ' + skippedInv + ' with INV = 0)') : '')
                 + '\n\nFormula (no marketplace push):\n'
                 + (temuCombo
                     ? 'S PRC = Std × (1 − (PRMT% + CPN%)/100)\n'
-                    : 'S PRC = Std × (1 − PRMT%/100)\n')
+                    : (reverbCombo
+                        ? 'S PRC = Std × (1 − (PRMT% + 0 Sold PRMT%)/100)\n'
+                        : 'S PRC = Std × (1 − PRMT%/100)\n'))
                 + 'If no discount → S PRC = Std'
             )) return;
 
@@ -3825,7 +3887,9 @@
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
                 const fill = (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')
                     ? (chPromoTemuSpriceFromStdPrmtCpn(rowData) || 0)
-                    : chPromoPlanSaleSprice(plan);
+                    : (chPromoReverbComboEnabled()
+                        ? (chPromoReverbSpriceFromStdBothPrmt(rowData) || 0)
+                        : chPromoPlanSaleSprice(plan));
                 if (!plan || !(fill > 0)) {
                     fail++;
                     next();
@@ -3834,12 +3898,17 @@
                 const sku = chPromoSku(item.d);
                 saveChannelSprice(sku, fill, true)
                     .done(function(saveRes) {
-                        item.row.update(Object.assign({
+                        const refillPatch = {
                             prmt_pct: String(plan.prmt),
                             cpn_pct: String(plan.cpn),
                             _prmt_pct_applied: plan.prmt,
                             _cpn_pct_applied: plan.cpn,
-                        }, chPromoSpricePatch(fill)));
+                        };
+                        if (chPromoReverbComboEnabled()) {
+                            refillPatch.zero_sold_prmt = plan.zeroSold != null ? String(plan.zeroSold) : '';
+                            refillPatch._zero_sold_prmt_applied = plan.zeroSold || 0;
+                        }
+                        item.row.update(Object.assign(refillPatch, chPromoSpricePatch(fill)));
                         if (saveRes && (saveRes.sgpft_percent !== undefined || saveRes.sgprft_percent !== undefined || saveRes.sroi_percent !== undefined)) {
                             item.row.update({
                                 SGPFT: saveRes.sgpft_percent,
@@ -3856,7 +3925,9 @@
                         } else {
                             try { item.row.reformat(); } catch (e) { /* ignore */ }
                         }
-                        saveChannelPromoFields(sku, { prmt_pct: plan.prmt, cpn_pct: plan.cpn }).always(function() {
+                        const promoSave = { prmt_pct: plan.prmt, cpn_pct: plan.cpn };
+                        if (chPromoReverbComboEnabled()) promoSave.zero_sold_prmt = plan.zeroSold || 0;
+                        saveChannelPromoFields(sku, promoSave).always(function() {
                             ok++;
                             next();
                         });
@@ -4232,7 +4303,7 @@
                     },
                 },
                 ...(CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES ? [{
-                    title: '0 Sold',
+                    title: '0 Sold PRMT%',
                     field: 'zero_sold_prmt',
                     width: 64,
                     hozAlign: 'center',
@@ -4254,9 +4325,9 @@
                         const hex = chPromoDilColorHex(band);
                         let val = cell.getValue();
                         if (val === null || val === undefined || val === '') {
-                            val = (d.prmt_pct != null && d.prmt_pct !== '')
-                                ? d.prmt_pct
-                                : chPromoPrmtForZeroSoldRow(d);
+                            val = (d._zero_sold_prmt_applied != null && d._zero_sold_prmt_applied !== '')
+                                ? d._zero_sold_prmt_applied
+                                : '';
                         }
                         const n = Number(val);
                         const shown = isFinite(n) ? String(n) : '';
@@ -4269,10 +4340,22 @@
                         const row = cell.getRow();
                         const d = row.getData() || {};
                         if (!chPromoIsZeroSoldRow(d)) return;
-                        const raw = cell.getValue();
-                        row.update({ prmt_pct: raw, zero_sold_prmt: raw });
-                        const prmtCell = typeof row.getCell === 'function' ? row.getCell('prmt_pct') : null;
-                        if (prmtCell) applyChPromoFromCell(prmtCell, 'prmt');
+                        const promo = parseChPromoPercentAllowZero(cell.getValue());
+                        if (!promo) {
+                            if (String(cell.getValue() == null ? '' : cell.getValue()).trim() !== '') {
+                                chPromoToast('error', 'Enter 0 Sold PRMT% (e.g. 10)');
+                            }
+                            return;
+                        }
+                        const zeroSold = promo.value;
+                        const newPrice = chPromoReverbSpriceFromStdBothPrmt(d, { zeroSold: zeroSold });
+                        const patch = {
+                            zero_sold_prmt: String(zeroSold),
+                            _zero_sold_prmt_applied: zeroSold,
+                        };
+                        if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
+                        row.update(patch);
+                        saveChannelSpriceAndPromo(row, newPrice || 0, true, { zero_sold_prmt: zeroSold });
                     },
                 }] : []),
                 ...(CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay2op' || CHANNEL_PROMO_CHANNEL === 'ebay3'
@@ -4829,6 +4912,11 @@
                 $('#ch-promo-sprice-recalc-btn').attr(
                     'title',
                     'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.'
+                );
+            } else if (chPromoReverbComboEnabled()) {
+                $('#ch-promo-sprice-recalc-btn').attr(
+                    'title',
+                    'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + 0 Sold PRMT%)/100). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.'
                 );
             }
         }
