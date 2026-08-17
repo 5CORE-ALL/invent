@@ -927,9 +927,12 @@ class Temu2SyncController extends Controller
             ]);
         }
 
-        $result = app(Temu2InventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(Temu2InventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
+        if ($done) {
+            $liveService->clearCache();
+        }
 
         return response()->json([
             'success' => true,

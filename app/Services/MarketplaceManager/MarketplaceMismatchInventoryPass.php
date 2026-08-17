@@ -74,7 +74,7 @@ final class MarketplaceMismatchInventoryPass
             'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'wayfair' => app(WayfairInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify($mismatch),
