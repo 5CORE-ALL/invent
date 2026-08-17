@@ -2,37 +2,30 @@
 
 namespace App\Support\Marketplace;
 
-use App\Http\Controllers\MarketPlace\AliexpressController;
-use App\Http\Controllers\MarketPlace\FaireController;
-use App\Http\Controllers\MarketPlace\MacyController;
-use App\Http\Controllers\MarketPlace\PlsController;
-use App\Http\Controllers\MarketPlace\ReverbController;
-use App\Http\Controllers\MarketPlace\SheinController;
-use App\Http\Controllers\MarketPlace\TemuController;
-use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
-use App\Http\Controllers\MarketPlace\TikTokPricingController;
-use App\Http\Controllers\MarketPlace\TopDawgPricingController;
-use App\Http\Controllers\MarketPlace\WayfairController;
 use App\Models\ChannelMaster;
+use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\ShopifyPlsTokenService;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use App\Services\Support\MarketplaceApiConfigService;
+use App\Support\TaskBusinessTime;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Missing Mapping (N Map) counts from Marketplace Manager listings qty mismatch
- * (same Active + Inactive SKU Mismatch tabs).
+ * Missing Mapping Titas counts from Marketplace Manager listings
+ * (Active SKU Mismatch on /marketplace/{channel}/products).
  */
 class MappingChannelCounts
 {
     public const TOTAL_CACHE_KEY = 'mapping_pages_nmap_total_v2';
 
+    public const TOTAL_TITAS_CACHE_KEY = 'mapping_pages_titas_total_v1';
+
     /**
-     * Channels with a page-level N Map source.
-     * mi_key = MapIssuesController::data() count field (batch, page-aligned).
-     * loader = dedicated pricing-page badge counter (when not in MapIssues).
+     * Channels shown on /map-issues.
+     * mi_key marks MapIssues channels that have SKU-level detail pages.
      *
      * @var array<string, array{label: string, mi_key?: string, loader?: string}>
      */
@@ -76,53 +69,13 @@ class MappingChannelCounts
     }
 
     /**
-     * @return array{map: int, miss: int, nmap: int}
+     * Sum of Missing Mapping Titas (Active SKU Mismatch from listings).
      */
-    public static function forChannel(string $channel, bool $useCache = true): array
-    {
-        $key = self::normalize($channel);
-        if ($key === '' || ! isset(self::$sources[$key])) {
-            return ['map' => 0, 'miss' => 0, 'nmap' => 0];
-        }
-
-        $cacheKey = 'mapping_channel_nmap_v2:'.$key;
-        if ($useCache) {
-            try {
-                $cached = Cache::get($cacheKey);
-                if (is_array($cached) && isset($cached['nmap'])) {
-                    return $cached;
-                }
-            } catch (\Throwable $e) {
-                // ignore
-            }
-        }
-
-        $all = self::collectPageCounts(!$useCache);
-        $nmap = (int) ($all[$key] ?? 0);
-        $result = ['map' => 0, 'miss' => 0, 'nmap' => $nmap];
-
-        try {
-            Cache::put($cacheKey, $result, now()->addMinutes(10));
-        } catch (\Throwable $e) {
-            // ignore
-        }
-
-        return $result;
-    }
-
-    public static function nmap(string $channel, bool $useCache = true): int
-    {
-        return (int) (self::forChannel($channel, $useCache)['nmap'] ?? 0);
-    }
-
-    /**
-     * Sum of page N Map across unique mapping sources (deduped aliases).
-     */
-    public static function totalNmap(bool $useCache = true): int
+    public static function totalTitas(bool $useCache = true): int
     {
         if ($useCache) {
             try {
-                $cached = Cache::get(self::TOTAL_CACHE_KEY);
+                $cached = Cache::get(self::TOTAL_TITAS_CACHE_KEY);
                 if ($cached !== null) {
                     return (int) $cached;
                 }
@@ -132,10 +85,10 @@ class MappingChannelCounts
         }
 
         $rows = self::masterRows(false);
-        $total = (int) collect($rows)->sum('missing_mapping');
+        $total = (int) collect($rows)->sum('missing_mapping_titas');
 
         try {
-            Cache::put(self::TOTAL_CACHE_KEY, $total, now()->addMinutes(10));
+            Cache::put(self::TOTAL_TITAS_CACHE_KEY, $total, now()->addMinutes(10));
         } catch (\Throwable $e) {
             // ignore
         }
@@ -143,9 +96,10 @@ class MappingChannelCounts
         return $total;
     }
 
-    public static function storeTotalNmap(int $total): void
+    public static function storeTotalTitas(int $total): void
     {
         try {
+            Cache::put(self::TOTAL_TITAS_CACHE_KEY, $total, now()->addMinutes(30));
             Cache::put(self::TOTAL_CACHE_KEY, $total, now()->addMinutes(30));
         } catch (\Throwable $e) {
             // ignore
@@ -153,21 +107,16 @@ class MappingChannelCounts
     }
 
     /**
-     * Master table rows: one row per unique mapping channel (page N Map).
+     * Master table rows: one row per unique mapping channel (Titas / Active SKU Mismatch).
      *
-     * @return list<array{channel: string, channel_slug: string, image: ?string, missing_mapping: int, detail_url: string, has_sku_detail: bool}>
+     * @return list<array{channel: string, channel_slug: string, image: ?string, missing_mapping_titas: int, detail_url: string, listings_url: ?string, has_sku_detail: bool}>
      */
     public static function masterRows(bool $useCache = false): array
     {
-        $pageCounts = self::collectPageCounts($useCache === false);
+        $titasCounts = self::collectListingsMismatchCounts();
+        $apiStatuses = self::collectApiStatuses();
         $logos = self::logoMap();
         $displayNames = self::displayNameMap();
-        $plsApi = ['connected' => null, 'message' => null];
-        try {
-            $plsApi = app(ShopifyPlsTokenService::class)->pingShopCached();
-        } catch (\Throwable $e) {
-            $plsApi = ['connected' => false, 'message' => 'PLS API check failed'];
-        }
 
         // Unique logical channels (skip alias duplicates)
         $seen = [];
@@ -189,20 +138,28 @@ class MappingChannelCounts
             }
 
             $label = $displayNames[$slug] ?? self::$sources[$slug]['label'];
-            $nmap = (int) ($pageCounts[$slug] ?? 0);
             $seen[$slug] = true;
+            $api = $apiStatuses[$slug] ?? [
+                'api_status' => 'red',
+                'api_connected' => false,
+                'api_updated_at' => null,
+                'api_label' => 'API not linked',
+            ];
 
             $rows[] = [
                 'channel' => $label,
                 'channel_slug' => $slug,
                 'image' => $logos[$slug] ?? null,
-                'missing_mapping' => $nmap,
+                'missing_mapping_titas' => (int) ($titasCounts[$slug] ?? 0),
                 'detail_url' => route('map.issues.channel', ['channel' => $slug]),
+                'listings_url' => self::listingsUrlForSlug($slug),
                 // mi_key MapIssues channels + pricing loaders that expose SKU detail
                 'has_sku_detail' => isset(self::$sources[$slug]['mi_key'])
                     || in_array($slug, ['tiktok', 'tiktok2', 'shein', 'pls', 'temu', 'temu2'], true),
-                'api_connected' => $slug === 'pls' ? (bool) ($plsApi['connected'] ?? false) : null,
-                'api_label' => $slug === 'pls' ? (string) ($plsApi['message'] ?? '') : null,
+                'api_status' => $api['api_status'],
+                'api_connected' => $api['api_connected'],
+                'api_updated_at' => $api['api_updated_at'],
+                'api_label' => $api['api_label'],
             ];
         }
 
@@ -210,11 +167,147 @@ class MappingChannelCounts
     }
 
     /**
-     * Collect N Map ints keyed by normalized slug from Marketplace Manager listings.
+     * Green = API credentials present and listing data updated today.
+     * Yellow = API linked but last update is not today.
+     * Red = API not linked.
+     *
+     * @return array<string, array{api_status: string, api_connected: bool, api_updated_at: ?string, api_label: string}>
+     */
+    public static function collectApiStatuses(): array
+    {
+        $config = app(MarketplaceApiConfigService::class);
+        $today = TaskBusinessTime::today()->toDateString();
+        $tz = TaskBusinessTime::tz();
+        $out = [];
+
+        foreach (array_keys(self::$sources) as $slug) {
+            if (in_array($slug, ['ebaytwo', 'ebaythree', 'bestbuyusa', 'neweggb2c', 'tiktokshop', 'tiktokshop2'], true)) {
+                continue;
+            }
+
+            $linked = false;
+            $linkNote = '';
+            if ($slug === 'pls') {
+                try {
+                    $ping = app(ShopifyPlsTokenService::class)->pingShopCached();
+                    $linked = (bool) ($ping['connected'] ?? false);
+                    $linkNote = trim((string) ($ping['message'] ?? ''));
+                } catch (\Throwable $e) {
+                    $linked = $config->isConfigured('pls');
+                    $linkNote = 'PLS API check failed';
+                }
+            } else {
+                $linked = $config->isConfigured($slug);
+            }
+
+            $last = self::latestListingTimestamp($slug);
+            $lastLabel = $last?->timezone($tz)->format('Y-m-d H:i');
+            $updatedToday = $last !== null && $last->timezone($tz)->toDateString() === $today;
+
+            if (! $linked) {
+                $out[$slug] = [
+                    'api_status' => 'red',
+                    'api_connected' => false,
+                    'api_updated_at' => $lastLabel,
+                    'api_label' => $linkNote !== '' ? $linkNote : 'API not linked',
+                ];
+                continue;
+            }
+
+            if ($updatedToday) {
+                $out[$slug] = [
+                    'api_status' => 'green',
+                    'api_connected' => true,
+                    'api_updated_at' => $lastLabel,
+                    'api_label' => trim(($linkNote !== '' ? $linkNote.' · ' : 'API linked · ').'updated today ('.$lastLabel.')'),
+                ];
+                continue;
+            }
+
+            $stale = $lastLabel !== null
+                ? 'last update '.$lastLabel.' (not today)'
+                : 'no daily update found';
+            $out[$slug] = [
+                'api_status' => 'yellow',
+                'api_connected' => true,
+                'api_updated_at' => $lastLabel,
+                'api_label' => trim(($linkNote !== '' ? $linkNote.' · ' : 'API linked · ').$stale),
+            ];
+        }
+
+        return $out;
+    }
+
+    private static function latestListingTimestamp(string $slug): ?Carbon
+    {
+        $tables = match ($slug) {
+            'ebay' => ['ebay_metrics'],
+            'ebay2' => ['ebay_2_metrics', 'ebay2_metrics'],
+            'ebay3' => ['ebay_3_metrics', 'ebay3_metrics'],
+            'amazon' => ['amazon_metrics'],
+            'reverb' => ['reverb_metric', 'reverb_metrics'],
+            'macys' => ['macy_metrics'],
+            'bestbuy' => ['bestbuy_metrics'],
+            'temu' => ['temu_metrics'],
+            'temu2' => ['temu2_metrics'],
+            'shein' => ['shein_metric', 'shein_metrics'],
+            'newegg' => ['newegg_metric', 'newegg_metrics'],
+            'aliexpress' => ['aliexpress_metric'],
+            'pls' => ['shopify_pls_metrics', 'pls_products'],
+            'wayfair' => ['wayfair_metrics'],
+            'faire' => ['faire_metric', 'faire_metrics'],
+            'topdawg' => ['topdawg_metrics', 'topdawg_products'],
+            'tiktok' => ['tiktok_metrics', 'tiktok_products'],
+            'tiktok2' => ['tiktok_products_two'],
+            default => [],
+        };
+
+        $latest = null;
+        foreach ($tables as $table) {
+            try {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'updated_at')) {
+                    continue;
+                }
+                $raw = DB::table($table)->max('updated_at');
+                if ($raw === null || $raw === '') {
+                    continue;
+                }
+                $ts = Carbon::parse((string) $raw);
+                if ($latest === null || $ts->gt($latest)) {
+                    $latest = $ts;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('MappingChannelCounts API timestamp failed for '.$table.': '.$e->getMessage());
+            }
+        }
+
+        return $latest;
+    }
+
+    /**
+     * Marketplace Manager listings (Active SKU Mismatch) for a /map-issues slug.
+     */
+    public static function listingsUrlForSlug(string $slug): ?string
+    {
+        $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
+        if ($mm === null) {
+            return null;
+        }
+
+        try {
+            return url('/marketplace/'.$mm.'/products?link=mismatch');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Active SKU Mismatch from Marketplace Manager listings
+     * (/marketplace/{channel}/products — same pages as the Link column).
      *
      * @return array<string, int>
      */
-    public static function collectPageCounts(bool $fresh = true): array
+    public static function collectListingsMismatchCounts(): array
     {
         $counts = [];
         $match = app(MarketplaceListingQtyMatchService::class);
@@ -227,7 +320,7 @@ class MappingChannelCounts
             }
             try {
                 if (! array_key_exists($mm, $seenMm)) {
-                    $seenMm[$mm] = $match->mismatchCount($mm);
+                    $seenMm[$mm] = $match->activeMismatchCount($mm);
                 }
                 $counts[$slug] = (int) $seenMm[$mm];
             } catch (\Throwable $e) {
@@ -237,140 +330,6 @@ class MappingChannelCounts
         }
 
         return $counts;
-    }
-
-    private static function fromReverbPage(): int
-    {
-        $raw = app(ReverbController::class)->reverbDataJson(Request::create('/reverb-data-json', 'GET'));
-        $payload = self::jsonPayload($raw);
-        if (isset($payload['map_miss_summary']['nmap'])) {
-            return (int) $payload['map_miss_summary']['nmap'];
-        }
-        $rows = self::rowsFromPayload($payload);
-
-        return (int) (app(ReverbController::class)->computeReverbMapMissCounts($rows)['nmap'] ?? 0);
-    }
-
-    private static function fromMacysPage(): int
-    {
-        $raw = app(MacyController::class)->getViewMacysTabulatorData(Request::create('/macys-data-json', 'GET'));
-        $rows = self::rowsFromPayload(self::jsonPayload($raw));
-
-        return (int) (MacyController::countMacysPricingBadgeTotals($rows)['nmap'] ?? 0);
-    }
-
-    private static function fromSheinPage(): int
-    {
-        $raw = app(SheinController::class)->getSheinPricingData(Request::create('/shein/pricing-data', 'GET'));
-        $rows = self::rowsFromPayload(self::jsonPayload($raw));
-
-        return (int) (SheinController::countSheinPricingBadgeTotals($rows)['nmap'] ?? 0);
-    }
-
-    private static function fromAliexpressPage(): int
-    {
-        $raw = app(AliexpressController::class)->getPricingData(Request::create('/aliexpress/pricing-data', 'GET'));
-        $rows = self::rowsFromPayload(self::jsonPayload($raw));
-
-        return (int) (AliexpressController::countAliexpressPricingBadgeTotals($rows)['nmap'] ?? 0);
-    }
-
-    private static function fromPlsPage(): int
-    {
-        $raw = app(PlsController::class)->pricingDataJson(Request::create('/pls-pricing-data-json', 'GET'));
-        $rows = self::rowsFromPayload(self::jsonPayload($raw));
-
-        return (int) (PlsController::countPlsPricingBadgeTotals($rows)['nmap'] ?? 0);
-    }
-
-    private static function fromWayfairPage(): int
-    {
-        $raw = app(WayfairController::class)->getWayfairPricingData(Request::create('/wayfair/pricing-data', 'GET'));
-        $rows = self::rowsFromPayload(self::jsonPayload($raw));
-
-        return (int) (WayfairController::countWayfairPricingBadgeTotals($rows)['nmap'] ?? 0);
-    }
-
-    private static function fromFairePage(): int
-    {
-        $raw = app(FaireController::class)->getFairePricingData(Request::create('/faire/pricing-data', 'GET'));
-        $rows = self::rowsFromPayload(self::jsonPayload($raw));
-
-        return (int) (FaireController::countFairePricingBadgeTotals($rows)['nmap'] ?? 0);
-    }
-
-    private static function fromTopDawgPage(): int
-    {
-        $raw = app(TopDawgPricingController::class)->getViewTopDawgTabularData(Request::create('/topdawg-data-json', 'GET'));
-        $rows = self::rowsFromPayload(self::jsonPayload($raw));
-
-        return (int) (TopDawgPricingController::countTopDawgPricingBadgeTotals($rows)['nmap'] ?? 0);
-    }
-
-    private static function fromTemuPage(bool $isTemu2): int
-    {
-        if ($isTemu2) {
-            // Same source as /marketplace/temu2/products Active + Inactive SKU Mismatch.
-            return app(Temu2SyncController::class)->listingQtyMismatchCount();
-        }
-
-        $temu = app(TemuController::class);
-        $raw = $temu->getTemuDecreaseData(Request::create('/temu-decrease-data', 'GET'));
-        $rows = self::rowsFromPayload(self::jsonPayload($raw));
-
-        return count(TemuController::nmapSkuRowsFromDecrease($rows));
-    }
-
-    private static function fromTikTokPage(string $variant): int
-    {
-        $raw = app(TikTokPricingController::class)->getViewTikTokTabularData(
-            Request::create($variant === 'v2' ? '/tiktok-2-data-json' : '/tiktok-data-json', 'GET'),
-            $variant
-        );
-        $rows = self::rowsFromPayload(self::jsonPayload($raw));
-
-        // Same N Map rules as /tiktok-pricing badge (skip Missing L / parents; |INV−TT Stock| > 3)
-        return TikTokPricingController::countNmapFromTabular($rows);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private static function jsonPayload(mixed $response): array
-    {
-        if ($response instanceof JsonResponse) {
-            $decoded = json_decode($response->getContent(), true);
-
-            return is_array($decoded) ? $decoded : [];
-        }
-        if (is_array($response)) {
-            return $response;
-        }
-
-        return [];
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @return list<array<string, mixed>>
-     */
-    private static function rowsFromPayload(array $payload): array
-    {
-        if (isset($payload['data']) && is_array($payload['data'])) {
-            $data = $payload['data'];
-            // Macys returns objects — normalize
-            return array_map(function ($row) {
-                return is_object($row) ? (array) $row : (is_array($row) ? $row : []);
-            }, array_values($data));
-        }
-
-        if ($payload !== [] && array_is_list($payload)) {
-            return array_map(function ($row) {
-                return is_object($row) ? (array) $row : (is_array($row) ? $row : []);
-            }, $payload);
-        }
-
-        return [];
     }
 
     /**

@@ -338,7 +338,22 @@ final class MarketplaceMismatchInventoryPass
 
         $local = MarketplaceListingStockResolver::stockMapForSkus($resolverChannel, $skus);
 
-        $liveRows = match ($channel) {
+        return MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+            $this->peekLiveRows($channel),
+            $local
+        );
+    }
+
+    /**
+     * Warm listings-cache rows used to split Active vs Inactive SKU tabs.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    public function peekLiveRows(string $channel): ?array
+    {
+        $channel = strtolower(trim($channel));
+
+        return match ($channel) {
             'newegg' => app(NeweggLiveListingsService::class)->peekCached(),
             'shein' => app(SheinLiveListingsService::class)->peekCached(),
             'topdawg' => app(TopDawgLiveListingsService::class)->peekCached(),
@@ -356,12 +371,9 @@ final class MarketplaceMismatchInventoryPass
             'aliexpress' => app(AliexpressLiveListingsService::class)->peekCached(),
             'faire' => app(FaireLiveListingsService::class)->peekCached(),
             'amazon' => app(AmazonLiveListingsService::class)->peekCached(),
-            'tiktok' => null,
-            'tiktok2' => null,
+            'pls' => app(PlsLiveListingsService::class)->peekCached(),
             default => null,
         };
-
-        return MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal($liveRows, $local);
     }
 
     /**
