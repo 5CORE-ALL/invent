@@ -212,10 +212,10 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
-     * Listings mismatch tolerance: ignore a qty gap only when Shopify qty is
-     * higher than marketplace qty, and the gap is at most
-     * max(3 units, 3% of Shopify qty) — whichever is higher.
-     * If marketplace qty is higher than Shopify, it is always a mismatch.
+     * Listings match rule (all marketplaces):
+     * 1. Shopify qty == marketplace qty → matched (Active / Inactive SKU).
+     * 2. Otherwise matched when abs(Shopify − marketplace) is at most
+     *    max(3 units, 3% of Shopify qty) — whichever is higher.
      * Missing marketplace qty is never treated as within tolerance.
      */
     public static function qtyWithinMismatchTolerance(int $shopifyQty, ?int $marketplaceQty): bool
@@ -230,18 +230,15 @@ final class MarketplaceLiveInventoryRules
         if ($marketplaceQty === $shopifyQty) {
             return true;
         }
-        if ($shopifyQty < $marketplaceQty) {
-            return false;
-        }
 
-        $diff = $shopifyQty - $marketplaceQty;
+        $diff = abs($shopifyQty - $marketplaceQty);
         $threshold = self::mismatchIgnoreThreshold($shopifyQty);
 
         return $diff <= $threshold;
     }
 
     /**
-     * Ignore bar when Shopify qty is higher: max(3 units, 3% of Shopify qty).
+     * Match bar: max(3 units, 3% of Shopify qty).
      */
     public static function mismatchIgnoreThreshold(int $shopifyQty): int
     {

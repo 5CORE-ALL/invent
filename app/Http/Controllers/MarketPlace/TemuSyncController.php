@@ -215,7 +215,10 @@ class TemuSyncController extends Controller
                 $mismatchQty,
                 $zeroQty,
                 $liveShopify,
-                $liveMpByUpper
+                MarketplaceListingStockResolver::mergeLocalAndLiveStockMaps(
+                    $liveMpByUpper,
+                    $this->temuStockMapForSkus($mismatchQty)
+                )
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];

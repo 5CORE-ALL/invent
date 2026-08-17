@@ -7,8 +7,8 @@
         @include('marketplace._page-heading', ['slug' => 'temu', 'heading' => 'Temu Listings'])
         <p class="text-muted mb-3">
             Linked tabs: <strong>All</strong> = every Shopify live SKU.
-            <strong>Active SKU / Inactive SKU</strong> = qty matched, split by Temu status.
-            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = qty differs, split by Temu status.
+            <strong>Active SKU / Inactive SKU</strong> = qty matched (same qty, or gap at most max(3 units, 3% of Shopify)), split by Temu status.
+            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = qty differs beyond that rule, split by Temu status.
             <em>Refresh live</em> warms Temu status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 

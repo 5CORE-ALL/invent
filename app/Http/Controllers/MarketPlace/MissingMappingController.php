@@ -4,11 +4,10 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\MapIssuesController;
-use App\Http\Controllers\MarketPlace\SheinController;
-use App\Http\Controllers\MarketPlace\TikTokPricingController;
 use App\Models\ChannelMaster;
 use App\Support\Badges\AllMarketplaceMasterBadgeCalculator;
 use App\Support\Marketplace\MappingChannelCounts;
+use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\ShopifyPlsTokenService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -17,8 +16,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Missing Mapping master (Channel | Missing Mapping) + per-channel SKU pages.
- * Master counts come from marketplace pricing / tabulator pages (not Active Channel).
- * Channel SKU lists reuse MapIssuesController not-map logic.
+ * Counts and SKU lists come from Marketplace Manager listings qty mismatch.
  */
 class MissingMappingController extends Controller
 {
@@ -87,8 +85,8 @@ class MissingMappingController extends Controller
         }
 
         $slug = $resolved['slug'];
-        $hasSkuDetail = isset(self::MAP_ISSUE_CHANNELS[$slug])
-            || in_array($slug, ['tiktok', 'tiktokshop', 'tiktok2', 'tiktokshop2', 'temu', 'temu2', 'pls'], true);
+        $hasSkuDetail = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null
+            || isset(self::MAP_ISSUE_CHANNELS[$slug]);
 
         $channelInvLabel = match (true) {
             in_array($slug, ['tiktok', 'tiktokshop'], true) => 'TikTok 1 inv',
@@ -132,100 +130,31 @@ class MissingMappingController extends Controller
 
             $slug = $resolved['slug'];
 
-            // TikTok 1 / 2 — SKU list from pricing tabular (same N Map rules as /tiktok-pricing)
-            if (in_array($slug, ['tiktok', 'tiktokshop', 'tiktok2', 'tiktokshop2'], true)) {
-                $variant = in_array($slug, ['tiktok2', 'tiktokshop2'], true) ? 'v2' : 'v1';
-                $raw = app(TikTokPricingController::class)->getViewTikTokTabularData(
-                    Request::create($variant === 'v2' ? '/tiktok-2-data-json' : '/tiktok-data-json', 'GET'),
-                    $variant
-                );
-                $payload = $raw instanceof \Illuminate\Http\JsonResponse
-                    ? json_decode($raw->getContent(), true)
-                    : [];
-                $rows = is_array($payload['data'] ?? null) ? $payload['data'] : (is_array($payload) ? $payload : []);
-                $data = collect(TikTokPricingController::nmapSkuRowsFromTabular($rows))
+            $mmChannel = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
+            if ($mmChannel !== null) {
+                $data = collect(app(MarketplaceListingQtyMatchService::class)->mismatchRows($mmChannel))
                     ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
                     ->values();
 
-                return response()->json([
+                $payload = [
                     'success' => true,
                     'data' => $data,
                     'count' => $data->count(),
                     'channel' => $resolved['name'],
-                ]);
-            }
+                ];
 
-            // Shein — SKU list from /shein-pricing table (same N Map rules as shein pricing badges)
-            if ($slug === 'shein') {
-                $raw = app(SheinController::class)->getSheinPricingData(
-                    Request::create('/shein/pricing-data', 'GET')
-                );
-                $payload = $raw instanceof \Illuminate\Http\JsonResponse
-                    ? json_decode($raw->getContent(), true)
-                    : [];
-                $rows = is_array($payload['data'] ?? null) ? $payload['data'] : [];
-                $data = collect(SheinController::nmapSkuRowsFromPricing($rows))
-                    ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
-                    ->values();
-
-                return response()->json([
-                    'success' => true,
-                    'data' => $data,
-                    'count' => $data->count(),
-                    'channel' => $resolved['name'],
-                ]);
-            }
-
-            // PLS — SKU list from /pls-pricing (same N Map rules as PLS pricing badges)
-            if ($slug === 'pls') {
-                $raw = app(PlsController::class)->pricingDataJson(
-                    Request::create('/pls-pricing-data-json', 'GET')
-                );
-                $payload = $raw instanceof \Illuminate\Http\JsonResponse
-                    ? json_decode($raw->getContent(), true)
-                    : [];
-                $rows = is_array($payload['data'] ?? null) ? $payload['data'] : (is_array($payload) ? $payload : []);
-                $data = collect(PlsController::nmapSkuRowsFromPricing(is_array($rows) ? $rows : []))
-                    ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
-                    ->values();
-
-                $plsApi = ['connected' => false, 'message' => 'PLS API check failed'];
-                try {
-                    $plsApi = app(ShopifyPlsTokenService::class)->pingShopCached();
-                } catch (\Throwable $e) {
-                    // keep default
+                if ($slug === 'pls') {
+                    $plsApi = ['connected' => false, 'message' => 'PLS API check failed'];
+                    try {
+                        $plsApi = app(ShopifyPlsTokenService::class)->pingShopCached();
+                    } catch (\Throwable $e) {
+                        // keep default
+                    }
+                    $payload['api_connected'] = (bool) ($plsApi['connected'] ?? false);
+                    $payload['api_label'] = (string) ($plsApi['message'] ?? '');
                 }
 
-                return response()->json([
-                    'success' => true,
-                    'data' => $data,
-                    'count' => $data->count(),
-                    'channel' => $resolved['name'],
-                    'api_connected' => (bool) ($plsApi['connected'] ?? false),
-                    'api_label' => (string) ($plsApi['message'] ?? ''),
-                ]);
-            }
-
-            // Temu 1 / 2 — SKU list from temu-decrease (API metrics for Temu 1; same N Map rules)
-            if (in_array($slug, ['temu', 'temu2'], true)) {
-                $temu = app(TemuController::class);
-                $raw = $slug === 'temu2'
-                    ? $temu->getTemu2DecreaseData(Request::create('/temu2-decrease-data', 'GET'))
-                    : $temu->getTemuDecreaseData(Request::create('/temu-decrease-data', 'GET'));
-                $payload = $raw instanceof \Illuminate\Http\JsonResponse
-                    ? json_decode($raw->getContent(), true)
-                    : [];
-                $rows = is_array($payload['data'] ?? null) ? $payload['data'] : (is_array($payload) ? $payload : []);
-                $data = collect(TemuController::nmapSkuRowsFromDecrease($rows))
-                    ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
-                    ->values();
-
-                return response()->json([
-                    'success' => true,
-                    'data' => $data,
-                    'count' => $data->count(),
-                    'channel' => $resolved['name'],
-                ]);
+                return response()->json($payload);
             }
 
             $meta = self::MAP_ISSUE_CHANNELS[$slug] ?? null;

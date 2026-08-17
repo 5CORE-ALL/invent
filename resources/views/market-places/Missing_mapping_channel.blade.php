@@ -32,7 +32,7 @@
                     <span class="badge bg-danger badge-mmc-stat" style="background-color:#a71d2a !important;">
                         Missing Mapping: <span id="mmc-total-count">0</span>
                     </span>
-                    <span class="text-muted small">{{ $channelName }} — SKUs where INV does not match channel stock (N Map). Both sides must have stock.</span>
+                    <span class="text-muted small">{{ $channelName }} — same as Marketplace Manager Active + Inactive SKU Mismatch (Shopify live catalog; equal qty or gap ≤ max(3 units, 3% of Shopify)).</span>
                     @if (!empty($plsApi))
                         @if (!empty($plsApi['connected']))
                             <span class="badge bg-success" title="{{ $plsApi['message'] ?? '' }}">API connected{{ !empty($plsApi['shop']) ? ' — '.$plsApi['shop'] : '' }}</span>

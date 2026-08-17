@@ -2,7 +2,6 @@
 
 namespace App\Support\Marketplace;
 
-use App\Http\Controllers\MapIssuesController;
 use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\FaireController;
 use App\Http\Controllers\MarketPlace\MacyController;
@@ -10,6 +9,7 @@ use App\Http\Controllers\MarketPlace\PlsController;
 use App\Http\Controllers\MarketPlace\ReverbController;
 use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\TemuController;
+use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Http\Controllers\MarketPlace\TikTokPricingController;
 use App\Http\Controllers\MarketPlace\TopDawgPricingController;
 use App\Http\Controllers\MarketPlace\WayfairController;
@@ -22,12 +22,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Live Missing Mapping (N Map) counts from marketplace pricing / tabulator pages.
- * Does NOT use Active Channel / channel_master_calculated_data.
+ * Missing Mapping (N Map) counts from Marketplace Manager listings qty mismatch
+ * (same Active + Inactive SKU Mismatch tabs).
  */
 class MappingChannelCounts
 {
-    public const TOTAL_CACHE_KEY = 'mapping_pages_nmap_total_v1';
+    public const TOTAL_CACHE_KEY = 'mapping_pages_nmap_total_v2';
 
     /**
      * Channels with a page-level N Map source.
@@ -85,7 +85,7 @@ class MappingChannelCounts
             return ['map' => 0, 'miss' => 0, 'nmap' => 0];
         }
 
-        $cacheKey = 'mapping_channel_nmap_v1:'.$key;
+        $cacheKey = 'mapping_channel_nmap_v2:'.$key;
         if ($useCache) {
             try {
                 $cached = Cache::get($cacheKey);
@@ -210,52 +210,29 @@ class MappingChannelCounts
     }
 
     /**
-     * Collect N Map ints keyed by normalized slug from marketplace pages.
+     * Collect N Map ints keyed by normalized slug from Marketplace Manager listings.
      *
      * @return array<string, int>
      */
     public static function collectPageCounts(bool $fresh = true): array
     {
         $counts = [];
+        $match = app(MarketplaceListingQtyMatchService::class);
+        $seenMm = [];
 
-        // 1) MapIssues batch — same INV/stock rules as pricing pages for supported channels
-        try {
-            $raw = app(MapIssuesController::class)->data(Request::create('/map-issues-data', 'GET'));
-            $payload = self::jsonPayload($raw);
-            foreach (self::$sources as $slug => $meta) {
-                if (empty($meta['mi_key'])) {
-                    continue;
-                }
-                $counts[$slug] = (int) ($payload[$meta['mi_key']] ?? 0);
+        foreach (self::$sources as $slug => $meta) {
+            $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
+            if ($mm === null) {
+                continue;
             }
-        } catch (\Throwable $e) {
-            Log::warning('MappingChannelCounts MapIssues batch failed: '.$e->getMessage());
-        }
-
-        // 2) Pricing-page badge totals (overwrite MapIssues when both exist — page is source of truth)
-        $pageLoaders = [
-            'shein' => fn () => self::fromSheinPage(),
-            'pls' => fn () => self::fromPlsPage(),
-            'wayfair' => fn () => self::fromWayfairPage(),
-            'faire' => fn () => self::fromFairePage(),
-            'topdawg' => fn () => self::fromTopDawgPage(),
-            'temu2' => fn () => self::fromTemuPage(true),
-            'tiktok' => fn () => self::fromTikTokPage('v1'),
-            'tiktok2' => fn () => self::fromTikTokPage('v2'),
-        ];
-
-        foreach ($pageLoaders as $slug => $loader) {
             try {
-                $nmap = (int) $loader();
-                $counts[$slug] = $nmap;
-                if ($slug === 'tiktok') {
-                    $counts['tiktokshop'] = $nmap;
+                if (! array_key_exists($mm, $seenMm)) {
+                    $seenMm[$mm] = $match->mismatchCount($mm);
                 }
-                if ($slug === 'tiktok2') {
-                    $counts['tiktokshop2'] = $nmap;
-                }
+                $counts[$slug] = (int) $seenMm[$mm];
             } catch (\Throwable $e) {
-                Log::warning("MappingChannelCounts {$slug} page loader failed: ".$e->getMessage());
+                Log::warning("MappingChannelCounts {$slug} listings mismatch failed: ".$e->getMessage());
+                $counts[$slug] = (int) ($seenMm[$mm] ?? 0);
             }
         }
 
@@ -332,10 +309,13 @@ class MappingChannelCounts
 
     private static function fromTemuPage(bool $isTemu2): int
     {
+        if ($isTemu2) {
+            // Same source as /marketplace/temu2/products Active + Inactive SKU Mismatch.
+            return app(Temu2SyncController::class)->listingQtyMismatchCount();
+        }
+
         $temu = app(TemuController::class);
-        $raw = $isTemu2
-            ? $temu->getTemu2DecreaseData(Request::create('/temu2-decrease-data', 'GET'))
-            : $temu->getTemuDecreaseData(Request::create('/temu-decrease-data', 'GET'));
+        $raw = $temu->getTemuDecreaseData(Request::create('/temu-decrease-data', 'GET'));
         $rows = self::rowsFromPayload(self::jsonPayload($raw));
 
         return count(TemuController::nmapSkuRowsFromDecrease($rows));

@@ -26,9 +26,11 @@ class Temu2InventorySyncService
     /**
      * @param  array<int, string>  $skus
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
+     * @param  bool  $exactShopifyQty  When true (mismatch button / mismatch pass), push the
+     *                                 listings Shopify qty with no percent or max cap.
      * @return array{updated: int, failed: int, skipped: int, message: string}
      */
-    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null, bool $exactShopifyQty = false): array
     {
         $skus = array_values(array_unique(array_filter(array_map(
             static fn ($sku) => trim((string) $sku),
@@ -64,6 +66,14 @@ class Temu2InventorySyncService
             $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
+
+        if ($exactShopifyQty) {
+            // Listings mismatch tab uses shopify_skus as Shopify qty source of truth.
+            // Overlay it so pushed Temu 2 qty matches the numbers shown on that tab.
+            foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
+                $shopifyQty[$key] = (int) $qty;
+            }
+        }
 
         $metrics = Temu2Metric::query()
             ->whereNotNull('goods_id')
@@ -107,11 +117,9 @@ class Temu2InventorySyncService
                 continue;
             }
 
-            $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-            if ($maxQty !== null && $maxQty !== '') {
-                $qty = min($qty, (int) $maxQty);
-            }
-            $qty = max(0, $qty);
+            $qty = $exactShopifyQty
+                ? MarketplaceLiveInventoryRules::pushQtyFromLiveShopify($shopifyStock)
+                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
             $apiItems[] = [
                 'goods_id' => $goodsId,

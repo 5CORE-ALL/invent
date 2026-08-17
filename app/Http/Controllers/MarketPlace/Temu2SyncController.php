@@ -177,75 +177,85 @@ class Temu2SyncController extends Controller
             .substr($value, -$showEnd);
     }
 
-    public function syncProducts(Request $request): View
+    /**
+     * Same qty tabs as /marketplace/temu2/products (Shopify live catalog + Temu 2 metrics).
+     * Missing Mapping for Temu 2 = Active SKU Mismatch + Inactive SKU Mismatch.
+     */
+    public function listingQtyMismatchCount(): int
     {
-        $searchSku = trim((string) $request->input('search_sku', ''));
-        $searchName = trim((string) $request->input('search_name', ''));
-        $linkTab = strtolower((string) $request->input('link', 'all'));
-        if (in_array($linkTab, ['not_in_shopify', 'linked', 'linked_with_inv'], true)) {
-            $linkTab = 'matched';
+        $tabs = $this->buildListingQtyTabs(
+            app(Temu2LiveListingsService::class),
+            app(ShopifyLiveVerifiedCatalogService::class)
+        );
+
+        return count($tabs['mismatchActive']) + count($tabs['mismatchInactive']);
+    }
+
+    /**
+     * @return list<array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float}>
+     */
+    public function listingQtyMismatchRows(): array
+    {
+        $tabs = $this->buildListingQtyTabs(
+            app(Temu2LiveListingsService::class),
+            app(ShopifyLiveVerifiedCatalogService::class)
+        );
+        $skus = array_values(array_unique(array_merge($tabs['mismatchActive'], $tabs['mismatchInactive'])));
+        $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        $mp = $this->temuStockMapForSkus($skus);
+        $out = [];
+        foreach ($skus as $sku) {
+            $sku = (string) $sku;
+            $inv = (int) (MarketplaceListingStockResolver::qtyFromMap($shopify, $sku) ?? 0);
+            $channelInv = (int) (MarketplaceListingStockResolver::qtyFromMap($mp, $sku) ?? 0);
+            $out[] = [
+                'sku' => $sku,
+                'channel_sku' => $sku,
+                'inv' => $inv,
+                'channel_inv' => $channelInv,
+                'diff' => abs($inv - $channelInv),
+            ];
         }
-        if ($linkTab === 'linked_zero') {
-            $linkTab = 'zero';
-        }
-        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
-            $linkTab = 'all';
-        }
-        $stateTab = $this->parseAeStateTab($request);
-        $page = max(1, (int) $request->input('page', 1));
-        $perPage = 50;
-        $apiError = null;
-        $forceLive = $request->boolean('refresh_live');
-        $clearCache = $request->boolean('clear_cache');
-        $emptyStateCounts = $this->emptyAeStateCounts();
+
+        return $out;
+    }
+
+    /**
+     * Qty match / mismatch buckets used by listings tabs and /map-issues Temu 2.
+     *
+     * @return array{
+     *   linkedSkus: list<string>,
+     *   allLinkedVerified: list<string>,
+     *   matchedQty: list<string>,
+     *   mismatchQty: list<string>,
+     *   zeroQty: list<string>,
+     *   matchedActive: list<string>,
+     *   matchedInactive: list<string>,
+     *   mismatchActive: list<string>,
+     *   mismatchInactive: list<string>,
+     *   counts: array<string, int>,
+     *   apiError: ?string
+     * }
+     */
+    public function buildListingQtyTabs(
+        Temu2LiveListingsService $liveService,
+        ShopifyLiveVerifiedCatalogService $catalog
+    ): array {
         $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
-        $liveLinkTabs = ['matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'];
-        $liveService = app(Temu2LiveListingsService::class);
-        if ($clearCache) {
-            $liveService->clearCache();
-        }
-
-        if (! Schema::hasTable('shopify_skus')) {
-            $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
-            $products = new LengthAwarePaginator([], 0, $perPage, $page);
-
-            return view('marketplace.temu2.products', [
-                'products' => $products,
-                'title' => 'Temu 2 — Listings',
-                'searchSku' => $searchSku,
-                'searchName' => $searchName,
-                'linkTab' => $linkTab,
-                'stateTab' => $stateTab,
-                'counts' => $emptyCounts,
-                'stateCounts' => $emptyStateCounts,
-                'stateCacheReady' => false,
-                'apiError' => $apiError,
-                'connected' => $this->apiConfig->isConfigured('temu2'),
-            ]);
-        }
-
-        if ($forceLive) {
-            WarmTemu2LiveListingsCache::dispatch();
-        }
-
-        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $linkedSkus = $this->linkedTemuSkus();
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
-        // Live cache often omits inventory for inactive rows — fill gaps from local map
-        // so qty-matched inactive SKUs land in Inactive & Matched (not Mismatch).
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),
             $this->temuStockMapForSkus($allLinkedVerified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
         $counts['mismatch_inactive'] = 0;
-
-        if (! $catalog->hasAnyActive()) {
-            $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
-        }
+        $apiError = $catalog->hasAnyActive()
+            ? null
+            : 'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.';
 
         $matchedQty = $classified['matched'] ?? [];
         $mismatchQty = $classified['mismatch'] ?? [];
@@ -291,7 +301,10 @@ class Temu2SyncController extends Controller
                 $mismatchQty,
                 $zeroQty,
                 $liveShopify,
-                $liveMpByUpper
+                MarketplaceListingStockResolver::mergeLocalAndLiveStockMaps(
+                    $liveMpByUpper,
+                    $this->temuStockMapForSkus($mismatchQty)
+                )
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
@@ -353,6 +366,88 @@ class Temu2SyncController extends Controller
             $mismatchInactive = $catalog->excludeSkusByNormalizedList($mismatchQty, $mismatchActive);
             $counts['mismatch'] = count($mismatchActive);
             $counts['mismatch_inactive'] = count($mismatchInactive);
+        }
+
+        return [
+            'linkedSkus' => $linkedSkus,
+            'allLinkedVerified' => $allLinkedVerified,
+            'matchedQty' => $matchedQty,
+            'mismatchQty' => $mismatchQty,
+            'zeroQty' => $zeroQty,
+            'matchedActive' => $matchedActive,
+            'matchedInactive' => $matchedInactive,
+            'mismatchActive' => $mismatchActive,
+            'mismatchInactive' => $mismatchInactive,
+            'counts' => $counts,
+            'apiError' => $apiError,
+        ];
+    }
+
+    public function syncProducts(Request $request): View
+    {
+        $searchSku = trim((string) $request->input('search_sku', ''));
+        $searchName = trim((string) $request->input('search_name', ''));
+        $linkTab = strtolower((string) $request->input('link', 'all'));
+        if (in_array($linkTab, ['not_in_shopify', 'linked', 'linked_with_inv'], true)) {
+            $linkTab = 'matched';
+        }
+        if ($linkTab === 'linked_zero') {
+            $linkTab = 'zero';
+        }
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
+            $linkTab = 'all';
+        }
+        $stateTab = $this->parseAeStateTab($request);
+        $page = max(1, (int) $request->input('page', 1));
+        $perPage = 50;
+        $apiError = null;
+        $forceLive = $request->boolean('refresh_live');
+        $clearCache = $request->boolean('clear_cache');
+        $emptyStateCounts = $this->emptyAeStateCounts();
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $liveLinkTabs = ['matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'];
+        $liveService = app(Temu2LiveListingsService::class);
+        if ($clearCache) {
+            $liveService->clearCache();
+        }
+
+        if (! Schema::hasTable('shopify_skus')) {
+            $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
+            $products = new LengthAwarePaginator([], 0, $perPage, $page);
+
+            return view('marketplace.temu2.products', [
+                'products' => $products,
+                'title' => 'Temu 2 — Listings',
+                'searchSku' => $searchSku,
+                'searchName' => $searchName,
+                'linkTab' => $linkTab,
+                'stateTab' => $stateTab,
+                'counts' => $emptyCounts,
+                'stateCounts' => $emptyStateCounts,
+                'stateCacheReady' => false,
+                'apiError' => $apiError,
+                'connected' => $this->apiConfig->isConfigured('temu2'),
+            ]);
+        }
+
+        if ($forceLive) {
+            WarmTemu2LiveListingsCache::dispatch();
+        }
+
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $tabs = $this->buildListingQtyTabs($liveService, $catalog);
+        $linkedSkus = $tabs['linkedSkus'];
+        $allLinkedVerified = $tabs['allLinkedVerified'];
+        $counts = $tabs['counts'];
+        $matchedQty = $tabs['matchedQty'];
+        $mismatchQty = $tabs['mismatchQty'];
+        $zeroQty = $tabs['zeroQty'];
+        $matchedActive = $tabs['matchedActive'];
+        $matchedInactive = $tabs['matchedInactive'];
+        $mismatchActive = $tabs['mismatchActive'];
+        $mismatchInactive = $tabs['mismatchInactive'];
+        if ($tabs['apiError']) {
+            $apiError = trim(($apiError ? $apiError.' ' : '').$tabs['apiError']);
         }
 
         $linkedVerified = match ($linkTab) {
@@ -927,9 +1022,12 @@ class Temu2SyncController extends Controller
             ]);
         }
 
-        $result = app(Temu2InventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(Temu2InventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
+        if ($done) {
+            $liveService->clearCache();
+        }
 
         return response()->json([
             'success' => true,

@@ -7,8 +7,8 @@
         @include('marketplace._page-heading', ['slug' => 'temu2', 'heading' => 'Temu Listings'])
         <p class="text-muted mb-3">
             Linked tabs: <strong>All</strong> = every Shopify live SKU.
-            <strong>Active SKU / Inactive SKU</strong> = qty matched, split by Temu 2 status.
-            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = qty differs, split by Temu 2 status.
+            <strong>Active SKU / Inactive SKU</strong> = qty matched (same qty, or gap at most max(3 units, 3% of Shopify)), split by Temu 2 status.
+            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = qty differs beyond that rule, split by Temu 2 status.
             <em>Refresh live</em> warms Temu 2 status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
@@ -327,7 +327,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
     var btn = this;
     var scope = btn.getAttribute('data-scope') || 'mismatch';
-    if (!confirm('Sync ' + (scope === 'mismatch_inactive' ? 'Inactive' : 'Active') + ' Mismatch SKUs from live Shopify → Temu 2 right now (no queue)? This runs in batches and may take a few minutes.')) {
+    if (!confirm('Push exact Shopify inventory to ' + (scope === 'mismatch_inactive' ? 'Inactive' : 'Active') + ' Mismatch SKUs on Temu 2 now (no queue)? This runs in batches and may take a few minutes.')) {
         return;
     }
     btn.disabled = true;
