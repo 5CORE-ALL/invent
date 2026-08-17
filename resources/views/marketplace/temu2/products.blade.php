@@ -327,7 +327,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
     var btn = this;
     var scope = btn.getAttribute('data-scope') || 'mismatch';
-    if (!confirm('Sync ' + (scope === 'mismatch_inactive' ? 'Inactive' : 'Active') + ' Mismatch SKUs from live Shopify → Temu 2 right now (no queue)? This runs in batches and may take a few minutes.')) {
+    if (!confirm('Push exact Shopify inventory to ' + (scope === 'mismatch_inactive' ? 'Inactive' : 'Active') + ' Mismatch SKUs on Temu 2 now (no queue)? This runs in batches and may take a few minutes.')) {
         return;
     }
     btn.disabled = true;
