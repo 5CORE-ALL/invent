@@ -1181,6 +1181,7 @@
             // Initialize Tabulator
             table = new Tabulator("#marketplace-table", {
                 ajaxURL: "/channels-master-data",
+                ajaxParams: { size: 10000, page: 1 },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
                 height: false,
@@ -4580,10 +4581,13 @@
                     ? sorted[mid]
                     : (sorted[mid - 1] + sorted[mid]) / 2;
 
-                // Dynamic Y-axis range with 10% padding
+                // Headroom must fit the slanted last-point label. 10% of a tight
+                // 7-day CVR range (~0.9pp) is only ~16px — the "5.09%" label
+                // was clipped at the top/right of the plot.
                 const range = dataMax - dataMin || 1;
-                const yMin = Math.max(0, dataMin - range * 0.1);
-                const yMax = dataMax + range * 0.1;
+                const yPad = Math.max(range * 0.28, Math.abs(dataMax) * 0.08, range * 0.1);
+                const yMin = Math.max(0, dataMin - range * 0.12);
+                const yMax = dataMax + yPad;
 
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
@@ -4656,14 +4660,16 @@
                     }
                 };
 
-                // --- Value labels plugin (draws value near each dot, slanted) ---
+                // afterDraw (not afterDatasetsDraw): Chart.js clips dataset draws
+                // to the plot box, which hid the last day's label at the top/right.
                 const valueLabelsPlugin = {
                     id: 'valueLabels',
-                    afterDatasetsDraw(chart) {
+                    afterDraw(chart) {
                         const dataset = chart.data.datasets[0];
                         const meta = chart.getDatasetMeta(0);
                         const ctx = chart.ctx;
-                        const slantRad = -Math.PI / 4; // -45°
+                        const lastIdx = meta.data.length - 1;
+                        const anchors = [];
 
                         ctx.save();
                         ctx.font = 'bold 10px Inter, system-ui, sans-serif';
@@ -4672,15 +4678,22 @@
 
                         meta.data.forEach((point, i) => {
                             const val = dataset.data[i];
-                            const x = point.x;
-                            const y = point.y;
-                            // Alternate height so neighboring slanted labels overlap less
-                            const offsetY = (i % 2 === 0) ? -12 : -22;
+                            let offsetY = (i % 2 === 0) ? -12 : -26;
+                            if (i === lastIdx) {
+                                offsetY = (lastIdx % 2 === 0) ? -26 : -12;
+                            }
+                            if (anchors.length) {
+                                const prev = anchors[anchors.length - 1];
+                                if (Math.abs(point.x - prev.x) < 36 && Math.abs((point.y + offsetY) - prev.y) < 14) {
+                                    offsetY = (offsetY === -12) ? -28 : -12;
+                                }
+                            }
+                            anchors.push({ x: point.x, y: point.y + offsetY });
 
                             ctx.save();
-                            ctx.translate(x, y + offsetY);
-                            ctx.rotate(slantRad);
                             ctx.fillStyle = labelColors[i];
+                            ctx.translate(point.x, point.y + offsetY);
+                            ctx.rotate(-Math.PI / 5);
                             ctx.fillText(fmtVal(val), 2, 0);
                             ctx.restore();
                         });
@@ -4711,8 +4724,9 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        clip: false,
                         layout: {
-                            padding: { top: 36, left: 2, right: 8, bottom: 8 }
+                            padding: { top: 44, left: 4, right: 22, bottom: 8 }
                         },
                         plugins: {
                             legend: { display: false },

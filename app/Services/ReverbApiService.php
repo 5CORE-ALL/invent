@@ -828,7 +828,7 @@ class ReverbApiService
         }
 
         try {
-            $response = $this->reverbApiRequestWithRetry($token, 'POST', '/my/listings/'.$listingId.'/sales', [
+            $response = $this->reverbApiRequestWithRetry($token, 'POST', '/listings/'.$listingId.'/sales', [
                 'percentage' => $pct,
             ]);
             if ($response->successful()) {

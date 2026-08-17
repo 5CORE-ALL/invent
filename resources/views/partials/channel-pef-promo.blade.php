@@ -809,35 +809,17 @@
             }).done(function(resp) {
                 if (!resp) return;
                 const active = !!resp.active;
-                const total = Number(resp.total) || 0;
-                const done = Number(resp.done_count) || 0;
-                const ok = Number(resp.ok_count) || 0;
-                const fail = Number(resp.fail_count) || 0;
-                const pct = Number(resp.pct) || 0;
-                const jobStatus = resp.job && resp.job.status ? String(resp.job.status) : 'idle';
-                if (total > 0 || active) {
-                    setChPromoPushPrcProgress({
-                        active: active,
-                        done: done,
-                        total: total,
-                        ok: ok,
-                        fail: fail,
-                        pct: pct,
-                        cancelable: active,
-                        title: active ? 'Pushing PRMT%' : undefined,
-                        msg: resp.message || (resp.job && resp.job.last_message) || '',
-                    });
-                }
+                const applied = chPromoApplyQueuedPushStatus('prmt', chPromoPushPrmtWatching, resp, 'Pushing PRMT%');
+                chPromoPushPrmtWatching = applied.watching;
                 applyChannelPushPrmtTaskStatusesToTable(resp.tasks || []);
                 if (!active) {
                     stopChannelPushPrmtPoll();
-                    const toastKey = jobStatus + '|' + ok + '|' + fail + '|' + total;
-                    if (total > 0 && toastKey !== chPromoPushPrmtLastToastKey
-                        && (jobStatus === 'completed' || jobStatus === 'failed')) {
+                    const toastKey = applied.jobStatus + '|' + applied.ok + '|' + applied.fail + '|' + applied.total;
+                    if (applied.shouldToast && toastKey !== chPromoPushPrmtLastToastKey) {
                         chPromoPushPrmtLastToastKey = toastKey;
                         chPromoToast(
-                            fail && !ok ? 'error' : 'success',
-                            resp.message || ('Push PRMT%: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : ''))
+                            applied.fail && !applied.ok ? 'error' : 'success',
+                            resp.message || ('Push PRMT%: ' + applied.ok + ' ok' + (applied.fail ? (', ' + applied.fail + ' failed') : ''))
                         );
                     }
                 }
@@ -868,6 +850,7 @@
                 chPromoToast('error', 'Nothing to queue');
                 return;
             }
+            chPromoPushPrmtWatching = true;
             clearTimeout(setChPromoPushPrcProgress._hideTimer);
             setChPromoPushPrcProgress({
                 active: true, done: 0, total: items.length, ok: 0, fail: 0, pct: 5,
@@ -1160,35 +1143,17 @@
             }).done(function(resp) {
                 if (!resp) return;
                 const active = !!resp.active;
-                const total = Number(resp.total) || 0;
-                const done = Number(resp.done_count) || 0;
-                const ok = Number(resp.ok_count) || 0;
-                const fail = Number(resp.fail_count) || 0;
-                const pct = Number(resp.pct) || 0;
-                const jobStatus = resp.job && resp.job.status ? String(resp.job.status) : 'idle';
-                if (total > 0 || active) {
-                    setChPromoPushPrcProgress({
-                        active: active,
-                        done: done,
-                        total: total,
-                        ok: ok,
-                        fail: fail,
-                        pct: pct,
-                        cancelable: active,
-                        title: active ? 'Pushing CPN%' : undefined,
-                        msg: resp.message || (resp.job && resp.job.last_message) || '',
-                    });
-                }
+                const applied = chPromoApplyQueuedPushStatus('cpn', chPromoPushCpnWatching, resp, 'Pushing CPN%');
+                chPromoPushCpnWatching = applied.watching;
                 applyChannelPushCpnTaskStatusesToTable(resp.tasks || []);
                 if (!active) {
                     stopChannelPushCpnPoll();
-                    const toastKey = jobStatus + '|' + ok + '|' + fail + '|' + total;
-                    if (total > 0 && toastKey !== chPromoPushCpnLastToastKey
-                        && (jobStatus === 'completed' || jobStatus === 'failed')) {
+                    const toastKey = applied.jobStatus + '|' + applied.ok + '|' + applied.fail + '|' + applied.total;
+                    if (applied.shouldToast && toastKey !== chPromoPushCpnLastToastKey) {
                         chPromoPushCpnLastToastKey = toastKey;
                         chPromoToast(
-                            fail && !ok ? 'error' : 'success',
-                            resp.message || ('Push CPN%: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : ''))
+                            applied.fail && !applied.ok ? 'error' : 'success',
+                            resp.message || ('Push CPN%: ' + applied.ok + ' ok' + (applied.fail ? (', ' + applied.fail + ' failed') : ''))
                         );
                     }
                 }
@@ -1219,6 +1184,7 @@
                 chPromoToast('error', 'Nothing to queue');
                 return;
             }
+            chPromoPushCpnWatching = true;
             clearTimeout(setChPromoPushPrcProgress._hideTimer);
             setChPromoPushPrcProgress({
                 active: true, done: 0, total: items.length, ok: 0, fail: 0, pct: 5,
@@ -1711,6 +1677,70 @@
         let chPromoPushPrcCancel = false;
         let chPromoPushPrcPollTimer = null;
         let chPromoPushPrcLastToastKey = '';
+        let chPromoPushPrcWatching = false;
+        let chPromoPushPrmtWatching = false;
+        let chPromoPushCpnWatching = false;
+
+        function chPromoPushAckKey(kind, jobId) {
+            return 'chPromoPushAck:' + CHANNEL_PROMO_CHANNEL + ':' + kind + ':' + String(jobId || '');
+        }
+        function chPromoPushIsAcked(kind, jobId) {
+            if (!jobId) return false;
+            try { return sessionStorage.getItem(chPromoPushAckKey(kind, jobId)) === '1'; } catch (e) { return false; }
+        }
+        function chPromoPushAck(kind, jobId) {
+            if (!jobId) return;
+            try { sessionStorage.setItem(chPromoPushAckKey(kind, jobId), '1'); } catch (e) { /* ignore */ }
+        }
+
+        /**
+         * Show the push popup only while a job is running, or when this tab
+         * watched it finish. A completed job on page reload stays hidden.
+         */
+        function chPromoApplyQueuedPushStatus(kind, watching, resp, activeTitle) {
+            const active = !!resp.active;
+            const total = Number(resp.total) || 0;
+            const done = Number(resp.done_count) || 0;
+            const ok = Number(resp.ok_count) || 0;
+            const fail = Number(resp.fail_count) || 0;
+            const pct = Number(resp.pct) || 0;
+            const jobStatus = resp.job && resp.job.status ? String(resp.job.status) : 'idle';
+            const jobId = resp.job && resp.job.id ? String(resp.job.id) : '';
+            const finished = !active && total > 0;
+            const acked = chPromoPushIsAcked(kind, jobId);
+            let nextWatching = watching;
+            let shouldToast = false;
+
+            if (active) {
+                nextWatching = true;
+                setChPromoPushPrcProgress({
+                    active: true, done: done, total: total, ok: ok, fail: fail, pct: pct,
+                    cancelable: true, title: activeTitle,
+                    msg: resp.message || (resp.job && resp.job.last_message) || '',
+                });
+            } else if (finished && watching && !acked) {
+                setChPromoPushPrcProgress({
+                    active: false, done: done, total: total, ok: ok, fail: fail, pct: pct,
+                    cancelable: false,
+                    msg: resp.message || (resp.job && resp.job.last_message) || '',
+                });
+                chPromoPushAck(kind, jobId);
+                nextWatching = false;
+                shouldToast = (jobStatus === 'completed' || jobStatus === 'failed' || jobStatus === 'stopped');
+            } else if (finished) {
+                chPromoPushAck(kind, jobId);
+                nextWatching = false;
+            }
+
+            return {
+                watching: nextWatching,
+                shouldToast: shouldToast,
+                jobStatus: jobStatus,
+                ok: ok,
+                fail: fail,
+                total: total,
+            };
+        }
         const CH_PROMO_PUSH_QUEUE_CHANNELS = ['ebay1', 'ebay2', 'ebay2op', 'ebay3'];
         const chPromoPushQueueEnabled = CH_PROMO_PUSH_QUEUE_CHANNELS.indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
         const CH_PROMO_PUSH_QUEUE_URL = '/channel-push-prc/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
@@ -3211,37 +3241,18 @@
             }).done(function(resp) {
                 if (!resp) return;
                 const active = !!resp.active;
-                const total = Number(resp.total) || 0;
-                const done = Number(resp.done_count) || 0;
-                const ok = Number(resp.ok_count) || 0;
-                const fail = Number(resp.fail_count) || 0;
-                const pct = Number(resp.pct) || 0;
-                const jobStatus = resp.job && resp.job.status ? String(resp.job.status) : 'idle';
-
-                if (total > 0 || active) {
-                    setChPromoPushPrcProgress({
-                        active: active,
-                        done: done,
-                        total: total,
-                        ok: ok,
-                        fail: fail,
-                        pct: pct,
-                        cancelable: active,
-                        title: active ? 'Pushing' : undefined,
-                        msg: resp.message || (resp.job && resp.job.last_message) || '',
-                    });
-                }
+                const applied = chPromoApplyQueuedPushStatus('prc', chPromoPushPrcWatching, resp, 'Pushing');
+                chPromoPushPrcWatching = applied.watching;
                 applyChannelPushPrcTaskStatusesToTable(resp.tasks || []);
 
                 if (!active) {
                     stopChannelPushPrcPoll();
-                    const toastKey = jobStatus + '|' + ok + '|' + fail + '|' + total;
-                    if (total > 0 && toastKey !== chPromoPushPrcLastToastKey
-                        && (jobStatus === 'completed' || jobStatus === 'failed')) {
+                    const toastKey = applied.jobStatus + '|' + applied.ok + '|' + applied.fail + '|' + applied.total;
+                    if (applied.shouldToast && toastKey !== chPromoPushPrcLastToastKey) {
                         chPromoPushPrcLastToastKey = toastKey;
                         chPromoToast(
-                            fail && !ok ? 'error' : 'success',
-                            resp.message || ('Push Prc: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : ''))
+                            applied.fail && !applied.ok ? 'error' : 'success',
+                            resp.message || ('Push Prc: ' + applied.ok + ' ok' + (applied.fail ? (', ' + applied.fail + ' failed') : ''))
                         );
                     }
                 }
@@ -3262,6 +3273,7 @@
                 chPromoToast('error', 'Nothing to queue');
                 return Promise.resolve(null);
             }
+            chPromoPushPrcWatching = true;
             clearTimeout(setChPromoPushPrcProgress._hideTimer);
             setChPromoPushPrcProgress({
                 active: true,

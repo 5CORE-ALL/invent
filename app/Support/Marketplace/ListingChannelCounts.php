@@ -52,6 +52,8 @@ use Illuminate\Support\Facades\Schema;
  */
 class ListingChannelCounts
 {
+    public const TOTAL_CACHE_KEY = 'listing_pages_missing_l_total_v1';
+
     /**
      * Normalized channel key → listing controller class.
      *
@@ -318,7 +320,7 @@ class ListingChannelCounts
      */
     public static function totalMissingL(bool $useCache = true): int
     {
-        $cacheKey = 'listing_pages_missing_l_total_v1';
+        $cacheKey = self::TOTAL_CACHE_KEY;
 
         if (! $useCache) {
             $total = self::computeTotalMissingL();
@@ -348,7 +350,7 @@ class ListingChannelCounts
     public static function storeTotalMissingL(int $total): void
     {
         try {
-            Cache::put('listing_pages_missing_l_total_v1', max(0, $total), now()->addMinutes(30));
+            Cache::put(self::TOTAL_CACHE_KEY, max(0, $total), now()->addMinutes(30));
         } catch (\Throwable $e) {
             // ignore
         }

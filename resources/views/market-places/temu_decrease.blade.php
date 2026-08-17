@@ -5617,6 +5617,11 @@
                     hozAlign: "center",
                     sorter: "number",
                     headerTooltip: "Push base from SPRICE: (Sprice−2.99)×0.88 if SPRICE<$30; else Sprice×0.88. Negatives in red.",
+                    // CSV export uses the raw field; API never sends stemu_price — compute it.
+                    accessorDownload: function(value, data) {
+                        const pushBase = temuPushBaseFromSprice(temuRowSprice(data));
+                        return pushBase == null ? '' : pushBase;
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const pushBase = temuPushBaseFromSprice(temuRowSprice(rowData));

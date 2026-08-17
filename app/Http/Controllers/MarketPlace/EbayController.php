@@ -33,8 +33,10 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Carbon\Carbon;
 use Exception;
 use App\Models\AmazonChannelSummary;
+use App\Models\ChannelMasterSummary;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Services\ChannelPromoPricingService;
+use App\Support\Marketplace\ChannelMasterViewsGuard;
 
 class EbayController extends Controller
 {
@@ -98,6 +100,7 @@ class EbayController extends Controller
             'ordersL30Pft'        => $agg['pft'],
             'ordersL30Cogs'       => $agg['cogs'],
             'ordersL30Nroi'       => $ordersL30Nroi,
+            'lastGoodCvrViews'    => (float) (ChannelMasterViewsGuard::lastTrusted('ebay')['views'] ?? 0),
         ]);
     }
 
@@ -271,9 +274,9 @@ class EbayController extends Controller
 
     /**
      * SBID Rule (slab builder) — a list of rules that decide the S Bid column on
-     * /ebay-tabulator-view. Each rule is a set of min/max ranges on For L7 Views
-     * and CVR % plus the S Bid to apply. Rules are evaluated top to bottom —
-     * the first rule whose ranges all match a row wins.
+     * /ebay-tabulator-view. Each rule is a For L7 Views min/max range plus the
+     * S Bid to apply. Rules are evaluated top to bottom — the first rule whose
+     * range matches a row wins.
      *
      * Stored (shared across users) under key `ebay1_sbid_slabs` in ebay_sbid_rules.
      */
@@ -282,9 +285,19 @@ class EbayController extends Controller
         $row = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
         $decoded = $row ? json_decode($row->rule, true) : null;
         $rules = is_array($decoded['rules'] ?? null) ? $decoded['rules'] : [];
+        $esBid = $this->numOrNull($decoded['es_bid'] ?? null);
+
+        if ($this->sbidSlabsNeedViewStepMigrate($rules)) {
+            $rules = $this->defaultSbidSlabRules();
+            DB::table('ebay_sbid_rules')->updateOrInsert(
+                ['key' => 'ebay1_sbid_slabs'],
+                ['rule' => json_encode(['rules' => $rules, 'es_bid' => $esBid]), 'updated_at' => now()]
+            );
+        }
 
         return response()->json([
-            'rules' => $rules !== [] ? $rules : $this->defaultSbidSlabRules(),
+            'rules' => $rules,
+            'es_bid' => $esBid,
         ]);
     }
 
@@ -314,7 +327,10 @@ class EbayController extends Controller
             $clean = $this->defaultSbidSlabRules();
         }
 
-        $rule = ['rules' => $clean];
+        $rule = [
+            'rules' => $clean,
+            'es_bid' => $this->numOrNull($request->input('es_bid')),
+        ];
 
         DB::table('ebay_sbid_rules')->updateOrInsert(
             ['key' => 'ebay1_sbid_slabs'],
@@ -325,38 +341,45 @@ class EbayController extends Controller
     }
 
     /**
-     * Default Sbid Rule slabs (For L7 Views + CVR → S Bid).
+     * Default View VS SBID slabs: 0–100, 101–200, … 901–1000, then >1000.
      *
      * @return array<int, array<string, mixed>>
      */
     private function defaultSbidSlabRules(): array
     {
-        return [
-            [
-                'label' => 'Rule 1',
-                'l7_views_min' => null,
-                'l7_views_max' => null,
-                'cvr_min' => 0,
-                'cvr_max' => 0,
-                'sbid' => 15,
-            ],
-            [
-                'label' => 'Rule 2',
-                'l7_views_min' => 0,
-                'l7_views_max' => 36,
-                'cvr_min' => 0.01,
-                'cvr_max' => 1000,
-                'sbid' => 10,
-            ],
-            [
-                'label' => 'Rule 3',
-                'l7_views_min' => 36,
-                'l7_views_max' => null,
-                'cvr_min' => 7,
-                'cvr_max' => 1000,
-                'sbid' => 5,
-            ],
+        $rules = [];
+        $bid = 15;
+        for ($i = 0; $i < 10; $i++) {
+            $min = $i === 0 ? 0 : ($i * 100) + 1;
+            $max = ($i + 1) * 100;
+            $rules[] = [
+                'label' => $min . '–' . $max,
+                'l7_views_min' => $min,
+                'l7_views_max' => $max,
+                'sbid' => $bid,
+            ];
+            $bid--;
+        }
+        $rules[] = [
+            'label' => '>1000',
+            'l7_views_min' => 1001,
+            'l7_views_max' => null,
+            'sbid' => $bid,
         ];
+
+        return $rules;
+    }
+
+    /** True when stored slabs are not yet the 0–100 / 101–200 / … / >1000 set. */
+    private function sbidSlabsNeedViewStepMigrate(array $rules): bool
+    {
+        if ($rules === [] || count($rules) < 11) {
+            return true;
+        }
+        $first = $rules[0] ?? [];
+
+        return (float) ($first['l7_views_min'] ?? -1) !== 0.0
+            || (float) ($first['l7_views_max'] ?? -1) !== 100.0;
     }
 
        public function ebayViewData(Request $request)
@@ -596,6 +619,7 @@ class EbayController extends Controller
         // Latest snapshot before today (exact yesterday when collect ran; otherwise last known day).
         $todayPt = Carbon::now('America/Los_Angeles')->toDateString();
         $priceYesterdayBySku = [];
+        $priceYesterdayDateBySku = [];
         $invYesterdayBySku = [];
         $l30YesterdayBySku = [];
         $latestPriorRows = DB::table('ebay_sku_daily_data as d')
@@ -603,7 +627,7 @@ class EbayController extends Controller
                 $join->on('d.sku', '=', 'x.sku')->on('d.record_date', '=', 'x.max_date');
             })
             ->addBinding($todayPt, 'join')
-            ->select('d.sku', 'd.daily_data')
+            ->select('d.sku', 'd.daily_data', 'd.record_date')
             ->get();
         foreach ($latestPriorRows as $hist) {
             $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($hist->sku ?? ''));
@@ -614,6 +638,10 @@ class EbayController extends Controller
                 ? $hist->daily_data
                 : (json_decode($hist->daily_data ?? '{}', true) ?: []);
             $priceYesterdayBySku[$norm] = round((float) ($data['price'] ?? 0), 2);
+            $recDate = $hist->record_date ?? null;
+            $priceYesterdayDateBySku[$norm] = $recDate
+                ? Carbon::parse($recDate, 'America/Los_Angeles')->toDateString()
+                : null;
             if (array_key_exists('ovl30', $data)) {
                 $l30YesterdayBySku[$norm] = (int) $data['ovl30'];
             }
@@ -1003,6 +1031,7 @@ class EbayController extends Controller
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
             $pmNorm = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
             $row['price_yesterday'] = $priceYesterdayBySku[$pmNorm] ?? null;
+            $row['price_yesterday_date'] = $priceYesterdayDateBySku[$pmNorm] ?? null;
             // inv_yesterday / l30_yesterday already set above with INV / L30
             $row['eBay Stock'] = $ebayMetric->ebay_stock ?? 0;
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
@@ -2474,22 +2503,83 @@ class EbayController extends Controller
                 'avg_l30_view',
                 'avg_l7_views',
                 'missing_count', // M L
+                'dil_ov_percent',
+                'dil_eb1_percent',
             ];
 
             if (! in_array($metric, $allowedMetrics, true)) {
                 return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
             }
 
+            // CVR / Views badges use E Stock > 0 listing views (collapse-guarded).
+            // amazon_channel_summary_data still stores the older INV>0+REQ sum (~2×).
+            if ($metric === 'cvr_percent') {
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->ebay1CvrChartSeries($days),
+                    'metric' => $metric,
+                ]);
+            }
+            if ($metric === 'total_views' || $metric === 'avg_l30_view') {
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->ebay1ViewsChartSeries($days, $metric === 'avg_l30_view'),
+                    'metric' => $metric,
+                ]);
+            }
+
             $query = AmazonChannelSummary::where('channel', 'ebay')
                 ->orderBy('snapshot_date', 'asc');
 
             if ($days > 0) {
-                $query->where('snapshot_date', '>=', now()->subDays($days)->toDateString());
+                // Inclusive window: 30 days = today + 29 prior days (not 31).
+                $query->where('snapshot_date', '>=', now()->subDays(max(0, $days - 1))->toDateString());
             }
 
             $rows = $query->get();
 
-            $chartData = $rows->map(function ($row) use ($metric) {
+            // Sales / Qty / profit % switched to real-orders L30 on 2026-07-30.
+            // Older amazon_channel_summary_data rows still store Σ T_Sale_l30 (~2×).
+            $ordersSwitchDate = '2026-07-30';
+            $ordersBackedMetrics = [
+                'total_sales_amt', 'total_ebay_l30', 'gpft_percent', 'groi_percent',
+                'nroi_percent', 'npft_percent', 'tcos_percent',
+            ];
+            $mdmByDate = [];
+            if (in_array($metric, $ordersBackedMetrics, true) && Schema::hasTable('marketplace_daily_metrics')) {
+                $from = $days > 0
+                    ? now()->subDays(max(0, $days - 1))->toDateString()
+                    : null;
+                $mdmQ = DB::table('marketplace_daily_metrics')->where('channel', 'eBay');
+                if ($from) {
+                    $mdmQ->where('date', '>=', $from);
+                }
+                foreach ($mdmQ->get() as $m) {
+                    $mdmByDate[Carbon::parse($m->date)->toDateString()] = $m;
+                }
+            }
+
+            $postSwitchVals = [];
+            foreach ($rows as $row) {
+                $sd = $row->snapshot_date;
+                $d = $sd instanceof \DateTimeInterface
+                    ? $sd->format('Y-m-d')
+                    : date('Y-m-d', strtotime((string) $sd));
+                if ($d < $ordersSwitchDate) {
+                    continue;
+                }
+                $s = is_array($row->summary_data)
+                    ? $row->summary_data
+                    : (json_decode($row->summary_data ?? '{}', true) ?: []);
+                $postSwitchVals[] = floatval($s[$metric] ?? 0);
+            }
+            $trusted = array_values(array_filter($postSwitchVals, fn ($v) => $v > 0));
+            sort($trusted);
+            $baseline = $trusted !== []
+                ? $trusted[(int) floor((count($trusted) - 1) / 2)]
+                : 0.0;
+
+            $chartData = $rows->map(function ($row) use ($metric, $ordersSwitchDate, $ordersBackedMetrics, $mdmByDate, $baseline) {
                 $summary = is_array($row->summary_data)
                     ? $row->summary_data
                     : (json_decode($row->summary_data ?? '{}', true) ?: []);
@@ -2508,17 +2598,38 @@ class EbayController extends Controller
                     $raw = $summary[$metric] ?? 0;
                 }
 
+                if (in_array($metric, ['dil_ov_percent', 'dil_eb1_percent'], true)
+                    && ! array_key_exists($metric, $summary)) {
+                    return null;
+                }
+
                 $sd = $row->snapshot_date;
-                $dateStr = '';
-                $fullDate = '';
+                $captureYmd = '';
                 if ($sd) {
-                    if ($sd instanceof \DateTimeInterface) {
-                        $dateStr = $sd->format('M d');
-                        $fullDate = $sd->format('Y-m-d');
-                    } else {
-                        $ts = strtotime((string) $sd);
-                        $dateStr = date('M d', $ts);
-                        $fullDate = date('Y-m-d', $ts);
+                    $captureYmd = $sd instanceof \DateTimeInterface
+                        ? $sd->format('Y-m-d')
+                        : date('Y-m-d', strtotime((string) $sd));
+                }
+                $asOf = $captureYmd !== ''
+                    ? $this->ebay1ChartAsOfLabel($captureYmd)
+                    : ['date' => '', 'full_date' => ''];
+                $dateStr = $asOf['date'];
+                $fullDate = $asOf['full_date'];
+                $snapshotYmd = $captureYmd;
+
+                $usedOrders = (($summary['sales_source'] ?? '') === 'orders_l30');
+                $preSwitch = $snapshotYmd !== '' && $snapshotYmd < $ordersSwitchDate;
+                if (in_array($metric, $ordersBackedMetrics, true)) {
+                    $mdmVal = $this->ebay1MetricFromMarketplaceDaily($mdmByDate[$snapshotYmd] ?? $mdmByDate[$fullDate] ?? null, $metric);
+                    if ($mdmVal !== null && $mdmVal > 0) {
+                        $raw = $mdmVal;
+                    }
+                    // Drop pre-switch T_Sale_l30 / ebay_metrics figures (~2× real orders).
+                    if ($preSwitch && ! $usedOrders && $baseline > 0 && (float) $raw > ($baseline * 1.35)) {
+                        return null;
+                    }
+                    if ($preSwitch && ! $usedOrders && ($mdmVal === null || $mdmVal <= 0) && $baseline > 0) {
+                        return null;
                     }
                 }
 
@@ -2527,7 +2638,11 @@ class EbayController extends Controller
                     'full_date' => $fullDate,
                     'value' => floatval($raw ?? 0),
                 ];
-            })->values()->toArray();
+            })->filter()->values()->toArray();
+
+            if ($days > 0 && count($chartData) > $days) {
+                $chartData = array_slice($chartData, -$days);
+            }
 
             return response()->json(['success' => true, 'data' => $chartData, 'metric' => $metric]);
         } catch (\Exception $e) {
@@ -2535,6 +2650,394 @@ class EbayController extends Controller
 
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
         }
+    }
+
+    /**
+     * Daily item qty from real eBay orders (L30 + L60), same exclusions as /ebay/daily-sales:
+     * skip CANCELED and FULLY_REFUNDED. Keyed by Pacific calendar date.
+     */
+    private function ebay1DailyOrderQtyByDate(): array
+    {
+        $tz = 'America/Los_Angeles';
+        $daily = [];
+        if (! Schema::hasTable('ebay_orders') || ! Schema::hasTable('ebay_order_items')) {
+            return $daily;
+        }
+
+        $orders = \App\Models\EbayOrder::with('items')
+            ->whereIn('period', ['l30', 'l60'])
+            ->get();
+
+        foreach ($orders as $order) {
+            $raw = is_array($order->raw_data)
+                ? $order->raw_data
+                : json_decode((string) $order->raw_data, true);
+            if (is_array($raw)) {
+                $cancelState = $raw['cancelStatus']['cancelState'] ?? '';
+                $paymentStatus = $raw['orderPaymentStatus'] ?? '';
+                if ($cancelState === 'CANCELED' || $paymentStatus === 'FULLY_REFUNDED') {
+                    continue;
+                }
+            }
+            $created = (is_array($raw) ? ($raw['creationDate'] ?? null) : null) ?: $order->order_date;
+            if (! $created) {
+                continue;
+            }
+            $day = Carbon::parse($created)->setTimezone($tz)->toDateString();
+            $qty = 0;
+            foreach ($order->items as $item) {
+                $qty += (int) ($item->quantity ?? 0);
+            }
+            if ($qty > 0) {
+                $daily[$day] = ($daily[$day] ?? 0) + $qty;
+            }
+        }
+
+        return $daily;
+    }
+
+    /**
+     * Daily sold qty for one SKU (Pacific day), same cancel/refund exclusions as channel totals.
+     *
+     * @return array<string, int> keyed by Y-m-d
+     */
+    private function ebay1SkuDailyOrderQty(string $skuNorm): array
+    {
+        $tz = 'America/Los_Angeles';
+        $daily = [];
+        if ($skuNorm === '' || ! Schema::hasTable('ebay_orders') || ! Schema::hasTable('ebay_order_items')) {
+            return $daily;
+        }
+
+        $rows = DB::table('ebay_order_items as i')
+            ->join('ebay_orders as o', 'o.id', '=', 'i.ebay_order_id')
+            ->whereRaw('UPPER(TRIM(i.sku)) = ?', [$skuNorm])
+            ->whereIn('o.period', ['l30', 'l60'])
+            ->get(['i.quantity', 'o.order_date', 'o.raw_data']);
+
+        foreach ($rows as $row) {
+            $raw = is_array($row->raw_data)
+                ? $row->raw_data
+                : json_decode((string) $row->raw_data, true);
+            if (is_array($raw)) {
+                $cancelState = $raw['cancelStatus']['cancelState'] ?? '';
+                $paymentStatus = $raw['orderPaymentStatus'] ?? '';
+                if ($cancelState === 'CANCELED' || $paymentStatus === 'FULLY_REFUNDED') {
+                    continue;
+                }
+            }
+            $created = (is_array($raw) ? ($raw['creationDate'] ?? null) : null) ?: $row->order_date;
+            if (! $created) {
+                continue;
+            }
+            $day = Carbon::parse($created)->setTimezone($tz)->toDateString();
+            $qty = (int) ($row->quantity ?? 0);
+            if ($qty > 0) {
+                $daily[$day] = ($daily[$day] ?? 0) + $qty;
+            }
+        }
+
+        return $daily;
+    }
+
+    /**
+     * Rewrite SKU chart CVR with the same formula as the CVR 30 column:
+     * rolling L30 order qty ÷ listing views. Live ebay_metrics views are the
+     * trusted denominator (what the table uses). Snapshot views are kept only
+     * when they stay in band vs live — a lone collapsed snapshot (e.g. 18 vs
+     * live 106) must not produce a 27% chart against a 4.7% table.
+     *
+     * @param  array<string, array<string, mixed>>  $dataByDate
+     */
+    private function ebay1ApplySkuOrderCvr(array &$dataByDate, string $skuNorm, string $asOfEnd): void
+    {
+        $dailyQty = $this->ebay1SkuDailyOrderQty($skuNorm);
+        $live = EbayMetric::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+            ->first();
+        $liveViews = $live ? (int) ($live->views ?? 0) : 0;
+        $liveL30 = $live ? (int) ($live->ebay_l30 ?? 0) : 0;
+
+        $trustedViews = $liveViews;
+        if ($trustedViews <= 0) {
+            foreach ($dataByDate as $row) {
+                $v = (int) ($row['views'] ?? 0);
+                if ($v > 0) {
+                    $trustedViews = $v;
+                    break;
+                }
+            }
+        }
+
+        foreach ($dataByDate as $dateKey => &$row) {
+            $qty = $this->ebay1RollingL30OrderQty($dailyQty, $dateKey);
+            $snapViews = (int) ($row['views'] ?? 0);
+            $views = $trustedViews;
+            if ($snapViews > 0 && $trustedViews > 0
+                && ! ChannelMasterViewsGuard::isUnstable((float) $snapViews, (float) $trustedViews)) {
+                $views = $snapViews;
+            } elseif ($snapViews > 0 && $trustedViews <= 0) {
+                $views = $snapViews;
+            }
+            if ($dateKey === $asOfEnd && $liveViews > 0) {
+                $views = $liveViews;
+                $qty = $liveL30;
+            }
+            if ($views > 0) {
+                $row['cvr_percent'] = round(($qty / $views) * 100, 2);
+                $row['ebay_l30'] = $qty;
+                $row['views'] = $views;
+            }
+        }
+        unset($row);
+    }
+
+    /**
+     * After the last collected price snapshot, use the live table price
+     * (same as the Price column). Avoids a 3-week stale plateau then a
+     * last-day cliff when ebay:collect-metrics has not run.
+     *
+     * @param  array<string, array<string, mixed>>  $dataByDate
+     */
+    private function ebay1ApplySkuLivePrice(array &$dataByDate, string $skuNorm, string $asOfEnd, ?string $lastSnapAsOf): void
+    {
+        $live = EbayMetric::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+            ->first();
+        $livePrice = $live ? round((float) ($live->ebay_price ?? 0), 2) : 0.0;
+        if ($livePrice <= 0) {
+            return;
+        }
+
+        foreach ($dataByDate as $dateKey => &$row) {
+            if ($dateKey === $asOfEnd || ($lastSnapAsOf !== null && $dateKey > $lastSnapAsOf)) {
+                $row['price'] = $livePrice;
+            } elseif ($lastSnapAsOf === null) {
+                $row['price'] = $livePrice;
+            }
+        }
+        unset($row);
+    }
+
+    /** Rolling L30 qty as of $asOfDate — same window as app:fetch-ebay-orders (asOf − 30 days through asOf). */
+    private function ebay1RollingL30OrderQty(array $dailyQty, string $asOfDate): int
+    {
+        $end = Carbon::parse($asOfDate, 'America/Los_Angeles')->startOfDay();
+        $cursor = $end->copy()->subDays(30);
+        $sum = 0;
+        while ($cursor->lte($end)) {
+            $sum += (int) ($dailyQty[$cursor->toDateString()] ?? 0);
+            $cursor->addDay();
+        }
+
+        return $sum;
+    }
+
+    /**
+     * Active Channel chart convention: snapshot/capture day D is labeled as
+     * the last completed Pacific day (D − 1). Marketplace APIs only close
+     * through yesterday PT.
+     *
+     * @return array{date: string, full_date: string}
+     */
+    private function ebay1ChartAsOfLabel(string $captureYmd): array
+    {
+        $asOf = Carbon::parse($captureYmd, 'America/Los_Angeles')->startOfDay()->subDay();
+
+        return [
+            'date' => $asOf->format('M d'),
+            'full_date' => $asOf->toDateString(),
+        ];
+    }
+
+    /**
+     * Daily E Stock > 0 views + rolling L30 qty, collapse-carried.
+     *
+     * @return list<array{date: string, full_date: string, views: float, qty: float}>
+     */
+    private function ebay1GuardedDailyViews(int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = Carbon::now($tz)->startOfDay();
+        $start = $days > 0 ? $end->copy()->subDays(max(0, $days - 1)) : null;
+        $lookback = $start ? $start->copy()->subDays(14)->toDateString() : null;
+
+        $viewsByDate = $this->ebay1CvrViewsByDate($lookback);
+        $dailyQty = $this->ebay1DailyOrderQtyByDate();
+        $liveQty = (float) ($this->fetchEbayL30OrdersAggregate()['qty'] ?? 0);
+
+        if ($days <= 0) {
+            $keys = array_keys($viewsByDate);
+            sort($keys);
+            if ($keys === []) {
+                return [];
+            }
+            $cursor = Carbon::parse($keys[0], $tz)->startOfDay();
+            $end = Carbon::parse(end($keys), $tz)->startOfDay();
+            $windowStart = $cursor->toDateString();
+        } else {
+            $cursor = $start->copy();
+            $windowStart = $start->toDateString();
+        }
+
+        $carryViews = null;
+        $carryQty = null;
+        foreach ($viewsByDate as $d => $v) {
+            if ($d < $windowStart && $v > 0) {
+                $carryViews = $v;
+            }
+        }
+
+        $todayKey = $end->toDateString();
+        $out = [];
+        while ($cursor->lte($end)) {
+            $key = $cursor->toDateString();
+            $qty = ($key === $todayKey && $liveQty > 0)
+                ? $liveQty
+                : $this->ebay1RollingL30OrderQty($dailyQty, $key);
+            $dayViews = $viewsByDate[$key] ?? null;
+            if ($dayViews !== null && $dayViews > 0) {
+                if ($carryViews !== null && ChannelMasterViewsGuard::isUnstable((float) $dayViews, $carryViews, (float) $qty, $carryQty ?? 0.0)) {
+                    $dayViews = $carryViews;
+                } else {
+                    $carryViews = $dayViews;
+                    $carryQty = (float) $qty;
+                }
+            }
+            $useViews = $dayViews ?: $carryViews;
+            if ($useViews && $useViews > 0) {
+                $asOf = $this->ebay1ChartAsOfLabel($key);
+                $out[] = [
+                    'date' => $asOf['date'],
+                    'full_date' => $asOf['full_date'],
+                    'views' => (float) $useViews,
+                    'qty' => (float) $qty,
+                ];
+            }
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * eBay 1 CVR% history — same formula as the live badge and /all-marketplace-master:
+     *   (real orders L30 qty) ÷ (E Stock > 0 listing views) × 100
+     */
+    private function ebay1CvrChartSeries(int $days): array
+    {
+        $out = [];
+        foreach ($this->ebay1GuardedDailyViews($days) as $row) {
+            if ($row['qty'] <= 0 || $row['views'] <= 0) {
+                continue;
+            }
+            $out[] = [
+                'date' => $row['date'],
+                'full_date' => $row['full_date'],
+                'value' => round(($row['qty'] / $row['views']) * 100, 1),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Views (or average daily L30 views) on the same guarded E Stock series as CVR.
+     */
+    private function ebay1ViewsChartSeries(int $days, bool $asDailyAvg = false): array
+    {
+        $out = [];
+        foreach ($this->ebay1GuardedDailyViews($days) as $row) {
+            $out[] = [
+                'date' => $row['date'],
+                'full_date' => $row['full_date'],
+                'value' => $asDailyAvg
+                    ? (int) round($row['views'] / 30)
+                    : (float) $row['views'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Listing views for CVR: channel_master (E Stock > 0 / REQ, collapse-repaired)
+     * first, then amazon_channel_summary gaps.
+     *
+     * @return array<string, float> keyed by Y-m-d
+     */
+    private function ebay1CvrViewsByDate(?string $fromDate = null): array
+    {
+        $views = [];
+
+        $masterQ = ChannelMasterSummary::query()
+            ->where('channel', 'ebay')
+            ->orderBy('snapshot_date');
+        if ($fromDate) {
+            $masterQ->whereDate('snapshot_date', '>=', $fromDate);
+        }
+        foreach ($masterQ->get() as $row) {
+            $sd = ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+            $v = (float) ($sd['total_views'] ?? 0);
+            if ($v <= 0) {
+                continue;
+            }
+            $d = $row->snapshot_date instanceof \DateTimeInterface
+                ? $row->snapshot_date->format('Y-m-d')
+                : date('Y-m-d', strtotime((string) $row->snapshot_date));
+            $views[$d] = $v;
+        }
+
+        $snapQ = AmazonChannelSummary::where('channel', 'ebay')->orderBy('snapshot_date');
+        if ($fromDate) {
+            $snapQ->where('snapshot_date', '>=', $fromDate);
+        }
+        foreach ($snapQ->get() as $row) {
+            $s = is_array($row->summary_data)
+                ? $row->summary_data
+                : (json_decode($row->summary_data ?? '{}', true) ?: []);
+            $v = (float) ($s['total_views'] ?? 0);
+            $d = $row->snapshot_date instanceof \DateTimeInterface
+                ? $row->snapshot_date->format('Y-m-d')
+                : date('Y-m-d', strtotime((string) $row->snapshot_date));
+            if ($v <= 0 || isset($views[$d])) {
+                continue;
+            }
+            // Skip the older INV>0+REQ tabulator sum (~2× E Stock views).
+            $prior = 0.0;
+            foreach ($views as $pd => $pv) {
+                if ($pd < $d && $pv > 0) {
+                    $prior = $pv;
+                }
+            }
+            if ($prior > 0 && $v > $prior * 1.35) {
+                continue;
+            }
+            $views[$d] = $v;
+        }
+
+        ksort($views);
+
+        return $views;
+    }
+
+    /** Map marketplace_daily_metrics (channel eBay) onto tabulator badge chart keys. */
+    private function ebay1MetricFromMarketplaceDaily($row, string $metric): ?float
+    {
+        if (! $row) {
+            return null;
+        }
+        $map = [
+            'total_sales_amt' => (float) ($row->total_sales ?? $row->l30_sales ?? 0),
+            'total_ebay_l30' => (float) ($row->total_quantity ?? 0),
+            'gpft_percent' => (float) ($row->pft_percentage ?? 0),
+            'groi_percent' => (float) ($row->roi_percentage ?? 0),
+            'tcos_percent' => (float) ($row->tacos_percentage ?? $row->ads_percentage ?? 0),
+            'nroi_percent' => (float) ($row->n_roi ?? 0),
+            'npft_percent' => (float) ($row->n_pft ?? 0),
+        ];
+
+        return array_key_exists($metric, $map) ? $map[$metric] : null;
     }
 
     /**
@@ -2563,9 +3066,21 @@ class EbayController extends Controller
                 ? floatval($s['npft_percent'])
                 : ($gpft - $tcos);
 
+            $prevDate = Carbon::parse($row->snapshot_date)->toDateString();
+            $prevQty = $this->ebay1RollingL30OrderQty($this->ebay1DailyOrderQtyByDate(), $prevDate);
+            $viewsByDate = $this->ebay1CvrViewsByDate(Carbon::parse($prevDate)->subDays(14)->toDateString());
+            $prevViews = (float) ($viewsByDate[$prevDate] ?? ($s['total_views'] ?? 0));
+            $trusted = ChannelMasterViewsGuard::lastTrusted('ebay', $prevDate);
+            if ($trusted && ChannelMasterViewsGuard::isCollapsed($prevViews, $trusted['views'], (float) $prevQty, $trusted['qty'])) {
+                $prevViews = $trusted['views'];
+            }
+            $prevCvr = ($prevViews > 0 && $prevQty > 0)
+                ? round(($prevQty / $prevViews) * 100, 1)
+                : floatval($s['cvr_percent'] ?? 0);
+
             return response()->json([
                 'success' => true,
-                'date' => Carbon::parse($row->snapshot_date)->toDateString(),
+                'date' => $prevDate,
                 'metrics' => [
                     'zero_sold_count' => floatval($s['zero_sold_count'] ?? 0),
                     'sold_count' => floatval($s['sold_count'] ?? 0),
@@ -2576,11 +3091,13 @@ class EbayController extends Controller
                     'tcos_percent' => $tcos,
                     'npft_percent' => $npft,
                     'nroi_percent' => floatval($s['nroi_percent'] ?? 0),
-                    'cvr_percent' => floatval($s['cvr_percent'] ?? 0),
-                    'total_views' => floatval($s['total_views'] ?? 0),
+                    'cvr_percent' => $prevCvr,
+                    'total_views' => $prevViews,
                     'avg_l30_view' => floatval($s['avg_l30_view'] ?? 0),
                     'avg_l7_views' => floatval($s['avg_l7_views'] ?? 0),
                     'missing_count' => floatval($s['missing_count'] ?? 0),
+                    'dil_ov_percent' => floatval($s['dil_ov_percent'] ?? 0),
+                    'dil_eb1_percent' => floatval($s['dil_eb1_percent'] ?? 0),
                 ],
             ]);
         } catch (\Throwable $e) {
@@ -2596,8 +3113,10 @@ class EbayController extends Controller
         $sku = $request->input('sku'); // Optional SKU filter
         $skuNorm = $sku ? strtoupper(trim($sku)) : null;
 
-        // California (America/Los_Angeles) window — include today PT so live CVR 30 matches the table.
-        $endDate = Carbon::now('America/Los_Angeles')->startOfDay();
+        // California window, Active Channel as-of: last completed Pacific day (today − 1).
+        $tz = 'America/Los_Angeles';
+        $todayPt = Carbon::now($tz)->startOfDay();
+        $endDate = $todayPt->copy()->subDay();
         if ($days === 0) {
             $startDate = null; // lifetime — no lower bound
         } else {
@@ -2611,34 +3130,39 @@ class EbayController extends Controller
 
         try {
             // Try to use the new table for JSON format data
-            $query = EbaySkuDailyData::where('record_date', '<=', $endDate->toDateString())
+            $query = EbaySkuDailyData::where('record_date', '<=', $todayPt->toDateString())
                 ->orderBy('record_date', 'asc');
             if ($startDate) {
-                $query->where('record_date', '>=', $startDate->toDateString());
+                // Extra lookback so the first window day can inherit the last known CVR/views.
+                $query->where('record_date', '>=', $startDate->copy()->subDays(14)->toDateString());
             }
 
             // If SKU is provided, return data for specific SKU
             if ($skuNorm) {
-                $metricsData = $query->where('sku', $skuNorm)->get();
+                $metricsData = (clone $query)->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])->get();
 
                 foreach ($metricsData as $record) {
                     $data = is_array($record->daily_data) ? $record->daily_data : (json_decode($record->daily_data ?? '{}', true) ?: []);
-                    $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                    $asOf = $this->ebay1ChartAsOfLabel(
+                        Carbon::parse($record->record_date, $tz)->toDateString()
+                    );
+                    $dateKey = $asOf['full_date'];
                     $views = (int) ($data['views'] ?? 0);
                     $ebayL30 = (int) ($data['ebay_l30'] ?? 0);
-                    // Prefer recomputed SCVR (same as CVR 30 column) when views/l30 present
+                    // Same formula as the CVR 30 column: eBay L30 ÷ views × 100
                     $cvr = $views > 0
                         ? round(($ebayL30 / $views) * 100, 2)
                         : round((float) ($data['cvr_percent'] ?? 0), 2);
                     $dataByDate[$dateKey] = [
                         'date' => $dateKey,
-                        'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                        'date_formatted' => $asOf['date'],
                         'price' => round((float) ($data['price'] ?? 0), 2),
                         'views' => $views,
                         'l7_views' => (int) ($data['l7_views'] ?? 0),
                         'cvr_percent' => $cvr,
                         'ad_percent' => round((float) ($data['ad_percent'] ?? 0), 2),
                         'ebay_l30' => $ebayL30,
+                        'recorded' => true,
                     ];
                 }
             } else {
@@ -2692,29 +3216,47 @@ class EbayController extends Controller
             Log::info('No eBay daily metrics data available. Historical data will be populated by metrics collection command.');
         }
 
-        // Overlay live ebay_metrics for California today so the chart matches CVR 30 / Prc on the tabulator.
-        // Keep every historical daily snapshot as-is (date-wise prices). Do NOT drop "stuck" history —
-        // that collapsed the Price chart to only change days and filled the rest with $0.
+        // Last real snapshot as-of (before live overlay) — days after this
+        // have no collect, so Price must use the live table value, not a
+        // 3-week-old carry that cliffs on the last day.
+        $lastSnapAsOf = null;
+        if ($skuNorm) {
+            foreach ($dataByDate as $d => $row) {
+                if (! empty($row['recorded']) && (float) ($row['price'] ?? 0) > 0) {
+                    $lastSnapAsOf = $d;
+                }
+            }
+        }
+
+        // Overlay live price (and L7 only when it does not cliff) on the last
+        // completed Pacific day. Views / CVR stay on the snapshot series —
+        // ebay1ApplySkuOrderCvr recomputes them with the same guarded formula.
         if ($skuNorm) {
             $live = EbayMetric::query()
                 ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
                 ->first();
             if ($live) {
-                $todayKey = $endDate->toDateString();
-                $views = (int) ($live->views ?? 0);
-                $ebayL30 = (int) ($live->ebay_l30 ?? 0);
+                $asOfKey = $endDate->toDateString();
+                $existing = $dataByDate[$asOfKey] ?? [];
                 $price = round((float) ($live->ebay_price ?? 0), 2);
-                $cvr = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
+                $liveL7 = (int) ($live->l7_views ?? 0);
+                $prevL7 = (int) ($existing['l7_views'] ?? 0);
+                $l7 = $liveL7;
+                if ($prevL7 > 0 && $liveL7 > 0
+                    && ChannelMasterViewsGuard::isUnstable((float) $liveL7, (float) $prevL7)) {
+                    $l7 = $prevL7;
+                }
 
-                $dataByDate[$todayKey] = [
-                    'date' => $todayKey,
+                $dataByDate[$asOfKey] = [
+                    'date' => $asOfKey,
                     'date_formatted' => $endDate->format('M d'),
                     'price' => $price,
-                    'views' => $views,
-                    'l7_views' => (int) ($live->l7_views ?? 0),
-                    'cvr_percent' => $cvr,
-                    'ad_percent' => round((float) ($dataByDate[$todayKey]['ad_percent'] ?? 0), 2),
-                    'ebay_l30' => $ebayL30,
+                    'views' => (int) ($existing['views'] ?? 0),
+                    'l7_views' => $l7 > 0 ? $l7 : $prevL7,
+                    'cvr_percent' => $existing['cvr_percent'] ?? null,
+                    'ad_percent' => round((float) ($existing['ad_percent'] ?? 0), 2),
+                    'ebay_l30' => (int) ($existing['ebay_l30'] ?? 0),
+                    'recorded' => true,
                 ];
             }
         }
@@ -2724,7 +3266,7 @@ class EbayController extends Controller
         $carry = null;
         if ($skuNorm && $startDate) {
             $prior = EbaySkuDailyData::query()
-                ->where('sku', $skuNorm)
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
                 ->where('record_date', '<', $startDate->toDateString())
                 ->orderByDesc('record_date')
                 ->first();
@@ -2743,6 +3285,7 @@ class EbayController extends Controller
                         : round((float) ($priorData['cvr_percent'] ?? 0), 2),
                     'ad_percent' => round((float) ($priorData['ad_percent'] ?? 0), 2),
                     'ebay_l30' => $pL30,
+                    'recorded' => false,
                 ];
             }
         }
@@ -2750,6 +3293,13 @@ class EbayController extends Controller
         // Build the full requested window day-by-day. Missing collection days inherit the
         // last known daily values (forward-fill) so Price stays continuous — never invent $0 cliffs.
         if ($skuNorm && $startDate) {
+            $windowStart = $startDate->toDateString();
+            foreach ($dataByDate as $d => $row) {
+                if ($d < $windowStart && ! empty($row['recorded'])) {
+                    $carry = $row;
+                }
+            }
+            $leadCarry = $carry;
             $filled = [];
             $currentDate = $startDate->copy();
             while ($currentDate->lte($endDate)) {
@@ -2764,14 +3314,41 @@ class EbayController extends Controller
                         'price' => (float) ($carry['price'] ?? 0),
                         'views' => (int) ($carry['views'] ?? 0),
                         'l7_views' => (int) ($carry['l7_views'] ?? 0),
-                        'cvr_percent' => (float) ($carry['cvr_percent'] ?? 0),
+                        'cvr_percent' => $carry['cvr_percent'] !== null
+                            ? (float) $carry['cvr_percent']
+                            : null,
                         'ad_percent' => (float) ($carry['ad_percent'] ?? 0),
                         'ebay_l30' => (int) ($carry['ebay_l30'] ?? 0),
+                        'recorded' => false,
                     ];
                 }
                 $currentDate->addDay();
             }
             $dataByDate = $filled;
+            // Leading holes: inherit the pre-window snapshot only — never the
+            // live last-day price (that painted $19.67 onto Jul 16).
+            $cursor = $startDate->copy();
+            while ($cursor->lte($endDate)) {
+                $dateKey = $cursor->format('Y-m-d');
+                if (! isset($dataByDate[$dateKey]) && $leadCarry !== null) {
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $cursor->format('M d'),
+                        'price' => (float) ($leadCarry['price'] ?? 0),
+                        'views' => (int) ($leadCarry['views'] ?? 0),
+                        'l7_views' => (int) ($leadCarry['l7_views'] ?? 0),
+                        'cvr_percent' => $leadCarry['cvr_percent'] !== null
+                            ? (float) $leadCarry['cvr_percent']
+                            : null,
+                        'ad_percent' => (float) ($leadCarry['ad_percent'] ?? 0),
+                        'ebay_l30' => (int) ($leadCarry['ebay_l30'] ?? 0),
+                        'recorded' => false,
+                    ];
+                }
+                $cursor->addDay();
+            }
+            $this->ebay1ApplySkuOrderCvr($dataByDate, $skuNorm, $endDate->toDateString());
+            $this->ebay1ApplySkuLivePrice($dataByDate, $skuNorm, $endDate->toDateString(), $lastSnapAsOf);
         } elseif (! empty($dataByDate) && $startDate) {
             // Aggregate (no SKU) — fill interior gaps only, still no $0 invent for avg_price
             $realKeys = array_keys($dataByDate);
@@ -3358,7 +3935,6 @@ class EbayController extends Controller
                 $totalLpAmt += floatval($row['LP_productmaster'] ?? 0) * $ebayL30;
                 $totalFbaInv += $inv;
                 $totalEbayL30 += $ebayL30;
-                $totalViews += floatval($row['views'] ?? 0);
 
                 // Avg L7 badge: same as JS — rows with E Stock > 0
                 if ($ebayStock > 0) {
@@ -3419,7 +3995,27 @@ class EbayController extends Controller
             $nroiPercent = $totalLpAmt > 0 ? ((($totalPftAmt - $grandTotalSpend) / $totalLpAmt) * 100) : 0;
             $gpftPercent = $totalSalesAmt > 0 ? (($totalSalesAmt - $totalLpAmt) / $totalSalesAmt * 100) : 0;
             $npftPercent = $gpftPercent - $tcosPercent;
+            // Views: same scope as the live CVR badge (E Stock > 0, non-parent).
+            // INV>0+REQ used to include ended listings and inflated the denominator (~95k vs ~45k).
+            foreach ($products as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $parent = trim((string) ($row['Parent'] ?? ''));
+                $isParent = (($row['is_parent_summary'] ?? false) === true)
+                    || ($parent !== '' && stripos($parent, 'PARENT') === 0);
+                if ($isParent) {
+                    continue;
+                }
+                $eStock = (float) ($row['eBay Stock'] ?? ($row['E Stock'] ?? 0));
+                if ($eStock > 0) {
+                    $totalViews += (float) ($row['views'] ?? 0);
+                }
+            }
+
             $cvrPercent = $totalViews > 0 ? (($totalEbayL30 / $totalViews) * 100) : 0;
+            $listingEbayL30 = $totalEbayL30;
+            $totalInvAvailable = $totalFbaInv;
 
             // Prefer real-orders L30 (same source as live summary badges) when available.
             try {
@@ -3444,6 +4040,9 @@ class EbayController extends Controller
                     'error' => $e->getMessage(),
                 ]);
             }
+
+            $totalViews = ChannelMasterViewsGuard::stabilize('ebay', (float) $totalViews, (float) $totalEbayL30, $today);
+            $cvrPercent = $totalViews > 0 ? (($totalEbayL30 / $totalViews) * 100) : 0;
 
             // Store ALL metrics in JSON (flexible!)
             $summaryData = [
@@ -3483,6 +4082,14 @@ class EbayController extends Controller
                 'gpft_percent' => round($gpftPercent, 2),
                 'npft_percent' => round($npftPercent, 2),
                 'cvr_percent' => round($cvrPercent, 2),
+                'total_inv' => round($totalInvAvailable, 2),
+                'total_ebay_listing_l30' => round($listingEbayL30, 2),
+                'dil_ov_percent' => $totalInvAvailable > 0
+                    ? round(($totalEbayL30 / $totalInvAvailable) * 100, 2)
+                    : 0,
+                'dil_eb1_percent' => $totalInvAvailable > 0
+                    ? round(($listingEbayL30 / $totalInvAvailable) * 100, 2)
+                    : 0,
                 
                 // Averages
                 'avg_price' => round($avgPrice, 2),
@@ -3490,6 +4097,7 @@ class EbayController extends Controller
                 // Metadata
                 'total_products_count' => count($products),
                 'calculated_at' => now()->toDateTimeString(),
+                'sales_source' => 'orders_l30',
                 
                 // Active Filters (eBay specific)
                 'filters_applied' => [

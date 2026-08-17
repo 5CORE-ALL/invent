@@ -42,6 +42,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
 use App\Http\Controllers\MarketPlace\EbayThreeController as MarketPlaceEbayThreeController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
+use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Support\Marketplace\EbayTwoListingCounts;
 use App\Services\Support\YesterdayMarketplaceMetricsService;
 use App\Models\AliExpressSheetData;
@@ -1996,7 +1997,13 @@ class ChannelMasterController extends Controller
             $summary['miss_count'] = (int) ($counts['miss'] ?? 0);
             $summary['map_count'] = (int) ($counts['map'] ?? 0);
             $summary['nmap_count'] = (int) ($counts['nmap'] ?? 0);
-            $summary['total_views'] = (float) ($counts['total_views'] ?? 0);
+            $qtyForViews = (float) ($summary['total_quantity'] ?? $summary['l30_orders'] ?? 0);
+            $summary['total_views'] = ChannelMasterViewsGuard::stabilize(
+                $channelKey,
+                (float) ($counts['total_views'] ?? 0),
+                $qtyForViews,
+                $today
+            );
             if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null) {
                 $summary['listing_cvr'] = round((float) $counts['cvr_pct'], 2);
             }
@@ -2011,7 +2018,7 @@ class ChannelMasterController extends Controller
                     'miss' => (int) ($counts['miss'] ?? 0),
                     'map' => (int) ($counts['map'] ?? 0),
                     'nmap' => (int) ($counts['nmap'] ?? 0),
-                    'total_views' => (int) round((float) ($counts['total_views'] ?? 0)),
+                    'total_views' => (int) round((float) ($summary['total_views'] ?? 0)),
                 ];
                 if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null
                     && Schema::hasColumn('channel_master_calculated_data', 'listing_cvr')) {
@@ -4529,9 +4536,6 @@ class ChannelMasterController extends Controller
      */
     public function getViewChannelDataFast(Request $request)
     {
-        // Live overlays (pricing Map/Miss/NMap, sales) need headroom beyond the default 128M.
-        @ini_set('memory_limit', '512M');
-
         try {
             $hasCalculatedRows = \App\Models\ChannelMasterCalculatedData::query()->exists();
 
@@ -4546,10 +4550,22 @@ class ChannelMasterController extends Controller
             if (!\App\Models\ChannelMasterCalculatedData::isDataFresh()) {
                 \Log::warning('Channel calculated data is not fresh; serving cached table. Run: php artisan channel:calculate-data --force');
             }
-            
-            // Get pagination parameters
-            $page = (int) $request->input('page', 1);
-            $size = (int) $request->input('size', 50);
+
+            // Page has no pagination. Default size=50 used to truncate the table.
+            $page = max(1, (int) $request->input('page', 1));
+            $size = (int) $request->input('size', 0);
+            $paginate = $size > 0 && $size < 10000;
+            $section = $request->input('section');
+
+            $cacheKey = \App\Models\ChannelMasterCalculatedData::fastPayloadCacheKey([
+                'page' => $paginate ? $page : 1,
+                'size' => $paginate ? $size : 0,
+                'section' => (string) $section,
+            ]);
+            $cachedPayload = \Cache::get($cacheKey);
+            if (is_array($cachedPayload) && ($cachedPayload['status'] ?? null) === 200) {
+                return response()->json($cachedPayload);
+            }
 
             // Only Active channel_master rows (same as live getViewChannelData).
             // Prevents archived/deleted channels from lingering in calculated_data.
@@ -4566,18 +4582,17 @@ class ChannelMasterController extends Controller
                 ->whereIn('channel', $activeChannelNames)
                 ->orderBy('l30_sales', 'desc');
             
-            // Apply type filter if needed (from frontend section filter)
-            $section = $request->input('section');
             if ($section && in_array($section, ['B2C', 'B2B', 'Dropship'])) {
                 $query->where('type', $section);
             }
-            
-            // Get total count
-            $total = $query->count();
-            
-            // Get paginated data
-            $offset = ($page - 1) * $size;
-            $channels = $query->skip($offset)->take($size)->get();
+
+            if ($paginate) {
+                $total = $query->count();
+                $channels = $query->skip(($page - 1) * $size)->take($size)->get();
+            } else {
+                $channels = $query->get();
+                $total = $channels->count();
+            }
 
             // Build channel-name -> logo / seller_link maps from channel_master so the
             // pre-calculated table doesn't need extra columns of its own.
@@ -4717,7 +4732,7 @@ class ChannelMasterController extends Controller
                     'Miss' => $channel->miss,
                     'NMap' => $channel->nmap,
                     'Total Views' => $channel->total_views,
-                    // Listing CVR (persisted by channel:calculate-data). Overlay may still refresh live.
+                    // Listing CVR persisted by channel:calculate-data (every 10 minutes).
                     'CVR' => $channel->listing_cvr !== null ? (float) $channel->listing_cvr : null,
                     
                     'NR' => $channel->nr,
@@ -4729,54 +4744,22 @@ class ChannelMasterController extends Controller
                 ];
             })->toArray();
 
-            // Map/Miss/NMap: overlay live pricing-page counts so badges match macys-pricing (etc.)
-            $formattedData = $this->overlayLiveMapMissNMapOnChannelRows($formattedData);
-            // Temu / Temu 2: overlay live L30/Y/L7 sales from tabulator (cached table can lag metrics sync)
-            $formattedData = $this->overlayLiveTemuMetricsOnChannelRows($formattedData);
-            // eBay 1/2/3: overlay L30 metrics + L60 orders (matches fetch-ebay-orders + update-marketplace-daily-metrics)
-            $formattedData = $this->overlayLiveEbayMetricsOnChannelRows($formattedData);
-            // Purchasing Power: overlay live L30/L60 from Shopify (matches /purchasing-power-sales)
-            $formattedData = $this->overlayLivePurchasingPowerMetricsOnChannelRows($formattedData);
-            // Shopify: overlay live Net Sales from shopify_raw_orders (matches /shopify Net Sales card)
-            $formattedData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($formattedData);
-            // Shopify B2C: overlay CVR + Total Views from /shopify-b2c-pricing CVR% badge
-            $formattedData = $this->overlayLiveShopifyB2CCvrOnChannelRows($formattedData);
-            // FB Marketplace: overlay live Sales / GPFT / ROI from /facebook-marketplace
-            $formattedData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($formattedData);
-            // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
-            $formattedData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($formattedData);
+            // Cheap defaults only. Live overlays (Amazon/Temu/eBay pricing scans, Shopify
+            // rebuilds, etc.) belong in channel:calculate-data — they made this page take
+            // tens of seconds. Cron already writes those values into this table.
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
-            // Growth = Y Sales vs sales on the Pacific day 30 days before yesterday
-            // (must run after overlays that still write the old L30/L60 Growth).
-            $formattedData = $this->applyGrowthFromYesterdayVsD30($formattedData);
 
-            // Keep Map Issues sidebar N Map in sync with the active channel page total.
-            if (! $section && $page === 1 && count($formattedData) >= $total) {
+            if (! $section && ! $paginate) {
                 \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::syncNmapFromChannelRows($formattedData);
             }
-            
-            // Get summary data from cache
+
             $summaryData = \Cache::get('channel_master_summary_data', []);
 
-            // Persist today's Pacific snapshot from the fast path too. The live
-            // getViewChannelData saver often never finishes, and listing-page
-            // writers then create a sparse day that charts as $0 for every column.
-            if (! $section && $page === 1 && count($formattedData) >= $total) {
-                try {
-                    if (! empty($formattedData)) {
-                        $formattedData[0]['inventory_value_amazon'] = $summaryData['inventory_value_amazon'] ?? 0;
-                    }
-                    $this->saveChannelDailySummaries($formattedData);
-                } catch (\Throwable $e) {
-                    \Log::warning('saveChannelDailySummaries (fast path) failed: ' . $e->getMessage());
-                }
-            }
-            
-            return response()->json([
+            $payload = [
                 'status' => 200,
                 'message' => 'Channel data fetched successfully (from pre-calculated table)',
                 'data' => $formattedData,
-                'last_page' => ceil($total / $size),
+                'last_page' => $paginate ? (int) ceil($total / max(1, $size)) : 1,
                 'total_count' => $total,
                 'inventory_value_amazon' => $summaryData['inventory_value_amazon'] ?? 0,
                 'inv_at_lp' => $summaryData['inv_at_lp'] ?? 0,
@@ -4789,7 +4772,15 @@ class ChannelMasterController extends Controller
                 'ad_spend_by_color_amazon' => $summaryData['ad_spend_by_color_amazon'] ?? [],
                 'ad_spend_by_color_by_channel' => $summaryData['ad_spend_by_color_by_channel'] ?? [],
                 'calculated_at' => $summaryData['calculated_at'] ?? null,
-            ]);
+            ];
+
+            try {
+                \Cache::put($cacheKey, $payload, now()->addSeconds(90));
+            } catch (\Throwable $e) {
+                // ignore cache write failures
+            }
+
+            return response()->json($payload);
             
         } catch (\Exception $e) {
             \Log::error('Error fetching fast channel data: ' . $e->getMessage());
@@ -7690,7 +7681,7 @@ class ChannelMasterController extends Controller
                 'map' => $map,
                 'miss' => $missing,
                 'nmap' => $nmap,
-                'total_views' => $views,
+                'total_views' => ChannelMasterViewsGuard::stabilize('ebaythree', (float) $views),
             ];
         } catch (\Throwable $e) {
             Log::warning('eBay3 live map/miss fallback used: ' . $e->getMessage());
@@ -7801,7 +7792,7 @@ class ChannelMasterController extends Controller
                 'map' => $map,
                 'miss' => $missing,
                 'nmap' => $nmap,
-                'total_views' => $views,
+                'total_views' => ChannelMasterViewsGuard::stabilize('ebay', (float) $views),
             ];
         } catch (\Throwable $e) {
             Log::warning('eBay live map/miss fallback used: ' . $e->getMessage());
@@ -7893,7 +7884,7 @@ class ChannelMasterController extends Controller
                 // Missing L from /listing-ebaytwo (DataView NRL + ebay_2_metrics.item_id)
                 'miss' => EbayTwoListingCounts::missingL(),
                 'nmap' => $nmap,
-                'total_views' => $views,
+                'total_views' => ChannelMasterViewsGuard::stabilize('ebaytwo', (float) $views),
             ];
         } catch (\Throwable $e) {
             Log::warning('eBay 2 live map/miss fallback: ' . $e->getMessage());
@@ -14321,6 +14312,9 @@ class ChannelMasterController extends Controller
             })->sortKeys();
 
             $chartData = [];
+            $cvrCarryViews = null;
+            $cvrCarryQty = null;
+            $viewsCarryByChannel = [];
             foreach ($grouped as $dateKey => $rows) {
                 $date = Carbon::parse($dateKey, 'America/Los_Angeles')->format('M d');
 
@@ -14363,7 +14357,17 @@ class ChannelMasterController extends Controller
                     $hasMetricData = false;
 
                     foreach ($rows as $row) {
-                        $sd = $row->summary_data ?? [];
+                        $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+                        if ($metric === 'cvr' || $metric === 'total_views') {
+                            $rowChannel = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row->channel ?? ''))));
+                            $cvrM = ChannelMasterViewsGuard::metricsFromSummary($sd);
+                            $carry = $viewsCarryByChannel[$rowChannel] ?? null;
+                            if ($carry && ChannelMasterViewsGuard::isCollapsed($cvrM['views'], $carry['views'], $cvrM['qty'], $carry['qty'])) {
+                                $sd = ChannelMasterViewsGuard::carrySummary($sd, $carry['views']);
+                            } elseif ($cvrM['views'] > 0) {
+                                $viewsCarryByChannel[$rowChannel] = ['views' => $cvrM['views'], 'qty' => $cvrM['qty']];
+                            }
+                        }
                         $count++;
                         if ($metricKey !== null && is_array($sd) && array_key_exists($metricKey, $sd)) {
                             $hasMetricData = true;
@@ -14478,7 +14482,15 @@ class ChannelMasterController extends Controller
                 } else {
                     // Single channel
                     $row = $rows->first();
-                    $summaryData = $row->summary_data ?? [];
+                    $summaryData = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+                    $cvrM = ChannelMasterViewsGuard::metricsFromSummary($summaryData);
+                    if ($cvrCarryViews !== null && ChannelMasterViewsGuard::isCollapsed($cvrM['views'], $cvrCarryViews, $cvrM['qty'], $cvrCarryQty ?? 0.0)) {
+                        $summaryData = ChannelMasterViewsGuard::carrySummary($summaryData, $cvrCarryViews);
+                        $cvrM = ChannelMasterViewsGuard::metricsFromSummary($summaryData);
+                    } elseif ($cvrM['views'] > 0) {
+                        $cvrCarryViews = $cvrM['views'];
+                        $cvrCarryQty = $cvrM['qty'];
+                    }
 
                     if ($metric === 'acos') {
                         // Always use ratio approach: ad_spend / (l30_sales × ratio)
@@ -14666,16 +14678,22 @@ class ChannelMasterController extends Controller
             // meaningful "no trend") and pick the most-recent prior snapshot whose value
             // differs from today's.
             $snapshotWindow = $useL7Window ? 36 : 30;
+            $historyFrom = now('America/Los_Angeles')->subDays($snapshotWindow + 10)->toDateString();
+            $cmsByChannel = \App\Models\ChannelMasterSummary::whereIn('channel', $channelKeys)
+                ->where('snapshot_date', '>=', $historyFrom)
+                ->orderBy('snapshot_date', 'desc')
+                ->get()
+                ->groupBy(function ($row) {
+                    return strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $row->channel)));
+                });
+
             foreach ($channelKeys as $channel) {
                 foreach ($metrics as $metric) {
                     $out[$channel][$metric] = [null, null];
                 }
 
-                // Same source as chart: ChannelMasterSummary. Same key: normalized channel (table saves with this key in saveChannelDailySummaries).
-                $cmsRows = \App\Models\ChannelMasterSummary::where('channel', $channel)
-                    ->orderBy('snapshot_date', 'desc')
+                $cmsRows = ($cmsByChannel->get($channel) ?? collect())
                     ->take($snapshotWindow)
-                    ->get()
                     ->filter(function ($row) use ($useL7Window) {
                         if ($row->isFullChannelSnapshot()) {
                             return true;
@@ -14692,8 +14710,13 @@ class ChannelMasterController extends Controller
                     $this->applyL7WindowToChannelSummaries($cmsRows);
                 }
 
+                $stabilizedById = ChannelMasterViewsGuard::stabilizeRowSummaries($cmsRows);
+                $summaryForRow = function ($row) use ($stabilizedById) {
+                    return $stabilizedById[$row->id] ?? \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+                };
+
                 if ($cmsRows->count() >= 2) {
-                    $newerSd = $cmsRows->get(0)->summary_data ?? [];
+                    $newerSd = $summaryForRow($cmsRows->get(0));
                     foreach ($metrics as $metric) {
                         // Dot trends: allow legacy qty÷views fallback for CVR so Shopify/Temu/Reverb
                         // don't stay permanently gray while only today has listing_cvr persisted.
@@ -14708,7 +14731,7 @@ class ChannelMasterController extends Controller
                         $v1 = $this->getMetricValueFromSummaryData(
                             $channel,
                             $metric,
-                            $cmsRows->get(1)->summary_data ?? [],
+                            $summaryForRow($cmsRows->get(1)),
                             $metricMap,
                             true
                         );
@@ -14716,7 +14739,7 @@ class ChannelMasterController extends Controller
                             $candidate = $this->getMetricValueFromSummaryData(
                                 $channel,
                                 $metric,
-                                $cmsRows->get($i)->summary_data ?? [],
+                                $summaryForRow($cmsRows->get($i)),
                                 $metricMap,
                                 true
                             );
@@ -14733,7 +14756,7 @@ class ChannelMasterController extends Controller
                         $out[$channel][$metric] = [$v1, $v2];
                     }
                 } elseif ($cmsRows->count() === 1) {
-                    $sd = $cmsRows->get(0)->summary_data ?? [];
+                    $sd = $summaryForRow($cmsRows->get(0));
                     foreach ($metrics as $metric) {
                         $v = $this->getMetricValueFromSummaryData($channel, $metric, $sd, $metricMap, true);
                         $out[$channel][$metric] = $v !== null ? [$v, $v] : [null, null];
@@ -15506,7 +15529,12 @@ class ChannelMasterController extends Controller
                     'l60_orders' => floatval($row['L60 Orders'] ?? 0),
                     'l30_orders' => floatval($row['L30 Orders'] ?? 0),
                     'total_quantity' => floatval($totalQuantity), // Total quantity (units sold) from marketplace_daily_metrics
-                    'total_views' => floatval($row['Total Views'] ?? 0),
+                    'total_views' => ChannelMasterViewsGuard::stabilize(
+                        $channelName,
+                        floatval($row['Total Views'] ?? 0),
+                        floatval($totalQuantity),
+                        $today
+                    ),
                     // Listing CVR (OV L30 ÷ Views for Shopify; qty÷views elsewhere). Distinct from Ads CVR.
                     'listing_cvr' => (array_key_exists('CVR', $row) && $row['CVR'] !== null && $row['CVR'] !== '')
                         ? floatval(preg_replace('/[^0-9.\-]/', '', (string) $row['CVR']))
@@ -15579,6 +15607,10 @@ class ChannelMasterController extends Controller
                 );
             }
             
+            foreach (['ebay', 'ebaytwo', 'ebaythree'] as $repairChannel) {
+                ChannelMasterViewsGuard::repairChannel($repairChannel);
+            }
+
             Log::info("Channel Master daily summaries saved for {$today}", [
                 'channels_count' => count($channelData),
             ]);

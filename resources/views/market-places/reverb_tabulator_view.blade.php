@@ -755,13 +755,13 @@
                     <div class="btn-group flex-shrink-0">
                         <button type="button" class="btn btn-sm dropdown-toggle" id="reverb-s-bump-menu-btn"
                             data-bs-toggle="dropdown" aria-expanded="false"
-                            title="Views vs Bump model — suggest S Bump% from Views">
+                            title="Sold vs Bump model — suggest S Bump% from RV L30 sold">
                             <i class="fas fa-sliders-h"></i> S Bump
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="reverb-s-bump-menu-btn">
                             <li>
                                 <a class="dropdown-item" href="#" id="reverb-dil-vs-s-bump-btn">
-                                    <i class="fas fa-sliders-h me-1" style="color:#fd7e14;"></i> Views vs Bump…
+                                    <i class="fas fa-sliders-h me-1" style="color:#fd7e14;"></i> Sold vs Bump…
                                 </a>
                             </li>
                             <li>
@@ -998,21 +998,21 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="reverbDilVsSBumpModalLabel">
-                        <i class="fas fa-sliders-h me-1"></i> Views vs Bump
+                        <i class="fas fa-sliders-h me-1"></i> Sold vs Bump
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
-                        Map <strong>Views</strong> (bump impressions) slabs to <strong>S Bump%</strong> (10 levels: 0–100, 101–200, …).
-                        <strong>Apply</strong> saves the rules and fills <strong>S Bump%</strong> from each row’s Views.
+                        Map <strong>Sold</strong> (RV L30) slabs to <strong>S Bump%</strong> (10 levels: 0, 1, …, &gt; 10).
+                        <strong>Apply</strong> saves the rules and fills <strong>S Bump%</strong> from each row’s Sold.
                         If <strong>INV = 0</strong>, S Bump% is forced to <strong>0</strong>.
                     </p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="reverb-dil-s-bump-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width:55%;">Views</th>
+                                    <th style="width:55%;">Sold</th>
                                     <th style="width:45%;" class="text-end">S Bump%</th>
                                 </tr>
                             </thead>
@@ -1023,7 +1023,7 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="reverb-dil-s-bump-apply-btn"
-                        title="Save Views→Bump rules, then fill S Bump% — selected rows if checked, otherwise all visible">
+                        title="Save Sold→Bump rules, then fill S Bump% — selected rows if checked, otherwise all visible">
                         Apply
                     </button>
                 </div>
@@ -2310,16 +2310,16 @@
         }
 
         const REVERB_DIL_S_BUMP_DEFAULTS = [
-            { key: '0-100', label: '0–100', bump: 10 },
-            { key: '101-200', label: '101–200', bump: 9 },
-            { key: '201-300', label: '201–300', bump: 8 },
-            { key: '301-400', label: '301–400', bump: 7 },
-            { key: '401-500', label: '401–500', bump: 6 },
-            { key: '501-600', label: '501–600', bump: 5 },
-            { key: '601-700', label: '601–700', bump: 4 },
-            { key: '701-800', label: '701–800', bump: 3 },
-            { key: '801-900', label: '801–900', bump: 2 },
-            { key: 'gt-900', label: '> 900 (onwards)', bump: 0 },
+            { key: '0', label: '0', bump: 10 },
+            { key: '1', label: '1', bump: 9 },
+            { key: '2', label: '2', bump: 8 },
+            { key: '3', label: '3', bump: 7 },
+            { key: '4', label: '4', bump: 6 },
+            { key: '5', label: '5', bump: 5 },
+            { key: '6', label: '6', bump: 4 },
+            { key: '7', label: '7', bump: 3 },
+            { key: '8-10', label: '8–10', bump: 2 },
+            { key: 'gt-10', label: '> 10', bump: 0 },
         ];
         let reverbDilSBumpRules = REVERB_DIL_S_BUMP_DEFAULTS.map(function(r) { return Object.assign({}, r); });
 
@@ -2331,22 +2331,15 @@
             if (!isFinite(n)) return raw;
             return String(Math.round(n)) + '%';
         }
-        function reverbViewsSlabKey(views) {
-            const n = Number(views);
-            if (!isFinite(n) || n < 0) return '0-100';
-            if (n > 900) return 'gt-900';
-            if (n >= 801) return '801-900';
-            if (n >= 701) return '701-800';
-            if (n >= 601) return '601-700';
-            if (n >= 501) return '501-600';
-            if (n >= 401) return '401-500';
-            if (n >= 301) return '301-400';
-            if (n >= 201) return '201-300';
-            if (n >= 101) return '101-200';
-            return '0-100';
+        function reverbSoldSlabKey(sold) {
+            const n = Math.round(Number(sold));
+            if (!isFinite(n) || n <= 0) return '0';
+            if (n > 10) return 'gt-10';
+            if (n >= 8) return '8-10';
+            return String(n);
         }
-        function reverbBumpForViews(views) {
-            const key = reverbViewsSlabKey(views);
+        function reverbBumpForSold(sold) {
+            const key = reverbSoldSlabKey(sold);
             const rule = reverbDilSBumpRules.find(function(r) { return r.key === key; });
             const n = rule ? Number(rule.bump) : 0;
             return isFinite(n) && n >= 0 ? n : 0;
@@ -2391,7 +2384,7 @@
                 renderReverbDilSBumpModalTable();
                 $('#reverb-dil-s-bump-status').text(res && res.is_default
                     ? 'Using first-time defaults. Apply to save & fill S Bump%.'
-                    : 'Saved Views vs Bump rules loaded.');
+                    : 'Saved Sold vs Bump rules loaded.');
             } catch (e) {
                 renderReverbDilSBumpModalTable();
                 $('#reverb-dil-s-bump-status').text('Could not load saved rules — showing defaults.');
@@ -2440,8 +2433,8 @@
                 const sku = String(d['(Child) sku'] || '').trim();
                 if (!sku) continue;
                 const inv = (typeof chPromoInv === 'function') ? chPromoInv(d) : (parseFloat(d.INV) || 0);
-                const views = parseFloat(d.Views) || 0;
-                const bump = inv === 0 ? 0 : reverbBumpForViews(views);
+                const sold = parseFloat(d['RV L30']) || 0;
+                const bump = inv === 0 ? 0 : reverbBumpForSold(sold);
                 const value = reverbFormatSBump(bump);
                 try {
                     await Promise.resolve(job.row.update({ RE_BID: value }));
@@ -2460,7 +2453,7 @@
                     data: JSON.stringify({ updates: updates }),
                 });
             }
-            showToast('Views vs Bump (' + label + '): S Bump% → ' + filled + ' row(s)', 'success');
+            showToast('Sold vs Bump (' + label + '): S Bump% → ' + filled + ' row(s)', 'success');
         }
         async function saveAndApplyReverbSBump() {
             if (!$('#reverb-dil-s-bump-tbody tr').length) {
@@ -2474,7 +2467,7 @@
                 return;
             }
             if (label === 'all visible') {
-                if (!confirm('No rows selected — save rules and apply Views→Bump to all ' + targets.length + ' visible row(s)?')) {
+                if (!confirm('No rows selected — save rules and apply Sold→Bump to all ' + targets.length + ' visible row(s)?')) {
                     return;
                 }
             }

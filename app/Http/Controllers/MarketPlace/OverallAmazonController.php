@@ -3406,44 +3406,10 @@ class OverallAmazonController extends Controller
                 })->get();
 
                 foreach ($metricsData as $record) {
-                    $data = is_array($record->daily_data)
-                        ? $record->daily_data
-                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
-                    $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
-                    $views = (int) ($data['views'] ?? 0);
-                    $aL30 = (int) ($data['a_l30'] ?? 0);
-                    // Same formula as CVR L30 column: (A_L30 / Sess30) × 100
-                    $cvr = $views > 0
-                        ? round(($aL30 / $views) * 100, 2)
-                        : round((float) ($data['cvr_percent'] ?? 0), 2);
-                    $spriceHist = isset($data['sprice']) ? round((float) $data['sprice'], 2) : null;
-                    $prmtHist = isset($data['prmt_pct']) && is_numeric($data['prmt_pct'])
-                        ? round((float) $data['prmt_pct'], 2)
-                        : null;
-                    $cpnHist = isset($data['cpn_pct']) && is_numeric($data['cpn_pct'])
-                        ? round((float) $data['cpn_pct'], 2)
-                        : null;
-                    $pushPrcHist = isset($data['push_prc']) && is_numeric($data['push_prc'])
-                        ? round((float) $data['push_prc'], 2)
-                        : null;
-                    $dataByDate[$dateKey] = [
-                        'date' => $dateKey,
-                        'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
-                        'price' => round((float) ($data['price'] ?? 0), 2),
-                        'sprice' => ($spriceHist !== null && $spriceHist > 0)
-                            ? $spriceHist
-                            : round((float) ($data['price'] ?? 0), 2),
-                        'prmt_pct' => $prmtHist,
-                        'cpn_pct' => $cpnHist,
-                        'push_prc' => $pushPrcHist,
-                        'views' => $views,
-                        'cvr_percent' => $cvr,
-                        'ad_percent' => round((float) ($data['ad_percent'] ?? 0), 2),
-                        'a_l30' => $aL30,
-                        'inv' => isset($data['inv']) ? (int) $data['inv'] : null,
-                        'inv_amz' => isset($data['inv_amz']) ? (int) $data['inv_amz'] : null,
-                        'l30' => isset($data['l30']) ? (int) $data['l30'] : null,
-                    ];
+                    $mapped = $this->amazonMapSkuDailyRecord($record);
+                    if ($mapped) {
+                        $dataByDate[$mapped['full_date']] = $mapped;
+                    }
                 }
             } else {
                 if ($skus) {
@@ -3481,6 +3447,9 @@ class OverallAmazonController extends Controller
                     $avgPrice = $totalL30 > 0 ? ($totalWeightedPrice / $totalL30) : 0;
                     // Weighted CVR = Σ A_L30 / Σ views (matches summary badge / tabulator)
                     $avgCvr = $totalViews > 0 ? (($totalL30 / $totalViews) * 100) : 0;
+                    if ($totalViews <= 0 && $avgCvr <= 0) {
+                        continue;
+                    }
 
                     $dataByDate[$dateKey] = [
                         'date' => $dateKey,
@@ -3501,8 +3470,36 @@ class OverallAmazonController extends Controller
             Log::info('No Amazon daily metrics data available. Historical data will be populated by metrics collection command.');
         }
 
+        // 30-day window can start after the last full collect (views/cvr stopped ~Jul 18).
+        // If this window has almost no real CVR rows, pull earlier collected days from the same table.
+        if ($skuNorm && $startDate) {
+            $realCvrDays = 0;
+            foreach ($dataByDate as $row) {
+                if ((int) ($row['views'] ?? 0) > 0) {
+                    $realCvrDays++;
+                }
+            }
+            if ($realCvrDays < 5) {
+                $lookFrom = $startDate->copy()->subDays(90)->toDateString();
+                $lookTo = $startDate->copy()->subDay()->toDateString();
+                foreach ($this->amazonSkuDailyRecordsForSku($skuNorm, $lookFrom, $lookTo) as $record) {
+                    $mapped = $this->amazonMapSkuDailyRecord($record);
+                    if ($mapped && (int) ($mapped['views'] ?? 0) > 0) {
+                        $dataByDate[$mapped['full_date']] = $mapped;
+                    }
+                }
+                if ($dataByDate !== []) {
+                    $keys = array_keys($dataByDate);
+                    sort($keys);
+                    $earliest = Carbon::parse($keys[0], 'America/Los_Angeles')->startOfDay();
+                    if ($earliest->lt($startDate)) {
+                        $startDate = $earliest;
+                    }
+                }
+            }
+        }
+
         // Overlay live amazon_datsheets for Pacific today so the chart matches CVR L30 on the tabulator.
-        // Drop dominant stuck snapshots that disagree with live (same pattern as eBay metrics history).
         if ($skuNorm) {
             $live = $this->resolveAmazonDatasheetForMetrics($skuNorm);
             if ($live) {
@@ -3511,109 +3508,218 @@ class OverallAmazonController extends Controller
                 $aL30 = (int) ($live->units_ordered_l30 ?? 0);
                 $price = round((float) ($live->price ?? 0), 2);
                 $cvr = $views > 0 ? round(($aL30 / $views) * 100, 2) : 0;
-                $liveSig = $views . '|' . $aL30 . '|' . $price;
-
-                $histSigCounts = [];
-                foreach ($dataByDate as $k => $row) {
-                    if ($k === $todayKey) {
-                        continue;
-                    }
-                    $sig = ((int) ($row['views'] ?? 0)) . '|' . ((int) ($row['a_l30'] ?? 0)) . '|' . round((float) ($row['price'] ?? 0), 2);
-                    $histSigCounts[$sig] = ($histSigCounts[$sig] ?? 0) + 1;
-                }
-                if (! empty($histSigCounts)) {
-                    arsort($histSigCounts);
-                    $topSig = (string) array_key_first($histSigCounts);
-                    $topCount = (int) $histSigCounts[$topSig];
-                    $histTotal = (int) array_sum($histSigCounts);
-                    if ($topSig !== $liveSig && $topCount >= max(7, (int) floor($histTotal * 0.5))) {
-                        foreach ($dataByDate as $k => $row) {
-                            if ($k === $todayKey) {
-                                continue;
-                            }
-                            $sig = ((int) ($row['views'] ?? 0)) . '|' . ((int) ($row['a_l30'] ?? 0)) . '|' . round((float) ($row['price'] ?? 0), 2);
-                            if ($sig === $topSig) {
-                                unset($dataByDate[$k]);
-                            }
+                if ($views > 0 || $aL30 > 0 || $cvr > 0) {
+                    $liveSprice = $price;
+                    $dataView = AmazonDataView::where('sku', $skuNorm)->first();
+                    if ($dataView) {
+                        $dvVal = is_array($dataView->value)
+                            ? $dataView->value
+                            : (json_decode($dataView->value ?? '{}', true) ?: []);
+                        $spLive = isset($dvVal['SPRICE']) ? round((float) $dvVal['SPRICE'], 2) : 0;
+                        if ($spLive > 0) {
+                            $liveSprice = $spLive;
                         }
                     }
-                }
 
-                $liveSprice = $price;
-                $dataView = AmazonDataView::where('sku', $skuNorm)->first();
-                if ($dataView) {
-                    $dvVal = is_array($dataView->value)
-                        ? $dataView->value
-                        : (json_decode($dataView->value ?? '{}', true) ?: []);
-                    $spLive = isset($dvVal['SPRICE']) ? round((float) $dvVal['SPRICE'], 2) : 0;
-                    if ($spLive > 0) {
-                        $liveSprice = $spLive;
+                    $dataByDate[$todayKey] = [
+                        'date' => $todayKey,
+                        'full_date' => $todayKey,
+                        'source' => 'live',
+                        'date_formatted' => $endDate->format('M d'),
+                        'price' => $price,
+                        'sprice' => $liveSprice,
+                        'views' => $views,
+                        'cvr_percent' => $cvr,
+                        'ad_percent' => round((float) ($dataByDate[$todayKey]['ad_percent'] ?? 0), 2),
+                        'a_l30' => $aL30,
+                        'inv' => $dataByDate[$todayKey]['inv'] ?? null,
+                        'inv_amz' => $dataByDate[$todayKey]['inv_amz'] ?? null,
+                        'l30' => $dataByDate[$todayKey]['l30'] ?? null,
+                        'prmt_pct' => $dataByDate[$todayKey]['prmt_pct'] ?? null,
+                        'cpn_pct' => $dataByDate[$todayKey]['cpn_pct'] ?? null,
+                        'push_prc' => $dataByDate[$todayKey]['push_prc'] ?? null,
+                    ];
+                }
+            }
+        }
+
+        // Seed carry-forward from the last snapshot before the window so early days
+        // keep the last known CVR / price instead of blank or 0%.
+        $carry = null;
+        if ($skuNorm && $startDate) {
+            $sellerMsku = AmazonDatasheet::resolveSellerMskuByProductKey($skuNorm);
+            $skuCandidates = array_values(array_unique(array_filter([
+                $skuNorm,
+                $sellerMsku ? strtoupper(trim($sellerMsku)) : null,
+            ])));
+            $compact = AmazonDatasheet::normalizeSkuForLookup($skuNorm);
+            $prior = AmazonSkuDailyData::query()
+                ->where('record_date', '<', $startDate->toDateString())
+                ->where(function ($q) use ($skuCandidates, $compact) {
+                    if (! empty($skuCandidates)) {
+                        $q->whereIn('sku', $skuCandidates);
                     }
-                }
-
-                $dataByDate[$todayKey] = [
-                    'date' => $todayKey,
-                    'date_formatted' => $endDate->format('M d'),
-                    'price' => $price,
-                    'sprice' => $liveSprice,
-                    'views' => $views,
-                    'cvr_percent' => $cvr,
-                    'ad_percent' => round((float) ($dataByDate[$todayKey]['ad_percent'] ?? 0), 2),
-                    'a_l30' => $aL30,
-                    'inv' => $dataByDate[$todayKey]['inv'] ?? null,
-                    'inv_amz' => $dataByDate[$todayKey]['inv_amz'] ?? null,
-                    'l30' => $dataByDate[$todayKey]['l30'] ?? null,
+                    if ($compact !== '') {
+                        $q->orWhereRaw(
+                            "UPPER(REPLACE(REPLACE(TRIM(COALESCE(sku,'')), UNHEX('C2A0'), ' '), ' ', '')) = ?",
+                            [$compact]
+                        );
+                    }
+                })
+                ->orderByDesc('record_date')
+                ->first();
+            if ($prior) {
+                $priorData = is_array($prior->daily_data)
+                    ? $prior->daily_data
+                    : (json_decode($prior->daily_data ?? '{}', true) ?: []);
+                $pViews = (int) ($priorData['views'] ?? $priorData['sessions_l30'] ?? 0);
+                $pAl30 = (int) ($priorData['a_l30'] ?? $priorData['units_ordered_l30'] ?? 0);
+                $carry = [
+                    'price' => round((float) ($priorData['price'] ?? 0), 2),
+                    'sprice' => isset($priorData['sprice']) ? round((float) $priorData['sprice'], 2) : round((float) ($priorData['price'] ?? 0), 2),
+                    'views' => $pViews,
+                    'cvr_percent' => $pViews > 0
+                        ? round(($pAl30 / $pViews) * 100, 2)
+                        : round((float) ($priorData['cvr_percent'] ?? 0), 2),
+                    'ad_percent' => round((float) ($priorData['ad_percent'] ?? 0), 2),
+                    'a_l30' => $pAl30,
+                    'inv' => isset($priorData['inv']) ? (int) $priorData['inv'] : null,
+                    'inv_amz' => isset($priorData['inv_amz']) ? (int) $priorData['inv_amz'] : null,
+                    'l30' => isset($priorData['l30']) ? (int) $priorData['l30'] : null,
+                    'prmt_pct' => isset($priorData['prmt_pct']) && is_numeric($priorData['prmt_pct']) ? round((float) $priorData['prmt_pct'], 2) : null,
+                    'cpn_pct' => isset($priorData['cpn_pct']) && is_numeric($priorData['cpn_pct']) ? round((float) $priorData['cpn_pct'], 2) : null,
+                    'push_prc' => isset($priorData['push_prc']) && is_numeric($priorData['push_prc']) ? round((float) $priorData['push_prc'], 2) : null,
                 ];
             }
         }
 
-        // Fill only interior gaps between first and last real data points (Pacific dates).
-        // Do NOT invent trailing zeros after the last collected day — that caused the cliff to 0%.
-        if (! empty($dataByDate) && $startDate) {
-            $realKeys = array_keys($dataByDate);
-            sort($realKeys);
-            $fillStart = Carbon::parse($realKeys[0], 'America/Los_Angeles')->startOfDay();
-            $fillEnd = Carbon::parse($realKeys[count($realKeys) - 1], 'America/Los_Angeles')->startOfDay();
-            if ($fillStart->lt($startDate)) {
-                $fillStart = $startDate->copy();
-            }
-            if ($fillEnd->gt($endDate)) {
-                $fillEnd = $endDate->copy();
-            }
-
-            $currentDate = $fillStart->copy();
-            while ($currentDate->lte($fillEnd)) {
+        // Full requested window, day-by-day. Missing collection days inherit the last
+        // known values (forward-fill) — never invent 0% / $0 cliffs.
+        if ($startDate) {
+            $filled = [];
+            $todayKey = $endDate->toDateString();
+            $currentDate = $startDate->copy();
+            while ($currentDate->lte($endDate)) {
                 $dateKey = $currentDate->format('Y-m-d');
-                if (! isset($dataByDate[$dateKey])) {
+                if (isset($dataByDate[$dateKey]) && ! $this->amazonHistoryPointIsEmpty($dataByDate[$dateKey], (bool) $skuNorm)) {
+                    $carry = $dataByDate[$dateKey];
+                    $row = $dataByDate[$dateKey];
+                    $row['full_date'] = $dateKey;
+                    $row['source'] = ($row['source'] ?? null) === 'live' || $dateKey === $todayKey ? 'live' : 'snapshot';
+                    $filled[$dateKey] = $row;
+                } elseif ($carry !== null) {
+                    $row = $carry;
+                    $row['date'] = $dateKey;
+                    $row['full_date'] = $dateKey;
+                    $row['source'] = 'carried';
+                    $row['date_formatted'] = $currentDate->format('M d');
+                    $v = (int) ($carry['views'] ?? $carry['total_views'] ?? 0);
+                    $a = (int) ($carry['a_l30'] ?? 0);
                     if ($skuNorm) {
-                        $dataByDate[$dateKey] = [
-                            'date' => $dateKey,
-                            'date_formatted' => $currentDate->format('M d'),
-                            'price' => 0,
-                            'sprice' => 0,
-                            'views' => 0,
-                            'cvr_percent' => 0,
-                            'ad_percent' => 0,
-                            'a_l30' => 0,
-                        ];
+                        $row['cvr_percent'] = $v > 0
+                            ? round(($a / $v) * 100, 2)
+                            : (float) ($carry['cvr_percent'] ?? 0);
                     } else {
-                        $dataByDate[$dateKey] = [
-                            'date' => $dateKey,
-                            'date_formatted' => $currentDate->format('M d'),
-                            'avg_price' => 0,
-                            'total_views' => 0,
-                            'avg_cvr_percent' => 0,
-                            'avg_ad_percent' => 0,
-                        ];
+                        $tv = (int) ($carry['total_views'] ?? 0);
+                        $tl = (float) ($carry['total_l30'] ?? 0);
+                        $row['avg_cvr_percent'] = $tv > 0
+                            ? round(($tl / $tv) * 100, 2)
+                            : (float) ($carry['avg_cvr_percent'] ?? 0);
                     }
+                    $filled[$dateKey] = $row;
                 }
                 $currentDate->addDay();
+            }
+            if ($filled !== []) {
+                $dataByDate = $filled;
             }
         }
 
         ksort($dataByDate);
 
         return response()->json(array_values($dataByDate));
+    }
+
+    private function amazonSkuDailyRecordsForSku(string $skuNorm, ?string $fromDate, ?string $toDate)
+    {
+        $sellerMsku = AmazonDatasheet::resolveSellerMskuByProductKey($skuNorm);
+        $skuCandidates = array_values(array_unique(array_filter([
+            $skuNorm,
+            $sellerMsku ? strtoupper(trim($sellerMsku)) : null,
+        ])));
+        $compact = AmazonDatasheet::normalizeSkuForLookup($skuNorm);
+
+        $q = AmazonSkuDailyData::query()->orderBy('record_date', 'asc');
+        if ($fromDate) {
+            $q->where('record_date', '>=', $fromDate);
+        }
+        if ($toDate) {
+            $q->where('record_date', '<=', $toDate);
+        }
+
+        return $q->where(function ($inner) use ($skuCandidates, $compact) {
+            if (! empty($skuCandidates)) {
+                $inner->whereIn('sku', $skuCandidates);
+            }
+            if ($compact !== '') {
+                $inner->orWhereRaw(
+                    "UPPER(REPLACE(REPLACE(TRIM(COALESCE(sku,'')), UNHEX('C2A0'), ' '), ' ', '')) = ?",
+                    [$compact]
+                );
+            }
+        })->get();
+    }
+
+    /** Map amazon_sku_daily_data row. Skip sprice-only / blank metric days. */
+    private function amazonMapSkuDailyRecord($record): ?array
+    {
+        $data = is_array($record->daily_data)
+            ? $record->daily_data
+            : (json_decode($record->daily_data ?? '{}', true) ?: []);
+        $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+        $views = (int) ($data['views'] ?? $data['sessions_l30'] ?? $data['sess30'] ?? 0);
+        $aL30 = (int) ($data['a_l30'] ?? $data['units_ordered_l30'] ?? 0);
+        $cvr = $views > 0
+            ? round(($aL30 / $views) * 100, 2)
+            : round((float) ($data['cvr_percent'] ?? 0), 2);
+        if ($views <= 0 && $aL30 <= 0 && $cvr <= 0) {
+            return null;
+        }
+        $spriceHist = isset($data['sprice']) ? round((float) $data['sprice'], 2) : null;
+
+        return [
+            'date' => $dateKey,
+            'full_date' => $dateKey,
+            'source' => 'snapshot',
+            'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+            'price' => round((float) ($data['price'] ?? 0), 2),
+            'sprice' => ($spriceHist !== null && $spriceHist > 0)
+                ? $spriceHist
+                : round((float) ($data['price'] ?? 0), 2),
+            'prmt_pct' => isset($data['prmt_pct']) && is_numeric($data['prmt_pct']) ? round((float) $data['prmt_pct'], 2) : null,
+            'cpn_pct' => isset($data['cpn_pct']) && is_numeric($data['cpn_pct']) ? round((float) $data['cpn_pct'], 2) : null,
+            'push_prc' => isset($data['push_prc']) && is_numeric($data['push_prc']) ? round((float) $data['push_prc'], 2) : null,
+            'views' => $views,
+            'cvr_percent' => $cvr,
+            'ad_percent' => round((float) ($data['ad_percent'] ?? 0), 2),
+            'a_l30' => $aL30,
+            'inv' => isset($data['inv']) ? (int) $data['inv'] : null,
+            'inv_amz' => isset($data['inv_amz']) ? (int) $data['inv_amz'] : null,
+            'l30' => isset($data['l30']) ? (int) $data['l30'] : null,
+        ];
+    }
+
+    /** True when a daily snapshot has no sessions/units — a collection gap, not a real 0% CVR. */
+    private function amazonHistoryPointIsEmpty(array $row, bool $isSku): bool
+    {
+        if ($isSku) {
+            return (int) ($row['views'] ?? 0) <= 0
+                && (int) ($row['a_l30'] ?? 0) <= 0
+                && (float) ($row['cvr_percent'] ?? 0) <= 0;
+        }
+
+        return (int) ($row['total_views'] ?? 0) <= 0
+            && (float) ($row['avg_cvr_percent'] ?? 0) <= 0;
     }
 
     /**
@@ -5344,21 +5450,59 @@ class OverallAmazonController extends Controller
                 return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
             }
 
-            $query = \App\Models\AmazonDailyBadgeStat::orderBy('snapshot_date', 'asc');
+            $tz = 'America/Los_Angeles';
+            $end = now($tz)->startOfDay();
+            $start = $days > 0 ? $end->copy()->subDays(max(0, $days - 1)) : null;
 
-            if ($days > 0) {
-                $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
-                $query->where('snapshot_date', '>=', $startDate);
+            $query = \App\Models\AmazonDailyBadgeStat::orderBy('snapshot_date', 'asc');
+            if ($start) {
+                $query->where('snapshot_date', '>=', $start->copy()->subDays(7)->toDateString());
             }
 
-            $rows = $query->get();
+            $byDate = [];
+            foreach ($query->get() as $row) {
+                $d = \Carbon\Carbon::parse($row->snapshot_date)->toDateString();
+                $byDate[$d] = floatval($row->$metric);
+            }
 
-            $chartData = $rows->map(function ($row) use ($metric) {
-                return [
-                    'date' => \Carbon\Carbon::parse($row->snapshot_date)->format('M d'),
-                    'value' => floatval($row->$metric),
-                ];
-            })->values()->toArray();
+            if ($days <= 0) {
+                $chartData = [];
+                foreach ($byDate as $d => $val) {
+                    $chartData[] = [
+                        'date' => \Carbon\Carbon::parse($d)->format('M d'),
+                        'full_date' => $d,
+                        'value' => $val,
+                        'source' => 'snapshot',
+                    ];
+                }
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
+            $carry = null;
+            foreach ($byDate as $d => $val) {
+                if ($d < $start->toDateString()) {
+                    $carry = $val;
+                }
+            }
+            $chartData = [];
+            $cursor = $start->copy();
+            while ($cursor->lte($end)) {
+                $key = $cursor->toDateString();
+                $had = array_key_exists($key, $byDate);
+                if ($had) {
+                    $carry = $byDate[$key];
+                }
+                if ($carry !== null) {
+                    $chartData[] = [
+                        'date' => $cursor->format('M d'),
+                        'full_date' => $key,
+                        'value' => $carry,
+                        'source' => $had ? 'snapshot' : 'carried',
+                    ];
+                }
+                $cursor->addDay();
+            }
 
             return response()->json(['success' => true, 'data' => $chartData]);
         } catch (\Exception $e) {
