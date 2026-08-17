@@ -49,13 +49,15 @@ class TikTokOrderSyncService
             $upserted += $this->upsertOrder($order);
         }
 
-        if ($import) {
-            $this->dispatchImportsForNewOrders();
+        $dispatched = $this->dispatchImportsForNewOrders();
+        $message = "Synced {$upserted} TikTok Shop order line(s) from ".count($orders)." order(s).";
+        if ($dispatched > 0) {
+            $message .= " Queued {$dispatched} Shopify import(s).";
         }
 
         return [
             'success' => true,
-            'message' => "Synced {$upserted} TikTok Shop order line(s) from ".count($orders)." order(s).",
+            'message' => $message,
             'upserted' => $upserted,
             'fetched' => count($orders),
         ];

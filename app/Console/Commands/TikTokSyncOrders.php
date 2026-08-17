@@ -17,8 +17,10 @@ class TikTokSyncOrders extends Command
 
     public function handle(TikTokOrderSyncService $service): int
     {
-        $from = $this->option('from')
-            ?: Carbon::now()->subDays((int) $this->option('days'))->toDateString();
+        $from = trim((string) $this->option('from'));
+        if ($from === '') {
+            $from = Carbon::now()->subHours(max(1, (int) $this->option('days')) * 24)->toDateTimeString();
+        }
 
         $import = (bool) $this->option('import');
 

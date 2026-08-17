@@ -155,12 +155,11 @@ class TikTokSyncController extends Controller
         @set_time_limit(0);
 
         $days = max(1, min(90, (int) $request->input('days', 60)));
-        $import = filter_var($request->input('import', false), FILTER_VALIDATE_BOOLEAN);
 
         try {
             $service = app(TikTokOrderSyncService::class);
-            $from = now()->subDays($days)->toDateString();
-            $result = $service->sync($from, $import);
+            $from = now()->subDays($days)->toDateTimeString();
+            $result = $service->sync($from, true);
 
             $count = Schema::hasTable('tiktok_orders')
                 ? (int) TiktokOrder::query()->count()

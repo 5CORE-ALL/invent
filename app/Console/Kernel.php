@@ -1945,11 +1945,12 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok', '', true, 2))
+        $schedule->command('tiktok:sync-orders --days=2 --import')
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('tiktok-sync-orders')
             ->withoutOverlapping(28)
+            ->runInBackground()
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncTikTokTrackingJob(true, 40))
@@ -1989,11 +1990,12 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '', true, 2))
+        $schedule->command('tiktok2:sync-orders --days=2 --import')
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('tiktok2-sync-orders')
             ->withoutOverlapping(28)
+            ->runInBackground()
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncTikTok2TrackingJob(true, 40))

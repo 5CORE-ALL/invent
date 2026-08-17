@@ -13,6 +13,10 @@ trait PreservesMarketplaceImportStatus
      */
     protected function importStatusForUpsert(?object $existing): array
     {
+        if ($existing === null) {
+            return ['import_status' => 'ready'];
+        }
+
         $shopifyId = trim((string) ($existing->shopify_order_id ?? ''));
         if ($shopifyId !== '') {
             return [];
