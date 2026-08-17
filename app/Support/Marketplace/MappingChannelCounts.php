@@ -15,7 +15,6 @@ use App\Http\Controllers\MarketPlace\TopDawgPricingController;
 use App\Http\Controllers\MarketPlace\WayfairController;
 use App\Models\ChannelMaster;
 use App\Services\ShopifyPlsTokenService;
-use App\Services\Temu2ApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -163,16 +162,11 @@ class MappingChannelCounts
         $pageCounts = self::collectPageCounts($useCache === false);
         $logos = self::logoMap();
         $displayNames = self::displayNameMap();
-        $apiBySlug = [];
+        $plsApi = ['connected' => null, 'message' => null];
         try {
-            $apiBySlug['pls'] = app(ShopifyPlsTokenService::class)->pingShopCached();
+            $plsApi = app(ShopifyPlsTokenService::class)->pingShopCached();
         } catch (\Throwable $e) {
-            $apiBySlug['pls'] = ['connected' => false, 'message' => 'PLS API check failed'];
-        }
-        try {
-            $apiBySlug['temu2'] = app(Temu2ApiService::class)->pingShopCached();
-        } catch (\Throwable $e) {
-            $apiBySlug['temu2'] = ['connected' => false, 'message' => 'Temu 2 API check failed'];
+            $plsApi = ['connected' => false, 'message' => 'PLS API check failed'];
         }
 
         // Unique logical channels (skip alias duplicates)
@@ -207,8 +201,8 @@ class MappingChannelCounts
                 // mi_key MapIssues channels + pricing loaders that expose SKU detail
                 'has_sku_detail' => isset(self::$sources[$slug]['mi_key'])
                     || in_array($slug, ['tiktok', 'tiktok2', 'shein', 'pls', 'temu', 'temu2'], true),
-                'api_connected' => isset($apiBySlug[$slug]) ? (bool) ($apiBySlug[$slug]['connected'] ?? false) : null,
-                'api_label' => isset($apiBySlug[$slug]) ? (string) ($apiBySlug[$slug]['message'] ?? '') : null,
+                'api_connected' => $slug === 'pls' ? (bool) ($plsApi['connected'] ?? false) : null,
+                'api_label' => $slug === 'pls' ? (string) ($plsApi['message'] ?? '') : null,
             ];
         }
 

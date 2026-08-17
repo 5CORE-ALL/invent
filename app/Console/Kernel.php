@@ -1123,11 +1123,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('aliexpress', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('aliexpress', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('aliexpress-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         // Shopify label/tracking → AliExpress declare/modify shipment (settings-gated).
@@ -1169,11 +1169,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('alibaba', '2026-07-11', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('alibaba', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('alibaba-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         // Shopify label/tracking → Alibaba declare/modify shipment (settings-gated).
@@ -1207,11 +1207,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('reverb', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('reverb', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('reverb-manager-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         // Shopify label/tracking → Reverb mark shipped (settings-gated).
@@ -1270,11 +1270,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('newegg', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('newegg', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('newegg-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         // Shopify label/tracking → Newegg Ship Order (settings-gated).
@@ -1316,11 +1316,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('shein', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('shein', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('shein-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncSheinTrackingJob(true, 40))
@@ -1367,11 +1367,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('amazon', '2026-08-06', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('amazon', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('amazon-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncAmazonTrackingJob(true, 40))
@@ -1411,11 +1411,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('topdawg', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('topdawg', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('topdawg-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncTopDawgTrackingJob(true, 40))
@@ -1456,11 +1456,11 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('temu-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         // Auto tracking/address apply disabled — use order page / Settings "Sync now" manually.
@@ -1502,11 +1502,11 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // Fetch + import NEW open Temu 2 orders only (service skips shipped/delivered backlog; last 3 days).
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('temu2-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         // Auto tracking/address apply disabled — use order page / Settings "Sync now" manually.
@@ -1547,11 +1547,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('purchasingpower', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('purchasingpower', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('purchasingpower-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncPurchasingPowerTrackingJob(true, 40))
@@ -1593,11 +1593,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(14)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('wayfair', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('wayfair', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('wayfair-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncWayfairTrackingJob(true, 40))
@@ -1637,11 +1637,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('bestbuy', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('bestbuy', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('bestbuy-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncBestBuyTrackingJob(true, 40))
@@ -1681,11 +1681,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('macy', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('macy', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('macy-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMacyTrackingJob(true, 40))
@@ -1725,11 +1725,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('doba', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('doba', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('doba-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncDobaTrackingJob(true, 40))
@@ -1769,11 +1769,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay1', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay1', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('ebay1-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncEbay1TrackingJob(true, 40))
@@ -1813,11 +1813,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(50)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay2', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay2', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('ebay2-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncEbay2TrackingJob(true, 40))
@@ -1857,11 +1857,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay3', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay3', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('ebay3-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncEbay3TrackingJob(true, 40))
@@ -1901,11 +1901,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('faire', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('faire', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('faire-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncFaireTrackingJob(true, 40))
@@ -1945,11 +1945,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('tiktok-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncTikTokTrackingJob(true, 40))
@@ -1989,11 +1989,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '2026-07-07', true))
-            ->everyFifteenMinutes()
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '', true, 2))
+            ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('tiktok2-sync-orders')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncTikTok2TrackingJob(true, 40))

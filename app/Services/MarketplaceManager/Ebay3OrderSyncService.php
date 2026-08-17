@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Schema;
  */
 class Ebay3OrderSyncService
 {
+    use PreservesMarketplaceImportStatus;
+
     protected string $baseUrl = 'https://api.ebay.com';
 
     /**
@@ -207,16 +209,19 @@ class Ebay3OrderSyncService
 
         $lineItems = is_array($order['lineItems'] ?? null) ? $order['lineItems'] : [];
         if ($lineItems === []) {
+            $existing = Ebay3OrderMetric::query()
+                ->where('order_id', $orderId)
+                ->where('sku', '__order__')
+                ->first();
             Ebay3OrderMetric::updateOrCreate(
                 ['order_id' => $orderId, 'sku' => '__order__'],
-                [
+                array_merge([
                     'order_number' => trim((string) ($order['legacyOrderId'] ?? $orderId)),
                     'order_date' => $orderDate,
                     'status' => $status,
                     'quantity' => 1,
                     'raw_payload' => $order,
-                    'import_status' => 'ready',
-                ]
+                ], $this->importStatusForUpsert($existing))
             );
 
             return 1;
@@ -236,7 +241,7 @@ class Ebay3OrderSyncService
 
             Ebay3OrderMetric::updateOrCreate(
                 ['order_id' => $orderId, 'sku' => $sku],
-                [
+                array_merge([
                     'order_number' => trim((string) ($order['legacyOrderId'] ?? $orderId)),
                     'order_date' => $orderDate,
                     'status' => $status !== '' ? $status : trim((string) ($line['lineItemFulfillmentStatus'] ?? '')),
@@ -245,8 +250,9 @@ class Ebay3OrderSyncService
                     'quantity' => $qty,
                     'amount' => $amount,
                     'raw_payload' => $order,
-                    'import_status' => 'ready',
-                ]
+                ], $this->importStatusForUpsert(
+                    Ebay3OrderMetric::query()->where('order_id', $orderId)->where('sku', $sku)->first()
+                ))
             );
             $count++;
         }

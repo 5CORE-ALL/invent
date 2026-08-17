@@ -31,8 +31,11 @@ class ImportTopDawgOrderToShopify implements ShouldQueue
 
     public function middleware(): array
     {
+        $orderId = TopDawgOrderMetric::query()->where('id', $this->topdawgOrderMetricId)->value('order_id');
+        $key = $orderId ? 'topdawg_import_order:'.$orderId : "topdawg_import:{$this->topdawgOrderMetricId}";
+
         return [
-            (new WithoutOverlapping("topdawg_import:{$this->topdawgOrderMetricId}"))
+            (new WithoutOverlapping($key))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];
@@ -62,6 +65,7 @@ class ImportTopDawgOrderToShopify implements ShouldQueue
             Log::info('ImportTopDawgOrderToShopify: success', [
                 'order_id' => $order->order_id,
                 'shopify_order_id' => $shopifyOrderId,
+                'linked_existing' => $pushService->lastDuplicateLinkMessage !== null,
             ]);
 
             return;

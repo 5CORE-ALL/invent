@@ -90,7 +90,16 @@ class TikTok2OrderPushService
             return null;
         }
 
-        $shopifyOrderId = $this->postOrder($config, ['order' => $plan['payload']]);
+        $order->refresh();
+        $shopifyOrderId = $this->postOrderGuarded(
+            $config,
+            ['order' => $plan['payload']],
+            array_values(array_filter([$orderId])),
+            ['tiktok2-', 'tiktok-'],
+            ['tiktok2_order_id', 'tiktok_order_id'],
+            'TikTok2OrderPushService',
+            $order->shopify_order_id
+        );
         if (! $shopifyOrderId) {
             return null;
         }
@@ -103,7 +112,9 @@ class TikTok2OrderPushService
                 'import_status' => 'imported',
             ]);
 
-        $this->syncInventoryAfterPush($order);
+        if ($this->lastDuplicateLinkMessage === null) {
+            $this->syncInventoryAfterPush($order);
+        }
 
         return $shopifyOrderId;
     }

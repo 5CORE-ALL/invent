@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Schema;
 
 class TikTok2OrderSyncService
 {
+    use PreservesMarketplaceImportStatus;
+
     public function __construct(
         protected TikTok2ShopService $tiktokApi
     ) {}
@@ -33,20 +35,14 @@ class TikTok2OrderSyncService
             return ['success' => true, 'message' => 'Order fetch disabled in settings.', 'upserted' => 0, 'fetched' => 0];
         }
 
-        $from = Carbon::parse($fromDate)->startOfDay();
+        $from = Carbon::parse($fromDate);
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($fromDate))) {
+            $from = $from->startOfDay();
+        }
         $createTimeGe = $from->timestamp;
         $createTimeLt = now()->timestamp;
 
         $orders = $this->tiktokApi->getAllOrders($createTimeGe, $createTimeLt);
-
-        if ($orders === []) {
-            return [
-                'success' => true,
-                'message' => 'No TikTok 2 orders found in date range.',
-                'upserted' => 0,
-                'fetched' => 0,
-            ];
-        }
 
         $upserted = 0;
         foreach ($orders as $order) {
@@ -116,10 +112,28 @@ class TikTok2OrderSyncService
 
         foreach ($orders as $order) {
             $orderId = (string) $order->order_id;
-            if (isset($seenOrderIds[$orderId])) {
+            if ($orderId === '' || isset($seenOrderIds[$orderId])) {
                 continue;
             }
             $seenOrderIds[$orderId] = true;
+
+            $alreadyImported = Tiktok2Order::query()
+                ->where('order_id', $orderId)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($alreadyImported) {
+                Tiktok2Order::query()
+                    ->where('order_id', $orderId)
+                    ->where(function ($q) {
+                        $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                    })
+                    ->update([
+                        'shopify_order_id' => (string) $alreadyImported,
+                        'import_status' => 'imported',
+                    ]);
+                continue;
+            }
 
             if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('tiktok2', $order)) {
                 continue;
@@ -180,9 +194,13 @@ class TikTok2OrderSyncService
 
         $lineItems = $order['line_items'] ?? $order['order_line_list'] ?? $order['items'] ?? [];
         if (! is_array($lineItems) || $lineItems === []) {
+            $existing = Tiktok2Order::query()
+                ->where('order_id', $orderId)
+                ->where('line_item_id', '__order__')
+                ->first();
             Tiktok2Order::updateOrCreate(
                 ['order_id' => $orderId, 'line_item_id' => '__order__'],
-                [
+                array_merge([
                     'order_status' => $orderStatus,
                     'order_amount' => $orderAmount,
                     'currency' => $currency,
@@ -193,8 +211,7 @@ class TikTok2OrderSyncService
                     'order_updated_at' => $orderUpdatedAt,
                     'raw_json' => $order,
                     'fetched_at' => now(),
-                    'import_status' => 'ready',
-                ]
+                ], $this->importStatusForUpsert($existing))
             );
 
             return 1;
@@ -219,9 +236,14 @@ class TikTok2OrderSyncService
             $platformDiscount = (float) ($item['platform_discount'] ?? 0);
             $lineStatus = (string) ($item['display_status'] ?? $item['item_status'] ?? '');
 
+            $lineItemKey = $lineItemId ?: $sellerSku;
+            $existing = Tiktok2Order::query()
+                ->where('order_id', $orderId)
+                ->where('line_item_id', $lineItemKey)
+                ->first();
             Tiktok2Order::updateOrCreate(
-                ['order_id' => $orderId, 'line_item_id' => $lineItemId ?: $sellerSku],
-                [
+                ['order_id' => $orderId, 'line_item_id' => $lineItemKey],
+                array_merge([
                     'order_status' => $orderStatus,
                     'line_status' => $lineStatus,
                     'seller_sku' => $sellerSku,
@@ -242,8 +264,7 @@ class TikTok2OrderSyncService
                     'order_updated_at' => $orderUpdatedAt,
                     'raw_json' => $order,
                     'fetched_at' => now(),
-                    'import_status' => 'ready',
-                ]
+                ], $this->importStatusForUpsert($existing))
             );
             $count++;
         }

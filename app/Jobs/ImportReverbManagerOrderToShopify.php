@@ -31,8 +31,12 @@ class ImportReverbManagerOrderToShopify implements ShouldQueue
 
     public function middleware(): array
     {
+        $order = ReverbOrderMetric::find($this->reverbOrderMetricId);
+        $ref = $order?->orderRef();
+        $key = $ref ? 'reverb_mm_import_order:'.$ref : "reverb_import:{$this->reverbOrderMetricId}";
+
         return [
-            (new WithoutOverlapping("reverb_import:{$this->reverbOrderMetricId}"))
+            (new WithoutOverlapping($key))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];
@@ -62,6 +66,7 @@ class ImportReverbManagerOrderToShopify implements ShouldQueue
             Log::info('ImportReverbManagerOrderToShopify: success', [
                 'order_id' => $order->order_id,
                 'shopify_order_id' => $shopifyOrderId,
+                'linked_existing' => $pushService->lastDuplicateLinkMessage !== null,
             ]);
 
             return;

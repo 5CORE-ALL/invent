@@ -31,8 +31,11 @@ class ImportNeweggOrderToShopify implements ShouldQueue
 
     public function middleware(): array
     {
+        $orderId = NeweggOrderMetric::query()->where('id', $this->neweggOrderMetricId)->value('order_id');
+        $key = $orderId ? 'newegg_import_order:'.$orderId : "newegg_import:{$this->neweggOrderMetricId}";
+
         return [
-            (new WithoutOverlapping("newegg_import:{$this->neweggOrderMetricId}"))
+            (new WithoutOverlapping($key))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];
@@ -62,6 +65,7 @@ class ImportNeweggOrderToShopify implements ShouldQueue
             Log::info('ImportNeweggOrderToShopify: success', [
                 'order_id' => $order->order_id,
                 'shopify_order_id' => $shopifyOrderId,
+                'linked_existing' => $pushService->lastDuplicateLinkMessage !== null,
             ]);
 
             return;

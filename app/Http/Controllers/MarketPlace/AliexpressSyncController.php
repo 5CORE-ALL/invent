@@ -971,11 +971,14 @@ class AliexpressSyncController extends Controller
 
         if ($shopifyOrderId) {
             $order->refresh();
+            $message = $push->lastDuplicateLinkMessage
+                ?: 'Pushed to Shopify.';
 
             return response()->json([
                 'success' => true,
-                'message' => 'Pushed to Shopify.',
+                'message' => $message,
                 'shopify_order_id' => $shopifyOrderId,
+                'linked_existing' => $push->lastDuplicateLinkMessage !== null,
             ]);
         }
 

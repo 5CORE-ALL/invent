@@ -529,11 +529,50 @@ class TikTokShopService
     }
 
     /**
+     * TikTok Shop rejects create_time ranges longer than 30 days (empty/error).
+     * Split into 14-day windows so scheduled fetches still pick up new orders.
+     */
+    private const ORDER_SEARCH_MAX_SPAN_SECONDS = 14 * 86400;
+
+    /**
      * Fetch all orders in a create-time window with page_token pagination.
      *
      * @return list<array>
      */
     public function getAllOrders(int $createTimeGe, int $createTimeLt, ?string $orderStatus = null, int $pageSize = 50): array
+    {
+        if ($createTimeLt <= $createTimeGe) {
+            return [];
+        }
+
+        if (($createTimeLt - $createTimeGe) > self::ORDER_SEARCH_MAX_SPAN_SECONDS) {
+            $all = [];
+            $cursor = $createTimeGe;
+            while ($cursor < $createTimeLt) {
+                $end = min($cursor + self::ORDER_SEARCH_MAX_SPAN_SECONDS, $createTimeLt);
+                $all = array_merge($all, $this->getAllOrdersInWindow($cursor, $end, $orderStatus, $pageSize));
+                $cursor = $end;
+            }
+
+            $byId = [];
+            foreach ($all as $i => $order) {
+                if (! is_array($order)) {
+                    continue;
+                }
+                $id = trim((string) ($order['id'] ?? $order['order_id'] ?? ''));
+                $byId[$id !== '' ? $id : 'row-'.$i] = $order;
+            }
+
+            return array_values($byId);
+        }
+
+        return $this->getAllOrdersInWindow($createTimeGe, $createTimeLt, $orderStatus, $pageSize);
+    }
+
+    /**
+     * @return list<array>
+     */
+    protected function getAllOrdersInWindow(int $createTimeGe, int $createTimeLt, ?string $orderStatus, int $pageSize): array
     {
         $all = [];
         $pageToken = '';
@@ -567,6 +606,18 @@ class TikTokShopService
                 break;
             }
 
+            $code = (int) ($response['code'] ?? 0);
+            if ($code !== 0) {
+                $this->output('error', 'getAllOrders API error: code='.$code.' '.($response['message'] ?? ''));
+                Log::error('TikTok getAllOrders failed', [
+                    'code' => $code,
+                    'message' => $response['message'] ?? null,
+                    'create_time_ge' => $createTimeGe,
+                    'create_time_lt' => $createTimeLt,
+                ]);
+                break;
+            }
+
             $orders = $response['orders'] ?? $response['data']['orders'] ?? [];
             if (! is_array($orders)) {
                 $orders = [];
@@ -576,14 +627,14 @@ class TikTokShopService
                 $all = array_merge($all, $orders);
             }
 
-            $total = $response['total_count'] ?? null;
+            $total = $response['total_count'] ?? $response['data']['total_count'] ?? null;
             $this->output(
                 'info',
                 "Orders page {$page}: +".count($orders).' (running '.count($all)
                 .($total !== null ? " / {$total}" : '').')'
             );
 
-            $next = (string) ($response['next_page_token'] ?? '');
+            $next = (string) ($response['next_page_token'] ?? $response['data']['next_page_token'] ?? '');
             if ($next === '' || $orders === []) {
                 break;
             }

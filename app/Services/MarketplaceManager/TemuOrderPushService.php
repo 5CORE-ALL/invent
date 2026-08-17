@@ -290,16 +290,26 @@ class TemuOrderPushService
             return null;
         }
 
-        $shopifyOrderId = $this->postOrder($config, ['order' => $plan['payload']]);
+        $shopifyOrderId = $this->postOrderGuarded(
+            $config,
+            ['order' => $plan['payload']],
+            array_values(array_filter([$parent, $orderSn])),
+            ['temu-'],
+            ['temu_order_id'],
+            'TemuOrderPushService',
+            $order->fresh()?->shopify_order_id
+        );
         if (! $shopifyOrderId) {
             return null;
         }
 
-        $fulfillment = is_array($plan['fulfillment'] ?? null) ? $plan['fulfillment'] : [];
-        $tracking = (string) ($fulfillment['tracking'] ?? '');
-        $carrier = (string) ($fulfillment['carrier'] ?? 'Temu');
-        if ($tracking !== '') {
-            $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
+        if ($this->lastDuplicateLinkMessage === null) {
+            $fulfillment = is_array($plan['fulfillment'] ?? null) ? $plan['fulfillment'] : [];
+            $tracking = (string) ($fulfillment['tracking'] ?? '');
+            $carrier = (string) ($fulfillment['carrier'] ?? 'Temu');
+            if ($tracking !== '') {
+                $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
+            }
         }
 
         TemuOrder::query()
@@ -310,7 +320,9 @@ class TemuOrderPushService
                 'import_status' => 'imported',
             ]);
 
-        $this->syncInventoryAfterPush($order);
+        if ($this->lastDuplicateLinkMessage === null) {
+            $this->syncInventoryAfterPush($order);
+        }
 
         return $shopifyOrderId;
     }

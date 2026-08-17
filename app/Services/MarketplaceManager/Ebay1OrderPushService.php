@@ -290,16 +290,26 @@ class Ebay1OrderPushService
             return null;
         }
 
-        $shopifyOrderId = $this->postOrder($config, ['order' => $plan['payload']]);
+        $shopifyOrderId = $this->postOrderGuarded(
+            $config,
+            ['order' => $plan['payload']],
+            array_values(array_filter([$orderId, $orderNumber])),
+            ['ebay1-', 'ebay-'],
+            ['ebay1_order_id', 'ebay_order_id'],
+            'Ebay1OrderPushService',
+            $order->fresh()?->shopify_order_id
+        );
         if (! $shopifyOrderId) {
             return null;
         }
 
-        $fulfillment = is_array($plan['fulfillment'] ?? null) ? $plan['fulfillment'] : [];
-        $tracking = (string) ($fulfillment['tracking'] ?? '');
-        $carrier = (string) ($fulfillment['carrier'] ?? 'eBay 1');
-        if ($tracking !== '') {
-            $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
+        if ($this->lastDuplicateLinkMessage === null) {
+            $fulfillment = is_array($plan['fulfillment'] ?? null) ? $plan['fulfillment'] : [];
+            $tracking = (string) ($fulfillment['tracking'] ?? '');
+            $carrier = (string) ($fulfillment['carrier'] ?? 'eBay 1');
+            if ($tracking !== '') {
+                $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
+            }
         }
 
         Ebay1OrderMetric::query()
@@ -310,7 +320,9 @@ class Ebay1OrderPushService
                 'import_status' => 'imported',
             ]);
 
-        $this->syncInventoryAfterPush($order);
+        if ($this->lastDuplicateLinkMessage === null) {
+            $this->syncInventoryAfterPush($order);
+        }
 
         return $shopifyOrderId;
     }

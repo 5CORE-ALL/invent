@@ -13,10 +13,13 @@ use Illuminate\Support\Facades\Log;
 class TopDawgOrderPushService
 {
     use SyncsShopifyOrderAddress;
+    use FindsExistingShopifyOrderByChannelRef;
 
     public ?string $lastFailureReason = null;
 
     public ?int $lastApiStatus = null;
+
+    public ?string $lastDuplicateLinkMessage = null;
 
     public function __construct(
         protected TopDawgOrderDetailService $orderDetailService,
@@ -219,8 +222,62 @@ class TopDawgOrderPushService
 
     public function importToShopify(TopDawgOrderMetric $order): ?string
     {
+        $this->lastDuplicateLinkMessage = null;
+
         if ($order->shopify_order_id) {
             return (string) $order->shopify_order_id;
+        }
+
+        $orderId = trim((string) $order->order_id);
+        $orderNumber = trim((string) ($order->order_number ?? ''));
+
+        if ($orderId !== '') {
+            $localLinked = TopDawgOrderMetric::query()
+                ->where('order_id', $orderId)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($localLinked) {
+                $this->linkTopDawgOrderToShopify($orderId, (string) $localLinked);
+                $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+
+                return (string) $localLinked;
+            }
+        }
+
+        $config = $this->shopifyConfig();
+        $existing = $this->findExistingShopifyOrderByRefs(
+            $config,
+            array_values(array_filter([$orderId, $orderNumber])),
+            ['topdawg-'],
+            ['topdawg_order_id'],
+            'TopDawgOrderPushService'
+        );
+        if (($existing['error'] ?? null) !== null) {
+            $this->lastFailureReason = $existing['error'].' Push blocked to avoid duplicates.';
+
+            return null;
+        }
+        if (! empty($existing['id'])) {
+            if ($orderId !== '') {
+                $this->linkTopDawgOrderToShopify($orderId, (string) $existing['id']);
+            } else {
+                $order->update([
+                    'shopify_order_id' => (string) $existing['id'],
+                    'pushed_to_shopify_at' => now(),
+                    'import_status' => 'imported',
+                ]);
+            }
+            $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$existing['id']
+                .' (matched '.$existing['matched_by'].'). No new order created.';
+            Log::info('TopDawgOrderPushService: linked existing Shopify order (duplicate avoided)', [
+                'order_id' => $orderId,
+                'order_number' => $orderNumber,
+                'shopify_order_id' => $existing['id'],
+                'matched_by' => $existing['matched_by'],
+            ]);
+
+            return (string) $existing['id'];
         }
 
         $plan = $this->buildImportPlan($order);
@@ -230,29 +287,46 @@ class TopDawgOrderPushService
             return null;
         }
 
-        $shopifyOrderId = $this->postOrder($this->shopifyConfig(), ['order' => $plan['payload']]);
+        $shopifyOrderId = $this->postOrderGuarded(
+            $config,
+            ['order' => $plan['payload']],
+            array_values(array_filter([$orderId, $orderNumber])),
+            ['topdawg-'],
+            ['topdawg_order_id'],
+            'TopDawgOrderPushService',
+            $order->fresh()?->shopify_order_id
+        );
         if (! $shopifyOrderId) {
             return null;
         }
 
-        $fulfillment = is_array($plan['fulfillment'] ?? null) ? $plan['fulfillment'] : [];
-        $tracking = (string) ($fulfillment['tracking'] ?? '');
-        $carrier = (string) ($fulfillment['carrier'] ?? 'TopDawg');
-        if ($tracking !== '') {
-            $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
+        if ($this->lastDuplicateLinkMessage === null) {
+            $fulfillment = is_array($plan['fulfillment'] ?? null) ? $plan['fulfillment'] : [];
+            $tracking = (string) ($fulfillment['tracking'] ?? '');
+            $carrier = (string) ($fulfillment['carrier'] ?? 'TopDawg');
+            if ($tracking !== '') {
+                $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
+            }
         }
 
+        $this->linkTopDawgOrderToShopify($orderId !== '' ? $orderId : (string) $order->order_id, $shopifyOrderId);
+
+        if ($this->lastDuplicateLinkMessage === null) {
+            $this->syncInventoryAfterPush($order);
+        }
+
+        return $shopifyOrderId;
+    }
+
+    protected function linkTopDawgOrderToShopify(string $orderId, string $shopifyOrderId): void
+    {
         TopDawgOrderMetric::query()
-            ->where('order_id', (string) $order->order_id)
+            ->where('order_id', $orderId)
             ->update([
                 'shopify_order_id' => $shopifyOrderId,
                 'pushed_to_shopify_at' => now(),
                 'import_status' => 'imported',
             ]);
-
-        $this->syncInventoryAfterPush($order);
-
-        return $shopifyOrderId;
     }
 
     /**

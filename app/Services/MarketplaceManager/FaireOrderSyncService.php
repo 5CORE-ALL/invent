@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Schema;
  */
 class FaireOrderSyncService
 {
+    use PreservesMarketplaceImportStatus;
+
     public function __construct(
         protected FaireApiService $faireApi
     ) {}
@@ -191,16 +193,19 @@ class FaireOrderSyncService
         $items = is_array($order['items'] ?? null) ? $order['items'] : [];
 
         if ($items === []) {
+            $existing = FaireOrderMetric::query()
+                ->where('order_id', $orderId)
+                ->where('sku', '__order__')
+                ->first();
             FaireOrderMetric::updateOrCreate(
                 ['order_id' => $orderId, 'sku' => '__order__'],
-                [
+                array_merge([
                     'order_number' => $displayId,
                     'order_date' => $orderDate ? Carbon::parse($orderDate) : null,
                     'status' => $status,
                     'quantity' => 1,
                     'raw_payload' => $order,
-                    'import_status' => 'ready',
-                ]
+                ], $this->importStatusForUpsert($existing))
             );
 
             return 1;
@@ -223,7 +228,7 @@ class FaireOrderSyncService
 
             FaireOrderMetric::updateOrCreate(
                 ['order_id' => $orderId, 'sku' => $sku],
-                [
+                array_merge([
                     'order_number' => $displayId,
                     'order_date' => $orderDate ? Carbon::parse($orderDate) : null,
                     'status' => $status,
@@ -242,8 +247,9 @@ class FaireOrderSyncService
                     'quantity' => $qty,
                     'amount' => $amount,
                     'raw_payload' => $order,
-                    'import_status' => 'ready',
-                ]
+                ], $this->importStatusForUpsert(
+                    FaireOrderMetric::query()->where('order_id', $orderId)->where('sku', $sku)->first()
+                ))
             );
             $count++;
         }

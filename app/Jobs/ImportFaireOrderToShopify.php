@@ -31,8 +31,11 @@ class ImportFaireOrderToShopify implements ShouldQueue
 
     public function middleware(): array
     {
+        $orderId = FaireOrderMetric::query()->where('id', $this->faireOrderMetricId)->value('order_id');
+        $key = $orderId ? 'faire_import_order:'.$orderId : "faire_import:{$this->faireOrderMetricId}";
+
         return [
-            (new WithoutOverlapping("faire_import:{$this->faireOrderMetricId}"))
+            (new WithoutOverlapping($key))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];
