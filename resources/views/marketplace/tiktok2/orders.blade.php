@@ -134,7 +134,7 @@ document.getElementById('btn-fetch-orders')?.addEventListener('click', async fun
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ days }),
+            body: JSON.stringify({ days, import: true }),
         });
         const data = await res.json();
         out.className = 'small mb-2 ' + (data.success ? 'text-success' : 'text-danger');

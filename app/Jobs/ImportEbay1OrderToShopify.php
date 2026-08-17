@@ -31,8 +31,11 @@ class ImportEbay1OrderToShopify implements ShouldQueue
 
     public function middleware(): array
     {
+        $orderId = Ebay1OrderMetric::query()->where('id', $this->ebay1OrderMetricId)->value('order_id');
+        $key = $orderId ? 'ebay1_import_order:'.$orderId : "ebay1_import:{$this->ebay1OrderMetricId}";
+
         return [
-            (new WithoutOverlapping("ebay1_import:{$this->ebay1OrderMetricId}"))
+            (new WithoutOverlapping($key))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];

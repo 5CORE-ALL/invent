@@ -31,8 +31,11 @@ class ImportAliexpressOrderToShopify implements ShouldQueue
 
     public function middleware(): array
     {
+        $orderId = AliexpressOrderMetric::query()->where('id', $this->aliexpressOrderMetricId)->value('order_id');
+        $key = $orderId ? 'aliexpress_import_order:'.$orderId : "aliexpress_import:{$this->aliexpressOrderMetricId}";
+
         return [
-            (new WithoutOverlapping("aliexpress_import:{$this->aliexpressOrderMetricId}"))
+            (new WithoutOverlapping($key))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];
@@ -62,6 +65,7 @@ class ImportAliexpressOrderToShopify implements ShouldQueue
             Log::info('ImportAliexpressOrderToShopify: success', [
                 'order_id' => $order->order_id,
                 'shopify_order_id' => $shopifyOrderId,
+                'linked_existing' => $pushService->lastDuplicateLinkMessage !== null,
             ]);
 
             return;

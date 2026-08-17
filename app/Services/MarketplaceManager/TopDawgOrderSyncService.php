@@ -7,6 +7,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\TopDawgOrderMetric;
 use App\Services\TopDawgApiService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -102,25 +103,65 @@ class TopDawgOrderSyncService
         }
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('topdawg');
-        $query = TopDawgOrderMetric::query()
+        $queue = MarketplaceManagerRegistry::queueFor('topdawg');
+        if ((int) DB::table('jobs')->where('queue', $queue)->count() === 0) {
+            TopDawgOrderMetric::query()
+                ->where('import_status', 'queued')
+                ->whereNull('shopify_order_id')
+                ->update(['import_status' => 'ready']);
+        }
+
+        $orders = TopDawgOrderMetric::query()
             ->whereNull('shopify_order_id')
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereNotIn('import_status', ['queued', 'imported']);
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
-            ->orderBy('id');
+            ->orderByDesc('order_date')
+            ->orderBy('id')
+            ->limit(400)
+            ->get();
 
+        $seen = [];
         $dispatched = 0;
-        $query->chunkById(50, function ($rows) use (&$dispatched, $paidOnly) {
-            foreach ($rows as $row) {
-                if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('topdawg', $row)) {
-                    continue;
-                }
-                $row->update(['import_status' => 'queued']);
-                ImportTopDawgOrderToShopify::dispatch((int) $row->id);
-                $dispatched++;
+        foreach ($orders as $row) {
+            $orderId = trim((string) $row->order_id);
+            if ($orderId === '' || isset($seen[$orderId])) {
+                continue;
             }
-        });
+            $seen[$orderId] = true;
+
+            $alreadyImported = TopDawgOrderMetric::query()
+                ->where('order_id', $orderId)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($alreadyImported) {
+                TopDawgOrderMetric::query()
+                    ->where('order_id', $orderId)
+                    ->whereNull('shopify_order_id')
+                    ->update([
+                        'shopify_order_id' => (string) $alreadyImported,
+                        'import_status' => 'imported',
+                    ]);
+                continue;
+            }
+
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('topdawg', $row)) {
+                TopDawgOrderMetric::query()
+                    ->where('order_id', $orderId)
+                    ->whereNull('shopify_order_id')
+                    ->update(['import_status' => 'skipped_unpaid']);
+                continue;
+            }
+
+            $row->update(['import_status' => 'queued']);
+            ImportTopDawgOrderToShopify::dispatch((int) $row->id);
+            $dispatched++;
+            if ($dispatched >= 200) {
+                break;
+            }
+        }
 
         return $dispatched;
     }

@@ -240,7 +240,7 @@ class MarketplaceOrderPaidFilter
     {
         $status = strtoupper(trim((string) ($order->order_status ?? '')));
 
-        $unpaid = ['UNPAID', 'ON_HOLD', 'CANCELLED', 'CANCELED'];
+        $unpaid = ['UNPAID', 'CANCELLED', 'CANCELED'];
         if ($status !== '' && in_array($status, $unpaid, true)) {
             return false;
         }
@@ -252,7 +252,7 @@ class MarketplaceOrderPaidFilter
     {
         $status = strtoupper(trim((string) ($order->order_status ?? '')));
 
-        $unpaid = ['UNPAID', 'ON_HOLD', 'CANCELLED', 'CANCELED'];
+        $unpaid = ['UNPAID', 'CANCELLED', 'CANCELED'];
         if ($status !== '' && in_array($status, $unpaid, true)) {
             return false;
         }

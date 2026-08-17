@@ -418,19 +418,18 @@ class ReverbOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        $settings = MarketplaceSyncSettings::getFor('reverb');
-        if (! ($settings['order']['auto_import_to_shopify'] ?? false)) {
+        if (! MarketplaceSyncSettings::canAutoImportToShopify('reverb')) {
             return 0;
         }
 
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('reverb', $settings);
-
-        if ((int) DB::table('jobs')->where('queue', 'mm-reverb')->count() === 0) {
+        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('reverb');
+        $queue = MarketplaceManagerRegistry::queueFor('reverb');
+        if ((int) DB::table('jobs')->where('queue', $queue)->count() === 0) {
             ReverbOrderMetric::query()
                 ->where('import_status', 'queued')
                 ->whereNull('shopify_order_id')
                 ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
-                ->update(['import_status' => null]);
+                ->update(['import_status' => 'ready']);
         }
 
         $orders = ReverbOrderMetric::query()
@@ -438,26 +437,63 @@ class ReverbOrderSyncService
             ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereNotIn('import_status', [
-                        'imported',
-                        'pending_shopify',
-                        'queued',
-                        'skipped_pre_july7',
-                    ]);
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
+            ->orderByDesc('order_date')
             ->orderBy('id')
-            ->limit(50)
+            ->limit(400)
             ->get();
 
+        $seen = [];
         $dispatched = 0;
         foreach ($orders as $order) {
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('reverb', $order)) {
+            $orderRef = trim((string) $order->orderRef());
+            if ($orderRef === '' || isset($seen[$orderRef])) {
+                continue;
+            }
+            $seen[$orderRef] = true;
+
+            $alreadyImported = ReverbOrderMetric::query()
+                ->where(function ($q) use ($orderRef) {
+                    $q->where('order_id', $orderRef)->orWhere('order_number', $orderRef);
+                })
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($alreadyImported) {
+                ReverbOrderMetric::query()
+                    ->where(function ($q) use ($orderRef) {
+                        $q->where('order_id', $orderRef)->orWhere('order_number', $orderRef);
+                    })
+                    ->whereNull('shopify_order_id')
+                    ->update([
+                        'shopify_order_id' => (string) $alreadyImported,
+                        'import_status' => 'imported',
+                    ]);
                 continue;
             }
 
-            \App\Jobs\ImportReverbManagerOrderToShopify::dispatch($order->id);
-            $order->update(['import_status' => 'queued']);
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('reverb', $order)) {
+                ReverbOrderMetric::query()
+                    ->where(function ($q) use ($orderRef) {
+                        $q->where('order_id', $orderRef)->orWhere('order_number', $orderRef);
+                    })
+                    ->whereNull('shopify_order_id')
+                    ->update(['import_status' => 'skipped_unpaid']);
+                continue;
+            }
+
+            \App\Jobs\ImportReverbManagerOrderToShopify::dispatch((int) $order->id);
+            ReverbOrderMetric::query()
+                ->where(function ($q) use ($orderRef) {
+                    $q->where('order_id', $orderRef)->orWhere('order_number', $orderRef);
+                })
+                ->whereNull('shopify_order_id')
+                ->update(['import_status' => 'queued']);
             $dispatched++;
+            if ($dispatched >= 200) {
+                break;
+            }
         }
 
         return $dispatched;

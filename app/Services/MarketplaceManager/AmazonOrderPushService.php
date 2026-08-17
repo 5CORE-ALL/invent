@@ -295,13 +295,24 @@ class AmazonOrderPushService
             return null;
         }
 
-        $shopifyOrderId = $this->postOrder($config, ['order' => $plan['payload']]);
+        $order->refresh();
+        $shopifyOrderId = $this->postOrderGuarded(
+            $config,
+            ['order' => $plan['payload']],
+            [$amazonOrderId],
+            ['amazon-', 'amz-'],
+            ['amazon_order_id', 'amazon-order-id', 'AmazonOrderId'],
+            'AmazonOrderPushService',
+            $order->shopify_order_id
+        );
         if (! $shopifyOrderId) {
             return null;
         }
 
         $this->linkAmazonOrderToShopify($order, $shopifyOrderId);
-        $this->syncInventoryAfterPush($order);
+        if ($this->lastDuplicateLinkMessage === null) {
+            $this->syncInventoryAfterPush($order);
+        }
 
         return $shopifyOrderId;
     }

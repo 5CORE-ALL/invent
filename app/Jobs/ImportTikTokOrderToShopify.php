@@ -6,6 +6,7 @@ use App\Models\TiktokOrder;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\TikTokOrderPushService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -14,13 +15,15 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
-class ImportTikTokOrderToShopify implements ShouldQueue
+class ImportTikTokOrderToShopify implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 5;
 
     public int $timeout = 180;
+
+    public int $uniqueFor = 900;
 
     public array $backoff = [30, 60, 120, 300, 600];
 
@@ -30,10 +33,15 @@ class ImportTikTokOrderToShopify implements ShouldQueue
         $this->onQueue(MarketplaceManagerRegistry::queueFor('tiktok'));
     }
 
+    public function uniqueId(): string
+    {
+        return 'tiktok-import-'.$this->marketplaceOrderKey();
+    }
+
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping("tiktok_import:{$this->tiktokOrderId}"))
+            (new WithoutOverlapping('tiktok_import:'.$this->marketplaceOrderKey()))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];
@@ -48,7 +56,7 @@ class ImportTikTokOrderToShopify implements ShouldQueue
             return;
         }
 
-        if ($order->shopify_order_id) {
+        if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
             return;
         }
 
@@ -58,6 +66,7 @@ class ImportTikTokOrderToShopify implements ShouldQueue
             Log::info('ImportTikTokOrderToShopify: success', [
                 'order_id' => $order->order_id,
                 'shopify_order_id' => $shopifyOrderId,
+                'linked_existing' => $pushService->lastDuplicateLinkMessage !== null,
             ]);
 
             return;
@@ -90,5 +99,12 @@ class ImportTikTokOrderToShopify implements ShouldQueue
             'id' => $this->tiktokOrderId,
             'error' => $exception->getMessage(),
         ]);
+    }
+
+    protected function marketplaceOrderKey(): string
+    {
+        $orderId = TiktokOrder::query()->where('id', $this->tiktokOrderId)->value('order_id');
+
+        return $orderId ? (string) $orderId : (string) $this->tiktokOrderId;
     }
 }

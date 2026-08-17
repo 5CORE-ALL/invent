@@ -2,10 +2,12 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Jobs\ImportAliexpressOrderToShopify;
 use App\Models\AliexpressOrderMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\AliExpressApiService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -362,38 +364,74 @@ class AliexpressOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        $settings = MarketplaceSyncSettings::getFor('aliexpress');
-        if (! ($settings['order']['auto_import_to_shopify'] ?? false)) {
+        if (! MarketplaceSyncSettings::canAutoImportToShopify('aliexpress')) {
             return 0;
         }
 
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('aliexpress', $settings);
+        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('aliexpress');
+        $queue = MarketplaceManagerRegistry::queueFor('aliexpress');
+        if ((int) DB::table('jobs')->where('queue', $queue)->count() === 0) {
+            AliexpressOrderMetric::query()
+                ->where('import_status', 'queued')
+                ->whereNull('shopify_order_id')
+                ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
+                ->update(['import_status' => 'ready']);
+        }
 
         $orders = AliexpressOrderMetric::query()
             ->whereNull('shopify_order_id')
             ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereNotIn('import_status', [
-                        'imported',
-                        'pending_shopify',
-                        'queued',
-                        'skipped_pre_july7',
-                    ]);
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
+            ->orderByDesc('order_date')
             ->orderBy('id')
-            ->limit(50)
+            ->limit(400)
             ->get();
 
+        $seen = [];
         $dispatched = 0;
         foreach ($orders as $order) {
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('aliexpress', $order)) {
+            $orderId = trim((string) $order->order_id);
+            if ($orderId === '' || isset($seen[$orderId])) {
+                continue;
+            }
+            $seen[$orderId] = true;
+
+            $alreadyImported = AliexpressOrderMetric::query()
+                ->where('order_id', $orderId)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($alreadyImported) {
+                AliexpressOrderMetric::query()
+                    ->where('order_id', $orderId)
+                    ->whereNull('shopify_order_id')
+                    ->update([
+                        'shopify_order_id' => (string) $alreadyImported,
+                        'import_status' => 'imported',
+                    ]);
                 continue;
             }
 
-            \App\Jobs\ImportAliexpressOrderToShopify::dispatch($order->id);
-            $order->update(['import_status' => 'queued']);
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('aliexpress', $order)) {
+                AliexpressOrderMetric::query()
+                    ->where('order_id', $orderId)
+                    ->whereNull('shopify_order_id')
+                    ->update(['import_status' => 'skipped_unpaid']);
+                continue;
+            }
+
+            ImportAliexpressOrderToShopify::dispatch((int) $order->id);
+            AliexpressOrderMetric::query()
+                ->where('order_id', $orderId)
+                ->whereNull('shopify_order_id')
+                ->update(['import_status' => 'queued']);
             $dispatched++;
+            if ($dispatched >= 200) {
+                break;
+            }
         }
 
         return $dispatched;

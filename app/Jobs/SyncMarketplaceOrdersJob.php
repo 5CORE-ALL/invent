@@ -79,10 +79,12 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
         }
 
         $params = [];
-        if ($this->fromDate !== '') {
-            $params['--from'] = $this->fromDate;
-        } elseif ($this->days > 0) {
-            $params['--days'] = $this->days;
+        $from = $this->fromDate;
+        if ($from === '' && $this->days > 0) {
+            $from = now()->subHours($this->days * 24)->toDateTimeString();
+        }
+        if ($from !== '') {
+            $params['--from'] = $from;
         }
         if ($this->import) {
             $params['--import'] = true;

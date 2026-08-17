@@ -31,8 +31,11 @@ class ImportSheinOrderToShopify implements ShouldQueue
 
     public function middleware(): array
     {
+        $orderId = SheinOrderMetric::query()->where('id', $this->sheinOrderMetricId)->value('order_id');
+        $key = $orderId ? 'shein_import_order:'.$orderId : "shein_import:{$this->sheinOrderMetricId}";
+
         return [
-            (new WithoutOverlapping("shein_import:{$this->sheinOrderMetricId}"))
+            (new WithoutOverlapping($key))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];

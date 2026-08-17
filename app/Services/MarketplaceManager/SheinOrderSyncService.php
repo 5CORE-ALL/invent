@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Schema;
  */
 class SheinOrderSyncService
 {
+    use PreservesMarketplaceImportStatus;
+
     public function __construct(
         protected SheinApiService $sheinApi
     ) {}
@@ -213,17 +215,20 @@ class SheinOrderSyncService
 
         $goodsList = is_array($order['orderGoodsInfoList'] ?? null) ? $order['orderGoodsInfoList'] : [];
         if ($goodsList === []) {
+            $existing = SheinOrderMetric::query()
+                ->where('order_id', $orderId)
+                ->where('sku', '__order__')
+                ->first();
             SheinOrderMetric::updateOrCreate(
                 ['order_id' => $orderId, 'sku' => '__order__'],
-                [
+                array_merge([
                     'order_number' => $orderId,
                     'order_date' => $orderDate,
                     'status' => $status,
                     'quantity' => 1,
                     // Match AliExpress / Reverb wrapper shape.
                     'raw_payload' => ['order' => $order],
-                    'import_status' => 'ready',
-                ]
+                ], $this->importStatusForUpsert($existing))
             );
 
             return 1;
@@ -250,7 +255,7 @@ class SheinOrderSyncService
 
             SheinOrderMetric::updateOrCreate(
                 ['order_id' => $orderId, 'sku' => $sku],
-                [
+                array_merge([
                     'order_number' => $orderId,
                     'order_date' => $orderDate,
                     'status' => $status,
@@ -260,8 +265,9 @@ class SheinOrderSyncService
                     'amount' => $amount,
                     // Match AliExpress / Reverb: raw['order'] + raw['line'].
                     'raw_payload' => ['order' => $order, 'line' => $goods],
-                    'import_status' => 'ready',
-                ]
+                ], $this->importStatusForUpsert(
+                    SheinOrderMetric::query()->where('order_id', $orderId)->where('sku', $sku)->first()
+                ))
             );
             $count++;
         }

@@ -13,10 +13,13 @@ use Illuminate\Support\Facades\Log;
 class ReverbOrderPushService
 {
     use SyncsShopifyOrderAddress;
+    use FindsExistingShopifyOrderByChannelRef;
 
     public ?string $lastFailureReason = null;
 
     public ?int $lastApiStatus = null;
+
+    public ?string $lastDuplicateLinkMessage = null;
 
     public function __construct(
         protected ReverbOrderDetailService $orderDetailService,
@@ -223,8 +226,64 @@ class ReverbOrderPushService
 
     public function importToShopify(ReverbOrderMetric $order): ?string
     {
+        $this->lastDuplicateLinkMessage = null;
+
         if ($order->shopify_order_id) {
             return (string) $order->shopify_order_id;
+        }
+
+        $orderRef = trim((string) $order->orderRef());
+        $orderId = trim((string) ($order->order_id ?? ''));
+        $orderNumber = trim((string) ($order->order_number ?? ''));
+
+        if ($orderRef !== '') {
+            $localLinked = ReverbOrderMetric::query()
+                ->where(function ($q) use ($orderRef) {
+                    $q->where('order_id', $orderRef)->orWhere('order_number', $orderRef);
+                })
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($localLinked) {
+                $this->linkReverbOrderToShopify($orderRef, (string) $localLinked);
+                $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+
+                return (string) $localLinked;
+            }
+        }
+
+        $config = $this->shopifyConfig();
+        $existing = $this->findExistingShopifyOrderByRefs(
+            $config,
+            array_values(array_filter([$orderRef, $orderId, $orderNumber])),
+            ['reverb-'],
+            ['reverb_order_id'],
+            'ReverbOrderPushService'
+        );
+        if (($existing['error'] ?? null) !== null) {
+            $this->lastFailureReason = $existing['error'].' Push blocked to avoid duplicates.';
+
+            return null;
+        }
+        if (! empty($existing['id'])) {
+            if ($orderRef !== '') {
+                $this->linkReverbOrderToShopify($orderRef, (string) $existing['id']);
+            } else {
+                $order->update([
+                    'shopify_order_id' => (string) $existing['id'],
+                    'pushed_to_shopify_at' => now(),
+                    'import_status' => 'imported',
+                ]);
+            }
+            $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$existing['id']
+                .' (matched '.$existing['matched_by'].'). No new order created.';
+            Log::info('ReverbOrderPushService: linked existing Shopify order (duplicate avoided)', [
+                'order_ref' => $orderRef,
+                'shopify_order_id' => $existing['id'],
+                'matched_by' => $existing['matched_by'],
+            ]);
+
+            return (string) $existing['id'];
         }
 
         $plan = $this->buildImportPlan($order);
@@ -234,32 +293,48 @@ class ReverbOrderPushService
             return null;
         }
 
-        $shopifyOrderId = $this->postOrder($this->shopifyConfig(), ['order' => $plan['payload']]);
+        $shopifyOrderId = $this->postOrderGuarded(
+            $config,
+            ['order' => $plan['payload']],
+            array_values(array_filter([$orderRef, $orderId, $orderNumber])),
+            ['reverb-'],
+            ['reverb_order_id'],
+            'ReverbOrderPushService',
+            $order->fresh()?->shopify_order_id
+        );
         if (! $shopifyOrderId) {
             return null;
         }
 
-        $fulfillment = is_array($plan['fulfillment'] ?? null) ? $plan['fulfillment'] : [];
-        $tracking = (string) ($fulfillment['tracking'] ?? '');
-        $carrier = (string) ($fulfillment['carrier'] ?? 'Reverb');
-        if ($tracking !== '') {
-            $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
+        if ($this->lastDuplicateLinkMessage === null) {
+            $fulfillment = is_array($plan['fulfillment'] ?? null) ? $plan['fulfillment'] : [];
+            $tracking = (string) ($fulfillment['tracking'] ?? '');
+            $carrier = (string) ($fulfillment['carrier'] ?? 'Reverb');
+            if ($tracking !== '') {
+                $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
+            }
         }
 
+        $this->linkReverbOrderToShopify($orderRef !== '' ? $orderRef : (string) $order->orderRef(), $shopifyOrderId);
+
+        if ($this->lastDuplicateLinkMessage === null) {
+            $this->syncInventoryAfterPush($order);
+        }
+
+        return $shopifyOrderId;
+    }
+
+    protected function linkReverbOrderToShopify(string $orderRef, string $shopifyOrderId): void
+    {
         ReverbOrderMetric::query()
-            ->where(function ($q) use ($order) {
-                $ref = $order->orderRef();
-                $q->where('order_id', $ref)->orWhere('order_number', $ref);
+            ->where(function ($q) use ($orderRef) {
+                $q->where('order_id', $orderRef)->orWhere('order_number', $orderRef);
             })
             ->update([
                 'shopify_order_id' => $shopifyOrderId,
                 'pushed_to_shopify_at' => now(),
                 'import_status' => 'imported',
             ]);
-
-        $this->syncInventoryAfterPush($order);
-
-        return $shopifyOrderId;
     }
 
     /**

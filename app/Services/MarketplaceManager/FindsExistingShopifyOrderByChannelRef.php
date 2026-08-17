@@ -89,6 +89,60 @@ trait FindsExistingShopifyOrderByChannelRef
     }
 
     /**
+     * Recheck Shopify immediately before POST. Never create if the channel order already exists.
+     *
+     * @param  list<string>  $refs
+     * @param  list<string>  $tagPrefixes
+     * @param  list<string>  $noteAttributeKeys
+     */
+    protected function postOrderGuarded(
+        array $config,
+        array $payload,
+        array $refs,
+        array $tagPrefixes,
+        array $noteAttributeKeys,
+        string $logContext,
+        ?string $localShopifyId = null
+    ): ?string {
+        $localShopifyId = trim((string) $localShopifyId);
+        if ($localShopifyId !== '') {
+            if (property_exists($this, 'lastDuplicateLinkMessage')) {
+                $this->lastDuplicateLinkMessage = 'Already imported locally.';
+            }
+
+            return $localShopifyId;
+        }
+
+        $existing = $this->findExistingShopifyOrderByRefs(
+            $config,
+            $refs,
+            $tagPrefixes,
+            $noteAttributeKeys,
+            $logContext
+        );
+        if (($existing['error'] ?? null) !== null) {
+            $this->lastFailureReason = $existing['error'].' Push blocked to avoid duplicates.';
+
+            return null;
+        }
+        if (! empty($existing['id'])) {
+            if (property_exists($this, 'lastDuplicateLinkMessage')) {
+                $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$existing['id']
+                    .' (rechecked '.$existing['matched_by'].'). No new order created.';
+            }
+            Log::info($logContext.': recheck linked existing Shopify order (duplicate avoided)', [
+                'shopify_order_id' => $existing['id'],
+                'matched_by' => $existing['matched_by'],
+                'refs' => $refs,
+            ]);
+
+            return (string) $existing['id'];
+        }
+
+        return $this->postOrder($config, $payload);
+    }
+
+    /**
      * @return array{id: ?string, matched_by: ?string, error: ?string}
      */
     protected function shopifyRestFindOrderByName(

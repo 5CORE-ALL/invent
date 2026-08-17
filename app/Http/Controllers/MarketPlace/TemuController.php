@@ -2958,7 +2958,9 @@ class TemuController extends Controller
                         if (! empty($sheet->sku_id)) {
                             $existing->sku_id = $sheet->sku_id;
                         }
-                        // Keep temu2_metrics.quantity (Open API stock). Do not overwrite with sheet qty.
+                        if ((int) ($sheet->quantity ?? 0) > 0) {
+                            $existing->quantity = (int) $sheet->quantity;
+                        }
                         $pricingData[$originalSku] = $existing;
                     } else {
                         $pricingData[$originalSku] = (object) [
@@ -3503,7 +3505,7 @@ class TemuController extends Controller
                 $shopify = $shopifyData->get($sku);
                 $temuSales = $temuSalesData->get($sku);
                 
-                // Temu Stock: Temu 1 and Temu 2 = Open API metrics.quantity (not the pricing sheet)
+                // Temu Stock: Temu 1 = API temu_metrics.quantity; Temu 2 = sheet quantity
                 $temuStock = $item ? ($item->quantity ?? 0) : 0;
                 
                 // Get values from product master - check Values JSON first, then direct properties

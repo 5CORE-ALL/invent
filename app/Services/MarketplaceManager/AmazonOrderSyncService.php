@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Jobs\ImportAmazonOrderToShopify;
+use App\Models\AmazonDailySync;
 use App\Models\AmazonOrder;
 use App\Models\MarketplaceSyncSettings;
 use Carbon\Carbon;
@@ -62,7 +63,10 @@ class AmazonOrderSyncService
             ];
         }
 
-        $from = Carbon::parse($fromDate, 'America/Los_Angeles')->startOfDay();
+        $from = Carbon::parse($fromDate, 'America/Los_Angeles');
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($fromDate))) {
+            $from = $from->startOfDay();
+        }
         $to = Carbon::now('America/Los_Angeles')->endOfDay();
         if ($from->gt($to)) {
             return [
@@ -73,6 +77,9 @@ class AmazonOrderSyncService
             ];
         }
 
+        // Re-open today + yesterday so new Amazon orders after a mid-day "completed" mark are fetched.
+        $this->reopenTrailingAmazonSyncDays(1);
+
         $before = (int) AmazonOrder::query()->count();
 
         try {
@@ -80,7 +87,6 @@ class AmazonOrderSyncService
                 '--from' => $from->toDateString(),
                 '--to' => $to->toDateString(),
                 '--with-items' => true,
-                '--no-incremental-refresh' => true,
             ]);
             $output = trim(Artisan::output());
         } catch (\Throwable $e) {
@@ -196,6 +202,27 @@ class AmazonOrderSyncService
         }
 
         return $dispatched;
+    }
+
+    /**
+     * Re-open today + N prior Pacific days so new Amazon orders are fetched after
+     * a mid-day "completed" mark (CreatedBefore = now − 2 minutes).
+     */
+    protected function reopenTrailingAmazonSyncDays(int $priorDays = 2): void
+    {
+        if (! class_exists(AmazonDailySync::class) || ! Schema::hasTable('amazon_daily_syncs')) {
+            return;
+        }
+
+        $from = Carbon::now('America/Los_Angeles')->subDays(max(0, $priorDays))->toDateString();
+        AmazonDailySync::query()
+            ->where('sync_date', '>=', $from)
+            ->update([
+                'status' => AmazonDailySync::STATUS_PENDING,
+                'next_token' => null,
+                'completed_at' => null,
+                'error_message' => null,
+            ]);
     }
 
     /**
