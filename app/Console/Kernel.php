@@ -187,6 +187,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('payroll:fetch-fx-rates')
             ->monthlyOn(1, '00:15')
             ->withoutOverlapping()
+            ->runInBackground()
             ->name('payroll-fetch-fx-rates');
 
         $log = $this->schedulerLog;
@@ -2032,6 +2033,7 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('mm-dispatch-unpushed-shopify')
             ->withoutOverlapping(14)
+            ->runInBackground()
             ->appendOutputTo($log);
 
         // $schedule->command('shopify:retry-pending-orders')
@@ -2113,6 +2115,7 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('temu-collect-metrics')
             ->withoutOverlapping()
+            ->runInBackground()
             ->appendOutputTo($log));
 
      
