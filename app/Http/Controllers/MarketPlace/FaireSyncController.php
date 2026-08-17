@@ -1145,7 +1145,7 @@ class FaireSyncController extends Controller
             ]);
         }
 
-        $result = app(FaireInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(FaireInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 
