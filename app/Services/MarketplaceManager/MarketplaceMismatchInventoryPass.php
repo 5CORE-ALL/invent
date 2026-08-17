@@ -371,9 +371,62 @@ final class MarketplaceMismatchInventoryPass
             'aliexpress' => app(AliexpressLiveListingsService::class)->peekCached(),
             'faire' => app(FaireLiveListingsService::class)->peekCached(),
             'amazon' => app(AmazonLiveListingsService::class)->peekCached(),
+            'tiktok' => app(TikTokLiveListingsService::class)->peekCached(),
+            'tiktok2' => app(TikTok2LiveListingsService::class)->peekCached(),
             'pls' => app(PlsLiveListingsService::class)->peekCached(),
             default => null,
         };
+    }
+
+    /**
+     * Same rows the listings page uses to split Active vs Inactive.
+     * Peeks the warm cache, then loads from the channel's local listings source.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function liveRowsForStateSplit(string $channel): array
+    {
+        $peeked = $this->peekLiveRows($channel);
+        if (is_array($peeked) && $peeked !== []) {
+            return $peeked;
+        }
+
+        $channel = strtolower(trim($channel));
+
+        try {
+            $rows = match ($channel) {
+                'newegg' => app(NeweggLiveListingsService::class)->all(),
+                'shein' => app(SheinLiveListingsService::class)->all(),
+                'topdawg' => app(TopDawgLiveListingsService::class)->all(),
+                'temu' => app(TemuLiveListingsService::class)->all(),
+                'temu2' => app(Temu2LiveListingsService::class)->all(),
+                'purchasingpower' => app(PurchasingPowerLiveListingsService::class)->all(),
+                'wayfair' => app(WayfairLiveListingsService::class)->all(),
+                'bestbuy' => app(BestBuyLiveListingsService::class)->all(),
+                'macy' => app(MacyLiveListingsService::class)->all(),
+                'doba' => app(DobaLiveListingsService::class)->all(),
+                'ebay1' => app(Ebay1LiveListingsService::class)->all(),
+                'ebay2' => app(Ebay2LiveListingsService::class)->all(),
+                'ebay3' => app(Ebay3LiveListingsService::class)->all(),
+                'reverb' => app(ReverbLiveListingsService::class)->all(),
+                'aliexpress' => app(AliexpressLiveListingsService::class)->all(),
+                'faire' => app(FaireLiveListingsService::class)->all(),
+                'amazon' => app(AmazonLiveListingsService::class)->all(),
+                'tiktok' => app(TikTokLiveListingsService::class)->all(),
+                'tiktok2' => app(TikTok2LiveListingsService::class)->all(),
+                'pls' => app(PlsLiveListingsService::class)->all(),
+                default => [],
+            };
+        } catch (\Throwable $e) {
+            Log::warning('MarketplaceMismatchInventoryPass: liveRowsForStateSplit failed', [
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+
+        return is_array($rows) ? $rows : [];
     }
 
     /**
