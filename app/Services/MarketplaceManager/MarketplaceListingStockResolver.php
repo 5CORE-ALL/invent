@@ -788,9 +788,10 @@ final class MarketplaceListingStockResolver
                 continue;
             }
             $qty = (int) $row['inventory'];
-            $map[strtoupper($sku)] = $qty;
+            $upper = strtoupper($sku);
+            $map[$upper] = $qty;
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm !== '') {
+            if ($norm !== '' && $norm !== $upper && ! array_key_exists($norm, $map)) {
                 $map[$norm] = $qty;
             }
         }
@@ -1129,13 +1130,51 @@ final class MarketplaceListingStockResolver
             if (! Schema::hasTable('faire_metric') || ! Schema::hasColumn('faire_metric', 'inventory')) {
                 return;
             }
-            \App\Models\FaireMetric::query()
-                ->whereIn('sku', $keys)
+            $rows = \App\Models\FaireMetric::query()
                 ->whereNotNull('inventory')
-                ->get(['sku', 'inventory'])
-                ->each(function ($row) use (&$map) {
-                    self::put($map, (string) $row->sku, (int) $row->inventory);
-                });
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['sku', 'inventory']);
+
+            $wantedNorm = [];
+            foreach ($keys as $key) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $key);
+                if ($n !== '') {
+                    $wantedNorm[$n] = true;
+                }
+                $wantedNorm[strtoupper(trim((string) $key))] = true;
+            }
+
+            // Pass 1: exact SKU / exact-normalized owners (ND 58, not ND-58).
+            foreach ($rows as $row) {
+                $sku = trim((string) $row->sku);
+                $upper = strtoupper($sku);
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if (! isset($wantedNorm[$upper]) && ($norm === '' || ! isset($wantedNorm[$norm]))) {
+                    continue;
+                }
+                if ($norm === '' || $norm === $upper) {
+                    self::putOverwrite($map, $sku, (int) $row->inventory);
+                }
+            }
+            // Pass 2: hyphen aliases only fill gaps (ND-58 → ND 58 when ND 58 row is missing).
+            foreach ($rows as $row) {
+                $sku = trim((string) $row->sku);
+                $upper = strtoupper($sku);
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm === '' || $norm === $upper) {
+                    continue;
+                }
+                if (! isset($wantedNorm[$norm]) && ! isset($wantedNorm[$upper])) {
+                    continue;
+                }
+                if (! array_key_exists($norm, $map)) {
+                    $map[$norm] = (int) $row->inventory;
+                }
+                if (! array_key_exists($upper, $map)) {
+                    $map[$upper] = (int) $row->inventory;
+                }
+            }
 
             return;
         }
@@ -1467,6 +1506,22 @@ final class MarketplaceListingStockResolver
                 }
                 self::put($map, (string) $row->sku, (int) $row->remaining_inventory);
             });
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     */
+    protected static function putOverwrite(array &$map, string $sku, int $qty): void
+    {
+        $trim = trim($sku);
+        if ($trim === '') {
+            return;
+        }
+        $map[strtoupper($trim)] = $qty;
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($trim);
+        if ($norm !== '') {
+            $map[$norm] = $qty;
+        }
     }
 
     /**
