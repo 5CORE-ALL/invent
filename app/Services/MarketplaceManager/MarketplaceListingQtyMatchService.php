@@ -43,6 +43,68 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
+     * Same number as the listings "Active SKU Mismatch" tab.
+     */
+    public function activeMismatchCount(string $mmChannel): int
+    {
+        return count($this->activeMismatchSkus($mmChannel));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function activeMismatchSkus(string $mmChannel): array
+    {
+        $mismatch = $this->mismatchSkus($mmChannel);
+        if ($mismatch === []) {
+            return [];
+        }
+
+        $liveRows = app(MarketplaceMismatchInventoryPass::class)->peekLiveRows($mmChannel);
+        if (! is_array($liveRows) || $liveRows === []) {
+            // Listings page treats an empty state cache as all mismatch = Active SKU Mismatch.
+            return $mismatch;
+        }
+
+        $activeNorms = [];
+        foreach ($liveRows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $state = strtolower(trim((string) ($row['state'] ?? '')));
+            $inv = $row['inventory'] ?? null;
+            $isActive = $state === 'active' || ($state === '' && $inv !== 0 && $inv !== '0');
+            if ($state === 'inactive' || $inv === 0 || $inv === '0') {
+                $isActive = false;
+            }
+            if (! $isActive) {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $activeNorms[$norm] = true;
+            }
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($mismatch as $sku) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($norm === '' || isset($seen[$norm]) || ! isset($activeNorms[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $out[] = (string) $sku;
+        }
+
+        return $out;
+    }
+
+    /**
      * @return list<string>
      */
     public function mismatchSkus(string $mmChannel): array

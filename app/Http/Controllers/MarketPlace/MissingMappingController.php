@@ -50,22 +50,22 @@ class MissingMappingController extends Controller
     }
 
     /**
-     * Channel master rows: Channel + Missing Mapping (live N Map from pricing pages).
+     * Channel master rows: Channel + Missing Mapping Titas (Active SKU Mismatch).
      */
     public function masterData(Request $request)
     {
         try {
             $data = collect(MappingChannelCounts::masterRows(false))->values();
-            $totalNmap = (int) $data->sum('missing_mapping');
+            $totalTitas = (int) $data->sum('missing_mapping_titas');
 
-            MappingChannelCounts::storeTotalNmap($totalNmap);
-            Cache::put(AllMarketplaceMasterBadgeCalculator::NMAP_CACHE_KEY, $totalNmap, now()->addDay());
+            MappingChannelCounts::storeTotalTitas($totalTitas);
+            Cache::put(AllMarketplaceMasterBadgeCalculator::NMAP_CACHE_KEY, $totalTitas, now()->addDay());
 
             return response()->json([
                 'success' => true,
                 'data' => $data,
                 'count' => $data->count(),
-                'total_nmap' => $totalNmap,
+                'total_titas' => $totalTitas,
             ]);
         } catch (\Throwable $e) {
             Log::error('Missing Mapping masterData failed: '.$e->getMessage());

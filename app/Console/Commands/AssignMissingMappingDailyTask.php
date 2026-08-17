@@ -65,7 +65,7 @@ class AssignMissingMappingDailyTask extends Command
         }
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-        $nmapCount = MappingChannelCounts::totalNmap(false);
+        $nmapCount = MappingChannelCounts::totalTitas(false);
         $countLabel = number_format($nmapCount);
         $this->info("Missing Mapping count: {$countLabel}");
         $monitor->markApiConnected();

@@ -117,6 +117,7 @@ class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
     public static function nmapCountForSidebar(): int
     {
         foreach ([
+            \App\Support\Marketplace\MappingChannelCounts::TOTAL_TITAS_CACHE_KEY,
             \App\Support\Marketplace\MappingChannelCounts::TOTAL_CACHE_KEY,
             self::NMAP_CACHE_KEY,
         ] as $key) {
