@@ -111,7 +111,7 @@ final class MarketplaceMismatchInventoryPass
     /**
      * @return list<string>
      */
-    protected function linkedSkus(string $channel): array
+    public function linkedSkus(string $channel): array
     {
         $table = match ($channel) {
             'newegg' => 'newegg_metric',
@@ -307,7 +307,7 @@ final class MarketplaceMismatchInventoryPass
      * @param  list<string>  $skus
      * @return array<string, int>
      */
-    protected function stockMap(string $channel, array $skus): array
+    public function stockMap(string $channel, array $skus): array
     {
         if ($channel === 'alibaba') {
             return $this->alibabaLocalStockMap($skus);

@@ -58,7 +58,7 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-mm-stat" id="stat-missing-mapping" title="N Map total from each channel pricing / tabulator page" style="background-color:#a71d2a !important;">
+                    <span class="badge bg-danger badge-mm-stat" id="stat-missing-mapping" title="Same as Marketplace Manager Active + Inactive SKU Mismatch for each channel" style="background-color:#a71d2a !important;">
                         Missing Mapping: <span id="total-missing-mapping">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::totalNmap(true)) }}</span>
                     </span>
                 </div>
