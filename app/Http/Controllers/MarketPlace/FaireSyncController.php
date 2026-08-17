@@ -442,7 +442,7 @@ class FaireSyncController extends Controller
                 $productIds[] = $pid;
                 $idToSku[$pid] = (string) $sku;
             }
-            $liveMpByUpper = [];
+            $liveMpByUpper = $this->faireStockMapForSkus($mismatchQty);
             if ($productIds !== []) {
                 foreach ($liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($productIds)), 0, 80)) as $pid => $row) {
                     $sku = $idToSku[(string) $pid] ?? trim((string) ($row['sku'] ?? ''));

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
  */
 final class MarketplaceListingQtyMatchService
 {
-    public const CACHE_PREFIX = 'mm_listing_mismatch_v2:';
+    public const CACHE_PREFIX = 'mm_listing_mismatch_v3:';
 
     /**
      * /map-issues slug → Marketplace Manager channel.
@@ -60,10 +60,9 @@ final class MarketplaceListingQtyMatchService
             return [];
         }
 
-        $liveRows = app(MarketplaceMismatchInventoryPass::class)->peekLiveRows($mmChannel);
-        if (! is_array($liveRows) || $liveRows === []) {
-            // Listings page treats an empty state cache as all mismatch = Active SKU Mismatch.
-            return $mismatch;
+        $liveRows = app(MarketplaceMismatchInventoryPass::class)->liveRowsForStateSplit($mmChannel);
+        if ($liveRows === []) {
+            return [];
         }
 
         $activeNorms = [];
@@ -77,8 +76,9 @@ final class MarketplaceListingQtyMatchService
             }
             $state = strtolower(trim((string) ($row['state'] ?? '')));
             $inv = $row['inventory'] ?? null;
-            $isActive = $state === 'active' || ($state === '' && $inv !== 0 && $inv !== '0');
-            if ($state === 'inactive' || $inv === 0 || $inv === '0') {
+            $isActive = in_array($state, ['active', '1', 'true', 'onselling', 'on_selling'], true)
+                || ($state === '' && $inv !== 0 && $inv !== '0' && $inv !== null);
+            if (in_array($state, ['inactive', '0', 'false', 'offline', 'ended'], true) || $inv === 0 || $inv === '0') {
                 $isActive = false;
             }
             if (! $isActive) {
@@ -101,7 +101,24 @@ final class MarketplaceListingQtyMatchService
             $out[] = (string) $sku;
         }
 
-        return $out;
+        if ($out === []) {
+            return [];
+        }
+
+        // Drop equal-qty rows (ND 58 288=288) that listings still had in mismatch.
+        $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($out);
+        $mp = $this->localStockMap($mmChannel, $out);
+        $real = [];
+        foreach ($out as $sku) {
+            $shopifyQty = MarketplaceListingStockResolver::qtyFromMap($shopify, (string) $sku);
+            $mpQty = MarketplaceListingStockResolver::qtyFromMap($mp, (string) $sku);
+            if ($shopifyQty !== null && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyQty, $mpQty)) {
+                continue;
+            }
+            $real[] = (string) $sku;
+        }
+
+        return $real;
     }
 
     /**
