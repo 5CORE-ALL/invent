@@ -925,7 +925,7 @@
     <!-- SKU Metrics Chart Modal (format matches all-marketplace-master) -->
     <div class="modal fade p-0" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
-            <div class="modal-content" style="overflow: hidden;">
+            <div class="modal-content" style="overflow: hidden; max-height: 92vh;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
@@ -943,8 +943,8 @@
                         <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
                     </div>
                 </div>
-                <div class="modal-body p-2">
-                    <div id="skuChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                <div class="modal-body p-2" style="overflow: auto; max-height: calc(92vh - 42px);">
+                    <div id="skuChartContainer" style="height: 32vh; display: flex; align-items: stretch;">
                         <div style="flex: 1; min-width: 0; position: relative;">
                             <canvas id="skuMetricsChart"></canvas>
                         </div>
@@ -990,8 +990,8 @@
                         <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
                     </div>
                 </div>
-                <div class="modal-body p-2">
-                    <div id="amzChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                <div class="modal-body p-2" style="overflow: auto; max-height: calc(92vh - 42px);">
+                    <div id="amzChartContainer" style="height: 32vh; display: flex; align-items: stretch;">
                         <div style="flex: 1; min-width: 0; position: relative;">
                             <canvas id="amzMetricChart"></canvas>
                         </div>
@@ -1580,6 +1580,74 @@
             return Math.round(v).toLocaleString('en-US');
         }
 
+        function amzTodayPtDate() {
+            try {
+                return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+            } catch (e) {
+                const d = new Date();
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            }
+        }
+
+        function amzChartXTicks(labelCount) {
+            return {
+                maxRotation: 90,
+                minRotation: 90,
+                autoSkip: false,
+                autoSkipPadding: 0,
+                font: { size: labelCount > 45 ? 9 : 10, weight: '600' },
+                callback: function(value) {
+                    return this.getLabelForValue(value);
+                }
+            };
+        }
+
+        function amzHistoryRowIsEmpty(r) {
+            if (!r) return true;
+            const views = Number(r.views || r.total_views || 0);
+            const aL30 = Number(r.a_l30 || 0);
+            const cvr = Number(r.cvr_percent || r.avg_cvr_percent || 0);
+            return views <= 0 && aL30 <= 0 && cvr <= 0;
+        }
+
+        function amzFillEveryDate(rows, days) {
+            const n = parseInt(days, 10) || 0;
+            const src = Array.isArray(rows) ? rows.slice() : [];
+            if (n <= 0) return src;
+            const byDate = {};
+            src.forEach(function(r) {
+                const key = r.full_date || r.date || '';
+                if (key && /^\d{4}-\d{2}-\d{2}$/.test(key) && !amzHistoryRowIsEmpty(r)) byDate[key] = r;
+            });
+            const end = new Date(amzTodayPtDate() + 'T12:00:00');
+            const out = [];
+            let carry = null;
+            for (let i = n - 1; i >= 0; i--) {
+                const d = new Date(end);
+                d.setDate(end.getDate() - i);
+                const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                const label = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+                if (byDate[key] && !amzHistoryRowIsEmpty(byDate[key])) {
+                    carry = byDate[key];
+                    const row = Object.assign({}, carry);
+                    row.date = label;
+                    row.date_formatted = label;
+                    row.full_date = key;
+                    if (!row.source) row.source = (key === amzTodayPtDate()) ? 'live' : 'snapshot';
+                    out.push(row);
+                    continue;
+                }
+                if (!carry) continue;
+                const row = Object.assign({}, carry);
+                row.date = label;
+                row.date_formatted = label;
+                row.source = 'carried';
+                row.full_date = key;
+                out.push(row);
+            }
+            return out.length ? out : src.slice(-n);
+        }
+
         function showAmzMetricChart(metricKey) {
             amzChartMetricKey = metricKey;
             amzChartDays = 30;
@@ -1616,7 +1684,7 @@
                     $('#amzChartLoading').hide();
                     if (resp.success && resp.data && resp.data.length > 0) {
                         $('#amzChartContainer').show();
-                        renderAmzMetricChart(resp.data);
+                        renderAmzMetricChart(amzFillEveryDate(resp.data, amzChartDays));
                     } else {
                         $('#amzChartNoData').show();
                     }
@@ -1683,7 +1751,11 @@
             document.getElementById('amzChartMedian').textContent = amzFmtVal(median);
             document.getElementById('amzChartLowest').textContent = amzFmtVal(dataMin);
 
-            const dotColors = values.map((v, i) => i === 0 ? '#6c757d' : v < values[i - 1] ? '#dc3545' : v > values[i - 1] ? '#28a745' : '#6c757d');
+            const dotColors = values.map((v, i) => {
+                if (data[i] && data[i].source === 'carried') return '#ced4da';
+                if (data[i] && data[i].source === 'live') return '#0d6efd';
+                return i === 0 ? '#6c757d' : v < values[i - 1] ? '#dc3545' : v > values[i - 1] ? '#28a745' : '#6c757d';
+            });
             const labelColors = values.map(v => v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d');
 
             const medianLinePlugin = {
@@ -1729,7 +1801,7 @@
                 plugins: [medianLinePlugin, valueLabelsPlugin],
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                    layout: { padding: { top: 36, left: 8, right: 16, bottom: 28 } },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -1753,7 +1825,7 @@
                     },
                     scales: {
                         y: { min: yMin, max: yMax, ticks: { font: { size: 9 }, callback: v => amzFmtVal(v) } },
-                        x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } } }
+                        x: { offset: true, ticks: amzChartXTicks(labels.length) }
                     }
                 }
             });
@@ -1836,7 +1908,7 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                    layout: { padding: { top: 36, left: 8, right: 16, bottom: 28 } },
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { display: false },
@@ -1857,7 +1929,8 @@
                     },
                     scales: {
                         x: {
-                            ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } }
+                            offset: true,
+                            ticks: amzChartXTicks(30)
                         },
                         y: {
                             type: 'linear',
@@ -1917,6 +1990,37 @@
                         $('#chart-no-data-message').show();
                         return;
                     }
+                    const liveRow = (typeof getAmazonTabulatorRowDataBySku === 'function')
+                        ? getAmazonTabulatorRowDataBySku(sku)
+                        : null;
+                    if (liveRow) {
+                        const today = amzTodayPtDate();
+                        const todayLabel = new Date(today + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+                        const aL30 = parseFloat(liveRow['A_L30']) || 0;
+                        const sess30 = parseFloat(liveRow['Sess30']) || 0;
+                        const liveCvr = sess30 > 0 ? (aL30 / sess30) * 100 : 0;
+                        let last = data.length ? data[data.length - 1] : null;
+                        const lastKey = last ? (last.date || last.full_date || '') : '';
+                        if (last && (lastKey === today || last.date_formatted === todayLabel)) {
+                            last.cvr_percent = liveCvr;
+                            last.views = sess30;
+                            last.a_l30 = aL30;
+                            last.price = parseFloat(liveRow.price || last.price) || last.price;
+                            last.source = 'live';
+                        } else {
+                            data.push({
+                                date: today,
+                                full_date: today,
+                                date_formatted: todayLabel,
+                                cvr_percent: liveCvr,
+                                views: sess30,
+                                a_l30: aL30,
+                                price: parseFloat(liveRow.price) || 0,
+                                source: 'live'
+                            });
+                        }
+                    }
+                    data = amzFillEveryDate(data, daysNum);
                     const labels = data.map(d => d.date_formatted || d.date || '');
                     const isCvr = currentSkuChartMetric === 'cvr';
                     const isViews = currentSkuChartMetric === 'views';
@@ -1961,6 +2065,10 @@
                     const refColors = { cvr: '#008000', views: '#0000FF', inv: '#6c757d', inv_amz: '#17a2b8', al30: '#e83e8c', ovl30: '#fd7e14', sprice: '#0d6efd', prmt: '#0d6efd', cpn: '#20c997', push_prc: '#FF9900' };
                     if (refDotEl) refDotEl.style.background = refColors[currentSkuChartMetric] || '#adb5bd';
 
+                    if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.x) {
+                        skuMetricsChart.options.scales.x.offset = true;
+                        skuMetricsChart.options.scales.x.ticks = amzChartXTicks(labels.length);
+                    }
                     skuMetricsChart.data.labels = labels;
                     skuMetricsChart.data.datasets[0].data = values;
                     skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isSprice || isPushPrc) ? ' (USD)' : ((isPrmt || isCpn || isCvr) ? ' (%)' : ''));
@@ -1993,6 +2101,8 @@
                     const refGray = '#6c757d';
                     const refGreen = '#198754';
                     const dotColors = values.map((v, i) => {
+                        if (data[i] && data[i].source === 'carried') return '#ced4da';
+                        if (data[i] && data[i].source === 'live') return '#0d6efd';
                         if (i === 0) return refGray;
                         return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? refRed : refGray;
                     });
@@ -4452,47 +4562,17 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
-                            const sku = row['(Child) sku'] || '';
-                            const isListed = !row.is_missing_amazon;
                             const aL30 = parseFloat(row['A_L30']) || 0;
                             const sess30 = parseFloat(row['Sess30']) || 0;
-                            const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
-                            // Arrow/dot = CVR L30 vs prior period L31–L60 (CVR L60)
-                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
-                            const sess60 = parseFloat(row['sessions_l60']) || 0;
-                            const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
-                            const tol = 0.1;
-                            let arrowHtml = '';
-                            let dotColor = '#6c757d';
-                            if (sku && isListed) {
-                                let arrowColor = '#6c757d';
-                                let arrowIcon = 'fa-minus';
-                                let trendTip = `vs L31–L60 (CVR L60): ${cvrL60.toFixed(1)}%`;
-                                if (cvrL30 > cvrL60 + tol) {
-                                    arrowColor = '#28a745';
-                                    arrowIcon = 'fa-arrow-up';
-                                    dotColor = '#28a745';
-                                } else if (cvrL30 < cvrL60 - tol) {
-                                    arrowColor = '#a00211';
-                                    arrowIcon = 'fa-arrow-down';
-                                    dotColor = '#a00211';
-                                } else {
-                                    dotColor = '#ffc107';
-                                }
-                                arrowHtml = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="cvr" title="View CVR% chart (${trendTip})" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; margin-right: 2px; vertical-align: middle;"></span><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></button>`;
-                            }
-
                             if (sess30 === 0) {
-                                return `<span style="color: #a00211; font-weight: 600;">0.0%</span> ${arrowHtml}`.trim();
+                                return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
                             }
-
-                            const cvr = cvrL30;
-                            let color = '';
+                            const cvr = (aL30 / sess30) * 100;
+                            let color = '#e83e8c';
                             if (cvr <= 4) color = '#a00211';
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                             else if (cvr > 7 && cvr <= 13) color = '#28a745';
-                            else color = '#e83e8c';
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span> ${arrowHtml}`.trim();
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span>`;
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -4845,13 +4925,8 @@
                         sorter: "number",
                         width: 55,
                         formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const sku = row['(Child) sku'] || '';
-                            const isListed = !row.is_missing_amazon;
-                            const value = cell.getValue();
-                            const num = Math.round(value || 0);
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="views" title="View View L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
-                            return `${num.toLocaleString('en-US')} ${dotBtn}`.trim();
+                            const num = Math.round(cell.getValue() || 0);
+                            return num.toLocaleString('en-US');
                         }
                     },
 
@@ -4909,33 +4984,26 @@
                                 return `<button type="button" class="btn btn-link p-0 parent-pricing-eye-btn" data-parent="${escAttr(pk)}" title="Child SKU pricing (incl. S PRC, push, SNPFT, SNROI)" style="color: #0dcaf0;"><i class="fas fa-eye" style="font-size: 16px;"></i></button>`;
                             }
 
-                            const sku = rowData['(Child) sku'] || '';
                             const price = parseFloat(value || 0);
                             const lmpPrice = parseFloat(rowData.lmp_price || 0);
                             const lmpaPrice = parseFloat(rowData.price_lmpa || 0);
                             const isListed = !rowData.is_missing_amazon;
 
-                            // Dot icon: only for listed SKUs — opens SKU metrics chart (Price, Views, CVR%, Sold)
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" title="View metrics chart (Price, Views, CVR%, Sold)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
-
-                            // If no listing, show nothing (no price, no dot)
                             if (!isListed) return '';
 
-                            // If no Amazon price, show best available fallback price (in gray italic)
                             if (price <= 0) {
                                 const fallback = lmpPrice > 0 ? lmpPrice : (lmpaPrice > 0 ? lmpaPrice : 0);
                                 if (fallback > 0) {
-                                    return `<span style="color: #6c757d; font-style: italic;" title="Reference price (no Amz listing price)">$${fallback.toFixed(2)}</span> ${dotBtn}`.trim();
+                                    return `<span style="color: #6c757d; font-style: italic;" title="Reference price (no Amz listing price)">$${fallback.toFixed(2)}</span>`;
                                 }
-                                return dotBtn || '';
+                                return '';
                             }
 
                             const priceFormatted = '$' + price.toFixed(2);
-                            const priceSpan = (lmpPrice > 0 && price > lmpPrice)
-                                ? `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>`
-                                : priceFormatted;
-
-                            return `${priceSpan} ${dotBtn}`.trim();
+                            if (lmpPrice > 0 && price > lmpPrice) {
+                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>`;
+                            }
+                            return priceFormatted;
                         },
                         sorter: "number",
                         width: 70
