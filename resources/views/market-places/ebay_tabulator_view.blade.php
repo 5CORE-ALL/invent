@@ -22,7 +22,12 @@
             margin-top: 0 !important;
             margin-bottom: 0.5rem !important;
         }
-        #summary-stats .d-flex { gap: 8px !important; }
+        #summary-stats .d-flex {
+            width: 100%;
+            gap: 6px !important;
+            flex-wrap: nowrap !important;
+            overflow: hidden;
+        }
 
         /* Sku Link LMP (mirrors /amazon-tabulator-view) */
         .linked-sku-badge-wrap { display: inline-flex; align-items: center; gap: 2px; }
@@ -97,7 +102,7 @@
             font-size: 0.85rem;
         }
 
-        /* LMP ignore (same as Temu): dim ignored competitors; they don't count toward L1 */
+        /* LMP ignore: dim ignored competitors; they don't count toward L1 */
         #lmpModal tr.lmp-ignored-row {
             opacity: 0.55;
             background: #f1f3f5 !important;
@@ -473,14 +478,19 @@
             background-color: #0d6efd;
         }
 
-        /* Summary badges — same height as Amazon (fs-6 + p-2) */
+        /* Summary badges — one row, stretch to fill the bar */
         #summary-stats .badge {
-            font-size: 1rem !important;
-            padding: 0.5rem !important;
+            flex: 1 1 0;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--summary-badge-fs, 0.88rem) !important;
+            padding: 0.38rem 0.45rem !important;
             font-weight: 700 !important;
-            line-height: 1.5 !important;
-            border-radius: 0.375rem !important;
+            line-height: 1.3 !important;
+            border-radius: 0.35rem !important;
             white-space: nowrap;
+            min-width: 0;
         }
 
         /* Image column hover preview (same pattern as forecast.analysis) */
@@ -491,9 +501,10 @@
         }
 
         #summary-stats .summary-trend-dot {
-            width: 7px !important;
-            height: 7px !important;
+            width: 8px !important;
+            height: 8px !important;
             margin-left: 4px !important;
+            flex-shrink: 0;
         }
 
         .manual-dropdown-container {
@@ -809,7 +820,7 @@
 
                 <!-- Summary Stats (layout matches Ebay 2 Analytics summary row) -->
                 <div id="summary-stats" class="bg-light rounded">
-                    <div class="d-flex flex-wrap gap-2" role="group" aria-label="Summary metrics">
+                    <div class="d-flex flex-nowrap gap-2" role="group" aria-label="Summary metrics">
                         <!-- Filtered rows count -->
                         <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
                             style="color: white; font-weight: bold;"
@@ -878,14 +889,6 @@
                             data-metric="total_views" data-live-value="0"
                             style="color: black; font-weight: bold; cursor: pointer;"
                             title="Views. Click dot for rolling history.">Views: 0<span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="avg-l30-views-badge"
-                            data-metric="avg_l30_view" data-live-value="0"
-                            style="background-color: #20c997; color: black; font-weight: bold; cursor: pointer;"
-                            title="A L30 View. Click dot for rolling history.">A L30 View: 0<span class="summary-trend-dot none" data-metric="avg_l30_view" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="avg-l7-views-badge"
-                            data-metric="avg_l7_views" data-live-value="0"
-                            style="background-color: #0dcaf0; color: black; font-weight: bold; cursor: pointer;"
-                            title="Avg L7. Click dot for rolling history.">L7: 0<span class="summary-trend-dot none" data-metric="avg_l7_views" title="Rolling history"></span></span>
                     </div>
                 </div>
             </div>
@@ -1393,8 +1396,6 @@
             nroi_percent: 'NROI%',
             cvr_percent: 'CVR%',
             total_views: 'Views',
-            avg_l30_view: 'A L30 View',
-            avg_l7_views: 'L7',
             dil_ov_percent: 'Dil Ov',
             dil_eb1_percent: 'Dil EB1',
         };
@@ -1476,44 +1477,32 @@
         function ebay1FillEveryDate(rows, daysOverride) {
             const days = daysOverride != null ? (parseInt(daysOverride, 10) || 0) : (parseInt(ebay1ChartDays, 10) || 0);
             const src = Array.isArray(rows) ? rows.slice() : [];
-            if (days <= 0) return src;
             const byDate = {};
             src.forEach(function(r) {
-                const key = r.full_date || r.date || '';
-                if (key && /^\d{4}-\d{2}-\d{2}$/.test(key)) byDate[key] = r;
-            });
-            const end = new Date(ebay1LastCompletedPtDate() + 'T12:00:00');
-            const windowKeys = [];
-            for (let i = days - 1; i >= 0; i--) {
-                const d = new Date(end);
-                d.setDate(end.getDate() - i);
-                windowKeys.push({ key: ebay1Ymd(d), date: d });
-            }
-            const startKey = windowKeys[0].key;
-            let carry = null;
-            Object.keys(byDate).sort().forEach(function(k) {
-                if (k < startKey) carry = byDate[k];
-            });
-            if (!carry) {
-                for (let i = 0; i < windowKeys.length; i++) {
-                    if (byDate[windowKeys[i].key]) {
-                        carry = byDate[windowKeys[i].key];
-                        break;
-                    }
+                const key = r.full_date || '';
+                if (key && /^\d{4}-\d{2}-\d{2}$/.test(key) && r.value != null && isFinite(Number(r.value))) {
+                    byDate[key] = r;
                 }
-            }
-            const out = [];
-            windowKeys.forEach(function(item) {
-                if (byDate[item.key]) carry = byDate[item.key];
-                if (!carry) return;
-                const label = ebay1ChartDateLabel(item.key);
-                out.push({
-                    date: label,
-                    full_date: item.key,
-                    value: carry.value
-                });
             });
-            return out.length ? out : src.slice(-days);
+            let keys = Object.keys(byDate).sort();
+            if (!keys.length) return src;
+            if (days > 0) {
+                const end = ebay1LastCompletedPtDate();
+                const startD = new Date(end + 'T12:00:00');
+                startD.setDate(startD.getDate() - (days - 1));
+                const startKey = ebay1Ymd(startD);
+                const inWindow = keys.filter(function(k) { return k >= startKey && k <= end; });
+                // Keep real points only — never copy the same value onto empty days.
+                // If the window is empty, show from the first recorded day (when the graph started).
+                keys = inWindow.length ? inWindow : keys;
+            }
+            return keys.map(function(k) {
+                return {
+                    date: ebay1ChartDateLabel(k),
+                    full_date: k,
+                    value: Number(byDate[k].value)
+                };
+            });
         }
 
         function ebay1OverlayLiveBadgeValue(mapped, metricKey) {
@@ -1527,8 +1516,7 @@
             const last = rows.length ? rows[rows.length - 1] : null;
             // Don't paint a partial-scan / old-definition cliff onto the last day.
             if ((metricKey === 'total_views' || metricKey === 'avg_l30_view'
-                    || metricKey === 'cvr_percent' || metricKey === 'avg_l7_views'
-                    || metricKey === 'dil_ov_percent' || metricKey === 'dil_eb1_percent')
+                    || metricKey === 'cvr_percent' || metricKey === 'avg_l7_views')
                 && last && last.value > 0 && live > 0
                 && (live < last.value * 0.85 || live > last.value * 1.35)) {
                 live = last.value;
@@ -1630,8 +1618,10 @@
             ebay1ChartMode = 'badge';
             ebay1ChartSku = '';
             ebay1ChartMetricKey = metricKey;
-            ebay1ChartDays = 30;
-            $('#ebay1ChartRangeSelect').val('30');
+            // Dil Ov / Dil EB1: show from the first saved snapshot, not a padded 30-day flat line.
+            const fromStart = (metricKey === 'dil_ov_percent' || metricKey === 'dil_eb1_percent');
+            ebay1ChartDays = fromStart ? 0 : 30;
+            $('#ebay1ChartRangeSelect').val(fromStart ? '0' : '30');
             const label = ebay1BadgeMetricLabels[metricKey] || metricKey;
             $('#ebay1ChartModalTitle').text('eBay 1 — ' + label + ' Rolling History');
             openEbay1ChartModal();
@@ -1756,10 +1746,18 @@
             const sorted = values.slice().sort(function(a, b) { return a - b; });
             const mid = Math.floor(sorted.length / 2);
             const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-            const range = dataMax - dataMin || 1;
-            const yPad = Math.max(range * 0.28, Math.abs(dataMax) * 0.08, range * 0.1);
-            const yMin = Math.max(0, dataMin - range * 0.12);
-            const yMax = dataMax + yPad;
+            const range = dataMax - dataMin;
+            let yMin;
+            let yMax;
+            if (range < 1e-9) {
+                const pad = Math.max(Math.abs(dataMax) * 0.2, 0.5);
+                yMin = Math.max(0, dataMin - pad);
+                yMax = dataMax + pad;
+            } else {
+                const yPad = Math.max(range * 0.28, Math.abs(dataMax) * 0.08, range * 0.1);
+                yMin = Math.max(0, dataMin - range * 0.12);
+                yMax = dataMax + yPad;
+            }
 
             document.getElementById('ebay1ChartHighest').textContent = ebay1FmtChartVal(dataMax, ebay1ChartMetricKey);
             document.getElementById('ebay1ChartMedian').textContent = ebay1FmtChartVal(median, ebay1ChartMetricKey);
@@ -2299,7 +2297,7 @@
             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        /** Std Prc vs Amz price (fallback eBay Price): reduce / increase → red / green. Hold (match) = no yellow dot. */
+        /** Std Prc vs eBay listing price: reduce / increase → red / green. Hold (match) = no yellow dot. */
         function ebayStdPrcChangeDotMeta(stdPrc, comparePrice) {
             const sp = parseFloat(stdPrc);
             const ap = parseFloat(comparePrice);
@@ -2307,10 +2305,10 @@
             const sp2 = sp.toFixed(2);
             const ap2 = ap.toFixed(2);
             if (parseFloat(sp2) < parseFloat(ap2)) {
-                return { kind: 'reduce', color: '#dc3545', title: 'Reduce vs Amz price' };
+                return { kind: 'reduce', color: '#dc3545', title: 'Reduce vs eBay price' };
             }
             if (parseFloat(sp2) > parseFloat(ap2)) {
-                return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
+                return { kind: 'increase', color: '#28a745', title: 'Increase vs eBay price' };
             }
             return null;
         }
@@ -2318,7 +2316,7 @@
         function ebayStdPrcChangeDotHtml(stdPrc, comparePrice, sku) {
             const meta = ebayStdPrcChangeDotMeta(stdPrc, comparePrice);
             if (!meta) return '';
-            const tip = meta.title + ' — Std Prc (shared with Amazon)';
+            const tip = meta.title;
             if (sku) {
                 return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;' +
                     'background:' + meta.color + ';flex-shrink:0;" title="' + escAttr(tip) + '"></span>';
@@ -5042,7 +5040,7 @@
                         title: "Std Prc",
                         field: "STANDARD_PRICE",
                         hozAlign: "center",
-                        headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Editable; saves to all Sku Link LMP siblings. Dot vs Amz price.",
+                        headerTooltip: "Standard Price (Std Prc). Editable; saves to all Sku Link LMP siblings. Dot vs eBay listing price.",
                         editor: "input",
                         width: 70,
                         sorter: "number",
@@ -5059,10 +5057,8 @@
                             const std = parseFloat(value) || 0;
                             if (!value || std <= 0) return '';
                             const sku = rowData['(Child) sku'] || '';
-                            const amzPrice = parseFloat(rowData['A Price']) || 0;
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
-                            const comparePrice = amzPrice > 0 ? amzPrice : ebayPrice;
-                            const dot = ebayStdPrcChangeDotHtml(std, comparePrice, sku);
+                            const dot = ebayStdPrcChangeDotHtml(std, ebayPrice, sku);
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                                 dot + ('$' + std.toFixed(2)) + '</span>';
                         }
@@ -6581,9 +6577,6 @@
 
                 setSummaryBadge($('#avg-cvr-badge'), 'CVR: ' + avgCVR.toFixed(1) + '%', parseFloat(avgCVR.toFixed(1)));
                 setSummaryBadge($('#total-views-badge'), 'Views: ' + totalViews.toLocaleString(), totalViews);
-                const avgL30View = Math.round(totalViews / 30);
-                setSummaryBadge($('#avg-l30-views-badge'), 'A L30 View: ' + avgL30View.toLocaleString(), avgL30View);
-                setSummaryBadge($('#avg-l7-views-badge'), 'L7: ' + Math.round(avgL7Views).toLocaleString(), Math.round(avgL7Views));
                 // Always reformat L7 cells so below-avg values show RED (not stale green HTML).
                 if (table) {
                     try {
@@ -6618,8 +6611,8 @@
                 const row = document.querySelector('#summary-stats .d-flex');
                 if (!row) return;
                 // Match filter control font (0.875rem); only shrink for width overflow — height stays fixed via CSS
-                const MAX_FS = 0.875;
-                const MIN_FS = 0.7;
+                const MAX_FS = 0.88;
+                const MIN_FS = 0.68;
                 let fs = MAX_FS;
                 row.style.setProperty('--summary-badge-fs', fs + 'rem');
                 let guard = 0;
@@ -6630,7 +6623,6 @@
                 }
             }
 
-            // Re-fit the single-row badges when the window is resized (debounced).
             let _fitBadgesTimer = null;
             $(window).on('resize', function() {
                 clearTimeout(_fitBadgesTimer);
@@ -7594,8 +7586,8 @@
             next();
         }
 
-        // Render Competitors List Function (Ignore = same as Temu: excluded from L1)
-        // Always inserts a blue 5 Core row at our price position (same idea as Temu LMP).
+        // Render Competitors List Function (Ignore = excluded from L1)
+        // Always inserts a blue 5 Core row at our price position.
         function renderEbayCompetitorsList(competitors, lowestPrice) {
             competitors = Array.isArray(competitors) ? competitors : [];
             const our = getLmpOurListing(currentLmpData.sku);
@@ -7633,7 +7625,7 @@
                         <th>Shipping</th>
                         <th>Total</th>
                         <th>Title</th>
-                        <th class="text-center" title="Ignore for L1 (same as Temu)">Ignore</th>
+                        <th class="text-center" title="Ignore for L1">Ignore</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -7717,7 +7709,7 @@
             updateLmpBulkDeleteUi();
         }
 
-        // Toggle LMP ignore (same endpoint / behavior as Temu & CVR master)
+        // Toggle LMP ignore
         $(document).on('change', '#lmpModal .lmp-ignore-cb', function() {
             const $cb = $(this);
             const id = $cb.attr('data-id') || $cb.data('id');

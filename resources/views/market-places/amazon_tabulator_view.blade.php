@@ -9,14 +9,34 @@
         /* Compact filter dropdowns — size each to its own content */
         #amazon-filter-bar .form-select {
             width: auto !important;
-            max-width: 130px;
-            padding-right: 1.35rem !important;
-            padding-left: 0.5rem !important;
-            background-position: right 0.35rem center !important;
+            max-width: 120px;
+            padding-right: 1.2rem !important;
+            padding-left: 0.4rem !important;
+            background-position: right 0.3rem center !important;
         }
 
         /* Match ROI% / GPFT% inputs to the S PRC dropdown width */
-        #amazon-filter-bar #sprice-filter { width: 90px !important; }
+        #amazon-filter-bar #sprice-filter { width: 78px !important; }
+
+        /* Keep the filter bar in 2 rows */
+        #amazon-filter-bar #parent-search,
+        #amazon-filter-bar #sku-search {
+            width: 140px !important;
+        }
+        #amazon-filter-bar #target-roi-input,
+        #amazon-filter-bar #target-gpft-input {
+            width: 56px !important;
+        }
+        #amazon-filter-bar #target-roi-controls,
+        #amazon-filter-bar #target-gpft-controls {
+            margin-left: 0 !important;
+            padding: 2px 4px !important;
+            gap: 4px !important;
+        }
+        #amazon-filter-bar .btn-sm {
+            padding: 0.2rem 0.4rem;
+            font-size: 0.8rem;
+        }
 
         @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'css'])
 
@@ -64,7 +84,7 @@
         }
 
         /* Give room between items without inflating control height */
-        #amazon-filter-bar { gap: 8px 10px !important; }
+        #amazon-filter-bar { gap: 4px 6px !important; }
         #summary-stats {
             order: -1;
             padding: 0.5rem 0.7rem !important;
@@ -72,6 +92,10 @@
             margin-bottom: 0.5rem !important;
         }
         #summary-stats .d-flex { gap: 8px !important; }
+        #summary-stats .badge {
+            font-size: calc(1rem * 0.99) !important;
+            padding: calc(0.5rem * 0.99) !important;
+        }
 
         /* Column visibility — 4 groups (Basic / Price / Ads / Other) */
         #column-dropdown-menu.show {
@@ -457,8 +481,8 @@
             <div class="card-body py-2 d-flex flex-column">
                 
                 <div class="d-flex align-items-center flex-wrap gap-2" id="amazon-filter-bar">
-                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 180px; display: inline-block;">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px; display: inline-block;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 140px; display: inline-block;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 140px; display: inline-block;">
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -566,14 +590,14 @@
 
                     {{-- Target ROI% bulk control — back-solves S PRC so the Sroi column = Target ROI%. --}}
                     {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / 0.80  (same 0.80 take-home as Sroi / GROI%) --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC so the SGROI column equals the target (gross; does not target SNROI)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 90px;"
+                            placeholder="30" step="0.1" style="width: 56px;"
                             title="Target ROI% applied to all selected rows — matches the SGROI column">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
                             title="Compute & save S PRC so SGROI = Target ROI% for every selected row">
@@ -583,14 +607,14 @@
 
                     {{-- Target GPFT% bulk control — back-solves S PRC so S GPFT (Sgpft) = Target GPFT%. --}}
                     {{-- Formula: sprice = (LP + Ship) / (0.80 − GPFT%/100). Target GPFT% must be < 80. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC so the S GPFT column equals the target (gross; does not target SNPFT)">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 90px;"
+                            placeholder="30" step="0.1" style="width: 56px;"
                             title="Target GPFT% applied to all selected rows — matches the S GPFT column. Must be < 80%.">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
                             title="Compute & save S PRC so S GPFT = Target GPFT% for every selected row">
@@ -728,11 +752,6 @@
                         </span>
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             0 Sold: <span id="zero-sold-count">0</span>
-                        </span>
-
-                        <!-- Price Comparison Badge -->
-                        <span class="badge bg-danger fs-6 p-2 price-filter-badge amz-hover-chart" data-filter="prc-gt-lmp" data-metric="prc_gt_lmp_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            Prc > LMP: <span id="prc-gt-lmp-count">0</span>
                         </span>
                     </div>
                 </div>
@@ -1049,7 +1068,6 @@
         let selectedRows = new Set();
         let selectedSkus = selectedRows; // alias — keep older call sites working
         let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
-        let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
         let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
         let missingAmazonFbaFilterActive = false;    // Track Missing L FBA filter
         let missingAmazonNonFbaFilterActive = false; // Track Missing M FBM (non-FBA listing) filter
@@ -1715,7 +1733,7 @@
 
         // Hover-to-chart for badges (500ms delay). Filter badges: no hover chart so click = filter only.
         let amzHoverTimer = null;
-        var amzHoverChartFilterBadgeSelector = '.sold-filter-badge, .map-filter-badge, .missing-amz-fba-filter-badge, .missing-amz-nonfba-filter-badge, .price-filter-badge';
+        var amzHoverChartFilterBadgeSelector = '.sold-filter-badge, .map-filter-badge, .missing-amz-fba-filter-badge, .missing-amz-nonfba-filter-badge';
         $(document).on('mouseenter', '.amz-hover-chart', function() {
             if ($(this).is(amzHoverChartFilterBadgeSelector)) return; // filter badges: click applies filter, never open chart on hover
             const metric = $(this).data('metric');
@@ -2669,22 +2687,6 @@
                     $(this).css({ 'outline': '2px solid #212529', 'outline-offset': '1px' });
                 }
 
-                // Re-apply filters
-                applyFilters();
-            });
-
-            // Price filter badge click handler
-            $('.price-filter-badge').on('click', function() {
-                // Toggle the price filter
-                priceFilterActive = !priceFilterActive;
-                
-                // Update badge appearance
-                if (priceFilterActive) {
-                    $(this).removeClass('bg-danger').addClass('bg-warning').css('color', 'black');
-                } else {
-                    $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                }
-                
                 // Re-apply filters
                 applyFilters();
             });
@@ -6474,18 +6476,6 @@
                     });
                 }
 
-                // Price filter (Prc > LMP)
-                if (priceFilterActive) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        
-                        const price = parseFloat(data.price) || 0;
-                        const lmpPrice = parseFloat(data.lmp_price) || 0;
-                        
-                        return lmpPrice > 0 && price > lmpPrice;
-                    });
-                }
-
                 // Map filter (INV vs INV_AMZ) - for inventory sync
                 if (mapFilterActive !== 'all') {
                     table.addFilter(function(data) {
@@ -6733,10 +6723,6 @@
                 // Update sold counts
                 $('#total-sold-count').text(totalSoldCount.toLocaleString());
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
-
-                
-                // Update Prc > LMP count
-                $('#prc-gt-lmp-count').text(prcGtLmpCount.toLocaleString());
 
                 // Filtered (active) row count — exclude parent summary rows
                 const visibleRowCount = data.filter(function(row) {
