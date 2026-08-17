@@ -317,7 +317,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
-                    <p class="small text-muted mb-2">
+                    <p class="small text-muted mb-2" id="ch-promo-cvr-cpn-help">
                         Map CVR% slabs to <strong>CPN %</strong>. Apply saves rules and CPN% to the database only
                         (no eBay coupon). Use <strong>Push CPN%</strong> to create/add public coupons.
                     </p>
@@ -1743,10 +1743,12 @@
             { key: '90-100', label: '90–100%', prmt: 1 },
             { key: 'gt-100', label: '> 100%', prmt: 0 },
         ];
-        const CH_PEF_DIL_PRMT_DEFAULTS_REVERB = [
+        const CH_PEF_DIL_PRMT_DEFAULTS_ZERO_SOLD = [
             { key: '0-sold-red', label: '0 Sold · Red (<25%)', prmt: 10 },
             { key: '0-sold-green', label: '0 Sold · Green (25–50%)', prmt: 8 },
             { key: '0-sold-pink', label: '0 Sold · Pink (50%+)', prmt: 3 },
+        ];
+        const CH_PEF_DIL_PRMT_DEFAULTS_REVERB_SLABS = [
             { key: '0-20', label: '0–20%', prmt: 10 },
             { key: '20-40', label: '20–40%', prmt: 8 },
             { key: '40-60', label: '40–60%', prmt: 5 },
@@ -1754,7 +1756,14 @@
             { key: '80-100', label: '80–100%', prmt: 1 },
             { key: 'gt-100', label: '> 100%', prmt: 0 },
         ];
-        const CH_PEF_DIL_PRMT_DEFAULTS = CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES
+        const CH_PEF_DIL_PRMT_DEFAULTS_REVERB = CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES
+            ? CH_PEF_DIL_PRMT_DEFAULTS_ZERO_SOLD.concat(CH_PEF_DIL_PRMT_DEFAULTS_REVERB_SLABS)
+            : CH_PEF_DIL_PRMT_DEFAULTS_REVERB_SLABS;
+        const CH_PEF_USES_REVERB_SLABS = CHANNEL_PROMO_CHANNEL === 'reverb'
+            || CHANNEL_PROMO_CHANNEL === 'macys'
+            || CHANNEL_PROMO_CHANNEL === 'macy'
+            || CHANNEL_PROMO_CHANNEL === 'bestbuy';
+        const CH_PEF_DIL_PRMT_DEFAULTS = CH_PEF_USES_REVERB_SLABS
             ? CH_PEF_DIL_PRMT_DEFAULTS_REVERB
             : CH_PEF_DIL_PRMT_DEFAULTS_FULL;
         const CH_PEF_CVR_CPN_DEFAULTS = [
@@ -2133,6 +2142,12 @@
         function chPromoReverbComboEnabled() {
             return !!CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES;
         }
+        /** S PRC = Std × (1 − (PRMT% + CPN%)/100) — Temu and Reverb coupon. */
+        function chPromoPrmtCpnComboEnabled() {
+            return CHANNEL_PROMO_CHANNEL === 'temu'
+                || CHANNEL_PROMO_CHANNEL === 'temu2'
+                || (CHANNEL_PROMO_CHANNEL === 'reverb' && !CHANNEL_PROMO_HIDE_CVR_CPN);
+        }
         function chPromoZeroSoldPrmtInt(d) {
             return Math.max(0, Number(d && (d.zero_sold_prmt != null && d.zero_sold_prmt !== ''
                 ? d.zero_sold_prmt : d._zero_sold_prmt_applied)) || 0);
@@ -2309,9 +2324,14 @@
                         if (response) {
                             if (response.data !== undefined) Object.assign(updates, chPromoSpricePatch(response.data));
                             if (response.sgpft_percent !== undefined) updates.SGPFT = response.sgpft_percent;
-                            if (response.spft_percent !== undefined) updates['Spft%'] = response.spft_percent;
+                            if (response.spft_percent !== undefined) {
+                                updates['Spft%'] = response.spft_percent;
+                                updates.SPFT = response.spft_percent;
+                                updates.SNPFT = response.spft_percent;
+                            }
                             if (response.sroi_percent !== undefined) updates.SROI = response.sroi_percent;
                             if (response.sgroi_percent !== undefined) updates.SGROI = response.sgroi_percent;
+                            if (response.snroi_percent !== undefined) updates.SNROI = response.snroi_percent;
                             if (response.sroi_percent !== undefined) updates.sroi_percent = response.sroi_percent;
                             if (response.sgprft_percent !== undefined) updates.sgprft_percent = response.sgprft_percent;
                             if (response.sgpft_percent !== undefined && updates.sgprft_percent == null) {
@@ -2582,6 +2602,11 @@
                 });
                 if (res && Array.isArray(res.rules) && res.rules.length) {
                     chPromoDilPrmtRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                }
+                if (!CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
+                    chPromoDilPrmtRules = chPromoDilPrmtRules.filter(function(r) {
+                        return !chPromoIsZeroSoldRuleKey(r.key);
+                    });
                 }
                 if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
                     const have = {};
@@ -2903,7 +2928,7 @@
                         continue;
                     }
 
-                    if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                    if (chPromoPrmtCpnComboEnabled()) {
                         // S PRC = Std × (1 − (PRMT% + CPN%)/100)
                         newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { prmt: prmt });
                         if (newPrice > 0) {
@@ -2985,7 +3010,7 @@
                         : '')
                     + (skipped ? ('; skipped ' + skipped) : '')
                     + (ebay1PrmtOnly ? ' (S PRC = Std − PRMT%)' : '')
-                    + ((CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')
+                    + (chPromoPrmtCpnComboEnabled()
                         ? ' (S PRC = Std − (PRMT% + CPN%))'
                         : '')
                     + (chPromoReverbComboEnabled()
@@ -3011,7 +3036,7 @@
                 const cpn = chPromoInv(d) === 0 ? 0 : chPromoCpnForCvr(cvr);
                 const sku = chPromoSku(d);
                 if (!(cpn > 0)) {
-                    if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                    if (chPromoPrmtCpnComboEnabled()) {
                         const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: 0 });
                         if (newPrice > 0) {
                             item.row.update(Object.assign({
@@ -3034,7 +3059,7 @@
                     // Coupon is at checkout — Apply only fills/saves CPN% (no S PRC rewrite, no eBay API)
                     item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
                     jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: true });
-                } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                } else if (chPromoPrmtCpnComboEnabled()) {
                     const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: cpn });
                     if (newPrice > 0) {
                         item.row.update(Object.assign({
@@ -3228,9 +3253,7 @@
                         patch._appr_lmp = null;
                     }
                     // Cleared PRMT/CPN on Temu → S PRC = Std − remaining %
-                    if ((kind === 'prmt' || kind === 'cpn') && (
-                        CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2'
-                    )) {
+                    if ((kind === 'prmt' || kind === 'cpn') && chPromoPrmtCpnComboEnabled()) {
                         const recalc = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt' ? { prmt: 0 } : { cpn: 0 });
                         if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
                     } else if (kind === 'prmt' && chPromoReverbComboEnabled()) {
@@ -3247,8 +3270,7 @@
                     if (kind === 'dsc') { extra.dsc = 0; extra.appr = false; }
                     const savePrice = ((kind === 'prmt' || kind === 'cpn') && patch.SPRICE != null && (
                         CHANNEL_PROMO_CHANNEL === 'ebay1'
-                        || CHANNEL_PROMO_CHANNEL === 'temu'
-                        || CHANNEL_PROMO_CHANNEL === 'temu2'
+                        || chPromoPrmtCpnComboEnabled()
                         || chPromoReverbComboEnabled()
                     ))
                         ? Number(patch.SPRICE)
@@ -3266,8 +3288,7 @@
                     newPrice = (base > 0 && promo.value < 100)
                         ? chPromoRound2(base * (1 - (promo.value / 100)))
                         : null;
-                } else if ((CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')
-                    && (kind === 'prmt' || kind === 'cpn')) {
+                } else if (chPromoPrmtCpnComboEnabled() && (kind === 'prmt' || kind === 'cpn')) {
                     base = chPromoStdBase(d);
                     newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt'
                         ? { prmt: promo.value }
@@ -3322,7 +3343,7 @@
             const prmt = Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
             const cpn = Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
             const zeroSold = chPromoReverbComboEnabled() ? chPromoZeroSoldPrmtInt(d) : 0;
-            const temuCombo = CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
+            const temuCombo = chPromoPrmtCpnComboEnabled();
             const reverbCombo = chPromoReverbComboEnabled();
             const totalDisc = Math.min(99.99, temuCombo ? (prmt + cpn) : (reverbCombo ? (prmt + zeroSold) : prmt));
             let sale = null;
@@ -3870,7 +3891,7 @@
                 );
                 return;
             }
-            const temuCombo = CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
+            const temuCombo = chPromoPrmtCpnComboEnabled();
             const reverbCombo = chPromoReverbComboEnabled();
             if (!confirm(
                 'Clear S PRC and refill for ' + ready.length + ' ' + scopeLabel + ' SKU(s)?'
@@ -3919,7 +3940,7 @@
                 const rowData = item.row.getData();
                 const plan = computeChannelPushPrcPlan(rowData);
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
-                const fill = (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')
+                const fill = chPromoPrmtCpnComboEnabled()
                     ? (chPromoTemuSpriceFromStdPrmtCpn(rowData) || 0)
                     : (chPromoReverbComboEnabled()
                         ? (chPromoReverbSpriceFromStdBothPrmt(rowData) || 0)
@@ -3947,8 +3968,11 @@
                             item.row.update({
                                 SGPFT: saveRes.sgpft_percent,
                                 'Spft%': saveRes.spft_percent,
+                                SPFT: saveRes.spft_percent,
+                                SNPFT: saveRes.spft_percent,
                                 SROI: saveRes.sroi_percent,
                                 SGROI: saveRes.sgroi_percent,
+                                SNROI: saveRes.snroi_percent,
                                 sroi_percent: saveRes.sroi_percent,
                                 sgprft_percent: saveRes.sgprft_percent != null ? saveRes.sgprft_percent : saveRes.sgpft_percent,
                                 spft_percent: saveRes.spft_percent,
@@ -4733,6 +4757,14 @@
                             + '<strong>Apply</strong> writes <strong>PRMT %</strong> on each selected or visible sold SKU. '
                             + 'If INV is 0, PRMT% is <strong>0</strong>.';
                     }
+                } else if (CHANNEL_PROMO_CHANNEL === 'reverb') {
+                    const help = document.getElementById('ch-promo-dil-prmt-help');
+                    if (help) {
+                        help.innerHTML = 'Map Dil% slabs to PRMT% (0–20 / 20–40 / …). Dil is SKU-wise '
+                            + '(OV L30 ÷ INV). <strong>Apply</strong> writes <strong>PRMT %</strong> '
+                            + 'and sets <strong>S PRC = Std × (1 − (PRMT% + CPN%)/100)</strong>. '
+                            + 'If INV is 0, PRMT% is <strong>0</strong>.';
+                    }
                 }
                 renderChPromoDilPrmtModalTable();
                 loadChPromoDilPrmtRules();
@@ -4844,6 +4876,15 @@
                 e.preventDefault();
                 const modalEl = document.getElementById('chPromoCvrVsCpnModal');
                 if (!modalEl) return;
+                if (CHANNEL_PROMO_CHANNEL === 'reverb') {
+                    const help = document.getElementById('ch-promo-cvr-cpn-help');
+                    if (help) {
+                        help.innerHTML = 'Map CVR% slabs to <strong>CPN %</strong>. '
+                            + '<strong>Apply</strong> writes CPN% and sets '
+                            + '<strong>S PRC = Std × (1 − (PRMT% + CPN%)/100)</strong>. '
+                            + 'If INV is 0, CPN% is <strong>0</strong>.';
+                    }
+                }
                 renderChPromoCvrCpnModalTable();
                 loadChPromoCvrCpnRules();
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -4872,7 +4913,9 @@
                     + (CHANNEL_PROMO_CHANNEL === 'ebay1'
                         ? '\n\neBay1: pushes a PUBLIC coded coupon (code SAVE{nn}PCT), starts now, 30 days.\n'
                             + 'Same CPN% reuses the existing campaign and adds the SKU.'
-                        : '')
+                        : (CHANNEL_PROMO_CHANNEL === 'reverb'
+                            ? '\n\nS PRC = Std × (1 − (PRMT% + CPN%)/100). No Reverb marketplace coupon push.'
+                            : ''))
                 )) return;
 
                 const $btn = $('#ch-promo-cpn-menu-btn');
@@ -4943,7 +4986,7 @@
                 e.preventDefault();
                 clearAndAutopopulateChannelSprice();
             });
-            if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+            if (chPromoPrmtCpnComboEnabled()) {
                 $('#ch-promo-sprice-recalc-btn').attr(
                     'title',
                     'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.'
@@ -4961,6 +5004,9 @@
         window.channelPromoPushPrmtColumn = channelPromoPushPrmtColumn;
         window.channelPromoPushCpnColumn = channelPromoPushCpnColumn;
         window.channelPromoPushStdPrcColumn = channelPromoPushStdPrcColumn;
+        window.chPromoTemuSpriceFromStdPrmtCpn = chPromoTemuSpriceFromStdPrmtCpn;
+        window.chPromoPrmtCpnComboEnabled = chPromoPrmtCpnComboEnabled;
+        window.chPromoPlanSaleSprice = chPromoPlanSaleSprice;
         window.chPromoPaintPushStdPrcSpinner = chPromoPaintPushStdPrcSpinner;
         window.chPromoRefreshPushStdPrcCell = chPromoRefreshPushStdPrcCell;
         window.channelPromoSprcCpnColumn = channelPromoSprcCpnColumn;

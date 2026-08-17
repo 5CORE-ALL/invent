@@ -5299,6 +5299,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/dil-bump', [ChannelPromoPricingController::class, 'saveDilBumpRules'])->name('channel.promo.dil-bump.save');
     Route::get('/channel-promo-pricing/{channel}/cvr-cpn', [ChannelPromoPricingController::class, 'cvrCpnRules'])->name('channel.promo.cvr-cpn.get');
     Route::post('/channel-promo-pricing/{channel}/cvr-cpn', [ChannelPromoPricingController::class, 'saveCvrCpnRules'])->name('channel.promo.cvr-cpn.save');
+    Route::get('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'zeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.get');
+    Route::post('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'saveZeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.save');
     Route::post('/channel-push-prc/{channel}', [ChannelPromoPricingController::class, 'queuePushPrc'])->name('channel.push-prc.queue');
     Route::get('/channel-push-prc/{channel}/status', [ChannelPromoPricingController::class, 'pushPrcJobStatus'])->name('channel.push-prc.status');
     Route::post('/channel-push-prc/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushPrc'])->name('channel.push-prc.cancel');

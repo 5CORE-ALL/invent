@@ -89,23 +89,29 @@ class FetchReverbData extends Command
         // the table still keeps the most recent bump_bid we knew about per SKU.
         $existingBumpBids = $this->snapshotExistingBumpBids();
         $existingViews = $this->snapshotExistingViews();
+        $existingSBumps = $this->snapshotExistingColumn('recommended_bid');
+        $existingApiRecBids = $this->snapshotExistingColumn('api_recommended_bid');
+        $existingInteractions = $this->snapshotExistingIntColumn('total_interactions');
+        $hasRecommendedBid = Schema::hasColumn('reverb_products', 'recommended_bid');
+        $hasApiRecommendedBid = Schema::hasColumn('reverb_products', 'api_recommended_bid');
+        $hasTotalInteractions = Schema::hasColumn('reverb_products', 'total_interactions');
 
         // Prepare bulk update data - Process ALL listed SKUs (not just those with orders).
-        // bump_bid and views (bump impressions) carry forward from the previous snapshot;
-        // the bump loop below refreshes both per row.
+        // Ads fields carry forward from the previous snapshot; the bump loop below refreshes them.
         $bulkData = [];
         foreach ($listingMap as $sku => $listing) {
             $r30 = $rL30[$sku] ?? 0;
             $r60 = $rL60[$sku] ?? 0;
 
             $price = $listing['price']['amount'] ?? null;
-            $views = $existingViews[$sku] ?? 0;
+            $listingAds = ReverbApiService::parseListingBumpAds($listing);
+            $views = $listingAds['views'] > 0 ? $listingAds['views'] : ($existingViews[$sku] ?? 0);
             $rawInventory = (int) ($listing['inventory'] ?? 0);
             $listingId = $listing['id'] ?? null;
             $listingState = $this->resolveListingStateFromApi($listing) ?? 'live';
             $remainingInventory = ReverbApiService::effectiveInventoryQuantity($rawInventory, $listingState);
 
-            $bulkData[] = [
+            $row = [
                 'sku' => $sku,
                 'reverb_listing_id' => $listingId,
                 'listing_state' => $listingState,
@@ -114,10 +120,22 @@ class FetchReverbData extends Command
                 'price' => $price,
                 'views' => $views,
                 'remaining_inventory' => $remainingInventory,
-                'bump_bid' => $existingBumpBids[$sku] ?? null,
+                'bump_bid' => $listingAds['bump_bid'] ?? $existingBumpBids[$sku] ?? null,
                 'updated_at' => now(),
                 'created_at' => now(),
             ];
+            if ($hasRecommendedBid) {
+                $row['recommended_bid'] = $existingSBumps[$sku] ?? null;
+            }
+            if ($hasApiRecommendedBid) {
+                $row['api_recommended_bid'] = $listingAds['api_recommended_bid'] ?? $existingApiRecBids[$sku] ?? null;
+            }
+            if ($hasTotalInteractions) {
+                $row['total_interactions'] = $listingAds['total_interactions'] > 0
+                    ? $listingAds['total_interactions']
+                    : ($existingInteractions[$sku] ?? 0);
+            }
+            $bulkData[] = $row;
         }
 
         // STEP 1 of 2 — Persist all listings to reverb_products NOW (before the slow bump-bid loop).
@@ -128,9 +146,9 @@ class FetchReverbData extends Command
         // STEP 2 of 2 — Refresh bump_bid % per listing, writing back to reverb_products incrementally.
         // Each row UPDATE is committed immediately, so a kill mid-loop only loses the still-pending rows.
         if ($this->option('skip-bump')) {
-            $this->warn('Skipping bump-bid refresh (--skip-bump). Existing bump_bid and Views (bump impressions) were preserved.');
+            $this->warn('Skipping bump-bid refresh (--skip-bump). Existing bump bid, recommended bid, Views, and interactions were preserved.');
         } else {
-            $this->info('Refreshing bump bid % and impressions for each listing (writes incrementally; safe to interrupt)...');
+            $this->info('Refreshing bump ads (bid, recommended bid, impressions, interactions) for each listing...');
             $this->refreshBumpBidsInPlace($listingMap);
         }
 
@@ -260,6 +278,7 @@ class FetchReverbData extends Command
             'Accept' => 'application/hal+json',
             'Accept-Version' => '3.0',
         ];
+        $l30Baselines = ReverbApiService::l30InteractionBaselines();
 
         foreach ($listingMap as $sku => $listing) {
             $listingId = $listing['id'] ?? null;
@@ -289,26 +308,7 @@ class FetchReverbData extends Command
                 continue;
             }
             $data = $response->json() ?? [];
-            $currentBid = $data['current_bid'] ?? $data['bump_v2_stats']['current_bid'] ?? null;
-            $display = is_array($currentBid) ? ($currentBid['display'] ?? null) : $currentBid;
-            $impressions = $this->extractBumpImpressions($data);
-
-            // Clean bump bid to prevent "Data too long for column" (e.g. "5.000000074505806%" -> "5%")
-            if (is_string($display)) {
-                if (preg_match('/^(\d+(?:\.\d+)?)%/', $display, $matches)) {
-                    $display = $matches[1] . '%';
-                } else {
-                    $display = substr($display, 0, 10);
-                }
-            }
-
-            $payload = [
-                'views' => $impressions,
-                'updated_at' => now(),
-            ];
-            if ($display !== null && $display !== '') {
-                $payload['bump_bid'] = $display;
-            }
+            $payload = $this->bumpAdsUpdatePayload($data, $sku, $l30Baselines);
 
             try {
                 $affected = DB::table('reverb_products')
@@ -323,19 +323,108 @@ class FetchReverbData extends Command
             usleep(150000); // 0.15s between calls to avoid rate limit
         }
 
-        $this->info("Refreshed bump bid / impressions for {$updated} listing(s) (out of {$total} processed).");
+        $this->info("Refreshed bump ads for {$updated} listing(s) (out of {$total} processed).");
     }
 
     /**
-     * Bump impressions from GET /listings/{id}/bump. 0 when the listing was never bumped.
+     * Persistable ads columns from GET /listings/{id}/bump.
      *
      * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
      */
-    protected function extractBumpImpressions(array $data): int
+    /**
+     * @param  array<string, int>  $l30Baselines
+     * @return array<string, mixed>
+     */
+    protected function bumpAdsUpdatePayload(array $data, string $sku = '', array $l30Baselines = []): array
     {
-        $raw = $data['bump_v2_stats']['impressions'] ?? $data['impressions'] ?? 0;
+        static $hasApiRecommendedBid = null;
+        static $hasTotalInteractions = null;
+        if ($hasApiRecommendedBid === null) {
+            $hasApiRecommendedBid = Schema::hasColumn('reverb_products', 'api_recommended_bid');
+            $hasTotalInteractions = Schema::hasColumn('reverb_products', 'total_interactions');
+        }
 
-        return is_numeric($raw) && (int) $raw > 0 ? (int) $raw : 0;
+        $ads = ReverbApiService::parseListingBumpAds($data);
+        $payload = [
+            'views' => $ads['views'],
+            'updated_at' => now(),
+        ];
+        if ($ads['bump_bid'] !== null && $ads['bump_bid'] !== '') {
+            $payload['bump_bid'] = $ads['bump_bid'];
+        }
+        if ($hasApiRecommendedBid) {
+            $payload['api_recommended_bid'] = $ads['api_recommended_bid'];
+        }
+        if ($hasTotalInteractions) {
+            $payload['total_interactions'] = ReverbApiService::l30InteractionsForSku(
+                $sku,
+                $ads['views'],
+                $l30Baselines
+            );
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Carry forward a string ads column across the table replace.
+     *
+     * @return array<string, string>
+     */
+    protected function snapshotExistingColumn(string $column): array
+    {
+        if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', $column)) {
+            return [];
+        }
+
+        $snapshot = [];
+        DB::table('reverb_products')
+            ->select(['id', 'sku', $column])
+            ->whereNotNull('sku')
+            ->orderBy('id')
+            ->chunkById(1000, function ($rows) use (&$snapshot, $column) {
+                foreach ($rows as $row) {
+                    $key = $this->normalizeSku($row->sku);
+                    if ($key === '') {
+                        continue;
+                    }
+                    $value = $row->{$column} ?? null;
+                    if ($value === null || $value === '') {
+                        continue;
+                    }
+                    $snapshot[$key] = (string) $value;
+                }
+            });
+
+        return $snapshot;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    protected function snapshotExistingIntColumn(string $column): array
+    {
+        if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', $column)) {
+            return [];
+        }
+
+        $snapshot = [];
+        DB::table('reverb_products')
+            ->select(['id', 'sku', $column])
+            ->whereNotNull('sku')
+            ->orderBy('id')
+            ->chunkById(1000, function ($rows) use (&$snapshot, $column) {
+                foreach ($rows as $row) {
+                    $key = $this->normalizeSku($row->sku);
+                    if ($key === '') {
+                        continue;
+                    }
+                    $snapshot[$key] = (int) ($row->{$column} ?? 0);
+                }
+            });
+
+        return $snapshot;
     }
 
     protected function fetchAllOrders(): void

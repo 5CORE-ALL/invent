@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Models\ProductStockMapping;
 use App\Models\ReverbListingStatus;
 use App\Models\ReverbProduct;
+use Carbon\Carbon;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\ShopifyBulletPointsFormatter;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -984,6 +986,251 @@ class ReverbApiService
                 'percent' => $pct,
             ];
         }
+    }
+
+    /**
+     * Parse GET /listings/{id}/bump (or listing-embedded bump) into ads columns.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{bump_bid: ?string, api_recommended_bid: ?string, views: int, total_interactions: int}
+     */
+    public static function parseListingBumpAds(array $data): array
+    {
+        if (isset($data['bump']) && is_array($data['bump'])) {
+            $data = array_merge($data, $data['bump']);
+        }
+
+        $stats = is_array($data['bump_v2_stats'] ?? null) ? $data['bump_v2_stats'] : [];
+        $recommendation = is_array($data['recommendation'] ?? null) ? $data['recommendation'] : [];
+
+        $impressions = self::intFromMixed($stats['impressions'] ?? $data['impressions'] ?? 0);
+        $interactions = self::intFromMixed(
+            $data['total_interactions']
+            ?? $data['interactions']
+            ?? $stats['total_interactions']
+            ?? $stats['interactions']
+            ?? $impressions
+        );
+
+        return [
+            'bump_bid' => self::formatBumpBidDisplay($data['current_bid'] ?? $stats['current_bid'] ?? null),
+            'api_recommended_bid' => self::formatBumpBidDisplay(
+                $data['recommended_bid']
+                ?? $data['suggested_bid']
+                ?? $data['recommended_bump']
+                ?? $stats['recommended_bid']
+                ?? $stats['suggested_bid']
+                ?? $stats['recommended_bump']
+                ?? ($recommendation['bid'] ?? $recommendation['recommended_bid'] ?? $recommendation['display'] ?? null)
+                ?? self::recommendedBidFromBidsList($data['bids'] ?? $stats['bids'] ?? [])
+            ),
+            'views' => $impressions,
+            'total_interactions' => $interactions,
+        ];
+    }
+
+    /**
+     * Query params so bump ads stats are requested for the last 30 days only.
+     *
+     * @return array{start_date: string, end_date: string}
+     */
+    public static function listingBumpL30Query(): array
+    {
+        $end = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $end->copy()->subDays(29);
+
+        return [
+            'start_date' => $start->toDateString(),
+            'end_date' => $end->toDateString(),
+        ];
+    }
+
+    /**
+     * Lifetime interactions minus the snapshot from ~30 days ago (L30 only).
+     *
+     * @param  array<string, int>  $currentByNormSku
+     * @return array<string, int>
+     */
+    public static function l30InteractionCounts(array $currentByNormSku): array
+    {
+        $baselines = self::l30InteractionBaselines();
+        $out = [];
+        foreach ($currentByNormSku as $sku => $current) {
+            $lifetime = (int) $current;
+            $out[$sku] = isset($baselines[$sku])
+                ? max(0, $lifetime - $baselines[$sku])
+                : $lifetime;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Latest views/interactions snapshot on or before 30 days ago, else the earliest snapshot.
+     *
+     * @return array<string, int>
+     */
+    public static function l30InteractionBaselines(): array
+    {
+        if (! Schema::hasTable('reverb_sku_daily_data')) {
+            return [];
+        }
+
+        $baselineDate = Carbon::now('America/Los_Angeles')->subDays(30)->toDateString();
+        $baselines = self::latestDailyInteractionSnapshotOnOrBefore($baselineDate);
+        if ($baselines !== []) {
+            return $baselines;
+        }
+
+        return self::earliestDailyInteractionSnapshot();
+    }
+
+    public static function l30InteractionsForSku(string $sku, int $lifetime, array $baselines): int
+    {
+        $key = ReverbProduct::normalizeSkuForLookup($sku);
+        if ($key === '' || ! isset($baselines[$key])) {
+            return max(0, $lifetime);
+        }
+
+        return max(0, $lifetime - $baselines[$key]);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private static function latestDailyInteractionSnapshotOnOrBefore(string $onOrBefore): array
+    {
+        $rows = DB::table('reverb_sku_daily_data')
+            ->where('record_date', '<=', $onOrBefore)
+            ->orderBy('record_date')
+            ->get(['sku', 'record_date', 'daily_data']);
+
+        $baselines = [];
+        foreach ($rows as $row) {
+            $key = ReverbProduct::normalizeSkuForLookup((string) ($row->sku ?? ''));
+            $count = self::interactionCountFromDailyData($row->daily_data ?? null);
+            if ($key === '' || $count === null) {
+                continue;
+            }
+            $baselines[$key] = $count;
+        }
+
+        return $baselines;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private static function earliestDailyInteractionSnapshot(): array
+    {
+        $rows = DB::table('reverb_sku_daily_data')
+            ->orderBy('record_date')
+            ->get(['sku', 'record_date', 'daily_data']);
+
+        $baselines = [];
+        foreach ($rows as $row) {
+            $key = ReverbProduct::normalizeSkuForLookup((string) ($row->sku ?? ''));
+            if ($key === '' || isset($baselines[$key])) {
+                continue;
+            }
+            $count = self::interactionCountFromDailyData($row->daily_data ?? null);
+            if ($count === null) {
+                continue;
+            }
+            $baselines[$key] = $count;
+        }
+
+        return $baselines;
+    }
+
+    private static function interactionCountFromDailyData(mixed $dailyData): ?int
+    {
+        $data = is_array($dailyData)
+            ? $dailyData
+            : (json_decode((string) $dailyData, true) ?: []);
+        $raw = $data['views'] ?? $data['total_interactions'] ?? null;
+
+        return is_numeric($raw) ? (int) $raw : null;
+    }
+
+    public static function formatBumpBidDisplay(mixed $raw): ?string
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        if (is_array($raw)) {
+            if (isset($raw['display']) && is_string($raw['display']) && $raw['display'] !== '') {
+                return self::normalizeBumpBidDisplay($raw['display']);
+            }
+            if (isset($raw['bid_percentage']) && is_numeric($raw['bid_percentage'])) {
+                $n = (float) $raw['bid_percentage'];
+
+                return self::percentNumberToDisplay($n > 0 && $n <= 1 ? $n * 100 : $n);
+            }
+            if (isset($raw['amount']) && is_numeric($raw['amount'])) {
+                $n = (float) $raw['amount'];
+
+                return self::percentNumberToDisplay($n > 0 && $n <= 1 ? $n * 100 : $n);
+            }
+
+            return null;
+        }
+
+        if (is_numeric($raw)) {
+            $n = (float) $raw;
+
+            return self::percentNumberToDisplay($n > 0 && $n <= 1 ? $n * 100 : $n);
+        }
+
+        if (is_string($raw)) {
+            return self::normalizeBumpBidDisplay($raw);
+        }
+
+        return null;
+    }
+
+    private static function normalizeBumpBidDisplay(string $display): ?string
+    {
+        if (! preg_match('/(\d+(?:\.\d+)?)/', $display, $matches)) {
+            return null;
+        }
+
+        return self::percentNumberToDisplay((float) $matches[1]);
+    }
+
+    private static function percentNumberToDisplay(float $n): string
+    {
+        $formatted = rtrim(rtrim(number_format($n, 2, '.', ''), '0'), '.');
+
+        return $formatted.'%';
+    }
+
+    /**
+     * @param  mixed  $bids
+     */
+    private static function recommendedBidFromBidsList(mixed $bids): mixed
+    {
+        if (! is_array($bids)) {
+            return null;
+        }
+
+        foreach ($bids as $bid) {
+            if (! is_array($bid)) {
+                continue;
+            }
+            if (! empty($bid['recommended']) || ! empty($bid['is_recommended'])
+                || ! empty($bid['suggested']) || ! empty($bid['default'])) {
+                return $bid;
+            }
+        }
+
+        return null;
+    }
+
+    private static function intFromMixed(mixed $raw): int
+    {
+        return is_numeric($raw) && (int) $raw > 0 ? (int) $raw : 0;
     }
 
     private function listingBumpPercent(string $token, string $listingId): ?float

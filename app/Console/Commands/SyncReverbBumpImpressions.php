@@ -7,13 +7,14 @@ use App\Services\ReverbApiService;
 use Illuminate\Console\Command;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 
 class SyncReverbBumpImpressions extends Command
 {
     protected $signature = 'reverb:sync-bump-impressions
         {--limit= : Max listings to refresh}';
 
-    protected $description = 'Write Reverb bump impressions (GET /listings/{id}/bump) into reverb_products.views for the /reverb-pricing Views column';
+    protected $description = 'Write Reverb bump ads (bid, recommended bid, impressions, interactions) from GET /listings/{id}/bump';
 
     public function handle(): int
     {
@@ -34,7 +35,7 @@ class SyncReverbBumpImpressions extends Command
 
         $rows = $query->get(['id', 'sku', 'reverb_listing_id']);
         $total = $rows->count();
-        $this->info("Refreshing bump impressions for {$total} listing(s)...");
+        $this->info("Refreshing bump ads for {$total} listing(s)...");
 
         $headers = [
             'Authorization' => 'Bearer '.$token,
@@ -44,6 +45,9 @@ class SyncReverbBumpImpressions extends Command
 
         $updated = 0;
         $index = 0;
+        $hasApiRecommendedBid = Schema::hasColumn('reverb_products', 'api_recommended_bid');
+        $hasTotalInteractions = Schema::hasColumn('reverb_products', 'total_interactions');
+        $l30Baselines = ReverbApiService::l30InteractionBaselines();
         foreach ($rows as $row) {
             $index++;
             $listingId = trim((string) $row->reverb_listing_id);
@@ -73,18 +77,31 @@ class SyncReverbBumpImpressions extends Command
             }
 
             $data = $response->json() ?? [];
-            $raw = $data['bump_v2_stats']['impressions'] ?? 0;
-            $impressions = is_numeric($raw) && (int) $raw > 0 ? (int) $raw : 0;
-
-            ReverbProduct::query()->where('id', $row->id)->update([
-                'views' => $impressions,
+            $ads = ReverbApiService::parseListingBumpAds($data);
+            $payload = [
+                'views' => $ads['views'],
                 'updated_at' => now(),
-            ]);
+            ];
+            if ($ads['bump_bid'] !== null && $ads['bump_bid'] !== '') {
+                $payload['bump_bid'] = $ads['bump_bid'];
+            }
+            if ($hasApiRecommendedBid) {
+                $payload['api_recommended_bid'] = $ads['api_recommended_bid'];
+            }
+            if ($hasTotalInteractions) {
+                $payload['total_interactions'] = ReverbApiService::l30InteractionsForSku(
+                    (string) $row->sku,
+                    $ads['views'],
+                    $l30Baselines
+                );
+            }
+
+            ReverbProduct::query()->where('id', $row->id)->update($payload);
             $updated++;
             usleep(150000);
         }
 
-        $this->info("Wrote bump impressions to Views for {$updated} listing(s).");
+        $this->info("Wrote bump ads for {$updated} listing(s).");
 
         return self::SUCCESS;
     }

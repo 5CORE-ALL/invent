@@ -741,6 +741,55 @@ class ReverbController extends Controller
         return (float) ($ads ?? 0);
     }
 
+    /**
+     * Reverb take-home margin (0–1). Same MarketplacePercentage as GPFT / GROI / NPFT / NROI.
+     */
+    private function getReverbMarketplaceMargin(): float
+    {
+        $percent = Cache::remember(
+            "reverb_marketplace_percentage",
+            now()->addDays(30),
+            function () {
+                $marketplaceData = MarketplacePercentage::where("marketplace", "Reverb")->first();
+
+                return $marketplaceData ? $marketplaceData->percentage : 85;
+            }
+        );
+
+        $margin = ((float) $percent) / 100;
+
+        return ($margin > 0 && $margin <= 1) ? $margin : 0.85;
+    }
+
+    /**
+     * Same calculate-data as GPFT / GROI / NPFT / NROI for any price (RV Price or SPRICE).
+     *
+     * GPFT% = (price × margin − LP − Ship) / price × 100
+     * GROI% = (price × margin − LP − Ship) / LP × 100
+     * NPFT% = GPFT% − Ads%
+     * NROI% = (gross$ − price × Ads%) / LP × 100
+     *
+     * @return array{gpft: float|int, groi: float|int, npft: float|int, nroi: float|int, profit: float}
+     */
+    private function computeReverbPriceMetrics(float $price, float $lp, float $ship, float $margin, float $adsPct): array
+    {
+        $profit = ($price * $margin) - $lp - $ship;
+        $gpft = $price > 0 ? round(($profit / $price) * 100, 0) : 0;
+        $npft = round($gpft - $adsPct, 0);
+        $groi = $lp > 0 ? round(($profit / $lp) * 100, 0) : 0;
+        $nroi = ($lp > 0 && $price > 0)
+            ? round((($profit - ($price * ($adsPct / 100))) / $lp) * 100, 0)
+            : 0;
+
+        return [
+            'gpft' => $gpft,
+            'groi' => $groi,
+            'npft' => $npft,
+            'nroi' => $nroi,
+            'profit' => $profit,
+        ];
+    }
+
     // Reverb Tabulator View and Methods
     public function reverbTabulatorView(Request $request)
     {
@@ -996,21 +1045,9 @@ class ReverbController extends Controller
     public function getViewReverbTabularData(Request $request)
     {
         // Get percentage from cache or database
-        $percentage = Cache::remember(
-            "reverb_marketplace_percentage",
-            now()->addDays(30),
-            function () {
-                $marketplaceData = MarketplacePercentage::where(
-                    "marketplace",
-                    "Reverb"
-                )->first();
-                return $marketplaceData ? $marketplaceData->percentage : 85;
-            }
-        );
-        $percentageValue = $percentage / 100;
+        $percentageValue = $this->getReverbMarketplaceMargin();
         // Channel Ads% (same as /amazon-tabulator-view AMAZON_CHANNEL_ADS_PCT)
         $adsPct = $this->getReverbChannelAdsPercent();
-        $adsFrac = $adsPct / 100;
 
         // Fetch all product master records (excluding parent rows)
         $productMasterRows = ProductMaster::all()
@@ -1131,7 +1168,8 @@ class ReverbController extends Controller
                 $processedItem["RV L60"] = $reverbItem->r_l60 ?? 0;
                 $processedItem["R Stock"] = $reverbItem->remaining_inventory ?? 0;
                 $processedItem["Bump"] = $reverbItem->bump_bid ?? null; // Bump bid % only from API
-                $processedItem["RE_BID"] = $reverbItem->recommended_bid ?? null; // Recommended bid in reverb_products
+                $processedItem["RE_BID"] = $reverbItem->recommended_bid ?? null; // Seller-editable S Bump%
+                $processedItem["API_REC_BID"] = $reverbItem->api_recommended_bid ?? null; // Reverb recommended bid
                 $processedItem["reverb_listing_id"] = $reverbItem->reverb_listing_id ?? null;
                 $processedItem["listing_state"] = $reverbItem->listing_state ?? null;
                 $processedItem["Missing"] = ''; // SKU exists in Reverb
@@ -1143,6 +1181,7 @@ class ReverbController extends Controller
                 $processedItem["R Stock"] = 0;
                 $processedItem["Bump"] = null;
                 $processedItem["RE_BID"] = null;
+                $processedItem["API_REC_BID"] = null;
                 $processedItem["reverb_listing_id"] = null;
                 $processedItem["listing_state"] = null;
                 $processedItem["Missing"] = ''; // Will be set later based on INV and nr_req
@@ -1241,11 +1280,13 @@ class ReverbController extends Controller
                 $processedItem["MAP"] = '';
             }
 
-            // Get SPRICE from reverb_view_data
+            // Get SPRICE from reverb_view_data (SGPFT/SROI/SNPFT/SNROI are live-computed below)
             $processedItem["SPRICE"] = 0;
             $processedItem["SGPFT"] = 0;
             $processedItem["SPFT"] = 0;
             $processedItem["SROI"] = 0;
+            $processedItem["SNPFT"] = 0;
+            $processedItem["SNROI"] = 0;
             $processedItem["bump_req"] = 'REQ';
             // Price push status (set by CvrMasterController::pushToReverb)
             $processedItem["SPRICE_STATUS"] = null;
@@ -1258,8 +1299,6 @@ class ReverbController extends Controller
                 $valuesArr = $viewData->values ?: [];
                 
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
-                $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
-                $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval(str_replace("%", "", $valuesArr["SROI"])) : 0;
                 // Bump Req like NRA: column first, fallback to values
                 $processedItem["bump_req"] = $viewData->bump_req ?? $valuesArr["bump_req"] ?? 'REQ';
                 // Price push status fields
@@ -1269,57 +1308,37 @@ class ReverbController extends Controller
                 $processedItem["SPRICE_PUSHED_BY"] = $valuesArr["SPRICE_PUSHED_BY"] ?? null;
             }
 
-            // Calculate profit metrics
+            // Calculate profit metrics — live (RV Price) and SPRICE share the same calculate-data
             $processedItem["percentage"] = $percentageValue;
 
             $price = floatval($processedItem["RV Price"]);
             $lp = floatval($processedItem["LP_productmaster"]);
             $ship = floatval($processedItem["Ship_productmaster"]);
+            $spriceVal = floatval($processedItem["SPRICE"] ?? 0);
 
-            // GPFT% (gross — before ads)
-            if ($price > 0) {
-                $gpft_percentage = (($price * $percentageValue - $lp - $ship) / $price) * 100;
-                $processedItem["GPFT%"] = round($gpft_percentage, 0);
-            } else {
-                $processedItem["GPFT%"] = 0;
-            }
-
-            // PFT% / NPFT = GPFT% − Ads% (Amazon-style net profit %)
-            $processedItem["PFT %"] = round($processedItem["GPFT%"] - $adsPct, 0);
-            $processedItem["NPFT"] = $processedItem["PFT %"];
+            $live = $this->computeReverbPriceMetrics($price, $lp, $ship, $percentageValue, $adsPct);
+            $processedItem["GPFT%"] = $live['gpft'];
+            $processedItem["PFT %"] = $live['npft'];
+            $processedItem["NPFT"] = $live['npft'];
+            $processedItem["ROI%"] = $live['groi'];
+            $processedItem["NROI"] = $live['nroi'];
+            $processedItem["Profit"] = $live['profit'];
             $processedItem["ads_pct"] = round($adsPct, 2);
 
-            // ROI% (gross)
-            if ($lp > 0) {
-                $roi_percentage = (($price * $percentageValue - $lp - $ship) / $lp) * 100;
-                $processedItem["ROI%"] = round($roi_percentage, 0);
+            if ($spriceVal > 0) {
+                $sug = $this->computeReverbPriceMetrics($spriceVal, $lp, $ship, $percentageValue, $adsPct);
+                $processedItem["SGPFT"] = $sug['gpft'];
+                $processedItem["SROI"] = $sug['groi'];
+                $processedItem["SPFT"] = $sug['npft'];
+                $processedItem["SNPFT"] = $sug['npft'];
+                $processedItem["SNROI"] = $sug['nroi'];
             } else {
-                $processedItem["ROI%"] = 0;
-            }
-
-            // NROI = (gross PFT$ − Ads%×Price) / LP × 100
-            if ($lp > 0 && $price > 0) {
-                $grossPft = ($price * $percentageValue) - $lp - $ship;
-                $adSpend = $price * $adsFrac;
-                $processedItem["NROI"] = round((($grossPft - $adSpend) / $lp) * 100, 0);
-            } else {
-                $processedItem["NROI"] = 0;
-            }
-
-            // SPFT / SNPFT = SGPFT − Ads%; SNROI nets Ads% from suggested price (Amazon-style)
-            $sgpftVal = floatval($processedItem["SGPFT"] ?? 0);
-            $spriceVal = floatval($processedItem["SPRICE"] ?? 0);
-            $processedItem["SPFT"] = $sgpftVal > 0 || $spriceVal > 0 ? round($sgpftVal - $adsPct, 0) : 0;
-            $processedItem["SNPFT"] = $processedItem["SPFT"];
-            if ($lp > 0 && $spriceVal > 0) {
-                $sGross = ($spriceVal * $percentageValue) - $lp - $ship;
-                $processedItem["SNROI"] = round((($sGross - ($spriceVal * $adsFrac)) / $lp) * 100, 0);
-            } else {
+                $processedItem["SGPFT"] = 0;
+                $processedItem["SROI"] = 0;
+                $processedItem["SPFT"] = 0;
+                $processedItem["SNPFT"] = 0;
                 $processedItem["SNROI"] = 0;
             }
-
-            // Profit
-            $processedItem["Profit"] = ($price * $percentageValue) - $lp - $ship;
 
             // Sales L30
             $processedItem["Sales L30"] = $price * $processedItem["RV L30"];
@@ -1405,6 +1424,7 @@ class ReverbController extends Controller
     {
         try {
             $adsPct = $this->getReverbChannelAdsPercent();
+            $margin = $this->getReverbMarketplaceMargin();
 
             // Handle both single SKU and batch updates
             $updates = [];
@@ -1443,32 +1463,17 @@ class ReverbController extends Controller
                 // Update SPRICE
                 $values['SPRICE'] = floatval($sprice);
 
-                // Get product master data for calculations
+                // Same calculate-data as GPFT / GROI / NPFT / NROI (marketplace margin + Ads%)
                 $productMaster = ProductMaster::where('sku', $sku)->first();
                 if ($productMaster) {
                     $pmValues = $productMaster->Values ?: [];
-                    $lp = $pmValues['lp'] ?? 0;
-                    $ship = $pmValues['ship'] ?? 0;
-                    $percentage = 0.85; // 85% margin for Reverb
-
-                    // Calculate SGPFT (gross)
-                    if ($sprice > 0) {
-                        $sgpft = (($sprice * $percentage - $lp - $ship) / $sprice) * 100;
-                        $values['SGPFT'] = round($sgpft, 0);
-                    } else {
-                        $values['SGPFT'] = 0;
-                    }
-
-                    // SPFT = SGPFT − Ads% (Amazon-style net)
-                    $values['SPFT'] = round(((float) $values['SGPFT']) - $adsPct, 0) . '%';
-
-                    // SROI (gross — FE SNROI column cuts Ads%)
-                    if ($lp > 0) {
-                        $sroi = (($sprice * $percentage - $lp - $ship) / $lp) * 100;
-                        $values['SROI'] = round($sroi, 0) . '%';
-                    } else {
-                        $values['SROI'] = '0%';
-                    }
+                    $lp = floatval($pmValues['lp'] ?? 0);
+                    $ship = floatval($pmValues['ship'] ?? 0);
+                    $metrics = $this->computeReverbPriceMetrics((float) $sprice, $lp, $ship, $margin, $adsPct);
+                    $values['SGPFT'] = $metrics['gpft'];
+                    $values['SPFT'] = $metrics['npft'] . '%';
+                    $values['SROI'] = $metrics['groi'] . '%';
+                    $values['SNROI'] = $metrics['nroi'];
                 }
 
                 // Save values
@@ -1493,7 +1498,8 @@ class ReverbController extends Controller
                         'success' => true,
                         'sgpft_percent' => $values['SGPFT'] ?? 0,
                         'spft_percent' => floatval(str_replace('%', '', $values['SPFT'] ?? '0')),
-                        'sroi_percent' => floatval(str_replace('%', '', $values['SROI'] ?? '0'))
+                        'sroi_percent' => floatval(str_replace('%', '', $values['SROI'] ?? '0')),
+                        'snroi_percent' => $values['SNROI'] ?? 0,
                     ]);
                 } else {
                     return response()->json([

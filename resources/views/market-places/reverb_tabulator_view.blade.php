@@ -82,6 +82,11 @@
             display: flex;
             flex-direction: column;
         }
+        #column-dropdown-menu .col-vis-group.col-vis-drop-over {
+            border-color: #0d6efd;
+            background: #eef5ff;
+            box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.25);
+        }
         #column-dropdown-menu .col-vis-group-title {
             display: flex;
             align-items: center;
@@ -116,6 +121,13 @@
             margin: 0;
             padding: 0;
             border-radius: 4px;
+            cursor: grab;
+        }
+        #column-dropdown-menu .col-vis-item:active {
+            cursor: grabbing;
+        }
+        #column-dropdown-menu .col-vis-item.col-vis-dragging {
+            opacity: 0.45;
         }
         #column-dropdown-menu .col-vis-item > label {
             display: flex;
@@ -267,7 +279,7 @@
             padding: 0 2px;
             cursor: pointer;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb'])
         #reverb-apply-std-price-btn {
             background: #0d6efd;
             border-color: #0d6efd;
@@ -752,8 +764,13 @@
                         </ul>
                     </div>
 
-                    {{-- Dil vs PRMT / sprice ? — CVR vs CPN / CPN% removed on /reverb-pricing --}}
-                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
+                    {{-- Dil vs PRMT / CVR vs CPN / sprice ? --}}
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
+
+                    <button type="button" class="btn btn-sm flex-shrink-0" id="reverb-zero-sold-prc-rule-btn"
+                        title="0 Sold Dil% slabs → Target GROI% → suggest S PRC">
+                        <i class="fas fa-sliders-h"></i> 0 Sold Prc Rule
+                    </button>
 
                     <div class="btn-group flex-shrink-0">
                         <button type="button" class="btn btn-sm dropdown-toggle" id="reverb-s-bump-menu-btn"
@@ -994,7 +1011,46 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'reverb', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'reverb'])
+
+    <div class="modal fade" id="reverbZeroSoldPrcModal" tabindex="-1" aria-labelledby="reverbZeroSoldPrcModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="reverbZeroSoldPrcModalLabel">
+                        <i class="fas fa-sliders-h me-1"></i> 0 Sold Prc Rule
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Rules for <strong>0 Sold</strong> only (<strong>RV L30 = 0</strong>), by Dil%
+                        (OV L30 ÷ INV). Last column is <strong>Target GROI%</strong>.
+                        <strong>Apply</strong> sets <strong>S PRC</strong> so SROI matches that GROI:
+                        <code>S PRC = (LP × (1 + GROI%/100) + Ship) / margin</code>.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="reverb-zero-sold-prc-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">Dil%</th>
+                                    <th style="width:45%;" class="text-end">Target GROI%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="reverb-zero-sold-prc-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="reverb-zero-sold-prc-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-primary" id="reverb-zero-sold-prc-apply-btn"
+                        title="Save Dil→GROI rules, then suggest S PRC on 0 Sold rows — selected if checked, otherwise all visible">
+                        Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="modal fade" id="reverbDilVsSBumpModal" tabindex="-1" aria-labelledby="reverbDilVsSBumpModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-md">
@@ -1090,12 +1146,12 @@
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     const REVERB_DAILY_TOTALS_URL = @json(url('reverb-daily-data-totals-json'));
     // Columns that stay hidden even when "Show All Columns" is used.
-    const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'Bump', 'RE_BID'];
+    const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'RE_BID'];
+    const adsAlwaysVisibleFields = ['Bump', 'API_REC_BID'];
     // Designed default view (column defs with visible:false). Used by Show Default Columns.
     const reverbDefaultHiddenFields = {
         Parent: 1,
         Missing_Ad: 1,
-        Bump: 1,
         RE_BID: 1,
         'A Price': 1,
         Profit: 1,
@@ -1114,17 +1170,25 @@
     let increaseModeActive = false;
     let samePriceModeActive = false;
     let selectedSkus = new Set();
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
 
     function reverbPrmtPctOf(d) {
         const n = parseFloat(d && (d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied));
         return (isFinite(n) && n > 0) ? n : 0;
     }
+    function reverbCpnPctOf(d) {
+        const n = parseFloat(d && (d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied));
+        return (isFinite(n) && n > 0) ? n : 0;
+    }
+    /** Sale price from channel-pef-promo: Std × (1 − (PRMT% + CPN%)/100). */
     function reverbPrmtSalePrice(d) {
+        if (typeof chPromoTemuSpriceFromStdPrmtCpn === 'function') {
+            return chPromoTemuSpriceFromStdPrmtCpn(d) || 0;
+        }
         const std = parseFloat(d && d.STANDARD_PRICE);
         if (!(isFinite(std) && std > 0)) return 0;
-        const prmt = Math.max(0, reverbPrmtPctOf(d));
-        return +(std * (1 - (prmt / 100))).toFixed(2);
+        const total = Math.min(99.99, reverbPrmtPctOf(d) + reverbCpnPctOf(d));
+        return +(std * (1 - (total / 100))).toFixed(2);
     }
     function reverbParseBumpPct(val) {
         if (val === null || val === undefined || val === '') return 0;
@@ -1224,6 +1288,9 @@
     }
     function reverbChannelPromoColumns() {
         const cols = typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [];
+        if (typeof channelPromoSprcCpnColumn === 'function') {
+            cols.push(channelPromoSprcCpnColumn());
+        }
         // S PRC already has its own Push column — do not show Push % / push_prmt.
         return cols.filter(function(c) { return !c || c.field !== 'push_prmt'; });
     }
@@ -1235,40 +1302,77 @@
     }
 
     /**
-     * Net SNROI — same shape as Amazon amazonComputeNetSroi / NROI badge:
-     *   (gross profit $ − ad spend $) / COGS × 100
-     * where ad spend $ = SPRICE × Ads%/100 and COGS = LP.
+     * Same calculate-data as GPFT / GROI / NPFT / NROI for any price (RV Price or SPRICE).
+     *   GPFT% = (price × margin − LP − Ship) / price × 100
+     *   GROI% = (price × margin − LP − Ship) / LP × 100
+     *   NPFT% = GPFT% − Ads%
+     *   NROI% = (gross$ − price × Ads%) / LP × 100
      */
-    function reverbComputeNetSroi(rowData) {
-        if (!rowData) return null;
-        const sprice = parseFloat(rowData.SPRICE);
-        const lp = parseFloat(rowData['LP_productmaster']);
-        if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return null;
-        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+    function reverbComputePriceMetrics(price, rowData) {
+        const p = parseFloat(price);
+        const lp = parseFloat(rowData && rowData['LP_productmaster']);
+        const ship = parseFloat(rowData && rowData['Ship_productmaster']) || 0;
         const margin = reverbTakeRate(rowData);
-        const adsFrac = (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0) / 100;
-        const grossPft = (sprice * margin) - ship - lp;
-        const adSpend = sprice * adsFrac;
-        return ((grossPft - adSpend) / lp) * 100;
+        const adsPct = parseFloat(REVERB_CHANNEL_ADS_PCT) || 0;
+        if (!isFinite(p) || p <= 0) {
+            return { gpft: null, groi: null, npft: null, nroi: null };
+        }
+        const cogs = (isFinite(lp) ? lp : 0);
+        const grossPft = (p * margin) - ship - cogs;
+        const gpft = (grossPft / p) * 100;
+        // PFT% / SNPFT = rounded GPFT% − Ads% (same as the PFT % column)
+        const npft = Math.round(gpft) - adsPct;
+        let groi = null;
+        let nroi = null;
+        if (isFinite(lp) && lp > 0) {
+            groi = (grossPft / lp) * 100;
+            nroi = ((grossPft - (p * adsPct / 100)) / lp) * 100;
+        }
+        return { gpft: gpft, groi: groi, npft: npft, nroi: nroi };
     }
 
-    /** Net NROI on live RV Price (Amazon NROI column shape). */
+    function reverbSpriceMetricPatch(sprice, rowData) {
+        const m = reverbComputePriceMetrics(sprice, rowData);
+        const rnd = function(v) { return (v == null || !isFinite(v)) ? 0 : Math.round(v); };
+        return {
+            SGPFT: rnd(m.gpft),
+            SPFT: rnd(m.npft),
+            SNPFT: rnd(m.npft),
+            SROI: rnd(m.groi),
+            SNROI: rnd(m.nroi),
+        };
+    }
+
+    function reverbComputeSgpft(rowData) {
+        const m = reverbComputePriceMetrics(rowData && rowData.SPRICE, rowData);
+        return m.gpft;
+    }
+    function reverbComputeSroi(rowData) {
+        const m = reverbComputePriceMetrics(rowData && rowData.SPRICE, rowData);
+        return m.groi;
+    }
+    function reverbComputeSnpft(rowData) {
+        const m = reverbComputePriceMetrics(rowData && rowData.SPRICE, rowData);
+        return m.npft;
+    }
+
+    /**
+     * Net SNROI — same shape as NROI:
+     *   (gross profit $ − ad spend $) / COGS × 100
+     */
+    function reverbComputeNetSroi(rowData) {
+        const m = reverbComputePriceMetrics(rowData && rowData.SPRICE, rowData);
+        return m.nroi;
+    }
+
+    /** Net NROI on live RV Price (same calculate-data as SNROI). */
     function reverbComputeNetRoi(rowData) {
-        if (!rowData) return null;
-        const price = parseFloat(rowData['RV Price']);
-        const lp = parseFloat(rowData['LP_productmaster']);
-        if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
-        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-        const margin = reverbTakeRate(rowData);
-        const adsFrac = (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0) / 100;
-        const grossPft = (price * margin) - ship - lp;
-        const adSpend = price * adsFrac;
-        return ((grossPft - adSpend) / lp) * 100;
+        const m = reverbComputePriceMetrics(rowData && rowData['RV Price'], rowData);
+        return m.nroi;
     }
 
     /**
      * Dil color — Red <25, Green 25–50, Pink 50%+ (OV L30 ÷ INV).
-     * 0 Sold (RV L30 = 0) still uses these colors; Dil vs PRMT has a separate PRMT% per color.
      */
     function reverbDilColorBand(d) {
         const inv = parseFloat(d && d.INV) || 0;
@@ -1762,17 +1866,10 @@
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft = Math.round((sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0)) * 100) / 100;
-                const sroi  = lp > 0 ? Math.round(((newSprice * margin - lp - ship) / lp) * 100 * 100) / 100 : 0;
-
-                row.update({
+                row.update(Object.assign({
                     SPRICE: newSprice,
-                    SGPFT: sgpft,
-                    SPFT: spft,
-                    SROI: sroi,
                     has_custom_sprice: true
-                });
+                }, reverbSpriceMetricPatch(newSprice, rowData)));
                 updates.push({ sku: sku, sprice: newSprice });
                 updatedCount++;
             });
@@ -1834,17 +1931,10 @@
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft = Math.round((sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0)) * 100) / 100;
-                const sroi  = lp > 0 ? Math.round(((newSprice * margin - lp - ship) / lp) * 100 * 100) / 100 : 0;
-
-                row.update({
+                row.update(Object.assign({
                     SPRICE: newSprice,
-                    SGPFT: sgpft,
-                    SPFT: spft,
-                    SROI: sroi,
                     has_custom_sprice: true
-                });
+                }, reverbSpriceMetricPatch(newSprice, rowData)));
                 updates.push({ sku: sku, sprice: newSprice });
                 updatedCount++;
             });
@@ -1934,7 +2024,7 @@
         const missingHiddenColumnFields = [
             'RV Price',
             'GPFT%', 'ROI%', 'NPFT', 'NROI', 'SPRICE', 'SGPFT', 'SROI', 'SNPFT', 'SNROI',
-            'prmt_pct', 'zero_sold_prmt', 'push_std_prc',
+            'prmt_pct', 'cpn_pct', 'sprc_cpn', 'push_std_prc',
             'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
             'Views', 'CVR',
             'L30', 'RV Dil%', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
@@ -2151,23 +2241,10 @@
                         // Ensure minimum price
                         newSprice = Math.max(0.99, newSprice);
 
-                        // Calculate SGPFT, SPFT, SROI
-                        const percentage = rowData['percentage'] || 0.85;
-                        const lp = rowData['LP_productmaster'] || 0;
-                        const ship = rowData['Ship_productmaster'] || 0;
-
-                        const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                        const spft = Math.round((sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0)) * 100) / 100;
-                        const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
-
-                        // Update SPRICE and calculated values in table
-                        row.update({
+                        row.update(Object.assign({
                             SPRICE: newSprice,
-                            SGPFT: sgpft,
-                            SPFT: spft,
-                            SROI: sroi,
                             has_custom_sprice: true
-                        });
+                        }, reverbSpriceMetricPatch(newSprice, rowData)));
 
                         // Store update for backend saving
                         updates.push({
@@ -2212,23 +2289,10 @@
                     const amazonPrice = parseFloat(rowData['A Price']);
                     
                     if (amazonPrice && amazonPrice > 0) {
-                        // Calculate SGPFT, SPFT, SROI
-                        const percentage = rowData['percentage'] || 0.85;
-                        const lp = rowData['LP_productmaster'] || 0;
-                        const ship = rowData['Ship_productmaster'] || 0;
-                        
-                        const sgpft = amazonPrice > 0 ? Math.round(((amazonPrice * percentage - ship - lp) / amazonPrice) * 100 * 100) / 100 : 0;
-                        const spft = Math.round((sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0)) * 100) / 100;
-                        const sroi = lp > 0 ? Math.round(((amazonPrice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
-                        
-                        // Update the row with SPRICE and calculated values
-                        row.update({
+                        row.update(Object.assign({
                             SPRICE: amazonPrice,
-                            SGPFT: sgpft,
-                            SPFT: spft,
-                            SROI: sroi,
                             has_custom_sprice: true
-                        });
+                        }, reverbSpriceMetricPatch(amazonPrice, rowData)));
                         
                         // Store update for backend saving
                         updates.push({
@@ -2434,6 +2498,178 @@
             }
         }
 
+        const REVERB_ZERO_SOLD_PRC_DEFAULTS = [
+            { key: '0-10', label: '0–10%', groi: 40 },
+            { key: '10-20', label: '10–20%', groi: 35 },
+            { key: '20-30', label: '20–30%', groi: 30 },
+            { key: '30-40', label: '30–40%', groi: 25 },
+            { key: '40-50', label: '40–50%', groi: 20 },
+            { key: '50-60', label: '50–60%', groi: 15 },
+            { key: '60-70', label: '60–70%', groi: 12 },
+            { key: '70-80', label: '70–80%', groi: 10 },
+            { key: '80-90', label: '80–90%', groi: 8 },
+            { key: '90-100', label: '90–100%', groi: 5 },
+            { key: 'gt-100', label: '> 100%', groi: 0 },
+        ];
+        let reverbZeroSoldPrcRules = REVERB_ZERO_SOLD_PRC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+
+        function reverbDilPct(d) {
+            const inv = parseFloat(d && d.INV) || 0;
+            const ovL30 = parseFloat(d && d.L30) || 0;
+            if (inv <= 0) return 0;
+            return (ovL30 / inv) * 100;
+        }
+        function reverbZeroSoldDilSlabKey(dil) {
+            const n = Number(dil);
+            if (!isFinite(n) || n < 0) return '0-10';
+            if (n > 100) return 'gt-100';
+            const bucket = Math.min(9, Math.floor(n / 10));
+            const lo = bucket * 10;
+            return lo + '-' + (lo + 10);
+        }
+        function reverbGroiForZeroSoldDil(dil) {
+            const key = reverbZeroSoldDilSlabKey(dil);
+            const rule = reverbZeroSoldPrcRules.find(function(r) { return r.key === key; });
+            const n = rule ? Number(rule.groi) : 0;
+            return isFinite(n) ? n : 0;
+        }
+        function reverbSpriceFromTargetGroi(rowData, groiPct) {
+            const lp = parseFloat(rowData && rowData['LP_productmaster']) || 0;
+            if (lp <= 0) return 0;
+            const ship = parseFloat(rowData && rowData['Ship_productmaster']) || 0;
+            const margin = reverbTakeRate(rowData);
+            const groi = isFinite(Number(groiPct)) ? Number(groiPct) : 0;
+            const price = (lp * (1 + groi / 100) + ship) / margin;
+            return (isFinite(price) && price > 0) ? +price.toFixed(2) : 0;
+        }
+        function renderReverbZeroSoldPrcModalTable() {
+            const $tb = $('#reverb-zero-sold-prc-tbody').empty();
+            reverbZeroSoldPrcRules.forEach(function(r, idx) {
+                const groi = isFinite(Number(r.groi)) ? Number(r.groi) : 0;
+                $tb.append(
+                    '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                    + '<td>' + String(r.label || r.key) + '</td>'
+                    + '<td class="text-end">'
+                    + '<input type="number" class="form-control form-control-sm reverb-zero-sold-groi-input" '
+                    + 'step="0.1" value="' + groi + '" data-idx="' + idx + '" title="Target GROI% for this Dil slab">'
+                    + '</td></tr>'
+                );
+            });
+        }
+        function readReverbZeroSoldPrcRulesFromModal() {
+            $('#reverb-zero-sold-prc-tbody tr').each(function() {
+                const key = String($(this).attr('data-key') || '');
+                const val = parseFloat($(this).find('.reverb-zero-sold-groi-input').val());
+                const rule = reverbZeroSoldPrcRules.find(function(r) { return r.key === key; });
+                if (!rule) return;
+                rule.groi = isFinite(val) ? val : 0;
+            });
+            return reverbZeroSoldPrcRules.map(function(r) {
+                return { key: r.key, label: r.label, groi: Number(r.groi) || 0 };
+            });
+        }
+        async function loadReverbZeroSoldPrcRules() {
+            $('#reverb-zero-sold-prc-status').text('Loading…');
+            try {
+                const res = await $.ajax({
+                    url: '/channel-promo-pricing/reverb/zero-sold-prc',
+                    method: 'GET',
+                    dataType: 'json',
+                });
+                if (res && Array.isArray(res.rules) && res.rules.length) {
+                    reverbZeroSoldPrcRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                }
+                renderReverbZeroSoldPrcModalTable();
+                $('#reverb-zero-sold-prc-status').text(res && res.is_default
+                    ? 'Using first-time defaults. Apply to save & suggest S PRC on 0 Sold rows.'
+                    : 'Saved 0 Sold Prc rules loaded.');
+            } catch (e) {
+                renderReverbZeroSoldPrcModalTable();
+                $('#reverb-zero-sold-prc-status').text('Could not load saved rules — showing defaults.');
+            }
+        }
+        async function saveReverbZeroSoldPrcRules() {
+            const rules = readReverbZeroSoldPrcRulesFromModal();
+            await $.ajax({
+                url: '/channel-promo-pricing/reverb/zero-sold-prc',
+                method: 'POST',
+                dataType: 'json',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                data: { rules: rules, _token: csrfToken() },
+            });
+            reverbZeroSoldPrcRules = rules.map(function(r) { return Object.assign({}, r); });
+        }
+        function collectReverbZeroSoldPrcTargets() {
+            const collected = collectReverbSBumpTargets();
+            const zeroSold = collected.targets.filter(function(job) {
+                const d = job.d || (job.row && job.row.getData()) || {};
+                const sold = parseFloat(d['RV L30']) || 0;
+                const inv = parseFloat(d.INV) || 0;
+                const lp = parseFloat(d['LP_productmaster']) || 0;
+                return sold === 0 && inv > 0 && lp > 0;
+            });
+            return { targets: zeroSold, label: collected.label };
+        }
+        function applyReverbZeroSoldPrcToTargets(targets, label) {
+            if (!targets.length) {
+                showToast('No 0 Sold rows (RV L30 = 0, INV > 0, LP > 0) to price', 'error');
+                return 0;
+            }
+            const updates = [];
+            let filled = 0;
+            targets.forEach(function(job) {
+                const d = job.d || (job.row && job.row.getData()) || {};
+                const sku = String(d['(Child) sku'] || '').trim();
+                if (!sku) return;
+                const groi = reverbGroiForZeroSoldDil(reverbDilPct(d));
+                const newSprice = reverbSpriceFromTargetGroi(d, groi);
+                if (!isFinite(newSprice) || newSprice <= 0) return;
+                try {
+                    job.row.update(Object.assign({
+                        SPRICE: newSprice,
+                        has_custom_sprice: true
+                    }, reverbSpriceMetricPatch(newSprice, d)));
+                    if (typeof job.row.reformat === 'function') job.row.reformat();
+                } catch (e) { /* ignore */ }
+                updates.push({ sku: sku, sprice: newSprice });
+                filled++;
+            });
+            if (updates.length) {
+                saveSpriceUpdates(updates);
+            }
+            showToast('0 Sold Prc Rule (' + label + '): S PRC from Target GROI → ' + filled + ' row(s)', 'success');
+            return filled;
+        }
+        async function saveAndApplyReverbZeroSoldPrc() {
+            if (!$('#reverb-zero-sold-prc-tbody tr').length) {
+                await loadReverbZeroSoldPrcRules();
+            }
+            const collected = collectReverbZeroSoldPrcTargets();
+            const targets = collected.targets;
+            const label = collected.label;
+            if (!targets.length) {
+                showToast('No 0 Sold rows (RV L30 = 0, INV > 0, LP > 0) to price', 'error');
+                return;
+            }
+            if (label === 'all visible') {
+                if (!confirm('No rows selected — save rules and suggest S PRC on all ' + targets.length + ' visible 0 Sold row(s)?')) {
+                    return;
+                }
+            }
+            const $btn = $('#reverb-zero-sold-prc-apply-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+            try {
+                await saveReverbZeroSoldPrcRules();
+                applyReverbZeroSoldPrcToTargets(targets, label);
+                $('#reverbZeroSoldPrcModal').modal('hide');
+            } catch (xhr) {
+                showToast('0 Sold Prc apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'), 'error');
+            } finally {
+                $btn.prop('disabled', false).html(html);
+            }
+        }
+
         // Save recommended bid (RE BID) to database
         function saveRecommendedBid(sku, recommendedBid) {
             $.ajax({
@@ -2511,12 +2747,10 @@
                 
                 if (selectedSkus.has(sku)) {
                     // Clear SPRICE in table
-                    row.update({
+                    row.update(Object.assign({
                         SPRICE: 0,
-                        SGPFT: 0,
-                        SPFT: 0,
-                        SROI: 0
-                    });
+                        has_custom_sprice: false
+                    }, reverbSpriceMetricPatch(0, rowData)));
                     
                     // Store update for backend saving
                     updates.push({
@@ -2550,15 +2784,15 @@
                 },
                 success: function(response) {
                     showToast(`SPRICE saved for ${sku}`, 'success');
+                    const savedPatch = {};
                     if (response.spft_percent !== undefined) {
-                        row.update({ SPFT: response.spft_percent });
+                        savedPatch.SPFT = response.spft_percent;
+                        savedPatch.SNPFT = response.spft_percent;
                     }
-                    if (response.sroi_percent !== undefined) {
-                        row.update({ SROI: response.sroi_percent });
-                    }
-                    if (response.sgpft_percent !== undefined) {
-                        row.update({ SGPFT: response.sgpft_percent });
-                    }
+                    if (response.sroi_percent !== undefined) savedPatch.SROI = response.sroi_percent;
+                    if (response.sgpft_percent !== undefined) savedPatch.SGPFT = response.sgpft_percent;
+                    if (response.snroi_percent !== undefined) savedPatch.SNROI = response.snroi_percent;
+                    if (Object.keys(savedPatch).length) row.update(savedPatch);
                 },
                 error: function(xhr) {
                     if (retryCount < maxRetries) {
@@ -3384,15 +3618,33 @@
                     headerSort: false
                 },
                 {
-                    title: "Bump%",
+                    title: "Bump Bid",
                     field: "Bump",
+                    headerTooltip: "Live Reverb bump bid from GET /listings/{id}/bump (current_bid).",
                     hozAlign: "center",
-                    width: 70,
-                    visible: false,
+                    width: 80,
+                    visible: true,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === null || value === undefined || value === '') return '<span class="text-muted">-</span>';
                         return `<span style="font-weight: 600;">${value}</span>`;
+                    }
+                },
+                {
+                    title: "Recommended Bid",
+                    field: "API_REC_BID",
+                    headerTooltip: "Reverb recommended bump bid from the listing bump API. Green when it matches live Bump Bid.",
+                    hozAlign: "center",
+                    width: 110,
+                    visible: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined || value === '') return '<span class="text-muted">-</span>';
+                        const rec = reverbParseBumpPct(value);
+                        const live = reverbParseBumpPct(cell.getRow().getData().Bump);
+                        const match = rec > 0 && Math.abs(rec - live) < 0.05;
+                        const color = match ? '#198754' : '#dc3545';
+                        return `<span style="font-weight: 600; color: ${color};">${value}</span>`;
                     }
                 },
                 {
@@ -3864,16 +4116,16 @@
                     title: "Sroi",
                     field: "SROI",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aVal = reverbComputeSroi(aRow.getData());
+                        const bVal = reverbComputeSroi(bRow.getData());
+                        return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
+                             - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
+                    },
                     formatter: function(cell) {
-                        // Gross SROI (Amazon "Sroi" / SGROI) — Ads% not cut here
-                        const row = cell.getRow().getData();
-                        const sprice = parseFloat(row.SPRICE) || 0;
-                        if (sprice <= 0) return '';
-                        const value = cell.getValue();
-                        if (value === null || value === undefined || value === '') return '';
-                        const percent = parseFloat(value);
-                        if (isNaN(percent)) return '';
+                        // Same calculate-data as GROI% / ROI%, using SPRICE
+                        const percent = reverbComputeSroi(cell.getRow().getData());
+                        if (percent === null || !isFinite(percent)) return '';
                         return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
@@ -3882,11 +4134,16 @@
                     title: "SGPFT",
                     field: "SGPFT",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aVal = reverbComputeSgpft(aRow.getData());
+                        const bVal = reverbComputeSgpft(bRow.getData());
+                        return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
+                             - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
+                    },
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
+                        // Same calculate-data as GPFT%, using SPRICE
+                        const percent = reverbComputeSgpft(cell.getRow().getData());
+                        if (percent === null || !isFinite(percent)) return '';
                         const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
                         return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                     },
@@ -3897,22 +4154,15 @@
                     field: "SNPFT",
                     hozAlign: "center",
                     sorter: function(a, b, aRow, bRow) {
-                        const ads = parseFloat(REVERB_CHANNEL_ADS_PCT) || 0;
-                        const aVal = parseFloat(aRow.getData().SGPFT);
-                        const bVal = parseFloat(bRow.getData().SGPFT);
-                        const aSpft = isNaN(aVal) ? 0 : (aVal - ads);
-                        const bSpft = isNaN(bVal) ? 0 : (bVal - ads);
-                        return aSpft - bSpft;
+                        const aVal = reverbComputeSnpft(aRow.getData());
+                        const bVal = reverbComputeSnpft(bRow.getData());
+                        return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
+                             - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
                     },
                     formatter: function(cell) {
-                        // Amazon-style: SNPFT = SGPFT − Ads% (blank when no SPRICE)
-                        const rowData = cell.getRow().getData();
-                        const sprice = parseFloat(rowData.SPRICE) || 0;
-                        const rawGpft = rowData.SGPFT;
-                        if (sprice <= 0 || rawGpft === null || rawGpft === undefined || rawGpft === '') return '';
-                        const sgpft = parseFloat(rawGpft);
-                        if (isNaN(sgpft)) return '';
-                        const percent = sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0);
+                        // Same calculate-data as PFT% / NPFT: SGPFT − Ads%
+                        const percent = reverbComputeSnpft(cell.getRow().getData());
+                        if (percent === null || !isFinite(percent)) return '';
                         return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GPFT%', percent)) || ('color:'+reverbPftColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
@@ -4137,21 +4387,9 @@
                 const sku = rowData['(Child) sku'];
                 const newSprice = parseFloat(cell.getValue()) || 0;
                 
-                // Recalculate SGPFT, SPFT, SROI
-                const percentage = rowData['percentage'] || 0.85;
-                const lp = rowData['LP_productmaster'] || 0;
-                const ship = rowData['Ship_productmaster'] || 0;
-                
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft = Math.round((sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0)) * 100) / 100;
-                const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
-                
-                row.update({
-                    SGPFT: sgpft,
-                    SPFT: spft,
-                    SROI: sroi,
+                row.update(Object.assign({
                     has_custom_sprice: true
-                });
+                }, reverbSpriceMetricPatch(newSprice, rowData)));
                 
                 // Save to database
                 saveSpriceWithRetry(sku, newSprice, row);
@@ -4172,6 +4410,15 @@
             navigator.clipboard.writeText(sku).then(() => {
                 showToast(`Copied: ${sku}`, 'success');
             });
+        });
+
+        $('#reverb-zero-sold-prc-rule-btn').on('click', function(e) {
+            e.preventDefault();
+            loadReverbZeroSoldPrcRules();
+            $('#reverbZeroSoldPrcModal').modal('show');
+        });
+        $('#reverb-zero-sold-prc-apply-btn').on('click', function() {
+            saveAndApplyReverbZeroSoldPrc();
         });
 
         $('#reverb-dil-vs-s-bump-btn').on('click', function(e) {
@@ -5472,17 +5719,18 @@
             STANDARD_PRICE: 1, push_std_prc: 1, 'RV Price': 1, 'A Price': 1, lmp_price: 1,
             linked_lmp_skus: 1, linked_lmp_sku_add: 1, 'ROI%': 1, 'GPFT%': 1, NPFT: 1, NROI: 1,
             Profit: 1, 'Sales L30': 1, LP_productmaster: 1, Ship_productmaster: 1, prmt_pct: 1,
-            zero_sold_prmt: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
+            cpn_pct: 1, sprc_cpn: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
         };
         const COL_VIS_ADS = {
-            Missing_Ad: 1, Bump: 1, RE_BID: 1, push_bump: 1
+            Missing_Ad: 1, Bump: 1, API_REC_BID: 1, RE_BID: 1, push_bump: 1
         };
         function reverbColVisPlainTitle(def) {
             const field = def && def.field ? String(def.field) : '';
             if (field === 'push_std_prc') return 'Push Std';
             if (field === 'push_bump') return 'Push B%';
             if (field === 'prmt_pct') return 'PRMT %';
-            if (field === 'zero_sold_prmt') return '0 Sold PRMT%';
+            if (field === 'cpn_pct') return 'CPN %';
+            if (field === 'sprc_cpn') return 'Sprc CPN';
             if (field === 'push_price') return 'Push';
             const raw = (def && def.title != null) ? def.title : field;
             const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -5499,6 +5747,30 @@
                 return 'basic';
             }
             return 'other';
+        }
+        const COL_VIS_CATEGORY_STORAGE_KEY = 'reverb_tabulator_column_categories_v1';
+        function colVisItemKey(field, title) {
+            return String(field || '') + '||' + String(title || field || '');
+        }
+        function loadColumnCategoryOverrides() {
+            try {
+                const raw = localStorage.getItem(COL_VIS_CATEGORY_STORAGE_KEY);
+                const parsed = raw ? JSON.parse(raw) : {};
+                return (parsed && typeof parsed === 'object') ? parsed : {};
+            } catch (e) {
+                return {};
+            }
+        }
+        function saveColumnCategoryOverrides(map) {
+            try {
+                localStorage.setItem(COL_VIS_CATEGORY_STORAGE_KEY, JSON.stringify(map || {}));
+            } catch (e) {}
+        }
+        function resolveColumnCategory(field, title, overrides) {
+            const key = colVisItemKey(field, title);
+            const o = overrides && overrides[key];
+            if (o && COL_VIS_CATEGORY_KEYS.indexOf(o) !== -1) return o;
+            return classifyReverbColumn(field, title);
         }
         function syncReverbGroupHeaderCheckbox(groupEl) {
             if (!groupEl) return;
@@ -5545,6 +5817,7 @@
 
             const lists = {};
             const groupEls = {};
+            const overrides = loadColumnCategoryOverrides();
             COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
                 const group = document.createElement('div');
                 group.className = 'col-vis-group';
@@ -5568,6 +5841,31 @@
                 groupsWrap.appendChild(group);
                 lists[cat] = list;
                 groupEls[cat] = group;
+
+                [group, list].forEach(function(zone) {
+                    zone.addEventListener('dragover', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        group.classList.add('col-vis-drop-over');
+                        e.dataTransfer.dropEffect = 'move';
+                    });
+                    zone.addEventListener('dragleave', function(e) {
+                        if (!group.contains(e.relatedTarget)) {
+                            group.classList.remove('col-vis-drop-over');
+                        }
+                    });
+                    zone.addEventListener('drop', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        group.classList.remove('col-vis-drop-over');
+                        const itemKey = e.dataTransfer.getData('text/col-vis-key');
+                        if (!itemKey) return;
+                        const next = loadColumnCategoryOverrides();
+                        next[itemKey] = cat;
+                        saveColumnCategoryOverrides(next);
+                        buildColumnDropdown();
+                    });
+                });
             });
 
             table.getColumns().forEach(function(col) {
@@ -5576,13 +5874,29 @@
                 if (!field || field === '_select' || field === 'push_prmt') return;
                 const title = reverbColVisPlainTitle(def);
                 if (!title) return;
-                const cat = classifyReverbColumn(field, title);
+                const itemKey = colVisItemKey(field, title);
+                const cat = resolveColumnCategory(field, title, overrides);
                 const isVisible = map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible();
 
                 const li = document.createElement('li');
                 li.className = 'col-vis-item';
+                li.draggable = true;
+                li.dataset.itemKey = itemKey;
                 li.dataset.field = field;
                 li.dataset.group = cat;
+
+                li.addEventListener('dragstart', function(e) {
+                    e.stopPropagation();
+                    li.classList.add('col-vis-dragging');
+                    e.dataTransfer.setData('text/col-vis-key', itemKey);
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                li.addEventListener('dragend', function() {
+                    li.classList.remove('col-vis-dragging');
+                    menu.querySelectorAll('.col-vis-drop-over').forEach(function(el) {
+                        el.classList.remove('col-vis-drop-over');
+                    });
+                });
 
                 const label = document.createElement('label');
                 const checkbox = document.createElement('input');
@@ -5595,7 +5909,7 @@
 
                 label.appendChild(checkbox);
                 label.appendChild(document.createTextNode(' ' + title));
-                label.title = title;
+                label.title = title + ' (drag to another header)';
                 li.appendChild(label);
                 lists[cat].appendChild(li);
             });
@@ -5656,10 +5970,15 @@
                             }
                         });
                     }
-                    // Parent + ads-only columns stay hidden (not part of normal pricing view).
+                    // Parent + S Bump stay hidden (not part of normal pricing view).
                     adsOnlyColumnFields.forEach(function(field) {
                         const col = table.getColumn(field);
                         if (col) col.hide();
+                    });
+                    adsAlwaysVisibleFields.forEach(function(field) {
+                        const col = table.getColumn(field);
+                        if (col) col.show();
+                        map[field] = true;
                     });
                     const aPrcCol = table.getColumn('A Price');
                     if (aPrcCol) aPrcCol.hide();
@@ -5767,7 +6086,7 @@
             saveColumnVisibilityToServer();
         });
 
-        // Restore designed defaults (0 Sold PRMT% on; Push % gone; ads / A Prc / LP / Ship hidden).
+        // Restore designed defaults (Push % gone; ads / A Prc / LP / Ship hidden).
         $('#column-dropdown-menu').on('click', '#show-default-columns-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();

@@ -742,6 +742,42 @@ class ChannelPromoPricingController extends Controller
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }
 
+    public function zeroSoldPrcRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! $this->promo->isSupported($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        return $this->loadRules(
+            $channel.'_zero_sold_prc',
+            $this->defaultZeroSoldPrcRules(),
+            'groi'
+        );
+    }
+
+    public function saveZeroSoldPrcRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! $this->promo->isSupported($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $incoming = $request->input('rules');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+        }
+
+        $rules = $this->persistRules(
+            $channel.'_zero_sold_prc',
+            $this->defaultZeroSoldPrcRules(),
+            $incoming,
+            'groi'
+        );
+
+        return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
+    }
+
     public function cvrCpnRules(Request $request, string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
@@ -785,11 +821,22 @@ class ChannelPromoPricingController extends Controller
      */
     private function defaultDilPrmtRules(string $channel = ''): array
     {
-        if (in_array($channel, ['reverb', 'macys', 'macy', 'bestbuy'], true)) {
+        if (in_array($channel, ['macys', 'macy', 'bestbuy'], true)) {
             return [
                 ['key' => '0-sold-red', 'label' => '0 Sold · Red (<25%)', 'prmt' => 10],
                 ['key' => '0-sold-green', 'label' => '0 Sold · Green (25–50%)', 'prmt' => 8],
                 ['key' => '0-sold-pink', 'label' => '0 Sold · Pink (50%+)', 'prmt' => 3],
+                ['key' => '0-20', 'label' => '0–20%', 'prmt' => 10],
+                ['key' => '20-40', 'label' => '20–40%', 'prmt' => 8],
+                ['key' => '40-60', 'label' => '40–60%', 'prmt' => 5],
+                ['key' => '60-80', 'label' => '60–80%', 'prmt' => 3],
+                ['key' => '80-100', 'label' => '80–100%', 'prmt' => 1],
+                ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
+            ];
+        }
+
+        if ($channel === 'reverb') {
+            return [
                 ['key' => '0-20', 'label' => '0–20%', 'prmt' => 10],
                 ['key' => '20-40', 'label' => '20–40%', 'prmt' => 8],
                 ['key' => '40-60', 'label' => '40–60%', 'prmt' => 5],
@@ -848,6 +895,28 @@ class ChannelPromoPricingController extends Controller
             ['key' => '80-90', 'label' => '80–90%', 'bump' => 2],
             ['key' => '90-100', 'label' => '90–100%', 'bump' => 1],
             ['key' => 'gt-100', 'label' => '> 100%', 'bump' => 0],
+        ];
+    }
+
+    /**
+     * 0 Sold Dil% slabs (10% steps) → Target GROI% for suggested SPRICE.
+     *
+     * @return list<array{key:string,label:string,groi:float|int}>
+     */
+    private function defaultZeroSoldPrcRules(): array
+    {
+        return [
+            ['key' => '0-10', 'label' => '0–10%', 'groi' => 40],
+            ['key' => '10-20', 'label' => '10–20%', 'groi' => 35],
+            ['key' => '20-30', 'label' => '20–30%', 'groi' => 30],
+            ['key' => '30-40', 'label' => '30–40%', 'groi' => 25],
+            ['key' => '40-50', 'label' => '40–50%', 'groi' => 20],
+            ['key' => '50-60', 'label' => '50–60%', 'groi' => 15],
+            ['key' => '60-70', 'label' => '60–70%', 'groi' => 12],
+            ['key' => '70-80', 'label' => '70–80%', 'groi' => 10],
+            ['key' => '80-90', 'label' => '80–90%', 'groi' => 8],
+            ['key' => '90-100', 'label' => '90–100%', 'groi' => 5],
+            ['key' => 'gt-100', 'label' => '> 100%', 'groi' => 0],
         ];
     }
 

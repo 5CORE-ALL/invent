@@ -26,6 +26,8 @@ class ReverbProduct extends Model
         'remaining_inventory',
         'bump_bid',
         'recommended_bid',
+        'api_recommended_bid',
+        'total_interactions',
         'status',
     ];
 

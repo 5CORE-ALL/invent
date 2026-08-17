@@ -4565,18 +4565,20 @@ class CvrMasterController extends Controller
                 $reverbViewVal = is_array($reverbDataView->values) ? $reverbDataView->values :
                        (json_decode($reverbDataView->values, true) ?: []);
                 if (is_array($reverbViewVal)) {
-                    $rvSgpft = floatval($reverbViewVal['SGPFT'] ?? 0);
                     $rvSprice = floatval($reverbViewVal['SPRICE'] ?? 0);
-                    // SPFT = SGPFT − Ads% (same as /reverb-pricing); fall back to stored SPFT
-                    $rvSpft = ($rvSprice > 0 || $rvSgpft != 0)
-                        ? round($rvSgpft - $reverbAdsPct, 2)
-                        : floatval(str_replace('%', '', $reverbViewVal['SPFT'] ?? '0'));
-                    $reverbSuggested = [
-                        'sprice' => $rvSprice,
-                        'sgpft' => $rvSgpft,
-                        'sroi' => floatval(str_replace('%', '', $reverbViewVal['SROI'] ?? '0')),
-                        'spft' => $rvSpft,
-                    ];
+                    // Same calculate-data as /reverb-pricing GPFT / GROI / NPFT (live from SPRICE)
+                    if ($rvSprice > 0) {
+                        $rvSgpft = round((($rvSprice * $reverbPercentage - $lp - $ship) / $rvSprice) * 100, 2);
+                        $rvSroi = $lp > 0
+                            ? round((($rvSprice * $reverbPercentage - $lp - $ship) / $lp) * 100, 2)
+                            : 0;
+                        $reverbSuggested = [
+                            'sprice' => $rvSprice,
+                            'sgpft' => $rvSgpft,
+                            'sroi' => $rvSroi,
+                            'spft' => round($rvSgpft - $reverbAdsPct, 2),
+                        ];
+                    }
                 }
             }
 
