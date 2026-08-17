@@ -86,7 +86,7 @@ final class MarketplaceMismatchInventoryPass
             'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'aliexpress' => app(AliexpressInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'alibaba' => app(AlibabaInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'faire' => app(FaireInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'faire' => app(FaireInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'amazon' => app(AmazonInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'tiktok' => app(TikTokInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'tiktok2' => app(TikTok2InventorySyncService::class)->syncSkusFromShopify($mismatch),

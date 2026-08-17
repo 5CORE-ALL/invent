@@ -183,8 +183,44 @@ class FaireApiService
     }
 
     /**
+     * GET /product-inventory/by-skus?sku=… (repeated)
+     *
+     * @param  list<string>  $skus
+     * @return array<string, array{qty: int, product_variant_id: string, product_id: string}>
+     */
+    public function getInventoryBySkus(array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
+            $skus
+        ), static fn ($sku) => $sku !== '')));
+
+        $out = [];
+        foreach (array_chunk($skus, 40) as $chunk) {
+            $res = $this->requestInventoryBySkuQuery($chunk);
+            if (empty($res['ok']) || ! is_array($res['json'])) {
+                continue;
+            }
+            foreach ($this->inventoriesFromJson($res['json']) as $row) {
+                $sku = trim((string) ($row['sku'] ?? ''));
+                $qty = $this->extractOnHandQuantity($row);
+                if ($sku === '' || $qty === null) {
+                    continue;
+                }
+                $out[$sku] = [
+                    'qty' => $qty,
+                    'product_variant_id' => trim((string) ($row['product_variant_id'] ?? $row['id'] ?? '')),
+                    'product_id' => trim((string) ($row['product_id'] ?? '')),
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  list<array{sku: string, on_hand_quantity: int, product_variant_id?: string}>  $inventories
-     * @return array{success: bool, message: string}
+     * @return array{success: bool, message: string, status?: int|null}
      */
     public function updateInventoryBySkus(array $inventories): array
     {
@@ -194,14 +230,16 @@ class FaireApiService
                 continue;
             }
             $sku = trim((string) ($row['sku'] ?? ''));
-            if ($sku === '') {
+            $variantId = trim((string) ($row['product_variant_id'] ?? ''));
+            if ($sku === '' && $variantId === '') {
                 continue;
             }
             $entry = [
-                'sku' => $sku,
                 'on_hand_quantity' => max(0, (int) ($row['on_hand_quantity'] ?? $row['quantity'] ?? 0)),
             ];
-            $variantId = trim((string) ($row['product_variant_id'] ?? ''));
+            if ($sku !== '') {
+                $entry['sku'] = $sku;
+            }
             if ($variantId !== '') {
                 $entry['product_variant_id'] = $variantId;
             }
@@ -212,12 +250,34 @@ class FaireApiService
             return ['success' => false, 'message' => 'No inventory rows to update.'];
         }
 
-        $res = $this->request('PATCH', '/product-inventory/by-skus', [], [
-            'inventories' => $rows,
+        $allHaveVariant = collect($rows)->every(static fn ($r) => ! empty($r['product_variant_id']));
+        if ($allHaveVariant) {
+            $path = '/product-inventory/by-product-variant-ids';
+            $payload = array_map(static fn ($r) => [
+                'product_variant_id' => $r['product_variant_id'],
+                'on_hand_quantity' => $r['on_hand_quantity'],
+            ], $rows);
+        } else {
+            $path = '/product-inventory/by-skus';
+            $payload = array_map(static function ($r) {
+                $entry = [
+                    'sku' => (string) ($r['sku'] ?? ''),
+                    'on_hand_quantity' => $r['on_hand_quantity'],
+                ];
+                if ($entry['sku'] === '') {
+                    unset($entry['sku']);
+                }
+
+                return $entry;
+            }, $rows);
+        }
+
+        $res = $this->request('PATCH', $path, [], [
+            'inventories' => $payload,
         ]);
 
         if (! empty($res['blocked_by_cloudflare'])) {
-            return ['success' => false, 'message' => 'Blocked by Cloudflare.'];
+            return ['success' => false, 'message' => 'Blocked by Cloudflare.', 'status' => $res['status'] ?? null];
         }
 
         if (! empty($res['ok'])) {
@@ -226,14 +286,30 @@ class FaireApiService
             return [
                 'success' => true,
                 'message' => $count === 1
-                    ? "Inventory {$rows[0]['on_hand_quantity']} pushed to Faire for SKU {$rows[0]['sku']}."
+                    ? 'Inventory '.$rows[0]['on_hand_quantity'].' pushed to Faire for SKU '.($rows[0]['sku'] ?? $rows[0]['product_variant_id'] ?? '').'.'
                     : "Inventory pushed to Faire for {$count} SKU(s).",
+                'status' => $res['status'] ?? 200,
             ];
         }
 
+        $status = (int) ($res['status'] ?? 0);
+        $detail = trim((string) ($res['error'] ?? ''));
+        if ($detail === '') {
+            $detail = 'Inventory update failed HTTP '.$status;
+        }
+
+        Log::warning('Faire inventory PATCH failed', [
+            'path' => $path,
+            'status' => $status,
+            'error' => $detail,
+            'sku_count' => count($rows),
+            'first_sku' => $rows[0]['sku'] ?? $rows[0]['product_variant_id'] ?? null,
+        ]);
+
         return [
             'success' => false,
-            'message' => $res['error'] ?? ('Inventory update failed HTTP '.($res['status'] ?? 0)),
+            'message' => $detail,
+            'status' => $status !== 0 ? $status : null,
         ];
     }
 
@@ -506,9 +582,7 @@ class FaireApiService
             if ($sku === '') {
                 continue;
             }
-            $qty = data_get($variant, 'available_quantity')
-                ?? data_get($variant, 'on_hand_quantity')
-                ?? data_get($variant, 'inventory');
+            $qty = $this->extractOnHandQuantity($variant);
             $priceCents = data_get($variant, 'wholesale_price.amount_minor')
                 ?? data_get($variant, 'wholesale_price_cents')
                 ?? data_get($variant, 'retail_price.amount_minor')
@@ -559,9 +633,11 @@ class FaireApiService
 
     /**
      * MM adapter: bulk inventory push via PATCH /product-inventory/by-skus.
+     * Chunks requests and retries failed SKUs one-by-one (optionally by variant id)
+     * so one unknown SKU does not fail the whole batch.
      *
-     * @param  list<array{seller_part_number?: string, sku?: string, quantity?: int, on_hand_quantity?: int}>  $items
-     * @return array{success: bool, pushed: int, failed: int, message?: string, error_message?: string}
+     * @param  list<array{seller_part_number?: string, sku?: string, quantity?: int, on_hand_quantity?: int, product_id?: string, product_variant_id?: string}>  $items
+     * @return array{success: bool, pushed: int, failed: int, message?: string, error_message?: string, updated_skus?: list<string>}
      */
     public function updateItemInventoryBulk(array $items): array
     {
@@ -577,6 +653,8 @@ class FaireApiService
             $inventories[] = [
                 'sku' => $sku,
                 'on_hand_quantity' => max(0, (int) ($item['on_hand_quantity'] ?? $item['quantity'] ?? 0)),
+                'product_id' => trim((string) ($item['product_id'] ?? '')),
+                'product_variant_id' => trim((string) ($item['product_variant_id'] ?? '')),
             ];
         }
 
@@ -584,16 +662,188 @@ class FaireApiService
             return ['success' => false, 'pushed' => 0, 'failed' => 0, 'message' => 'No inventory rows.'];
         }
 
-        $result = $this->updateInventoryBySkus($inventories);
-        $ok = ! empty($result['success']);
+        $pushed = 0;
+        $failed = 0;
+        $updatedSkus = [];
+        $errors = [];
+
+        foreach (array_chunk($inventories, 10) as $chunk) {
+            $result = $this->updateInventoryBySkus($chunk);
+            if (! empty($result['success'])) {
+                $pushed += count($chunk);
+                foreach ($chunk as $row) {
+                    $updatedSkus[] = $row['sku'];
+                }
+                continue;
+            }
+
+            foreach ($chunk as $row) {
+                $one = $this->pushOneInventoryRow($row);
+                if (! empty($one['success'])) {
+                    $pushed++;
+                    $updatedSkus[] = $row['sku'];
+                    continue;
+                }
+                $failed++;
+                $err = trim((string) ($one['message'] ?? 'Inventory update failed'));
+                if ($err !== '' && count($errors) < 5) {
+                    $errors[] = $row['sku'].': '.$err;
+                }
+            }
+        }
+
+        $ok = $pushed > 0;
+        $message = $ok
+            ? "Inventory pushed to Faire for {$pushed} SKU(s)."
+            : ($errors[0] ?? 'Faire inventory update failed.');
+        if ($failed > 0 && $errors !== []) {
+            $message .= ' '.$failed.' failed ('.implode('; ', $errors).').';
+        }
 
         return [
             'success' => $ok,
-            'pushed' => $ok ? count($inventories) : 0,
-            'failed' => $ok ? 0 : count($inventories),
-            'message' => $result['message'] ?? null,
-            'error_message' => $ok ? null : ($result['message'] ?? 'Inventory update failed'),
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'message' => $message,
+            'error_message' => $ok ? null : $message,
+            'updated_skus' => $updatedSkus,
         ];
+    }
+
+    /**
+     * @param  array{sku: string, on_hand_quantity: int, product_id?: string, product_variant_id?: string}  $row
+     * @return array{success: bool, message: string}
+     */
+    protected function pushOneInventoryRow(array $row): array
+    {
+        $sku = trim((string) ($row['sku'] ?? ''));
+        $qty = max(0, (int) ($row['on_hand_quantity'] ?? 0));
+        $variantId = trim((string) ($row['product_variant_id'] ?? ''));
+        $productId = trim((string) ($row['product_id'] ?? ''));
+
+        $bySku = $this->updateInventoryBySkus([
+            ['sku' => $sku, 'on_hand_quantity' => $qty],
+        ]);
+        if (! empty($bySku['success'])) {
+            return $bySku;
+        }
+
+        if ($variantId === '') {
+            $live = $this->getInventoryBySkus([$sku]);
+            $variantId = trim((string) ($live[$sku]['product_variant_id'] ?? ''));
+        }
+        if ($variantId === '' && $productId !== '') {
+            $variantId = $this->findVariantIdForSku($productId, $sku);
+        }
+        if ($variantId === '') {
+            return $bySku;
+        }
+
+        return $this->updateInventoryBySkus([
+            [
+                'sku' => $sku,
+                'product_variant_id' => $variantId,
+                'on_hand_quantity' => $qty,
+            ],
+        ]);
+    }
+
+    protected function findVariantIdForSku(string $productId, string $sku): string
+    {
+        $info = $this->getProductInfo($productId);
+        if (empty($info['success']) || ! is_array($info['data'] ?? null)) {
+            return '';
+        }
+        $variants = $info['data']['variants'] ?? $info['data']['product_variants'] ?? [];
+        if (! is_array($variants)) {
+            return '';
+        }
+        $want = strtoupper(preg_replace('/\s+/u', ' ', str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $sku)) ?? '');
+        foreach ($variants as $variant) {
+            if (! is_array($variant)) {
+                continue;
+            }
+            $cand = strtoupper(preg_replace('/\s+/u', ' ', str_replace(
+                ["\xc2\xa0", "\xe2\x80\xaf"],
+                ' ',
+                (string) ($variant['sku'] ?? '')
+            )) ?? '');
+            if ($cand === $want) {
+                return trim((string) ($variant['id'] ?? $variant['product_variant_id'] ?? ''));
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array{ok: bool, status?: int, blocked_by_cloudflare: bool, json: ?array, raw?: string, error: ?string}
+     */
+    protected function requestInventoryBySkuQuery(array $skus): array
+    {
+        $pairs = [];
+        foreach ($skus as $sku) {
+            $pairs[] = 'sku='.rawurlencode($sku);
+        }
+        $res = $this->request('GET', '/product-inventory/by-skus?'.implode('&', $pairs));
+        if (! empty($res['ok'])) {
+            return $res;
+        }
+
+        $pairs = [];
+        foreach ($skus as $sku) {
+            $pairs[] = 'skus='.rawurlencode($sku);
+        }
+
+        return $this->request('GET', '/product-inventory/by-skus?'.implode('&', $pairs));
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     * @return list<array<string, mixed>>
+     */
+    protected function inventoriesFromJson(array $json): array
+    {
+        $rows = $json['inventories'] ?? $json['inventory'] ?? $json['items'] ?? null;
+        if (! is_array($rows) || $rows === []) {
+            if (isset($json['sku']) || isset($json['on_hand_quantity']) || isset($json['product_variant_id'])) {
+                return [$json];
+            }
+
+            return [];
+        }
+        if (array_is_list($rows)) {
+            return $rows;
+        }
+
+        $out = [];
+        foreach ($rows as $sku => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (! isset($row['sku'])) {
+                $row['sku'] = is_string($sku) ? $sku : ($row['sku'] ?? '');
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    public function extractOnHandQuantity(array $row): ?int
+    {
+        $qty = data_get($row, 'on_hand_quantity')
+            ?? data_get($row, 'available_quantity')
+            ?? data_get($row, 'quantity')
+            ?? data_get($row, 'inventory')
+            ?? data_get($row, 'inventories.on_hand_quantity')
+            ?? data_get($row, 'inventory.on_hand_quantity');
+
+        return is_numeric($qty) ? max(0, (int) $qty) : null;
     }
 
     /**
@@ -856,9 +1106,15 @@ class FaireApiService
                     ->timeout($this->timeout)
                     ->connectTimeout($this->connectTimeout);
 
-                $response = $body !== null
-                    ? $http->send($method, $url, ['query' => $query, 'json' => $body])
-                    : $http->send($method, $url, ['query' => $query]);
+                $options = [];
+                if ($query !== []) {
+                    $options['query'] = $query;
+                }
+                if ($body !== null) {
+                    $options['json'] = $body;
+                }
+
+                $response = $http->send($method, $url, $options);
 
                 if ($response->status() === 429 && $attempt < $maxAttempts) {
                     $retryAfter = (int) ($response->header('Retry-After') ?: 1);
@@ -867,7 +1123,7 @@ class FaireApiService
                     continue;
                 }
 
-                return $this->normalize($response);
+                return $this->normalize($response, $method);
             } catch (\Throwable $e) {
                 if ($attempt >= $maxAttempts) {
                     Log::error('Faire API request failed', ['url' => $url, 'error' => $e->getMessage()]);
@@ -927,7 +1183,7 @@ class FaireApiService
     /**
      * @return array{ok: bool, status: int, blocked_by_cloudflare: bool, json: ?array, raw: string, error: ?string}
      */
-    protected function normalize(Response $response): array
+    protected function normalize(Response $response, string $method = 'GET'): array
     {
         $status = $response->status();
         $raw = $response->body();
@@ -960,8 +1216,11 @@ class FaireApiService
             }
         }
 
+        $mutating = in_array(strtoupper($method), ['PATCH', 'PUT', 'POST', 'DELETE'], true);
+        $emptyBody = trim((string) $raw) === '';
+
         return [
-            'ok' => $response->successful() && ($json !== null || $status === 204),
+            'ok' => $response->successful() && ($json !== null || $status === 204 || ($mutating && $emptyBody)),
             'status' => $status,
             'blocked_by_cloudflare' => $isCloudflare,
             'json' => $json,
