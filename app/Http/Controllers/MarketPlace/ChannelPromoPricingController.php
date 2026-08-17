@@ -604,7 +604,7 @@ class ChannelPromoPricingController extends Controller
         }
 
         $fields = [];
-        foreach (['prmt_pct', 'cpn_pct', 'dsc_pct', 'dsc', 'appr', 'push_prc_status', 'push_prc_value', 'push_std_prc_status', 'push_std_prc_value'] as $key) {
+        foreach (['prmt_pct', 'zero_sold_prmt', 'cpn_pct', 'dsc_pct', 'dsc', 'appr', 'push_prc_status', 'push_prc_value', 'push_std_prc_status', 'push_std_prc_value'] as $key) {
             if ($request->exists($key)) {
                 $fields[$key] = $request->input($key);
             }
@@ -633,6 +633,7 @@ class ChannelPromoPricingController extends Controller
             // (e.g. ebay1 → ebay_data_view: PEF_PRMT_PCT, PEF_CPN_PCT, PUSH_PRC_*)
             $saved = $this->promo->upsert($channel, $sku, $fields);
             $prmt = $this->nullablePct($saved['prmt_pct'] ?? null);
+            $zeroSold = $this->nullablePct($saved['zero_sold_prmt'] ?? null);
             $cpn = $this->nullablePct($saved['cpn_pct'] ?? null);
 
             return response()->json([
@@ -641,6 +642,7 @@ class ChannelPromoPricingController extends Controller
                 'channel' => $channel,
                 'sku' => $sku,
                 'prmt_pct' => $prmt,
+                'zero_sold_prmt' => $zeroSold,
                 'cpn_pct' => $cpn,
                 'dsc' => $this->nullablePct($saved['dsc'] ?? null),
                 'appr' => (bool) ($saved['appr'] ?? false),
@@ -653,6 +655,7 @@ class ChannelPromoPricingController extends Controller
                     ? round((float) $saved['PUSH_STD_PRC_VALUE'], 2)
                     : null,
                 '_prmt_pct_applied' => is_numeric($prmt) ? (float) $prmt : 0,
+                '_zero_sold_prmt_applied' => is_numeric($zeroSold) ? (float) $zeroSold : 0,
                 '_cpn_pct_applied' => is_numeric($cpn) ? (float) $cpn : 0,
                 '_dsc_applied' => is_numeric($saved['dsc'] ?? null) ? (float) $saved['dsc'] : 0,
             ]);
@@ -782,7 +785,7 @@ class ChannelPromoPricingController extends Controller
      */
     private function defaultDilPrmtRules(string $channel = ''): array
     {
-        if ($channel === 'reverb') {
+        if (in_array($channel, ['reverb', 'macys', 'macy', 'bestbuy'], true)) {
             return [
                 ['key' => '0-sold-red', 'label' => '0 Sold · Red (<25%)', 'prmt' => 10],
                 ['key' => '0-sold-green', 'label' => '0 Sold · Green (25–50%)', 'prmt' => 8],

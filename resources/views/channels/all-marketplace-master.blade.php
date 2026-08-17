@@ -978,6 +978,42 @@
         var dotTrendsLoadedOnce = false;
         var DEFAULT_DOT_GRAY = '#6c757d';
 
+        function snapshotChannelKey(name) {
+            var k = (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            var aliases = {
+                ebay2: 'ebaytwo',
+                ebay3: 'ebaythree',
+                shopify: 'shopifyb2c',
+                tiktok: 'tiktokshop',
+                tiktok2: 'tiktokshop2',
+                bestbuy: 'bestbuyusa',
+                facebookmarketplace: 'fbmarketplace'
+            };
+            return aliases[k] || k;
+        }
+
+        // Same walk-back as /channel-metric-dot-trends: compare to the last different
+        // value, not yesterday. Sticky channels (Best Buy L30) stay green/red on a plateau.
+        function metricChartDotColors(values, isInverted) {
+            var gray = '#6c757d';
+            var green = '#28a745';
+            var red = '#dc3545';
+            var eps = 0.0001;
+            return values.map(function(v, i) {
+                if (i === 0) return gray;
+                var prev = null;
+                for (var j = i - 1; j >= 0; j--) {
+                    if (Math.abs(values[j] - v) > eps) {
+                        prev = values[j];
+                        break;
+                    }
+                }
+                if (prev === null) return gray;
+                if (isInverted) return v < prev ? green : red;
+                return v > prev ? green : red;
+            });
+        }
+
         // Toast notification helper
         function showToast(type, message) {
             const toast = $(`
@@ -3435,14 +3471,14 @@
                 ]
             });
 
-            // Initial load only: set column dot color from last-two values (same red/green/gray logic as chart).
+            // Initial load only: set column dot color from last different snapshot (same walk-back as chart).
             var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
             function loadMetricDotTrends(tableData) {
                 if (typeof lastDotColorByKey === 'undefined') return;
                 var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
                 var channelKeys = [];
                 for (var i = 0; i < data.length; i++) {
-                    var ch = (data[i]['Channel '] || data[i]['Channel'] || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+                    var ch = snapshotChannelKey(data[i]['Channel '] || data[i]['Channel'] || '');
                     if (ch) channelKeys.push(ch);
                 }
                 if (channelKeys.length === 0) return;
@@ -4277,7 +4313,7 @@
             // Dot colors: same as chart's last-data-point logic (red/green/gray). Set on page load only.
             var lastDotColorByKey = {};
             function getMetricDotColor(channelName, metricKey) {
-                var k = (channelName || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '') + '_' + (metricKey || '');
+                var k = snapshotChannelKey(channelName) + '_' + (metricKey || '');
                 return lastDotColorByKey[k] || DEFAULT_DOT_GRAY;
             }
             function saveDotColorsToStorage() {
@@ -4329,7 +4365,7 @@
             // Show Ad Breakdown Chart Modal
             function showAdBreakdownChart(channel, adType, metricType = 'spend') {
                 currentChartMode = 'ad';
-                currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
+                currentChartChannel = snapshotChannelKey(channel);
                 currentChartAdType = adType.toLowerCase();
                 currentChartMetric = metricType;
                 currentChartDays = 30; // ad reports: default rolling 30
@@ -4473,7 +4509,7 @@
             var currentCellValue = null;
             function showMetricChart(channel, metricKey, cellValue) {
                 currentChartMode = 'metric';
-                currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
+                currentChartChannel = snapshotChannelKey(channel);
                 currentMetricKey = metricKey;
                 currentChartMetric = metricKey; // for fmtVal formatting
                 // Trend chart default range — always opens at 30 days regardless of any other window.
@@ -4624,17 +4660,7 @@
                 // --- Dot colors: green=UP red=DOWN, but INVERTED for ACOS & TAcos % (lower is better) ---
                 const invertedMetrics = ['acos', 'ads_pct'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
-                const dotColors = values.map((v, i) => {
-                    if (i === 0) return '#6c757d';           // neutral for first point
-                    if (isInverted) {
-                        return v < values[i - 1] ? '#28a745' :   // green = lower (good for ACOS/TAcos %)
-                               v > values[i - 1] ? '#dc3545' :   // red   = higher (bad for ACOS/TAcos %)
-                               '#6c757d';
-                    }
-                    return v > values[i - 1] ? '#28a745' :   // green = higher than yesterday (UP)
-                           v < values[i - 1] ? '#dc3545' :   // red   = lower than yesterday (DOWN)
-                           '#6c757d';                         // neutral = same
-                });
+                const dotColors = metricChartDotColors(values, isInverted);
 
                 // --- Value label colors: positive = red, zero = green ---
                 const labelColors = values.map(v => v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d');

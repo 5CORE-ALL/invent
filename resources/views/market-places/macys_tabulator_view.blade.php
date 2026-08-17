@@ -70,7 +70,7 @@
             padding: 0 2px;
             cursor: pointer;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'macys'])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
     </style>
 @endsection
 
@@ -192,6 +192,7 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
 
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal" title="Upload Price">
                         <i class="fa fa-upload"></i> Prc
@@ -398,12 +399,12 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'macys'])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
 @endsection
 
 @section('script-bottom')
 <script>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys'])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
     const COLUMN_VIS_KEY = "macys_tabulator_column_visibility";
     let table = null;
     let allTableData = []; // Full dataset for ParentExpand

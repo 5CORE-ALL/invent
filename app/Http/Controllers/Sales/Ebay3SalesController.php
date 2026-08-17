@@ -7,6 +7,7 @@ use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\Ebay3DailyData;
 use App\Models\ProductMaster;
 use App\Models\ChannelMasterCalculatedData;
+use App\Services\EbayChannelMetricsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -20,26 +21,7 @@ class Ebay3SalesController extends Controller
         // skip CANCELED and FULLY_REFUNDED). Mirrors Amazon's / eBay's "Y Sales" badge.
         // ebay3_daily_data.creation_date is already stored in Pacific time.
         $tz = 'America/Los_Angeles';
-        $yesterday = \Carbon\Carbon::yesterday($tz)->toDateString();
-        $ySales = 0.0;
-        try {
-            $byOrder = [];
-            Ebay3DailyData::where('period', 'l30')->get()->each(function ($row) use (&$byOrder, $yesterday) {
-                if (($row->cancel_status ?? '') === 'CANCELED' || ($row->order_payment_status ?? '') === 'FULLY_REFUNDED') return;
-                $day = $row->creation_date ? \Carbon\Carbon::parse($row->creation_date)->format('Y-m-d') : null;
-                if ($day !== $yesterday) return;
-                $oid = $row->order_id;
-                if (!isset($byOrder[$oid])) {
-                    $byOrder[$oid] = ['total_price' => (float) ($row->total_price ?? 0), 'car' => 0.0];
-                }
-                $byOrder[$oid]['car'] += (float) ($row->ebay_collect_and_remit_tax ?? 0);
-            });
-            foreach ($byOrder as $v) {
-                $ySales += round($v['total_price'] + $v['car'], 2);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Ebay3 Y Sales failed: ' . $e->getMessage());
-        }
+        $ySales = (float) (EbayChannelMetricsService::computeYSales(3) ?? 0);
 
         // Ads% / TACOS + Total Ad Spend — same ChannelMasterCalculatedData values the
         // EbayThree Ads% column on /all-marketplace-master uses (channel key is "EbayThree").
