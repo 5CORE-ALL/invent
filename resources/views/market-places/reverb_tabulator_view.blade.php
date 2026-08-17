@@ -280,6 +280,13 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb'])
+        .sprice-lmp-alert {
+            color: #dc3545;
+            font-size: 11px;
+            line-height: 1;
+            margin-left: 4px;
+            cursor: help;
+        }
         #reverb-apply-std-price-btn {
             background: #0d6efd;
             border-color: #0d6efd;
@@ -764,13 +771,32 @@
                         </ul>
                     </div>
 
-                    {{-- Dil vs PRMT / CVR vs CPN / sprice ? --}}
+                    {{-- Dil vs PRMT / CVR vs CPN / > 0 Sprice Vs Dil Rule --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
 
-                    <button type="button" class="btn btn-sm flex-shrink-0" id="reverb-zero-sold-prc-rule-btn"
-                        title="0 Sold Dil% slabs → Target GROI% → suggest S PRC">
-                        <i class="fas fa-sliders-h"></i> 0 Sold Prc Rule
-                    </button>
+                    <div class="btn-group flex-shrink-0">
+                        <button type="button" class="btn btn-sm" id="reverb-zero-sold-prc-rule-btn"
+                            title="Apply 0 Sold Dil% → Target GROI% → S PRC on selected (or visible) 0 Sold rows">
+                            <i class="fas fa-sliders-h"></i> 0 Sold Prc Rule
+                        </button>
+                        <button type="button" class="btn btn-sm dropdown-toggle dropdown-toggle-split"
+                            data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Edit Dil% → Target GROI% rules">
+                            <span class="visually-hidden">0 Sold Prc options</span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <a class="dropdown-item" href="#" id="reverb-zero-sold-prc-rules-modal-btn">
+                                    <i class="fas fa-sliders-h me-1"></i> Dil vs Target GROI…
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" id="reverb-zero-sold-prc-apply-now-btn">
+                                    <i class="fas fa-magic me-1"></i> Apply 0 Sold Prc
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
 
                     <div class="btn-group flex-shrink-0">
                         <button type="button" class="btn btn-sm dropdown-toggle" id="reverb-s-bump-menu-btn"
@@ -845,7 +871,7 @@
 
             </div>
             <div class="card-body" style="padding: 0;">
-                <!-- Discount Input Box (shown when SKUs are selected) -->
+                <!-- Discount Input Box (shown when SKUs are selected) - ->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="fw-bold"></span>
@@ -1310,8 +1336,12 @@
      */
     function reverbComputePriceMetrics(price, rowData) {
         const p = parseFloat(price);
-        const lp = parseFloat(rowData && rowData['LP_productmaster']);
-        const ship = parseFloat(rowData && rowData['Ship_productmaster']) || 0;
+        const lpRaw = rowData && (rowData.LP_productmaster != null && rowData.LP_productmaster !== ''
+            ? rowData.LP_productmaster : rowData.LP);
+        const shipRaw = rowData && (rowData.Ship_productmaster != null && rowData.Ship_productmaster !== ''
+            ? rowData.Ship_productmaster : rowData.Ship);
+        const lp = parseFloat(lpRaw);
+        const ship = parseFloat(shipRaw) || 0;
         const margin = reverbTakeRate(rowData);
         const adsPct = parseFloat(REVERB_CHANNEL_ADS_PCT) || 0;
         if (!isFinite(p) || p <= 0) {
@@ -1329,6 +1359,30 @@
             nroi = ((grossPft - (p * adsPct / 100)) / lp) * 100;
         }
         return { gpft: gpft, groi: groi, npft: npft, nroi: nroi };
+    }
+
+    function reverbSpricePushSku(d) {
+        return String((d && (d['(Child) sku'] || d.sku)) || '').trim();
+    }
+    function reverbSpricePushIsChild(d) {
+        const sku = reverbSpricePushSku(d);
+        return !!(sku && String(sku).toUpperCase().indexOf('PARENT') === -1
+            && d && !d.is_parent_summary && !d.is_parent);
+    }
+    /** True when SPRICE should be sent to Reverb (not already pushed at this price). */
+    function reverbSpriceNeedsPush(d) {
+        const sprice = parseFloat(d && d.SPRICE);
+        if (!(sprice > 0)) return false;
+        const status = String((d && d.SPRICE_STATUS) || '');
+        if (status === 'processing') return false;
+        if (status === 'error') return true;
+        const last = parseFloat(d && d.SPRICE_PUSHED_VALUE);
+        const lastOk = isFinite(last) && last > 0;
+        if (lastOk && last.toFixed(2) === sprice.toFixed(2) && (status === 'pushed' || status === 'applied')) {
+            return false;
+        }
+        if (!lastOk && status === 'pushed') return false;
+        return true;
     }
 
     function reverbSpriceMetricPatch(sprice, rowData) {
@@ -2513,9 +2567,22 @@
         ];
         let reverbZeroSoldPrcRules = REVERB_ZERO_SOLD_PRC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
 
+        function reverbRowLp(d) {
+            const lp = parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.LP));
+            return (isFinite(lp) && lp > 0) ? lp : 0;
+        }
+        function reverbRowInv(d) {
+            if (typeof chPromoInv === 'function') return chPromoInv(d);
+            return parseFloat(d && d.INV) || 0;
+        }
+        function reverbRowSold(d) {
+            if (typeof chPromoReverbSoldQty === 'function') return chPromoReverbSoldQty(d);
+            return parseFloat(d && d['RV L30']) || 0;
+        }
         function reverbDilPct(d) {
-            const inv = parseFloat(d && d.INV) || 0;
-            const ovL30 = parseFloat(d && d.L30) || 0;
+            // Same as the Dil column: OV L30 ÷ INV × 100 (do not use stored RV Dil% ratio).
+            const inv = reverbRowInv(d);
+            const ovL30 = parseFloat(d && (d.L30 != null ? d.L30 : d['L30'])) || 0;
             if (inv <= 0) return 0;
             return (ovL30 / inv) * 100;
         }
@@ -2534,13 +2601,59 @@
             return isFinite(n) ? n : 0;
         }
         function reverbSpriceFromTargetGroi(rowData, groiPct) {
-            const lp = parseFloat(rowData && rowData['LP_productmaster']) || 0;
+            const lp = reverbRowLp(rowData);
             if (lp <= 0) return 0;
-            const ship = parseFloat(rowData && rowData['Ship_productmaster']) || 0;
+            const ship = parseFloat(rowData && (rowData.Ship_productmaster != null && rowData.Ship_productmaster !== ''
+                ? rowData.Ship_productmaster : rowData.Ship)) || 0;
             const margin = reverbTakeRate(rowData);
+            if (!(margin > 0)) return 0;
             const groi = isFinite(Number(groiPct)) ? Number(groiPct) : 0;
-            const price = (lp * (1 + groi / 100) + ship) / margin;
-            return (isFinite(price) && price > 0) ? +price.toFixed(2) : 0;
+            const targetRound = Math.round(groi);
+            let price = (lp * (1 + groi / 100) + ship) / margin;
+            if (!(isFinite(price) && price > 0)) return 0;
+            price = Math.round(price * 100) / 100;
+            const metricRow = Object.assign({}, rowData, {
+                LP_productmaster: lp,
+                Ship_productmaster: ship
+            });
+            const shownGroi = function(p) {
+                const m = reverbComputePriceMetrics(p, metricRow);
+                return (m.groi == null || !isFinite(m.groi)) ? null : Math.round(m.groi);
+            };
+            if (shownGroi(price) === targetRound) return price;
+            for (let delta = 1; delta <= 20; delta++) {
+                for (let sign = 1; sign >= -1; sign -= 2) {
+                    const p = Math.round((price + sign * delta * 0.01) * 100) / 100;
+                    if (p <= 0) continue;
+                    if (shownGroi(p) === targetRound) return p;
+                }
+            }
+            return price;
+        }
+        function reverbZeroSoldPrcSroiTitle(d, currentGroi) {
+            const sold = reverbRowSold(d);
+            const inv = reverbRowInv(d);
+            const lp = reverbRowLp(d);
+            const dil = reverbDilPct(d);
+            const target = reverbGroiForZeroSoldDil(dil);
+            const sprice = parseFloat(d && d.SPRICE) || 0;
+            const rulePrice = reverbSpriceFromTargetGroi(d, target);
+            const shown = (currentGroi == null || !isFinite(currentGroi)) ? null : Math.round(currentGroi);
+            const prmt = Math.max(0, Number(d && (d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied)) || 0);
+            if (sold > 0) {
+                return 'SGROI is from SPRICE. 0 Sold Prc Rule does not apply (RV L30 > 0).';
+            }
+            if (!(inv > 0) || !(lp > 0)) {
+                return '0 Sold Prc Rule needs RV L30 = 0, INV > 0, and LP > 0.';
+            }
+            if (shown === Math.round(target)) {
+                return '0 Sold Prc Rule: Dil ' + dil.toFixed(1) + '% → Target SGROI ' + Math.round(target) + '%.';
+            }
+            return '0 Sold Prc Rule: Dil ' + dil.toFixed(1) + '% (0–10% slab → ' + Math.round(target)
+                + '% SGROI) needs SPRICE $' + rulePrice.toFixed(2)
+                + '. Current ' + shown + '% is from SPRICE $' + sprice.toFixed(2)
+                + (prmt > 0 ? (' = Std × (1 − ' + prmt + '% PRMT)') : ' (PRMT/Std discount)')
+                + ', not the GROI price. Click 0 Sold Prc Rule to apply.';
         }
         function renderReverbZeroSoldPrcModalTable() {
             const $tb = $('#reverb-zero-sold-prc-tbody').empty();
@@ -2602,13 +2715,13 @@
         function collectReverbZeroSoldPrcTargets() {
             const collected = collectReverbSBumpTargets();
             const zeroSold = collected.targets.filter(function(job) {
-                const d = job.d || (job.row && job.row.getData()) || {};
-                const sold = parseFloat(d['RV L30']) || 0;
-                const inv = parseFloat(d.INV) || 0;
-                const lp = parseFloat(d['LP_productmaster']) || 0;
-                return sold === 0 && inv > 0 && lp > 0;
+                const d = (job.row && job.row.getData()) || job.d || {};
+                const sold = reverbRowSold(d);
+                const inv = reverbRowInv(d);
+                const lp = reverbRowLp(d);
+                return sold <= 0 && inv > 0 && lp > 0;
             });
-            return { targets: zeroSold, label: collected.label };
+            return { targets: zeroSold, label: collected.label, selectedCount: collected.targets.length };
         }
         function applyReverbZeroSoldPrcToTargets(targets, label) {
             if (!targets.length) {
@@ -2617,56 +2730,83 @@
             }
             const updates = [];
             let filled = 0;
+            let skipped = 0;
             targets.forEach(function(job) {
-                const d = job.d || (job.row && job.row.getData()) || {};
-                const sku = String(d['(Child) sku'] || '').trim();
-                if (!sku) return;
+                const d = (job.row && job.row.getData()) || job.d || {};
+                const sku = String(d['(Child) sku'] || d.sku || '').trim();
+                if (!sku) {
+                    skipped++;
+                    return;
+                }
                 const groi = reverbGroiForZeroSoldDil(reverbDilPct(d));
                 const newSprice = reverbSpriceFromTargetGroi(d, groi);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
+                if (!isFinite(newSprice) || newSprice <= 0) {
+                    skipped++;
+                    return;
+                }
                 try {
-                    job.row.update(Object.assign({
-                        SPRICE: newSprice,
-                        has_custom_sprice: true
-                    }, reverbSpriceMetricPatch(newSprice, d)));
-                    if (typeof job.row.reformat === 'function') job.row.reformat();
+                    if (job.row) {
+                        job.row.update(Object.assign({
+                            SPRICE: newSprice,
+                            has_custom_sprice: true,
+                            SPRICE_STATUS: 'applied',
+                            SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString(),
+                            ZERO_SOLD_PRC_APPLIED: true,
+                            ZERO_SOLD_PRC_GROI: groi
+                        }, reverbSpriceMetricPatch(newSprice, d)));
+                        if (typeof job.row.reformat === 'function') job.row.reformat();
+                    }
                 } catch (e) { /* ignore */ }
-                updates.push({ sku: sku, sprice: newSprice });
+                updates.push({ sku: sku, sprice: newSprice, status: 'applied', zero_sold_prc: 1, groi: groi });
                 filled++;
             });
             if (updates.length) {
                 saveSpriceUpdates(updates);
             }
-            showToast('0 Sold Prc Rule (' + label + '): S PRC from Target GROI → ' + filled + ' row(s)', 'success');
+            const note = skipped > 0 ? ' (' + skipped + ' skipped)' : '';
+            showToast('0 Sold Prc Rule (' + label + '): S PRC from Dil→Target SGROI → ' + filled + ' row(s)' + note, filled ? 'success' : 'warning');
             return filled;
         }
-        async function saveAndApplyReverbZeroSoldPrc() {
-            if (!$('#reverb-zero-sold-prc-tbody tr').length) {
-                await loadReverbZeroSoldPrcRules();
-            }
-            const collected = collectReverbZeroSoldPrcTargets();
-            const targets = collected.targets;
-            const label = collected.label;
-            if (!targets.length) {
-                showToast('No 0 Sold rows (RV L30 = 0, INV > 0, LP > 0) to price', 'error');
-                return;
-            }
-            if (label === 'all visible') {
-                if (!confirm('No rows selected — save rules and suggest S PRC on all ' + targets.length + ' visible 0 Sold row(s)?')) {
+        async function saveAndApplyReverbZeroSoldPrc(opts) {
+            opts = opts || {};
+            const $toolbar = $('#reverb-zero-sold-prc-rule-btn');
+            const $modalBtn = $('#reverb-zero-sold-prc-apply-btn');
+            const $busy = opts.fromToolbar ? $toolbar : $modalBtn;
+            const html = $busy.html();
+            $busy.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+            try {
+                if (opts.fromToolbar) {
+                    await loadReverbZeroSoldPrcRules();
+                } else {
+                    if (!$('#reverb-zero-sold-prc-tbody tr').length) {
+                        await loadReverbZeroSoldPrcRules();
+                    }
+                    await saveReverbZeroSoldPrcRules();
+                }
+                const collected = collectReverbZeroSoldPrcTargets();
+                const targets = collected.targets;
+                const label = collected.label;
+                if (!targets.length) {
+                    if (collected.selectedCount > 0) {
+                        showToast('Selected rows are not 0 Sold (need RV L30 = 0, INV > 0, LP > 0)', 'error');
+                    } else {
+                        showToast('No 0 Sold rows (RV L30 = 0, INV > 0, LP > 0) to price', 'error');
+                    }
                     return;
                 }
-            }
-            const $btn = $('#reverb-zero-sold-prc-apply-btn');
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
-            try {
-                await saveReverbZeroSoldPrcRules();
+                if (label === 'all visible' && !opts.skipConfirm) {
+                    if (!confirm('No rows selected — apply 0 Sold Prc rules to all ' + targets.length + ' visible 0 Sold row(s)?')) {
+                        return;
+                    }
+                }
                 applyReverbZeroSoldPrcToTargets(targets, label);
-                $('#reverbZeroSoldPrcModal').modal('hide');
+                if (!opts.fromToolbar) {
+                    $('#reverbZeroSoldPrcModal').modal('hide');
+                }
             } catch (xhr) {
                 showToast('0 Sold Prc apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'), 'error');
             } finally {
-                $btn.prop('disabled', false).html(html);
+                $busy.prop('disabled', false).html(html);
             }
         }
 
@@ -4090,6 +4230,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
+                    headerTooltip: "Suggested price. Red triangle when SPRICE > LMP.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -4101,21 +4242,29 @@
                         const rowData = cell.getRow().getData();
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
+                        const lmp = parseFloat(rowData.lmp_price) || 0;
+                        const overLmp = value > 0 && lmp > 0 && value > lmp;
                         
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
                         else if (status === 'applied') bgColor = 'background-color: #d4edda;';
                         else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
+
+                        const alertHtml = overLmp
+                            ? `<i class="fas fa-exclamation-triangle sprice-lmp-alert" title="SPRICE $${value.toFixed(2)} &gt; LMP $${lmp.toFixed(2)}"></i>`
+                            : '';
+                        const priceColor = overLmp ? 'color:#dc3545;' : '';
                         
-                        return `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">$${value.toFixed(2)}</span>`;
+                        return `<span style="font-weight: 600; ${priceColor} ${bgColor} padding: 2px 6px; border-radius: 3px; display:inline-flex; align-items:center; justify-content:center;">$${value.toFixed(2)}${alertHtml}</span>`;
                     },
-                    width: 80
+                    width: 96
                 },
                 {
                     title: "Sroi",
                     field: "SROI",
                     hozAlign: "center",
+                    headerTooltip: "SGROI from SPRICE. 0 Sold Prc Rule Dil 0–10% → 40% SGROI (hover a cell for the row reason).",
                     sorter: function(a, b, aRow, bRow) {
                         const aVal = reverbComputeSroi(aRow.getData());
                         const bVal = reverbComputeSroi(bRow.getData());
@@ -4123,10 +4272,14 @@
                              - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
                     },
                     formatter: function(cell) {
-                        // Same calculate-data as GROI% / ROI%, using SPRICE
-                        const percent = reverbComputeSroi(cell.getRow().getData());
+                        const d = cell.getRow().getData();
+                        const percent = reverbComputeSroi(d);
                         if (percent === null || !isFinite(percent)) return '';
-                        return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
+                        const tip = (typeof reverbZeroSoldPrcSroiTitle === 'function')
+                            ? reverbZeroSoldPrcSroiTitle(d, percent)
+                            : '';
+                        const title = tip ? (' title="' + escapeHtmlAttr(tip) + '"') : '';
+                        return `<span${title} style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -4189,59 +4342,80 @@
                     title: "Push",
                     field: "push_price",
                     hozAlign: "center",
+                    vertAlign: "middle",
                     headerSort: false,
                     width: 55,
-                    // Amazon/eBay icon states: ✓ ready, ✓✓ pushed/applied, ✕ error
+                    headerTooltip: "Push SPRICE to Reverb. Blank when already pushed. Click header to push all visible rows that still need it.",
+                    titleFormatter: function() {
+                        return '<button type="button" class="btn btn-sm p-0 reverb-push-sprice-header-btn" '
+                            + 'title="Push SPRICE for all visible rows that are not already pushed" '
+                            + 'style="border:none;background:none;cursor:pointer;color:#000;'
+                            + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
+                            + 'Push</button>';
+                    },
+                    headerClick: function(e) {
+                        if (e.target.closest('.reverb-push-sprice-header-btn')) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (typeof queueReverbPushSprice === 'function') queueReverbPushSprice();
+                            return false;
+                        }
+                    },
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sku = rowData['(Child) sku'];
+                        const rowData = cell.getRow().getData() || {};
+                        const sku = reverbSpricePushSku(rowData);
+                        if (!reverbSpricePushIsChild(rowData)) return '';
                         const sprice = parseFloat(rowData.SPRICE || 0);
-                        const status = rowData.SPRICE_STATUS || null;
+                        if (!(sprice > 0)) return '';
+                        const status = String(rowData.SPRICE_STATUS || '');
                         const pushedValue = rowData.SPRICE_PUSHED_VALUE;
                         const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT;
                         const pushedBy = rowData.SPRICE_PUSHED_BY;
 
-                        if (!sku || !sprice || sprice <= 0) {
-                            return '<span style="color:#999;">N/A</span>';
-                        }
-
-                        let icon = '<i class="fas fa-check"></i>';
-                        let iconColor = '#28a745';
-                        let titleText = `Push $${sprice.toFixed(2)} to Reverb`;
-
                         if (status === 'processing') {
-                            icon = '<i class="fas fa-spinner fa-spin"></i>';
-                            iconColor = '#ffc107';
-                            titleText = 'Price pushing in progress...';
-                        } else if (status === 'pushed') {
-                            icon = '<i class="fa-solid fa-check-double"></i>';
-                            iconColor = '#28a745';
-                            titleText = 'Price pushed to Reverb (Double-click to mark as Applied)';
-                        } else if (status === 'applied') {
-                            icon = '<i class="fa-solid fa-check-double"></i>';
-                            iconColor = '#28a745';
-                            titleText = 'Price applied to Reverb';
-                        } else if (status === 'error') {
-                            icon = '<i class="fa-solid fa-x"></i>';
-                            iconColor = '#dc3545';
-                            titleText = 'Error pushing price to Reverb — click to retry';
+                            return '<button type="button" class="btn btn-sm p-0 reverb-push-price-btn" disabled '
+                                + 'title="Price pushing in progress…" '
+                                + 'style="border:none;background:none;color:#ffc107;padding:0;cursor:default;">'
+                                + '<i class="fas fa-spinner fa-spin"></i></button>';
+                        }
+                        if (status === 'error') {
+                            const tip = 'Last push failed — click to retry $' + sprice.toFixed(2);
+                            return '<button type="button" class="btn btn-sm p-0 reverb-push-price-btn" '
+                                + 'data-sku="' + sku.replace(/"/g, '&quot;') + '" '
+                                + 'data-price="' + sprice + '" data-status="error" '
+                                + 'title="' + tip.replace(/"/g, '&quot;') + '" '
+                                + 'style="border:none;background:none;color:#dc3545;padding:0;cursor:pointer;">'
+                                + '<i class="fa-solid fa-xmark"></i></button>';
+                        }
+                        if (!reverbSpriceNeedsPush(rowData)) {
+                            return '';
                         }
 
-                        const tipParts = [titleText];
-                        if (pushedValue !== null && pushedValue !== undefined) {
-                            tipParts.push(`Last: $${parseFloat(pushedValue).toFixed(2)}`);
+                        let titleText = 'Push $' + sprice.toFixed(2) + ' to Reverb';
+                        if (pushedValue !== null && pushedValue !== undefined && parseFloat(pushedValue) > 0) {
+                            titleText += ' | Last: $' + parseFloat(pushedValue).toFixed(2);
                         }
-                        if (updatedAt) tipParts.push(updatedAt);
-                        if (pushedBy) tipParts.push(`by ${pushedBy}`);
+                        if (updatedAt) titleText += ' | ' + updatedAt;
+                        if (pushedBy) titleText += ' | by ' + pushedBy;
 
-                        return `<button type="button" class="btn btn-sm reverb-push-price-btn btn-circle"
-                            data-sku="${String(sku).replace(/"/g, '&quot;')}"
-                            data-price="${sprice}"
-                            data-status="${status || ''}"
-                            title="${tipParts.join(' | ').replace(/"/g, '&quot;')}"
-                            style="border:none;background:none;color:${iconColor};padding:0;cursor:pointer;font-size:16px;">
-                            ${icon}
-                        </button>`;
+                        return '<button type="button" class="btn btn-sm p-0 reverb-push-price-btn" '
+                            + 'data-sku="' + sku.replace(/"/g, '&quot;') + '" '
+                            + 'data-price="' + sprice + '" data-status="' + (status || '') + '" '
+                            + 'title="' + titleText.replace(/"/g, '&quot;') + '" '
+                            + 'style="border:none;background:none;color:#fd7e14;padding:0;cursor:pointer;">'
+                            + '<i class="fas fa-upload"></i></button>';
+                    },
+                    cellClick: function(e, cell) {
+                        const btn = e.target.closest('.reverb-push-price-btn');
+                        if (!btn || btn.disabled) return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const d = cell.getRow().getData() || {};
+                        if (String(d.SPRICE_STATUS || '') === 'processing') return false;
+                        if (typeof queueReverbPushSprice === 'function') {
+                            queueReverbPushSprice(cell.getRow());
+                        }
+                        return false;
                     }
                 }
             ]
@@ -4414,6 +4588,14 @@
 
         $('#reverb-zero-sold-prc-rule-btn').on('click', function(e) {
             e.preventDefault();
+            saveAndApplyReverbZeroSoldPrc({ fromToolbar: true });
+        });
+        $('#reverb-zero-sold-prc-apply-now-btn').on('click', function(e) {
+            e.preventDefault();
+            saveAndApplyReverbZeroSoldPrc({ fromToolbar: true });
+        });
+        $('#reverb-zero-sold-prc-rules-modal-btn').on('click', function(e) {
+            e.preventDefault();
             loadReverbZeroSoldPrcRules();
             $('#reverbZeroSoldPrcModal').modal('show');
         });
@@ -4502,75 +4684,70 @@
             });
         }
 
-        // Single-row push: ✓ / ✓✓ / ✕  (Amazon/eBay pattern)
-        // Short delay so dblclick (pushed → applied) does not also fire a re-push.
-        let reverbPushClickTimer = null;
-        $(document).on('click', '.reverb-push-price-btn', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
+        function collectReverbSpricePushTargets(singleRow) {
+            if (singleRow && typeof singleRow.getData === 'function') {
+                const d = singleRow.getData() || {};
+                return reverbSpricePushIsChild(d) ? [{ row: singleRow, d: d }] : [];
+            }
+            if (typeof collectChPromoVisibleRows === 'function') {
+                return collectChPromoVisibleRows();
+            }
+            if (!table) return [];
+            const out = [];
+            (table.getRows('active') || []).forEach(function(row) {
+                const d = row.getData() || {};
+                if (reverbSpricePushIsChild(d)) out.push({ row: row, d: d });
+            });
+            return out;
+        }
 
-            const $btn = $(this);
-            const currentStatus = $btn.attr('data-status') || '';
-            const sku = $btn.attr('data-sku') || $btn.data('sku');
-
-            // Double-click → mark Applied (Amazon/eBay)
-            if (e.originalEvent && e.originalEvent.detail === 2) {
-                if (reverbPushClickTimer) {
-                    clearTimeout(reverbPushClickTimer);
-                    reverbPushClickTimer = null;
-                }
-                if (currentStatus !== 'pushed' || !sku) return;
-
-                $.ajax({
-                    url: '/reverb-update-sprice-status',
-                    method: 'POST',
-                    data: { sku: sku, status: 'applied', _token: csrfToken() },
-                    success: function(response) {
-                        if (response && response.success) {
-                            const $rowEl = $btn.closest('.tabulator-row');
-                            const row = table.getRow($rowEl[0]);
-                            if (row) {
-                                row.update({
-                                    SPRICE_STATUS: 'applied',
-                                    SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString()
-                                }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
-                            }
-                            showToast('Status updated to Applied', 'success');
-                        }
-                    },
-                    error: function() {
-                        showToast('Failed to update status', 'error');
-                    }
-                });
+        async function queueReverbPushSprice(singleRow) {
+            const all = collectReverbSpricePushTargets(singleRow || null);
+            const forceOne = !!singleRow;
+            const jobs = [];
+            all.forEach(function(t) {
+                const d = (t.row && t.row.getData()) || t.d || {};
+                const sku = reverbSpricePushSku(d);
+                const price = parseFloat(d.SPRICE || 0);
+                if (!sku || !(price > 0)) return;
+                if (!forceOne && !reverbSpriceNeedsPush(d)) return;
+                if (String(d.SPRICE_STATUS || '') === 'processing') return;
+                jobs.push({ row: t.row, sku: sku, price: price });
+            });
+            if (!jobs.length) {
+                showToast(singleRow
+                    ? 'Set a valid SPRICE (> 0) before pushing'
+                    : 'No visible rows need a price push (already pushed or no SPRICE)', 'info');
                 return;
             }
-
-            if (currentStatus === 'processing' || $btn.prop('disabled')) return;
-
-            if (reverbPushClickTimer) clearTimeout(reverbPushClickTimer);
-            reverbPushClickTimer = setTimeout(function() {
-                reverbPushClickTimer = null;
-                const $rowEl = $btn.closest('.tabulator-row');
-                const row = table.getRow($rowEl[0]);
-                if (!row) return;
-                const price = parseFloat(row.getData().SPRICE || $btn.attr('data-price') || 0);
-
-                if (!sku || !price || price <= 0) {
-                    showToast('Set a valid SPRICE (> 0) before pushing', 'error');
-                    return;
-                }
-
-                $btn.prop('disabled', true);
-                pushReverbPriceForRow(row, sku, price).then(function(result) {
-                    $btn.prop('disabled', false);
-                    if (result.ok) {
-                        showToast(result.message || `Price pushed to Reverb for ${sku}`, 'success');
-                    } else {
-                        showToast(result.message || `Failed to push ${sku}`, 'error');
-                    }
-                });
-            }, 280);
-        });
+            if (!singleRow && !confirm('Push ' + jobs.length + ' price(s) to Reverb?')) {
+                return;
+            }
+            let okCount = 0;
+            let failCount = 0;
+            const concurrency = 5;
+            let idx = 0;
+            async function runNext() {
+                if (idx >= jobs.length) return;
+                const job = jobs[idx++];
+                const result = await pushReverbPriceForRow(job.row, job.sku, job.price);
+                if (result.ok) okCount++; else failCount++;
+                await runNext();
+            }
+            await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, function() { return runNext(); }));
+            if (singleRow) {
+                const resultOk = failCount === 0;
+                showToast(resultOk
+                    ? (jobs[0] && ('Price pushed to Reverb for ' + jobs[0].sku))
+                    : ('Failed to push ' + (jobs[0] && jobs[0].sku)), resultOk ? 'success' : 'error');
+            } else if (failCount === 0) {
+                showToast('Pushed ' + okCount + ' price(s) to Reverb', 'success');
+            } else {
+                showToast('Pushed ' + okCount + ', failed ' + failCount, failCount === jobs.length ? 'error' : 'warning');
+            }
+            if (typeof updateSummary === 'function') updateSummary();
+        }
+        window.queueReverbPushSprice = queueReverbPushSprice;
 
         // Bulk Push Prices for selected SKUs (Amazon-style — toolbar + Bulk Mode bar)
         async function executeBulkPushReverb($triggerBtn) {

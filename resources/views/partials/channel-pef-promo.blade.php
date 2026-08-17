@@ -10,6 +10,7 @@
     $channelPromoChannel = $channelPromoChannel ?? 'ebay1';
     $channelPromoHideCvrCpn = !empty($channelPromoHideCvrCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
+    $channelPromoShowGt0SoldRules = !empty($channelPromoShowGt0SoldRules);
 @endphp
 
 @if($channelPromoPart === 'css' || $channelPromoPart === 'all')
@@ -46,6 +47,7 @@
         }
         #ch-promo-dil-prmt-table .ch-promo-dil-prmt-input,
         #ch-promo-zero-sold-prmt-table .ch-promo-dil-prmt-input,
+        #ch-promo-gt0-sold-prc-table .ch-promo-gt0-sold-pct-input,
         #ch-promo-cvr-cpn-table .ch-promo-cvr-cpn-input,
         #ch-promo-prmt-menu-btn {
             background: #198754;
@@ -65,6 +67,17 @@
         #ch-promo-zero-sold-menu-btn {
             background: #198754;
             border-color: #198754;
+            color: #fff;
+        }
+        #ch-promo-gt0-sold-rule-btn {
+            background: #0f766e;
+            border-color: #0f766e;
+            color: #fff;
+        }
+        #ch-promo-gt0-sold-rule-btn:hover,
+        #ch-promo-gt0-sold-rule-btn:focus {
+            background: #0d5f59;
+            border-color: #0c534e;
             color: #fff;
         }
         #ch-promo-cpn-menu-btn {
@@ -262,6 +275,12 @@
                         </ul>
                     </div>
                     @endif
+                    @if($channelPromoShowGt0SoldRules)
+                    <button type="button" class="btn btn-sm" id="ch-promo-gt0-sold-rule-btn"
+                        title=">0 Sold Dil color rules — add % to Std Prc, then Apply or Push Price">
+                        <i class="fas fa-sliders-h"></i> &gt;0 Sold Rule
+                    </button>
+                    @endif
                     @unless($channelPromoHideCvrCpn)
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm dropdown-toggle" id="ch-promo-cpn-menu-btn"
@@ -284,8 +303,8 @@
                     </div>
                     @endunless
                     <button type="button" class="btn btn-sm" id="ch-promo-sprice-recalc-btn"
-                        title="Clear S PRC, then refill using Push Prc formula (Std − PRMT%) — no marketplace push. Skips INV = 0. Selected SKUs if checked; otherwise all visible.">
-                        sprice ?
+                        title="{{ $channelPromoChannel === 'reverb' ? 'Apply Dil vs PRMT S PRC for SKUs with RV L30 > 0 (first slab 0.1–20%). Selected if checked; otherwise all visible. No marketplace push. Skips INV = 0.' : 'Clear S PRC, then refill using Push Prc formula (Std − PRMT%) — no marketplace push. Skips INV = 0. Selected SKUs if checked; otherwise all visible.' }}">
+                        {{ $channelPromoChannel === 'reverb' ? '> 0 Sprice Vs Dil Rule' : 'sprice ?' }}
                     </button>
                     <div id="ch-promo-push-prc-progress" aria-live="polite" title="Push progress">
                         <div class="ch-promo-push-prc-progress-head">
@@ -426,6 +445,60 @@
         </div>
     </div>
     @endif
+
+    @if($channelPromoShowGt0SoldRules)
+    <div class="modal fade" id="chPromoGt0SoldPrcModal" tabindex="-1" aria-labelledby="chPromoGt0SoldPrcModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="chPromoGt0SoldPrcModalLabel">
+                        <i class="fas fa-sliders-h me-1"></i> &gt;0 Sold Rule
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2" id="ch-promo-gt0-sold-prc-help">
+                        Rules for <strong>&gt;0 Sold</strong> only, by Dil color:
+                        <strong style="color:#a00211;">Red Dil &lt;25%</strong>,
+                        <strong style="color:#28a745;">Green Dil 25–50%</strong>,
+                        <strong style="color:#e83e8c;">Pink Dil 50%+</strong>.
+                        <strong>Rule %</strong> is added to <strong>Std Prc</strong>:
+                        <code>S PRC = Std × (1 + Rule%/100)</code>.
+                        <strong>Save Rule</strong> stores the percents.
+                        <strong>Apply</strong> writes S PRC (no marketplace push).
+                        <strong>Push</strong> applies then pushes price.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="ch-promo-gt0-sold-prc-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">Dil Color</th>
+                                    <th style="width:45%;" class="text-end">Rule %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ch-promo-gt0-sold-prc-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="ch-promo-gt0-sold-prc-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="ch-promo-gt0-sold-prc-save-btn"
+                        title="Save Dil color → Rule % only">
+                        Save Rule
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="ch-promo-gt0-sold-prc-apply-btn"
+                        title="Save rules and set S PRC = Std + Rule% on >0 Sold rows">
+                        Apply
+                    </button>
+                    <button type="button" class="btn btn-sm btn-warning" id="ch-promo-gt0-sold-prc-push-btn"
+                        title="Save rules, apply S PRC, then push price to the marketplace">
+                        <i class="fas fa-upload me-1"></i> Push
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 @endif
 
 @if($channelPromoPart === 'script' || $channelPromoPart === 'all')
@@ -434,6 +507,7 @@
         const CHANNEL_PROMO_CHANNEL = @json($channelPromoChannel ?? 'ebay1');
         const CHANNEL_PROMO_HIDE_CVR_CPN = @json($channelPromoHideCvrCpn);
         const CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES = @json($channelPromoShowZeroSoldRules);
+        const CHANNEL_PROMO_SHOW_GT0_SOLD_RULES = @json($channelPromoShowGt0SoldRules);
         const CHANNEL_PROMO_CFG = {
             ebay1: {
                 label: 'eBay',
@@ -1749,7 +1823,7 @@
             { key: '0-sold-pink', label: '0 Sold · Pink (50%+)', prmt: 3 },
         ];
         const CH_PEF_DIL_PRMT_DEFAULTS_REVERB_SLABS = [
-            { key: '0-20', label: '0–20%', prmt: 10 },
+            { key: '0-20', label: CHANNEL_PROMO_CHANNEL === 'reverb' ? '0.1–20%' : '0–20%', prmt: 10 },
             { key: '20-40', label: '20–40%', prmt: 8 },
             { key: '40-60', label: '40–60%', prmt: 5 },
             { key: '60-80', label: '60–80%', prmt: 3 },
@@ -1780,8 +1854,14 @@
             { key: 'gt-7', label: '> 7%', cpn: 0 },
         ];
 
+        const CH_PEF_GT0_SOLD_PRC_DEFAULTS = [
+            { key: 'gt0-sold-red', label: 'Red Dil (<25%)', pct: 5 },
+            { key: 'gt0-sold-green', label: 'Green Dil (25–50%)', pct: 3 },
+            { key: 'gt0-sold-pink', label: 'Pink Dil (50%+)', pct: 1 },
+        ];
         let chPromoDilPrmtRules = CH_PEF_DIL_PRMT_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chPromoCvrCpnRules = CH_PEF_CVR_CPN_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        let chPromoGt0SoldPrcRules = CH_PEF_GT0_SOLD_PRC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chPromoPushPrcCancel = false;
         let chPromoPushPrcPollTimer = null;
         let chPromoPushPrcLastToastKey = '';
@@ -2152,6 +2232,10 @@
             return Math.max(0, Number(d && (d.zero_sold_prmt != null && d.zero_sold_prmt !== ''
                 ? d.zero_sold_prmt : d._zero_sold_prmt_applied)) || 0);
         }
+        function chPromoKeepZeroSoldPrcSprice(d) {
+            return !!(d && (d.ZERO_SOLD_PRC_APPLIED === true || d.ZERO_SOLD_PRC_APPLIED === 1
+                || d.ZERO_SOLD_PRC_APPLIED === '1' || d.ZERO_SOLD_PRC_APPLIED === 'true'));
+        }
         function chPromoReverbSpriceFromStdBothPrmt(d, overrides) {
             const std = chPromoStdBase(d);
             if (!(std > 0)) return null;
@@ -2226,8 +2310,9 @@
             });
         }
 
-        function saveChannelSprice(sku, sprice, silent) {
+        function saveChannelSprice(sku, sprice, silent, opts) {
             const val = chPromoRound2(sprice);
+            opts = opts || {};
             if (!sku || !chPromoCfg.saveSpriceUrl) {
                 return $.Deferred().reject().promise();
             }
@@ -2237,6 +2322,7 @@
             } else {
                 data = { sku: sku, sprice: val, _token: chPromoCsrf() };
             }
+            if (opts.skipPush) data.skip_push = 1;
             return $.ajax({
                 url: chPromoCfg.saveSpriceUrl,
                 method: 'POST',
@@ -2455,13 +2541,17 @@
 
         function chPromoDilSlabKey(dil) {
             const n = Number(dil);
-            if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
-                if (!isFinite(n) || n < 0) return '0-20';
+            if (CH_PEF_USES_REVERB_SLABS) {
+                if (!isFinite(n) || n < 0) {
+                    return CHANNEL_PROMO_CHANNEL === 'reverb' ? 'lt-0.1' : '0-20';
+                }
                 if (n > 100) return 'gt-100';
                 if (n >= 80) return '80-100';
                 if (n >= 60) return '60-80';
                 if (n >= 40) return '40-60';
                 if (n >= 20) return '20-40';
+                // Reverb first slab starts at 0.1% — Dil 0% does not get PRMT.
+                if (CHANNEL_PROMO_CHANNEL === 'reverb' && n < 0.1) return 'lt-0.1';
                 return '0-20';
             }
             if (!isFinite(n) || n < 0) return '0-10';
@@ -2519,6 +2609,7 @@
         function chPromoPrmtForRow(d) {
             if (chPromoInv(d) === 0) return 0;
             if (chPromoIsZeroSoldRow(d)) return chPromoPrmtForZeroSoldRow(d);
+            if (CHANNEL_PROMO_CHANNEL === 'reverb' && chPromoReverbSoldQty(d) <= 0) return 0;
             return chPromoPrmtForDil(chPromoDil(d));
         }
         function chPromoCvrSlabKey(cvr) {
@@ -2620,7 +2711,7 @@
                 const defaultMsg = CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES
                     ? 'Using first-time defaults. Apply to save & apply.'
                     : (CHANNEL_PROMO_CHANNEL === 'reverb'
-                        ? 'Using first-time defaults (0–20). Apply to save & apply.'
+                        ? 'Using first-time defaults (0.1–20). Apply to save & apply.'
                         : 'Using first-time defaults (0–10). Apply to save & apply.');
                 $('#ch-promo-dil-prmt-status').text(res && res.is_default
                     ? defaultMsg
@@ -2652,6 +2743,225 @@
                 $('#ch-promo-zero-sold-prmt-status').text('Saved.');
                 return res;
             });
+        }
+
+        function chPromoGt0SoldPctForBand(band) {
+            const key = 'gt0-sold-' + String(band || '');
+            const rule = chPromoGt0SoldPrcRules.find(function(r) { return r.key === key; });
+            const n = Number(rule && rule.pct);
+            return isFinite(n) ? n : 0;
+        }
+        function chPromoGt0SoldPctForRow(d) {
+            if (chPromoInv(d) === 0) return 0;
+            if (chPromoReverbSoldQty(d) <= 0) return 0;
+            return chPromoGt0SoldPctForBand(chPromoDilColorBand(chPromoDil(d)));
+        }
+        function chPromoGt0SoldSprice(d, pct) {
+            const std = chPromoStdBase(d);
+            if (!(std > 0)) return 0;
+            return chPromoRound2(std * (1 + (Number(pct) || 0) / 100));
+        }
+        function chPromoGt0SoldMetricsPatch(d, newSprice) {
+            const lp = Number(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp)) || 0;
+            const ship = Number(d && (d.Ship_productmaster != null ? d.Ship_productmaster : d.ship)) || 0;
+            let margin = 0.80;
+            if (typeof getMacysMargin === 'function') {
+                margin = getMacysMargin(d);
+            } else {
+                const p = Number(d && d.percentage);
+                if (isFinite(p) && p > 0) margin = p > 1 ? p / 100 : p;
+                else if (typeof MACYS_DEFAULT_MARGIN !== 'undefined') margin = MACYS_DEFAULT_MARGIN;
+            }
+            const sgpft = newSprice > 0
+                ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 10000) / 100
+                : 0;
+            const sroi = lp > 0
+                ? Math.round(((newSprice * margin - lp - ship) / lp) * 10000) / 100
+                : 0;
+            return Object.assign(chPromoSpricePatch(newSprice), {
+                SGPFT: sgpft,
+                SPFT: sgpft,
+                SROI: sroi,
+                has_custom_sprice: true,
+            });
+        }
+        function renderChPromoGt0SoldPrcModalTable() {
+            const $tb = $('#ch-promo-gt0-sold-prc-tbody').empty();
+            if (!$tb.length) return;
+            const soldColor = {
+                'gt0-sold-red': '#a00211',
+                'gt0-sold-green': '#28a745',
+                'gt0-sold-pink': '#e83e8c',
+            };
+            chPromoGt0SoldPrcRules.forEach(function(r) {
+                const pct = isFinite(Number(r.pct)) ? Number(r.pct) : 0;
+                const hex = soldColor[r.key] || '#212529';
+                $tb.append(
+                    '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                    + '<td><span style="color:' + hex + ';font-weight:600;">' + String(r.label || r.key) + '</span></td>'
+                    + '<td class="text-end">'
+                    + '<input type="number" class="form-control form-control-sm ch-promo-gt0-sold-pct-input" '
+                    + 'step="0.1" value="' + pct + '">'
+                    + '</td></tr>'
+                );
+            });
+        }
+        function readChPromoGt0SoldPrcRulesFromModal() {
+            $('#ch-promo-gt0-sold-prc-tbody tr').each(function() {
+                const key = String($(this).attr('data-key') || '');
+                const val = parseFloat($(this).find('.ch-promo-gt0-sold-pct-input').val());
+                const rule = chPromoGt0SoldPrcRules.find(function(r) { return r.key === key; });
+                if (!rule) return;
+                rule.pct = isFinite(val) ? val : 0;
+            });
+            return chPromoGt0SoldPrcRules.map(function(r) {
+                return { key: r.key, label: r.label, pct: Number(r.pct) || 0 };
+            });
+        }
+        async function loadChPromoGt0SoldPrcRules() {
+            $('#ch-promo-gt0-sold-prc-status').text('Loading…');
+            try {
+                const res = await $.ajax({
+                    url: CH_PROMO_RULES_BASE + '/gt0-sold-prc',
+                    method: 'GET',
+                    dataType: 'json',
+                });
+                if (res && Array.isArray(res.rules) && res.rules.length) {
+                    chPromoGt0SoldPrcRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                }
+                renderChPromoGt0SoldPrcModalTable();
+                $('#ch-promo-gt0-sold-prc-status').text(res && res.is_default
+                    ? 'Using first-time defaults. Save Rule to keep them, or Apply to save & set S PRC.'
+                    : 'Loaded saved >0 Sold Dil color rules.');
+            } catch (e) {
+                renderChPromoGt0SoldPrcModalTable();
+                $('#ch-promo-gt0-sold-prc-status').text('Could not load saved rules — showing defaults.');
+            }
+        }
+        function saveChPromoGt0SoldPrcRules() {
+            const rules = readChPromoGt0SoldPrcRulesFromModal();
+            return $.ajax({
+                url: CH_PROMO_RULES_BASE + '/gt0-sold-prc',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
+                data: { rules: rules, _token: chPromoCsrf() },
+            }).then(function(res) {
+                if (res && Array.isArray(res.rules)) {
+                    chPromoGt0SoldPrcRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                    renderChPromoGt0SoldPrcModalTable();
+                }
+                $('#ch-promo-gt0-sold-prc-status').text('Saved.');
+                return res;
+            });
+        }
+        function collectChPromoGt0SoldTargets() {
+            const soldLabel = chPromoSoldFieldLabel();
+            const selected = collectChPromoSelectedRows();
+            let targets = selected;
+            let label = 'selected';
+            const matchRow = function(item) {
+                const d = item.row.getData();
+                return chPromoReverbSoldQty(d) > 0 && chPromoInv(d) > 0 && chPromoStdBase(d) > 0;
+            };
+            if (selected.length) {
+                targets = selected.filter(matchRow);
+                if (!targets.length) {
+                    return {
+                        error: 'Selected rows are not >0 Sold (need ' + soldLabel + ' > 0, INV > 0, and Std Prc > 0)',
+                    };
+                }
+            } else {
+                targets = collectChPromoVisibleRows().filter(matchRow);
+                label = 'all visible';
+                if (!targets.length) {
+                    return {
+                        error: 'No >0 Sold rows (' + soldLabel + ' > 0, INV > 0, Std Prc > 0) to price',
+                    };
+                }
+            }
+            return { targets: targets, label: label, soldLabel: soldLabel, selectedCount: selected.length };
+        }
+        function chPromoSaveGt0SoldSpriceBatch(updates, skipPush) {
+            if (CHANNEL_PROMO_CHANNEL === 'macys' || CHANNEL_PROMO_CHANNEL === 'macy') {
+                return $.ajax({
+                    url: '/macys-save-sprice-batch',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
+                    data: {
+                        updates: updates,
+                        skip_push: skipPush ? 1 : 0,
+                        _token: chPromoCsrf(),
+                    },
+                });
+            }
+            return chPromoMapLimit(updates, 8, function(item) {
+                return saveChannelSprice(item.sku, item.sprice, true, { skipPush: skipPush });
+            });
+        }
+        async function applyChPromoGt0SoldPrcToTargets(targets, label, opts) {
+            opts = opts || {};
+            readChPromoGt0SoldPrcRulesFromModal();
+            if (!targets.length) {
+                chPromoToast('error', 'No >0 Sold rows to apply');
+                return { filled: 0, updates: [] };
+            }
+            const updates = [];
+            let filled = 0;
+            let skipped = 0;
+            const blocked = typeof table !== 'undefined' && table && typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                for (let i = 0; i < targets.length; i++) {
+                    const item = targets[i];
+                    const d = item.row.getData();
+                    if (!chPromoIsChildRow(d)) { skipped++; continue; }
+                    const pct = chPromoGt0SoldPctForRow(d);
+                    const newPrice = chPromoGt0SoldSprice(d, pct);
+                    const sku = chPromoSku(d);
+                    if (!(newPrice > 0) || !sku) { skipped++; continue; }
+                    item.row.update(chPromoGt0SoldMetricsPatch(d, newPrice));
+                    updates.push({ sku: sku, sprice: newPrice, pct: pct });
+                    filled++;
+                }
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            if (typeof table !== 'undefined' && table) table.redraw(true);
+            if (!updates.length) {
+                chPromoToast('error', 'No >0 Sold rows with Std Prc to apply');
+                return { filled: 0, updates: [] };
+            }
+            let saveRes = null;
+            try {
+                saveRes = await chPromoSaveGt0SoldSpriceBatch(updates, !opts.push);
+            } catch (e) {
+                chPromoToast('error', opts.push
+                    ? 'Push failed: ' + ((e && e.responseJSON && e.responseJSON.message) || 'error')
+                    : 'Apply save failed: ' + ((e && e.responseJSON && e.responseJSON.message) || 'error'));
+                return { filled: 0, updates: updates };
+            }
+            if (opts.push) {
+                const pushOk = Number(saveRes && saveRes.price_push_success_count);
+                const pushFail = Number(saveRes && saveRes.price_push_failed_count);
+                const hasCounts = isFinite(pushOk) && isFinite(pushFail)
+                    && (saveRes.price_push_success_count != null || saveRes.price_push_failed_count != null);
+                chPromoToast(
+                    (hasCounts && pushFail > 0 && !(pushOk > 0)) ? 'error' : 'success',
+                    '>0 Sold Rule (' + label + '): S PRC = Std + Rule% → ' + filled + ' row(s)'
+                        + (hasCounts
+                            ? ('; pushed ' + (pushOk || 0) + (pushFail ? (', ' + pushFail + ' failed') : ''))
+                            : ' pushed')
+                        + (skipped ? ('; skipped ' + skipped) : '') + '.'
+                );
+            } else {
+                chPromoToast(
+                    'success',
+                    '>0 Sold Rule (' + label + '): S PRC = Std + Rule% → ' + filled + ' row(s)'
+                        + (skipped ? ('; skipped ' + skipped) : '')
+                        + ' (saved, not pushed).'
+                );
+            }
+            return { filled: filled, updates: updates };
         }
 
         function renderChPromoCvrCpnModalTable() {
@@ -2828,11 +3138,11 @@
             let applyTargets = targets.slice();
             let prmtForRow = chPromoPrmtForRow;
             let listingCount = 0;
-            if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES && !ebayParentDil) {
+            if ((CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES || CHANNEL_PROMO_CHANNEL === 'reverb') && !ebayParentDil) {
                 const soldLabel = chPromoSoldFieldLabel();
                 if (opts.zeroSoldOnly) {
                     applyTargets = applyTargets.filter(function(item) {
-                        return chPromoIsZeroSoldRow(item.row.getData());
+                        return chPromoReverbSoldQty(item.row.getData()) <= 0;
                     });
                     prmtForRow = chPromoPrmtForZeroSoldRow;
                     if (!applyTargets.length) {
@@ -2841,13 +3151,13 @@
                     }
                 } else {
                     applyTargets = applyTargets.filter(function(item) {
-                        return !chPromoIsZeroSoldRow(item.row.getData());
+                        return chPromoReverbSoldQty(item.row.getData()) > 0;
                     });
                     prmtForRow = function(d) {
                         return chPromoInv(d) === 0 ? 0 : chPromoPrmtForDil(chPromoDil(d));
                     };
                     if (!applyTargets.length) {
-                        chPromoToast('error', 'No sold rows (' + soldLabel + ' > 0) to apply — use 0 Sold for unsold SKUs');
+                        chPromoToast('error', 'No sold rows (' + soldLabel + ' > 0) to apply Dil vs PRMT');
                         return;
                     }
                 }
@@ -2947,12 +3257,17 @@
                             skipSprice = false;
                         }
                     } else if (chPromoReverbComboEnabled()) {
-                        newPrice = chPromoReverbSpriceFromStdBothPrmt(d, opts.zeroSoldOnly
-                            ? { zeroSold: prmt }
-                            : { prmt: prmt });
-                        if (newPrice > 0) {
-                            Object.assign(patch, chPromoSpricePatch(newPrice));
-                            skipSprice = false;
+                        if (chPromoKeepZeroSoldPrcSprice(d)) {
+                            // 0 Sold Prc Rule owns SPRICE (Target SGROI). PRMT% stays independent.
+                            skipSprice = true;
+                        } else {
+                            newPrice = chPromoReverbSpriceFromStdBothPrmt(d, opts.zeroSoldOnly
+                                ? { zeroSold: prmt }
+                                : { prmt: prmt });
+                            if (newPrice > 0) {
+                                Object.assign(patch, chPromoSpricePatch(newPrice));
+                                skipSprice = false;
+                            }
                         }
                     } else if (prmt > 0) {
                         const promo = { type: 'percent', value: prmt };
@@ -3256,7 +3571,7 @@
                     if ((kind === 'prmt' || kind === 'cpn') && chPromoPrmtCpnComboEnabled()) {
                         const recalc = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt' ? { prmt: 0 } : { cpn: 0 });
                         if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
-                    } else if (kind === 'prmt' && chPromoReverbComboEnabled()) {
+                    } else if (kind === 'prmt' && chPromoReverbComboEnabled() && !chPromoKeepZeroSoldPrcSprice(d)) {
                         const recalc = chPromoReverbSpriceFromStdBothPrmt(d, { prmt: 0 });
                         if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
                     } else if (kind === 'prmt' && CHANNEL_PROMO_CHANNEL === 'ebay1') {
@@ -3293,6 +3608,10 @@
                     newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt'
                         ? { prmt: promo.value }
                         : { cpn: promo.value });
+                } else if (chPromoReverbComboEnabled() && kind === 'prmt' && chPromoKeepZeroSoldPrcSprice(d)) {
+                    // Keep Target-SGROI SPRICE; only store PRMT%.
+                    base = 0;
+                    newPrice = null;
                 } else if (chPromoReverbComboEnabled() && kind === 'prmt') {
                     base = chPromoStdBase(d);
                     newPrice = chPromoReverbSpriceFromStdBothPrmt(d, { prmt: promo.value });
@@ -3930,7 +4249,8 @@
                     if (table) table.redraw(true);
                     chPromoToast(
                         fail && !ok ? 'error' : 'success',
-                        'sprice ?: ' + ok + ' filled'
+                        (CHANNEL_PROMO_CHANNEL === 'reverb' ? '> 0 Sprice Vs Dil Rule: ' : 'sprice ?: ')
+                            + ok + ' filled'
                             + (fail ? (', ' + fail + ' failed') : '')
                             + (skippedInv ? (', ' + skippedInv + ' skipped INV=0') : '')
                     );
@@ -4406,7 +4726,9 @@
                             return;
                         }
                         const zeroSold = promo.value;
-                        const newPrice = chPromoReverbSpriceFromStdBothPrmt(d, { zeroSold: zeroSold });
+                        const newPrice = chPromoKeepZeroSoldPrcSprice(d)
+                            ? 0
+                            : chPromoReverbSpriceFromStdBothPrmt(d, { zeroSold: zeroSold });
                         const patch = {
                             zero_sold_prmt: String(zeroSold),
                             _zero_sold_prmt_applied: zeroSold,
@@ -4760,10 +5082,12 @@
                 } else if (CHANNEL_PROMO_CHANNEL === 'reverb') {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
-                        help.innerHTML = 'Map Dil% slabs to PRMT% (0–20 / 20–40 / …). Dil is SKU-wise '
+                        help.innerHTML = 'Map Dil% slabs to PRMT% (<strong>0.1–20</strong> / 20–40 / …) '
+                            + 'for SKUs with <strong>RV L30 &gt; 0</strong> only. '
+                            + 'Dil below 0.1% gets PRMT% <strong>0</strong>. Dil is SKU-wise '
                             + '(OV L30 ÷ INV). <strong>Apply</strong> writes <strong>PRMT %</strong> '
-                            + 'and sets <strong>S PRC = Std × (1 − (PRMT% + CPN%)/100)</strong>. '
-                            + 'If INV is 0, PRMT% is <strong>0</strong>.';
+                            + 'and sets <strong>S PRC = Std × (1 − (PRMT% + 0 Sold PRMT%)/100)</strong>. '
+                            + 'If INV is 0 or RV L30 is 0, this rule does not apply.';
                     }
                 }
                 renderChPromoDilPrmtModalTable();
@@ -4869,6 +5193,96 @@
                     Promise.resolve(applyChPromoDilPrmtToTargets(targets, scopeLabel, { zeroSoldOnly: true })).finally(function() {
                         $btn.prop('disabled', false).html(html);
                     });
+                });
+            }
+
+            if (CHANNEL_PROMO_SHOW_GT0_SOLD_RULES) {
+                $('#ch-promo-gt0-sold-rule-btn').off('click.chpromo').on('click.chpromo', function(e) {
+                    e.preventDefault();
+                    const modalEl = document.getElementById('chPromoGt0SoldPrcModal');
+                    if (!modalEl) return;
+                    const soldLabel = chPromoSoldFieldLabel();
+                    const help = document.getElementById('ch-promo-gt0-sold-prc-help');
+                    if (help) {
+                        help.innerHTML = 'Rules for <strong>&gt;0 Sold</strong> only (<strong>'
+                            + soldLabel + ' &gt; 0</strong>), by Dil color: '
+                            + '<strong style="color:#a00211;">Red Dil &lt;25%</strong>, '
+                            + '<strong style="color:#28a745;">Green Dil 25–50%</strong>, '
+                            + '<strong style="color:#e83e8c;">Pink Dil 50%+</strong>. '
+                            + '<strong>Rule %</strong> is added to <strong>Std Prc</strong>: '
+                            + '<code>S PRC = Std × (1 + Rule%/100)</code>. '
+                            + '<strong>Save Rule</strong> stores the percents. '
+                            + '<strong>Apply</strong> writes S PRC (no marketplace push). '
+                            + '<strong>Push</strong> applies then pushes price. '
+                            + 'If <strong>INV = 0</strong> or Std Prc is missing, the row is skipped.';
+                    }
+                    renderChPromoGt0SoldPrcModalTable();
+                    loadChPromoGt0SoldPrcRules();
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                });
+
+                $('#ch-promo-gt0-sold-prc-save-btn').off('click.chpromo').on('click.chpromo', async function() {
+                    const $btn = $(this);
+                    const html = $btn.html();
+                    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+                    try {
+                        await saveChPromoGt0SoldPrcRules();
+                        chPromoToast('success', '>0 Sold Rule saved.');
+                    } catch (xhr) {
+                        chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                    } finally {
+                        $btn.prop('disabled', false).html(html);
+                    }
+                });
+
+                $('#ch-promo-gt0-sold-prc-apply-btn').off('click.chpromo').on('click.chpromo', async function() {
+                    const collected = collectChPromoGt0SoldTargets();
+                    if (collected.error) {
+                        chPromoToast('error', collected.error);
+                        return;
+                    }
+                    if (!collected.selectedCount) {
+                        if (!confirm('No rows selected — save rules and apply S PRC = Std + Rule% to all '
+                            + collected.targets.length + ' visible >0 Sold row(s)?')) {
+                            return;
+                        }
+                    }
+                    const $btn = $(this);
+                    const html = $btn.html();
+                    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+                    try {
+                        await saveChPromoGt0SoldPrcRules();
+                        await applyChPromoGt0SoldPrcToTargets(collected.targets, collected.label, { push: false });
+                    } catch (xhr) {
+                        chPromoToast('error', 'Apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                    } finally {
+                        $btn.prop('disabled', false).html(html);
+                    }
+                });
+
+                $('#ch-promo-gt0-sold-prc-push-btn').off('click.chpromo').on('click.chpromo', async function() {
+                    const collected = collectChPromoGt0SoldTargets();
+                    if (collected.error) {
+                        chPromoToast('error', collected.error);
+                        return;
+                    }
+                    if (!confirm(
+                        'Apply >0 Sold Rule and push price to '
+                        + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + ' for '
+                        + collected.targets.length + ' ' + collected.label + ' SKU(s)?\n\n'
+                        + 'S PRC = Std × (1 + Rule%/100)'
+                    )) return;
+                    const $btn = $(this);
+                    const html = $btn.html();
+                    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing…');
+                    try {
+                        await saveChPromoGt0SoldPrcRules();
+                        await applyChPromoGt0SoldPrcToTargets(collected.targets, collected.label, { push: true });
+                    } catch (xhr) {
+                        chPromoToast('error', 'Push failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                    } finally {
+                        $btn.prop('disabled', false).html(html);
+                    }
                 });
             }
 
@@ -4994,7 +5408,7 @@
             } else if (chPromoReverbComboEnabled()) {
                 $('#ch-promo-sprice-recalc-btn').attr(
                     'title',
-                    'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + 0 Sold PRMT%)/100). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.'
+                    '> 0 Sprice Vs Dil Rule: S PRC = Std × (1 − (PRMT% + 0 Sold PRMT%)/100) for RV L30 > 0 (first slab 0.1–20%). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.'
                 );
             }
         }
