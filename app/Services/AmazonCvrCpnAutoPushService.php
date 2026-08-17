@@ -374,7 +374,8 @@ class AmazonCvrCpnAutoPushService
         }
 
         $apiSku = $sellerSku !== '' ? $sellerSku : $statusSku;
-        $result = $api->updateAmazonPriceUS($apiSku, $price);
+        $matched = $api->matchingSaleAndMinFromSprice($price);
+        $result = $api->updateAmazonPriceUS($apiSku, $price, 3, $matched);
 
         if (isset($result['errors']) && ! empty($result['errors'])) {
             $this->savePushMeta($statusSku, 'error', null, $cpn);
@@ -389,7 +390,7 @@ class AmazonCvrCpnAutoPushService
             return false;
         }
 
-        $minFloor = $api->minSellerAllowedPriceFromOurPrice($price);
+        $minFloor = $matched['min_price'];
         try {
             $minResult = $api->updateCompetitivePriceConstraints($apiSku, $minFloor);
             if (isset($minResult['errors']) && ! empty($minResult['errors'])) {

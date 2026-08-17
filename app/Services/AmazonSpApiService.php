@@ -228,13 +228,33 @@ class AmazonSpApiService
     }
 
     /**
+     * Sprice push: Sale Price and Minimum Price are the same value (SPRICE × 0.95).
+     * Amazon requires Sale < Your Price, so both are set 5% below the pushed SPRICE.
+     *
+     * @return array{sale_price: float, min_price: float}
+     */
+    public function matchingSaleAndMinFromSprice(float $sprice): array
+    {
+        $shared = $this->minSellerAllowedPriceFromOurPrice($sprice);
+        $sprice = round($sprice, 2);
+        if ($shared >= $sprice && $sprice > 0.01) {
+            $shared = max(0.01, round($sprice - 0.01, 2));
+        }
+
+        return [
+            'sale_price' => $shared,
+            'min_price' => $shared,
+        ];
+    }
+
+    /**
      * Update Amazon US listing prices via Listings Items PATCH.
      *
      * @param  string  $sku
      * @param  float|int|string  $price  Your Price (our_price)
      * @param  int  $maxRetries
      * @param  array|null  $extras  Optional:
-     *   - sale_price (float): Sale / discounted_price (Std − Promotion %)
+     *   - sale_price (float): Sale / discounted_price (Std − Promotion %). On Sprice push, same as min (SPRICE × 0.95).
      *   - min_price (float): minimum_seller_allowed_price (defaults to sale×0.95 or our_price×0.95)
      *   - max_price (float): maximum_seller_allowed_price (defaults to our_price × 1.10)
      *   - business_price (float): B2B audience our_price (defaults to sale×0.95 or our_price×0.95)
@@ -285,7 +305,7 @@ class AmazonSpApiService
             $minPrice = $this->minSellerAllowedPriceFromOurPrice($price);
         }
         if ($salePrice !== null && $minPrice > $salePrice) {
-            $minPrice = max(0.01, round($salePrice * 0.95, 2));
+            $minPrice = $salePrice;
         }
 
         $maxPrice = isset($extras['max_price']) && is_numeric($extras['max_price']) && (float) $extras['max_price'] > 0

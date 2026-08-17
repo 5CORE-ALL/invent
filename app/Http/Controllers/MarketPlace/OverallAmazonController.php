@@ -1834,6 +1834,12 @@ class OverallAmazonController extends Controller
 
         try {
             $service = new AmazonSpApiService();
+            // Sprice push (no explicit Push Prc sale/min): Sale Price and Minimum Price are the same (SPRICE × 0.95).
+            if (! isset($extras['sale_price']) && ! isset($extras['min_price'])) {
+                $matched = $service->matchingSaleAndMinFromSprice($priceFloat);
+                $extras['sale_price'] = $matched['sale_price'];
+                $extras['min_price'] = $matched['min_price'];
+            }
             $result = $service->updateAmazonPriceUS(
                 $skuForAmazon,
                 $priceFloat,
@@ -1876,13 +1882,13 @@ class OverallAmazonController extends Controller
             ]);
 
             if ($updateMinPriceConstraint) {
-                // Prefer explicit min; else Sale×0.95; else Std×0.95.
+                // Sprice push: Sale and Min are the same (explicit min, else sale, else SPRICE).
                 $saleBase = isset($extras['sale_price'])
                     ? (float) $extras['sale_price']
                     : $priceFloat;
                 $minFloor = isset($extras['min_price'])
                     ? (float) $extras['min_price']
-                    : max(0.01, round($saleBase * 0.95, 2));
+                    : $saleBase;
                 Log::info('Updating Amazon minimum price constraint', [
                     'sku' => $skuForAmazon,
                     'our_price' => $priceFloat,
@@ -1936,9 +1942,8 @@ class OverallAmazonController extends Controller
                 'amazon_api_sku' => $skuForAmazon,
                 'asin_used' => $asinParam !== '' ? strtoupper(str_replace([' ', "\xc2\xa0"], '', $asinParam)) : null,
                 'our_price' => $priceFloat,
-                'sale_price' => $extras['sale_price'] ?? null,
-                'min_price' => $extras['min_price']
-                    ?? max(0.01, round($saleBaseForDefaults * 0.95, 2)),
+                'sale_price' => $extras['sale_price'] ?? $saleBaseForDefaults,
+                'min_price' => $extras['min_price'] ?? $saleBaseForDefaults,
                 'max_price' => $extras['max_price']
                     ?? round($priceFloat * 1.10, 2),
                 'business_price' => $extras['business_price']
