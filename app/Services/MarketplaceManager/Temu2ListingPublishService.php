@@ -548,7 +548,7 @@ class Temu2ListingPublishService
                 continue;
             }
 
-            $res = $this->api->uploadTemuImageFromUrl($url);
+            $res = $this->uploadImageToTemu2($url);
             if (! empty($res['success']) && ! empty($res['url'])) {
                 $hosted[] = (string) $res['url'];
                 continue;
@@ -573,6 +573,81 @@ class Temu2ListingPublishService
         }
 
         return ['urls' => array_values(array_unique($hosted)), 'error' => null];
+    }
+
+    /**
+     * Temu 2 image API expects `fileUrl` on bg.local.goods.image.upload.
+     *
+     * @return array{success: bool, url?: string, message: string}
+     */
+    private function uploadImageToTemu2(string $imageUrl): array
+    {
+        $stripped = preg_replace('/\?.*$/', '', $imageUrl) ?: $imageUrl;
+        $candidates = array_values(array_unique(array_filter([$imageUrl, $stripped])));
+
+        $attempts = [];
+        foreach ($candidates as $url) {
+            $attempts[] = ['bg.local.goods.image.upload', ['fileUrl' => $url]];
+            $attempts[] = ['bg.local.goods.image.upload', [
+                'fileUrl' => $url,
+                'scalingType' => 1,
+                'compressionType' => 0,
+                'formatConversionType' => 0,
+            ]];
+            $attempts[] = ['temu.local.goods.image.v2.upload', ['fileUrl' => $url, 'usage' => 1]];
+        }
+
+        $lastMsg = '';
+        foreach ($attempts as [$type, $params]) {
+            $data = $this->api->callOpenApi($type, $params, 60);
+            $hosted = $this->extractUploadedImageUrl($data);
+            if ($hosted !== null) {
+                return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
+            }
+            $lastMsg = trim((string) ($data['errorMsg'] ?? $data['message'] ?? ''));
+            if ($this->isIpWhitelistMessage($lastMsg)) {
+                return ['success' => false, 'message' => $lastMsg];
+            }
+        }
+
+        $fallback = $this->api->uploadTemuImageFromUrl($imageUrl);
+        if (! empty($fallback['success']) && ! empty($fallback['url'])) {
+            return $fallback;
+        }
+
+        return [
+            'success' => false,
+            'message' => $lastMsg !== '' ? $lastMsg : (string) ($fallback['message'] ?? 'Image upload failed.'),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function extractUploadedImageUrl(array $data): ?string
+    {
+        $r = $data['result'] ?? null;
+        if (! is_array($r) && isset($data['raw']['result']) && is_array($data['raw']['result'])) {
+            $r = $data['raw']['result'];
+        }
+        if (! is_array($r)) {
+            return null;
+        }
+
+        foreach (['url', 'imageUrl', 'image_url', 'fileUrl', 'cdnUrl', 'picUrl'] as $key) {
+            $val = trim((string) ($r[$key] ?? ''));
+            if ($val !== '' && preg_match('#^https?://#i', $val)) {
+                return $val;
+            }
+        }
+
+        $firstImage = $r['images'][0]['url'] ?? $r['autoCropUrls'][0] ?? null;
+        $firstImage = trim((string) $firstImage);
+        if ($firstImage !== '' && preg_match('#^https?://#i', $firstImage)) {
+            return $firstImage;
+        }
+
+        return null;
     }
 
     private function isTemuHostedImageUrl(string $url): bool
