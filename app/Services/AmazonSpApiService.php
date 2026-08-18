@@ -5763,15 +5763,24 @@ class AmazonSpApiService
                 'Accept' => 'application/json',
             ])->timeout(45)->patch($url, $payload);
 
-            if ($response->successful()) {
+            $json = $response->json();
+            $apiStatus = strtoupper((string) (is_array($json) ? ($json['status'] ?? '') : ''));
+            if ($response->successful() && ! in_array($apiStatus, ['INVALID', 'FAILED'], true)) {
                 return ['success' => true];
             }
 
-            $body = mb_substr($response->body(), 0, 300);
+            $issueMsg = '';
+            if (is_array($json) && isset($json['issues']) && is_array($json['issues']) && $json['issues'] !== []) {
+                $first = $json['issues'][0];
+                if (is_array($first)) {
+                    $issueMsg = trim((string) ($first['message'] ?? $first['code'] ?? ''));
+                }
+            }
+            $body = $issueMsg !== '' ? $issueMsg : mb_substr($response->body(), 0, 300);
 
             return [
                 'success' => false,
-                'message' => 'HTTP '.$response->status().': '.$body,
+                'message' => 'HTTP '.$response->status().($apiStatus !== '' ? ' '.$apiStatus : '').': '.$body,
             ];
         } catch (\Throwable $e) {
             Log::warning('AmazonSpApiService: updateInventoryBySku failed', [

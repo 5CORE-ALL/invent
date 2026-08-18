@@ -848,7 +848,7 @@ class AmazonSyncController extends Controller
             ]);
         }
 
-        $result = app(AmazonInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(AmazonInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 
