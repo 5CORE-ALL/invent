@@ -124,7 +124,7 @@ class Temu2ListingPublishService
             $listAmount = number_format($price + 1, 2, '.', '');
         }
 
-        $goodsProperty = $this->buildGoodsProperty($catId);
+        $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId);
         $dimensions = $this->api->getProductDimensions($sku);
         $shipmentLimitDay = max(1, (int) config('services.temu2.shipment_limit_day', 2));
         $importDesignation = trim((string) config('services.temu2.import_designation', '4'));
@@ -880,34 +880,34 @@ class Temu2ListingPublishService
     }
 
     /**
+     * Required category attributes, including Temu keyword attributes
+     * (Battery Properties, Wireless Property, Power Mode).
+     *
      * @return list<array<string, mixed>>
      */
-    private function buildGoodsProperty(int $catId): array
+    private function buildGoodsProperty(int $catId, string $costTemplateId = ''): array
     {
-        $data = $this->temuCallBody([
-            'type' => 'temu.local.product.attributes.get',
-            'catId' => $catId,
-            'language' => 'en',
-        ], 45);
+        $props = $this->loadCategoryAttributes($catId, $costTemplateId);
+        if ($props === []) {
+            Log::warning('Temu2 publish: no category attributes returned', ['catId' => $catId]);
 
-        $props = $data['result']['properties']
-            ?? $data['result']['propertyList']
-            ?? $data['result']['goodsProperties']
-            ?? $data['result']['inputPropertyList']
-            ?? [];
-        if (! is_array($props)) {
             return [];
         }
 
         $out = [];
+        $filled = [];
         foreach ($props as $prop) {
             if (! is_array($prop)) {
                 continue;
             }
-            $required = $prop['required'] ?? $prop['isRequired'] ?? false;
-            if (! $required) {
+
+            $name = trim((string) ($prop['attributeName'] ?? $prop['name'] ?? ''));
+            $required = (bool) ($prop['required'] ?? $prop['isRequired'] ?? false);
+            $isKeyword = $this->isKeywordAttribute($name, $prop);
+            if (! $required && ! $isKeyword) {
                 continue;
             }
+
             $refPid = $prop['refPid'] ?? $prop['pid'] ?? $prop['templatePid'] ?? null;
             if ($refPid === null) {
                 continue;
@@ -921,39 +921,177 @@ class Temu2ListingPublishService
                 $entry['templatePid'] = (int) $prop['templatePid'];
             }
 
-            $values = $prop['values'] ?? $prop['valueList'] ?? $prop['vidList'] ?? [];
-            $picked = $this->pickAttributeValue($values);
+            $values = $this->flattenAttributeValues($prop);
+            $picked = $this->pickAttributeValue($values, $name);
+            $controlType = (int) (
+                $prop['controlType']
+                ?? $prop['attributeRules']['controlType']
+                ?? 1
+            );
+
             if ($picked !== null) {
                 $entry['vid'] = (int) $picked['vid'];
                 if ($picked['value'] !== '') {
                     $entry['value'] = $picked['value'];
                 }
-            } else {
-                $controlType = (int) ($prop['controlType'] ?? $prop['control_type'] ?? 0);
-                if (in_array($controlType, [0, 16, 19], true)) {
-                    $entry['value'] = 'Generic';
-                } else {
-                    continue;
+            } elseif (in_array($controlType, [0, 16, 19], true)) {
+                $entry['value'] = $this->defaultInputValueForAttribute($name);
+                $units = $prop['valueUnitList'] ?? $prop['attributeValueUnitList'] ?? [];
+                if (is_array($units) && $units !== []) {
+                    $unitId = $units[0]['valueUnitId'] ?? null;
+                    if ($unitId !== null) {
+                        $entry['valueUnitId'] = (int) $unitId;
+                    }
                 }
+            } else {
+                Log::warning('Temu2 publish: could not fill required attribute', [
+                    'catId' => $catId,
+                    'name' => $name,
+                    'refPid' => $refPid,
+                ]);
+                continue;
             }
 
             $out[] = $entry;
+            $filled[] = $name !== '' ? $name : ('refPid '.$refPid);
+        }
+
+        Log::info('Temu2 publish goodsProperty filled', [
+            'catId' => $catId,
+            'count' => count($out),
+            'names' => $filled,
+        ]);
+
+        return $out;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function loadCategoryAttributes(int $catId, string $costTemplateId): array
+    {
+        $attrsBody = [
+            'type' => 'temu.local.product.attributes.get',
+            'catId' => $catId,
+            'language' => 'en',
+        ];
+        if ($costTemplateId !== '') {
+            $attrsBody['costTemplateId'] = $costTemplateId;
+        }
+        $data = $this->temuCallBody($attrsBody, 45);
+        $result = is_array($data['result'] ?? null) ? $data['result'] : [];
+
+        $list = $result['attributeList']
+            ?? $result['properties']
+            ?? $result['propertyList']
+            ?? $result['goodsProperties']
+            ?? [];
+        if (! is_array($list) || $list === []) {
+            $list = [];
+        }
+
+        $template = $this->temuCallBody([
+            'type' => 'bg.local.goods.template.get',
+            'catId' => $catId,
+            'language' => 'en',
+        ], 45);
+        $goodsProperties = $template['result']['templateInfo']['goodsProperties']
+            ?? $template['result']['goodsProperties']
+            ?? [];
+        if (is_array($goodsProperties) && $goodsProperties !== []) {
+            $list = array_merge($list, $goodsProperties);
+        }
+
+        $byRef = [];
+        foreach ($list as $prop) {
+            if (! is_array($prop)) {
+                continue;
+            }
+            $refPid = (string) ($prop['refPid'] ?? $prop['pid'] ?? $prop['templatePid'] ?? '');
+            if ($refPid === '') {
+                continue;
+            }
+            if (! isset($byRef[$refPid])) {
+                $byRef[$refPid] = $prop;
+            } else {
+                $byRef[$refPid] = array_merge($byRef[$refPid], $prop);
+            }
+        }
+
+        return array_values($byRef);
+    }
+
+    /**
+     * @param  array<string, mixed>  $prop
+     * @return list<array<string, mixed>>
+     */
+    private function flattenAttributeValues(array $prop): array
+    {
+        foreach (['values', 'valueList', 'vidList'] as $key) {
+            if (isset($prop[$key]) && is_array($prop[$key]) && $prop[$key] !== []) {
+                return $prop[$key];
+            }
+        }
+
+        $out = [];
+        foreach ($prop['attributeValueDetail'] ?? [] as $detail) {
+            if (! is_array($detail)) {
+                continue;
+            }
+            foreach ($detail['attributeValueList'] ?? [] as $value) {
+                if (is_array($value)) {
+                    $out[] = $value;
+                }
+            }
         }
 
         return $out;
     }
 
     /**
+     * @param  array<string, mixed>  $prop
+     */
+    private function isKeywordAttribute(string $name, array $prop): bool
+    {
+        if (! empty($prop['isKeyword']) || (int) ($prop['feature'] ?? 0) === 1) {
+            return true;
+        }
+        $lower = strtolower($name);
+
+        return str_contains($lower, 'battery')
+            || str_contains($lower, 'wireless')
+            || str_contains($lower, 'power mode')
+            || str_contains($lower, 'power supply');
+    }
+
+    private function defaultInputValueForAttribute(string $name): string
+    {
+        $lower = strtolower($name);
+        if (str_contains($lower, 'battery') || str_contains($lower, 'wireless')) {
+            return 'No';
+        }
+        if (str_contains($lower, 'power')) {
+            return 'USB';
+        }
+
+        return 'Generic';
+    }
+
+    /**
      * @param  mixed  $values
      * @return array{vid: int, value: string}|null
      */
-    private function pickAttributeValue(mixed $values): ?array
+    private function pickAttributeValue(mixed $values, string $attributeName = ''): ?array
     {
         if (! is_array($values) || $values === []) {
             return null;
         }
 
+        $name = strtolower($attributeName);
+        $preferNone = str_contains($name, 'battery') || str_contains($name, 'wireless');
+        $preferPower = str_contains($name, 'power');
         $preferred = null;
+
         foreach ($values as $row) {
             if (! is_array($row)) {
                 continue;
@@ -962,9 +1100,16 @@ class Temu2ListingPublishService
             if ($vid <= 0) {
                 continue;
             }
-            $value = trim((string) ($row['value'] ?? $row['specName'] ?? $row['name'] ?? ''));
+            $value = trim((string) ($row['value'] ?? $row['specName'] ?? $row['name'] ?? $row['attributeValue'] ?? ''));
             $lower = strtolower($value);
-            if (in_array($lower, ['unbranded', 'generic', 'does not apply', 'none', 'other'], true)) {
+
+            if (in_array($lower, ['unbranded', 'generic', 'does not apply', 'none', 'other', 'n/a', 'na'], true)) {
+                return ['vid' => $vid, 'value' => $value];
+            }
+            if ($preferNone && preg_match('/\b(no|none|not|without|does not|n\/a|wired|non-wireless)\b/i', $value)) {
+                return ['vid' => $vid, 'value' => $value];
+            }
+            if ($preferPower && preg_match('/\b(usb|plug|adapter|mains|ac|dc|electric)\b/i', $value)) {
                 return ['vid' => $vid, 'value' => $value];
             }
             if ($preferred === null) {
