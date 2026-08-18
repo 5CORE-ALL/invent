@@ -6343,7 +6343,7 @@ class TemuController extends Controller
                 if ($lp === 0 && isset($productMaster->LP)) {
                     $lp = floatval($productMaster->LP);
                 }
-                $temuShip = floatval($values['temu_ship'] ?? 0);
+                $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $productMaster);
             }
 
             $useTemu2PricingChart = $request->boolean('temu2');

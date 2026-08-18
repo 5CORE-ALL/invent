@@ -36,6 +36,7 @@ use App\Services\ComparisonSheetStorage;
 use App\Services\ComparisonSkuLinkService;
 use App\Services\LinkedSkuGroupService;
 use App\Services\ShippingSlabRateService;
+use App\Support\ProductMasterTemuShip;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -2503,17 +2504,7 @@ class ComparisonController extends Controller
                 $values = [];
             }
 
-            $temuShip = 0.0;
-            foreach ($values as $key => $value) {
-                if (strtolower((string) $key) === 'temu_ship' && is_numeric($value)) {
-                    $temuShip = (float) $value;
-                    break;
-                }
-            }
-            if ($temuShip <= 0 && isset($pm->temu_ship) && is_numeric($pm->temu_ship)) {
-                $temuShip = (float) $pm->temu_ship;
-            }
-            $out['temu_ship'] = round($temuShip, 2);
+            $out['temu_ship'] = ProductMasterTemuShip::forPricing($values, $pm);
         }
 
         if (Schema::hasTable('temu_data_view')) {

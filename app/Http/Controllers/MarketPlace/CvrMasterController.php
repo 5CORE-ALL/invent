@@ -123,6 +123,7 @@ use App\Services\EbayThreeApiService;
 use App\Services\BestBuyApiService;
 use App\Services\MacysApiService;
 use App\Services\PurchasingPowerApiService;
+use App\Support\ProductMasterTemuShip;
 use App\Support\TemuGoodsIdHelper;
 use App\Jobs\RunPricingErrorsFixPushJob;
 use App\Models\BadgeData;
@@ -2141,12 +2142,7 @@ class CvrMasterController extends Controller
 
                 $temuL30 = (int) ($temuL30ByProductSku[$sku] ?? 0);
 
-                $temuShip = 0;
-                if ($values) {
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "temu_ship") $temuShip = floatval($v);
-                    }
-                }
+                $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $productMaster);
                 // GPFT% on Full Temu Price — same as /temu-decrease
                 $temuGPFT = $temuFullPrice > 0
                     ? TemuShopifySalesService::computeGpftPercent($temuFullPrice, $temuPercentage, $lp, $temuShip)
@@ -3673,14 +3669,13 @@ class CvrMasterController extends Controller
             $values = $productMaster ? ($productMaster->Values ?: []) : [];
             $lp = 0;
             $ship = 0; // normal ship — TikTok uses same as Amazon
-            $temuShip = 0;
+            $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $productMaster);
             $actWt = 0;
             
             if ($values) {
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === "lp") $lp = floatval($v);
                     if (strtolower($k) === "ship") $ship = floatval($v);
-                    if (strtolower($k) === "temu_ship") $temuShip = floatval($v);
                     if (strtolower($k) === "wt_act") $actWt = floatval($v);
                 }
             }
@@ -6221,10 +6216,8 @@ class CvrMasterController extends Controller
                 if ($key === 'ship') {
                     $ship = (float) $v;
                 }
-                if ($key === 'temu_ship') {
-                    $temuShip = (float) $v;
-                }
             }
+            $temuShip = ProductMasterTemuShip::forPricing($values, $product);
         }
 
         $margin = 0.80;

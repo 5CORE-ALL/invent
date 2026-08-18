@@ -6,6 +6,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\TemuMetric;
 use App\Models\TemuOrder;
+use App\Support\ProductMasterTemuShip;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -486,15 +487,10 @@ class TemuShopifySalesService
                     break;
                 }
             }
-            if (isset($values['temu_ship'])) {
-                $temuShip = (float) $values['temu_ship'];
-            }
+            $temuShip = ProductMasterTemuShip::forPricing($values, $pm);
         }
         if ($lp === 0.0 && isset($pm->lp)) {
             $lp = (float) $pm->lp;
-        }
-        if ($temuShip === 0.0 && isset($pm->temu_ship)) {
-            $temuShip = (float) $pm->temu_ship;
         }
 
         return [$lp, $temuShip];
