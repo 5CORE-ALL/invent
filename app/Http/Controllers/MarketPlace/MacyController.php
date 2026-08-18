@@ -583,16 +583,20 @@ class MacyController extends Controller
         $dataView->value = $merged;
         $dataView->save();
 
-        $pushResult = $this->pushPriceToMacy($sku, $spriceFloat);
+        $skipPush = $request->boolean('skip_push');
+        $pushResult = $skipPush
+            ? ['success' => true, 'message' => 'Push skipped', 'status_code' => null]
+            : $this->pushPriceToMacy($sku, $spriceFloat);
 
         return response()->json([
             'success' => true,
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
             'sgpft_percent' => $sgpft,
-            'price_push_success' => (bool) ($pushResult['success'] ?? false),
+            'price_push_success' => $skipPush ? false : (bool) ($pushResult['success'] ?? false),
             'price_push_message' => (string) ($pushResult['message'] ?? ''),
             'price_push_status_code' => $pushResult['status_code'] ?? null,
+            'price_push_skipped' => $skipPush,
         ]);
     }
 
@@ -854,20 +858,23 @@ class MacyController extends Controller
 
             DB::commit();
 
+            $skipPush = $request->boolean('skip_push');
             $pricePushSuccess = 0;
             $pricePushFailed = 0;
             $pricePushErrors = [];
             $singlePushResult = null;
-            foreach ($pricePushQueue as $pushItem) {
-                $pushResult = $this->pushPriceToMacy($pushItem['sku'], (float) $pushItem['sprice']);
-                if (count($pricePushQueue) === 1) {
-                    $singlePushResult = $pushResult;
-                }
-                if (($pushResult['success'] ?? false) === true) {
-                    $pricePushSuccess++;
-                } else {
-                    $pricePushFailed++;
-                    $pricePushErrors[] = $pushItem['sku'] . ': ' . ($pushResult['message'] ?? 'Price push failed');
+            if (! $skipPush) {
+                foreach ($pricePushQueue as $pushItem) {
+                    $pushResult = $this->pushPriceToMacy($pushItem['sku'], (float) $pushItem['sprice']);
+                    if (count($pricePushQueue) === 1) {
+                        $singlePushResult = $pushResult;
+                    }
+                    if (($pushResult['success'] ?? false) === true) {
+                        $pricePushSuccess++;
+                    } else {
+                        $pricePushFailed++;
+                        $pricePushErrors[] = $pushItem['sku'] . ': ' . ($pushResult['message'] ?? 'Price push failed');
+                    }
                 }
             }
 
@@ -875,9 +882,12 @@ class MacyController extends Controller
                 'success' => true,
                 'updated' => $updated,
                 'message' => "Successfully saved {$updated} SPRICE update(s)",
-                'price_push_success_count' => $pricePushSuccess,
-                'price_push_failed_count' => $pricePushFailed,
+                'price_push_skipped' => $skipPush,
             ];
+            if (! $skipPush) {
+                $response['price_push_success_count'] = $pricePushSuccess;
+                $response['price_push_failed_count'] = $pricePushFailed;
+            }
 
             // Include calculated metrics for single updates (manual cell edits)
             if (isset($lastMetrics)) {

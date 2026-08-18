@@ -1293,6 +1293,8 @@ class ReverbController extends Controller
             $processedItem["SPRICE_STATUS_UPDATED_AT"] = null;
             $processedItem["SPRICE_PUSHED_VALUE"] = null;
             $processedItem["SPRICE_PUSHED_BY"] = null;
+            $processedItem["ZERO_SOLD_PRC_APPLIED"] = false;
+            $processedItem["ZERO_SOLD_PRC_GROI"] = null;
 
             if (isset($reverbViewData[$skuNorm])) {
                 $viewData = $reverbViewData[$skuNorm];
@@ -1306,6 +1308,8 @@ class ReverbController extends Controller
                 $processedItem["SPRICE_STATUS_UPDATED_AT"] = $valuesArr["SPRICE_STATUS_UPDATED_AT"] ?? null;
                 $processedItem["SPRICE_PUSHED_VALUE"] = isset($valuesArr["SPRICE_PUSHED_VALUE"]) ? floatval($valuesArr["SPRICE_PUSHED_VALUE"]) : null;
                 $processedItem["SPRICE_PUSHED_BY"] = $valuesArr["SPRICE_PUSHED_BY"] ?? null;
+                $processedItem["ZERO_SOLD_PRC_APPLIED"] = !empty($valuesArr["ZERO_SOLD_PRC_APPLIED"]);
+                $processedItem["ZERO_SOLD_PRC_GROI"] = $valuesArr["ZERO_SOLD_PRC_GROI"] ?? null;
             }
 
             // Calculate profit metrics — live (RV Price) and SPRICE share the same calculate-data
@@ -1462,6 +1466,18 @@ class ReverbController extends Controller
 
                 // Update SPRICE
                 $values['SPRICE'] = floatval($sprice);
+
+                $status = $update['status'] ?? null;
+                if (in_array($status, ['pushed', 'applied', 'error'], true)) {
+                    $values['SPRICE_STATUS'] = $status;
+                    $values['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+                }
+                if (!empty($update['zero_sold_prc'])) {
+                    $values['ZERO_SOLD_PRC_APPLIED'] = true;
+                    if (isset($update['groi']) && is_numeric($update['groi'])) {
+                        $values['ZERO_SOLD_PRC_GROI'] = (float) $update['groi'];
+                    }
+                }
 
                 // Same calculate-data as GPFT / GROI / NPFT / NROI (marketplace margin + Ads%)
                 $productMaster = ProductMaster::where('sku', $sku)->first();

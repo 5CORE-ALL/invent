@@ -71,6 +71,13 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'bestbuy', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
+        .sprice-lmp-alert {
+            color: #dc3545;
+            font-size: 11px;
+            line-height: 1;
+            margin-left: 4px;
+            cursor: help;
+        }
     </style>
 @endsection
 
@@ -2044,6 +2051,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
+                    headerTooltip: "Suggested price. Red triangle when SPRICE > LMP.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -2055,16 +2063,23 @@
                         const rowData = cell.getRow().getData();
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
+                        const lmp = parseFloat(rowData.lmp_price) || 0;
+                        const overLmp = value > 0 && lmp > 0 && value > lmp;
                         
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
                         else if (status === 'applied') bgColor = 'background-color: #d4edda;';
                         else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
+
+                        const alertHtml = overLmp
+                            ? `<i class="fas fa-exclamation-triangle sprice-lmp-alert" title="SPRICE $${value.toFixed(2)} &gt; LMP $${lmp.toFixed(2)}"></i>`
+                            : '';
+                        const priceColor = overLmp ? 'color:#dc3545;' : '';
                         
-                        return `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">$${value.toFixed(2)}</span>`;
+                        return `<span style="font-weight: 600; ${priceColor} ${bgColor} padding: 2px 6px; border-radius: 3px; display:inline-flex; align-items:center; justify-content:center;">$${value.toFixed(2)}${alertHtml}</span>`;
                     },
-                    width: 80
+                    width: 96
                 },
                 {
                     title: "SROI",

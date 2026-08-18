@@ -778,6 +778,42 @@ class ChannelPromoPricingController extends Controller
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }
 
+    public function gt0SoldPrcRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! $this->promo->isSupported($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        return $this->loadRules(
+            $channel.'_gt0_sold_prc',
+            $this->defaultGt0SoldPrcRules(),
+            'pct'
+        );
+    }
+
+    public function saveGt0SoldPrcRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! $this->promo->isSupported($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $incoming = $request->input('rules');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+        }
+
+        $rules = $this->persistRules(
+            $channel.'_gt0_sold_prc',
+            $this->defaultGt0SoldPrcRules(),
+            $incoming,
+            'pct'
+        );
+
+        return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
+    }
+
     public function cvrCpnRules(Request $request, string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
@@ -837,7 +873,7 @@ class ChannelPromoPricingController extends Controller
 
         if ($channel === 'reverb') {
             return [
-                ['key' => '0-20', 'label' => '0–20%', 'prmt' => 10],
+                ['key' => '0-20', 'label' => '0.1–20%', 'prmt' => 10],
                 ['key' => '20-40', 'label' => '20–40%', 'prmt' => 8],
                 ['key' => '40-60', 'label' => '40–60%', 'prmt' => 5],
                 ['key' => '60-80', 'label' => '60–80%', 'prmt' => 3],
@@ -895,6 +931,20 @@ class ChannelPromoPricingController extends Controller
             ['key' => '80-90', 'label' => '80–90%', 'bump' => 2],
             ['key' => '90-100', 'label' => '90–100%', 'bump' => 1],
             ['key' => 'gt-100', 'label' => '> 100%', 'bump' => 0],
+        ];
+    }
+
+    /**
+     * >0 Sold Dil color → % added to Std Prc (S PRC = Std × (1 + pct/100)).
+     *
+     * @return list<array{key:string,label:string,pct:float|int}>
+     */
+    private function defaultGt0SoldPrcRules(): array
+    {
+        return [
+            ['key' => 'gt0-sold-red', 'label' => 'Red Dil (<25%)', 'pct' => 5],
+            ['key' => 'gt0-sold-green', 'label' => 'Green Dil (25–50%)', 'pct' => 3],
+            ['key' => 'gt0-sold-pink', 'label' => 'Pink Dil (50%+)', 'pct' => 1],
         ];
     }
 
