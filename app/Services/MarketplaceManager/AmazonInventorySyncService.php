@@ -8,6 +8,9 @@ use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use App\Services\ShopifyApiService;
+use App\Support\Marketplace\MappingChannelCounts;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -26,9 +29,10 @@ class AmazonInventorySyncService
     /**
      * @param  array<int, string>  $skus
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
+     * @param  bool  $exactShopifyQty  When true (mismatch button), push listings Shopify qty with no percent/max cap.
      * @return array{updated: int, failed: int, skipped: int, message: string}
      */
-    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null, bool $exactShopifyQty = false): array
     {
         $skus = array_values(array_unique(array_filter(array_map(
             static fn ($sku) => trim((string) $sku),
@@ -48,14 +52,10 @@ class AmazonInventorySyncService
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
 
         $fetchSkus = $skus;
-        $wantedNorms = [];
         foreach ($skus as $sku) {
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm !== '') {
-                $wantedNorms[$norm] = true;
-                if ($norm !== $sku) {
-                    $fetchSkus[] = $norm;
-                }
+            if ($norm !== '' && $norm !== $sku) {
+                $fetchSkus[] = $norm;
             }
         }
         $fetchSkus = array_values(array_unique($fetchSkus));
@@ -65,23 +65,27 @@ class AmazonInventorySyncService
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
 
-        $metrics = AmazonListingStatus::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->get()
-            ->filter(function (AmazonListingStatus $metric) use ($wantedNorms, $skus) {
-                if (! AmazonListingStatusHelper::isLinked($metric)) {
-                    return false;
-                }
-                $raw = (string) $metric->sku;
-                if (in_array($raw, $skus, true)) {
-                    return true;
-                }
-                $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+        if ($exactShopifyQty) {
+            foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
+                $shopifyQty[$key] = (int) $qty;
+            }
+        }
 
-                return $norm !== '' && isset($wantedNorms[$norm]);
-            })
-            ->values();
+        $statusMap = AmazonListingStatusHelper::mapForSkus($skus);
+        $metrics = [];
+        $seen = [];
+        foreach ($statusMap as $metric) {
+            if (! $metric instanceof AmazonListingStatus) {
+                continue;
+            }
+            $raw = trim((string) $metric->sku);
+            $key = strtoupper($raw);
+            if ($raw === '' || isset($seen[$key]) || ! AmazonListingStatusHelper::isLinked($metric)) {
+                continue;
+            }
+            $seen[$key] = true;
+            $metrics[] = $metric;
+        }
 
         $inventoryRows = [];
         $skipped = 0;
@@ -106,15 +110,16 @@ class AmazonInventorySyncService
                 }
             }
 
-            // Match AliExpress: missing/0 Shopify => push 0 (do not skip and leave stale Amazon qty).
-            $qty = $shopifyStock === null
+            $pushQty = $shopifyStock === null
                 ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                : ($exactShopifyQty
+                    ? MarketplaceLiveInventoryRules::pushQtyFromLiveShopify($shopifyStock)
+                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty));
 
             $inventoryRows[] = [
                 'product_id' => $productId,
                 'sku_code' => $sku,
-                'inventory' => $qty,
+                'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
                 'shopify_qty' => $shopifyStock ?? 0,
             ];
         }
@@ -122,21 +127,30 @@ class AmazonInventorySyncService
         if ($inventoryRows === []) {
             return [
                 'updated' => 0,
-                'failed' => 0,
-                'skipped' => $skipped + max(0, count($skus) - $metrics->count()),
+                'failed' => max(0, count($skus) - $skipped),
+                'skipped' => $skipped,
                 'message' => 'No linked Amazon SKUs found for inventory sync.',
             ];
         }
 
         $invResult = $this->pushInventoryRows($inventoryRows);
-        $this->persistLocalStock($inventoryRows);
+        $pushed = (int) ($invResult['pushed'] ?? 0);
+        $failed = (int) ($invResult['failed'] ?? 0);
+        $updatedSkus = $invResult['updated_skus'] ?? [];
+
+        if ($pushed > 0) {
+            $this->persistLocalStock($inventoryRows, $updatedSkus);
+            $this->clearListingCaches();
+        }
 
         return [
-            'updated' => (int) ($invResult['pushed'] ?? 0),
-            'failed' => (int) ($invResult['failed'] ?? 0),
+            'updated' => $pushed,
+            'failed' => $failed,
             'skipped' => $skipped,
             'message' => $invResult['message']
-                ?? ('Pushed '.count($inventoryRows).' inventory row(s) to Amazon (local + SP-API best effort).'),
+                ?? ($pushed > 0
+                    ? 'Synced '.$pushed.' SKU(s) to Amazon from live Shopify.'
+                    : 'Amazon inventory update failed.'),
         ];
     }
 
@@ -216,13 +230,14 @@ class AmazonInventorySyncService
 
     /**
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $inventoryRows
-     * @return array{success: bool, pushed: int, failed: int, message?: string}
+     * @return array{success: bool, pushed: int, failed: int, message?: string, updated_skus: list<string>}
      */
     protected function pushInventoryRows(array $inventoryRows): array
     {
         $pushed = 0;
         $failed = 0;
         $errors = [];
+        $updatedSkus = [];
 
         foreach ($inventoryRows as $row) {
             $sku = (string) $row['sku_code'];
@@ -230,6 +245,7 @@ class AmazonInventorySyncService
             $result = $this->amazonApi->updateInventoryBySku($sku, $qty);
             if (! empty($result['success'])) {
                 $pushed++;
+                $updatedSkus[] = $sku;
             } else {
                 $failed++;
                 if (! empty($result['message'])) {
@@ -242,8 +258,9 @@ class AmazonInventorySyncService
             'success' => $pushed > 0 || $failed === 0,
             'pushed' => $pushed,
             'failed' => $failed,
+            'updated_skus' => $updatedSkus,
             'message' => $errors !== []
-                ? 'SP-API: '.implode('; ', array_slice($errors, 0, 3))
+                ? 'SP-API: '.implode('; ', array_slice($errors, 0, 3)).($failed > 3 ? ' (+'.($failed - 3).' more)' : '')
                 : null,
         ];
     }
@@ -299,20 +316,80 @@ class AmazonInventorySyncService
     }
 
     /**
+     * After Amazon accepts a push, store that qty as listings Amz Qty.
+     *
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
+     * @param  list<string>  $updatedSkus
      */
-    protected function persistLocalStock(array $rows): void
+    protected function persistLocalStock(array $rows, array $updatedSkus = []): void
     {
+        $allow = [];
+        foreach ($updatedSkus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $allow[strtoupper($sku)] = true;
+            }
+        }
+
         foreach ($rows as $row) {
-            $sku = (string) $row['sku_code'];
-            $qty = (int) $row['inventory'];
+            $sku = trim((string) $row['sku_code']);
+            if ($sku === '') {
+                continue;
+            }
+            if ($allow !== [] && ! isset($allow[strtoupper($sku)])) {
+                continue;
+            }
+            $qty = max(0, (int) $row['inventory']);
+            $upper = strtoupper($sku);
 
             if (Schema::hasTable('product_stock_mappings')
                 && Schema::hasColumn('product_stock_mappings', 'inventory_amazon')) {
                 ProductStockMapping::query()
-                    ->where('sku', $sku)
+                    ->where(function ($q) use ($sku, $upper) {
+                        $q->where('sku', $sku)
+                            ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$upper]);
+                    })
                     ->update(['inventory_amazon' => $qty]);
             }
+
+            if (Schema::hasTable('amazon_listing_statuses')) {
+                AmazonListingStatus::query()
+                    ->where(function ($q) use ($sku, $upper) {
+                        $q->where('sku', $sku)
+                            ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$upper]);
+                    })
+                    ->get()
+                    ->each(function (AmazonListingStatus $status) use ($qty) {
+                        $value = is_array($status->value) ? $status->value : [];
+                        $value['quantity'] = $qty;
+                        $status->value = $value;
+                        $status->save();
+                    });
+            }
+
+            if (Schema::hasTable('amazon_listings_raw') && Schema::hasColumn('amazon_listings_raw', 'quantity')) {
+                DB::table('amazon_listings_raw')
+                    ->where(function ($q) use ($sku, $upper) {
+                        $q->where('seller_sku', $sku)
+                            ->orWhereRaw('UPPER(TRIM(seller_sku)) = ?', [$upper]);
+                    })
+                    ->update(['quantity' => $qty]);
+            }
+        }
+    }
+
+    protected function clearListingCaches(): void
+    {
+        try {
+            app(AmazonLiveListingsService::class)->clearCache();
+        } catch (\Throwable $e) {
+            // ignore
+        }
+        try {
+            Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'amazon');
+            MappingChannelCounts::forgetMasterCaches();
+        } catch (\Throwable $e) {
+            // ignore
         }
     }
 }

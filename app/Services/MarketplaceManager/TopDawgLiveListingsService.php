@@ -13,6 +13,11 @@ class TopDawgLiveListingsService
 {
     private const CACHE_KEY = 'mm.topdawg.live_listings.v1';
 
+    public function clearCache(): void
+    {
+        Cache::forget(self::CACHE_KEY);
+    }
+
     /**
      * @return array<int, array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float}>
      */

@@ -551,7 +551,15 @@ final class MarketplaceListingStockResolver
             if ($qty === null) {
                 continue;
             }
-            self::put($out, (string) $row->sku, $qty);
+            $raw = (string) $row->sku;
+            $upper = strtoupper(trim($raw));
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+            // Exact SKU (ND 58) must beat a hyphen alias (ND-58) on the shared norm key.
+            if ($upper !== '' && $upper === $norm) {
+                self::putOverwrite($out, $raw, $qty);
+            } else {
+                self::put($out, $raw, $qty);
+            }
         }
 
         return $out;
@@ -1033,7 +1041,15 @@ final class MarketplaceListingStockResolver
                 ->whereNotNull('remaining_inventory')
                 ->get(['sku', 'remaining_inventory'])
                 ->each(function ($row) use (&$map) {
-                    self::put($map, (string) $row->sku, (int) $row->remaining_inventory);
+                    $raw = (string) $row->sku;
+                    $upper = strtoupper(trim($raw));
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+                    $qty = (int) $row->remaining_inventory;
+                    if ($upper !== '' && $upper === $norm) {
+                        self::putOverwrite($map, $raw, $qty);
+                    } else {
+                        self::put($map, $raw, $qty);
+                    }
                 });
 
             return;
