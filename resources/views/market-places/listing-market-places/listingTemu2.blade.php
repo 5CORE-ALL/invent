@@ -231,7 +231,7 @@
             border: none;
             border-radius: 0;
             padding: 0;
-            overflow: hidden;
+            overflow: visible;
             width: 100%;
             box-sizing: border-box;
         }
@@ -297,7 +297,25 @@
             display: flex;
             flex: 0 0 auto;
             align-items: center;
+            gap: 4px;
             margin-left: 0;
+        }
+
+        #temu2-listing-toolbar .temu2-bulk-publish-btn {
+            height: 30px;
+            padding: 0 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        #temu2-listing-toolbar .temu2-bulk-publish-btn:disabled {
+            opacity: 0.65;
+            cursor: wait;
         }
 
         #temu2-listing-toolbar .listing-io-btn {
@@ -485,6 +503,53 @@
             cursor: wait;
         }
 
+        .temu2-publish-modal-note {
+            font-size: 13px;
+            color: #475569;
+            margin-bottom: 12px;
+        }
+
+        .temu2-publish-group {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .temu2-publish-group-head {
+            background: #f8fafc;
+            padding: 8px 12px;
+            font-weight: 700;
+            font-size: 13px;
+            color: #0f172a;
+        }
+
+        .temu2-publish-group table {
+            width: 100%;
+            margin: 0;
+            font-size: 12px;
+        }
+
+        .temu2-publish-group th,
+        .temu2-publish-group td {
+            padding: 6px 10px;
+            vertical-align: middle;
+        }
+
+        .temu2-publish-status {
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .temu2-publish-status.is-publish { color: #15803d; }
+        .temu2-publish-status.is-skip { color: #64748b; }
+
+        #temu2-publish-progress {
+            font-size: 13px;
+            color: #334155;
+            min-height: 1.2em;
+        }
+
         /* ========== LINK CELL ========== */
         #temu2-listing-wrap a.listing-item-link {
             font-weight: 600;
@@ -576,6 +641,12 @@
                                 <option value="Listed">Listed Only</option>
                                 <option value="Pending">Missing L</option>
                             </select>
+                            <button type="button"
+                                class="btn btn-sm btn-primary temu2-bulk-publish-btn"
+                                id="bulk-publish-btn"
+                                title="Publish selected SKUs as parent variations">
+                                <i class="fas fa-cloud-upload-alt"></i> Publish selected
+                            </button>
                             <div class="toolbar-actions dropdown">
                                 <button type="button"
                                     class="btn btn-sm btn-primary listing-io-btn"
@@ -616,6 +687,31 @@
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-primary" id="confirmImportBtn">Import</button>
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal fade" id="temu2PublishModal" tabindex="-1" aria-labelledby="temu2PublishModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="temu2PublishModalLabel">Publish as variation</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="temu2-publish-modal-note">
+                                        Each parent becomes one Temu listing. Missing L siblings are included automatically.
+                                        Already listed SKUs are skipped. Uncheck a child to leave it off this listing.
+                                    </p>
+                                    <div id="temu2-publish-groups"></div>
+                                    <div id="temu2-publish-progress"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="temu2-publish-confirm">
+                                        <i class="fas fa-cloud-upload-alt"></i> Publish variation(s)
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -902,7 +998,7 @@
             const sku = String(data.sku || '').trim();
             if (!sku) return '';
 
-            return `<button type="button" class="temu2-publish-btn" data-sku="${escapeHtml(sku)}" title="Publish ${escapeHtml(sku)} to Temu 2 via API">
+            return `<button type="button" class="temu2-publish-btn" data-sku="${escapeHtml(sku)}" title="Review variations for ${escapeHtml(sku)} then publish to Temu 2">
                 <i class="fas fa-cloud-upload-alt"></i> Publish
             </button>`;
         }
@@ -1032,7 +1128,7 @@
                         headerHozAlign: 'center',
                         headerSort: false,
                         width: 150,
-                        headerTooltip: 'Publish Missing L SKUs to Temu 2 via Open API',
+                        headerTooltip: 'Review parent variations, then publish Missing L SKUs to Temu 2',
                         formatter: formatPublishToTemu2
                     }
                 ]
@@ -1097,66 +1193,211 @@
                 }
             });
 
+            function publishStatusLabel(status, reason) {
+                if (status === 'will_publish') {
+                    return '<span class="temu2-publish-status is-publish">Will publish</span>';
+                }
+                const text = reason || 'Skipped';
+                return `<span class="temu2-publish-status is-skip">${escapeHtml(text)}</span>`;
+            }
+
+            function renderPublishGroups(groups) {
+                if (!groups || !groups.length) {
+                    $('#temu2-publish-groups').html('<p class="text-muted mb-0">No Missing L children to publish.</p>');
+                    $('#temu2-publish-confirm').prop('disabled', true);
+                    return;
+                }
+                let html = '';
+                let canPublish = false;
+                groups.forEach(function (group, gi) {
+                    const parent = String(group.parent || 'Standalone');
+                    const count = Number(group.publish_count || 0);
+                    html += `<div class="temu2-publish-group" data-group-index="${gi}">`;
+                    html += `<div class="temu2-publish-group-head">${escapeHtml(parent)} · ${count} variation${count === 1 ? '' : 's'}</div>`;
+                    html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU (spec)</th><th>INV</th><th>Status</th></tr></thead><tbody>';
+                    (group.children || []).forEach(function (child) {
+                        const sku = String(child.sku || '');
+                        const publishable = child.status === 'will_publish';
+                        if (publishable) canPublish = true;
+                        html += '<tr>';
+                        html += `<td><input type="checkbox" class="temu2-publish-sku-check" data-sku="${escapeHtml(sku)}" ${publishable ? 'checked' : 'disabled'}></td>`;
+                        html += `<td>${escapeHtml(sku)}</td>`;
+                        html += `<td>${escapeHtml(String(child.inv ?? 0))}</td>`;
+                        html += `<td>${publishStatusLabel(child.status, child.reason)}</td>`;
+                        html += '</tr>';
+                    });
+                    html += '</tbody></table></div>';
+                });
+                $('#temu2-publish-groups').html(html);
+                $('#temu2-publish-confirm').prop('disabled', !canPublish);
+                $('#temu2-publish-progress').text('');
+            }
+
+            function selectedPublishGroups() {
+                const groups = [];
+                $('#temu2-publish-groups .temu2-publish-group').each(function () {
+                    const parent = $(this).find('.temu2-publish-group-head').text().split(' · ')[0] || '';
+                    const skus = [];
+                    $(this).find('.temu2-publish-sku-check:checked:not(:disabled)').each(function () {
+                        const sku = String($(this).attr('data-sku') || '').trim();
+                        if (sku) skus.push(sku);
+                    });
+                    if (skus.length) {
+                        groups.push({ parent: parent, skus: skus });
+                    }
+                });
+                return groups;
+            }
+
+            function markRowsListed(skus, goodsId) {
+                if (!temu2ListingTable || !skus || !skus.length) return;
+                const want = {};
+                skus.forEach(function (sku) { want[String(sku).trim()] = true; });
+                (temu2ListingTable.getRows() || []).forEach(function (row) {
+                    const data = row.getData() || {};
+                    if (!want[String(data.sku || '').trim()]) return;
+                    row.update({
+                        goods_id: goodsId,
+                        listing_id: goodsId,
+                        eBay_item_id: goodsId,
+                        listed: 'Listed'
+                    });
+                });
+                calculateTotals();
+            }
+
+            function openPublishPreview(skus) {
+                const unique = [];
+                const seen = {};
+                (skus || []).forEach(function (sku) {
+                    sku = String(sku || '').trim();
+                    if (!sku || seen[sku]) return;
+                    seen[sku] = true;
+                    unique.push(sku);
+                });
+                if (!unique.length) {
+                    showNotification('danger', 'Select at least one SKU.');
+                    return;
+                }
+                $('#temu2-publish-groups').html('<p class="text-muted mb-0">Loading variation preview…</p>');
+                $('#temu2-publish-confirm').prop('disabled', true);
+                $('#temu2-publish-progress').text('');
+                showBsModal('temu2PublishModal');
+                $.ajax({
+                    url: "{{ route('listing_temu2.publish.preview') }}",
+                    type: 'POST',
+                    data: { skus: unique },
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    success: function (response) {
+                        renderPublishGroups((response && response.groups) || []);
+                    },
+                    error: function (xhr) {
+                        hideBsModal('temu2PublishModal');
+                        let msg = 'Could not build variation preview.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                        showNotification('danger', msg);
+                    }
+                });
+            }
+
+            function publishAjaxError(xhr) {
+                if (xhr.status === 0) {
+                    return 'Publish timed out or the connection dropped. Try again.';
+                }
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    return xhr.responseJSON.message;
+                }
+                if (xhr.responseJSON && xhr.responseJSON.errors) {
+                    const first = Object.values(xhr.responseJSON.errors)[0];
+                    return Array.isArray(first) ? String(first[0]) : String(first);
+                }
+                if (xhr.status === 419) {
+                    return 'Session expired. Refresh the page and try Publish again.';
+                }
+                return 'Publish to Temu 2 failed.';
+            }
+
+            function publishGroup(skus) {
+                return $.ajax({
+                    url: "{{ url('/listing_temu2/save-status') }}",
+                    type: 'POST',
+                    data: { skus: skus, confirmed: 1, publish: 1 },
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    timeout: 180000
+                });
+            }
+
             $(document).on('click', '.temu2-publish-btn', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                const $btn = $(this);
-                if ($btn.prop('disabled')) return;
-
-                const sku = String($btn.data('sku') || '').trim();
+                const sku = String($(this).data('sku') || '').trim();
                 if (!sku) {
                     showNotification('danger', 'SKU is missing.');
                     return;
                 }
+                openPublishPreview([sku]);
+            });
 
+            $('#bulk-publish-btn').on('click', function () {
+                if (!temu2ListingTable) return;
+                const selected = (temu2ListingTable.getSelectedData() || [])
+                    .map(function (row) { return String(row.sku || '').trim(); })
+                    .filter(function (sku) { return sku && !isParentSku(sku); });
+                if (!selected.length) {
+                    showNotification('danger', 'Select one or more SKUs first.');
+                    return;
+                }
+                openPublishPreview(selected);
+            });
+
+            $('#temu2-publish-confirm').on('click', function () {
+                const $btn = $(this);
+                if ($btn.prop('disabled')) return;
+                const groups = selectedPublishGroups();
+                if (!groups.length) {
+                    showNotification('danger', 'No Missing L children selected to publish.');
+                    return;
+                }
                 const originalHtml = $btn.html();
-                $btn.prop('disabled', true).addClass('is-publishing');
-                $btn.html('<i class="fas fa-spinner fa-spin"></i> Publishing');
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Publishing');
+                $('#temu2PublishModal .btn-close, #temu2PublishModal [data-bs-dismiss="modal"]').prop('disabled', true);
 
-                $.ajax({
-                    url: "{{ url('/listing_temu2/save-status') }}",
-                    type: 'POST',
-                    data: { sku: sku, publish: 1 },
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                    timeout: 180000,
-                    success: function (response) {
-                        const goodsId = String((response && response.goods_id) || '').trim();
-                        showNotification('success', (response && response.message) ? response.message : 'Published to Temu 2.');
-                        if (temu2ListingTable && goodsId) {
-                            const match = (temu2ListingTable.getRows() || []).find(function (row) {
-                                return String((row.getData() || {}).sku || '').trim() === sku;
-                            });
-                            if (match) {
-                                match.update({
-                                    goods_id: goodsId,
-                                    listing_id: goodsId,
-                                    eBay_item_id: goodsId,
-                                    listed: 'Listed'
-                                });
-                                calculateTotals();
-                                return;
-                            }
+                let index = 0;
+                const ok = [];
+                const fail = [];
+
+                function next() {
+                    if (index >= groups.length) {
+                        $btn.prop('disabled', false).html(originalHtml);
+                        $('#temu2PublishModal .btn-close, #temu2PublishModal [data-bs-dismiss="modal"]').prop('disabled', false);
+                        if (ok.length) {
+                            showNotification('success', ok.join(' '));
                         }
-                        if (temu2ListingTable) {
-                            temu2ListingTable.setData('/listing_temu2/view-data');
+                        if (fail.length) {
+                            showNotification('danger', fail.join(' '));
                         }
-                    },
-                    error: function (xhr) {
-                        let msg = 'Publish to Temu 2 failed.';
-                        if (xhr.status === 0) {
-                            msg = 'Publish timed out or the connection dropped. Try again.';
-                        } else if (xhr.responseJSON && xhr.responseJSON.message) {
-                            msg = xhr.responseJSON.message;
-                        } else if (xhr.responseJSON && xhr.responseJSON.errors) {
-                            const first = Object.values(xhr.responseJSON.errors)[0];
-                            msg = Array.isArray(first) ? String(first[0]) : String(first);
-                        } else if (xhr.status === 419) {
-                            msg = 'Session expired. Refresh the page and try Publish again.';
+                        if (ok.length && !fail.length) {
+                            hideBsModal('temu2PublishModal');
                         }
-                        showNotification('danger', msg);
-                        $btn.prop('disabled', false).removeClass('is-publishing').html(originalHtml);
+                        return;
                     }
-                });
+                    const group = groups[index];
+                    index += 1;
+                    $('#temu2-publish-progress').text('Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…');
+                    publishGroup(group.skus).done(function (response) {
+                        const goodsId = String((response && response.goods_id) || '').trim();
+                        const listedSkus = (response && response.skus) || group.skus;
+                        if (goodsId) {
+                            markRowsListed(listedSkus, goodsId);
+                        }
+                        ok.push((response && response.message) ? response.message : ('Published ' + group.parent + '.'));
+                        next();
+                    }).fail(function (xhr) {
+                        fail.push(group.parent + ': ' + publishAjaxError(xhr));
+                        next();
+                    });
+                }
+                next();
             });
 
             $('#import-btn').on('click', function () {

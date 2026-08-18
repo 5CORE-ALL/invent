@@ -76,16 +76,32 @@ class ListingTemu2Controller extends Controller
 
     public function publish(Request $request, Temu2ListingPublishService $publisher)
     {
-        $validated = $request->validate([
-            'sku' => 'required|string|max:191',
-        ]);
-
         if (function_exists('set_time_limit')) {
             @set_time_limit(180);
         }
 
+        $skus = $request->input('skus');
+        if (! is_array($skus) || $skus === []) {
+            $single = trim((string) $request->input('sku', ''));
+            $skus = $single !== '' ? [$single] : [];
+        }
+
+        $validatedSkus = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $validatedSkus[] = $sku;
+            }
+        }
+        if ($validatedSkus === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'SKU is required.',
+            ], 422);
+        }
+
         try {
-            $result = $publisher->publish($validated['sku']);
+            $result = $publisher->publishSkus($validatedSkus, ! $request->boolean('confirmed'));
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -94,6 +110,32 @@ class ListingTemu2Controller extends Controller
         }
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
+    public function publishPreview(Request $request, Temu2ListingPublishService $publisher)
+    {
+        $skus = $request->input('skus');
+        if (! is_array($skus) || $skus === []) {
+            $single = trim((string) $request->input('sku', ''));
+            $skus = $single !== '' ? [$single] : [];
+        }
+
+        $validatedSkus = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $validatedSkus[] = $sku;
+            }
+        }
+        if ($validatedSkus === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select at least one SKU.',
+                'groups' => [],
+            ], 422);
+        }
+
+        return response()->json($publisher->previewFromSkus($validatedSkus));
     }
 
     public function import(Request $request)

@@ -16,26 +16,53 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Publish a Missing L SKU to Temu 2 via Open API (not Seller Center).
+ * Publish Missing L SKUs to Temu 2 via Open API as parent variation listings.
  */
 class Temu2ListingPublishService
 {
+    /** @var array<int, int> */
+    private array $parentSpecIdByCat = [];
+
     public function __construct(private Temu2ApiService $api)
     {
     }
 
     /**
-     * @return array{success: bool, message: string, goods_id?: string, sku_id?: string}
+     * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
     public function publish(string $sku): array
     {
-        $sku = trim($sku);
-        if ($sku === '') {
-            return ['success' => false, 'message' => 'SKU is required.'];
+        return $this->publishSkus([$sku], true);
+    }
+
+    /**
+     * Group seed SKUs by product-master parent and list Missing L siblings that would be published.
+     *
+     * @param  list<string>  $seedSkus
+     * @return array{success: bool, groups: list<array<string, mixed>>}
+     */
+    public function previewFromSkus(array $seedSkus): array
+    {
+        $groups = [];
+        foreach ($this->expandSeedSkusToParentGroups($seedSkus) as $parent => $children) {
+            $groups[] = $this->formatPreviewGroup($parent, $children);
         }
 
-        if (stripos($sku, 'PARENT') !== false) {
-            return ['success' => false, 'message' => 'Parent rows cannot be published.'];
+        return [
+            'success' => true,
+            'groups' => array_values($groups),
+        ];
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
+     */
+    public function publishSkus(array $skus, bool $expandSiblings = true): array
+    {
+        $skus = $this->uniqueTrimmedSkus($skus);
+        if ($skus === []) {
+            return ['success' => false, 'message' => 'SKU is required.'];
         }
 
         if (! $this->api->isConfigured()) {
@@ -50,44 +77,74 @@ class Temu2ListingPublishService
             return ['success' => false, 'message' => $blocked];
         }
 
-        $existingGoodsId = $this->localGoodsId($sku);
-        if ($existingGoodsId !== '') {
-            return [
-                'success' => true,
-                'message' => 'Already listed on Temu 2.',
-                'goods_id' => $existingGoodsId,
-            ];
+        if ($expandSiblings) {
+            $preview = $this->previewFromSkus($skus);
+            $groups = $preview['groups'] ?? [];
+            if (count($groups) > 1) {
+                return [
+                    'success' => false,
+                    'message' => 'Selected SKUs belong to more than one parent. Use Publish selected so each parent is listed as its own variation.',
+                ];
+            }
+            $skus = $groups[0]['publish_skus'] ?? [];
+        } else {
+            $skus = $this->filterPublishableSkus($skus);
         }
 
-        $product = ProductMaster::query()
+        if ($skus === []) {
+            return ['success' => false, 'message' => 'No Missing L child SKUs left to publish (already listed, NRL, or parent rows were skipped).'];
+        }
+
+        $products = ProductMaster::query()
             ->whereNull('deleted_at')
-            ->where('sku', $sku)
-            ->first();
-        if (! $product) {
+            ->whereIn('sku', $skus)
+            ->get()
+            ->keyBy(function ($row) {
+                return (string) $row->sku;
+            });
+
+        $primarySku = $skus[0];
+        $primary = $products->get($primarySku);
+        if (! $primary) {
             return ['success' => false, 'message' => 'SKU not found in product master.'];
         }
 
-        $nrReq = $this->nrReqForSku($sku);
-        if ($nrReq === 'NR') {
-            return ['success' => false, 'message' => 'This SKU is NRL on Temu 2 Data View. Only REQ Missing L SKUs can be published.'];
-        }
-
-        $title = $this->resolveTitle($product, $sku);
+        $parentKey = $this->groupKeyForProduct($primary);
+        $title = $this->resolveTitle($primary, $primarySku);
         if ($title === '') {
             return ['success' => false, 'message' => 'No title found (product_master title80/title100/title150 or Shopify product_title).'];
         }
 
-        $price = $this->resolvePrice($sku);
-        if ($price === null || $price <= 0) {
-            return ['success' => false, 'message' => 'No price found. Set temu2_pricing.base_price or Shopify b2c_price.'];
+        $gallerySources = [];
+        $prepared = [];
+        foreach ($skus as $sku) {
+            $product = $products->get($sku);
+            if (! $product) {
+                return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
+            }
+            $price = $this->resolvePrice($sku);
+            if ($price === null || $price <= 0) {
+                return ['success' => false, 'message' => 'No price found for '.$sku.'. Set temu2_pricing.base_price or Shopify b2c_price.'];
+            }
+            $images = $this->resolveSourceImages($product, $sku);
+            foreach ($images as $url) {
+                $gallerySources[] = $url;
+            }
+            $prepared[] = [
+                'sku' => $sku,
+                'product' => $product,
+                'price' => $price,
+                'qty' => $this->resolveQty($sku),
+                'dimensions' => $this->api->getProductDimensions($sku),
+            ];
         }
 
-        $sourceImages = $this->resolveSourceImages($product, $sku);
-        if ($sourceImages === []) {
+        $gallerySources = array_values(array_unique($gallerySources));
+        if ($gallerySources === []) {
             return ['success' => false, 'message' => 'No images found on product master (main_image / image1–image7) or temu2_metrics.'];
         }
 
-        $upload = $this->uploadImages($sourceImages);
+        $upload = $this->uploadImages($gallerySources);
         if (($upload['error'] ?? null) !== null) {
             return ['success' => false, 'message' => $upload['error']];
         }
@@ -95,13 +152,12 @@ class Temu2ListingPublishService
         if ($hostedImages === []) {
             return ['success' => false, 'message' => 'Failed to upload images to Temu 2. Check TEMU2 credentials and image URLs.'];
         }
-
         while (count($hostedImages) < 3) {
             $hostedImages[] = $hostedImages[0];
         }
         $hostedImages = array_slice($hostedImages, 0, 10);
 
-        $catId = $this->resolveCatId($sku, $title, $hostedImages[0]);
+        $catId = $this->resolveCatId($primarySku, $title, $hostedImages[0]);
         if ($catId === null) {
             return ['success' => false, 'message' => 'Could not resolve a Temu leaf category. Set temu2_pricing.category_id or check category recommend API access.'];
         }
@@ -111,51 +167,23 @@ class Temu2ListingPublishService
             return ['success' => false, 'message' => 'No Temu 2 shipping template found. Create one in Seller Center or set TEMU2_COST_TEMPLATE_ID.'];
         }
 
-        $spec = $this->resolveSpecDetails($catId, $sku);
-        if ($spec === []) {
-            return ['success' => false, 'message' => 'Could not resolve a Temu variation (spec) for this category. Check temu.local.product.variation.get permission.'];
-        }
-
-        $qty = $this->resolveQty($sku);
         $currency = strtoupper(trim((string) config('services.temu2.currency', 'USD'))) ?: 'USD';
-        $baseAmount = number_format($price, 2, '.', '');
-        $listAmount = number_format(round($price * 1.2, 2), 2, '.', '');
-        if ((float) $listAmount <= (float) $baseAmount) {
-            $listAmount = number_format($price + 1, 2, '.', '');
-        }
-
-        $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId);
-        $dimensions = $this->api->getProductDimensions($sku);
-        $shipmentLimitDay = max(1, (int) config('services.temu2.shipment_limit_day', 2));
-
-        $goodsOriginInfo = $this->buildGoodsOriginInfo();
-        $payloadV2 = [
-            'type' => (string) config('services.temu2.goods_add_type', 'temu.local.goods.v2.add'),
-            'language' => 'en',
-            'goodsBasic' => [
-                'catId' => $catId,
-                'goodsName' => $title,
-                'externalGoodsId' => $sku,
-                'outGoodsSn' => $sku,
-                'goodsDesc' => $this->resolveDescription($product, $sku),
-                'bulletPoints' => $this->resolveBullets($product, $sku),
-                'brand' => ['noTrademark' => true],
-                'importDesignation' => $goodsOriginInfo['importDesignation'],
-                'goodsGallery' => [
-                    'goodsCarouselImage' => $hostedImages,
-                    'detailImage' => $hostedImages,
-                ],
-            ],
-            'goodsServicePromise' => [
-                'shipmentLimitDay' => $shipmentLimitDay,
-                'fulfillmentType' => 1,
-                'costTemplateId' => $costTemplateId,
-            ],
-            'goodsOriginInfo' => $goodsOriginInfo,
-            'skuList' => [[
-                'externalSkuId' => $sku,
-                'outSkuSn' => $sku,
-                'quantity' => $qty,
+        $skuList = [];
+        foreach ($prepared as $row) {
+            $spec = $this->uniqueSpecDetails($catId, $row['sku']);
+            if ($spec === []) {
+                return ['success' => false, 'message' => 'Could not resolve a Temu variation (spec) for '.$row['sku'].'. Check temu.local.product.variation.get permission.'];
+            }
+            $baseAmount = number_format($row['price'], 2, '.', '');
+            $listAmount = number_format(round($row['price'] * 1.2, 2), 2, '.', '');
+            if ((float) $listAmount <= (float) $baseAmount) {
+                $listAmount = number_format($row['price'] + 1, 2, '.', '');
+            }
+            $dimensions = is_array($row['dimensions']) ? $row['dimensions'] : [];
+            $skuList[] = [
+                'externalSkuId' => $row['sku'],
+                'outSkuSn' => $row['sku'],
+                'quantity' => $row['qty'],
                 'images' => $hostedImages,
                 'specDetails' => $spec,
                 'price' => [
@@ -171,7 +199,41 @@ class Temu2ListingPublishService
                     'weightUnit' => (string) ($dimensions['weightUnit'] ?? 'g'),
                     'volumeUnit' => (string) ($dimensions['volumeUnit'] ?? 'cm'),
                 ],
-            ]],
+            ];
+        }
+
+        $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId);
+        $shipmentLimitDay = max(1, (int) config('services.temu2.shipment_limit_day', 2));
+        $goodsOriginInfo = $this->buildGoodsOriginInfo();
+        $outGoodsSn = mb_substr($this->sanitizeGoodsName($parentKey !== '' ? $parentKey : $primarySku), 0, 50);
+        if ($outGoodsSn === '') {
+            $outGoodsSn = $primarySku;
+        }
+
+        $payloadV2 = [
+            'type' => (string) config('services.temu2.goods_add_type', 'temu.local.goods.v2.add'),
+            'language' => 'en',
+            'goodsBasic' => [
+                'catId' => $catId,
+                'goodsName' => $title,
+                'externalGoodsId' => $outGoodsSn,
+                'outGoodsSn' => $outGoodsSn,
+                'goodsDesc' => $this->resolveDescription($primary, $primarySku),
+                'bulletPoints' => $this->resolveBullets($primary, $primarySku),
+                'brand' => ['noTrademark' => true],
+                'importDesignation' => $goodsOriginInfo['importDesignation'],
+                'goodsGallery' => [
+                    'goodsCarouselImage' => $hostedImages,
+                    'detailImage' => $hostedImages,
+                ],
+            ],
+            'goodsServicePromise' => [
+                'shipmentLimitDay' => $shipmentLimitDay,
+                'fulfillmentType' => 1,
+                'costTemplateId' => $costTemplateId,
+            ],
+            'goodsOriginInfo' => $goodsOriginInfo,
+            'skuList' => $skuList,
         ];
 
         if ($goodsProperty !== []) {
@@ -179,25 +241,25 @@ class Temu2ListingPublishService
         }
 
         Log::info('Temu2 publish: sending add goods', [
-            'sku' => $sku,
+            'parent' => $parentKey,
+            'skus' => $skus,
             'catId' => $catId,
             'title' => $title,
-            'price' => $baseAmount,
-            'qty' => $qty,
             'images' => count($hostedImages),
             'type' => $payloadV2['type'],
         ]);
 
         $data = $this->temuCallBody($payloadV2, 120);
         if (! ($data['success'] ?? false)) {
-            $fallback = $this->addViaV1($payloadV2, $spec, $dimensions, $hostedImages, $sku, $qty, $baseAmount, $listAmount, $currency);
+            $fallback = $this->addViaV1($payloadV2);
             if ($fallback['success'] ?? false) {
                 $data = $fallback['data'];
             } else {
                 $msg = $this->apiErrorMessage($data);
                 $fallbackMsg = $this->apiErrorMessage($fallback['data'] ?? []);
                 Log::warning('Temu2 publish add failed', [
-                    'sku' => $sku,
+                    'parent' => $parentKey,
+                    'skus' => $skus,
                     'v2' => $msg,
                     'v1' => $fallbackMsg,
                 ]);
@@ -210,54 +272,60 @@ class Temu2ListingPublishService
         }
 
         $goodsId = (string) ($data['result']['goodsId'] ?? '');
-        $skuId = (string) (($data['result']['skuInfoList'][0]['skuId'] ?? '') ?: '');
         if ($goodsId === '') {
             return ['success' => false, 'message' => 'Temu 2 add succeeded but returned no goodsId.'];
         }
 
-        $this->api->persistNewListing($sku, $goodsId, $skuId !== '' ? $skuId : null);
-        $this->persistExtraListingFields($sku, $price, $qty);
+        $infoBySku = [];
+        foreach ($data['result']['skuInfoList'] ?? [] as $info) {
+            if (! is_array($info)) {
+                continue;
+            }
+            foreach (['outSkuSn', 'externalSkuId', 'extCode'] as $key) {
+                $code = strtoupper(trim((string) ($info[$key] ?? '')));
+                if ($code !== '') {
+                    $infoBySku[$code] = $info;
+                }
+            }
+        }
+
+        $firstSkuId = '';
+        foreach ($prepared as $index => $row) {
+            $info = $infoBySku[strtoupper($row['sku'])] ?? (($data['result']['skuInfoList'][$index] ?? []) ?: []);
+            $skuId = trim((string) ($info['skuId'] ?? ''));
+            if ($firstSkuId === '' && $skuId !== '') {
+                $firstSkuId = $skuId;
+            }
+            $this->api->persistNewListing($row['sku'], $goodsId, $skuId !== '' ? $skuId : null);
+            $this->persistExtraListingFields($row['sku'], $row['price'], $row['qty']);
+        }
         $this->forgetListingCaches();
 
         Log::info('Temu2 publish: listed', [
-            'sku' => $sku,
+            'parent' => $parentKey,
+            'skus' => $skus,
             'goods_id' => $goodsId,
-            'sku_id' => $skuId,
         ]);
+
+        $count = count($skus);
 
         return [
             'success' => true,
-            'message' => 'Published to Temu 2.',
+            'message' => $count > 1
+                ? 'Published '.$count.' variations of '.$parentKey.' to Temu 2.'
+                : 'Published to Temu 2.',
             'goods_id' => $goodsId,
-            'sku_id' => $skuId !== '' ? $skuId : null,
+            'sku_id' => $firstSkuId !== '' ? $firstSkuId : null,
+            'skus' => $skus,
         ];
     }
 
     /**
      * @param  array<string, mixed>  $payloadV2
-     * @param  list<array<string, mixed>>  $spec
-     * @param  array<string, string>  $dimensions
-     * @param  list<string>  $hostedImages
      * @return array{success: bool, data?: array<string, mixed>}
      */
-    private function addViaV1(
-        array $payloadV2,
-        array $spec,
-        array $dimensions,
-        array $hostedImages,
-        string $sku,
-        int $qty,
-        string $baseAmount,
-        string $listAmount,
-        string $currency
-    ): array {
-        $specIds = [];
-        foreach ($spec as $row) {
-            if (isset($row['specId']) && $row['specId'] !== '' && $row['specId'] !== null) {
-                $specIds[] = (int) $row['specId'];
-            }
-        }
-
+    private function addViaV1(array $payloadV2): array
+    {
         $v1 = $payloadV2;
         $v1['type'] = 'bg.local.goods.add';
         $v1['version'] = 'V1';
@@ -268,24 +336,34 @@ class Temu2ListingPublishService
             }
         }
 
-        $v1['skuList'] = [[
-            'externalSkuId' => $sku,
-            'outSkuSn' => $sku,
-            'quantity' => $qty,
-            'specIdList' => $specIds,
-            'images' => $hostedImages,
-            'weight' => (string) ($dimensions['weight'] ?? '1'),
-            'length' => (string) ($dimensions['length'] ?? '1'),
-            'width' => (string) ($dimensions['width'] ?? '1'),
-            'height' => (string) ($dimensions['height'] ?? '1'),
-            'weightUnit' => (string) ($dimensions['weightUnit'] ?? 'g'),
-            'volumeUnit' => (string) ($dimensions['volumeUnit'] ?? 'cm'),
-            'price' => [
-                'listPriceType' => 0,
-                'basePrice' => ['amount' => $baseAmount, 'currency' => $currency],
-                'listPrice' => ['amount' => $listAmount, 'currency' => $currency],
-            ],
-        ]];
+        $skuList = [];
+        foreach ($payloadV2['skuList'] ?? [] as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $specIds = [];
+            foreach ($item['specDetails'] ?? [] as $row) {
+                if (isset($row['specId']) && $row['specId'] !== '' && $row['specId'] !== null) {
+                    $specIds[] = (int) $row['specId'];
+                }
+            }
+            $pkg = is_array($item['packageInfo'] ?? null) ? $item['packageInfo'] : [];
+            $skuList[] = [
+                'externalSkuId' => $item['externalSkuId'] ?? '',
+                'outSkuSn' => $item['outSkuSn'] ?? ($item['externalSkuId'] ?? ''),
+                'quantity' => $item['quantity'] ?? 0,
+                'specIdList' => $specIds,
+                'images' => $item['images'] ?? [],
+                'weight' => (string) ($pkg['weight'] ?? '1'),
+                'length' => (string) ($pkg['length'] ?? '1'),
+                'width' => (string) ($pkg['width'] ?? '1'),
+                'height' => (string) ($pkg['height'] ?? '1'),
+                'weightUnit' => (string) ($pkg['weightUnit'] ?? 'g'),
+                'volumeUnit' => (string) ($pkg['volumeUnit'] ?? 'cm'),
+                'price' => $item['price'] ?? [],
+            ];
+        }
+        $v1['skuList'] = $skuList;
 
         $data = $this->temuCallBody($v1, 120);
 
@@ -293,6 +371,225 @@ class Temu2ListingPublishService
             'success' => (bool) ($data['success'] ?? false),
             'data' => $data,
         ];
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    private function uniqueTrimmedSkus(array $skus): array
+    {
+        $out = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $key = strtoupper($sku);
+            if (isset($out[$key])) {
+                continue;
+            }
+            $out[$key] = $sku;
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * @param  list<string>  $seedSkus
+     * @return array<string, \Illuminate\Support\Collection<int, ProductMaster>>
+     */
+    private function expandSeedSkusToParentGroups(array $seedSkus): array
+    {
+        $seeds = $this->uniqueTrimmedSkus($seedSkus);
+        if ($seeds === []) {
+            return [];
+        }
+
+        $products = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->whereIn('sku', $seeds)
+            ->get();
+
+        $parentKeys = [];
+        foreach ($products as $product) {
+            $parentKeys[$this->groupKeyForProduct($product)] = true;
+        }
+
+        $groups = [];
+        foreach (array_keys($parentKeys) as $parent) {
+            $children = ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->where('parent', $parent)
+                ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
+                ->orderBy('sku')
+                ->get();
+
+            if ($children->isEmpty()) {
+                $children = $products
+                    ->filter(function ($product) use ($parent) {
+                        $sku = (string) $product->sku;
+
+                        return $this->groupKeyForProduct($product) === $parent
+                            && stripos($sku, 'PARENT') === false;
+                    })
+                    ->values();
+            }
+
+            if ($children->isNotEmpty()) {
+                $groups[$parent] = $children;
+            }
+        }
+
+        return $groups;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, ProductMaster>  $children
+     * @return array<string, mixed>
+     */
+    private function formatPreviewGroup(string $parent, $children): array
+    {
+        $rows = [];
+        $publishSkus = [];
+        foreach ($children as $product) {
+            $sku = trim((string) $product->sku);
+            $classified = $this->classifyChildSku($sku);
+            $rows[] = [
+                'sku' => $sku,
+                'spec' => $sku,
+                'inv' => $this->resolveQty($sku),
+                'status' => $classified['status'],
+                'reason' => $classified['reason'],
+            ];
+            if ($classified['status'] === 'will_publish') {
+                $publishSkus[] = $sku;
+            }
+        }
+
+        return [
+            'parent' => $parent,
+            'children' => $rows,
+            'publish_skus' => $publishSkus,
+            'publish_count' => count($publishSkus),
+        ];
+    }
+
+    /**
+     * @return array{status: string, reason: string}
+     */
+    private function classifyChildSku(string $sku): array
+    {
+        if (stripos($sku, 'PARENT') !== false) {
+            return ['status' => 'skipped_parent', 'reason' => 'Parent row'];
+        }
+        if ($this->localGoodsId($sku) !== '') {
+            return ['status' => 'skipped_listed', 'reason' => 'Already listed'];
+        }
+        if ($this->nrReqForSku($sku) === 'NR') {
+            return ['status' => 'skipped_nrl', 'reason' => 'NRL'];
+        }
+        $price = $this->resolvePrice($sku);
+        if ($price === null || $price <= 0) {
+            return ['status' => 'skipped_no_price', 'reason' => 'No price'];
+        }
+
+        return ['status' => 'will_publish', 'reason' => ''];
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    private function filterPublishableSkus(array $skus): array
+    {
+        $out = [];
+        $parent = null;
+        foreach ($this->uniqueTrimmedSkus($skus) as $sku) {
+            if (($this->classifyChildSku($sku)['status'] ?? '') !== 'will_publish') {
+                continue;
+            }
+            $product = ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->where('sku', $sku)
+                ->first();
+            if (! $product) {
+                continue;
+            }
+            $key = $this->groupKeyForProduct($product);
+            if ($parent === null) {
+                $parent = $key;
+            }
+            if ($key !== $parent) {
+                continue;
+            }
+            $out[] = $sku;
+        }
+
+        return $out;
+    }
+
+    private function groupKeyForProduct(ProductMaster $product): string
+    {
+        $parent = trim((string) ($product->parent ?? ''));
+        if ($parent !== '') {
+            return $parent;
+        }
+
+        return trim((string) $product->sku);
+    }
+
+    /**
+     * @return list<array{parentSpecId: int|string, specId: int|string}>
+     */
+    private function uniqueSpecDetails(int $catId, string $sku): array
+    {
+        $parentSpecId = $this->parentSpecIdForCat($catId) ?? 1001;
+        $specId = $this->createSpecId($catId, (int) $parentSpecId, $sku);
+        if ($specId === null) {
+            return [];
+        }
+
+        return [[
+            'parentSpecId' => $parentSpecId,
+            'specId' => $specId,
+        ]];
+    }
+
+    private function parentSpecIdForCat(int $catId): ?int
+    {
+        if (isset($this->parentSpecIdByCat[$catId])) {
+            return $this->parentSpecIdByCat[$catId];
+        }
+
+        $data = $this->temuCallBody([
+            'type' => 'temu.local.product.variation.get',
+            'catId' => $catId,
+            'language' => 'en',
+        ], 45);
+
+        $parents = $data['result']['parentSpecList']
+            ?? $data['result']['variationList']
+            ?? $data['result']['specList']
+            ?? [];
+        if (! is_array($parents)) {
+            $parents = [];
+        }
+
+        foreach ($parents as $parent) {
+            if (! is_array($parent)) {
+                continue;
+            }
+            $parentSpecId = $parent['parentSpecId'] ?? $parent['parentId'] ?? $parent['id'] ?? null;
+            if ($parentSpecId === null || $parentSpecId === '') {
+                continue;
+            }
+            $this->parentSpecIdByCat[$catId] = (int) $parentSpecId;
+
+            return $this->parentSpecIdByCat[$catId];
+        }
+
+        return null;
     }
 
     private function localGoodsId(string $sku): string
