@@ -10,8 +10,37 @@
     .tabulator { border: 1px solid #e5e7eb; border-radius: 0 0 .35rem .35rem; }
     .tabulator .tabulator-header { background: #eef2f7; border-bottom: 1px solid #e5e7eb; }
     .tabulator .tabulator-col { background: #eef2f7 !important; }
-    .tabulator .tabulator-col .tabulator-col-content { padding: 8px 10px; }
-    .tabulator .tabulator-cell { padding: 8px 10px; }
+    .tabulator .tabulator-col .tabulator-col-content { padding: 4px 2px; }
+    .tabulator .tabulator-cell { padding: 6px 6px; }
+
+    /* Vertical headers — same pattern as marketplace tables */
+    #cmJobsTable .tabulator-col .tabulator-col-sorter,
+    #cmLogsTable .tabulator-col .tabulator-col-sorter {
+        display: none !important;
+    }
+    #cmJobsTable .tabulator-header .tabulator-col .tabulator-col-title,
+    #cmLogsTable .tabulator-header .tabulator-col .tabulator-col-title {
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+        white-space: nowrap;
+        transform: rotate(180deg);
+        height: 88px;
+        width: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 600;
+        overflow: visible;
+        text-overflow: clip;
+        padding-right: 0 !important;
+    }
+    #cmJobsTable .tabulator-header .tabulator-col,
+    #cmLogsTable .tabulator-header .tabulator-col {
+        height: auto !important;
+        min-height: 88px;
+        overflow: visible;
+    }
     .cm-pill {
         display: inline-flex; align-items: center; gap: .3rem;
         padding: .15rem .5rem; border-radius: 999px; font-size: .72rem; font-weight: 650;
@@ -22,6 +51,20 @@
     .cm-pill-bad { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
     .cm-pill-run { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
     #cmTrendChart { min-height: 260px; }
+    #cmStatusTabs { border-bottom: 1px solid #e5e7eb; flex-wrap: nowrap; overflow-x: auto; }
+    #cmStatusTabs .nav-link {
+        font-size: .8rem;
+        font-weight: 600;
+        color: #64748b;
+        padding: .45rem .7rem;
+        white-space: nowrap;
+    }
+    #cmStatusTabs .nav-link.active { color: #0f172a; }
+    #cmStatusTabs .nav-link .badge {
+        font-size: .65rem;
+        font-weight: 700;
+        vertical-align: middle;
+    }
 </style>
 @endsection
 
@@ -52,12 +95,7 @@
                 <option value="{{ $name }}" @selected(($filters['job'] ?? '') === $name)>{{ $name }}</option>
             @endforeach
         </select>
-        <select name="status" class="form-select form-select-sm cm-auto-filter" style="width:120px">
-            <option value="">All statuses</option>
-            @foreach(['success','recovered','partial_success','failed','running','stuck','timed_out','missed','cancelled'] as $st)
-                <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ str_replace('_',' ',$st) }}</option>
-            @endforeach
-        </select>
+        <input type="hidden" name="status" id="cmStatusInput" value="{{ $filters['status'] ?? '' }}">
         <select name="category" class="form-select form-select-sm cm-auto-filter" style="width:120px">
             <option value="">All categories</option>
             @foreach($categories as $cat)
@@ -76,6 +114,44 @@
         </div>
         <input type="text" id="cmJobsSearch" class="form-control form-control-sm" placeholder="Search jobs…" style="max-width:220px">
     </div>
+    @php
+        $cmStatusTabs = [
+            '' => 'All',
+            'failed' => 'Failed',
+            'timed_out' => 'Timed out',
+            'missed' => 'Missed',
+            'stuck' => 'Stuck',
+            'partial_success' => 'Partial success',
+            'running' => 'Running',
+            'success' => 'Success',
+        ];
+        $cmActiveStatus = (string) ($filters['status'] ?? '');
+        if ($cmActiveStatus === 'recovered') {
+            $cmActiveStatus = 'success';
+        }
+        if (! array_key_exists($cmActiveStatus, $cmStatusTabs)) {
+            $cmActiveStatus = '';
+        }
+    @endphp
+    <ul class="nav nav-tabs nav-bordered px-2 pt-2 mb-0" id="cmStatusTabs" role="tablist">
+        @foreach($cmStatusTabs as $tabKey => $tabLabel)
+            @php
+                $tabCount = $tabKey === ''
+                    ? $jobsTableData->count()
+                    : ($tabKey === 'success'
+                        ? $jobsTableData->whereIn('status', ['success', 'recovered'])->count()
+                        : $jobsTableData->where('status', $tabKey)->count());
+            @endphp
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link {{ $cmActiveStatus === $tabKey ? 'active' : '' }}"
+                        role="tab" data-status="{{ $tabKey }}"
+                        aria-selected="{{ $cmActiveStatus === $tabKey ? 'true' : 'false' }}">
+                    {{ $tabLabel }}
+                    <span class="badge bg-light text-dark border ms-1">{{ $tabCount }}</span>
+                </button>
+            </li>
+        @endforeach
+    </ul>
     <div class="card-body p-0">
         <div id="cmJobsTable"></div>
     </div>
@@ -158,6 +234,63 @@ document.addEventListener('DOMContentLoaded', function () {
     const jobsData = @json($jobsTableData);
     const logsData = @json($logsTableData);
     const alertsData = @json($alertsTableData);
+    let activeStatus = @json($filters['status'] ?? '');
+    if (activeStatus === 'recovered') activeStatus = 'success';
+    if (!['failed', 'timed_out', 'missed', 'stuck', 'partial_success', 'running', 'success'].includes(activeStatus)) {
+        activeStatus = '';
+    }
+    let jobsSearch = '';
+    let logsSearch = '';
+
+    function statusesForTab(tab) {
+        if (!tab) return null;
+        if (tab === 'success') return ['success', 'recovered'];
+        return [tab];
+    }
+
+    function applyTableFilters(table, search, searchFields) {
+        const filters = [];
+        const statuses = statusesForTab(activeStatus);
+        if (statuses) {
+            filters.push({ field: 'status', type: 'in', value: statuses });
+        }
+        const q = String(search || '').trim();
+        if (q) {
+            filters.push(searchFields.map((field) => ({ field, type: 'like', value: q })));
+        }
+        if (filters.length === 0) table.clearFilter();
+        else table.setFilter(filters);
+    }
+
+    function applyStatusTab(tab) {
+        activeStatus = tab || '';
+        const input = document.getElementById('cmStatusInput');
+        if (input) input.value = activeStatus;
+        document.querySelectorAll('#cmStatusTabs .nav-link').forEach((btn) => {
+            const on = (btn.getAttribute('data-status') || '') === activeStatus;
+            btn.classList.toggle('active', on);
+            btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        applyTableFilters(jobsTable, jobsSearch, ['job_name', 'command', 'root_cause']);
+        applyTableFilters(logsTable, logsSearch, ['job_name', 'failure_category', 'status']);
+        const url = new URL(window.location.href);
+        if (activeStatus) url.searchParams.set('status', activeStatus);
+        else url.searchParams.delete('status');
+        window.history.replaceState({}, '', url);
+    }
+
+    function statusRank(status) {
+        const s = String(status || '');
+        if (['failed', 'timed_out', 'missed', 'stuck', 'cancelled'].includes(s)) return 1;
+        if (s === 'partial_success') return 2;
+        if (s === 'running') return 3;
+        if (['success', 'recovered'].includes(s)) return 4;
+        return 5;
+    }
+
+    function statusSorter(a, b) {
+        return statusRank(a) - statusRank(b);
+    }
 
     function statusPill(status) {
         const s = String(status || '');
@@ -180,31 +313,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const jobsTable = new Tabulator('#cmJobsTable', {
         data: jobsData,
-        layout: 'fitDataStretch',
+        layout: 'fitData',
         height: '520px',
         pagination: 'local',
         paginationSize: 25,
         paginationSizeSelector: [25, 50, 100],
         movableColumns: true,
         placeholder: 'No monitored jobs found.',
-        initialSort: [{ column: 'job_name', dir: 'asc' }],
+        initialSort: [
+            { column: 'status', dir: 'asc' },
+            { column: 'job_name', dir: 'asc' },
+        ],
         columns: [
-            { title: 'Job', field: 'job_name', width: 220, formatter: linkFormatter, headerFilter: 'input' },
-            { title: 'Command', field: 'command', width: 200, formatter: (c) => `<span class="text-muted small">${c.getValue() || '—'}</span>` },
-            { title: 'Status', field: 'status', width: 130, hozAlign: 'center', formatter: statusFormatter, headerFilter: 'list', headerFilterParams: { valuesLookup: true, clearable: true } },
-            { title: 'Health', field: 'health_score', width: 90, hozAlign: 'right', sorter: 'number' },
-            { title: 'Success %', field: 'success_percentage', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toFixed(1) + '%' },
-            { title: 'Updated', field: 'updated_records', width: 100, hozAlign: 'right', sorter: 'number', formatter: 'money', formatterParams: { precision: 0, thousand: ',', symbol: '' } },
-            { title: 'Failed', field: 'failed_records', width: 90, hozAlign: 'right', sorter: 'number', formatter: (c) => {
+            { title: 'Job', field: 'job_name', minWidth: 140, formatter: linkFormatter, headerFilter: 'input' },
+            { title: 'Command', field: 'command', minWidth: 100, formatter: (c) => `<span class="text-muted small">${c.getValue() || '—'}</span>` },
+            { title: 'Status', field: 'status', minWidth: 88, hozAlign: 'center', formatter: statusFormatter, sorter: statusSorter },
+            { title: 'Health', field: 'health_score', hozAlign: 'right', sorter: 'number' },
+            { title: 'Success %', field: 'success_percentage', hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Math.round(Number(c.getValue())) + '%' },
+            { title: 'Updated', field: 'updated_records', hozAlign: 'right', sorter: 'number', formatter: 'money', formatterParams: { precision: 0, thousand: ',', symbol: '' } },
+            { title: 'Failed', field: 'failed_records', hozAlign: 'right', sorter: 'number', formatter: (c) => {
                 const v = Number(c.getValue() || 0);
                 return v > 0 ? `<span class="text-danger fw-semibold">${v.toLocaleString()}</span>` : '0';
             }},
-            { title: 'Chunks', field: 'chunks', width: 100, hozAlign: 'right' },
-            { title: 'Duration', field: 'duration_seconds', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toLocaleString() + 's' },
-            { title: 'Last success', field: 'last_success_at', width: 140 },
-            { title: 'Retries', field: 'retry_count', width: 90, hozAlign: 'right', sorter: 'number' },
-            { title: 'Memory', field: 'memory', width: 100 },
-            { title: '', field: 'details_url', width: 90, hozAlign: 'center', headerSort: false, formatter: (c) => `<a class="btn btn-sm btn-outline-primary" href="${c.getValue()}">Details</a>` },
+            { title: 'Chunks', field: 'chunks', hozAlign: 'right' },
+            { title: 'Duration', field: 'duration_seconds', hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toLocaleString() + 's' },
+            { title: 'Last success', field: 'last_success_at', hozAlign: 'center' },
+            { title: 'Retries', field: 'retry_count', hozAlign: 'right', sorter: 'number' },
+            { title: 'Memory', field: 'memory', hozAlign: 'right' },
+            { title: '', field: 'details_url', width: 36, hozAlign: 'center', headerSort: false, formatter: (c) => `<a href="${c.getValue()}" class="text-primary" title="Details" aria-label="Details"><i class="ri-search-line fs-5"></i></a>` },
         ],
         rowFormatter: function (row) {
             const s = row.getData().status;
@@ -215,15 +351,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.getElementById('cmJobsSearch')?.addEventListener('keyup', function () {
-        const q = this.value.trim();
-        if (!q) { jobsTable.clearFilter(); return; }
-        jobsTable.setFilter([
-            [
-                { field: 'job_name', type: 'like', value: q },
-                { field: 'command', type: 'like', value: q },
-                { field: 'root_cause', type: 'like', value: q },
-            ],
-        ]);
+        jobsSearch = this.value.trim();
+        applyTableFilters(jobsTable, jobsSearch, ['job_name', 'command', 'root_cause']);
     });
 
     new Tabulator('#cmAlertsTable', {
@@ -248,7 +377,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const logsTable = new Tabulator('#cmLogsTable', {
         data: logsData,
-        layout: 'fitDataStretch',
+        layout: 'fitData',
         height: '480px',
         pagination: 'local',
         paginationSize: 25,
@@ -257,21 +386,21 @@ document.addEventListener('DOMContentLoaded', function () {
         placeholder: 'No execution logs match these filters.',
         initialSort: [{ column: 'id', dir: 'desc' }],
         columns: [
-            { title: 'ID', field: 'id', width: 80, hozAlign: 'right', formatter: linkFormatter },
-            { title: 'Job', field: 'job_name', width: 200, headerFilter: 'input' },
-            { title: 'Status', field: 'status', width: 130, hozAlign: 'center', formatter: statusFormatter, headerFilter: 'list', headerFilterParams: { valuesLookup: true, clearable: true } },
-            { title: 'Category', field: 'failure_category', width: 120, formatter: (c) => c.getValue() || '—' },
-            { title: 'Started', field: 'started_at', width: 160 },
-            { title: 'Duration', field: 'duration_seconds', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toLocaleString() + 's' },
-            { title: 'Retries', field: 'retry_count', width: 90, hozAlign: 'right' },
-            { title: 'Updated', field: 'updated_records', width: 100, hozAlign: 'right' },
-            { title: 'Failed', field: 'failed_records', width: 90, hozAlign: 'right', formatter: (c) => {
+            { title: 'ID', field: 'id', hozAlign: 'right', formatter: linkFormatter },
+            { title: 'Job', field: 'job_name', minWidth: 140, headerFilter: 'input' },
+            { title: 'Status', field: 'status', minWidth: 88, hozAlign: 'center', formatter: statusFormatter, sorter: statusSorter },
+            { title: 'Category', field: 'failure_category', formatter: (c) => c.getValue() || '—' },
+            { title: 'Started', field: 'started_at' },
+            { title: 'Duration', field: 'duration_seconds', hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toLocaleString() + 's' },
+            { title: 'Retries', field: 'retry_count', hozAlign: 'right' },
+            { title: 'Updated', field: 'updated_records', hozAlign: 'right' },
+            { title: 'Failed', field: 'failed_records', hozAlign: 'right', formatter: (c) => {
                 const v = Number(c.getValue() || 0);
                 return v > 0 ? `<span class="text-danger fw-semibold">${v.toLocaleString()}</span>` : '0';
             }},
-            { title: 'Success %', field: 'success_percentage', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toFixed(1) + '%' },
-            { title: 'Health', field: 'health_score', width: 90, hozAlign: 'right' },
-            { title: 'API latency', field: 'api_latency_ms_avg', width: 110, hozAlign: 'right', formatter: (c) => c.getValue() ? Number(c.getValue()).toLocaleString() + 'ms' : '—' },
+            { title: 'Success %', field: 'success_percentage', hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Math.round(Number(c.getValue())) + '%' },
+            { title: 'Health', field: 'health_score', hozAlign: 'right' },
+            { title: 'API latency', field: 'api_latency_ms_avg', hozAlign: 'right', formatter: (c) => c.getValue() ? Number(c.getValue()).toLocaleString() + 'ms' : '—' },
         ],
         rowFormatter: function (row) {
             const s = row.getData().status;
@@ -282,15 +411,19 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.getElementById('cmLogsSearch')?.addEventListener('keyup', function () {
-        if (!this.value) { logsTable.clearFilter(); return; }
-        logsTable.setFilter([
-            [
-                { field: 'job_name', type: 'like', value: this.value },
-                { field: 'failure_category', type: 'like', value: this.value },
-                { field: 'status', type: 'like', value: this.value },
-            ],
-        ]);
+        logsSearch = this.value.trim();
+        applyTableFilters(logsTable, logsSearch, ['job_name', 'failure_category', 'status']);
     });
+
+    document.getElementById('cmStatusTabs')?.addEventListener('click', function (e) {
+        const btn = e.target.closest('.nav-link');
+        if (!btn) return;
+        applyStatusTab(btn.getAttribute('data-status') || '');
+    });
+
+    if (activeStatus) {
+        applyStatusTab(activeStatus);
+    }
 
     @if($selectedJob && $trend->isNotEmpty())
     if (typeof Highcharts !== 'undefined') {

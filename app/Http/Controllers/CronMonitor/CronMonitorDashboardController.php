@@ -64,7 +64,6 @@ class CronMonitorDashboardController extends Controller
 
         $filteredLatest = $allLatest
             ->when($jobName, fn (Collection $c) => $c->where('job_name', $jobName))
-            ->when($status, fn (Collection $c) => $c->where('status', $status))
             ->values();
 
         $lastSuccessMap = $this->repository->lastSuccessAtByJobs(
@@ -100,15 +99,18 @@ class CronMonitorDashboardController extends Controller
                 'memory' => is_array($cp)
                     ? ($cp['memory_usage'] ?? $row->memory_usage)
                     : ($row->memory_usage ?: '—'),
-                'last_success_at' => $lastOkAt?->format('Y-m-d H:i'),
+                'last_success_at' => $lastOkAt?->format('j M'),
                 'last_success_human' => $lastOkAt?->diffForHumans(),
                 'details_url' => route('cron-monitor.show', $row->id),
             ];
-        })->values();
+        })->sortBy(fn (array $row) => sprintf(
+            '%d-%s',
+            CronExecutionLog::statusSortRank($row['status']),
+            mb_strtolower((string) $row['job_name'])
+        ))->values();
 
         $recentLogs = CronExecutionLog::query()
             ->when($jobName, fn ($q) => $q->where('job_name', $jobName))
-            ->when($status, fn ($q) => $q->where('status', $status))
             ->when($category, fn ($q) => $q->where('failure_category', $category))
             ->orderByDesc('started_at')
             ->limit(300)

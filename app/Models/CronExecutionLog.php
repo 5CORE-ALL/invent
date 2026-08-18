@@ -91,6 +91,25 @@ class CronExecutionLog extends Model
         return $this->hasMany(CronExecutionCheckpoint::class, 'execution_log_id');
     }
 
+    /**
+     * Default dashboard order: failure → partial → running → success.
+     */
+    public static function statusSortRank(?string $status): int
+    {
+        return match ($status) {
+            self::STATUS_FAILED,
+            self::STATUS_TIMED_OUT,
+            self::STATUS_MISSED,
+            self::STATUS_STUCK,
+            self::STATUS_CANCELLED => 1,
+            self::STATUS_PARTIAL_SUCCESS => 2,
+            self::STATUS_RUNNING => 3,
+            self::STATUS_SUCCESS,
+            self::STATUS_RECOVERED => 4,
+            default => 5,
+        };
+    }
+
     public function isHealthy(): bool
     {
         return in_array($this->status, [self::STATUS_SUCCESS, self::STATUS_RECOVERED], true);

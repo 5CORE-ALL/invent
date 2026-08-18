@@ -322,7 +322,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const v = Number(c.getValue() || 0);
                 return v > 0 ? `<span class="text-danger fw-semibold">${v.toLocaleString()}</span>` : '0';
             }},
-            { title: 'Success %', field: 'success_percentage', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toFixed(1) + '%' },
+            { title: 'Success %', field: 'success_percentage', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Math.round(Number(c.getValue())) + '%' },
             { title: 'Health', field: 'health_score', width: 90, hozAlign: 'right' },
         ],
         rowFormatter: function (row) {
