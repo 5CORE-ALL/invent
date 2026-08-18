@@ -6192,6 +6192,7 @@
                 {
                     title: "Temu Ship",
                     field: "temu_ship",
+                    headerTooltip: "Uses stored Temu ship when it already exists; otherwise regular ship (+ 50% O-Size when Type is O-Size)",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: "money",

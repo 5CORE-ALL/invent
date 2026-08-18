@@ -34,6 +34,7 @@ use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Services\EbayChannelMetricsService;
 use App\Services\SheinShopifySalesService;
 use App\Services\TemuShopifySalesService;
+use App\Support\ProductMasterTemuShip;
 use App\Models\AmazonOrder;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\EbayPromotedListingReport;
@@ -823,11 +824,7 @@ class UpdateMarketplaceDailyMetrics extends Command
                 if ($lp === 0 && isset($pm->lp)) {
                     $lp = floatval($pm->lp);
                 }
-                if (isset($values['temu_ship'])) {
-                    $temuShip = floatval($values['temu_ship']);
-                } elseif (isset($pm->temu_ship)) {
-                    $temuShip = floatval($pm->temu_ship);
-                }
+                $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $pm);
             }
 
             if ($quantity > 0 && $basePrice > 0) {
