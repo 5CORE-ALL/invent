@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\ShopifySku;
+use App\Services\ShopifyApiService;
 use App\Services\ShopifyCatalogSyncService;
 use App\Services\ShopifyPlsTokenService;
 use Illuminate\Support\Facades\Cache;
@@ -12,7 +13,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Push B2C Shopify qty onto the PLS Shopify store (Admin inventory_levels/set).
+ * Push 5Core (main) Shopify qty onto the PLS Shopify store (Admin inventory_levels/set).
+ * 5Core is the inventory master — PLS catalog qty is never the source for a push.
  */
 class PlsInventorySyncService
 {
@@ -21,7 +23,8 @@ class PlsInventorySyncService
     private const API_VERSION = '2025-01';
 
     public function __construct(
-        protected ShopifyPlsTokenService $tokenService
+        protected ShopifyPlsTokenService $tokenService,
+        protected ShopifyApiService $shopifyApi
     ) {}
 
     /**
@@ -43,9 +46,24 @@ class PlsInventorySyncService
             return ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'Shopify PLS is not connected.'];
         }
 
-        $shopifyQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        $fetchSkus = $skus;
+        foreach ($skus as $sku) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && $norm !== $sku) {
+                $fetchSkus[] = $norm;
+            }
+        }
+        $fetchSkus = array_values(array_unique($fetchSkus));
+
+        $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
+            $fetchSkus,
+            fn (array $need) => $this->fetchLive5CoreQuantities($need)
+        );
+        foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
+            $shopifyQty[$key] = (int) $qty;
+        }
         if ($shopifyQty === []) {
-            $shopifyQty = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($skus);
+            $shopifyQty = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($fetchSkus);
         }
 
         $updated = 0;
@@ -60,19 +78,32 @@ class PlsInventorySyncService
                 continue;
             }
 
-            $qty = MarketplaceListingStockResolver::qtyFromMap($shopifyQty, $sku);
+            $qty = $this->resolve5CoreQty($shopifyQty, $sku);
+            foreach ($fetchSkus as $alt) {
+                if ($qty !== null) {
+                    break;
+                }
+                if (ShopifySku::normalizeSkuForShopifyLookup($alt)
+                    === ShopifySku::normalizeSkuForShopifyLookup($sku)) {
+                    $qty = $this->resolve5CoreQty($shopifyQty, $alt);
+                }
+            }
             if ($qty === null) {
                 $skipped++;
-                $errorSamples['No B2C Shopify qty'] = ($errorSamples['No B2C Shopify qty'] ?? 0) + 1;
+                $errorSamples['No 5Core Shopify qty'] = ($errorSamples['No 5Core Shopify qty'] ?? 0) + 1;
                 continue;
             }
 
-            $result = $this->pushSku($sku, max(0, (int) $qty));
+            $pushQty = MarketplaceLiveInventoryRules::clampPushQty(
+                MarketplaceLiveInventoryRules::pushQtyFromLiveShopify($qty),
+                $qty
+            );
+            $result = $this->pushSku($sku, $pushQty);
             if ($result['success']) {
                 $updated++;
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
                 if ($norm !== '') {
-                    $overlay[$norm] = (int) ($result['qty'] ?? $qty);
+                    $overlay[$norm] = $pushQty;
                 }
             } else {
                 $failed++;
@@ -80,7 +111,7 @@ class PlsInventorySyncService
                 $errorSamples[$msg] = ($errorSamples[$msg] ?? 0) + 1;
                 Log::warning('PlsInventorySyncService: push failed', [
                     'sku' => $sku,
-                    'qty' => $qty,
+                    'qty' => $pushQty,
                     'error' => $msg,
                 ]);
             }
@@ -204,6 +235,45 @@ class PlsInventorySyncService
     }
 
     /**
+     * Live 5Core (main) Shopify inventory. PLS store qty is never used as the source.
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, int>
+     */
+    protected function fetchLive5CoreQuantities(array $skus): array
+    {
+        $live = [];
+        try {
+            $live = $this->shopifyApi->getInventoryQuantitiesBySku($skus);
+        } catch (\Throwable $e) {
+            Log::warning('PlsInventorySyncService: 5Core Shopify fetch failed', ['error' => $e->getMessage()]);
+            $live = [];
+        }
+
+        $local = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        foreach ($skus as $sku) {
+            if ($this->resolve5CoreQty($live, $sku) !== null) {
+                continue;
+            }
+            $qty = $this->resolve5CoreQty($local, $sku);
+            if ($qty === null) {
+                continue;
+            }
+            $live[strtoupper(trim($sku))] = $qty;
+        }
+
+        return $live;
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     */
+    protected function resolve5CoreQty(array $map, string $sku): ?int
+    {
+        return MarketplaceListingStockResolver::qtyFromMap($map, $sku);
+    }
+
+    /**
      * @return array{success: bool, message: string, qty?: int}
      */
     protected function pushSku(string $sku, int $qty): array
@@ -224,15 +294,15 @@ class PlsInventorySyncService
         }
 
         $v = $variantRes['json']['variant'] ?? [];
-        $inventoryItemId = $v['inventory_item_id'] ?? null;
-        if (! $inventoryItemId) {
+        $inventoryItemId = isset($v['inventory_item_id']) ? (int) $v['inventory_item_id'] : 0;
+        if ($inventoryItemId <= 0) {
             return ['success' => false, 'message' => 'No inventory_item_id on PLS variant'];
         }
 
         if (strtolower(trim((string) ($v['inventory_management'] ?? ''))) !== 'shopify') {
             $track = $this->request('PUT', '/inventory_items/'.$inventoryItemId.'.json', [
                 'inventory_item' => [
-                    'id' => (int) $inventoryItemId,
+                    'id' => $inventoryItemId,
                     'tracked' => true,
                 ],
             ]);
@@ -241,57 +311,60 @@ class PlsInventorySyncService
             }
         }
 
-        $levelsRes = $this->request('GET', '/inventory_items/'.$inventoryItemId.'/inventory_levels.json');
-        $levels = ($levelsRes['ok'] && is_array($levelsRes['json']['inventory_levels'] ?? null))
-            ? $levelsRes['json']['inventory_levels']
-            : [];
-        if ($levels === []) {
-            $fallback = $this->request('GET', '/inventory_levels.json', [
-                'inventory_item_ids' => $inventoryItemId,
-            ]);
-            if ($fallback['ok'] && is_array($fallback['json']['inventory_levels'] ?? null)) {
-                $levels = $fallback['json']['inventory_levels'];
-            }
+        $levels = $this->fetchInventoryLevels($inventoryItemId);
+        $primaryLoc = $this->pickLocationId($levels) ?? $this->primaryLocationId();
+        if (! $primaryLoc) {
+            return ['success' => false, 'message' => 'No PLS inventory location'];
         }
 
         if ($levels === []) {
-            $locationId = $this->primaryLocationId();
-            if (! $locationId) {
-                return ['success' => false, 'message' => 'No PLS inventory location'];
-            }
             $this->request('POST', '/inventory_levels/connect.json', [
-                'location_id' => $locationId,
+                'location_id' => $primaryLoc,
                 'inventory_item_id' => $inventoryItemId,
             ]);
-            $set = $this->setLevel((int) $inventoryItemId, $locationId, $qty);
-            if (! $set['ok']) {
-                return ['success' => false, 'message' => $set['message']];
+            $levels = $this->fetchInventoryLevels($inventoryItemId);
+        }
+
+        $set = $this->setLevel($inventoryItemId, $primaryLoc, $qty);
+        if (! $set['ok']) {
+            return ['success' => false, 'message' => $set['message']];
+        }
+
+        foreach ($levels as $level) {
+            $loc = (int) ($level['location_id'] ?? 0);
+            if ($loc <= 0 || $loc === $primaryLoc) {
+                continue;
             }
-        } else {
-            usort($levels, static function ($a, $b) {
-                return ((int) ($b['available'] ?? 0)) <=> ((int) ($a['available'] ?? 0));
-            });
-            $primaryLoc = (int) ($levels[0]['location_id'] ?? 0);
-            if ($primaryLoc <= 0) {
-                return ['success' => false, 'message' => 'PLS inventory level has no location'];
-            }
-            $set = $this->setLevel((int) $inventoryItemId, $primaryLoc, $qty);
-            if (! $set['ok']) {
-                return ['success' => false, 'message' => $set['message']];
-            }
-            foreach (array_slice($levels, 1) as $level) {
-                $loc = (int) ($level['location_id'] ?? 0);
-                if ($loc <= 0 || (int) ($level['available'] ?? 0) === 0) {
-                    continue;
-                }
-                $this->setLevel((int) $inventoryItemId, $loc, 0);
+            $zero = $this->setLevel($inventoryItemId, $loc, 0);
+            if (! $zero['ok']) {
+                return ['success' => false, 'message' => 'Could not zero extra PLS location '.$loc.': '.$zero['message']];
             }
         }
 
-        $confirm = $this->request('GET', "/variants/{$variantId}.json");
-        $actual = $qty;
-        if ($confirm['ok'] && isset($confirm['json']['variant']['inventory_quantity'])) {
-            $actual = (int) $confirm['json']['variant']['inventory_quantity'];
+        $levels = $this->fetchInventoryLevels($inventoryItemId);
+        foreach ($levels as $level) {
+            $loc = (int) ($level['location_id'] ?? 0);
+            $avail = (int) ($level['available'] ?? 0);
+            if ($loc <= 0 || $loc === $primaryLoc || $avail === 0) {
+                continue;
+            }
+            $this->setLevel($inventoryItemId, $loc, 0);
+        }
+
+        $primarySet = $this->setLevel($inventoryItemId, $primaryLoc, $qty);
+        if (! $primarySet['ok']) {
+            return ['success' => false, 'message' => $primarySet['message']];
+        }
+
+        $actual = $this->readVariantQuantity($variantId);
+        if ($actual === null) {
+            $actual = $qty;
+        }
+        if ($actual !== $qty) {
+            return [
+                'success' => false,
+                'message' => 'PLS still reports '.$actual.' after set (wanted '.$qty.'). Check locations.',
+            ];
         }
 
         if (Schema::hasTable('shopify_catalog_variants')) {
@@ -305,6 +378,52 @@ class PlsInventorySyncService
         }
 
         return ['success' => true, 'message' => 'Updated', 'qty' => $actual];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function fetchInventoryLevels(int $inventoryItemId): array
+    {
+        $res = $this->request('GET', '/inventory_levels.json', [
+            'inventory_item_ids' => $inventoryItemId,
+        ]);
+        if ($res['ok'] && is_array($res['json']['inventory_levels'] ?? null)) {
+            return $res['json']['inventory_levels'];
+        }
+
+        $nested = $this->request('GET', '/inventory_items/'.$inventoryItemId.'/inventory_levels.json');
+        if ($nested['ok'] && is_array($nested['json']['inventory_levels'] ?? null)) {
+            return $nested['json']['inventory_levels'];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $levels
+     */
+    protected function pickLocationId(array $levels): ?int
+    {
+        if ($levels === []) {
+            return null;
+        }
+        usort($levels, static function ($a, $b) {
+            return ((int) ($b['available'] ?? 0)) <=> ((int) ($a['available'] ?? 0));
+        });
+        $id = (int) ($levels[0]['location_id'] ?? 0);
+
+        return $id > 0 ? $id : null;
+    }
+
+    protected function readVariantQuantity(string $variantId): ?int
+    {
+        $confirm = $this->request('GET', "/variants/{$variantId}.json");
+        if ($confirm['ok'] && isset($confirm['json']['variant']['inventory_quantity'])) {
+            return (int) $confirm['json']['variant']['inventory_quantity'];
+        }
+
+        return null;
     }
 
     /**
@@ -345,17 +464,34 @@ class PlsInventorySyncService
         $upper = strtoupper(trim($sku));
         $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
 
-        return DB::table('shopify_catalog_variants')
+        $rows = DB::table('shopify_catalog_variants')
             ->where('store', 'pls')
             ->where(function ($q) use ($sku, $upper, $norm) {
                 $q->where('sku', $sku)
                     ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$upper]);
                 if ($norm !== '' && $norm !== $upper) {
                     $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$norm]);
+                    $q->orWhereRaw(
+                        "REPLACE(REPLACE(UPPER(TRIM(sku)), '-', ' '), '_', ' ') = ?",
+                        [$norm]
+                    );
                 }
             })
             ->orderByDesc('id')
-            ->first();
+            ->get();
+
+        foreach ($rows as $row) {
+            if (strtoupper(trim((string) $row->sku)) === $upper) {
+                return $row;
+            }
+        }
+        foreach ($rows as $row) {
+            if (ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku) === $norm) {
+                return $row;
+            }
+        }
+
+        return $rows->first();
     }
 
     protected function primaryLocationId(): ?int
