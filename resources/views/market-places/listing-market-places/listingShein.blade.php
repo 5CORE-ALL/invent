@@ -587,11 +587,12 @@
                                     title="Import">
                                     <i class="fas fa-file-import"></i>
                                 </button>
-                                <a class="btn btn-sm btn-primary listing-io-btn"
-                                    href="{{ route('listing_shein.export') }}"
-                                    title="Export">
+                                <button type="button"
+                                    class="btn btn-sm btn-primary listing-io-btn"
+                                    id="export-btn"
+                                    title="Export visible / filtered rows">
                                     <i class="fas fa-file-export"></i>
-                                </a>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1102,6 +1103,59 @@
 
             $('#import-btn').on('click', function () {
                 showBsModal('importModal');
+            });
+
+            function csvCell(value) {
+                const text = String(value ?? '');
+                if (/[",\r\n]/.test(text)) {
+                    return '"' + text.replace(/"/g, '""') + '"';
+                }
+                return text;
+            }
+
+            function exportFilteredListing() {
+                if (!sheinListingTable) {
+                    showNotification('danger', 'Table is still loading.');
+                    return;
+                }
+                const rows = (sheinListingTable.getData('active') || []).filter(function (row) {
+                    return !row.is_parent;
+                });
+                if (!rows.length) {
+                    showNotification('danger', 'No filtered rows to export.');
+                    return;
+                }
+                const header = ['parent', 'sku', 'INV', 'nr_req', 'listed', 'buyer_link', 'seller_link'];
+                const lines = [header.join(',')];
+                rows.forEach(function (row) {
+                    const listed = row.listed === 'Pending' ? 'Missing L' : (row.listed || '');
+                    const nrReq = row.nr_req === 'NR' ? 'NRL' : (row.nr_req || '');
+                    lines.push([
+                        csvCell(row.parent),
+                        csvCell(row.sku),
+                        csvCell(row.INV),
+                        csvCell(nrReq),
+                        csvCell(listed),
+                        csvCell(row.buyer_link),
+                        csvCell(row.seller_link)
+                    ].join(','));
+                });
+                const listedFilter = $('#listed-filter').val();
+                const suffix = listedFilter === 'Pending' ? 'missing_l' : 'filtered';
+                const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'shein_listing_' + suffix + '.csv';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(link.href);
+                showNotification('success', 'Exported ' + rows.length + ' filtered row' + (rows.length === 1 ? '' : 's') + '.');
+            }
+
+            $('#export-btn').on('click', function (e) {
+                e.preventDefault();
+                exportFilteredListing();
             });
 
             $(document).on('click', '#confirmImportBtn', function () {
