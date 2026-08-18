@@ -3215,6 +3215,7 @@ class TemuController extends Controller
                 $viewL7ByGoods = [];
                 if (Schema::hasTable('temu_ads_api_reports')) {
                     TemuAdsApiReport::query()
+                        ->activeAds()
                         ->where('period', 'L7')
                         ->whereNotNull('goods_id')
                         ->get(['goods_id', 'clicks'])
@@ -3234,91 +3235,44 @@ class TemuController extends Controller
                 $viewDataL7ToL14 = collect();
             }
 
-            // Ads Views: Ads report Clicks (Overall) from Ads Views Upload, matched by goods_id
-            // the same way Views uses temu_view_data.
-            $adsViewsData = Schema::hasTable('temu_ads_views')
-                ? TemuAdsView::selectRaw('goods_id, SUM(clicks) as ads_views')
-                    ->groupBy('goods_id')
-                    ->get()
-                    ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
-                : collect();
-
             $goodsIds = $pricingData->pluck('goods_id')->filter()->unique()->values()->all();
             $campaignRange = $isL7Period ? 'L7' : 'L30';
-            // Temu 1 → temu_campaign_reports; Temu 2 → temu2_campaign_reports (from /temu2/ads upload).
-            $campaignReportModel = $isTemu2Pricing ? Temu2CampaignReport::class : TemuCampaignReport::class;
 
-            // Matched by goods_id (primary) OR by sku (fallback for rows that share
-            // a parent goods_id or were uploaded from a TSV where goods_id differs).
-            $campaignReportL30Raw = $campaignReportModel::where('report_range', $campaignRange)
-                ->selectRaw('goods_id, sku,
-                    SUM(spend) as spend_l30,
-                    SUM(clicks) as clicks_l30,
-                    AVG(roas) as roas_l30,
-                    AVG(net_roas) as net_roas_l30,
-                    AVG(in_roas) as in_roas_l30,
-                    AVG(acos_ad) as acos_ad_l30,
-                    MAX(status) as status_l30,
-                    SUM(COALESCE(base_price_sales, 0)) as ad_sales_l30,
-                    SUM(COALESCE(sub_orders, 0)) as ad_sold_l30,
-                    SUM(COALESCE(impressions, 0)) as impressions_l30,
-                    SUM(COALESCE(add_to_cart_number, 0)) as add_to_cart_l30,
-                    AVG(target) as target_l30')
-                ->groupBy('goods_id', 'sku')
-                ->get();
+            if ($isTemu2Pricing) {
+                // Temu 2 still uses /temu2/ads campaign-report uploads.
+                $adsViewsData = Schema::hasTable('temu_ads_views')
+                    ? TemuAdsView::selectRaw('goods_id, SUM(clicks) as ads_views')
+                        ->groupBy('goods_id')
+                        ->get()
+                        ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
+                    : collect();
 
-            // Primary index: by normalized goods_id
-            $campaignReportL30 = $campaignReportL30Raw
-                ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
-                ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
-
-            // Fallback index: by normalized SKU (upper-trim, PCS fold)
-            $campaignReportL30BySku = $campaignReportL30Raw
-                ->filter(fn ($r) => !empty(trim((string) ($r->sku ?? ''))))
-                ->keyBy(fn ($r) => $normalizeSku($r->sku));
-
-            // Loose fallback index: by alphanumeric-only SKU. Catches rows
-            // that fail strict matching only because of dashes / slashes /
-            // underscores in either side. keyBy keeps the *last* row per
-            // collapsed key — acceptable for a fallback (real exact matches
-            // already won earlier in the chain).
-            $campaignReportL30BySkuLoose = $campaignReportL30Raw
-                ->filter(fn ($r) => $normalizeSkuLoose($r->sku ?? '') !== '')
-                ->keyBy(fn ($r) => $normalizeSkuLoose($r->sku));
-
-            // L60 — same three indexes as L30 so badges/Spend L60 column also
-            // benefit from the loose match.
-            $campaignReportL60Raw = $campaignReportModel::where('report_range', 'L60')
-                ->selectRaw('goods_id, sku,
-                    SUM(spend) as spend_l60,
-                    SUM(COALESCE(sub_orders, 0)) as ad_sold_l60,
-                    SUM(COALESCE(NULLIF(base_price_sales, 0), net_declared_sales, 0)) as ad_sales_l60')
-                ->groupBy('goods_id', 'sku')
-                ->get();
-            $campaignReportL60 = $campaignReportL60Raw
-                ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
-                ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
-            $campaignReportL60BySku = $campaignReportL60Raw
-                ->filter(fn ($r) => !empty(trim((string) ($r->sku ?? ''))))
-                ->keyBy(fn ($r) => $normalizeSku($r->sku));
-            $campaignReportL60BySkuLoose = $campaignReportL60Raw
-                ->filter(fn ($r) => $normalizeSkuLoose($r->sku ?? '') !== '')
-                ->keyBy(fn ($r) => $normalizeSkuLoose($r->sku));
-
-            // L7 ad clicks — used for Temu 2 "T Click Growth" (L7 pace vs L30 pace)
-            $campaignReportL7Raw = $campaignReportModel::where('report_range', 'L7')
-                ->selectRaw('goods_id, sku, SUM(clicks) as clicks_l7')
-                ->groupBy('goods_id', 'sku')
-                ->get();
-            $campaignReportL7 = $campaignReportL7Raw
-                ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
-                ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
-            $campaignReportL7BySku = $campaignReportL7Raw
-                ->filter(fn ($r) => ! empty(trim((string) ($r->sku ?? ''))))
-                ->keyBy(fn ($r) => $normalizeSku($r->sku));
-            $campaignReportL7BySkuLoose = $campaignReportL7Raw
-                ->filter(fn ($r) => $normalizeSkuLoose($r->sku ?? '') !== '')
-                ->keyBy(fn ($r) => $normalizeSkuLoose($r->sku));
+                [
+                    $campaignReportL30,
+                    $campaignReportL30BySku,
+                    $campaignReportL30BySkuLoose,
+                    $campaignReportL60,
+                    $campaignReportL60BySku,
+                    $campaignReportL60BySkuLoose,
+                    $campaignReportL7,
+                    $campaignReportL7BySku,
+                    $campaignReportL7BySkuLoose,
+                ] = $this->temuCampaignReportSheetIndexes($campaignRange, $normalizeSku, $normalizeSkuLoose);
+            } else {
+                // Temu 1 ads: temu_ads_api_reports only (no sheet / upload).
+                $adsViewsData = $this->temuAdsApiViewsByGoods($campaignRange);
+                [
+                    $campaignReportL30,
+                    $campaignReportL30BySku,
+                    $campaignReportL30BySkuLoose,
+                    $campaignReportL60,
+                    $campaignReportL60BySku,
+                    $campaignReportL60BySkuLoose,
+                    $campaignReportL7,
+                    $campaignReportL7BySku,
+                    $campaignReportL7BySkuLoose,
+                ] = $this->temuAdsApiReportIndexes($campaignRange, $normalizeSku, $normalizeSkuLoose);
+            }
 
             // Fetch saved SPRICE values (Temu 2 uses temu2_data_view)
             $temuDataViewData = ($isTemu2Pricing ? Temu2DataView::query() : TemuDataView::query())
@@ -3580,14 +3534,10 @@ class TemuController extends Controller
                 // Join keys: normalize goods_id so campaign reports match temu_pricing (Excel float issues)
                 $goodsIdKey = $goodsId ? TemuGoodsIdHelper::normalizeKey($goodsId) : null;
 
-                // Campaign report match chain (most specific → most lenient):
-                //   1. goods_id (only set when this SKU has a row in temu_pricing
-                //      AND that row's goods_id appears in the campaign report)
+                // Ads match chain (most specific → most lenient):
+                //   1. goods_id (Temu 1: Ads API; Temu 2: campaign-report upload)
                 //   2. SKU under strict normalization (uppercase, trim, "PCS"/"PIECES" → "PC")
-                //   3. SKU under loose normalization (alphanumeric only — collapses
-                //      dashes, slashes, underscores, internal spaces). This recovers
-                //      rows where the SKU on the ad sheet differs from ProductMaster
-                //      only by punctuation, e.g. "ABC-123 1PC" vs "ABC123 1 PC".
+                //   3. SKU under loose normalization (alphanumeric only).
                 $campaignReportItem = ($goodsIdKey ? $campaignReportL30->get($goodsIdKey) : null)
                     ?? $campaignReportL30BySku->get($normalizeSku($sku))
                     ?? $campaignReportL30BySkuLoose->get($normalizeSkuLoose($sku));
@@ -3623,11 +3573,13 @@ class TemuController extends Controller
                 $l60VsL30 = ($l60Acos !== null && $l60Acos != 0) ? round((($acosAd - $l60Acos) / $l60Acos) * 100, 2) : null;
                 // Temu L60 sales from temu_daily_data_l60 table (L60 Sales upload); same aggregation as L30
                 $temuL60FromSales = (int) ($l60ByNormalizedSku[$normalizeSku($sku)] ?? 0);
-                if ($campaignReportItem && isset($campaignReportItem->status_l30) && !empty($campaignReportItem->status_l30) && $campaignReportItem->status_l30 !== 'NULL') {
-                    $campaignStatus = $campaignReportItem->status_l30;
+                if ($campaignReportItem && isset($campaignReportItem->status_l30)
+                    && trim((string) $campaignReportItem->status_l30) !== ''
+                    && $campaignReportItem->status_l30 !== 'NULL') {
+                    // Temu 1: same Status as /temu/ads (Active / Inactive / No ad / Not sync / Deleted)
+                    $campaignStatus = trim((string) $campaignReportItem->status_l30);
                 } else {
-                    // Determine status based on campaign existence
-                    $hasCampaign = $goodsId && ($spend > 0 || $adClicks > 0 || $campaignReportItem);
+                    $hasCampaign = $isTemu2Pricing && $goodsId && ($spend > 0 || $adClicks > 0 || $campaignReportItem);
                     $campaignStatus = $hasCampaign ? 'Active' : 'Not Created';
                 }
                 
@@ -3934,7 +3886,7 @@ class TemuController extends Controller
                     'listed' => $listed,
                     'buyer_link' => $buyer_link,
                     'seller_link' => $seller_link,
-                    // Add saved campaign data (L30 from temu_campaign_reports)
+                    // Ads L30/L7/L60: Temu 1 from /temu/ads (temu_ads_api_reports); Temu 2 from campaign-report sheets
                     'in_roas_l30' => $inRoasL30,
                     'out_roas_l30' => $outRoasL30,
                     'spend_l30' => $spendL30,
@@ -4238,7 +4190,7 @@ class TemuController extends Controller
                 $this->saveDailySummaryIfNeeded($processedData->toArray());
             }
 
-            // Campaign / Ads totals — Temu and Temu 2 same formulas (different report tables)
+            // Campaign / Ads totals — Temu 1 from Ads API; Temu 2 from campaign-report upload.
             if ($isTemu2Pricing) {
                 $totalCampaignCount = Temu2CampaignReport::distinct('goods_id')
                     ->pluck('goods_id')
@@ -4249,18 +4201,22 @@ class TemuController extends Controller
                     ->selectRaw('SUM(spend) as total_spend')
                     ->value('total_spend') ?? 0), 2);
             } else {
-                $totalCampaignCount = TemuCampaignReport::distinct('goods_id')
-                    ->pluck('goods_id')
-                    ->filter()
-                    ->unique()
-                    ->count();
-
-                $summaryGoodsIds = $processedData->pluck('goods_id')->filter()->unique()->values()->all();
-                $totalAdSpend = TemuCampaignReport::whereIn('goods_id', $summaryGoodsIds)
-                    ->where('report_range', $campaignRange)
-                    ->selectRaw('SUM(spend) as total_spend')
-                    ->value('total_spend') ?? 0;
-                $totalAdSpend = round((float) $totalAdSpend, 2);
+                $apiAds = Schema::hasTable('temu_ads_api_reports')
+                    ? TemuAdsApiReport::query()->where('period', $campaignRange)
+                    : null;
+                $totalCampaignCount = $apiAds
+                    ? (int) TemuAdsApiReport::query()
+                        ->activeAds()
+                        ->where('period', $campaignRange)
+                        ->distinct()
+                        ->count('goods_id')
+                    : 0;
+                $totalAdSpend = $apiAds
+                    ? round((float) TemuAdsApiReport::query()
+                        ->activeAds()
+                        ->where('period', $campaignRange)
+                        ->sum('ad_spend'), 2)
+                    : 0.0;
             }
 
             // Get exact total_sales from marketplace_daily_metrics (same as all-marketplace-master uses)
@@ -4324,12 +4280,6 @@ class TemuController extends Controller
                 Log::warning('Temu decrease: today badge snapshot lookup failed: ' . $e->getMessage());
             }
 
-            // Pre-aggregated upload totals straight from temu_campaign_reports for
-            // the active range. The page's per-row sums (over ProductMaster) silently
-            // drop rows whose goods_id isn't in temu_pricing AND whose SKU column is
-            // empty — see the unmatched-rows diagnostic. Surfacing the file totals
-            // here lets the JS show the actual uploaded numbers on the badges so
-            // they always match what the user uploaded.
             $adTotals = [
                 'spend'              => 0.0,
                 'clicks'             => 0,
@@ -4339,8 +4289,6 @@ class TemuController extends Controller
                 'add_to_cart_number' => 0,
                 'row_count'          => 0,
             ];
-            // Temu 2: only expose authoritative Spend sum from temu2_campaign_reports
-            // (do not derive from per-SKU row sums — goods_id shared across SKUs double-counts).
             if ($isTemu2Pricing) {
                 $tot = Temu2CampaignReport::where('report_range', $campaignRange)
                     ->selectRaw('
@@ -4351,16 +4299,18 @@ class TemuController extends Controller
                     $adTotals['spend'] = round((float) $tot->spend, 2);
                     $adTotals['row_count'] = (int) $tot->row_count;
                 }
-            } else {
-                $tot = TemuCampaignReport::where('report_range', $campaignRange)
+            } elseif (Schema::hasTable('temu_ads_api_reports')) {
+                $tot = TemuAdsApiReport::query()
+                    ->activeAds()
+                    ->where('period', $campaignRange)
                     ->selectRaw("
                         COUNT(*) AS row_count,
-                        COALESCE(SUM(spend), 0) AS spend,
+                        COALESCE(SUM(ad_spend), 0) AS spend,
                         COALESCE(SUM(clicks), 0) AS clicks,
-                        COALESCE(SUM(sub_orders), 0) AS sub_orders,
-                        COALESCE(SUM(COALESCE(NULLIF(base_price_sales, 0), net_declared_sales, 0)), 0) AS base_price_sales,
+                        COALESCE(SUM(order_pay_cnt), 0) AS sub_orders,
+                        COALESCE(SUM(order_pay_amt), 0) AS base_price_sales,
                         COALESCE(SUM(impressions), 0) AS impressions,
-                        COALESCE(SUM(add_to_cart_number), 0) AS add_to_cart_number
+                        COALESCE(SUM(cart_cnt), 0) AS add_to_cart_number
                     ")->first();
                 if ($tot) {
                     $adTotals = [
@@ -4392,6 +4342,137 @@ class TemuController extends Controller
             ]);
             return response()->json(['error' => config('app.debug') ? $e->getMessage() : 'Failed to fetch data', 'data' => []], 500);
         }
+    }
+
+    /**
+     * Ads Views for Temu 1 from temu_ads_api_reports — Active ads only.
+     *
+     * @return \Illuminate\Support\Collection<string, object{ads_views: int}>
+     */
+    private function temuAdsApiViewsByGoods(string $period)
+    {
+        if (! Schema::hasTable('temu_ads_api_reports')) {
+            return collect();
+        }
+
+        return TemuAdsApiReport::query()
+            ->activeAds()
+            ->where('period', $period)
+            ->whereNotNull('goods_id')
+            ->get(['goods_id', 'clicks'])
+            ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
+            ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
+            ->map(fn ($r) => (object) ['ads_views' => (int) ($r->clicks ?? 0)]);
+    }
+
+    /**
+     * Temu 1 ads indexes from Ads API. Metrics are Active-only; Status stays the real /temu/ads status.
+     *
+     * @return array{0: \Illuminate\Support\Collection, 1: \Illuminate\Support\Collection, 2: \Illuminate\Support\Collection, 3: \Illuminate\Support\Collection, 4: \Illuminate\Support\Collection, 5: \Illuminate\Support\Collection, 6: \Illuminate\Support\Collection, 7: \Illuminate\Support\Collection, 8: \Illuminate\Support\Collection}
+     */
+    private function temuAdsApiReportIndexes(string $campaignRange, callable $normalizeSku, callable $normalizeSkuLoose): array
+    {
+        $mapPeriod = function (string $period) use ($normalizeSku, $normalizeSkuLoose) {
+            $raw = collect();
+            if (Schema::hasTable('temu_ads_api_reports')) {
+                $raw = TemuAdsApiReport::query()
+                    ->where('period', $period)
+                    ->whereNotNull('goods_id')
+                    ->get()
+                    ->map(function (TemuAdsApiReport $r) {
+                        $active = $r->isActiveAd();
+
+                        return (object) [
+                            'goods_id' => $r->goods_id,
+                            'sku' => $r->sku,
+                            'spend_l30' => $active ? (float) ($r->ad_spend ?? 0) : 0.0,
+                            'clicks_l30' => $active ? (int) ($r->clicks ?? 0) : 0,
+                            'clicks_l7' => $active ? (int) ($r->clicks ?? 0) : 0,
+                            'spend_l60' => $active ? (float) ($r->ad_spend ?? 0) : 0.0,
+                            'ad_sold_l60' => $active ? (int) ($r->order_pay_cnt ?? 0) : 0,
+                            'ad_sales_l60' => $active ? (float) ($r->order_pay_amt ?? 0) : 0.0,
+                            'roas_l30' => $active ? (float) ($r->roas ?? 0) : 0.0,
+                            'net_roas_l30' => $active ? (float) ($r->roas ?? 0) : 0.0,
+                            'in_roas_l30' => 0.0,
+                            'acos_ad_l30' => $active ? (float) ($r->acos ?? 0) : 0.0,
+                            'status_l30' => $r->displayAdStatus(),
+                            'ad_sales_l30' => $active ? (float) ($r->order_pay_amt ?? 0) : 0.0,
+                            'ad_sold_l30' => $active ? (int) ($r->order_pay_cnt ?? 0) : 0,
+                            'impressions_l30' => $active ? (int) ($r->impressions ?? 0) : 0,
+                            'add_to_cart_l30' => $active ? (int) ($r->cart_cnt ?? 0) : 0,
+                            'target_l30' => 0.0,
+                        ];
+                    });
+            }
+
+            return $this->indexTemuAdMetricRows($raw, $normalizeSku, $normalizeSkuLoose);
+        };
+
+        [$l30, $l30Sku, $l30Loose] = $mapPeriod($campaignRange);
+        [$l60, $l60Sku, $l60Loose] = $mapPeriod('L60');
+        [$l7, $l7Sku, $l7Loose] = $mapPeriod('L7');
+
+        return [$l30, $l30Sku, $l30Loose, $l60, $l60Sku, $l60Loose, $l7, $l7Sku, $l7Loose];
+    }
+
+    /**
+     * Temu 2 ads indexes from uploaded campaign-report sheets.
+     *
+     * @return array{0: \Illuminate\Support\Collection, 1: \Illuminate\Support\Collection, 2: \Illuminate\Support\Collection, 3: \Illuminate\Support\Collection, 4: \Illuminate\Support\Collection, 5: \Illuminate\Support\Collection, 6: \Illuminate\Support\Collection, 7: \Illuminate\Support\Collection, 8: \Illuminate\Support\Collection}
+     */
+    private function temuCampaignReportSheetIndexes(string $campaignRange, callable $normalizeSku, callable $normalizeSkuLoose): array
+    {
+        $l30Raw = Temu2CampaignReport::where('report_range', $campaignRange)
+            ->selectRaw('goods_id, sku,
+                SUM(spend) as spend_l30,
+                SUM(clicks) as clicks_l30,
+                AVG(roas) as roas_l30,
+                AVG(net_roas) as net_roas_l30,
+                AVG(in_roas) as in_roas_l30,
+                AVG(acos_ad) as acos_ad_l30,
+                MAX(status) as status_l30,
+                SUM(COALESCE(base_price_sales, 0)) as ad_sales_l30,
+                SUM(COALESCE(sub_orders, 0)) as ad_sold_l30,
+                SUM(COALESCE(impressions, 0)) as impressions_l30,
+                SUM(COALESCE(add_to_cart_number, 0)) as add_to_cart_l30,
+                AVG(target) as target_l30')
+            ->groupBy('goods_id', 'sku')
+            ->get();
+        [$l30, $l30Sku, $l30Loose] = $this->indexTemuAdMetricRows($l30Raw, $normalizeSku, $normalizeSkuLoose);
+
+        $l60Raw = Temu2CampaignReport::where('report_range', 'L60')
+            ->selectRaw('goods_id, sku,
+                SUM(spend) as spend_l60,
+                SUM(COALESCE(sub_orders, 0)) as ad_sold_l60,
+                SUM(COALESCE(NULLIF(base_price_sales, 0), net_declared_sales, 0)) as ad_sales_l60')
+            ->groupBy('goods_id', 'sku')
+            ->get();
+        [$l60, $l60Sku, $l60Loose] = $this->indexTemuAdMetricRows($l60Raw, $normalizeSku, $normalizeSkuLoose);
+
+        $l7Raw = Temu2CampaignReport::where('report_range', 'L7')
+            ->selectRaw('goods_id, sku, SUM(clicks) as clicks_l7')
+            ->groupBy('goods_id', 'sku')
+            ->get();
+        [$l7, $l7Sku, $l7Loose] = $this->indexTemuAdMetricRows($l7Raw, $normalizeSku, $normalizeSkuLoose);
+
+        return [$l30, $l30Sku, $l30Loose, $l60, $l60Sku, $l60Loose, $l7, $l7Sku, $l7Loose];
+    }
+
+    /**
+     * @return array{0: \Illuminate\Support\Collection, 1: \Illuminate\Support\Collection, 2: \Illuminate\Support\Collection}
+     */
+    private function indexTemuAdMetricRows($raw, callable $normalizeSku, callable $normalizeSkuLoose): array
+    {
+        $rows = collect($raw);
+
+        return [
+            $rows->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id ?? null))
+                ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id)),
+            $rows->filter(fn ($r) => ! empty(trim((string) ($r->sku ?? ''))))
+                ->keyBy(fn ($r) => $normalizeSku($r->sku)),
+            $rows->filter(fn ($r) => $normalizeSkuLoose($r->sku ?? '') !== '')
+                ->keyBy(fn ($r) => $normalizeSkuLoose($r->sku)),
+        ];
     }
 
     /**

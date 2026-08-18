@@ -47,6 +47,36 @@ class TemuAdsApiReport extends Model
     ];
 
     /**
+     * Same Status shown on /temu/ads and /temu-decrease.
+     * Empty / Unknown → Not sync. "No ad" with spend, clicks, or impressions is stale.
+     */
+    public function displayAdStatus(): string
+    {
+        $status = trim((string) ($this->ad_status ?? ''));
+        if ($status === '' || strcasecmp($status, 'Unknown') === 0) {
+            return 'Not sync';
+        }
+        $hasActivity = ((float) ($this->ad_spend ?? 0) > 0)
+            || ((int) ($this->clicks ?? 0) > 0)
+            || ((int) ($this->impressions ?? 0) > 0);
+        if ($status === 'No ad' && $hasActivity) {
+            return 'Not sync';
+        }
+
+        return $status;
+    }
+
+    public function isActiveAd(): bool
+    {
+        return $this->displayAdStatus() === 'Active';
+    }
+
+    public function scopeActiveAds($query)
+    {
+        return $query->where('ad_status', 'Active');
+    }
+
+    /**
      * Decode stored raw API payload.
      */
     public function getRawPayloadAttribute(): ?array

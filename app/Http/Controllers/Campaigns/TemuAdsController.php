@@ -56,7 +56,7 @@ class TemuAdsController extends Controller
                 'ad_spend' => $r->ad_spend,
                 'roas' => $r->roas,
                 'acos' => $r->acos,
-                'ad_status' => $this->displayAdStatus($r),
+                'ad_status' => $r->displayAdStatus(),
                 'success' => (bool) $r->success,
                 'error_msg' => $r->error_msg,
                 'fetched_at' => optional($r->fetched_at)->toDateTimeString(),
@@ -215,22 +215,4 @@ class TemuAdsController extends Controller
         ], $success ? 200 : 422);
     }
 
-    /**
-     * Empty / failed sync → Not sync. "No ad" with spend or clicks is stale (old parser).
-     */
-    protected function displayAdStatus(TemuAdsApiReport $r): string
-    {
-        $status = trim((string) ($r->ad_status ?? ''));
-        if ($status === '' || strcasecmp($status, 'Unknown') === 0) {
-            return 'Not sync';
-        }
-        $hasActivity = ((float) ($r->ad_spend ?? 0) > 0)
-            || ((int) ($r->clicks ?? 0) > 0)
-            || ((int) ($r->impressions ?? 0) > 0);
-        if ($status === 'No ad' && $hasActivity) {
-            return 'Not sync';
-        }
-
-        return $status;
-    }
 }

@@ -783,6 +783,56 @@
                         <span id="avg-ads-badge"
                               class="badge bg-warning text-center"
                               style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px;">Ads 0%</span>
+                        <span id="temu-campaign-count"
+                              class="badge text-center temu-ads-badge"
+                              data-ads-filter="campaign"
+                              style="background-color: #9ec5fe; color: #111 !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Has an ad campaign (Active / spend / clicks) — same as /temu/ads">Campaign 0</span>
+                        <span id="temu-status-active-badge"
+                              class="badge bg-success text-center temu-ads-badge"
+                              data-ads-filter="status-active"
+                              style="font-weight:700; color: white !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Status Active — same as /temu/ads">Active 0</span>
+                        <span id="temu-status-inactive-badge"
+                              class="badge bg-warning text-center temu-ads-badge"
+                              data-ads-filter="status-inactive"
+                              style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Status Inactive — same as /temu/ads">Inactive 0</span>
+                        <span id="temu-status-no-ad-badge"
+                              class="badge bg-dark text-center temu-ads-badge"
+                              data-ads-filter="status-no-ad"
+                              style="font-weight:700; color: white !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Status No ad — same as /temu/ads">No ad 0</span>
+                        <span id="temu-status-not-sync-badge"
+                              class="badge bg-secondary text-center temu-ads-badge"
+                              data-ads-filter="status-not-sync"
+                              style="font-weight:700; color: white !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Status Not sync — Ads API not confirmed">Not sync 0</span>
+                        <span id="temu-total-spend-badge"
+                              class="badge text-center temu-ads-badge"
+                              data-ads-filter="total-spend"
+                              style="background-color: #6f42c1; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Active ad spend from /temu/ads (temu_ads_api_reports). Click to filter rows with spend.">Spend $0</span>
+                        <span id="temu-total-ad-clicks-badge"
+                              class="badge text-center temu-ads-badge"
+                              data-ads-filter="ad-clicks"
+                              style="background-color: #e83e8c; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Ad clicks from /temu/ads">Ad Clicks 0</span>
+                        <span id="temu-total-ad-sales-badge"
+                              class="badge text-center temu-ads-badge"
+                              data-ads-filter="ad-sales"
+                              style="background-color: #9eeaf9; color: #111 !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Ad sales from /temu/ads">Ad Sales $0</span>
+                        <span id="temu-avg-acos-badge"
+                              class="badge bg-warning text-center temu-ads-badge"
+                              data-ads-filter="avg-acos"
+                              style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="Avg ACOS from /temu/ads">ACOS 0%</span>
+                        <span id="temu-roas-badge"
+                              class="badge text-center temu-ads-badge"
+                              data-ads-filter="roas"
+                              style="background-color: #a3cfbb; color: #111 !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
+                              title="ROAS from /temu/ads">ROAS 0.00</span>
 
                         <!-- Percentages (Net) -->
                         <span id="avg-npft-badge"
@@ -798,13 +848,13 @@
                               data-badge-metric="total_views" data-badge-label="Views"
                               style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
                               title="Total Views from Seller Center sheet (temu_view_data Product clicks) — click for history"
-                              aria-label="Total Views"><i class="fas fa-eye"></i> 0</span>
+                              aria-label="Total Views">Views 0</span>
                         <span id="avg-views-badge"
                               class="badge bg-info text-center temu-badge-history"
                               data-badge-metric="avg_views" data-badge-label="AVG views"
                               style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
                               title="Average Views per product from View Data sheet — click for history"
-                              aria-label="Average Views per product"><i class="far fa-eye"></i> 0</span>
+                              aria-label="Average Views per product">AVG 0</span>
                     </div>
                 </div>
 
@@ -1046,20 +1096,21 @@
                         aria-label="Export L30">
                         <i class="fas fa-file-export"></i>
                     </button>
-                    <div class="d-inline-flex align-items-center gap-1 flex-shrink-0 border rounded px-2 py-1 bg-light ms-1" title="Campaign report & sales period for this table">
+                    <div class="d-inline-flex align-items-center gap-1 flex-shrink-0 border rounded px-2 py-1 bg-light ms-1" title="Ads API & sales period for this table">
                         <label for="campaign-period-select" class="mb-0 small fw-semibold text-nowrap text-dark">Campaign</label>
                         <select id="campaign-period-select" class="form-select form-select-sm" style="min-width: 88px;">
                             <option value="L30" selected>L30</option>
                             <option value="L7">L7</option>
                         </select>
                     </div>
+                    <a href="{{ route('temu.ads') }}" class="btn btn-sm btn-outline-warning" title="Ads Spend / Clicks / ACOS / Status come from this page (temu_ads_api_reports)">
+                        <i class="fas fa-bullhorn"></i> Ads
+                    </a>
                     <a href="{{ route('temu.lmp') }}" class="btn btn-sm btn-outline-secondary" title="Temu LMP table and upload">
                         <i class="fas fa-link"></i> LMP
                     </a>
 
-                    {{-- All four upload flows merged into a single dropdown.
-                         Each item still opens its own modal via data-bs-toggle="modal";
-                         the modals themselves were not touched. --}}
+                    {{-- View uploads only. Ads come from Temu Ads API (temu_ads_api_reports), not a sheet. --}}
                     <div class="dropdown d-inline-block">
                         <button type="button" class="btn btn-sm btn-primary dropdown-toggle"
                             id="temuUploadDropdown" data-bs-toggle="dropdown" aria-expanded="false"
@@ -1077,38 +1128,19 @@
                             </li>
                             <li>
                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
-                                    data-bs-toggle="modal" data-bs-target="#uploadAdsViewsModal">
-                                    <i class="fas fa-bullseye text-danger" style="width: 18px;"></i>
-                                    <span>Ads Views Upload</span>
-                                </button>
-                            </li>
-                            <li>
-                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
                                     data-bs-toggle="modal" data-bs-target="#scrapeViewDataModal">
                                     <i class="fas fa-spider text-primary" style="width: 18px;"></i>
                                     <span>Scrape Views</span>
                                 </button>
                             </li>
-                            <li>
-                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
-                                    data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
-                                    <i class="fas fa-chart-line text-warning" style="width: 18px;"></i>
-                                    <span>Up Ad Data</span>
-                                </button>
-                            </li>
                         </ul>
                     </div>
                     <button type="button" id="fetch-views-api-btn" class="btn btn-sm btn-outline-primary"
-                        title="Fetch View 7 / Ads fallback from Temu Ads API (clkCntAll). Main Views column uses Up View Data sheet."
+                        title="Fetch View 7 from Temu Ads API. Ads Spend / Clicks / ACOS also use temu_ads_api_reports (not a sheet). Main Views column uses Up View Data."
                         aria-label="Fetch View 7 from Temu Ads API">
                         <i class="fas fa-sync-alt"></i> Views API
                     </button>
                     <span id="fetch-views-api-status" class="small text-muted" style="display:none;"></span>
-                    <button type="button" id="toggle-ads-columns-btn" class="btn btn-sm btn-secondary"
-                        title="Toggle Ads Section (show only ad-related columns + ads-stats strip)"
-                        aria-label="Toggle Ads Section">
-                        <i class="fas fa-filter"></i>
-                    </button>
 
                     {{-- SKU search — moved into the toolbar so it wraps alongside the
                          other filter dropdowns instead of sitting on a dedicated row
@@ -1122,30 +1154,6 @@
                             maxlength="30"
                             style="width: 30ch; max-width: 100%;">
                         <small id="search-result-info" class="text-muted" style="display: none;"></small>
-                    </div>
-                </div>
-
-                <!-- Ads Count Section (shown when Show Ads Columns is on) - like TikTok -->
-                <div id="temu-ads-count-section" class="mt-2 p-3 bg-light rounded border d-none">
-                    <h6 class="mb-2"><i class="fa-solid fa-chart-line me-1"></i>Ads / Utilized Stats</h6>
-                    <div class="d-flex flex-wrap gap-2 align-items-center">
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-sku-count" data-ads-filter="all" style="color: black; font-weight: bold; background-color: #adb5bd; cursor: pointer;" title="Click to show all">Total SKU: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-campaign-count" data-ads-filter="campaign" style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: pointer;" title="Click to filter: has campaign">Campaign: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-ad-sku-count" data-ads-filter="ad-sku" style="color: black; font-weight: bold; background-color: #b8d4a8; cursor: pointer;" title="Click to filter: SKU active in ads with &gt;0 inventory">Ad SKU: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-missing-campaign-count" data-ads-filter="missing" style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: pointer;" title="Click to filter: missing campaign">Missing: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-nra-missing-count" data-ads-filter="nra-missing" style="color: black; font-weight: bold; background-color: #ffe69c; cursor: pointer;" title="Click to filter: NRA missing">NRA MISSING: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-zero-inv-count" data-ads-filter="zero-inv" style="color: black; font-weight: bold; background-color: #ffda6a; cursor: pointer;" title="Click to filter: zero inventory">Zero INV: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-nra-count" data-ads-filter="nra" style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: pointer;" title="Click to filter: NRA (NRL/NR)">NRA: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-ra-count" data-ads-filter="ra" style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: pointer;" title="Click to filter: RA (REQ)">RA: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-spend-badge" data-ads-filter="total-spend" style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: pointer;" title="Click to filter: has spend">Total Ads Spend: $0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-budget-badge" data-ads-filter="budget" style="color: black; font-weight: bold; background-color: #ced4da; cursor: pointer;" title="Click to filter: has target/budget">Budget: $0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-ad-sales-badge" data-ads-filter="ad-sales" style="color: black; font-weight: bold; background-color: #9eeaf9; cursor: pointer;" title="Click to filter: has ad sales">Ad Sales: $0</span>
-                        <span class="badge fs-6 p-2" id="temu-total-ad-sold-badge" style="color: black; font-weight: bold; background-color: #f8b4d9;" title="Total L30 Ad Sold">Total L30 Ad Sold: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-ad-clicks-badge" data-ads-filter="ad-clicks" style="color: black; font-weight: bold; background-color: #a5d6e8; cursor: pointer;" title="Click to filter: has ad clicks">Ad Clicks: 0</span>
-                        <span class="badge fs-6 p-2" id="temu-total-clicks-badge" style="color: black; font-weight: bold; background-color: #a5d6e8;" title="Sum of clicks - Temu">Total Clicks: 0</span>
-                        <span class="badge fs-6 p-2" id="temu-avg-clicks-badge" style="color: black; font-weight: bold; background-color: #a5d6e8;" title="Total clicks / Total Ad SKU - Temu">Avg Clicks: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-avg-acos-badge" data-ads-filter="avg-acos" style="color: black; font-weight: bold; background-color: #ffe69c; cursor: pointer;" title="Click to filter: has spend/sales">Avg ACOS: 0%</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-roas-badge" data-ads-filter="roas" style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: pointer;" title="Click to filter: has spend/sales">ROAS: 0.00</span>
                     </div>
                 </div>
 
@@ -1463,136 +1471,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Ads Views Upload Modal (Temu Ads report → temu_ads_views, matched by goods_id) -->
-    <div class="modal fade" id="uploadAdsViewsModal" tabindex="-1" aria-labelledby="uploadAdsViewsModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title" id="uploadAdsViewsModalLabel">
-                        <i class="fas fa-bullseye me-2"></i>Ads Views Upload
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    @if(session('success'))
-                        <div class="alert alert-success alert-dismissible fade show" role="alert">
-                            {{ session('success') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    @if(session('error'))
-                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                            {{ session('error') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-
-                    <form id="uploadAdsViewsForm" action="{{ route('temu.adsviews.upload') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label for="adsViewsFile" class="form-label fw-bold">
-                                <i class="fas fa-file-excel text-danger me-1"></i>Choose Ads Report File
-                            </label>
-                            <input type="file" class="form-control" id="adsViewsFile" name="file" accept=".xlsx,.xls,.csv,.tsv,.txt" required>
-                            <div class="form-text">
-                                Temu Ads report export (.xlsx / .xls / .csv / .tsv / .txt, max 10MB).
-                                Writes to <code>temu_ads_views</code> — this drives the <strong>Ads Views</strong> column
-                                (Clicks Overall), matched by <strong>Goods ID</strong> the same way Views is matched.
-                            </div>
-                        </div>
-                        <div class="alert alert-info mb-0">
-                            <i class="fas fa-info-circle me-1"></i>
-                            Replaces existing Ads Views data. Skip the totals row — it is ignored automatically.
-                            <a href="{{ route('temu.adsviews.sample') }}" class="alert-link">
-                                <i class="fas fa-download"></i> Download Sample
-                            </a>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadAdsViewsForm" class="btn btn-danger">
-                        <i class="fas fa-upload me-1"></i>Ads Views Upload
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Upload Ad Data Modal -->
-    <div class="modal fade" id="uploadAdDataModal" tabindex="-1" aria-labelledby="uploadAdDataModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-warning text-dark">
-                    <h5 class="modal-title" id="uploadAdDataModalLabel">
-                        <i class="fas fa-chart-line me-2"></i>Upload Temu Ad Data
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    @if(session('success'))
-                        <div class="alert alert-success alert-dismissible fade show" role="alert">
-                            {{ session('success') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    @if(session('error'))
-                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                            {{ session('error') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    
-                    <form id="uploadAdDataForm" action="{{ route('temu.addata.upload') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label for="adDataFile" class="form-label fw-bold">
-                                <i class="fas fa-file-excel text-success me-1"></i>Choose Excel File
-                            </label>
-                            <input type="file" class="form-control" id="adDataFile" name="ad_data_file" accept=".xlsx,.xls,.csv" required>
-                            <div class="form-text">
-                                <i class="fas fa-info-circle text-info me-1"></i>
-                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
-                            </div>
-                        </div>
-                        {{-- Report range drives temu_campaign_reports.report_range so the
-                             Spend / ACOS / ROAS badges (which sum that table by range)
-                             refresh after this upload. Defaults to L30 to match the
-                             default "Campaign Data" filter at the top of the page. --}}
-                        <div class="mb-3">
-                            <label for="adDataReportRange" class="form-label fw-bold">
-                                <i class="fas fa-calendar-alt text-primary me-1"></i>Report Range
-                            </label>
-                            <select class="form-select" id="adDataReportRange" name="report_range" required>
-                                <option value="L30" selected>L30 (last 30 days)</option>
-                                <option value="L7">L7 (last 7 days)</option>
-                                <option value="L60">L60 (last 60 days)</option>
-                            </select>
-                            <div class="form-text">
-                                <i class="fas fa-info-circle text-info me-1"></i>
-                                Match this to the period the Temu export covers — it's used by the Spend/ACOS/ROAS badges.
-                            </div>
-                        </div>
-                        <div class="alert alert-warning">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            <strong>Warning:</strong> This will clear existing ad data and replace the selected report range before uploading new data.
-                            <br>
-                            <i class="fas fa-info-circle me-1"></i>
-                            Upload the Temu Ads report Excel directly (as exported from Temu).
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadAdDataForm" class="btn btn-warning">
-                        <i class="fas fa-upload me-1"></i>Up Ad Data
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
 
     <!-- Badge Trend Chart Modal (same graph as first image: teal header, line chart, median line, value labels, High/Med/Low) -->
     <div class="modal fade p-0" id="badgeTrendChartModal" tabindex="-1" aria-hidden="true">
@@ -4116,10 +3994,8 @@
             $('#total-lp-badge').text('Total LP $' + Math.round(totalLp).toLocaleString());
             $('#avg-gprft-badge').text('GPFT ' + Math.round(avgGprft) + '%');
             $('#avg-groi-badge').text('GROI ' + Math.round(avgGroi) + '%');
-            // Prefer the file total from temu_campaign_reports (computed in PHP) so
-            // the badge always matches what the user uploaded — even rows whose
-            // goods_id isn't yet in temu_pricing AND have no SKU column would
-            // otherwise be dropped by the per-row sum above.
+            // Prefer Ads API totals from PHP (temu_ads_api_reports) so the badge
+            // matches /temu/ads even when a goods_id is not on every pricing row.
             const spendForSummaryBadge = (adTotalsFromBackend && adTotalsFromBackend.spend != null)
                 ? Number(adTotalsFromBackend.spend) : totalSpend;
             $('#total-spend-badge').text('Ads$ ' + Math.round(spendForSummaryBadge).toLocaleString());
@@ -4140,12 +4016,12 @@
                 return n.toLocaleString();
             };
 
-            // Use .html() so the FontAwesome <i> renders; .text() would HTML-escape it.
-            $('#total-views-badge').html('<i class="fas fa-eye"></i> ' + compactInt(totalViews));
-            $('#avg-views-badge').html('<i class="far fa-eye"></i> ' + Math.round(avgViews).toLocaleString());
+            $('#total-views-badge').text('Views ' + compactInt(totalViews));
+            $('#avg-views-badge').text('AVG ' + Math.round(avgViews).toLocaleString());
+            if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
         }
 
-        // Update Ads/Utilized count section (when Show Ads Columns is on) - like TikTok
+        // Ads badges in the main summary strip (same source as /temu/ads)
         function updateTemuAdsCounts() {
             if (!table) return;
             const data = table.getData('all').filter(row => {
@@ -4157,6 +4033,7 @@
             const adSkuSet = new Set();
             let validSkuCount = 0, missingCount = 0, nraMissingCount = 0, nraCount = 0;
             let totalSpend = 0, totalAdSales = 0, totalBudget = 0, totalAdClicks = 0, totalAdSold = 0;
+            let statusActive = 0, statusInactive = 0, statusNoAd = 0, statusNotSync = 0;
 
             data.forEach(row => {
                 const sku = row.sku || '';
@@ -4172,6 +4049,10 @@
                     processedSkus.add(sku);
                     validSkuCount++;
                     if (nr === 'NRL' || nr === 'NR') nraCount++;
+                    if (campaignStatus === 'Active') statusActive++;
+                    else if (campaignStatus === 'Inactive') statusInactive++;
+                    else if (campaignStatus === 'No ad') statusNoAd++;
+                    else if (campaignStatus === 'Not sync') statusNotSync++;
                 }
                 if (hasCampaign && inv > 0) adSkuSet.add(sku);
                 if (inv <= 0) zeroInvSkus.add(sku);
@@ -4188,7 +4069,7 @@
                         }
                     }
                 }
-                // Use temu_campaign_reports L30 data for badge totals (matches sheet export & all-marketplace-master)
+                // Ads API L30/L7 fields (spend_l30 / clicks_l30) for badge totals
                 totalSpend += parseFloat(row.spend_l30) || 0;
                 totalBudget += parseFloat(row.target) || 0;
                 totalAdClicks += parseInt(row.clicks_l30, 10) || 0;
@@ -4202,14 +4083,9 @@
                 const s = parseFloat(r.spend) || 0;
                 const c = parseInt(r.ad_clicks, 10) || 0;
                 const st = (r.campaign_status || '').trim();
-                if (st === 'Active' || s > 0 || c > 0) uniqueCampaignSkus.add(r.sku);
+                if (st === 'Active') uniqueCampaignSkus.add(r.sku);
             });
-            // Prefer file totals from temu_campaign_reports (returned in
-            // response.ad_totals). The per-row sums above silently miss any
-            // uploaded row whose goods_id isn't in temu_pricing AND whose SKU
-            // column is empty, so the badges would otherwise be lower than the
-            // upload. ROAS / ACOS / Avg Clicks are derived from these totals so
-            // they stay self-consistent with Spend and Ad Sales.
+            // Prefer Ads API totals (response.ad_totals) over per-row sums.
             const adB = adTotalsFromBackend || {};
             const spendForBadges    = (adB.spend != null) ? Number(adB.spend)    : totalSpend;
             const clicksForBadges   = (adB.clicks != null) ? Number(adB.clicks)   : totalAdClicks;
@@ -4225,24 +4101,16 @@
 
             const campaignCount = totalCampaignCountFromBackend > 0 ? totalCampaignCountFromBackend : uniqueCampaignSkus.size;
 
-            $('#temu-total-sku-count').text('Total SKU: ' + validSkuCount);
-            $('#temu-campaign-count').text('Campaign: ' + campaignCount);
-            $('#temu-ad-sku-count').text('Ad SKU: ' + adSkuSet.size);
-            $('#temu-missing-campaign-count').text('Missing: ' + missingCount);
-            $('#temu-nra-missing-count').text('NRA MISSING: ' + nraMissingCount);
-            $('#temu-zero-inv-count').text('Zero INV: ' + zeroInvCount);
-            $('#temu-nra-count').text('NRA: ' + nraCount);
-            $('#temu-ra-count').text('RA: ' + raCount);
-            $('#temu-total-spend-badge').text('Total Ads Spend: $' + Math.round(spendForBadges).toLocaleString());
-            $('#temu-total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-            $('#temu-total-ad-sales-badge').text('Ad Sales: $' + Math.round(adSalesForBadges).toLocaleString());
-            const adSoldLabel = (typeof currentCampaignPeriod !== 'undefined' && currentCampaignPeriod === 'L7') ? 'Total L7 Ad Sold' : 'Total L30 Ad Sold';
-            $('#temu-total-ad-sold-badge').text(adSoldLabel + ': ' + adSoldForBadges.toLocaleString());
-            $('#temu-total-ad-clicks-badge').text('Ad Clicks: ' + clicksForBadges.toLocaleString());
-            $('#temu-total-clicks-badge').text('Total Clicks: ' + clicksForBadges.toLocaleString());
-            $('#temu-avg-clicks-badge').text('Avg Clicks: ' + (avgClicks % 1 === 0 ? Math.round(avgClicks).toLocaleString() : avgClicks.toFixed(1)));
-            $('#temu-avg-acos-badge').text('Avg ACOS: ' + Math.round(avgAcos) + '%');
-            $('#temu-roas-badge').text('ROAS: ' + roas.toFixed(2));
+            $('#temu-campaign-count').text('Campaign ' + campaignCount);
+            $('#temu-total-spend-badge').text('Spend $' + Math.round(spendForBadges).toLocaleString());
+            $('#temu-status-active-badge').text('Active ' + statusActive);
+            $('#temu-status-inactive-badge').text('Inactive ' + statusInactive);
+            $('#temu-status-no-ad-badge').text('No ad ' + statusNoAd);
+            $('#temu-status-not-sync-badge').text('Not sync ' + statusNotSync);
+            $('#temu-total-ad-sales-badge').text('Ad Sales $' + Math.round(adSalesForBadges).toLocaleString());
+            $('#temu-total-ad-clicks-badge').text('Ad Clicks ' + clicksForBadges.toLocaleString());
+            $('#temu-avg-acos-badge').text('ACOS ' + Math.round(avgAcos) + '%');
+            $('#temu-roas-badge').text('ROAS ' + roas.toFixed(2));
         }
 
         // eBay-style color functions
@@ -4257,10 +4125,7 @@
         // instead of the locally-computed aggregates so badge and chart can never diverge.
         let todayBadgeSnapshotFromBackend = null;
         let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
-        // File totals straight from temu_campaign_reports for the current range.
-        // Used by the Spend / Total Ads Spend / Ad Sales / Ad Sold / Ad Clicks
-        // badges so they always equal the upload — including rows whose goods_id
-        // isn't yet in temu_pricing (which the per-row sum would drop).
+        // Ads API totals for the current range (Spend / Ad Sales / Ad Clicks badges).
         let adTotalsFromBackend = null;
         let currentCampaignPeriod = 'L30';
 
@@ -4488,10 +4353,12 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const goodsId = rowData.goods_id || '';
+                        const st = (rowData.campaign_status || '').trim();
+                        const hasApiCampaign = st === 'Active' || st === 'Inactive';
                         const hasCampaign = goodsId && (
                             rowData.spend > 0 ||
                             rowData.ad_clicks > 0 ||
-                            (rowData.campaign_status && rowData.campaign_status !== 'Not Created')
+                            hasApiCampaign
                         );
                         const nraValue = (rowData.nr_req || '').trim().toUpperCase();
                         let dotColor, title;
@@ -4583,7 +4450,7 @@
                     field: "product_clicks",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Seller Center Product clicks + Ads Views (Clicks Overall), both matched by Goods ID.",
+                    headerTooltip: "Seller Center Product clicks (View Data) + Ads API clicks, both matched by Goods ID.",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
                         return value.toLocaleString();
@@ -4594,7 +4461,7 @@
                     field: "ads_views",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Ads report Clicks (Overall) from Ads Views Upload (temu_ads_views), matched by Goods ID.",
+                    headerTooltip: "Overall clicks from Temu Ads API (temu_ads_api_reports), matched by Goods ID.",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
                         return value.toLocaleString();
@@ -5145,6 +5012,37 @@
                     }
                 },
                 {
+                    title: "Push Prc",
+                    field: "_push",
+                    width: 55,
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Push base = inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent) return '';
+                        const sprice = parseFloat(rowData.sprice) || 0;
+                        const pushBase = temuPushBaseFromSprice(sprice);
+                        const pushStatus = rowData.push_status || null;
+                        if (sprice <= 0 || pushBase == null || pushBase <= 0) return '';
+
+                        const sku = rowData.sku || '';
+                        const goodsId = rowData.goods_id || '';
+                        const skuId = rowData.sku_id || '';
+
+                        if (pushStatus === 'pushing') {
+                            return '<i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing to Temu..."></i>';
+                        }
+                        if (pushStatus === 'pushed') {
+                            return '<i class="fa-solid fa-check-double" style="color: #28a745;" title="Pushed to Temu"></i>';
+                        }
+                        if (pushStatus === 'error') {
+                            return `<button type="button" class="temu-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>`;
+                        }
+                        return `<button type="button" class="temu-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="Push base $${pushBase.toFixed(2)} to Temu"><i class="fas fa-upload"></i></button>`;
+                    }
+                },
+                {
                     title: "SPFT",
                     field: "s_r_pft",
                     hozAlign: "center",
@@ -5239,6 +5137,8 @@
                     field: "spend",
                     hozAlign: "right",
                     sorter: "number",
+                    visible: true,
+                    headerTooltip: "Ad spend from /temu/ads (temu_ads_api_reports Overall), matched by Goods ID.",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
@@ -5246,7 +5146,38 @@
                             <i class="fa-solid fa-info-circle l60-spend-info-icon" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Click to show/hide L60 Ad Sold / Ad Sales"></i>
                         </div>`;
                     },
-                    visible: false, 
+                    width: 100
+                },
+                {
+                    title: "Ad Clicks",
+                    field: "ad_clicks",
+                    hozAlign: "right",
+                    sorter: "number",
+                    headerTooltip: "Clicks from /temu/ads (temu_ads_api_reports Overall), matched by Goods ID.",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue()) || 0;
+                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                            <span>${value.toLocaleString()}</span>
+                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Ad Clicks"></i>
+                        </div>`;
+                    },
+                    visible: true,
+                    width: 110
+                },
+                {
+                    title: "ACOS",
+                    field: "acos_ad",
+                    hozAlign: "right",
+                    sorter: "number",
+                    headerTooltip: "ACOS from /temu/ads (temu_ads_api_reports), matched by Goods ID.",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                            <span>${Math.round(value)}%</span>
+                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="ACOS"></i>
+                        </div>`;
+                    },
+                    visible: true,
                     width: 100
                 },
                 {
@@ -5261,37 +5192,6 @@
                     }
                 },
                 {
-                    title: "Queue",
-                    field: "_push",
-                    width: 55,
-                    hozAlign: "center",
-                    headerSort: false,
-                    headerTooltip: "Push base = inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (rowData.is_parent) return '';
-                        const sprice = parseFloat(rowData.sprice) || 0;
-                        const pushBase = temuPushBaseFromSprice(sprice);
-                        const pushStatus = rowData.push_status || null;
-                        if (sprice <= 0 || pushBase == null || pushBase <= 0) return '';
-
-                        const sku = rowData.sku || '';
-                        const goodsId = rowData.goods_id || '';
-                        const skuId = rowData.sku_id || '';
-
-                        if (pushStatus === 'pushing') {
-                            return '<i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing to Temu..."></i>';
-                        }
-                        if (pushStatus === 'pushed') {
-                            return '<i class="fa-solid fa-check-double" style="color: #28a745;" title="Pushed to Temu"></i>';
-                        }
-                        if (pushStatus === 'error') {
-                            return `<button type="button" class="temu-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>`;
-                        }
-                        return `<button type="button" class="temu-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="Push base $${pushBase.toFixed(2)} to Temu"><i class="fas fa-upload"></i></button>`;
-                    }
-                },
-                {
                     title: "Ad Sales",
                     field: "ad_sales_l60",
                     hozAlign: "center",
@@ -5303,40 +5203,11 @@
                     }
                 },
                 {
-                    title: "ACOS%",
-                    field: "acos_ad",
-                    hozAlign: "right",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
-                            <span>${Math.round(value)}%</span>
-                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="ACOS%"></i>
-                        </div>`;
-                    },
-                    visible: false,
-                    width: 100
-                },
-                {
-                    title: "Ad Clicks",
-                    field: "ad_clicks",
-                    hozAlign: "right",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseInt(cell.getValue()) || 0;
-                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
-                            <span>${value.toLocaleString()}</span>
-                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Ad Clicks"></i>
-                        </div>`;
-                    },
-                    visible: false,
-                    width: 110
-                },
-                {
                     title: "Impressions",
                     field: "impressions",
                     hozAlign: "right",
                     sorter: "number",
+                    headerTooltip: "Impressions from /temu/ads (temu_ads_api_reports Overall), matched by Goods ID.",
                     visible: false,
                     width: 100,
                     formatter: function(cell) {
@@ -5360,6 +5231,7 @@
                     title: "OUT ROAS",
                     field: "out_roas_l30",
                     hozAlign: "right",
+                    headerTooltip: "ROAS from /temu/ads (temu_ads_api_reports), matched by Goods ID.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         // Use net_roas as OUT ROAS if out_roas_l30 is not available
@@ -5376,94 +5248,14 @@
                     title: "IN ROAS",
                     field: "in_roas_l30",
                     hozAlign: "right",
-                    editor: "number",
-                    editorParams: {
-                        min: 0,
-                        step: 0.01
-                    },
-                    editable: function(cell) {
-                        return !window.iconClicked;
-                    },
+                    headerTooltip: "Not in Temu Ads API. /temu/ads has OUT ROAS only.",
                     formatter: function(cell) {
-                        // Default to 0 if field doesn't exist
                         const cellValue = cell.getValue();
                         const value = (cellValue !== null && cellValue !== undefined) ? parseFloat(cellValue) : 0;
-                        const cellElement = cell.getElement();
-                        
-                        if (cellElement) {
-                            setTimeout(function() {
-                                const icon = cellElement.querySelector('.toggle-in-roas-info');
-                                if (icon) {
-                                    $(icon).off('mousedown click');
-                                    $(icon).on('mousedown', function(e) {
-                                        window.iconClicked = true;
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        setTimeout(function() {
-                                            window.iconClicked = false;
-                                        }, 100);
-                                        return false;
-                                    });
-                                }
-                            }, 0);
-                        }
-                        
                         return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                             <span>${value.toFixed(2)}</span>
-                            <i class="fa-solid fa-info-circle toggle-in-roas-info" style="cursor: pointer; font-size: 12px; color: #3b82f6; pointer-events: auto; z-index: 10; position: relative;" title="IN ROAS"></i>
+                            <i class="fa-solid fa-info-circle" style="font-size: 12px; color: #3b82f6;" title="Not in Temu Ads API"></i>
                         </div>`;
-                    },
-                    cellClick: function(e, cell) {
-                        if (e.target.classList.contains('toggle-in-roas-info') || 
-                            e.target.classList.contains('fa-info-circle') ||
-                            e.target.closest('.toggle-in-roas-info')) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            return false;
-                        }
-                    },
-                    cellEdited: function(cell) {
-                        const row = cell.getRow();
-                        const rowData = row.getData();
-                        const sku = rowData.sku;
-                        const value = parseFloat(cell.getValue() || 0);
-                        
-                        if (!sku) {
-                            console.error('SKU not found');
-                            showToast('Error: SKU not found', 'error');
-                            return;
-                        }
-                        
-                        $.ajax({
-                            url: '/temu/ads/update',
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                                'Accept': 'application/json'
-                            },
-                            data: {
-                                sku: sku,
-                                field: 'in_roas_l30',
-                                value: value
-                            },
-                            success: function(response) {
-                                if (response.success) {
-                                    cell.setValue(value);
-                                    showToast('IN ROAS updated successfully', 'success');
-                                } else {
-                                    const oldValue = parseFloat(rowData.in_roas_l30 || 0);
-                                    cell.setValue(oldValue);
-                                    showToast('Failed to update IN ROAS: ' + (response.message || 'Unknown error'), 'error');
-                                }
-                            },
-                            error: function(xhr) {
-                                const oldValue = parseFloat(rowData.in_roas_l30 || 0);
-                                cell.setValue(oldValue);
-                                const errorMsg = xhr.responseJSON?.message || xhr.statusText || 'Unknown error';
-                                console.error('Error updating IN ROAS:', xhr);
-                                showToast('Error updating IN ROAS: ' + errorMsg, 'error');
-                            }
-                        });
                     },
                     visible: false,
                     width: 100
@@ -5472,42 +5264,19 @@
                     title: "Status",
                     field: "campaign_status",
                     hozAlign: "center",
+                    headerTooltip: "Same Status as /temu/ads (ad.detail.query). Not sync = API not confirmed. Not Created = no Ads API row for this Goods ID.",
                     formatter: function(cell) {
-                        const row = cell.getRow();
-                        const sku = row.getData().sku;
-                        const rowData = row.getData();
-                        const goodsId = rowData.goods_id || '';
-                        const hasCampaign = goodsId && (rowData.spend > 0 || rowData.ad_clicks > 0);
-                        
-                        // Default to "Not Created" if no campaign exists, otherwise "Active"
-                        let defaultValue = hasCampaign ? "Active" : "Not Created";
-                        // Try to get value from cell, if not available use default
-                        let cellValue = cell.getValue();
-                        const value = (cellValue && cellValue.trim()) ? cellValue.trim() : defaultValue;
-                        
-                        const statusColors = {
-                            "Active": "#10b981",
-                            "Inactive": "#ef4444",
-                            "Not Created": "#eab308"
-                        };
-                        const selectedColor = statusColors[value] || "#6b7280";
-                        
-                        return `
-                            <select class="form-select form-select-sm editable-select campaign-status-select" 
-                                    data-sku="${sku}" 
-                                    data-field="status"
-                                    style="width: 120px; border: 1px solid #d1d5db; padding: 4px 8px; font-size: 0.875rem; color: ${selectedColor}; font-weight: 500;">
-                                <option value="Active" ${value === 'Active' ? 'selected' : ''} style="color: #10b981; font-weight: 500;">Active</option>
-                                <option value="Inactive" ${value === 'Inactive' ? 'selected' : ''} style="color: #ef4444; font-weight: 500;">Inactive</option>
-                                <option value="Not Created" ${value === 'Not Created' ? 'selected' : ''} style="color: #eab308; font-weight: 500;">Not Created</option>
-                            </select>
-                        `;
+                        const value = String(cell.getValue() || 'Not Created').trim() || 'Not Created';
+                        let cls = 'bg-secondary';
+                        if (value === 'Active') cls = 'bg-success';
+                        else if (value === 'Inactive') cls = 'bg-warning text-dark';
+                        else if (value === 'Deleted' || value === 'No ad') cls = 'bg-dark';
+                        else if (value === 'Not Created') cls = 'bg-warning text-dark';
+                        else if (value === 'Not sync') cls = 'bg-secondary';
+                        return '<span class="badge ' + cls + '">' + value + '</span>';
                     },
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                    },
-                    visible: false,
-                    width: 130
+                    visible: true,
+                    width: 110
                 },
                 {
                     title: "Target",
@@ -5593,13 +5362,6 @@
             updateSelectAllCheckbox();
         });
 
-        // Toggle Ads Columns button - Show only columns that match temu/ads page
-        let adsColumnsVisible = false;
-        let originalColumnVisibility = {}; // Store original visibility state
-        
-        // Columns to show when ads view is active (matching temu/ads page)
-        const adsColumnFields = ['_select', 'sku', 'goods_id', 'has_campaign', 'inventory', 'ovl30', 'temu_l30', 'dil_percent', 'nr_req', 'spend', 'ad_clicks', 'acos_ad', 'out_roas_l30', 'in_roas_l30', 'campaign_status'];
-
         function captureColumnVisibilityState() {
             const state = {};
             if (!table) return state;
@@ -5625,11 +5387,9 @@
 
         /**
          * Honor the column-box checkboxes after any filter.
-         * Ads-section view keeps its own preset until the user exits it.
          */
         function applySelectedColumnVisibility() {
             if (!table) return;
-            if (typeof adsColumnsVisible !== 'undefined' && adsColumnsVisible) return;
 
             const boxChecks = document.querySelectorAll('#column-dropdown-menu .col-vis-field-toggle');
             if (boxChecks.length) {
@@ -5645,112 +5405,17 @@
             }
         }
         
-        $('#toggle-ads-columns-btn').on('click', function() {
-            adsColumnsVisible = !adsColumnsVisible;
-            
-            if (adsColumnsVisible) {
-                // Store original visibility state for all columns
-                table.getColumns().forEach(function(column) {
-                    const field = column.getField();
-                    if (field) {
-                        originalColumnVisibility[field] = column.isVisible();
-                    }
-                });
-                
-                // Hide non-ads columns, show ads columns (iterate so hidden columns are found)
-                table.getColumns().forEach(function(column) {
-                    const field = column.getField();
-                    if (field && !adsColumnFields.includes(field)) {
-                        column.hide();
-                    } else if (field && adsColumnFields.includes(field)) {
-                        column.show();
-                    }
-                });
-                if (typeof l60ColumnsVisible !== 'undefined' && l60ColumnsVisible && typeof l60ColumnFields !== 'undefined') {
-                    table.getColumns().filter(c => c.getField() && l60ColumnFields.includes(c.getField())).forEach(c => c.show());
-                }
-                
-                // Icon-only — title attr already conveys the action; aria-label set in HTML.
-                $(this).html('<i class="fas fa-eye"></i>').attr('title', 'Show all columns (exit Ads Section view)');
-                $(this).removeClass('btn-secondary btn-primary').addClass('btn-danger');
-                $('#temu-ads-count-section').removeClass('d-none');
-                $('#summary-stats').addClass('d-none');
-                if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
-            } else {
-                // Restore original visibility state
-                table.getColumns().forEach(function(column) {
-                    const field = column.getField();
-                    if (field && originalColumnVisibility.hasOwnProperty(field)) {
-                        if (originalColumnVisibility[field]) {
-                            column.show();
-                        } else {
-                            column.hide();
-                        }
-                    }
-                });
-                if (typeof l60ColumnsVisible !== 'undefined' && l60ColumnsVisible && typeof l60ColumnFields !== 'undefined') {
-                    table.getColumns().filter(c => c.getField() && l60ColumnFields.includes(c.getField())).forEach(c => c.show());
-                }
-                
-                $(this).html('<i class="fas fa-filter"></i>').attr('title', 'Toggle Ads Section (show only ad-related columns + ads-stats strip)');
-                $(this).removeClass('btn-danger btn-primary').addClass('btn-secondary');
-                $('#temu-ads-count-section').addClass('d-none');
-                $('#summary-stats').removeClass('d-none');
-                temuAdsBadgeFilter = null;
-                $('#temu-ads-count-section .temu-ads-badge').removeClass('border border-3 border-dark');
-                applyFilters();
-            }
-        });
-
-        // Ads section badge filter (like TikTok) - toggle on click
         let temuAdsBadgeFilter = null;
         $(document).on('click', '.temu-ads-badge', function() {
             const filter = $(this).data('ads-filter');
             temuAdsBadgeFilter = (temuAdsBadgeFilter === filter) ? null : filter;
-            $('#temu-ads-count-section .temu-ads-badge').removeClass('border border-3 border-dark');
+            $('.temu-ads-badge').removeClass('border border-3 border-dark');
             if (temuAdsBadgeFilter) {
-                $('#temu-ads-count-section .temu-ads-badge[data-ads-filter="' + temuAdsBadgeFilter + '"]').addClass('border border-3 border-dark');
+                $('.temu-ads-badge[data-ads-filter="' + temuAdsBadgeFilter + '"]').addClass('border border-3 border-dark');
             }
             applyFilters();
             if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
         });
-
-        // Temu Ads section: L7 / L30 campaign report upload (like TikTok)
-        function doTemuUploadReport(fileInput, reportRange, statusContainerId) {
-            const file = fileInput.files && fileInput.files[0];
-            const $status = $('#' + statusContainerId);
-            if (!file) {
-                $status.html('<span class="text-danger">Please select a file</span>').show();
-                return;
-            }
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('report_range', reportRange);
-            $status.html('<span class="text-info">Uploading...</span>').show();
-            $.ajax({
-                url: '{{ route("temu.ads.upload.campaign") }}',
-                method: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                success: function(response) {
-                    if (response && response.success) {
-                        $status.html('<span class="text-success">' + (response.message || 'Uploaded') + '</span>');
-                        fileInput.value = '';
-                        if (table) table.replaceData();
-                        if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
-                        setTimeout(function() { $status.html('').hide(); }, 5000);
-                    } else {
-                        $status.html('<span class="text-danger">' + (response && response.message ? response.message : 'Upload failed') + '</span>');
-                    }
-                },
-                error: function(xhr) {
-                    const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Upload failed';
-                    $status.html('<span class="text-danger">' + msg + '</span>');
-                }
-            });
-        }
 
         // L60 column toggle (info icon in Spend L60 column header)
         let l60ColumnsVisible = false;
@@ -5962,10 +5627,29 @@
                 });
             }
 
-            // Temu Ads section badge filter (only when Show Ads Columns is on)
-            if (typeof adsColumnsVisible !== 'undefined' && adsColumnsVisible && temuAdsBadgeFilter) {
+            if (temuAdsBadgeFilter) {
                 switch (temuAdsBadgeFilter) {
                     case 'all':
+                        break;
+                    case 'status-active':
+                        table.addFilter(function(data) {
+                            return (data.campaign_status || '').trim() === 'Active';
+                        });
+                        break;
+                    case 'status-inactive':
+                        table.addFilter(function(data) {
+                            return (data.campaign_status || '').trim() === 'Inactive';
+                        });
+                        break;
+                    case 'status-no-ad':
+                        table.addFilter(function(data) {
+                            return (data.campaign_status || '').trim() === 'No ad';
+                        });
+                        break;
+                    case 'status-not-sync':
+                        table.addFilter(function(data) {
+                            return (data.campaign_status || '').trim() === 'Not sync';
+                        });
                         break;
                     case 'campaign':
                         table.addFilter(function(data) {
@@ -7033,55 +6717,6 @@
             });
         });
 
-        // Status dropdown change handler
-        $(document).on('change', '.campaign-status-select', function() {
-            const $select = $(this);
-            const value = $select.val();
-            const sku = $select.data('sku');
-
-            if (!sku) {
-                console.error('SKU not found in status select');
-                showToast('Error: SKU not found', 'error');
-                return;
-            }
-
-            // Update the select color based on value
-            const statusColors = {
-                "Active": "#10b981",
-                "Inactive": "#ef4444",
-                "Not Created": "#eab308"
-            };
-            $select.css('color', statusColors[value] || "#6b7280");
-
-            // Save to database via temu/ads/update endpoint
-            $.ajax({
-                url: '/temu/ads/update',
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Accept': 'application/json'
-                },
-                data: {
-                    sku: sku,
-                    field: 'status',
-                    value: value
-                },
-                success: function(response) {
-                    if (response.success) {
-                        showToast('Status updated successfully', 'success');
-                    } else {
-                        showToast('Failed to update status: ' + (response.message || 'Unknown error'), 'error');
-                    }
-                },
-                error: function(xhr) {
-                    const errorMsg = xhr.responseJSON?.message || xhr.statusText || 'Unknown error';
-                    console.error('Error updating status:', xhr);
-                    showToast('Failed to update status: ' + errorMsg, 'error');
-                }
-            });
-        });
-
-        // Initialize iconClicked flag for IN ROAS
         window.iconClicked = false;
 
         /*
@@ -7414,7 +7049,7 @@
             if (cvr30Col) {
                 cvr30Col.updateDefinition({ title: isL7 ? 'CVR 7' : 'CVR 30' });
             }
-            $('#temu-total-ad-sold-badge').attr('title', isL7 ? 'Total L7 Ad Sold' : 'Total L30 Ad Sold');
+            if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
         }
 
         function currentPeriodEndpoint() {
