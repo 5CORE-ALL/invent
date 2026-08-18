@@ -1163,7 +1163,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="temu_ship" data-col-label="Temu ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="temu">
+                                    <th data-col-key="temu_ship" data-col-label="Temu ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="temu" title="When Type is O-Size, Temu ship = Temu ship + 50% of O-Size Charge">
                                         <div class="th-vertical-label">Temu<br>ship</div>
                                         <select id="filterTemuShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Temu ship">
                                             <option value="all">All</option>
@@ -1816,6 +1816,7 @@
                         <div class="text-muted mt-1">
                             Slabs use <strong>Itm wt GW Decl</strong> (exact value; falls back to ACT when Decl is empty).
                             Carriers: Ship, Ship BB, Temu ship, Temu GOFO, GOFO, Fedex, UPS, USPS, UNI.
+                            For <strong>Temu ship</strong>, Apply writes the slab rate + <strong>50% of O-Size Charge</strong> when Type is O-Size.
                         </div>
                     </div>
 
@@ -2129,6 +2130,55 @@
                 );
                 const total = base + oSize;
                 return `Ship BB ${formatNumber(total, 2)} = Ship BB ${formatNumber(base, 2)} + O-Size ${formatNumber(oSize, 2)}`;
+            }
+
+            function itemOSizeAmount(item) {
+                return parseChargeAmount(item?.o_size_charge ?? (item?.Values && item.Values.o_size_charge));
+            }
+
+            /** 50% of O-Size Charge when Type is O-Size; otherwise 0. */
+            function itemOSizeHalf(item) {
+                const typeRaw = item?.label_type ?? (item?.Values && item.Values.label_type);
+                if (!item || !isOSizeLabelType(typeRaw)) return 0;
+                return Math.round(itemOSizeAmount(item) * 0.5 * 100) / 100;
+            }
+
+            /**
+             * Temu ship shown in the Temu ship column:
+             * when Type is O-Size, Temu ship + 50% of O-Size Charge.
+             */
+            function calcTemuShip(item, isParentRow) {
+                if (!item) return null;
+                const base = getOuterCarrierDisplayRate(item, 'temu_ship', !!isParentRow);
+                const half = itemOSizeHalf(item);
+                const baseBlank = base === null || base === undefined || base === '';
+                if (baseBlank && half === 0) return base;
+                return parseChargeAmount(base) + half;
+            }
+
+            function temuShipTooltip(item, isParentRow) {
+                const typeRaw = item?.label_type ?? (item?.Values && item.Values.label_type);
+                if (!isOSizeLabelType(typeRaw)) return '';
+                const base = parseChargeAmount(getOuterCarrierDisplayRate(item, 'temu_ship', !!isParentRow));
+                const half = itemOSizeHalf(item);
+                const total = base + half;
+                return `Temu ship ${formatNumber(total, 2)} = Temu ship ${formatNumber(base, 2)} + 50% O-Size ${formatNumber(half, 2)}`;
+            }
+
+            /** Rate written to Product Master for Temu ship (slab base + 50% O-Size when Type is O-Size). */
+            function temuShipWriteRate(item, baseRate) {
+                const n = parseFloat(baseRate);
+                if (!Number.isFinite(n)) return null;
+                return Math.round((n + itemOSizeHalf(item)) * 100) / 100;
+            }
+
+            /** Implied slab base from a stored Temu ship (strips the 50% O-Size add-on). */
+            function temuShipStoredBase(item) {
+                const raw = item ? item.temu_ship : null;
+                if (raw === null || raw === undefined || raw === '') return null;
+                const n = parseFloat(raw);
+                if (!Number.isFinite(n)) return null;
+                return Math.round((n - itemOSizeHalf(item)) * 100) / 100;
             }
 
             function applyLabelTypeColor(dropdown, labelType) {
@@ -2674,7 +2724,20 @@
                         row.appendChild(td);
                     };
 
-                    appendCarrierShipCell('temu_ship');
+                    const temuShipCell = document.createElement('td');
+                    setShippingNumericCell(temuShipCell, calcTemuShip(shipSource, isParentRow), isParentRow);
+                    temuShipCell.classList.add('shipping-temu-ship-col');
+                    temuShipCell.setAttribute('data-sku', sourceItem.SKU || item.SKU || '');
+                    annotateOuterCarrierCell(temuShipCell, item, 'temu_ship', isParentRow);
+                    if (!isParentRow) {
+                        const temuTip = temuShipTooltip(shipSource, false);
+                        if (temuTip) {
+                            temuShipCell.title = temuShipCell.title ? `${temuTip} — ${temuShipCell.title}` : temuTip;
+                        }
+                    }
+                    const temuShipHighlightVal = carrierShipNumericFromCell(temuShipCell);
+                    if (temuShipHighlightVal !== null) carrierShipHighlight.push({ td: temuShipCell, value: temuShipHighlightVal });
+                    row.appendChild(temuShipCell);
                     appendCarrierShipCell('temu_gofo');
                     appendCarrierShipCell('gofo');
                     appendCarrierShipCell('fedex', 'hide-carrier-col');
@@ -3828,6 +3891,8 @@
                     raw = calcTotalShip(item, isP);
                 } else if (fieldName === 'ship_bb' && typeof calcShipBb === 'function') {
                     raw = calcShipBb(item, isP);
+                } else if (fieldName === 'temu_ship' && typeof calcTemuShip === 'function') {
+                    raw = calcTemuShip(item, isP);
                 } else {
                     raw = (typeof getOuterCarrierDisplayRate === 'function')
                         ? getOuterCarrierDisplayRate(item, fieldName, isP)
@@ -4389,6 +4454,9 @@
                 if (key === 'ship_bb') {
                     return calcShipBb(item, false);
                 }
+                if (key === 'temu_ship') {
+                    return calcTemuShip(item, false);
+                }
                 if (key === 'shopify_inv') {
                     return item.shopify_inv;
                 }
@@ -4644,7 +4712,7 @@
                             computed: "total_ship_bb"
                         },
                         "Temu ship": {
-                            key: "temu_ship"
+                            computed: "total_temu_ship"
                         },
                         "Temu GOFO": {
                             key: "temu_gofo"
@@ -4786,6 +4854,10 @@
                                         }
                                         if (colDef.computed === 'total_ship_bb') {
                                             row.push(calcShipBb(item, false));
+                                            return;
+                                        }
+                                        if (colDef.computed === 'total_temu_ship') {
+                                            row.push(calcTemuShip(item, false));
                                             return;
                                         }
                                         const key = colDef.key;
@@ -6178,6 +6250,19 @@
                     }
                     if (bbTip) td.title = bbTip;
                 });
+                const temuShip = calcTemuShip(product, false);
+                const temuTip = temuShipTooltip(product, false);
+                document.querySelectorAll(`.shipping-temu-ship-col[data-sku="${CSS.escape(String(sku))}"]`).forEach(td => {
+                    const n = parseFloat(temuShip);
+                    if (temuShip === null || temuShip === undefined || temuShip === '' || !Number.isFinite(n)) {
+                        td.textContent = '-';
+                        td.classList.add('shipping-rate-alert');
+                    } else {
+                        td.textContent = formatNumber(n, 2);
+                        td.classList.toggle('shipping-rate-alert', n === 0);
+                    }
+                    if (temuTip) td.title = temuTip;
+                });
             }
 
             async function saveOSizeChargeInput(input) {
@@ -6399,15 +6484,17 @@
                         if (slabRate == null || !Number.isFinite(slabRate)) return;
                         const rate = normalizeSlabRate(slabRate);
                         if (rate === null) return;
+                        const writeRate = c.key === 'temu_ship' ? temuShipWriteRate(item, rate) : rate;
+                        if (writeRate === null) return;
 
                         const raw = item[c.key];
                         if (raw === null || raw === undefined || raw === '') {
-                            fields[c.key] = rate;
+                            fields[c.key] = writeRate;
                             return;
                         }
                         const n = parseFloat(raw);
-                        if (!Number.isFinite(n) || normalizeSlabRate(n) !== rate) {
-                            fields[c.key] = rate;
+                        if (!Number.isFinite(n) || normalizeSlabRate(n) !== writeRate) {
+                            fields[c.key] = writeRate;
                         }
                     });
 
@@ -6491,8 +6578,14 @@
                 items.forEach(it => {
                     const raw = it ? it[carrierKey] : null;
                     if (raw === null || raw === undefined || raw === '') { missing++; return; }
-                    const n = parseFloat(raw);
+                    let n = parseFloat(raw);
                     if (!Number.isFinite(n)) { missing++; return; }
+                    // Temu ship stored value may include +50% O-Size; compare the implied slab base.
+                    if (carrierKey === 'temu_ship') {
+                        const base = temuShipStoredBase(it);
+                        if (base === null) { missing++; return; }
+                        n = base;
+                    }
                     filled++;
                     const r = normalizeSlabRate(n);
                     distinctSet.set(r, (distinctSet.get(r) || 0) + 1);
@@ -6530,7 +6623,9 @@
                     const th = document.createElement('th');
                     th.className = 'text-center slab-rates-carrier-col';
                     th.style.fontSize = '12px';
-                    th.title = `${c.label} rate ($)`;
+                    th.title = c.key === 'temu_ship'
+                        ? `${c.label} rate ($) — when Type is O-Size, Apply writes this rate + 50% of O-Size Charge`
+                        : `${c.label} rate ($)`
                     th.textContent = c.label;
                     headRow.appendChild(th);
                 });
@@ -6853,8 +6948,11 @@
                         // Untouched mixed: only rewrite SKUs that differ / are missing
                         items = items.filter(it => {
                             if (isCarrierValueMissing(it, carrierKey)) return true;
+                            const expected = carrierKey === 'temu_ship'
+                                ? temuShipWriteRate(it, rate)
+                                : normalizeSlabRate(rate);
                             const n = parseFloat(it[carrierKey]);
-                            return !Number.isFinite(n) || normalizeSlabRate(n) !== normalizeSlabRate(rate);
+                            return !Number.isFinite(n) || normalizeSlabRate(n) !== expected;
                         });
                     } else if (!userEdited && needsMissing) {
                         items = items.filter(it => isCarrierValueMissing(it, carrierKey));
@@ -6888,7 +6986,9 @@
                     items.forEach(item => {
                         const id = String(item.id);
                         if (!perSku.has(id)) perSku.set(id, { item, fields: {} });
-                        perSku.get(id).fields[carrierKey] = rate;
+                        perSku.get(id).fields[carrierKey] = carrierKey === 'temu_ship'
+                            ? temuShipWriteRate(item, rate)
+                            : rate;
                         totalWritesPlanned++;
                     });
                 });
