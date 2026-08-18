@@ -45,6 +45,7 @@
         '#toa-cd-hover-preview',
         '#dws-img-hover-preview',
         '#ebay2op-img-hover-preview',
+        '#comparison-cd-image-hover-preview',
         '.product-image-thumbnail',
         '.product-image-enlarged',
         '.no-img-hover',

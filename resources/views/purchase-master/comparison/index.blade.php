@@ -211,7 +211,7 @@
     #cd-hover-preview {
         position: fixed;
         z-index: 1080;
-        max-width: 320px;
+        max-width: min(560px, 80vw);
         padding: 10px 12px;
         background: #1a2942;
         color: #fff;
@@ -221,6 +221,9 @@
         line-height: 1.5;
         pointer-events: none;
         display: none;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
 
     #cd-hover-preview .cd-hover-label {
@@ -647,6 +650,14 @@
         min-height: 0;
     }
 
+    .cd-sheet-table .cd-sheet-cell-supplier-name,
+    .cd-sheet-table .cd-sheet-cell-full-hover {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+    }
+
     .cd-sheet-table .cd-sheet-cell-empty {
         padding: 2px 4px;
     }
@@ -657,6 +668,7 @@
         line-height: 0;
         overflow: hidden;
         max-width: 100%;
+        cursor: zoom-in;
     }
 
     .cd-sheet-table td:has(img),
@@ -6994,7 +7006,10 @@ document.addEventListener('DOMContentLoaded', function () {
             || /ggpht\.com/i.test(url)
             || /cdn\.shopify\.com/i.test(url)
             || /docs\.google\.com\/feeds/i.test(url)
-            || /drive\.google\.com\/thumbnail/i.test(url);
+            || /drive\.google\.com\/thumbnail/i.test(url)
+            || /alicdn\.com/i.test(url)
+            || /1688\.com/i.test(url)
+            || /alibaba\.com/i.test(url);
     }
 
     function isSheetLinkUrl(value) {
@@ -7112,7 +7127,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const token = storedValue.startsWith('data:image/')
             ? `[embedded-image:${rowIndex}:${colIndex}]`
             : storedValue;
-        td.innerHTML = `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(token)}" data-embedded="1" title="Product photo">
+        td.innerHTML = `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(token)}" data-embedded="1" title="Hover to enlarge">
             <img src="${escapeHtmlAttr(previewUrl)}" class="cd-sheet-img no-img-hover" alt="Product photo" data-no-img-hover>
         </div>`;
         bindSheetImageFallback(td.querySelector('img'), rowIndex, colIndex);
@@ -7290,7 +7305,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const src = getSheetPastePreview(rowIndex, colIndex)
                     || sheetEmbeddedImageSrc(rowIndex, colIndex, attrValue);
                 if (src) {
-                    return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" data-embedded="1" title="Product photo">
+                    return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" data-embedded="1" title="Hover to enlarge">
                         <img src="${escapeHtmlAttr(src)}" class="cd-sheet-img no-img-hover" alt="Product photo" data-no-img-hover decoding="async">
                     </div>`;
                 }
@@ -7298,7 +7313,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     <span class="cd-sheet-img-ph" aria-hidden="true"><i class="mdi mdi-image-outline"></i></span>
                 </div>`;
             }
-            return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" title="Product photo"><img src="${escapeHtmlAttr(text)}" class="cd-sheet-img no-img-hover" alt="Product photo" data-no-img-hover referrerpolicy="no-referrer" decoding="async"></div>`;
+            return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" title="Hover to enlarge"><img src="${escapeHtmlAttr(text)}" class="cd-sheet-img no-img-hover" alt="Product photo" data-no-img-hover referrerpolicy="no-referrer" decoding="async"></div>`;
         }
         if (!forceText && isSheetLinkUrl(text)) {
             return `<div class="cd-sheet-cell cd-sheet-cell-link" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(text)}" title="${escapeHtmlAttr(text)}">
@@ -7329,7 +7344,15 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!text) {
             return `<div class="cd-sheet-cell cd-sheet-cell-empty" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}"></div>`;
         }
-        return `<div class="cd-sheet-cell" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}">${escapeHtml(text)}</div>`;
+        const specCol = sheetRenderColCache?.specCol ?? detectSpecColumnIndex(currentSheetCells);
+        const isSupplierName = !forceText
+            && !isSheetSpecColumn(colIndex)
+            && isSupplierNameRow(currentSheetCells, rowIndex, specCol);
+        const hoverClass = (isSupplierName || text.length > 24 || /^https?:\/\//i.test(text))
+            ? ' cd-sheet-cell-full-hover'
+            : '';
+        const supplierClass = isSupplierName ? ' cd-sheet-cell-supplier-name' : '';
+        return `<div class="cd-sheet-cell${supplierClass}${hoverClass}" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(rawText)}" title="${escapeHtmlAttr(text)}" aria-label="${escapeHtmlAttr(text)}">${escapeHtml(text)}</div>`;
     }
 
     function renderSheetEditor(cells, options) {
@@ -7404,9 +7427,9 @@ document.addEventListener('DOMContentLoaded', function () {
                     headerText = columnLetter(c);
                 }
             }
-            headHtml += `<th class="cd-col-header cd-select-col${isPriorityCol ? ' cd-priority-col' : ''}${selectedClass}" data-col="${c}" draggable="true" title="Click to select · drag to move column ${escapeHtmlAttr(headerText)}">
+            headHtml += `<th class="cd-col-header cd-select-col${isPriorityCol ? ' cd-priority-col' : ''}${selectedClass}" data-col="${c}" draggable="true" title="${escapeHtmlAttr(headerText)}">
                 <span class="cd-col-header-inner">
-                    <span class="cd-col-header-label">${escapeHtml(headerText)}</span>
+                    <span class="cd-col-header-label" title="${escapeHtmlAttr(headerText)}">${escapeHtml(headerText)}</span>
                     <button type="button" class="cd-sheet-col-edit-btn" data-col="${c}" draggable="false" title="Edit column ${escapeHtmlAttr(headerText)}" aria-label="Edit column ${escapeHtmlAttr(headerText)}">
                         <i class="mdi mdi-pencil-outline" aria-hidden="true"></i>
                     </button>
@@ -12772,27 +12795,121 @@ document.addEventListener('DOMContentLoaded', function () {
     })();
 
     let activeCompanyTooltipCell = null;
+    let activeSheetImageHoverCell = null;
+
+    function sheetImageHoverUrl(cell) {
+        if (!cell || !cell.classList.contains('cd-sheet-cell-image')) {
+            return '';
+        }
+        const img = cell.querySelector('img');
+        const src = String(img?.currentSrc || img?.getAttribute('src') || '').trim();
+        if (src) {
+            return src;
+        }
+        const value = String(cell.dataset.value || '').trim();
+        if (/^https?:\/\//i.test(value) || value.startsWith('blob:') || value.startsWith('data:image/')) {
+            return value;
+        }
+        return '';
+    }
+
+    function sheetCellHoverText(cell) {
+        if (!cell) {
+            return '';
+        }
+        if (cell.getAttribute('contenteditable') === 'true' && document.activeElement === cell) {
+            return '';
+        }
+        if (cell.classList.contains('cd-sheet-cell-empty') || cell.classList.contains('cd-sheet-cell-priority')) {
+            return '';
+        }
+        if (cell.classList.contains('cd-sheet-comm-cell') || cell.closest('.cd-sheet-comm-cell')) {
+            return '';
+        }
+        const fromData = String(cell.dataset.value || '').trim();
+        if (fromData && !fromData.startsWith('[cmp-photo:') && !fromData.startsWith('[embedded-image:') && !fromData.startsWith('data:image/')) {
+            return fromData;
+        }
+        return String(cell.innerText || '').trim();
+    }
+
+    function sheetCellForTooltip(target) {
+        const headerLabel = target.closest('.cd-col-header-label');
+        if (headerLabel && headerLabel.getAttribute('title')) {
+            return headerLabel;
+        }
+        const cell = target.closest('.cd-sheet-cell-company, .cd-sheet-cell-supplier-name, .cd-sheet-cell-full-hover, .cd-sheet-cell-link');
+        if (!cell) {
+            return null;
+        }
+        return sheetCellHoverText(cell) ? cell : null;
+    }
+
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('mouseover', function (e) {
-        const cell = e.target.closest('.cd-sheet-cell-company');
+        const imgCell = e.target.closest('.cd-sheet-cell-image');
+        if (imgCell) {
+            const url = sheetImageHoverUrl(imgCell);
+            if (url) {
+                activeSheetImageHoverCell = imgCell;
+                activeCompanyTooltipCell = null;
+                hideCdHover();
+                showComparisonImageHover(url, e.clientX, e.clientY);
+                return;
+            }
+        }
+
+        const cell = sheetCellForTooltip(e.target);
         if (!cell || cell === activeCompanyTooltipCell) return;
         activeCompanyTooltipCell = cell;
-        showSheetCellTooltip(e, cell.dataset.value || '');
+        const text = cell.classList.contains('cd-col-header-label')
+            ? (cell.getAttribute('title') || cell.textContent || '')
+            : sheetCellHoverText(cell);
+        showSheetCellTooltip(e, text);
     });
 
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('mousemove', function (e) {
-        if (activeCompanyTooltipCell && e.target.closest('.cd-sheet-cell-company') === activeCompanyTooltipCell) {
+        if (activeSheetImageHoverCell) {
+            const imgCell = e.target.closest('.cd-sheet-cell-image');
+            if (imgCell === activeSheetImageHoverCell) {
+                const url = sheetImageHoverUrl(imgCell);
+                if (url) {
+                    showComparisonImageHover(url, e.clientX, e.clientY);
+                }
+                return;
+            }
+        }
+        if (activeCompanyTooltipCell && sheetCellForTooltip(e.target) === activeCompanyTooltipCell) {
             positionCdHover(e);
         }
     });
 
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('mouseout', function (e) {
-        const cell = e.target.closest('.cd-sheet-cell-company');
+        const imgCell = e.target.closest('.cd-sheet-cell-image');
+        if (imgCell && imgCell === activeSheetImageHoverCell) {
+            const related = e.relatedTarget;
+            if (related && imgCell.contains(related)) return;
+            activeSheetImageHoverCell = null;
+            hideComparisonImageHover();
+            return;
+        }
+
+        const cell = sheetCellForTooltip(e.target);
         if (!cell || cell !== activeCompanyTooltipCell) return;
         const related = e.relatedTarget;
         if (related && cell.contains(related)) return;
         activeCompanyTooltipCell = null;
         hideCdHover();
     }, true);
+
+    document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('focusin', function (e) {
+        if (!e.target.closest('.cd-sheet-cell[contenteditable="true"]')) {
+            return;
+        }
+        activeCompanyTooltipCell = null;
+        activeSheetImageHoverCell = null;
+        hideCdHover();
+        hideComparisonImageHover();
+    });
 
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('click', function (e) {
         const commBtn = e.target.closest('.cd-sheet-comm-btn');
