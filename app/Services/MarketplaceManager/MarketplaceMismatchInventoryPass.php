@@ -81,7 +81,7 @@ final class MarketplaceMismatchInventoryPass
             'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'macy' => app(MacyInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'doba' => app(DobaInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'ebay1' => app(Ebay1InventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'ebay1' => app(Ebay1InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'ebay2' => app(Ebay2InventorySyncService::class)->syncSkusFromShopify($mismatch),
             'ebay3' => app(Ebay3InventorySyncService::class)->syncSkusFromShopify($mismatch),
             'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify($mismatch),
