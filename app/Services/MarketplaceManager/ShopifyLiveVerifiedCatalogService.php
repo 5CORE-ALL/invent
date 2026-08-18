@@ -242,9 +242,19 @@ final class ShopifyLiveVerifiedCatalogService
             return null;
         }
 
+        $map = $this->normalizedToSkuMap($store);
+        $lookupSkus = $linkedSkus;
+        foreach ($linkedSkus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n !== '' && isset($map[$n])) {
+                $lookupSkus[] = $map[$n];
+            }
+        }
+
         // Prefer shopify_skus live inventory columns over catalog variants (linked SKUs only).
+        $shopifyLiveMap = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($lookupSkus);
         $shopifyInv = [];
-        foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($linkedSkus) as $key => $qty) {
+        foreach ($shopifyLiveMap as $key => $qty) {
             $n = ShopifySku::normalizeSkuForShopifyLookup((string) $key);
             if ($n === '') {
                 continue;
@@ -256,7 +266,6 @@ final class ShopifyLiveVerifiedCatalogService
         if ($shopifyInv === []) {
             $shopifyInv = $this->shopifyInventoryByNorm($store);
         }
-        $map = $this->normalizedToSkuMap($store);
         $inStockNorm = [];
         foreach ($shopifyInv as $n => $qty) {
             if ($qty > 0) {
@@ -276,7 +285,10 @@ final class ShopifyLiveVerifiedCatalogService
             }
             $seen[$n] = true;
             $canonical = $map[$n];
-            $shopifyQty = (int) ($shopifyInv[$n] ?? 0);
+            $shopifyQty = MarketplaceListingStockResolver::qtyFromMap($shopifyLiveMap, $canonical, (string) $sku);
+            if ($shopifyQty === null) {
+                $shopifyQty = (int) ($shopifyInv[$n] ?? 0);
+            }
             $mpQty = MarketplaceListingStockResolver::qtyFromMap($marketplaceStockMap, $canonical, (string) $sku);
 
             if ($shopifyQty <= 0) {
