@@ -2103,7 +2103,6 @@ class CategoryController extends Controller
                 'sku' => 'sku',
                 'ship' => 'ship',
                 'ship_bb' => 'ship_bb',
-                'tt_ship' => 'tt_ship',
                 'temu_ship' => 'temu_ship',
                 'ebay2_ship' => 'ebay2_ship',
                 'label_qty' => 'label_qty',
@@ -2170,15 +2169,6 @@ class CategoryController extends Controller
                     $shipBbValue = trim($row[$columnIndices['ship_bb']]);
                     if ($shipBbValue !== '') {
                         $values['ship_bb'] = $shipBbValue;
-                        $hasChanges = true;
-                    }
-                }
-
-                // Update TT SHIP if column exists and has value
-                if (isset($columnIndices['tt_ship']) && isset($row[$columnIndices['tt_ship']])) {
-                    $ttShipValue = trim($row[$columnIndices['tt_ship']]);
-                    if ($ttShipValue !== '') {
-                        $values['tt_ship'] = $ttShipValue;
                         $hasChanges = true;
                     }
                 }
@@ -7066,7 +7056,8 @@ PROMPT;
     public function importDimWtMaster(Request $request)
     {
         // Shipping Master posts here with import_context=shipping_master.
-        if ($request->input('import_context') === 'shipping_master' && ! $this->canImportShippingMaster()) {
+        $isShippingMasterImport = $request->input('import_context') === 'shipping_master';
+        if ($isShippingMasterImport && ! $this->canImportShippingMaster()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You are not authorized to import Shipping Master data.',
@@ -7261,6 +7252,10 @@ PROMPT;
                     if ($field === 'sku') {
                         continue;
                     } // Skip SKU field
+                    // TT Ship is no longer managed from /shipping-master
+                    if ($isShippingMasterImport && $field === 'tt_ship') {
+                        continue;
+                    }
 
                     if (isset($row[$colIndex]) && $row[$colIndex] !== '' && $row[$colIndex] !== null) {
                         $value = trim($row[$colIndex]);
