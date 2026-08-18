@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Cache;
 
 class ListingAppscenicController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingAppscenic(Request $request)
     {
         $mode = $request->query('mode');
@@ -40,6 +42,10 @@ class ListingAppscenicController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',

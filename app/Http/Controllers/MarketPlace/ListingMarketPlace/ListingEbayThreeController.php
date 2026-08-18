@@ -17,6 +17,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingEbayThreeController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingEbayThree(Request $request)
     {
         $mode = $request->query('mode');
@@ -42,6 +44,10 @@ class ListingEbayThreeController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         \Log::info('saveStatus called', ['request' => $request->all()]);
         
         $validated = $request->validate([

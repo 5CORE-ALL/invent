@@ -17,6 +17,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingMacysController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingMacys(Request $request)
     {
         $mode = $request->query('mode');
@@ -42,6 +44,10 @@ class ListingMacysController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'rl_nrl' => 'nullable|string',

@@ -17,6 +17,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingBusiness5CoreController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function getNrReqCount()
     {
         return ChannelListingRegistry::nrReqCountArray('business5core');

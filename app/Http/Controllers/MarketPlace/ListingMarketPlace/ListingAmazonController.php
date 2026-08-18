@@ -19,6 +19,8 @@ use Carbon\Carbon;
 
 class ListingAmazonController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingAmazon(Request $request)
     {
         $mode = $request->query('mode');
@@ -81,6 +83,10 @@ class ListingAmazonController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',

@@ -19,6 +19,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingEbayController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingEbay(Request $request)
     {
         $mode = $request->query('mode');
@@ -44,6 +46,10 @@ class ListingEbayController extends Controller
 
     public function updateStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',
