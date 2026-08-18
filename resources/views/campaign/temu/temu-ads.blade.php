@@ -65,6 +65,13 @@
                             </select>
                             <input type="text" id="search-input" class="form-control form-control-sm pricing-filter-item"
                                    placeholder="Search Goods ID / SKU" style="width: 220px;">
+                            <div class="d-inline-flex align-items-center gap-1 border rounded px-2 py-1 bg-light pricing-filter-item"
+                                 title="Coloring rule shared with /temu-decrease: Last 7 days clicks below this number are red.">
+                                <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap">L7 Clicks &lt;</label>
+                                <input type="number" id="temu-l7-clicks-red-threshold" class="form-control form-control-sm"
+                                       min="0" max="100000" step="1" value="70" style="width: 70px;">
+                                <span class="small fw-bold" style="color:#a00211;">Red</span>
+                            </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                             <button type="button" id="refresh-status-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item"
@@ -164,6 +171,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const moneyFmt = (cell) => {
@@ -175,6 +183,20 @@
                 const v = cell.getValue();
                 if (v === null || v === undefined || v === '') return '';
                 return Number(v).toLocaleString('en-US');
+            };
+            const clicksFmt = (cell) => {
+                const shown = cell.getValue();
+                const el = cell.getElement();
+                if (el) {
+                    el.style.color = '';
+                    el.style.fontWeight = '';
+                }
+                if (shown === null || shown === undefined || shown === '') return '';
+                const n = Number(String(shown).replace(/,/g, ''));
+                if (window.TemuAdsColorRules) {
+                    TemuAdsColorRules.colorL7Clicks(el, n);
+                }
+                return n.toLocaleString('en-US');
             };
             const pctFmt = (cell) => {
                 const v = cell.getValue();
@@ -278,8 +300,8 @@
                     },
                     { title: 'Impressions', field: 'impressions', width: 120, hozAlign: 'right', formatter: numFmt, sorter: 'number',
                       headerTooltip: 'Impressions (Overall) — same as Temu Data Report' },
-                    { title: 'Clicks', field: 'clicks', width: 100, hozAlign: 'right', formatter: numFmt, sorter: 'number',
-                      headerTooltip: 'Clicks (Overall) — same as Temu Data Report' },
+                    { title: 'Clicks', field: 'clicks', width: 100, hozAlign: 'right', formatter: clicksFmt, sorter: 'number',
+                      headerTooltip: 'Clicks (Overall). Red when Last 7 days clicks are below the shared coloring rule (default 70).' },
                     { title: 'CTR', field: 'ctr', width: 90, hozAlign: 'right', formatter: pctFmt, sorter: 'number',
                       headerTooltip: 'CTR (Overall)' },
                     { title: 'CVR', field: 'cvr', width: 90, hozAlign: 'right', formatter: pctFmt, sorter: 'number',
@@ -347,6 +369,17 @@
                     },
                 ],
             });
+
+            if (window.TemuAdsColorRules) {
+                TemuAdsColorRules.setUrls(
+                    @json(route('temu.ads.color-rules')),
+                    @json(route('temu.ads.color-rules.save'))
+                );
+                TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
+                TemuAdsColorRules.onChange(function () {
+                    table.redraw(true);
+                });
+            }
 
             table.on('dataFiltered', updateBadgesFromTable);
             table.on('dataLoaded', updateBadgesFromTable);

@@ -674,6 +674,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}"></script>
 @endsection
 
 @section('content')
@@ -1102,6 +1103,13 @@
                             <option value="L30" selected>L30</option>
                             <option value="L7">L7</option>
                         </select>
+                    </div>
+                    <div class="d-inline-flex align-items-center gap-1 flex-shrink-0 border rounded px-2 py-1 bg-light ms-1"
+                         title="Coloring rule shared with /temu/ads: Last 7 days clicks below this number are red.">
+                        <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap text-dark">L7 Clicks &lt;</label>
+                        <input type="number" id="temu-l7-clicks-red-threshold" class="form-control form-control-sm"
+                               min="0" max="100000" step="1" value="70" style="width: 70px;">
+                        <span class="small fw-bold" style="color:#a00211;">Red</span>
                     </div>
                     <a href="{{ route('temu.ads') }}" class="btn btn-sm btn-outline-warning" title="Ads Spend / Clicks / ACOS / Status come from this page (temu_ads_api_reports)">
                         <i class="fas fa-bullhorn"></i> Ads
@@ -4129,6 +4137,19 @@
         let adTotalsFromBackend = null;
         let currentCampaignPeriod = 'L30';
 
+        if (window.TemuAdsColorRules) {
+            TemuAdsColorRules.setUrls(
+                @json(route('temu.ads.color-rules')),
+                @json(route('temu.ads.color-rules.save'))
+            );
+            TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
+            TemuAdsColorRules.onChange(function () {
+                if (table) {
+                    table.redraw(true);
+                }
+            });
+        }
+
         // Play/Pause parent navigation (like pricing-master-cvr)
         let fullDataset = [];
         let isPlayNavigationActive = false;
@@ -4474,9 +4495,12 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 80,
-                    headerTooltip: "L7 Overall clicks from Temu Ads API (temu_ads_api_reports period=L7). Run: php artisan temu:fetch-ads-api-reports --period=L7",
+                    headerTooltip: "L7 Overall clicks from Temu Ads API. Red when below the shared L7 Clicks coloring rule (default 70).",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
+                        if (window.TemuAdsColorRules) {
+                            return TemuAdsColorRules.formatL7Clicks(cell, value);
+                        }
                         return value.toLocaleString();
                     }
                 },
@@ -5153,9 +5177,12 @@
                     field: "ad_clicks",
                     hozAlign: "right",
                     sorter: "number",
-                    headerTooltip: "Clicks from /temu/ads (temu_ads_api_reports Overall), matched by Goods ID.",
+                    headerTooltip: "Clicks from /temu/ads. Red when Last 7 days clicks are below the shared coloring rule (default 70).",
                     formatter: function(cell) {
-                        const value = parseInt(cell.getValue()) || 0;
+                        const value = parseInt(String(cell.getValue() ?? '0').replace(/,/g, ''), 10) || 0;
+                        if (window.TemuAdsColorRules) {
+                            TemuAdsColorRules.colorL7Clicks(cell.getElement(), value);
+                        }
                         return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                             <span>${value.toLocaleString()}</span>
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Ad Clicks"></i>

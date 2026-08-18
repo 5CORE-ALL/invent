@@ -3870,6 +3870,7 @@ class TemuController extends Controller
                     'net_roas' => round($netRoas, 2),
                     'acos_ad' => round($acosAd, 2),
                     'ad_clicks' => (int) $adClicks,
+                    'clicks_l7' => (int) $adClicksL7,
                     't_clicks' => $tClicks,
                     't_clicks_l7' => $tClicksL7,
                     't_clicks_growth' => $tClicksGrowth,

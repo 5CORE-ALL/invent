@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\TemuAdsApiReport;
 use App\Services\TemuAdsApiReportService;
 use App\Services\TemuApiService;
@@ -37,9 +38,19 @@ class TemuAdsController extends Controller
         $imprSum = (int) $records->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
         $clickSum = (int) $records->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
 
-        $rows = $records->map(function (TemuAdsApiReport $r) {
+        $l7ClicksByGoods = TemuAdsApiReport::query()
+            ->where('period', 'L7')
+            ->whereNotNull('goods_id')
+            ->get(['goods_id', 'clicks'])
+            ->keyBy(fn (TemuAdsApiReport $r) => (string) $r->goods_id);
+
+        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods) {
             $clicks = (int) ($r->clicks ?? 0);
             $orders = (int) ($r->order_pay_cnt ?? 0);
+            $l7Row = $l7ClicksByGoods->get((string) $r->goods_id);
+            $clicksL7 = $r->period === 'L7'
+                ? $clicks
+                : (int) (optional($l7Row)->clicks ?? 0);
 
             return [
                 'id' => $r->id,
@@ -48,6 +59,7 @@ class TemuAdsController extends Controller
                 'period' => $r->period,
                 'impressions' => $r->impressions,
                 'clicks' => $r->clicks,
+                'clicks_l7' => $clicksL7,
                 'ctr' => $r->ctr,
                 'cvr' => $clicks > 0 ? round($orders / $clicks * 100, 2) : 0,
                 'cart_cnt' => $r->cart_cnt,
@@ -213,6 +225,41 @@ class TemuAdsController extends Controller
             'message' => $message,
             'stats' => $stats,
         ], $success ? 200 : 422);
+    }
+
+    public function getColorRules()
+    {
+        return response()->json([
+            'l7_clicks_red_below' => $this->l7ClicksRedBelow(),
+        ]);
+    }
+
+    public function saveColorRules(Request $request)
+    {
+        $request->validate([
+            'l7_clicks_red_below' => 'required|integer|min:0|max:100000',
+        ]);
+
+        $below = (int) $request->input('l7_clicks_red_below');
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'temu_ads_l7_clicks_red_below'],
+            ['column_order' => [(string) $below]]
+        );
+
+        return response()->json([
+            'success' => true,
+            'l7_clicks_red_below' => $below,
+        ]);
+    }
+
+    private function l7ClicksRedBelow(): int
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'temu_ads_l7_clicks_red_below')
+            ->first();
+        $n = isset($row->column_order[0]) ? (int) $row->column_order[0] : 70;
+
+        return $n >= 0 ? $n : 70;
     }
 
 }
