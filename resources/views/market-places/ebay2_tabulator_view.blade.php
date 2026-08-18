@@ -594,10 +594,10 @@
                         <i class="fa fa-file-excel"></i>
                     </button>
 
-                    {{-- Sbid Rule — eBay 2 only (ebay2_sbid_slabs), same as /ebay2/campaign-ads --}}
+                    {{-- Sbid Rule — eBay 2 View VS SBID (ebay2_sbid_slabs), same as /ebay2/campaign-ads --}}
                     <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item"
                             data-bs-toggle="modal" data-bs-target="#sbidRuleModal"
-                            title="eBay 2 Sbid Rule — For L7 Views / CVR that set the S Bid (ebay2_sbid_slabs)">
+                            title="eBay 2 Sbid Rule — For L7 Views that set the S Bid (Parents Only)">
                         <i class="fas fa-sliders-h me-1"></i>Sbid Rule
                     </button>
 
@@ -946,7 +946,7 @@
         </div>
     </div>
 
-    {{-- Sbid Rule Modal — eBay 2 only (ebay_sbid_rules.key = ebay2_sbid_slabs). Same as /ebay2/campaign-ads. --}}
+    {{-- Sbid Rule Modal — eBay 2 View VS SBID (ebay_sbid_rules.key = ebay2_sbid_slabs). --}}
     <div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
         <style>
             #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
@@ -960,25 +960,33 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="sbidRuleModalLabel">
-                        <i class="fas fa-sliders-h me-2 text-primary"></i>Sbid Rule
-                        <span class="badge bg-primary ms-2" style="font-size:11px;">eBay 2 only</span>
+                        <i class="fas fa-sliders-h me-2 text-primary"></i>View VS SBID
+                        <span class="badge bg-primary ms-2" style="font-size:11px;">eBay 2 · Parents Only</span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                        <label for="sbid-es-bid-input" class="form-label mb-0 small fw-semibold">ES Bid (%)</label>
+                        <input type="number" id="sbid-es-bid-input" step="0.1" min="0"
+                               class="form-control form-control-sm text-end fw-semibold" style="width:88px;"
+                               placeholder="—" title="Editable. Used only when eBay L30 (EL30) is 0. Leave blank to use each parent row's ES BID.">
+                        <span class="small text-muted">Only for EL30 = 0.
+                            <span id="sbid-es-bid-count" class="fw-semibold"></span>
+                        </span>
+                    </div>
                     <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle" id="sbid-slab-rule-table" style="min-width: 720px;">
+                        <table class="table table-sm table-bordered align-middle" id="sbid-slab-rule-table" style="min-width: 520px;">
                             <thead class="table-light">
                                 <tr>
                                     <th rowspan="2" style="width:34px;" class="text-center align-middle">#</th>
-                                    <th rowspan="2" style="min-width:110px;" class="align-middle">Label</th>
                                     <th colspan="2" class="text-center">For L7 Views</th>
-                                    <th colspan="2" class="text-center">CVR %</th>
+                                    <th rowspan="2" style="width:72px;" class="align-middle text-center"
+                                        title="Parent rows whose L7 Views fall in this slab (eBay 2 is Parents Only)">Count</th>
                                     <th rowspan="2" style="width:100px;" class="align-middle text-center">S Bid (%)</th>
                                     <th rowspan="2" style="width:44px;" class="align-middle"></th>
                                 </tr>
                                 <tr>
-                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
                                     <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
                                 </tr>
                             </thead>
@@ -991,15 +999,6 @@
                     <button type="button" class="btn btn-sm btn-primary mb-2" id="sbid-slab-add-rule-btn">
                         <i class="fas fa-plus me-1"></i>Add rule / slab
                     </button>
-
-                    <div class="alert alert-info small py-2 mb-0">
-                        <i class="fas fa-info-circle me-1"></i>
-                        eBay 2 rules only (<code>ebay2_sbid_slabs</code>) — not shared with eBay 1.
-                        Same editor as <code>/ebay2/campaign-ads</code>.
-                        Rules are evaluated <strong>top to bottom</strong> — the first rule where all filled ranges
-                        match a row sets that row's <strong>S Bid</strong>. Leave a Min/Max blank to ignore it.
-                        Applied by <strong>ebay2:update-suggestedbid</strong>.
-                    </div>
                     <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
                 </div>
                 <div class="modal-footer py-2 d-flex justify-content-between">
@@ -1287,6 +1286,45 @@
             if (bid > max) bid = max;
 
             return { bid: bid, color: band.color || '#0d6efd', skip: false };
+        }
+
+        // S Bid is driven by View VS SBID slabs (For L7 Views → S Bid).
+        // eBay 2 is Parents Only — parent aggregated L7 Views / EL30.
+        let currentSbidSlabRules = [];
+        let currentSbidEsBid = null;
+
+        function sbidSlabInRange(val, min, max) {
+            if (min !== null && min !== undefined && min !== '' && val < parseFloat(min)) return false;
+            if (max !== null && max !== undefined && max !== '' && val > parseFloat(max)) return false;
+            return true;
+        }
+
+        function getCombinedSbid(rowData) {
+            const el30 = parseFloat(rowData['eBay L30']) || 0;
+            if (el30 <= 0) {
+                const override = parseFloat(currentSbidEsBid);
+                const esBid = (isFinite(override) && override > 0)
+                    ? override
+                    : (parseFloat(rowData.ca_suggested_bid) || 0);
+                if (isFinite(esBid) && esBid > 0) {
+                    return { bid: esBid, color: '#0dcaf0', skip: false, via: 'es_bid' };
+                }
+                return { bid: 0, color: '#6c757d', skip: true, via: 'es_bid' };
+            }
+
+            const l7Views = parseFloat(rowData.l7_views) || 0;
+            const rules = currentSbidSlabRules || [];
+            for (let i = 0; i < rules.length; i++) {
+                const r = rules[i];
+                if (sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
+                    const bid = parseFloat(r.sbid);
+                    if (isFinite(bid) && bid > 0) {
+                        return { bid: bid, color: '#0d6efd', skip: false };
+                    }
+                    return { bid: 0, color: '#6c757d', skip: true };
+                }
+            }
+            return { bid: 0, color: '#6c757d', skip: true };
         }
 
         // ── Sku Link LMP (mirrors /ebay-tabulator-view; shared sku.link.lmp.* routes) ──
@@ -1961,54 +1999,84 @@
             });
 
             // ════════════════════════════════════════════════════════════════
-            // Sbid Rule modal — eBay 2 only (ebay2_sbid_slabs).
-            // Same endpoints as /ebay2/campaign-ads — not shared with eBay 1.
+            // Sbid Rule modal — eBay 2 View VS SBID (ebay2_sbid_slabs).
+            // Parents Only: Count + Push use parent rows (aggregated L7 / EL30).
             // ════════════════════════════════════════════════════════════════
             (function() {
                 const getUrl  = @json(url('/ebay2/campaign-ads/sbid-slab-rule'));
                 const saveUrl = @json(url('/ebay2/campaign-ads/sbid-slab-rule'));
                 const applyUrl = @json(url('/ebay2/campaign-ads/push-sbid-slabs'));
 
-                let currentSbidSlabRules = [];
-
-                function sbidSlabInRange(val, min, max) {
-                    if (min !== null && min !== undefined && min !== '' && val < parseFloat(min)) return false;
-                    if (max !== null && max !== undefined && max !== '' && val > parseFloat(max)) return false;
-                    return true;
-                }
-
-                function getCombinedSbid(rowData) {
-                    const esold = parseFloat(rowData['eBay L30']) || 0;
-                    const views = parseFloat(rowData.views) || 0;
-                    const l7Views = parseFloat(rowData.l7_views) || 0;
-                    const cvr = views > 0 ? (esold / views) * 100 : 0;
-                    const rules = currentSbidSlabRules || [];
-                    for (let i = 0; i < rules.length; i++) {
-                        const r = rules[i];
-                        if (sbidSlabInRange(cvr, r.cvr_min, r.cvr_max)
-                            && sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
-                            const bid = parseFloat(r.sbid);
-                            if (isFinite(bid) && bid > 0) {
-                                return { bid: bid, color: '#0d6efd', skip: false };
-                            }
-                            return { bid: 0, color: '#6c757d', skip: true };
-                        }
-                    }
-                    return { bid: 0, color: '#6c757d', skip: true };
-                }
-
                 function numAttr(v) {
                     return (v === null || v === undefined || v === '' || isNaN(v)) ? '' : v;
                 }
 
-                function rangeInputs(rule, key) {
+                function autofillSbidSlabMins(rules) {
+                    if (!rules || !rules.length) return;
+                    const firstMin = parseFloat(rules[0].l7_views_min);
+                    const firstMax = parseFloat(rules[0].l7_views_max);
+                    const diff = (isFinite(firstMin) && isFinite(firstMax)) ? (firstMax - firstMin) : null;
+                    for (let i = 1; i < rules.length; i++) {
+                        const prevMax = rules[i - 1].l7_views_max;
+                        if (prevMax === null || prevMax === undefined || prevMax === '' || isNaN(prevMax)) break;
+                        const prev = parseFloat(prevMax);
+                        rules[i].l7_views_min = prev + 1;
+                        if (diff !== null && diff > 0) {
+                            rules[i].l7_views_max = prev + diff;
+                        }
+                    }
+                }
+
+                function rangeInputs(rule, key, idx) {
+                    const locked = (idx > 0 && key === 'l7_views')
+                        ? ' readonly tabindex="-1" style="background:#f8f9fa;"'
+                        : '';
+                    const minTitle = idx > 0 ? ' title="Auto: previous Max + 1"' : '';
+                    const maxTitle = idx > 0 ? ' title="Auto: same difference as Rule 1"' : ' title="Sets the difference for all following slabs"';
                     return `
                         <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
                                    value="${numAttr(rule[key + '_min'])}" data-field="${key}_min"
-                                   onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>
+                                   onchange="window.sbidSlabUpdate(this)" placeholder="—"${locked}${minTitle}></td>
                         <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
                                    value="${numAttr(rule[key + '_max'])}" data-field="${key}_max"
-                                   onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>`;
+                                   onchange="window.sbidSlabUpdate(this)" placeholder="—"${locked}${maxTitle}></td>`;
+                }
+
+                function getSbidSlabParentRows() {
+                    if (typeof table === 'undefined' || !table) return [];
+                    try {
+                        const rows = table.getData('active') || table.getData() || [];
+                        return rows.filter(function(d) {
+                            return typeof isEbay2TabulatorParentRow === 'function'
+                                ? isEbay2TabulatorParentRow(d)
+                                : !!(d && (d.is_parent_row || d.is_parent_summary));
+                        });
+                    } catch (e) {
+                        return [];
+                    }
+                }
+
+                function countRowsBySlab(rules) {
+                    const counts = rules.map(function() { return 0; });
+                    let esCount = 0;
+                    getSbidSlabParentRows().forEach(function(d) {
+                        const el30 = parseFloat(d['eBay L30']) || 0;
+                        if (el30 <= 0) {
+                            esCount++;
+                            return;
+                        }
+                        const l7 = parseFloat(d.l7_views) || 0;
+                        for (let i = 0; i < rules.length; i++) {
+                            const r = rules[i];
+                            if (sbidSlabInRange(l7, r.l7_views_min, r.l7_views_max)) {
+                                counts[i]++;
+                                break;
+                            }
+                        }
+                    });
+                    const esCountEl = document.getElementById('sbid-es-bid-count');
+                    if (esCountEl) esCountEl.textContent = esCount ? '(' + esCount + ' SKUs)' : '';
+                    return counts;
                 }
 
                 function renderSbidSlabRules(rules) {
@@ -2016,21 +2084,23 @@
                     if (!tbody) return;
                     tbody.innerHTML = '';
                     if (!rules.length) {
-                        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted small py-3">
+                        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted small py-3">
                             No rules yet — click <strong>Add rule / slab</strong> to create one.</td></tr>`;
                         return;
                     }
+                    autofillSbidSlabMins(rules);
+                    const slabCounts = countRowsBySlab(rules);
                     rules.forEach(function(rule, i) {
                         const tr = document.createElement('tr');
                         tr.setAttribute('data-idx', i);
+                        const count = slabCounts[i] || 0;
                         tr.innerHTML = `
                             <td class="text-center text-muted small">${i + 1}</td>
-                            <td><input type="text" class="form-control form-control-sm" value="${(rule.label || '').replace(/"/g, '&quot;')}"
-                                       data-field="label" onchange="window.sbidSlabUpdate(this)" placeholder="Rule ${i + 1}"></td>
-                            ${rangeInputs(rule, 'l7_views')}
-                            ${rangeInputs(rule, 'cvr')}
+                            ${rangeInputs(rule, 'l7_views', i)}
+                            <td class="text-center fw-semibold" title="Parent rows in this slab">${count}</td>
                             <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
                                        value="${numAttr(rule.sbid)}" data-field="sbid"
+                                       ${i === 0 ? 'title="Changing this sets following rows to −1 each, minimum 2%"' : ''}
                                        onchange="window.sbidSlabUpdate(this)"></td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
@@ -2040,28 +2110,57 @@
                     });
                 }
 
+                function readEsBidInput() {
+                    const el = document.getElementById('sbid-es-bid-input');
+                    if (!el || el.value === '') return null;
+                    const n = parseFloat(el.value);
+                    return (isFinite(n) && n > 0) ? n : null;
+                }
+
+                function writeEsBidInput(val) {
+                    const el = document.getElementById('sbid-es-bid-input');
+                    if (!el) return;
+                    el.value = (val === null || val === undefined || val === '' || isNaN(val)) ? '' : val;
+                }
+
+                function cascadeSbidFromFirstRow(rules) {
+                    if (!rules || !rules.length) return;
+                    const first = parseFloat(rules[0].sbid);
+                    if (!isFinite(first)) return;
+                    for (let i = 1; i < rules.length; i++) {
+                        rules[i].sbid = Math.max(2, first - i);
+                    }
+                }
+
                 window.sbidSlabUpdate = function(el) {
                     const tr = el.closest('tr');
                     const idx = parseInt(tr.getAttribute('data-idx'), 10);
                     const field = el.dataset.field;
                     if (!currentSbidSlabRules[idx]) return;
-                    if (field === 'label') {
-                        currentSbidSlabRules[idx][field] = el.value;
-                    } else {
-                        currentSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                    currentSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                    if (field === 'sbid' && idx === 0) {
+                        cascadeSbidFromFirstRow(currentSbidSlabRules);
+                        renderSbidSlabRules(currentSbidSlabRules);
+                        if (table) table.redraw(true);
+                        return;
                     }
+                    if (field === 'l7_views_min' || field === 'l7_views_max') {
+                        renderSbidSlabRules(currentSbidSlabRules);
+                    }
+                    if (table) table.redraw(true);
                 };
 
                 window.sbidSlabRemove = function(idx) {
                     currentSbidSlabRules.splice(idx, 1);
                     renderSbidSlabRules(currentSbidSlabRules);
+                    if (table) table.redraw(true);
                 };
 
                 $(document).on('click', '#sbid-slab-add-rule-btn', function() {
                     currentSbidSlabRules.push({
-                        label: '', cvr_min: null, cvr_max: null,
                         l7_views_min: null, l7_views_max: null, sbid: 2.1
                     });
+                    cascadeSbidFromFirstRow(currentSbidSlabRules);
                     renderSbidSlabRules(currentSbidSlabRules);
                 });
 
@@ -2072,7 +2171,11 @@
                         dataType: 'json',
                         success: function(data) {
                             currentSbidSlabRules = (data && Array.isArray(data.rules)) ? data.rules : [];
+                            currentSbidEsBid = (data && data.es_bid != null && data.es_bid !== '') ? parseFloat(data.es_bid) : null;
+                            if (!isFinite(currentSbidEsBid) || currentSbidEsBid <= 0) currentSbidEsBid = null;
+                            writeEsBidInput(currentSbidEsBid);
                             renderSbidSlabRules(currentSbidSlabRules);
+                            if (table) table.redraw(true);
                         },
                         error: function(xhr) {
                             console.error('[Sbid Rule] load failed', xhr.status, xhr.responseText);
@@ -2080,9 +2183,15 @@
                     });
                 }
 
+                $(document).on('input change', '#sbid-es-bid-input', function() {
+                    currentSbidEsBid = readEsBidInput();
+                    if (table) table.redraw(true);
+                });
+
                 const sbidModalEl = document.getElementById('sbidRuleModal');
                 if (sbidModalEl) {
                     sbidModalEl.addEventListener('show.bs.modal', function() {
+                        writeEsBidInput(currentSbidEsBid);
                         renderSbidSlabRules(currentSbidSlabRules);
                     });
                 }
@@ -2104,11 +2213,30 @@
                             'Accept': 'application/json'
                         },
                         contentType: 'application/json',
-                        data: JSON.stringify({ rules: currentSbidSlabRules || [], _token: csrf }),
+                        data: JSON.stringify({
+                            rules: (currentSbidSlabRules || []).map(function(r) {
+                                return {
+                                    label: r.label || '',
+                                    l7_views_min: r.l7_views_min,
+                                    l7_views_max: r.l7_views_max,
+                                    sbid: r.sbid
+                                };
+                            }),
+                            es_bid: readEsBidInput(),
+                            _token: csrf
+                        }),
                         success: function(resp) {
                             btn.disabled = false;
                             btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
                             if (resp.rule && Array.isArray(resp.rule.rules)) currentSbidSlabRules = resp.rule.rules;
+                            if (resp.rule && resp.rule.es_bid != null) {
+                                currentSbidEsBid = parseFloat(resp.rule.es_bid);
+                                if (!isFinite(currentSbidEsBid) || currentSbidEsBid <= 0) currentSbidEsBid = null;
+                            } else {
+                                currentSbidEsBid = readEsBidInput();
+                            }
+                            writeEsBidInput(currentSbidEsBid);
+                            if (table) table.redraw(true);
                             if (typeof showToast === 'function') showToast('Sbid Rule saved', 'success');
                             setTimeout(() => { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);
                         },
@@ -2146,23 +2274,22 @@
                         const rd = r.getData();
                         const sku = rd['(Child) sku'];
                         if (!sku) return;
-                        if (rd.is_parent_summary || rd.is_parent_row) return;
-                        if (rd.Parent && String(rd.Parent).toUpperCase().startsWith('PARENT')) return;
+                        if (typeof isEbay2TabulatorParentRow === 'function' && !isEbay2TabulatorParentRow(rd)) return;
                         const res = getCombinedSbid(rd);
                         if (res && !res.skip && res.bid > 0) skus.push(sku);
                     });
 
                     if (!skus.length) {
-                        errEl.textContent = 'No visible rows match a slab with a valid S Bid.';
+                        errEl.textContent = 'No visible parent rows match a slab with a valid S Bid.';
                         errEl.classList.remove('d-none');
                         return;
                     }
 
-                    if (!confirm(`Push S Bid to eBay for ${skus.length} visible SKU(s)?`)) return;
+                    if (!confirm(`Push S Bid to eBay for ${skus.length} visible parent(s)?`)) return;
 
                     btn.disabled = true;
                     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
-                    if (statusEl) statusEl.textContent = `Pushing ${skus.length} SKU(s)…`;
+                    if (statusEl) statusEl.textContent = `Pushing ${skus.length} parent(s)…`;
 
                     $.ajax({
                         url: applyUrl,
@@ -2176,7 +2303,7 @@
                             const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
                             if (statusEl) statusEl.textContent = `Pushed: ${s} · Failed: ${f} · Skipped: ${sk}`;
                             if (typeof showToast === 'function') {
-                                if (f === 0) showToast(`S Bid pushed to eBay for ${s} SKU(s)`, 'success');
+                                if (f === 0) showToast(`S Bid pushed to eBay for ${s} listing(s)`, 'success');
                                 else showToast(`Pushed ${s}, ${f} failed, ${sk} skipped`, 'error');
                             }
                         },
@@ -4661,19 +4788,22 @@
                     },
                     {
                         title: "S BID",
-                        field: "ca_bid_percentage",
+                        field: "ca_suggested_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "Daily adjustment of the current C BID by L7 View band — green keeps C Bid, pink/red apply the direction + %/day set in the 'Sbid (Views)' button — clamped to the Min/Max caps. No C Bid → —. Same as /ebay2/campaign-ads.",
+                        headerTooltip: "EL30 = 0 → ES Bid. Otherwise Sbid Rule slabs (For L7 Views). Parents Only — uses parent aggregated L7 Views / EL30.",
                         sorter: function(a, b, aRow, bRow) {
-                            return computeSbidViews(aRow.getData()).bid - computeSbidViews(bRow.getData()).bid;
+                            return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
                         formatter: function(cell) {
-                            const res = computeSbidViews(cell.getRow().getData());
+                            const res = getCombinedSbid(cell.getRow().getData());
                             if (res.skip) {
-                                return '<span class="text-muted" title="No S Bid — no current C Bid to adjust" style="font-size:11px;">—</span>';
+                                const tip = res.via === 'es_bid' ? 'EL30 is 0 but no ES Bid' : 'No matching Sbid Rule slab';
+                                return `<span class="text-muted" title="${tip}" style="font-size:11px;">—</span>`;
                             }
-                            return `<span style="color:${res.color}; font-weight:700;">${res.bid.toFixed(1)}%</span>`;
+                            const color = res.via === 'es_bid' ? '#0dcaf0' : (res.bid > EBAY2_CHANNEL_ADS_PCT ? '#a00211' : '#28a745');
+                            const tip = res.via === 'es_bid' ? 'ES Bid (EL30 = 0)' : 'Sbid Rule slab';
+                            return `<span title="${tip}" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
                         }
                     },
                     {

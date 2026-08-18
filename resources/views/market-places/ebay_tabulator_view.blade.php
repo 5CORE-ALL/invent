@@ -8132,25 +8132,33 @@
 
             function autofillSbidSlabMins(rules) {
                 if (!rules || !rules.length) return;
+                const firstMin = parseFloat(rules[0].l7_views_min);
+                const firstMax = parseFloat(rules[0].l7_views_max);
+                const diff = (isFinite(firstMin) && isFinite(firstMax)) ? (firstMax - firstMin) : null;
                 for (let i = 1; i < rules.length; i++) {
                     const prevMax = rules[i - 1].l7_views_max;
-                    if (prevMax !== null && prevMax !== undefined && prevMax !== '' && !isNaN(prevMax)) {
-                        rules[i].l7_views_min = parseFloat(prevMax) + 1;
+                    if (prevMax === null || prevMax === undefined || prevMax === '' || isNaN(prevMax)) break;
+                    const prev = parseFloat(prevMax);
+                    rules[i].l7_views_min = prev + 1;
+                    if (diff !== null && diff > 0) {
+                        rules[i].l7_views_max = prev + diff;
                     }
                 }
             }
 
             function rangeInputs(rule, key, idx) {
-                const minLocked = (idx > 0 && key === 'l7_views')
-                    ? ' readonly tabindex="-1" style="background:#f8f9fa;" title="Auto: previous Max + 1"'
+                const locked = (idx > 0 && key === 'l7_views')
+                    ? ' readonly tabindex="-1" style="background:#f8f9fa;"'
                     : '';
+                const minTitle = idx > 0 ? ' title="Auto: previous Max + 1"' : '';
+                const maxTitle = idx > 0 ? ' title="Auto: same difference as Rule 1"' : ' title="Sets the difference for all following slabs"';
                 return `
                     <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
                                value="${numAttr(rule[key + '_min'])}" data-field="${key}_min"
-                               onchange="window.sbidSlabUpdate(this)" placeholder="—"${minLocked}></td>
+                               onchange="window.sbidSlabUpdate(this)" placeholder="—"${locked}${minTitle}></td>
                     <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
                                value="${numAttr(rule[key + '_max'])}" data-field="${key}_max"
-                               onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>`;
+                               onchange="window.sbidSlabUpdate(this)" placeholder="—"${locked}${maxTitle}></td>`;
             }
 
             function getSbidSlabSkuRows() {
@@ -8209,6 +8217,7 @@
                         <td class="text-center fw-semibold" title="SKU rows in this slab">${count}</td>
                         <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
                                    value="${numAttr(rule.sbid)}" data-field="sbid"
+                                   ${i === 0 ? 'title="Changing this sets following rows to −1 each, minimum 2%"' : ''}
                                    onchange="window.sbidSlabUpdate(this)"></td>
                         <td class="text-center">
                             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
@@ -8218,12 +8227,27 @@
                 });
             }
 
+            function cascadeSbidFromFirstRow(rules) {
+                if (!rules || !rules.length) return;
+                const first = parseFloat(rules[0].sbid);
+                if (!isFinite(first)) return;
+                for (let i = 1; i < rules.length; i++) {
+                    rules[i].sbid = Math.max(2, first - i);
+                }
+            }
+
             window.sbidSlabUpdate = function(el) {
                 const tr = el.closest('tr');
                 const idx = parseInt(tr.getAttribute('data-idx'), 10);
                 const field = el.dataset.field;
                 if (!currentSbidSlabRules[idx]) return;
                 currentSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                if (field === 'sbid' && idx === 0) {
+                    cascadeSbidFromFirstRow(currentSbidSlabRules);
+                    renderSbidSlabRules(currentSbidSlabRules);
+                    if (table) table.redraw(true);
+                    return;
+                }
                 if (field === 'l7_views_min' || field === 'l7_views_max') {
                     renderSbidSlabRules(currentSbidSlabRules);
                 }
@@ -8238,6 +8262,7 @@
                 currentSbidSlabRules.push({
                     l7_views_min: null, l7_views_max: null, sbid: 2.1
                 });
+                cascadeSbidFromFirstRow(currentSbidSlabRules);
                 renderSbidSlabRules(currentSbidSlabRules);
             });
 

@@ -902,14 +902,33 @@ function sbidSlabNumAttr(v) {
     return (v === null || v === undefined || v === '' || isNaN(v)) ? '' : v;
 }
 
-function sbidSlabRangeInputs(rule, key) {
+function autofillSbidSlabMins(rules) {
+    if (!rules || !rules.length) return;
+    const firstMin = parseFloat(rules[0].l7_views_min);
+    const firstMax = parseFloat(rules[0].l7_views_max);
+    const diff = (isFinite(firstMin) && isFinite(firstMax)) ? (firstMax - firstMin) : null;
+    for (let i = 1; i < rules.length; i++) {
+        const prevMax = rules[i - 1].l7_views_max;
+        if (prevMax === null || prevMax === undefined || prevMax === '' || isNaN(prevMax)) break;
+        const prev = parseFloat(prevMax);
+        rules[i].l7_views_min = prev + 1;
+        if (diff !== null && diff > 0) {
+            rules[i].l7_views_max = prev + diff;
+        }
+    }
+}
+
+function sbidSlabRangeInputs(rule, key, idx) {
+    const locked = (idx > 0 && key === 'l7_views')
+        ? ' readonly tabindex="-1" style="background:#f8f9fa;"'
+        : '';
     return `
         <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
                    value="${sbidSlabNumAttr(rule[key + '_min'])}" data-field="${key}_min"
-                   onchange="sbidSlabUpdate(this)" placeholder="—"></td>
+                   onchange="sbidSlabUpdate(this)" placeholder="—"${locked}></td>
         <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
                    value="${sbidSlabNumAttr(rule[key + '_max'])}" data-field="${key}_max"
-                   onchange="sbidSlabUpdate(this)" placeholder="—"></td>`;
+                   onchange="sbidSlabUpdate(this)" placeholder="—"${locked}></td>`;
 }
 
 function renderSbidSlabRules(rules) {
@@ -921,6 +940,7 @@ function renderSbidSlabRules(rules) {
             No rules yet — click <strong>Add rule / slab</strong> to create one.</td></tr>`;
         return;
     }
+    autofillSbidSlabMins(rules);
     rules.forEach(function(rule, i) {
         const tr = document.createElement('tr');
         tr.setAttribute('data-idx', i);
@@ -928,8 +948,8 @@ function renderSbidSlabRules(rules) {
             <td class="text-center text-muted small">${i + 1}</td>
             <td><input type="text" class="form-control form-control-sm" value="${(rule.label || '').replace(/"/g, '&quot;')}"
                        data-field="label" onchange="sbidSlabUpdate(this)" placeholder="Rule ${i + 1}"></td>
-            ${sbidSlabRangeInputs(rule, 'l7_views')}
-            ${sbidSlabRangeInputs(rule, 'cvr')}
+            ${sbidSlabRangeInputs(rule, 'l7_views', i)}
+            ${sbidSlabRangeInputs(rule, 'cvr', i)}
             <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
                        value="${sbidSlabNumAttr(rule.sbid)}" data-field="sbid"
                        onchange="sbidSlabUpdate(this)"></td>
@@ -941,6 +961,15 @@ function renderSbidSlabRules(rules) {
     });
 }
 
+function cascadeSbidFromFirstRow(rules) {
+    if (!rules || !rules.length) return;
+    const first = parseFloat(rules[0].sbid);
+    if (!isFinite(first)) return;
+    for (let i = 1; i < rules.length; i++) {
+        rules[i].sbid = Math.max(2, first - i);
+    }
+}
+
 function sbidSlabUpdate(el) {
     const tr = el.closest('tr');
     const idx = parseInt(tr.getAttribute('data-idx'), 10);
@@ -948,8 +977,18 @@ function sbidSlabUpdate(el) {
     if (!currentSbidSlabs[idx]) return;
     if (field === 'label') {
         currentSbidSlabs[idx][field] = el.value;
-    } else {
-        currentSbidSlabs[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+        return;
+    }
+    currentSbidSlabs[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+    if (field === 'sbid' && idx === 0) {
+        cascadeSbidFromFirstRow(currentSbidSlabs);
+        renderSbidSlabRules(currentSbidSlabs);
+        if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+        return;
+    }
+    if (field === 'l7_views_min' || field === 'l7_views_max') {
+        renderSbidSlabRules(currentSbidSlabs);
+        if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
     }
 }
 
@@ -963,6 +1002,7 @@ document.getElementById('sbid-slab-add-rule-btn').addEventListener('click', func
         label: '', cvr_min: null, cvr_max: null,
         l7_views_min: null, l7_views_max: null, sbid: 2.1
     });
+    cascadeSbidFromFirstRow(currentSbidSlabs);
     renderSbidSlabRules(currentSbidSlabs);
 });
 

@@ -353,7 +353,7 @@
                     </button>
                     @if($channelPromoShowZeroSoldDilRule)
                     <button type="button" class="btn btn-sm" id="ch-promo-zero-sold-vs-dil-btn"
-                        title="0 Sold vs Dil: map Dil% slabs to Target ROI%, then set S PRC so SNROI equals that target. Only SKUs with E L30 = 0. Selected if checked; otherwise all visible. No marketplace push.">
+                        title="0 Sold vs Dil: map Dil% slabs to Target ROI%, then set S PRC so GROI equals that target. Only SKUs with E L30 = 0. Selected if checked; otherwise all visible. No marketplace push.">
                         0 sold Vs Dil Rule
                     </button>
                     @endif
@@ -483,8 +483,8 @@
                         <strong>Target ROI%</strong>. Dil is <strong>OV L30 ÷ INV</strong> (same Dil column).
                         <strong>Apply</strong> writes <strong>S PRC</strong> only on selected or visible SKUs with
                         <strong>eBay sale (E L30) = 0</strong>, <strong>INV &gt; 0</strong>, and <strong>LP &gt; 0</strong>
-                        so <strong>SNROI = Target ROI%</strong>
-                        (<code>S PRC = (LP × (1 + ROI%/100) + Ship) / (margin − Ads%)</code>).
+                        so <strong>GROI = Target ROI%</strong>
+                        (<code>S PRC = (LP × (1 + ROI%/100) + Ship) / margin</code>).
                         No marketplace push.
                     </p>
                     <div class="table-responsive">
@@ -502,7 +502,7 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-zero-sold-dil-apply-btn"
-                        title="Save Dil→Target ROI% rules, then set S PRC on 0 Sold (E L30 = 0) SKUs">
+                        title="Save Dil→Target GROI% rules, then set S PRC so GROI = Target on 0 Sold (E L30 = 0) SKUs">
                         Apply
                     </button>
                 </div>
@@ -2929,14 +2929,14 @@
             const n = rule ? Number(rule.groi) : 0;
             return isFinite(n) ? n : 0;
         }
-        /** Same SNROI back-solve as the eBay2 ROI% toolbar. */
+        /** GROI back-solve: (sprice×margin − ship − lp) / lp × 100 = Target. */
         function chPromoSpriceFromTargetRoi(d, roiPct) {
             const lp = chPromoLp(d);
             if (!(lp > 0)) return 0;
-            const netMargin = chPromoTakehomeMargin(d) - chPromoAdsFrac();
-            if (!(netMargin > 0)) return 0;
+            const margin = chPromoTakehomeMargin(d);
+            if (!(margin > 0)) return 0;
             const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
-            const price = (lp * (1 + roi / 100) + chPromoShipCost(d)) / netMargin;
+            const price = (lp * (1 + roi / 100) + chPromoShipCost(d)) / margin;
             return (isFinite(price) && price > 0) ? chPromoRound2(price) : 0;
         }
         function chPromoApplySpriceSavePatch(row, fill, saveRes) {
@@ -3739,7 +3739,7 @@
                     + '<td>' + String(r.label || r.key) + '</td>'
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm ch-promo-zero-sold-dil-roi-input" '
-                    + 'step="0.1" value="' + groi + '" data-idx="' + idx + '" title="Target ROI% for this Dil slab">'
+                    + 'step="0.1" value="' + groi + '" data-idx="' + idx + '" title="Target GROI% for this Dil slab">'
                     + '</td></tr>'
                 );
             });
