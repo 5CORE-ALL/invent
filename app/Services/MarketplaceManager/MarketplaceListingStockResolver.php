@@ -1398,11 +1398,27 @@ final class MarketplaceListingStockResolver
 
         DB::table('shopify_catalog_variants')
             ->where('store', 'pls')
-            ->whereIn('sku', $keys)
+            ->where(function ($q) use ($keys) {
+                $q->whereIn('sku', $keys);
+                foreach ($keys as $sku) {
+                    $upper = strtoupper(trim((string) $sku));
+                    if ($upper !== '') {
+                        $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$upper]);
+                    }
+                }
+            })
             ->whereNotNull('inventory_quantity')
             ->get(['sku', 'inventory_quantity'])
             ->each(function ($row) use (&$map) {
-                self::put($map, (string) $row->sku, (int) $row->inventory_quantity);
+                $raw = (string) $row->sku;
+                $upper = strtoupper(trim($raw));
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+                $qty = (int) $row->inventory_quantity;
+                if ($upper !== '' && $upper === $norm) {
+                    self::putOverwrite($map, $raw, $qty);
+                } else {
+                    self::put($map, $raw, $qty);
+                }
             });
     }
 

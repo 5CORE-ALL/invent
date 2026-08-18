@@ -2,8 +2,10 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\ShopifySku;
 use App\Models\TopDawgProduct;
 use App\Services\TopDawgApiService;
+use App\Support\Marketplace\MappingChannelCounts;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -140,6 +142,26 @@ class TopDawgLinkMapSyncService
             return $this->fail('TopDawg product fetch failed: '.$e->getMessage());
         }
 
+        $byUpper = [];
+        $byNorm = [];
+        TopDawgProduct::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use (&$byUpper, &$byNorm) {
+                foreach ($rows as $row) {
+                    $raw = trim((string) $row->sku);
+                    if ($raw === '') {
+                        continue;
+                    }
+                    $byUpper[strtoupper($raw)] = $row;
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+                    if ($norm !== '' && ! isset($byNorm[$norm])) {
+                        $byNorm[$norm] = $row;
+                    }
+                }
+            });
+
         $upserted = 0;
         foreach ($products as $item) {
             if (! is_array($item)) {
@@ -157,7 +179,6 @@ class TopDawgLinkMapSyncService
                 'listing_state' => isset($item['status']) ? strtolower((string) $item['status']) : 'active',
                 'price' => $item['cost'] ?? $item['price'] ?? null,
                 'msrp' => $item['msrp'] ?? null,
-                'remaining_inventory' => $item['qty_available'] ?? $item['remaining_inventory'] ?? $item['inventory'] ?? null,
             ];
             if (! empty($item['picture_url'])) {
                 $urls = explode(',', (string) $item['picture_url']);
@@ -167,9 +188,30 @@ class TopDawgLinkMapSyncService
                 }
             }
 
-            TopDawgProduct::updateOrCreate(['sku' => $sku], $payload);
+            $upper = strtoupper($sku);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $existing = $byUpper[$upper] ?? (($norm !== '') ? ($byNorm[$norm] ?? null) : null);
+            // Catalog list qty is often 0/blank and is not a live inventory refresh.
+            // Overwriting remaining_inventory here turns matched SKUs into Mismatch.
+            $qtyRaw = $item['qty_available'] ?? $item['remaining_inventory'] ?? $item['inventory'] ?? $item['quantity'] ?? null;
+            if ($existing === null && is_numeric($qtyRaw)) {
+                $payload['remaining_inventory'] = (int) $qtyRaw;
+            }
+
+            if ($existing) {
+                $existing->fill($payload);
+                $existing->save();
+            } else {
+                $existing = TopDawgProduct::query()->create(array_merge(['sku' => $sku], $payload));
+                $byUpper[$upper] = $existing;
+                if ($norm !== '') {
+                    $byNorm[$norm] = $existing;
+                }
+            }
             $upserted++;
         }
+
+        $this->clearListingCaches();
 
         $message = "Updated {$upserted} SKU link(s) from TopDawg API.";
         $this->updateProgress([
@@ -247,5 +289,20 @@ class TopDawgLinkMapSyncService
             'total_upserted' => 0,
             'done' => true,
         ];
+    }
+
+    protected function clearListingCaches(): void
+    {
+        try {
+            app(TopDawgLiveListingsService::class)->clearCache();
+        } catch (\Throwable $e) {
+            // ignore
+        }
+        try {
+            Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'topdawg');
+            MappingChannelCounts::forgetMasterCaches();
+        } catch (\Throwable $e) {
+            // ignore
+        }
     }
 }

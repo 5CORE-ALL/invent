@@ -197,32 +197,33 @@ class ListingSheinController extends Controller
     {
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="listing_status.csv"',
+            'Content-Disposition' => 'attachment; filename="shein_listing_status.csv"',
         ];
 
         $columns = ['sku', 'nr_req', 'listed', 'buyer_link', 'seller_link'];
 
         $callback = function () use ($columns) {
             $file = fopen('php://output', 'w');
-
-            // Write header row
             fputcsv($file, $columns);
 
-            // Fetch all SKUs from product master
-            $productMasters = ProductMaster::pluck('sku');
+            $skus = ProductMaster::query()->orderBy('sku')->pluck('sku');
+            $statusBySku = SheinListingStatus::query()
+                ->get(['sku', 'value'])
+                ->keyBy(function ($row) {
+                    return (string) $row->sku;
+                });
 
-            foreach ($productMasters as $sku) {
-                $status = SheinListingStatus::where('sku', $sku)->first();
+            foreach ($skus as $sku) {
+                $status = $statusBySku->get((string) $sku);
+                $value = is_array($status?->value) ? $status->value : [];
 
-                $row = [
-                    'sku'         => $sku,
-                    'nr_req'      => $status->value['nr_req'] ?? '',
-                    'listed'      => $status->value['listed'] ?? '',
-                    'buyer_link'  => $status->value['buyer_link'] ?? '',
-                    'seller_link' => $status->value['seller_link'] ?? '',
-                ];
-
-                fputcsv($file, $row);
+                fputcsv($file, [
+                    $sku,
+                    $value['nr_req'] ?? '',
+                    $value['listed'] ?? '',
+                    $value['buyer_link'] ?? '',
+                    $value['seller_link'] ?? '',
+                ]);
             }
 
             fclose($file);

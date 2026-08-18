@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ShopifySku;
 use App\Models\TopDawgProduct;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -287,15 +288,40 @@ class TopDawgApiService
             return null;
         }
 
+        $upper = strtoupper($sku);
         $product = TopDawgProduct::query()
-            ->where('sku', $sku)
-            ->orWhere('sku', strtoupper($sku))
-            ->orWhere('sku', strtolower($sku))
+            ->where(function ($q) use ($sku, $upper) {
+                $q->where('sku', $sku)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$upper]);
+            })
             ->first();
         if ($product) {
             $canonical = trim((string) ($product->sku ?? ''));
             if ($canonical !== '') {
                 return $canonical;
+            }
+        }
+
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        $alts = array_values(array_unique(array_filter([
+            $norm,
+            str_replace('-', ' ', $sku),
+            preg_replace('/\s+/', '-', $sku) ?: '',
+        ])));
+        if ($alts !== []) {
+            $product = TopDawgProduct::query()
+                ->where(function ($q) use ($alts) {
+                    $q->whereIn('sku', $alts);
+                    foreach ($alts as $alt) {
+                        $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper((string) $alt)]);
+                    }
+                })
+                ->first();
+            if ($product) {
+                $canonical = trim((string) ($product->sku ?? ''));
+                if ($canonical !== '') {
+                    return $canonical;
+                }
             }
         }
 
@@ -314,8 +340,15 @@ class TopDawgApiService
             return ['success' => false, 'message' => 'Product code / SKU is required.'];
         }
 
-        $productCode = $this->resolveProductCode($sku);
-        if ($productCode === null || $productCode === '') {
+        $resolved = $this->resolveProductCode($sku);
+        $codes = [];
+        foreach ([$resolved, $sku, ShopifySku::normalizeSkuForShopifyLookup($sku), str_replace('-', ' ', $sku)] as $code) {
+            $code = trim((string) $code);
+            if ($code !== '' && ! in_array($code, $codes, true)) {
+                $codes[] = $code;
+            }
+        }
+        if ($codes === []) {
             return [
                 'success' => false,
                 'message' => 'TopDawg product_code not found for SKU (sync topdawg_products or topdawg_metrics first).',
@@ -323,27 +356,28 @@ class TopDawgApiService
         }
 
         $url = $this->baseUrl.'/SupplierProduct/update';
-        $attempts = [
-            array_merge(['product_code' => $productCode], $fields),
-            array_merge(['sku' => $productCode], $fields),
-        ];
-
         $lastMessage = 'TopDawg product update failed.';
-        foreach ($attempts as $body) {
-            $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
-            if ($response->successful()) {
-                return ['success' => true, 'message' => 'TopDawg product update submitted for review.'];
+        foreach ($codes as $productCode) {
+            $attempts = [
+                array_merge(['product_code' => $productCode], $fields),
+                array_merge(['sku' => $productCode], $fields),
+            ];
+            foreach ($attempts as $body) {
+                $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
+                if ($response->successful()) {
+                    return ['success' => true, 'message' => 'TopDawg product update submitted for review.'];
+                }
+                $payload = $response->json();
+                $lastMessage = is_array($payload)
+                    ? (string) ($payload['message'] ?? json_encode($payload))
+                    : (string) $response->body();
+                Log::warning('TopDawgApiService: product update attempt failed', [
+                    'sku' => $sku,
+                    'product_code' => $productCode,
+                    'status' => $response->status(),
+                    'body' => mb_substr((string) $response->body(), 0, 500),
+                ]);
             }
-            $payload = $response->json();
-            $lastMessage = is_array($payload)
-                ? (string) ($payload['message'] ?? json_encode($payload))
-                : (string) $response->body();
-            Log::warning('TopDawgApiService: product update attempt failed', [
-                'sku' => $sku,
-                'product_code' => $productCode,
-                'status' => $response->status(),
-                'body' => mb_substr((string) $response->body(), 0, 500),
-            ]);
         }
 
         return ['success' => false, 'message' => $lastMessage];
