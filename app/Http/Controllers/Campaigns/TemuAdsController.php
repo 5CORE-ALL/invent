@@ -56,7 +56,7 @@ class TemuAdsController extends Controller
                 'ad_spend' => $r->ad_spend,
                 'roas' => $r->roas,
                 'acos' => $r->acos,
-                'ad_status' => $r->ad_status ?: 'Unknown',
+                'ad_status' => $this->displayAdStatus($r),
                 'success' => (bool) $r->success,
                 'error_msg' => $r->error_msg,
                 'fetched_at' => optional($r->fetched_at)->toDateTimeString(),
@@ -195,12 +195,42 @@ class TemuAdsController extends Controller
         $goodsId = $request->input('goods_id') ?: null;
         $stats = $service->refreshAdStatuses($goodsId);
 
+        $error = $stats['error'] ?? null;
+        $success = ($stats['ok'] > 0 || $stats['total'] === 0) && ($error === null || $stats['ok'] > 0);
+        if ($stats['total'] === 0) {
+            $message = 'No goods to refresh';
+        } elseif ($stats['ok'] === 0 && $error) {
+            $message = 'Status not sync: '.$error;
+        } else {
+            $message = "Updated ad status for {$stats['ok']}/{$stats['total']} goods";
+            if ($error && $stats['fail'] > 0) {
+                $message .= ' — some failed: '.$error;
+            }
+        }
+
         return response()->json([
-            'success' => $stats['ok'] > 0 || $stats['total'] === 0,
-            'message' => $stats['total'] === 0
-                ? 'No goods to refresh'
-                : "Updated ad status for {$stats['ok']}/{$stats['total']} goods",
+            'success' => $success,
+            'message' => $message,
             'stats' => $stats,
-        ]);
+        ], $success ? 200 : 422);
+    }
+
+    /**
+     * Empty / failed sync → Not sync. "No ad" with spend or clicks is stale (old parser).
+     */
+    protected function displayAdStatus(TemuAdsApiReport $r): string
+    {
+        $status = trim((string) ($r->ad_status ?? ''));
+        if ($status === '' || strcasecmp($status, 'Unknown') === 0) {
+            return 'Not sync';
+        }
+        $hasActivity = ((float) ($r->ad_spend ?? 0) > 0)
+            || ((int) ($r->clicks ?? 0) > 0)
+            || ((int) ($r->impressions ?? 0) > 0);
+        if ($status === 'No ad' && $hasActivity) {
+            return 'Not sync';
+        }
+
+        return $status;
     }
 }

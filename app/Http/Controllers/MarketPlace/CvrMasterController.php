@@ -6407,7 +6407,13 @@ class CvrMasterController extends Controller
                         $q->where('record_date', '>=', $start);
                     }
                     foreach ($q->get() as $record) {
-                        $price = (float) ($record->base_price ?? 0);
+                        $json = [];
+                        if (! empty($record->daily_data)) {
+                            $json = is_array($record->daily_data)
+                                ? $record->daily_data
+                                : (json_decode((string) $record->daily_data, true) ?: []);
+                        }
+                        $price = (float) ($json['base_price'] ?? $json['price'] ?? $record->base_price ?? 0);
                         if ($price <= 0) {
                             continue;
                         }
@@ -6565,6 +6571,17 @@ class CvrMasterController extends Controller
             'base_price' => round($base, 2),
             'updated_at' => now(),
         ];
+        if (Schema::hasColumn('temu_sku_daily_data', 'daily_data')) {
+            $existingJson = [];
+            if ($row && ! empty($row->daily_data)) {
+                $existingJson = is_array($row->daily_data)
+                    ? $row->daily_data
+                    : (json_decode((string) $row->daily_data, true) ?: []);
+            }
+            $existingJson['price'] = round($base, 2);
+            $existingJson['base_price'] = round($base, 2);
+            $payload['daily_data'] = json_encode($existingJson);
+        }
 
         if ($row) {
             DB::table('temu_sku_daily_data')->where('id', $row->id)->update($payload);

@@ -98,9 +98,9 @@ class TemuAdsApiReportService
                 'fetched_at' => now(),
             ]);
 
-            $statuses = $this->temuApiService->queryAdStatuses([$goodsId]);
-            if (isset($statuses[$goodsId])) {
-                $row['ad_status'] = $statuses[$goodsId];
+            $statusQuery = $this->temuApiService->queryAdStatuses([$goodsId]);
+            if (isset($statusQuery['statuses'][$goodsId])) {
+                $row['ad_status'] = $statusQuery['statuses'][$goodsId];
             }
 
             TemuAdsApiReport::updateOrCreate(
@@ -223,7 +223,7 @@ class TemuAdsApiReportService
     /**
      * Refresh Active/Inactive from temu.searchrec.ad.detail.query onto all period rows.
      *
-     * @return array{total: int, ok: int, fail: int}
+     * @return array{total: int, ok: int, fail: int, error: ?string}
      */
     public function refreshAdStatuses(?string $specificGoodsId = null): array
     {
@@ -239,15 +239,15 @@ class TemuAdsApiReportService
                 ->all();
 
         if ($goodsIds === []) {
-            return ['total' => 0, 'ok' => 0, 'fail' => 0];
+            return ['total' => 0, 'ok' => 0, 'fail' => 0, 'error' => null];
         }
 
-        $map = $this->temuApiService->queryAdStatuses($goodsIds);
+        $query = $this->temuApiService->queryAdStatuses($goodsIds);
         $ok = 0;
         $fail = 0;
 
         foreach ($goodsIds as $goodsId) {
-            $status = $map[$goodsId] ?? null;
+            $status = $query['statuses'][$goodsId] ?? null;
             if ($status === null) {
                 $fail++;
                 continue;
@@ -256,7 +256,12 @@ class TemuAdsApiReportService
             $ok++;
         }
 
-        return ['total' => count($goodsIds), 'ok' => $ok, 'fail' => $fail];
+        return [
+            'total' => count($goodsIds),
+            'ok' => $ok,
+            'fail' => $fail,
+            'error' => $query['error'] ?? null,
+        ];
     }
 
     /**

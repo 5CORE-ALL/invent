@@ -772,10 +772,13 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     /**
      * Ad campaign status for goods IDs (temu.searchrec.ad.detail.query).
-     * Returns map of goods_id => Active|Inactive|Deleted|No ad|Unknown.
+     * Official result list is result.adsDetail[]; status field is adShowStatus.
+     *
+     * Failed / unparseable chunks are omitted (never written as "No ad").
+     * "No ad" is only used when Temu returns a successful empty/missing adsDetail row.
      *
      * @param  array<int, string|int>  $goodsIds
-     * @return array<string, string>
+     * @return array{statuses: array<string, string>, failed: array<int, string>, error: ?string}
      */
     public function queryAdStatuses(array $goodsIds): array
     {
@@ -787,30 +790,42 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             }
         }
         if ($ids === []) {
-            return [];
+            return ['statuses' => [], 'failed' => [], 'error' => null];
         }
 
         $statuses = [];
+        $failed = [];
+        $error = null;
+
         foreach (array_chunk(array_values($ids), 20) as $chunk) {
             $result = $this->postAdsRouter([
                 'type' => 'temu.searchrec.ad.detail.query',
                 'goodsList' => $chunk,
             ], (string) $chunk[0]);
 
-            $items = [];
-            if ($result['ok'] && is_array($result['result'] ?? null)) {
-                $payload = $result['result'];
-                $items = $payload['adList']
-                    ?? $payload['adsList']
-                    ?? $payload['goodsList']
-                    ?? $payload['list']
-                    ?? $payload['adInfoList']
-                    ?? null;
-                if (! is_array($items)) {
-                    $items = isset($payload['goodsId']) || isset($payload['status']) || isset($payload['adStatus'])
-                        ? [$payload]
-                        : [];
+            if (! ($result['ok'] ?? false)) {
+                $error = $error ?? (string) ($result['error_msg'] ?? 'Temu ad.detail.query failed');
+                foreach ($chunk as $gid) {
+                    $failed[] = (string) $gid;
                 }
+                usleep(150000);
+                continue;
+            }
+
+            $payload = $result['result'] ?? null;
+            $items = $this->extractAdDetailItems($payload);
+            if ($items === null) {
+                $error = $error ?? 'Temu ad.detail.query returned an unrecognized payload';
+                Log::warning('Temu ad.detail.query: could not parse adsDetail', [
+                    'goods_ids' => $chunk,
+                    'result_type' => gettype($payload),
+                    'result_keys' => is_array($payload) ? array_keys($payload) : null,
+                ]);
+                foreach ($chunk as $gid) {
+                    $failed[] = (string) $gid;
+                }
+                usleep(150000);
+                continue;
             }
 
             $seen = [];
@@ -822,14 +837,13 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 if ($gid === '') {
                     continue;
                 }
-                $raw = $item['adStatus'] ?? $item['status'] ?? $item['campaignStatus'] ?? $item['adState'] ?? null;
-                $statuses[$gid] = self::normalizeAdStatus($raw);
+                $statuses[$gid] = self::statusFromAdDetail($item);
                 $seen[$gid] = true;
             }
 
             foreach ($chunk as $gid) {
                 $key = (string) $gid;
-                if (! isset($statuses[$key])) {
+                if (! isset($statuses[$key]) && ! isset($seen[$key])) {
                     $statuses[$key] = 'No ad';
                 }
             }
@@ -837,13 +851,101 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             usleep(150000);
         }
 
-        return $statuses;
+        return [
+            'statuses' => $statuses,
+            'failed' => $failed,
+            'error' => $error,
+        ];
     }
 
+    /**
+     * Official Temu result is { adsDetail: [...] } or a list of those objects.
+     *
+     * @return array<int, mixed>|null null = unrecognized shape (do not treat as No ad)
+     */
+    protected function extractAdDetailItems(mixed $payload): ?array
+    {
+        if (! is_array($payload)) {
+            return null;
+        }
+        if ($payload === []) {
+            return [];
+        }
+
+        if (array_is_list($payload)) {
+            return isset($payload[0]) && is_array($payload[0]) ? $payload : [];
+        }
+
+        foreach ([
+            'adsDetail', 'adsDetails', 'adDetailList', 'adDetails',
+            'adList', 'adsList', 'goodsList', 'list',
+            'adInfoList', 'goodsAdList', 'goodsAdDetailList',
+            'detailList', 'data', 'records',
+        ] as $key) {
+            if (! array_key_exists($key, $payload)) {
+                continue;
+            }
+            $v = $payload[$key];
+            if (! is_array($v)) {
+                continue;
+            }
+            if ($v === []) {
+                return [];
+            }
+            if (array_is_list($v)) {
+                return $v;
+            }
+            if (isset($v['goodsId']) || isset($v['goods_id'])) {
+                return [$v];
+            }
+        }
+
+        if (isset($payload['goodsId']) || isset($payload['goods_id']) || isset($payload['adShowStatus'])) {
+            return [$payload];
+        }
+
+        return null;
+    }
+
+    public static function statusFromAdDetail(array $item): string
+    {
+        $raw = $item['adShowStatus']
+            ?? $item['adStatus']
+            ?? $item['status']
+            ?? $item['campaignStatus']
+            ?? $item['adState']
+            ?? $item['adPhase']
+            ?? null;
+
+        if ($raw === null && is_array($item['siteStatusInfoList'] ?? null)) {
+            foreach ($item['siteStatusInfoList'] as $site) {
+                if (is_array($site) && isset($site['adShowStatus'])) {
+                    $raw = $site['adShowStatus'];
+                    break;
+                }
+            }
+        }
+
+        $mapped = self::normalizeAdStatus($raw);
+        $hasAd = isset($item['budget']) || isset($item['roas']) || isset($item['adShowStatus']) || isset($item['adPhase']);
+        if ($mapped === 'No ad' && $hasAd) {
+            return 'Inactive';
+        }
+        if ($mapped === 'Unknown' && $hasAd) {
+            return 'Active';
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * adShowStatus / adPhase from ad.detail.query: 0 none, 1 delivering, 2 paused, 3 deleted.
+     * String labels from Seller Center are also accepted.
+     */
     public static function normalizeAdStatus(mixed $raw): string
     {
         if (is_array($raw)) {
-            $raw = $raw['val'] ?? $raw['status'] ?? $raw['adStatus'] ?? null;
+            $raw = $raw['val'] ?? $raw['status'] ?? $raw['adStatus'] ?? $raw['adShowStatus'] ?? null;
         }
         if ($raw === null || $raw === '') {
             return 'Unknown';
@@ -852,13 +954,13 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $n = is_numeric($raw) ? (int) $raw : null;
         $s = strtolower(trim((string) $raw));
 
-        if ($n === 3 || in_array($s, ['3', 'active', 'enable', 'enabled', 'online', 'on', 'running'], true)) {
+        if ($n === 1 || in_array($s, ['1', 'active', 'enable', 'enabled', 'online', 'on', 'running', 'delivering', 'deliver', 'showing'], true)) {
             return 'Active';
         }
-        if ($n === 2 || in_array($s, ['2', 'inactive', 'pause', 'paused', 'offline', 'off', 'stop', 'stopped'], true)) {
+        if ($n === 2 || $n === 4 || in_array($s, ['2', '4', 'inactive', 'pause', 'paused', 'offline', 'off', 'stop', 'stopped', 'suspend', 'forbidden'], true)) {
             return 'Inactive';
         }
-        if ($n === 1 || in_array($s, ['1', 'deleted', 'delete', 'removed'], true)) {
+        if ($n === 3 || in_array($s, ['3', 'deleted', 'delete', 'removed'], true)) {
             return 'Deleted';
         }
         if ($n === 0 || in_array($s, ['0', 'none', 'no ad', 'no_ad', 'not_created'], true)) {

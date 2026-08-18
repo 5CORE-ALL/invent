@@ -152,19 +152,35 @@ class CollectTemuMetrics extends Command
                         $adData = $goodsId ? $temuAdData->get($goodsId) : null;
                         $spend = $adData ? floatval($adData->spend ?? 0) : 0;
 
+                        $dailyData = [
+                            'price' => round($basePrice, 2),
+                            'base_price' => round($basePrice, 2),
+                            'views' => $productClicks,
+                            'product_clicks' => $productClicks,
+                            'temu_l30' => $temuL30,
+                            'cvr_percent' => round($cvrPercent, 2),
+                            'spend' => round($spend, 2),
+                            'goods_id' => $goodsId ?: null,
+                        ];
+
+                        $payload = [
+                            'base_price' => round($basePrice, 2),
+                            'product_clicks' => $productClicks,
+                            'temu_l30' => $temuL30,
+                            'cvr_percent' => round($cvrPercent, 2),
+                            'spend' => round($spend, 2),
+                            'updated_at' => now(),
+                        ];
+                        if (Schema::hasColumn('temu_sku_daily_data', 'daily_data')) {
+                            $payload['daily_data'] = json_encode($dailyData);
+                        }
+
                         DB::table('temu_sku_daily_data')->updateOrInsert(
                             [
                                 'sku' => $sku,
                                 'record_date' => $today,
                             ],
-                            [
-                                'base_price' => round($basePrice, 2),
-                                'product_clicks' => $productClicks,
-                                'temu_l30' => $temuL30,
-                                'cvr_percent' => round($cvrPercent, 2),
-                                'spend' => round($spend, 2),
-                                'updated_at' => now(),
-                            ]
+                            $payload
                         );
 
                         $chunkCollected++;

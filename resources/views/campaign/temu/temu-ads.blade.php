@@ -68,7 +68,7 @@
                         </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                             <button type="button" id="refresh-status-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item"
-                                    title="Refresh Active/Inactive from Temu ad detail API">
+                                    title="Sync Active/Inactive from Temu ad.detail.query (adsDetail.adShowStatus)">
                                 <i class="fa fa-toggle-on"></i> Refresh Status
                             </button>
                             <button type="button" id="create-ad-btn" class="btn btn-sm btn-warning pricing-filter-item"
@@ -264,14 +264,15 @@
                         width: 110,
                         hozAlign: 'center',
                         headerFilter: 'list',
-                        headerFilterParams: { values: { Active: 'Active', Inactive: 'Inactive', 'No ad': 'No ad', Deleted: 'Deleted', Unknown: 'Unknown', '': '' } },
-                        headerTooltip: 'Temu ad campaign status (Active / Inactive)',
+                        headerFilterParams: { values: { Active: 'Active', Inactive: 'Inactive', 'No ad': 'No ad', Deleted: 'Deleted', 'Not sync': 'Not sync', '': '' } },
+                        headerTooltip: 'Temu ad campaign status from ad.detail.query (Active / Inactive / No ad). Not sync = API not confirmed.',
                         formatter: function (cell) {
-                            const v = String(cell.getValue() || 'Unknown');
+                            const v = String(cell.getValue() || 'Not sync');
                             let cls = 'bg-secondary';
                             if (v === 'Active') cls = 'bg-success';
                             else if (v === 'Inactive') cls = 'bg-warning text-dark';
                             else if (v === 'Deleted' || v === 'No ad') cls = 'bg-dark';
+                            else if (v === 'Not sync') cls = 'bg-secondary';
                             return '<span class="badge ' + cls + '">' + v + '</span>';
                         }
                     },

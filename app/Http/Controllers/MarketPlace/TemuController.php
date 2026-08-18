@@ -6303,7 +6303,10 @@ class TemuController extends Controller
     {
         try {
             $sku = $request->input('sku');
-            $days = $request->input('days', 7);
+            $days = (int) $request->input('days', 30);
+            if ($days <= 0) {
+                $days = 30;
+            }
 
             if (!$sku) {
                 return response()->json(['error' => 'SKU is required'], 400);
@@ -6346,75 +6349,38 @@ class TemuController extends Controller
                 $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $productMaster);
             }
 
-            $useTemu2PricingChart = $request->boolean('temu2');
-            if ($useTemu2PricingChart) {
-                $pricingModel = Schema::hasTable('temu2_metrics') ? Temu2Metric::class : null;
-            } else {
-                $pricingModel = Schema::hasTable('temu_metrics') ? \App\Models\TemuMetric::class : null;
-            }
-            if ($pricingModel === null) {
-                return response()->json(['error' => 'Pricing source table not available'], 410);
-            }
-
             // Margin from marketplace_percentages.Temu — same as /temu-decrease TEMU_MARGIN
             $percentage = TemuShopifySalesService::temuMarginDecimal();
 
-            // Current base_price from temu_pricing / temu2_pricing so latest chart point matches table
-            $currentBasePrice = null;
-            $temuPricingRow = $pricingModel::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
-            if (!$temuPricingRow && $targetNormalized !== $sku) {
-                $temuPricingRow = $pricingModel::all()->first(function ($row) use ($normalizeSku, $targetNormalized) {
-                    return $normalizeSku($row->sku ?? '') === $targetNormalized;
-                });
-            }
-            if ($temuPricingRow && $temuPricingRow->base_price !== null) {
-                $currentBasePrice = floatval($temuPricingRow->base_price);
+            // Last N stored snapshot days for this SKU (not "today"). Collection often
+            // lags, so a today-based window would drop older daily rows and show 1 point.
+            $skuExact = strtoupper(trim((string) $sku));
+            $metricsQuery = function (string $skuKey) use ($days) {
+                return DB::table('temu_sku_daily_data')
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuKey])
+                    ->orderBy('record_date', 'desc')
+                    ->limit($days)
+                    ->get()
+                    ->sortBy('record_date')
+                    ->values();
+            };
+
+            $metricsData = $metricsQuery($skuExact);
+            if ($metricsData->isEmpty() && $targetNormalized !== '' && $targetNormalized !== $skuExact) {
+                $metricsData = $metricsQuery($targetNormalized);
             }
 
-            // Current spend from TemuAdData (Temu 2 chart: no ad overlay)
-            $currentSpend = null;
-            if (!$useTemu2PricingChart && $temuPricingRow && !empty($temuPricingRow->goods_id)) {
-                $adRow = TemuAdData::where('goods_id', $temuPricingRow->goods_id)->first();
-                if ($adRow && $adRow->spend !== null) {
-                    $currentSpend = floatval($adRow->spend);
+            // Format data for chart from stored snapshots (prefer daily_data JSON)
+            $chartData = $metricsData->map(function ($record) use ($lp, $temuShip, $percentage) {
+                $json = [];
+                if (isset($record->daily_data) && $record->daily_data) {
+                    $json = is_array($record->daily_data)
+                        ? $record->daily_data
+                        : (json_decode((string) $record->daily_data, true) ?: []);
                 }
-            }
-
-            // Use Pacific Time (California timezone)
-            $endDate = Carbon::today('America/Los_Angeles');
-            $startDate = $endDate->copy()->subDays($days);
-
-            // Fetch historical data from temu_sku_daily_data (table stores SKU as in TemuPricing - uppercase trim)
-            $metricsData = DB::table('temu_sku_daily_data')
-                ->where('sku', $sku)
-                ->where('record_date', '>=', $startDate)
-                ->where('record_date', '<=', $endDate)
-                ->orderBy('record_date', 'asc')
-                ->get();
-
-            if ($metricsData->isEmpty()) {
-                $metricsData = DB::table('temu_sku_daily_data')
-                    ->where('sku', $targetNormalized)
-                    ->where('record_date', '>=', $startDate)
-                    ->where('record_date', '<=', $endDate)
-                    ->orderBy('record_date', 'asc')
-                    ->get();
-            }
-
-            $latestRecordDate = $metricsData->isEmpty() ? null : $metricsData->last()->record_date;
-
-            // Format data for chart and compute percent metrics (margin from marketplace_percentages; for latest use current base + current spend so GPRFT/ADS/NPFT/NROI match table)
-            $chartData = $metricsData->map(function ($record) use ($lp, $temuShip, $percentage, $currentBasePrice, $currentSpend, $latestRecordDate) {
-                $basePrice = floatval($record->base_price ?? 0);
-                $spend = floatval($record->spend ?? 0);
-                $isLatest = $latestRecordDate !== null && $record->record_date == $latestRecordDate;
-                if ($isLatest && $currentBasePrice !== null) {
-                    $basePrice = $currentBasePrice;
-                }
-                if ($isLatest && $currentSpend !== null) {
-                    $spend = $currentSpend;
-                }
-                $temuL30 = intval($record->temu_l30 ?? 0);
+                $basePrice = floatval($json['base_price'] ?? $json['price'] ?? $record->base_price ?? 0);
+                $spend = floatval($json['spend'] ?? $record->spend ?? 0);
+                $temuL30 = intval($json['temu_l30'] ?? $record->temu_l30 ?? 0);
                 $temuRPrice = $basePrice > 0 ? ($basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice) : 0;
                 $temuFullPrice = TemuShopifySalesService::computeFullTemuPrice((float) $basePrice);
                 $revenue = $temuFullPrice * $temuL30;
@@ -6427,18 +6393,20 @@ class TemuController extends Controller
                 $npftPercent = $adsPercent == 100 ? $profitPercent : $profitPercent - $adsPercent;
                 $nroiPercent = $adsPercent == 100 ? $roiPercent : $roiPercent - $adsPercent;
 
-                $productClicks = intval($record->product_clicks ?? 0);
+                $productClicks = intval($json['product_clicks'] ?? $json['views'] ?? $record->product_clicks ?? 0);
                 // ad_clicks may be absent on older temu_sku_daily_data rows
-                $adClicksHist = isset($record->ad_clicks) ? intval($record->ad_clicks) : 0;
+                $adClicksHist = intval($json['ad_clicks'] ?? ($record->ad_clicks ?? 0));
+                $recordDate = Carbon::parse($record->record_date)->toDateString();
 
                 return [
-                    'date' => $record->record_date,
+                    'date' => $recordDate,
+                    'full_date' => $recordDate,
                     'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
                     'price' => $basePrice,
                     'views' => $productClicks,
                     'ad_clicks' => $adClicksHist,
                     't_clicks' => $productClicks + $adClicksHist,
-                    'cvr_percent' => floatval($record->cvr_percent ?? 0),
+                    'cvr_percent' => floatval($json['cvr_percent'] ?? $record->cvr_percent ?? 0),
                     'temu_l30' => $temuL30,
                     'spend' => $spend,
                     'profit_percent' => round($profitPercent, 2),
@@ -6449,7 +6417,7 @@ class TemuController extends Controller
                 ];
             });
 
-            return response()->json($chartData);
+            return response()->json($chartData->values());
         } catch (\Exception $e) {
             Log::error('Error fetching Temu metrics history: ' . $e->getMessage());
             // Return empty array instead of 500 error to show "No data" message
