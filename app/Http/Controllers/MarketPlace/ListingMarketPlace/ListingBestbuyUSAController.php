@@ -18,6 +18,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingBestbuyUSAController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingBestbuyUSA(Request $request)
     {
         $mode = $request->query('mode');
@@ -43,6 +45,10 @@ class ListingBestbuyUSAController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',

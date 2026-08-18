@@ -17,6 +17,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingTemuController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingTemu(Request $request)
     {
         $mode = $request->query('mode');
@@ -42,6 +44,10 @@ class ListingTemuController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',

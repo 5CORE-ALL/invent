@@ -13,6 +13,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingTiktokShopTwoController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingTiktokShopTwo(Request $request)
     {
         $mode = $request->query('mode');
@@ -38,6 +40,10 @@ class ListingTiktokShopTwoController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',

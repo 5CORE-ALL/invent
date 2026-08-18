@@ -236,7 +236,20 @@
         if (xhr.status === 0) return 'Timed out or the connection dropped. Try again.';
         if (xhr.responseJSON && xhr.responseJSON.message) return xhr.responseJSON.message;
         if (xhr.status === 419) return 'Session expired. Refresh the page.';
+        if (xhr.status === 405) return 'Publish route is blocked. Hard-refresh the page and try again.';
         return 'Request failed.';
+    }
+
+    function actionUrl() {
+        const c = cfg();
+        if (c.saveStatusUrl) {
+            return c.saveStatusUrl;
+        }
+        const channel = String(c.channel || '').replace(/[^a-z0-9]/gi, '');
+        if (channel) {
+            return '/listing_' + channel + '/save-status';
+        }
+        return c.previewUrl || '/listing-publish-preview';
     }
 
     function openPreview(skus) {
@@ -258,7 +271,7 @@
         if (confirm) confirm.disabled = true;
         showModal();
         const c = cfg();
-        const url = c.previewUrl || c.saveStatusUrl;
+        const url = actionUrl();
         $.ajax({
             url: url,
             type: 'POST',
@@ -294,7 +307,7 @@
     function publishGroup(skus) {
         const c = cfg();
         return $.ajax({
-            url: c.publishUrl || c.saveStatusUrl,
+            url: actionUrl(),
             type: 'POST',
             data: { skus: skus, confirmed: 1, publish: 1, channel: c.channel || '' },
             headers: { 'X-CSRF-TOKEN': csrf() },

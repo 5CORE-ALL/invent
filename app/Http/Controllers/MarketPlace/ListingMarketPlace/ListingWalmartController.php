@@ -16,6 +16,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingWalmartController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingWalmart(Request $request)
     {
         $mode = $request->query('mode');
@@ -41,6 +43,10 @@ class ListingWalmartController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'rl_nrl' => 'nullable|string',
