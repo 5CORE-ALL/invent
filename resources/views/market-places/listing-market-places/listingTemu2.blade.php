@@ -1452,9 +1452,9 @@
             exportName: 'temu2_listing',
             channel: 'temu2',
             channelLabel: "Temu 2",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_temu2/save-status',
+            publishUrl: '/listing_temu2/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

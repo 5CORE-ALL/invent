@@ -1086,9 +1086,9 @@
             exportName: 'instagramshop_listing',
             channel: 'instagramshop',
             channelLabel: "Instagram Shop",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_instagramshop/save-status',
+            publishUrl: '/listing_instagramshop/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

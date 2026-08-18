@@ -1086,9 +1086,9 @@
             exportName: 'doba_listing',
             channel: 'doba',
             channelLabel: "Doba",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_doba/save-status',
+            publishUrl: '/listing_doba/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

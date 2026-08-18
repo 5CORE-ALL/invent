@@ -1086,9 +1086,9 @@
             exportName: 'offerup_listing',
             channel: 'offerup',
             channelLabel: "OfferUp",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_offerup/save-status',
+            publishUrl: '/listing_offerup/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

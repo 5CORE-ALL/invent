@@ -1124,9 +1124,9 @@
             exportName: 'shein_listing',
             channel: 'shein',
             channelLabel: "Shein",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_shein/save-status',
+            publishUrl: '/listing_shein/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

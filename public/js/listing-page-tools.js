@@ -2,6 +2,17 @@
     if (window.__listingPageToolsInit) return;
     window.__listingPageToolsInit = true;
 
+    (function rewriteListingPublishUrls() {
+        const c = window.listingPageConfig || {};
+        const channel = String(c.channel || '').replace(/[^a-z0-9]/gi, '');
+        if (!channel) return;
+        const url = '/listing_' + channel + '/save-status';
+        c.saveStatusUrl = url;
+        c.previewUrl = url;
+        c.publishUrl = url;
+        window.listingPageConfig = c;
+    })();
+
     function cfg() {
         return window.listingPageConfig || {};
     }

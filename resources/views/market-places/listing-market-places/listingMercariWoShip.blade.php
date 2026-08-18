@@ -1086,9 +1086,9 @@
             exportName: 'mercariwoship_listing',
             channel: 'mercariwoship',
             channelLabel: "Mercari w/o Ship",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_mercariwoship/save-status',
+            publishUrl: '/listing_mercariwoship/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection
