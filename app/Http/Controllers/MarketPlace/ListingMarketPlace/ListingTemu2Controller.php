@@ -37,8 +37,11 @@ class ListingTemu2Controller extends Controller
         ]);
     }
 
-    public function saveStatus(Request $request)
+    public function saveStatus(Request $request, Temu2ListingPublishService $publisher)
     {
+        if ($request->boolean('publish') || $request->input('action') === 'publish') {
+            return $this->publish($request, $publisher);
+        }
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',

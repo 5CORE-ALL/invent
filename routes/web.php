@@ -7236,7 +7236,8 @@ Route::get('/css/{path}', function (string $path) {
 // =============================================================================
 // STEP 7: SHOPIFY WILDCARD – MUST BE ABSOLUTELY LAST (catches /{first}/{second} only)
 // =============================================================================
-Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView']);
+Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView'])
+    ->where('first', '^(?!listing_temu2$)(?!listing-temu2$).+');
 
 // Temporary test route to debug On Sea Transit
 Route::get('/test-on-sea', function() {
