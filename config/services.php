@@ -746,6 +746,12 @@ return [
         'list_price_field' => env('TEMU2_LIST_PRICE_FIELD', 'listPrice'),
         'sku_id_field' => env('TEMU2_SKU_ID_FIELD', 'skuId'),
         'sku_code_field' => env('TEMU2_SKU_CODE_FIELD', 'outSkuSn'),
+        /** Create-listing API (Publish to Temu2). v2 is recommended; v1 fallback is bg.local.goods.add. */
+        'goods_add_type' => env('TEMU2_GOODS_ADD_TYPE', 'temu.local.goods.v2.add'),
+        'cost_template_id' => env('TEMU2_COST_TEMPLATE_ID', ''),
+        'shipment_limit_day' => (int) env('TEMU2_SHIPMENT_LIMIT_DAY', 2),
+        'import_designation' => env('TEMU2_IMPORT_DESIGNATION', '4'),
+        'currency' => env('TEMU2_CURRENCY', 'USD'),
     ],
 
     /*

@@ -298,6 +298,11 @@ class Temu2ApiService extends TemuApiService
         }
     }
 
+    public function persistNewListing(string $sku, string $goodsId, ?string $skuId = null): void
+    {
+        $this->persistTemuMapping($sku, $goodsId, $skuId);
+    }
+
     /**
      * Persist stock to temu2_metrics only (never temu_metrics / inventory_temu).
      *
