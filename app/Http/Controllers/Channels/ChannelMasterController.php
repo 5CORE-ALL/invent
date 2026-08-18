@@ -986,6 +986,33 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Fast-path Shopify / B2C / B2B Y Sales from orders (Pacific yesterday).
+     */
+    private function overlayLiveShopifyYSalesOnChannelRows(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            $raw = strtolower(str_replace([' ', '-', '&', '/'], '', $name));
+            try {
+                $value = match ($raw) {
+                    'shopify' => $this->computeShopifyDirectYSalesLikeAmazon(),
+                    'shopifyb2c' => $this->computeShopifyB2xYSalesLikeAmazon(false),
+                    'shopifyb2b' => $this->computeShopifyB2xYSalesLikeAmazon(true),
+                    default => null,
+                };
+                if ($value !== null) {
+                    $row['Y Sales'] = $value;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Fast-path Shopify Y Sales overlay failed for '.$name.': '.$e->getMessage());
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
      * Cheap Y Sales / L7 overlay for the all-marketplace-master fast path.
      */
     private function overlayLiveEbayYSalesOnChannelRows(array $rows): array
@@ -1559,24 +1586,18 @@ class ChannelMasterController extends Controller
     private function computeShopifyDirectYSalesLikeAmazon(): ?float
     {
         try {
-            $latest = DB::table('shopify_raw_orders')
-                ->whereNotNull('order_date')
-                ->max('order_date');
-            if (! $latest) {
+            if (! Schema::hasTable('shopify_raw_orders')) {
+                return null;
+            }
+            if (! DB::table('shopify_raw_orders')->whereNotNull('order_date')->exists()) {
                 return null;
             }
 
-            $pst = 'America/Los_Angeles';
-            $latestPacific = Carbon::parse($latest, $pst);
-            $yStart = $latestPacific->copy()->subDay()->startOfDay();
-            $yEnd   = $latestPacific->copy()->subDay()->endOfDay();
+            // Wall-clock Pacific yesterday (same as Amazon / Temu). Latest-order − 1
+            // slipped the cell back a day when shopify:sync-orders lagged.
+            [$yStart, $yEnd] = $this->pacificYesterdayBounds();
 
-            $q = DB::table('shopify_raw_orders')
-                ->where('order_date', '>=', $yStart->toDateString())
-                ->where('order_date', '<=', $yEnd->toDateString());
-            $this->applyShopifyDirectOrderExclusions($q);
-
-            return round((float) $q->sum('net_sales'), 2);
+            return $this->shopifyRawNetSalesForPacificDate($yStart->toDateString());
         } catch (\Throwable $e) {
             Log::warning('Shopify Direct Y Sales failed: ' . $e->getMessage());
             return null;
@@ -1590,17 +1611,14 @@ class ChannelMasterController extends Controller
     private function computeShopifyDirectL7SalesLikeAmazon(): ?float
     {
         try {
-            $latest = DB::table('shopify_raw_orders')
-                ->whereNotNull('order_date')
-                ->max('order_date');
-            if (! $latest) {
+            if (! Schema::hasTable('shopify_raw_orders')) {
+                return null;
+            }
+            if (! DB::table('shopify_raw_orders')->whereNotNull('order_date')->exists()) {
                 return null;
             }
 
-            $pst = 'America/Los_Angeles';
-            $latestPacific = Carbon::parse($latest, $pst);
-            [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday($latestPacific);
-
+            [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday(Carbon::now('America/Los_Angeles'));
             $q = DB::table('shopify_raw_orders')
                 ->where('order_date', '>=', $l7Start->toDateString())
                 ->where('order_date', '<=', $l7End->toDateString());
@@ -1611,6 +1629,36 @@ class ChannelMasterController extends Controller
             Log::warning('Shopify Direct L7 Sales failed: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /** Shopify Direct net_sales for one Pacific calendar day (same filters as /shopify). */
+    private function shopifyRawNetSalesForPacificDate(string $ymd): float
+    {
+        $q = DB::table('shopify_raw_orders')
+            ->where('order_date', '>=', $ymd)
+            ->where('order_date', '<=', $ymd);
+        $this->applyShopifyDirectOrderExclusions($q);
+
+        return round((float) $q->sum('net_sales'), 2);
+    }
+
+    /** Shopify B2C / B2B total_amount for one Pacific calendar day. */
+    private function shopifyB2xSalesForPacificDate(bool $isB2b, string $ymd): ?float
+    {
+        $table = $isB2b ? 'shopify_b2b_daily_data' : 'shopify_b2c_daily_data';
+        if (! Schema::hasTable($table)) {
+            return null;
+        }
+
+        $day = Carbon::parse($ymd, 'America/Los_Angeles');
+        $sum = (float) DB::table($table)
+            ->where('order_date', '>=', $day->copy()->startOfDay())
+            ->where('order_date', '<=', $day->copy()->endOfDay())
+            ->where('financial_status', '!=', 'refunded')
+            ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
     }
 
     /**
@@ -4309,6 +4357,8 @@ class ChannelMasterController extends Controller
             'ebaythree' => fn () => $this->computeEbayYSalesLikeAmazon(3),
             'purchasingpower' => fn () => $this->computePurchasingPowerYSalesLikeAmazon(),
             'shopify' => fn () => $this->computeShopifyDirectYSalesLikeAmazon(),
+            'shopifyb2c' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(false),
+            'shopifyb2b' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(true),
             'fbmarketplace' => fn () => $this->computeFbMarketplaceYSalesLikeAmazon(),
             'tiktok2' => fn () => $this->computeTiktokTwoYSalesLikeAmazon(),
             'aliexpress' => fn () => $this->computeAliexpressYSalesLikeAmazon(),
@@ -4860,6 +4910,7 @@ class ChannelMasterController extends Controller
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             $formattedData = $this->overlayLiveAmazonYSalesOnChannelRows($formattedData);
             $formattedData = $this->overlayLiveEbayYSalesOnChannelRows($formattedData);
+            $formattedData = $this->overlayLiveShopifyYSalesOnChannelRows($formattedData);
             $formattedData = $this->overlayLiveStaleYSalesOnChannelRows($formattedData);
 
             if (! $section && ! $paginate) {
@@ -5842,27 +5893,16 @@ class ChannelMasterController extends Controller
     private function computeShopifyB2xYSalesLikeAmazon(bool $isB2b): ?float
     {
         $table = $isB2b ? 'shopify_b2b_daily_data' : 'shopify_b2c_daily_data';
-
-        $latestRaw = DB::table($table)
-            ->where('financial_status', '!=', 'refunded')
-            ->max('order_date');
-
-        if (!$latestRaw) {
+        if (! Schema::hasTable($table)) {
+            return null;
+        }
+        if (! DB::table($table)->where('financial_status', '!=', 'refunded')->exists()) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+        [$yStart] = $this->pacificYesterdayBounds();
 
-        $sum = (float) DB::table($table)
-            ->where('order_date', '>=', $yStartPacific)
-            ->where('order_date', '<=', $yEndPacific)
-            ->where('financial_status', '!=', 'refunded')
-            ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+        return $this->shopifyB2xSalesForPacificDate($isB2b, $yStart->toDateString());
     }
 
     /**
@@ -6454,16 +6494,14 @@ class ChannelMasterController extends Controller
     {
         $table = $isB2b ? 'shopify_b2b_daily_data' : 'shopify_b2c_daily_data';
 
-        $latestRaw = DB::table($table)
-            ->where('financial_status', '!=', 'refunded')
-            ->max('order_date');
-
-        if (!$latestRaw) {
+        if (! Schema::hasTable($table)
+            || ! DB::table($table)->where('financial_status', '!=', 'refunded')->exists()) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
         $sum = (float) DB::table($table)
             ->where('order_date', '>=', $l7StartPacific)
@@ -15220,13 +15258,30 @@ class ChannelMasterController extends Controller
     private function realPacificDayYSales(string $channel, string $ymd): ?float
     {
         static $cache = [];
+        $rawKey = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
         $channel = $this->allMarketplaceSnapshotKey($channel);
-        $key = $channel.'|'.$ymd;
+        $key = ($rawKey === 'shopify' ? 'shopify' : $channel).'|'.$ymd;
         if (array_key_exists($key, $cache)) {
             return $cache[$key];
         }
 
         try {
+            if ($rawKey === 'shopify') {
+                $cache[$key] = $this->shopifyRawNetSalesForPacificDate($ymd);
+
+                return $cache[$key];
+            }
+            if ($channel === 'shopifyb2c') {
+                $cache[$key] = $this->shopifyB2xSalesForPacificDate(false, $ymd);
+
+                return $cache[$key];
+            }
+            if ($channel === 'shopifyb2b') {
+                $cache[$key] = $this->shopifyB2xSalesForPacificDate(true, $ymd);
+
+                return $cache[$key];
+            }
+
             if ($channel === 'amazon') {
                 $day = Carbon::parse($ymd, 'America/Los_Angeles');
                 $cache[$key] = round((float) AmazonOrder::productSalesByOrderDate(
