@@ -886,11 +886,12 @@ class Ebay1CouponService
             ?? $this->couponCodeForPercent($pct)));
         $img = trim((string) ($detail['promotionImageUrl'] ?? ''));
 
+        $imgForPut = $img !== '' ? $img : 'https://i.ebayimg.com/images/g/placeholder/s-l1600.jpg';
         $payload = $this->codedCouponPayload(
             $sku,
             $itemId,
             $pct,
-            $img !== '' ? $img : 'https://i.ebayimg.com/images/g/placeholder/s-l1600.jpg',
+            $imgForPut,
             $code,
             inventoryItems: $keptItems,
             listingIds: $keptListings,
@@ -899,11 +900,44 @@ class Ebay1CouponService
             existingDetail: $detail
         );
 
+        $wasRunning = strtoupper(trim((string) ($detail['promotionStatus'] ?? ''))) === 'RUNNING';
         $resp = $this->putCodedCouponWithDiscountRetry($token, $promoId, $payload);
 
         if ($resp->successful() || $resp->status() === 204) {
             return ['success' => true, 'message' => 'remove SKU ok'];
         }
+
+        // RUNNING Hub coupons often require pause → update inventory → resume.
+        if ($wasRunning) {
+            $this->pauseCoupon($token, $promoId);
+            $pausedDetail = $this->getItemPromotion($token, $promoId) ?? $detail;
+            $payload = $this->codedCouponPayload(
+                $sku,
+                $itemId,
+                $pct,
+                $imgForPut,
+                $code,
+                inventoryItems: $keptItems,
+                listingIds: $keptListings,
+                startDate: (string) ($pausedDetail['startDate'] ?? $detail['startDate'] ?? ''),
+                endDate: (string) ($pausedDetail['endDate'] ?? $detail['endDate'] ?? ''),
+                existingDetail: $pausedDetail
+            );
+            $resp = $this->putCodedCouponWithDiscountRetry($token, $promoId, $payload);
+            if ($resp->successful() || $resp->status() === 204) {
+                $this->resumeCoupon($token, $promoId);
+
+                return ['success' => true, 'message' => 'remove SKU ok'];
+            }
+            $this->resumeCoupon($token, $promoId);
+        }
+
+        Log::error('eBay1 coded coupon remove SKU failed', [
+            'promotion_id' => $promoId,
+            'sku' => $sku,
+            'status' => $resp->status(),
+            'body' => mb_substr($resp->body(), 0, 500),
+        ]);
 
         return ['success' => false, 'message' => 'Remove SKU failed: '.$this->ebayErrorMessage($resp)];
     }
@@ -1069,6 +1103,11 @@ class Ebay1CouponService
             $payload['promotionImageUrl'] = $img;
         }
 
+        // eBay replaces the promotion with the PUT body. Omitting budget is treated
+        // as lowering it → "The 'budget' value cannot be decreased."
+        $payload['budget'] = $this->couponBudgetFromDetail($detail)
+            ?? ['currency' => 'USD', 'value' => '500'];
+
         return $payload;
     }
 
@@ -1174,6 +1213,16 @@ class Ebay1CouponService
                 || str_contains($body, 'promotion type'));
     }
 
+    private function isBudgetDecreaseError(Response $resp): bool
+    {
+        $body = strtolower($this->ebayErrorMessage($resp).' '.$resp->body());
+
+        return str_contains($body, 'budget')
+            && (str_contains($body, 'cannot be decreased')
+                || str_contains($body, 'can not be decreased')
+                || str_contains($body, "can't be decreased"));
+    }
+
     private function isCouponCodeTakenError(Response $resp): bool
     {
         $json = $resp->json();
@@ -1224,6 +1273,7 @@ class Ebay1CouponService
 
     /**
      * Some coded coupons require maxDiscountAmount; others reject it (345145).
+     * RUNNING/PAUSED coupons also reject any budget decrease (omit = decrease).
      */
     private function putCodedCouponWithDiscountRetry(string $token, string $promoId, array $payload): Response
     {
@@ -1233,13 +1283,75 @@ class Ebay1CouponService
         }
         if ($this->isMaxDiscountRequiredError($resp) && ! isset($payload['discountRules'][0]['maxDiscountAmount'])) {
             $payload['discountRules'][0]['maxDiscountAmount'] = $this->couponWholeDollarAmount(null);
-
-            return $this->putCodedCoupon($token, $promoId, $payload);
+            $resp = $this->putCodedCoupon($token, $promoId, $payload);
+            if ($resp->successful() || $resp->status() === 204) {
+                return $resp;
+            }
         }
         if ($this->isMaxDiscountForbiddenError($resp) && isset($payload['discountRules'][0]['maxDiscountAmount'])) {
             unset($payload['discountRules'][0]['maxDiscountAmount']);
+            $resp = $this->putCodedCoupon($token, $promoId, $payload);
+            if ($resp->successful() || $resp->status() === 204) {
+                return $resp;
+            }
+        }
+        if ($this->isBudgetDecreaseError($resp)) {
+            $resp = $this->putCodedCouponWithBudgetBump($token, $promoId, $payload, $resp);
+        }
 
-            return $this->putCodedCoupon($token, $promoId, $payload);
+        return $resp;
+    }
+
+    /**
+     * Echo the live coupon budget. Never round down — eBay forbids decreasing
+     * budget on RUNNING/PAUSED coded coupons.
+     *
+     * @param  array<string, mixed>  $detail
+     * @return array{currency:string,value:string}|null
+     */
+    private function couponBudgetFromDetail(array $detail): ?array
+    {
+        $budget = $detail['budget'] ?? $detail['promotionBudget'] ?? $detail['promotion_budget'] ?? null;
+        if (! is_array($budget)) {
+            return null;
+        }
+        $currency = trim((string) ($budget['currency'] ?? $budget['currencyId'] ?? $budget['currency_id'] ?? 'USD'));
+        $raw = $budget['value'] ?? null;
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        $numeric = (float) $raw;
+        if ($numeric <= 0) {
+            return null;
+        }
+
+        return [
+            'currency' => $currency !== '' ? $currency : 'USD',
+            'value' => (string) max(100, (int) ceil($numeric)),
+        ];
+    }
+
+    /**
+     * If GET returned remaining spend (lower than committed) or budget was omitted,
+     * retry with a higher whole-dollar budget. Increases are allowed.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function putCodedCouponWithBudgetBump(string $token, string $promoId, array $payload, Response $fallback): Response
+    {
+        $currency = trim((string) ($payload['budget']['currency'] ?? 'USD')) ?: 'USD';
+        $sent = (float) ($payload['budget']['value'] ?? 0);
+        $resp = $fallback;
+
+        foreach ([500, 1000, 5000, 10000, 50000] as $try) {
+            if ($try <= $sent) {
+                continue;
+            }
+            $payload['budget'] = ['currency' => $currency, 'value' => (string) $try];
+            $resp = $this->putCodedCoupon($token, $promoId, $payload);
+            if ($resp->successful() || $resp->status() === 204 || ! $this->isBudgetDecreaseError($resp)) {
+                return $resp;
+            }
         }
 
         return $resp;

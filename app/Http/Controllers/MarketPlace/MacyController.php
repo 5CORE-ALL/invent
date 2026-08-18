@@ -585,7 +585,7 @@ class MacyController extends Controller
 
         $skipPush = $request->boolean('skip_push');
         $pushResult = $skipPush
-            ? ['success' => true, 'message' => 'Push skipped', 'status_code' => null]
+            ? ['success' => true, 'message' => 'Saved without marketplace push', 'skipped' => true]
             : $this->pushPriceToMacy($sku, $spriceFloat);
 
         return response()->json([
@@ -593,7 +593,7 @@ class MacyController extends Controller
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
             'sgpft_percent' => $sgpft,
-            'price_push_success' => $skipPush ? false : (bool) ($pushResult['success'] ?? false),
+            'price_push_success' => (bool) ($pushResult['success'] ?? false),
             'price_push_message' => (string) ($pushResult['message'] ?? ''),
             'price_push_status_code' => $pushResult['status_code'] ?? null,
             'price_push_skipped' => $skipPush,
@@ -882,12 +882,10 @@ class MacyController extends Controller
                 'success' => true,
                 'updated' => $updated,
                 'message' => "Successfully saved {$updated} SPRICE update(s)",
+                'price_push_success_count' => $pricePushSuccess,
+                'price_push_failed_count' => $pricePushFailed,
                 'price_push_skipped' => $skipPush,
             ];
-            if (! $skipPush) {
-                $response['price_push_success_count'] = $pricePushSuccess;
-                $response['price_push_failed_count'] = $pricePushFailed;
-            }
 
             // Include calculated metrics for single updates (manual cell edits)
             if (isset($lastMetrics)) {
@@ -1312,6 +1310,26 @@ class MacyController extends Controller
             'price_push_message' => (string) ($pushResult['message'] ?? ''),
             'price_push_status_code' => $pushResult['status_code'] ?? null,
         ]);
+    }
+
+    /**
+     * Push a price to Macy marketplace (no DB rewrite required).
+     */
+    public function pushPriceTabulator(Request $request)
+    {
+        $sku = strtoupper(trim((string) $request->input('sku', '')));
+        $price = $request->input('price', $request->input('sprice'));
+        if ($sku === '' || ! is_numeric($price) || (float) $price <= 0) {
+            return response()->json(['success' => false, 'message' => 'SKU and price required'], 422);
+        }
+
+        $result = $this->pushPriceToMacy($sku, (float) $price);
+
+        return response()->json([
+            'success' => (bool) ($result['success'] ?? false),
+            'message' => (string) ($result['message'] ?? ''),
+            'status_code' => $result['status_code'] ?? null,
+        ], ($result['success'] ?? false) ? 200 : 422);
     }
 
     /**

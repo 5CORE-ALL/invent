@@ -70,7 +70,7 @@
             padding: 0 2px;
             cursor: pointer;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGt0SoldRules' => true])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGtSoldRules' => true])
         .sprice-lmp-alert {
             color: #dc3545;
             font-size: 11px;
@@ -106,6 +106,7 @@
                     <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = GROI% (Macys has no ads — same as /all-marketplace-master N ROI).">NROI: 0%</span>
                     <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold; display: none;">Price: $0</span>
                     <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                    <span class="badge fs-6 p-2" id="zero-sold-rule-badge" style="background-color: #4f46e5; color: white; font-weight: bold; cursor: pointer;" title="0 Sold Rule — apply Amazon Price to S PRC for MC L30 = 0. Selected SKUs if checked; otherwise all visible. Skips INV = 0 and missing A Price.">0 Sold Rule: 0</span>
                     <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
                     <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
                     <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
@@ -199,15 +200,10 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
-                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGt0SoldRules' => true])
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGtSoldRules' => true])
 
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal" title="Upload Price">
                         <i class="fa fa-upload"></i> Prc
-                    </button>
-
-                    <button id="mode-toggle-btn" class="btn btn-sm btn-secondary"
-                        title="Click to cycle: Prc Mode → Decrease → Increase → Same Price">
-                        Prc Mode
                     </button>
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
@@ -246,10 +242,10 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <!-- Discount Input Box (shown when SKUs are selected) -->
-                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
+                <!-- Discount Input Box (always visible) -->
+                <div id="discount-input-container" class="p-2 bg-light border-bottom">
                     <div class="d-flex align-items-center gap-2">
-                        <span id="selected-skus-count" class="fw-bold"></span>
+                        <span id="selected-skus-count" class="fw-bold">0 SKUs selected</span>
                         <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
                         <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
@@ -406,16 +402,16 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGt0SoldRules' => true])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGtSoldRules' => true])
 @endsection
 
 @section('script-bottom')
 <script>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGt0SoldRules' => true])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGtSoldRules' => true])
     const COLUMN_VIS_KEY = "macys_tabulator_column_visibility";
     let table = null;
     let allTableData = []; // Full dataset for ParentExpand
-    let decreaseModeActive = false;
+    let decreaseModeActive = true;
     let increaseModeActive = false;
     let samePriceModeActive = false;
     let selectedSkus = new Set();
@@ -668,8 +664,7 @@
                 // Same Price → off
                 decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = false;
                 $btn.removeClass('btn-danger btn-success btn-info').addClass('btn-secondary').text('Prc Mode');
-                selectColumn.hide();
-                selectedSkus.clear();
+                if (selectColumn) selectColumn.show();
                 updateSelectedCount();
             }
             syncDiscountInputUi();
@@ -892,6 +887,14 @@
             applySuggestAmazonPrice();
         });
 
+        $('#zero-sold-rule-badge').on('click', function() {
+            if (typeof saveAndApplyChPromoZeroSoldAmazon === 'function') {
+                saveAndApplyChPromoZeroSoldAmazon({ push: false });
+                return;
+            }
+            applyZeroSoldAmazonToSprice();
+        });
+
         // Clear SPRICE button
         $('#clear-sprice-btn').on('click', function() {
             clearSpriceForSelected();
@@ -967,7 +970,6 @@
         function updateSelectedCount() {
             const count = selectedSkus.size;
             $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-            $('#discount-input-container').toggle(count > 0);
         }
 
         // Update select all checkbox state
@@ -1099,6 +1101,77 @@
             $('#discount-percentage-input').val('');
         }
 
+        function isMacysParentRow(rowData) {
+            return !!(rowData && (rowData.is_parent_summary
+                || (rowData.Parent && String(rowData.Parent).startsWith('PARENT'))));
+        }
+
+        function macysAmazonToSpricePatch(rowData, amazonPrice) {
+            const percentage = getMacysMargin(rowData);
+            const lp = parseFloat(rowData['LP_productmaster']) || 0;
+            const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+            const sgpft = amazonPrice > 0
+                ? Math.round(((amazonPrice * percentage - ship - lp) / amazonPrice) * 100 * 100) / 100
+                : 0;
+            const sroi = lp > 0
+                ? Math.round(((amazonPrice * percentage - lp - ship) / lp) * 100 * 100) / 100
+                : 0;
+            return {
+                SPRICE: amazonPrice,
+                SGPFT: sgpft,
+                SPFT: sgpft,
+                SROI: sroi,
+                has_custom_sprice: true,
+            };
+        }
+
+        // 0 Sold Rule — copy Amazon Price onto S PRC for MC L30 = 0.
+        function applyZeroSoldAmazonToSprice() {
+            if (!table) {
+                showToast('Load data first', 'error');
+                return;
+            }
+
+            const selected = selectedSkus.size > 0;
+            const rows = (table.getRows(selected ? undefined : 'active') || []).filter(function(row) {
+                const d = row.getData() || {};
+                if (isMacysParentRow(d)) return false;
+                const sku = String(d['(Child) sku'] || d.sku || '').trim();
+                if (!sku) return false;
+                if (selected && !selectedSkus.has(sku)) return false;
+                if ((parseFloat(d['MC L30']) || 0) > 0) return false;
+                if ((parseFloat(d.INV) || 0) <= 0) return false;
+                return (parseFloat(d['A Price']) || 0) > 0;
+            });
+
+            if (!rows.length) {
+                showToast(selected
+                    ? 'No selected 0 Sold SKUs with Amazon Price (INV > 0)'
+                    : 'No visible 0 Sold SKUs with Amazon Price (INV > 0)', 'error');
+                return;
+            }
+
+            const scope = selected ? 'selected' : 'visible';
+            if (!confirm('0 Sold Rule: apply Amazon Price to S PRC for ' + rows.length + ' ' + scope + ' 0 Sold SKU(s)?')) {
+                return;
+            }
+
+            const updates = [];
+            rows.forEach(function(row) {
+                const d = row.getData() || {};
+                const sku = String(d['(Child) sku'] || d.sku || '').trim();
+                const amazonPrice = parseFloat(d['A Price']) || 0;
+                if (!sku || amazonPrice <= 0) return;
+                row.update(macysAmazonToSpricePatch(d, amazonPrice));
+                updates.push({ sku: sku, sprice: amazonPrice });
+            });
+
+            if (updates.length) {
+                saveSpriceUpdates(updates, { skip_push: true });
+            }
+            showToast('0 Sold Rule: Amazon Price → S PRC on ' + updates.length + ' SKU(s)', 'success');
+        }
+
         // Apply Amazon suggested price
         function applySuggestAmazonPrice() {
             if (selectedSkus.size === 0) {
@@ -1166,16 +1239,19 @@
         }
 
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
-        function saveSpriceUpdates(updates) {
+        function saveSpriceUpdates(updates, opts) {
+            opts = opts || {};
+            const data = {
+                updates: updates
+            };
+            if (opts.skip_push) data.skip_push = 1;
             $.ajax({
                 url: '/macys-save-sprice-batch',
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                 },
-                data: {
-                    updates: updates
-                },
+                data: data,
                 success: function(response) {
                     if (response.success) {
                         console.log('SPRICE updates saved successfully:', response.updated, 'records');
@@ -1770,7 +1846,7 @@
             layout: "fitColumns",
             pagination: true,
             paginationSize: 100,
-            paginationSizeSelector: [10, 25, 50, 100, 200],
+            paginationSizeSelector: [25, 50, 100, 200, true],
             paginationCounter: "rows",
             columnCalcs: "both",
             langs: {
@@ -1981,10 +2057,6 @@
                         const channelPrice = parseFloat(rowData['MC Price'] || rowData.price || 0) || 0;
                         const comparePrice = amzPrice > 0 ? amzPrice : channelPrice;
                         const dot = macysStdPrcChangeDotHtml(std, comparePrice);
-                        if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + '</span>';
-                        }
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                             dot + ('$' + std.toFixed(2)) + '</span>';
                     }
@@ -2055,7 +2127,7 @@
                         const linkedSkusAttr = escAttr(JSON.stringify(linkedSkus));
                         const mcPrice = parseFloat(rowData['MC Price']) || 0;
 
-                        let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
+                        let html = '<div style="display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4px; flex-wrap: nowrap;">';
 
                         if (!lmpPrice && totalCompetitors === 0) {
                             html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
@@ -2068,9 +2140,7 @@
 
                         if (totalCompetitors > 0) {
                             html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
-                                style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
-                                <i class="fa fa-eye"></i> View ${totalCompetitors}
-                            </a>`;
+                                style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px; font-weight: 600;" title="View competitors">${totalCompetitors}</a>`;
                         } else if (lmpPrice) {
                             html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
                                 style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
@@ -2285,7 +2355,7 @@
                     hozAlign: "center",
                     headerSort: false,
                     width: 40,
-                    visible: false,
+                    visible: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData['(Child) sku'];
@@ -2651,6 +2721,7 @@
             let totalCogs = 0, totalRoi = 0, roiCount = 0;
             let missingCount = 0, mappingCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
+            let zeroSoldRuleCount = 0;
 
             data.forEach(row => {
                 totalPft += parseFloat(row.Profit) || 0;
@@ -2688,6 +2759,9 @@
 
                 if (mcL30 === 0) {
                     zeroSoldCount++;
+                    if (inv > 0 && amazonPrice > 0) {
+                        zeroSoldRuleCount++;
+                    }
                 } else if (mcL30 > 0) {
                     moreSoldCount++;
                 }
@@ -2730,6 +2804,7 @@
             $('#avg-price-badge').text(`Price: $${Math.round(avgPrice).toLocaleString()}`);
             $('#total-inv-badge').text(`Total INV: ${Math.round(totalInv).toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
+            $('#zero-sold-rule-badge').text(`0 Sold Rule: ${zeroSoldRuleCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount.toLocaleString()}`);
             $('#avg-dil-badge').text(`DIL%: ${Math.round(avgDil * 100)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);

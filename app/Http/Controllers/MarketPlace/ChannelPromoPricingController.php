@@ -778,7 +778,7 @@ class ChannelPromoPricingController extends Controller
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }
 
-    public function gt0SoldPrcRules(Request $request, string $channel): JsonResponse
+    public function gtSoldPrcRules(Request $request, string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
         if (! $this->promo->isSupported($channel)) {
@@ -786,13 +786,14 @@ class ChannelPromoPricingController extends Controller
         }
 
         return $this->loadRules(
-            $channel.'_gt0_sold_prc',
-            $this->defaultGt0SoldPrcRules(),
-            'pct'
+            $channel.'_gt_sold_prc',
+            $this->defaultGtSoldPrcRules(),
+            'pct',
+            ['dir']
         );
     }
 
-    public function saveGt0SoldPrcRules(Request $request, string $channel): JsonResponse
+    public function saveGtSoldPrcRules(Request $request, string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
         if (! $this->promo->isSupported($channel)) {
@@ -805,10 +806,11 @@ class ChannelPromoPricingController extends Controller
         }
 
         $rules = $this->persistRules(
-            $channel.'_gt0_sold_prc',
-            $this->defaultGt0SoldPrcRules(),
+            $channel.'_gt_sold_prc',
+            $this->defaultGtSoldPrcRules(),
             $incoming,
-            'pct'
+            'pct',
+            ['dir']
         );
 
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
@@ -935,20 +937,6 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * >0 Sold Dil color → % added to Std Prc (S PRC = Std × (1 + pct/100)).
-     *
-     * @return list<array{key:string,label:string,pct:float|int}>
-     */
-    private function defaultGt0SoldPrcRules(): array
-    {
-        return [
-            ['key' => 'gt0-sold-red', 'label' => 'Red Dil (<25%)', 'pct' => 5],
-            ['key' => 'gt0-sold-green', 'label' => 'Green Dil (25–50%)', 'pct' => 3],
-            ['key' => 'gt0-sold-pink', 'label' => 'Pink Dil (50%+)', 'pct' => 1],
-        ];
-    }
-
-    /**
      * 0 Sold Dil% slabs (10% steps) → Target GROI% for suggested SPRICE.
      *
      * @return list<array{key:string,label:string,groi:float|int}>
@@ -967,6 +955,20 @@ class ChannelPromoPricingController extends Controller
             ['key' => '80-90', 'label' => '80–90%', 'groi' => 8],
             ['key' => '90-100', 'label' => '90–100%', 'groi' => 5],
             ['key' => 'gt-100', 'label' => '> 100%', 'groi' => 0],
+        ];
+    }
+
+    /**
+     * >0 Sold Dil color → % of Std Prc (increase or decrease).
+     *
+     * @return list<array{key:string,label:string,pct:float|int,dir:string}>
+     */
+    private function defaultGtSoldPrcRules(): array
+    {
+        return [
+            ['key' => 'gt-sold-red', 'label' => 'Red Dil (<25%)', 'pct' => 0, 'dir' => 'increase'],
+            ['key' => 'gt-sold-green', 'label' => 'Green Dil (25–50%)', 'pct' => 0, 'dir' => 'increase'],
+            ['key' => 'gt-sold-pink', 'label' => 'Pink Dil (50%+)', 'pct' => 0, 'dir' => 'increase'],
         ];
     }
 
@@ -994,8 +996,9 @@ class ChannelPromoPricingController extends Controller
 
     /**
      * @param  list<array{key:string,label:string}>  $defaults
+     * @param  list<string>  $extraKeys
      */
-    private function loadRules(string $channelName, array $defaults, string $valueKey): JsonResponse
+    private function loadRules(string $channelName, array $defaults, string $valueKey, array $extraKeys = []): JsonResponse
     {
         $row = ChannelTabulatorColumnSetting::query()
             ->where('channel_name', $channelName)
@@ -1029,11 +1032,13 @@ class ChannelPromoPricingController extends Controller
                 $raw = $byKey[$k]['cpn'] ?? null;
             }
             $val = is_numeric($raw) ? (float) $raw : $def[$valueKey];
-            $rules[] = [
+            $rule = [
                 'key' => $k,
                 'label' => $def['label'],
                 $valueKey => $val,
             ];
+            $this->mergeRuleExtras($rule, $def, $byKey[$k] ?? null, $extraKeys);
+            $rules[] = $rule;
         }
 
         return response()->json([
@@ -1046,9 +1051,10 @@ class ChannelPromoPricingController extends Controller
     /**
      * @param  list<array{key:string,label:string}>  $defaults
      * @param  list<array<string, mixed>>  $incoming
+     * @param  list<string>  $extraKeys
      * @return list<array{key:string,label:string}>
      */
-    private function persistRules(string $channelName, array $defaults, array $incoming, string $valueKey): array
+    private function persistRules(string $channelName, array $defaults, array $incoming, string $valueKey, array $extraKeys = []): array
     {
         $byKey = [];
         foreach ($incoming as $item) {
@@ -1072,11 +1078,13 @@ class ChannelPromoPricingController extends Controller
             if ($val < 0) {
                 $val = 0;
             }
-            $rules[] = [
+            $rule = [
                 'key' => $k,
                 'label' => $def['label'],
                 $valueKey => $val,
             ];
+            $this->mergeRuleExtras($rule, $def, $byKey[$k] ?? null, $extraKeys);
+            $rules[] = $rule;
         }
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
@@ -1085,6 +1093,30 @@ class ChannelPromoPricingController extends Controller
         );
 
         return $rules;
+    }
+
+    /**
+     * @param  array<string, mixed>  $rule
+     * @param  array<string, mixed>  $def
+     * @param  array<string, mixed>|null  $saved
+     * @param  list<string>  $extraKeys
+     */
+    private function mergeRuleExtras(array &$rule, array $def, ?array $saved, array $extraKeys): void
+    {
+        foreach ($extraKeys as $ek) {
+            $raw = is_array($saved) ? ($saved[$ek] ?? null) : null;
+            if ($raw === null) {
+                $raw = $def[$ek] ?? null;
+            }
+            if ($ek === 'dir') {
+                $dir = strtolower(trim((string) ($raw ?? '')));
+                $rule[$ek] = in_array($dir, ['increase', 'decrease'], true)
+                    ? $dir
+                    : (string) ($def[$ek] ?? 'increase');
+                continue;
+            }
+            $rule[$ek] = $raw;
+        }
     }
 
     private function nullablePct(mixed $val): ?float
