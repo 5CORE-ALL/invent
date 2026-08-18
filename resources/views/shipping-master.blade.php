@@ -1154,7 +1154,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="ship_bb" data-col-label="Ship BB" class="th-has-filter shipping-rate-header" data-pm-ship-col="ship_bb">
+                                    <th data-col-key="ship_bb" data-col-label="Ship BB" class="th-has-filter shipping-rate-header" data-pm-ship-col="ship_bb" title="When Type is O-Size, Ship BB = Ship BB + O-Size Charge">
                                         <div class="th-vertical-label">Ship<br>BB</div>
                                         <select id="filterShipBbCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Ship BB column">
                                             <option value="all">All</option>
@@ -1504,7 +1504,7 @@
                         <div class="row mb-1">
                             <div class="col-12">
                                 <small class="text-secondary fw-semibold">Marketplace ship (Product Master)</small>
-                                <div class="text-muted small">Read-only here — change rates only from <strong>Slab Rates</strong> (by weight LB), so a slab stays uniform.</div>
+                                <div class="text-muted small">Most carriers are edited from <strong>Slab Rates</strong> (by weight LB). <strong>Temu ship</strong> and <strong>Temu GOFO</strong> can be edited per SKU here.</div>
                             </div>
                         </div>
                         <div class="row mb-3">
@@ -1518,11 +1518,11 @@
                             </div>
                             <div class="col-md-3">
                                 <label for="editTemuShip" class="form-label fw-bold">Temu ship</label>
-                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editTemuShip" name="temu_ship" placeholder="Temu ship" readonly tabindex="-1" title="Edit via Slab Rates only">
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editTemuShip" name="temu_ship" placeholder="Temu ship" title="Temu ship (per SKU)">
                             </div>
                             <div class="col-md-3">
                                 <label for="editTemuGofo" class="form-label fw-bold">Temu GOFO</label>
-                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editTemuGofo" name="temu_gofo" placeholder="Temu GOFO" readonly tabindex="-1" title="Edit via Slab Rates only">
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editTemuGofo" name="temu_gofo" placeholder="Temu GOFO" title="Temu GOFO (per SKU)">
                             </div>
                         </div>
                         <div class="row mb-3">
@@ -1815,7 +1815,7 @@
                         </div>
                         <div class="text-muted mt-1">
                             Slabs use <strong>Itm wt GW Decl</strong> (exact value; falls back to ACT when Decl is empty).
-                            Carriers: Ship, Ship BB, Temu ship, Temu GOFO, GOFO, Fedex, UPS, USPS, UNI.
+                            Carriers: Ship, Ship BB, GOFO, Fedex, UPS, USPS, UNI.
                         </div>
                     </div>
 
@@ -1852,7 +1852,7 @@
                                 </tr>
                             </thead>
                             <tbody id="slabRatesBody">
-                                <tr><td colspan="12" class="text-center text-muted py-3">Loading slabs&hellip;</td></tr>
+                                <tr><td colspan="10" class="text-center text-muted py-3">Loading slabs&hellip;</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1900,14 +1900,14 @@
             const SLAB_RATE_CARRIERS = [
                 { key: 'ship',       label: 'Ship' },
                 { key: 'ship_bb',    label: 'Ship BB' },
-                { key: 'temu_ship',  label: 'Temu ship' },
-                { key: 'temu_gofo',  label: 'Temu GOFO' },
                 { key: 'gofo',       label: 'GOFO' },
                 { key: 'fedex',      label: 'Fedex' },
                 { key: 'ups',        label: 'UPS' },
                 { key: 'usps',       label: 'USPS' },
                 { key: 'uni',        label: 'UNI' }
             ];
+            // Per-SKU carriers: shown/saved from Product Master, not overwritten by slab auto-sync.
+            const PER_SKU_CARRIERS = new Set(['temu_ship', 'temu_gofo']);
             // { carrierKey: { slabKey: rate } } — rebuilt after every data load
             let slabRateIndex = {};
             let slabAutoSyncRunning = false;
@@ -2036,6 +2036,11 @@
                 return LABEL_TYPE_OPTIONS.includes(v) ? v : 'STD';
             }
 
+            function isOSizeLabelType(raw) {
+                const compact = String(raw == null ? '' : raw).trim().toLowerCase().replace(/[\s_-]+/g, '');
+                return compact === 'osize' || normalizeLabelType(raw) === 'O-Size';
+            }
+
             /** Handling Charge: optional free text, max 3 characters. */
             function normalizeHandlingCharge(raw) {
                 const v = String(raw == null ? '' : raw).trim();
@@ -2098,6 +2103,34 @@
                 return `Total Ship ${formatNumber(total, 2)} = Ship ${formatNumber(ship, 2)} + Handling ${formatNumber(handling, 2)} + O-Size ${formatNumber(oSize, 2)} + PR ${formatNumber(pr, 2)}`;
             }
 
+            /**
+             * Ship BB shown in the Ship BB column:
+             * when Type is O-Size, Ship BB + O-Size Charge; otherwise the slab Ship BB.
+             */
+            function calcShipBb(item, isParentRow) {
+                if (!item) return null;
+                const base = getOuterCarrierDisplayRate(item, 'ship_bb', !!isParentRow);
+                const typeRaw = item.label_type ?? (item.Values && item.Values.label_type);
+                if (!isOSizeLabelType(typeRaw)) return base;
+                const oSize = parseChargeAmount(
+                    item.o_size_charge ?? (item.Values && item.Values.o_size_charge)
+                );
+                const baseBlank = base === null || base === undefined || base === '';
+                if (baseBlank && oSize === 0) return base;
+                return parseChargeAmount(base) + oSize;
+            }
+
+            function shipBbTooltip(item, isParentRow) {
+                const base = parseChargeAmount(getOuterCarrierDisplayRate(item, 'ship_bb', !!isParentRow));
+                const typeRaw = item.label_type ?? (item.Values && item.Values.label_type);
+                if (!isOSizeLabelType(typeRaw)) return '';
+                const oSize = parseChargeAmount(
+                    item.o_size_charge ?? (item.Values && item.Values.o_size_charge)
+                );
+                const total = base + oSize;
+                return `Ship BB ${formatNumber(total, 2)} = Ship BB ${formatNumber(base, 2)} + O-Size ${formatNumber(oSize, 2)}`;
+            }
+
             function applyLabelTypeColor(dropdown, labelType) {
                 if (!dropdown) return;
                 const type = normalizeLabelType(labelType);
@@ -2113,7 +2146,7 @@
                 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_qty',
                 'ship', 'ship_bb', 'temu_ship', 'temu_gofo',
                 'gofo', 'fedex', 'ups', 'usps', 'uni',
-                'fba_ship', 'fba_manual_ship', 'fba_sku', 'label_type',
+                'fba_ship', 'fba_manual_ship', 'fba_sku', 'label_type', 'o_size_charge',
                 'image_path'
             ];
 
@@ -2618,8 +2651,16 @@
                     row.appendChild(shipPmCell);
 
                     const shipBbPmCell = document.createElement('td');
-                    setShippingNumericCell(shipBbPmCell, getOuterCarrierDisplayRate(item, 'ship_bb', isParentRow), isParentRow);
+                    setShippingNumericCell(shipBbPmCell, calcShipBb(shipSource, isParentRow), isParentRow);
+                    shipBbPmCell.classList.add('shipping-ship-bb-col');
+                    shipBbPmCell.setAttribute('data-sku', sourceItem.SKU || item.SKU || '');
                     annotateOuterCarrierCell(shipBbPmCell, item, 'ship_bb', isParentRow);
+                    if (!isParentRow) {
+                        const bbTip = shipBbTooltip(shipSource, false);
+                        if (bbTip) {
+                            shipBbPmCell.title = shipBbPmCell.title ? `${bbTip} — ${shipBbPmCell.title}` : bbTip;
+                        }
+                    }
                     row.appendChild(shipBbPmCell);
 
                     const carrierShipHighlight = [];
@@ -2988,8 +3029,6 @@
                 fba_sku: 'FBA SKU lives in the FBA calculation table. Update it from the FBA module.',
                 ship:       'Ship rates are edited only from Slab Rates (by weight LB), not per SKU.',
                 ship_bb:    'Ship BB is edited only from Slab Rates (by weight LB), not per SKU.',
-                temu_ship:  'Temu ship is edited only from Slab Rates (by weight LB), not per SKU.',
-                temu_gofo:  'Temu GOFO is edited only from Slab Rates (by weight LB), not per SKU.',
                 gofo:       'GOFO is edited only from Slab Rates (by weight LB), not per SKU.',
                 fedex:      'Fedex is edited only from Slab Rates (by weight LB), not per SKU.',
                 ups:        'UPS is edited only from Slab Rates (by weight LB), not per SKU.',
@@ -3785,6 +3824,8 @@
                 let raw;
                 if (fieldName === 'ship' && typeof calcTotalShip === 'function') {
                     raw = calcTotalShip(item, isP);
+                } else if (fieldName === 'ship_bb' && typeof calcShipBb === 'function') {
+                    raw = calcShipBb(item, isP);
                 } else {
                     raw = (typeof getOuterCarrierDisplayRate === 'function')
                         ? getOuterCarrierDisplayRate(item, fieldName, isP)
@@ -4343,6 +4384,9 @@
                 if (key === 'ship') {
                     return calcTotalShip(item, false);
                 }
+                if (key === 'ship_bb') {
+                    return calcShipBb(item, false);
+                }
                 if (key === 'shopify_inv') {
                     return item.shopify_inv;
                 }
@@ -4595,7 +4639,7 @@
                             computed: "total_ship"
                         },
                         "Ship BB": {
-                            key: "ship_bb"
+                            computed: "total_ship_bb"
                         },
                         "Temu ship": {
                             key: "temu_ship"
@@ -4736,6 +4780,10 @@
                                         }
                                         if (colDef.computed === 'total_ship') {
                                             row.push(calcTotalShip(item, false));
+                                            return;
+                                        }
+                                        if (colDef.computed === 'total_ship_bb') {
+                                            row.push(calcShipBb(item, false));
                                             return;
                                         }
                                         const key = colDef.key;
@@ -5345,6 +5393,8 @@
                 { id: 'editCtnWeightKg', key: 'ctn_weight_kg', type: 'num' },
                 { id: 'editFbaShip', key: 'fba_ship_calculation', type: 'num' },
                 { id: 'editFbaManualShip', key: 'fba_manual_ship', type: 'num' },
+                { id: 'editTemuShip', key: 'temu_ship', type: 'num' },
+                { id: 'editTemuGofo', key: 'temu_gofo', type: 'num' },
             ];
 
             function snapshotBulkEditFormValues() {
@@ -5610,7 +5660,17 @@
                     baseFormData.o_size_charge = oSizeChargeVal === '' ? null : oSizeChargeVal;
                     const prChargeVal = normalizePrCharge(document.getElementById('editPrCharge')?.value);
                     baseFormData.pr_charge = prChargeVal === '' ? null : prChargeVal;
-                    // Marketplace ship fields are read-only in Edit — only Slab Rates may change them.
+                    // Temu ship / Temu GOFO are editable per SKU; other marketplace ship fields stay slab-only.
+                    addNumericIfPresent('editTemuShip', 'temu_ship');
+                    addNumericIfPresent('editTemuGofo', 'temu_gofo');
+                    const temuShipEl = document.getElementById('editTemuShip');
+                    if (temuShipEl && String(temuShipEl.value ?? '').trim() === '') {
+                        baseFormData.temu_ship = null;
+                    }
+                    const temuGofoEl = document.getElementById('editTemuGofo');
+                    if (temuGofoEl && String(temuGofoEl.value ?? '').trim() === '') {
+                        baseFormData.temu_gofo = null;
+                    }
 
                     const fbaShipStr = document.getElementById('editFbaShip').value.trim();
                     const fbaManualStr = document.getElementById('editFbaManualShip').value.trim();
@@ -5744,6 +5804,8 @@
                             o_size_charge: baseFormData.o_size_charge,
                             pr_charge: baseFormData.pr_charge
                         };
+                        if (baseFormData.temu_ship !== undefined) comboPayload.temu_ship = baseFormData.temu_ship;
+                        if (baseFormData.temu_gofo !== undefined) comboPayload.temu_gofo = baseFormData.temu_gofo;
                         if (baseFormData.label_qty !== undefined) comboPayload.label_qty = baseFormData.label_qty;
                         if (baseFormData.fba_ship_calculation !== undefined) {
                             comboPayload.fba_ship_calculation = baseFormData.fba_ship_calculation;
@@ -6089,6 +6151,7 @@
                                 product.Values.label_type = labelType;
                             }
                         }
+                        refreshShipTotalCellsForSku(sku);
                         showToast('success', 'Label Type updated');
                     } catch (err) {
                         const restored = normalizeLabelType(prev);
@@ -6113,6 +6176,19 @@
                     td.textContent = formatNumber(total, 2);
                     td.title = tip;
                     td.classList.toggle('shipping-rate-alert', !Number.isFinite(total) || total === 0);
+                });
+                const shipBb = calcShipBb(product, false);
+                const bbTip = shipBbTooltip(product, false);
+                document.querySelectorAll(`.shipping-ship-bb-col[data-sku="${CSS.escape(String(sku))}"]`).forEach(td => {
+                    const n = parseFloat(shipBb);
+                    if (shipBb === null || shipBb === undefined || shipBb === '' || !Number.isFinite(n)) {
+                        td.textContent = '-';
+                        td.classList.add('shipping-rate-alert');
+                    } else {
+                        td.textContent = formatNumber(n, 2);
+                        td.classList.toggle('shipping-rate-alert', n === 0);
+                    }
+                    if (bbTip) td.title = bbTip;
                 });
             }
 
@@ -6286,6 +6362,7 @@
             /** Rate shown on the outer table = Slab modal rate for that weight band. */
             function getOuterCarrierDisplayRate(item, carrierKey, isParentRow) {
                 if (!item || isParentRow) return item ? item[carrierKey] : null;
+                if (PER_SKU_CARRIERS.has(carrierKey)) return item[carrierKey];
                 const slabKey = resolveItemSlabKey(item);
                 if (slabKey && slabRateIndex[carrierKey] && slabRateIndex[carrierKey][slabKey] != null) {
                     return slabRateIndex[carrierKey][slabKey];
@@ -6296,6 +6373,7 @@
             /** Tooltip when SKU-stored value differs from the slab rate shown. */
             function annotateOuterCarrierCell(td, item, carrierKey, isParentRow) {
                 if (!td || !item || isParentRow) return;
+                if (PER_SKU_CARRIERS.has(carrierKey)) return;
                 const slabKey = resolveItemSlabKey(item);
                 const slabRate = (slabKey && slabRateIndex[carrierKey])
                     ? slabRateIndex[carrierKey][slabKey]
@@ -6331,6 +6409,7 @@
 
                     const fields = {};
                     SLAB_RATE_CARRIERS.forEach(c => {
+                        if (PER_SKU_CARRIERS.has(c.key)) return;
                         const slabRate = slabRateIndex[c.key] ? slabRateIndex[c.key][slabKey] : null;
                         if (slabRate == null || !Number.isFinite(slabRate)) return;
                         const rate = normalizeSlabRate(slabRate);

@@ -54,6 +54,7 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Carbon\Carbon;
 use App\Models\AmazonChannelSummary;
+use App\Support\ProductMasterTemuShip;
 use App\Support\TemuGoodsIdHelper;
 use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
@@ -1476,9 +1477,7 @@ class TemuController extends Controller
                     if ($lp === 0 && isset($pm->lp)) {
                         $lp = floatval($pm->lp);
                     }
-                    $temuShip = isset($values['temu_ship'])
-                        ? floatval($values['temu_ship'])
-                        : (isset($pm->temu_ship) ? floatval($pm->temu_ship) : 0);
+                    $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $pm);
                 }
                 $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
                 $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
@@ -1588,9 +1587,7 @@ class TemuController extends Controller
                     if ($lp === 0 && isset($pm->lp)) {
                         $lp = floatval($pm->lp);
                     }
-                    $temuShip = isset($values['temu_ship'])
-                        ? floatval($values['temu_ship'])
-                        : (isset($pm->temu_ship) ? floatval($pm->temu_ship) : 0);
+                    $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $pm);
                 }
                 $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
                 $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
@@ -2453,7 +2450,7 @@ class TemuController extends Controller
                     $lp = floatval($productMaster->lp);
                 }
 
-                $temuShip = floatval($values['temu_ship'] ?? 0);
+                $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $productMaster);
             }
 
             // SGPRFT on Full Sprice; SROI on S Recovery (Sprice × 0.88)
@@ -3171,11 +3168,7 @@ class TemuController extends Controller
                         if ($orderLp === 0.0 && isset($pm->lp)) {
                             $orderLp = (float) $pm->lp;
                         }
-                        if (isset($values['temu_ship'])) {
-                            $orderTemuShip = (float) $values['temu_ship'];
-                        } elseif (isset($pm->temu_ship)) {
-                            $orderTemuShip = (float) $pm->temu_ship;
-                        }
+                        $orderTemuShip = ProductMasterTemuShip::forPricing($values, $pm);
                     }
                     // Same as /temu-decrease: GPFT $ on Full Price; GROI $ on Temu R Price
                     $rPrice = $base <= 26.99 ? ($base + 2.99) : $base;
@@ -3532,8 +3525,8 @@ class TemuController extends Controller
                         $lp = floatval($productMaster->LP);
                     }
                     
-                    // Get temu_ship - only from 'temu_ship' key, default to 0 if not exists
-                    $temuShip = floatval($values['temu_ship'] ?? 0);
+                    // Temu ship: use stored per-SKU value if it already exists; otherwise regular ship.
+                    $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $productMaster);
                 }
                 
                 // Get image_path (like eBay does)
@@ -4611,8 +4604,7 @@ class TemuController extends Controller
                     $lp = floatval($productMaster->lp);
                 }
                 
-                // Get temu_ship
-                $temuShip = floatval($values['temu_ship'] ?? 0);
+                $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $productMaster);
             }
 
             // SGPRFT on Full Sprice; SROI on S Recovery (Sprice × 0.88)
