@@ -2415,7 +2415,7 @@
                                     <i class="fab fa-google"></i> C Link Refresh
                                 </button>
                                 <span class="cd-sheet-toolbar-divider" aria-hidden="true"></span>
-                                <button type="button" class="btn btn-sm btn-info text-white" id="comparison-cd-autopopulate-suppliers-btn" title="Add suppliers into blank columns from column D; update C-link preloaded names when they match supplier.list for this category">
+                                <button type="button" class="btn btn-sm btn-info text-white" id="comparison-cd-autopopulate-suppliers-btn" title="Refresh suppliers from supplier.list for this category. Already-listed names are updated, not duplicated.">
                                     <i class="mdi mdi-account-multiple-plus"></i> Suppliers
                                     <span class="badge rounded-pill bg-light text-dark ms-1" id="comparison-cd-supplier-count">0</span>
                                 </button>
@@ -5059,8 +5059,8 @@ document.addEventListener('DOMContentLoaded', function () {
         countEl.classList.toggle('text-dark', count === 0);
         if (btn) {
             btn.title = count > 0
-                ? `${count} supplier(s) in this sheet — click to add/update from supplier.list for this category`
-                : 'Add suppliers into blank columns from column D; update C-link preloaded names when they match supplier.list for this category';
+                ? `${count} supplier(s) in this sheet — click to refresh from supplier.list (no duplicates)`
+                : 'Refresh suppliers from supplier.list for this category. Already-listed names are updated, not duplicated.';
         }
     }
 
@@ -8324,8 +8324,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    function supplierPlaceKey(item) {
+        if (item?.id != null && String(item.id).trim() !== '') {
+            return 'id:' + String(item.id);
+        }
+        return 'name:' + normalizeSupplierNameKey(item?.name);
+    }
+
     function applySuppliersAddOnly(suppliers, supplierRowIndex, supplierLinkRowIndex, companyRowIndex) {
-        const placedIds = new Set();
+        const placedKeys = new Set();
         let updated = 0;
         let added = 0;
         const specCol = detectSpecColumnIndex(currentSheetCells);
@@ -8336,26 +8343,27 @@ document.addEventListener('DOMContentLoaded', function () {
             firstSupplierCol
         );
 
-        Object.keys(clinkPreloadedSupplierByCol).forEach(key => {
-            const col = parseInt(key, 10);
-            if (Number.isNaN(col) || col < firstSupplierCol || isProtectedSheetColumn(col, currentSheetCells)) {
-                return;
-            }
-
-            const preloadedName = clinkPreloadedSupplierByCol[col];
-            const existingName = String((currentSheetCells[supplierRowIndex] || [])[col] || '').trim();
-            const supplier = suppliers.find(item => {
-                if (placedIds.has(item.id)) {
+        const findUnplaced = function (existingName, preloadedName) {
+            return suppliers.find(item => {
+                if (placedKeys.has(supplierPlaceKey(item))) {
                     return false;
                 }
-                return supplierNamesMatch(item.name, preloadedName)
-                    || (existingName && supplierNamesMatch(item.name, existingName));
+                return (existingName && supplierNamesMatch(item.name, existingName))
+                    || (preloadedName && supplierNamesMatch(item.name, preloadedName));
             });
+        };
 
-            if (!supplier) {
-                return;
+        // Refresh columns that already list this supplier (or a matching C-link preload).
+        for (let col = firstSupplierCol; col < maxCol; col++) {
+            if (isProtectedSheetColumn(col, currentSheetCells)) {
+                continue;
             }
-
+            const existingName = String((currentSheetCells[supplierRowIndex] || [])[col] || '').trim();
+            const preloadedName = clinkPreloadedSupplierByCol[col] || '';
+            const supplier = findUnplaced(existingName, preloadedName);
+            if (!supplier) {
+                continue;
+            }
             writeSupplierToColumn(
                 currentSheetCells,
                 col,
@@ -8364,13 +8372,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 supplierLinkRowIndex,
                 companyRowIndex
             );
-            placedIds.add(supplier.id);
+            placedKeys.add(supplierPlaceKey(supplier));
             updated++;
-        });
+        }
 
+        // Only add suppliers that are not already on the sheet.
         let col = firstSupplierCol;
-        while (placedIds.size < suppliers.length) {
-            const supplier = suppliers.find(item => !placedIds.has(item.id));
+        while (placedKeys.size < suppliers.length) {
+            const supplier = suppliers.find(item => !placedKeys.has(supplierPlaceKey(item)));
             if (!supplier) {
                 break;
             }
@@ -8402,12 +8411,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 supplierLinkRowIndex,
                 companyRowIndex
             );
-            placedIds.add(supplier.id);
+            placedKeys.add(supplierPlaceKey(supplier));
             added++;
             col++;
         }
 
-        return { added, updated, placed: placedIds.size, total: suppliers.length };
+        return { added, updated, placed: placedKeys.size, total: suppliers.length };
     }
 
     function ensureSupplierColumnCount(cells, firstSupplierCol, neededCount) {
@@ -10506,9 +10515,9 @@ document.addEventListener('DOMContentLoaded', function () {
             syncCommRowOnSheet();
             renderSheetEditor(currentSheetCells);
             const skipped = result.total - result.placed;
-            let statusMsg = `Added ${result.added} supplier(s) in blank columns`;
-            if (result.updated) {
-                statusMsg += ` and updated ${result.updated} C-link match(es)`;
+            let statusMsg = `Refreshed ${result.updated} supplier(s)`;
+            if (result.added) {
+                statusMsg += ` and added ${result.added} new`;
             }
             statusMsg += ` for "${category}".`;
             if (skipped > 0) {
