@@ -1101,5 +1101,5 @@
             publishUrl: '/listing-common/publish'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
 @endsection

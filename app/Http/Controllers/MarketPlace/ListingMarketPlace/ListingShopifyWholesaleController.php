@@ -16,6 +16,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingShopifyWholesaleController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function getNrReqCount()
     {
         return ChannelListingRegistry::nrReqCountArray('shopifywholesale');

@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Cache;
 
 class ListingOfferupController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingOfferup(Request $request)
     {
         $mode = $request->query('mode');
@@ -40,6 +42,10 @@ class ListingOfferupController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',

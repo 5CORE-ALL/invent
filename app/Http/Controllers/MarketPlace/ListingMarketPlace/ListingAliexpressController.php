@@ -14,6 +14,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingAliexpressController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingAliexpress(Request $request)
     {
         $mode = $request->query('mode');
@@ -93,6 +95,10 @@ class ListingAliexpressController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',

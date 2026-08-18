@@ -17,6 +17,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingSynceeController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function listingSyncee(Request $request)
     {
         $mode = $request->query('mode');
@@ -42,6 +44,10 @@ class ListingSynceeController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',

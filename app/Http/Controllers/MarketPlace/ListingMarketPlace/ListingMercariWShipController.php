@@ -17,6 +17,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingMercariWShipController extends Controller
 {
+    use HandlesListingPublishActions;
+
     public function getNrReqCount()
     {
         return ChannelListingRegistry::nrReqCountArray('mercariwship');

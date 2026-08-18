@@ -20,6 +20,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ListingWayfairController extends Controller
 {
+    use HandlesListingPublishActions;
+
 
     public function updatePricing(Request $request)
     {
@@ -215,6 +217,10 @@ class ListingWayfairController extends Controller
 
     public function saveStatus(Request $request)
     {
+        if ($response = $this->listingPublishResponse($request)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'sku' => 'required|string',
             'rl_nrl' => 'nullable|string',
