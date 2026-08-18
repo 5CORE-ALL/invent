@@ -141,7 +141,7 @@ class Temu2ListingPublishService
 
         $gallerySources = array_values(array_unique($gallerySources));
         if ($gallerySources === []) {
-            return ['success' => false, 'message' => 'No images found on product master (main_image / image1–image7) or temu2_metrics.'];
+            return ['success' => false, 'message' => 'No images found on product master, Shopify, or temu2_metrics.'];
         }
 
         $upload = $this->uploadImages($gallerySources);
@@ -749,12 +749,41 @@ class Temu2ListingPublishService
     {
         $urls = [];
         $seen = [];
-        $cols = ['main_image', 'image1', 'image2', 'image3', 'image4', 'image5', 'image6', 'image7'];
-        foreach ($cols as $col) {
-            $url = $this->toAbsoluteImageUrl((string) ($product->{$col} ?? ''));
-            if ($url !== '' && ! isset($seen[$url])) {
-                $urls[] = $url;
-                $seen[$url] = true;
+        $push = function (string $raw) use (&$urls, &$seen): void {
+            $url = $this->toAbsoluteImageUrl($raw);
+            if ($url === '' || isset($seen[$url])) {
+                return;
+            }
+            $urls[] = $url;
+            $seen[$url] = true;
+        };
+
+        $this->pushProductMasterImages($product, $push);
+
+        $shopify = $this->shopifyRow($sku);
+        if ($shopify) {
+            $push((string) ($shopify->image_src ?? ''));
+        }
+
+        if ($urls === []) {
+            $parentKey = $this->groupKeyForProduct($product);
+            if ($parentKey !== '' && strcasecmp($parentKey, trim($sku)) !== 0) {
+                $parentProduct = ProductMaster::query()
+                    ->whereNull('deleted_at')
+                    ->where('parent', $parentKey)
+                    ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['PARENT%'])
+                    ->first()
+                    ?: ProductMaster::query()
+                        ->whereNull('deleted_at')
+                        ->where('sku', $parentKey)
+                        ->first();
+                if ($parentProduct) {
+                    $this->pushProductMasterImages($parentProduct, $push);
+                    $parentShopify = $this->shopifyRow((string) $parentProduct->sku);
+                    if ($parentShopify) {
+                        $push((string) ($parentShopify->image_src ?? ''));
+                    }
+                }
             }
         }
 
@@ -768,21 +797,45 @@ class Temu2ListingPublishService
         }
 
         foreach ($this->decodeImageList($metric->image_master_json ?? null) as $url) {
-            $url = $this->toAbsoluteImageUrl($url);
-            if ($url !== '' && ! isset($seen[$url])) {
-                $urls[] = $url;
-                $seen[$url] = true;
-            }
+            $push($url);
         }
         foreach ($this->decodeImageList($metric->image_urls ?? null) as $url) {
-            $url = $this->toAbsoluteImageUrl($url);
-            if ($url !== '' && ! isset($seen[$url])) {
-                $urls[] = $url;
-                $seen[$url] = true;
-            }
+            $push($url);
         }
 
         return $urls;
+    }
+
+    /**
+     * @param  callable(string): void  $push
+     */
+    private function pushProductMasterImages(ProductMaster $product, callable $push): void
+    {
+        $push((string) ($product->main_image ?? ''));
+        $push((string) ($product->main_image_brand ?? ''));
+        for ($i = 1; $i <= 19; $i++) {
+            $col = 'image'.$i;
+            $push((string) ($product->{$col} ?? ''));
+        }
+
+        $values = is_array($product->Values) ? $product->Values : [];
+        foreach (['image_path', 'image', 'Image', 'main_image', 'Image Path', 'photo'] as $key) {
+            $raw = $values[$key] ?? '';
+            if (is_array($raw)) {
+                foreach ($raw as $item) {
+                    $push((string) (is_array($item) ? ($item['url'] ?? $item['src'] ?? '') : $item));
+                }
+            } else {
+                $push((string) $raw);
+            }
+        }
+
+        $v2 = $product->description_v2_images ?? null;
+        if (is_array($v2)) {
+            foreach ($v2 as $item) {
+                $push((string) (is_array($item) ? ($item['url'] ?? $item['src'] ?? '') : $item));
+            }
+        }
     }
 
     /**
