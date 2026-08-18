@@ -866,6 +866,12 @@ class Ebay1SyncController extends Controller
 
             if ($batch === []) {
                 Cache::forget($cacheKey);
+                try {
+                    app(Ebay1LiveListingsService::class)->clearCache();
+                    Cache::forget(\App\Services\MarketplaceManager\MarketplaceListingQtyMatchService::CACHE_PREFIX.'ebay1');
+                } catch (\Throwable $e) {
+                    // ignore
+                }
 
                 return response()->json([
                     'success' => true,
@@ -879,11 +885,17 @@ class Ebay1SyncController extends Controller
                 ]);
             }
 
-            $result = app(Ebay1InventorySyncService::class)->syncSkusFromShopify($batch);
+            $result = app(Ebay1InventorySyncService::class)->syncSkusFromShopify($batch, null, true);
             $nextOffset = $offset + count($batch);
             $done = $nextOffset >= $total;
             if ($done) {
                 Cache::forget($cacheKey);
+                try {
+                    app(Ebay1LiveListingsService::class)->clearCache();
+                    Cache::forget(\App\Services\MarketplaceManager\MarketplaceListingQtyMatchService::CACHE_PREFIX.'ebay1');
+                } catch (\Throwable $e) {
+                    // ignore
+                }
             }
 
             return response()->json([
