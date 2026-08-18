@@ -438,7 +438,7 @@
             max-width: 100%;
         }
 
-        @include('partials.channel-pef-promo-std', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2'])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2'])
     </style>
 @endsection
 
@@ -543,22 +543,8 @@
                         <option value="blank">Blank SPRICE only</option>
                     </select>
 
-                    {{-- Push Std Prc progress only — no Dil vs PRMT / CVR vs CPN --}}
-                    <div id="ch-promo-push-prc-progress" aria-live="polite" title="Push progress">
-                        <div class="ch-promo-push-prc-progress-head">
-                            <i class="fas fa-spinner fa-spin" id="ch-promo-push-prc-progress-spin"></i>
-                            <span id="ch-promo-push-prc-progress-title">Pushing</span>
-                            <span id="ch-promo-push-prc-progress-pct">0%</span>
-                        </div>
-                        <div class="ch-promo-push-prc-progress-meta">
-                            <span id="ch-promo-push-prc-progress-msg">Ready</span>
-                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" id="ch-promo-push-prc-cancel-btn"
-                                style="display:none;font-size:11px;line-height:1.2;" title="Cancel remaining Push Std">
-                                Cancel
-                            </button>
-                        </div>
-                        <div class="ch-promo-push-prc-bar"><span id="ch-promo-push-prc-progress-bar"></span></div>
-                    </div>
+                    {{-- Dil vs PRMT / CVR vs CPN — ebay2_* tables, not shared with eBay1 --}}
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2'])
 
                     {{-- Price (eBay Price) min–max range filter --}}
                     <div class="d-inline-flex align-items-center gap-1 pricing-filter-item"
@@ -1132,6 +1118,7 @@
         </div>
     </div>
 
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2'])
 
 @endsection
 
@@ -1141,7 +1128,7 @@
         /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
         const TABULATOR_COLUMN_CHANNEL = 'ebay2_tabulator';
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
-        @include('partials.channel-pef-promo-std', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
         /** L30 units sold from ebay2_orders (period='l30'). Same value rendered into the
          *  S Qty badge and the eBay 2 row's Qty cell on /all-marketplace-master. Used by
          *  the CVR formula so the page CVR is computed against orders-API ground truth
@@ -1552,12 +1539,20 @@
                 '</svg>';
         }
         // Toast notification function
-        function showToast(message, type = 'info') {
+        function showToast(a, b) {
+            let type, message;
+            if (['success', 'error', 'info', 'warning'].indexOf(String(a)) !== -1 && typeof b === 'string') {
+                type = a;
+                message = b;
+            } else {
+                message = a;
+                type = b || 'info';
+            }
             const toastContainer = document.querySelector('.toast-container');
             if (!toastContainer) return;
             
             const toast = document.createElement('div');
-            toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} border-0`;
+            toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'info'} border-0`;
             toast.setAttribute('role', 'alert');
             toast.setAttribute('aria-live', 'assertive');
             toast.setAttribute('aria-atomic', 'true');
@@ -4258,36 +4253,31 @@
                             const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
                             const linkedSkusAttr = escapeHtmlAttr(JSON.stringify(linkedSkus));
                             const skuAttr = escapeHtmlAttr(sku || '');
+                            const countHtml = totalCompetitors > 0
+                                ? ` <span style="color:#007bff;font-weight:500;font-size:12px;">(${totalCompetitors})</span>`
+                                : '';
 
-                            if (!lmpPrice && totalCompetitors === 0) {
-                                return `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
-                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px;">
-                                    <i class="fa fa-eye"></i> View
-                                </a>`;
-                            }
-
-                            let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
-                            
-                            // Show lowest price OUTSIDE modal
+                            // Compact like eBay 1: $34.50 (9) — click opens competitors
                             if (lmpPrice) {
-                                const priceFormatted = '$' + parseFloat(lmpPrice).toFixed(2);
                                 const priceColor = (lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
-                                html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">${priceFormatted}</span>`;
-                            }
-                            
-                            // Show link to open modal with all competitors (incl. Sku Link LMP group)
-                            if (totalCompetitors > 0) {
-                                html += `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
-                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
-                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
+                                return `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
+                                    style="color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap;"
+                                    title="Open LMP competitors">
+                                    <span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">$${parseFloat(lmpPrice).toFixed(2)}</span>${countHtml}
                                 </a>`;
                             }
-                            
-                            html += '</div>';
-                            return html;
+
+                            if (totalCompetitors > 0) {
+                                return `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
+                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px;"
+                                    title="Open LMP competitors">(${totalCompetitors})</a>`;
+                            }
+
+                            return `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
+                                style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px;"
+                                title="Add LMP competitors">—</a>`;
                         },
-                        width: 70
-                    
+                        width: 78
                     },
                     {
                         title: "Sku Link LMP",
@@ -4325,6 +4315,8 @@
                             }
                         },
                     },
+                    // PRMT % / CPN % — ebay2_dil_vs_prmt / ebay2_cvr_vs_cpn (independent of eBay1)
+                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
                         title: "S PRC",
                         field: "SPRICE",
@@ -4334,16 +4326,23 @@
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
-                            
-                            if (!value) return '';
-
-                            const formattedValue = `$${parseFloat(value).toFixed(2)}`;
-                            
-                            // If using default eBay Price (not custom), show in blue
-                            if (hasCustomSprice === false) {
-                                return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
+                            const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
+                            if (value == null || value === '' || isNaN(spriceNum) || spriceNum <= 0) {
+                                return '';
                             }
-                            
+
+                            const formattedValue = '$' + spriceNum.toFixed(2);
+                            const lmp = parseFloat(rowData.lmp_price) || 0;
+                            if (lmp > 0 && spriceNum > lmp) {
+                                return '<span style="color:#dc3545;font-weight:600;white-space:nowrap;" title="S PRC $'
+                                    + spriceNum.toFixed(2) + ' &gt; LMP $' + lmp.toFixed(2) + '">'
+                                    + formattedValue
+                                    + ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;"></i></span>';
+                            }
+                            if (hasCustomSprice === false) {
+                                return '<span style="color: #0d6efd; font-weight: 500;">' + formattedValue + '</span>';
+                            }
+
                             return formattedValue;
                         },
                         width: 80
@@ -5305,8 +5304,8 @@
                 }
 
                 if (
-                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|push_std_prc)$/i.test(f) ||
-                    /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
+                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|push_std_prc|prmt_pct|push_prmt|cpn_pct|push_cpn|t_promo|dsc|appr|push_prc|sprc_cpn)$/i.test(f) ||
+                    /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|prmt|cpn|t\s*promo|dsc|appr|push\s*prc|push\s*std\s*prc|push\s*prmt)\b/i.test(tl) ||
                     /^(_accept|\+)$/i.test(t)
                 ) {
                     return 'pricing';

@@ -825,7 +825,7 @@ class ChannelPromoPricingController extends Controller
 
         return $this->loadRules(
             $channel.'_cvr_vs_cpn',
-            $this->defaultCvrCpnRules(),
+            $this->defaultCvrCpnRules($channel),
             'cpn'
         );
     }
@@ -844,7 +844,7 @@ class ChannelPromoPricingController extends Controller
 
         $rules = $this->persistRules(
             $channel.'_cvr_vs_cpn',
-            $this->defaultCvrCpnRules(),
+            $this->defaultCvrCpnRules($channel),
             $incoming,
             'cpn'
         );
@@ -937,7 +937,8 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * 0 Sold Dil% slabs (10% steps) → Target GROI% for suggested SPRICE.
+     * 0 Sold Dil% slabs (10% steps) → Target ROI% / GROI% for suggested SPRICE.
+     * eBay 2 uses this as Target SNROI%; Reverb uses Target GROI%.
      *
      * @return list<array{key:string,label:string,groi:float|int}>
      */
@@ -974,12 +975,13 @@ class ChannelPromoPricingController extends Controller
 
     /**
      * Same slabs as PEF_CVR_CPN_DEFAULTS / pefDefaultCvrCpnRules.
+     * eBay 2 / 3 omit the 0% slab (Apply is only for SKUs with eBay sale > 0).
      *
      * @return list<array{key:string,label:string,cpn:float|int}>
      */
-    private function defaultCvrCpnRules(): array
+    private function defaultCvrCpnRules(string $channel = ''): array
     {
-        return [
+        $rules = [
             ['key' => 'eq-0', 'label' => '0%', 'cpn' => 10],
             ['key' => '0.01-1', 'label' => '0.01–1%', 'cpn' => 9],
             ['key' => '1-1.5', 'label' => '1–1.5%', 'cpn' => 8],
@@ -992,6 +994,11 @@ class ChannelPromoPricingController extends Controller
             ['key' => '6.5-7', 'label' => '6.5–7%', 'cpn' => 1],
             ['key' => 'gt-7', 'label' => '> 7%', 'cpn' => 0],
         ];
+        if (in_array($channel, ['ebay2', 'ebay2op', 'ebay3'], true)) {
+            return array_values(array_filter($rules, static fn (array $r) => ($r['key'] ?? '') !== 'eq-0'));
+        }
+
+        return $rules;
     }
 
     /**
