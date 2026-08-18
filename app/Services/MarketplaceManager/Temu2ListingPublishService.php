@@ -124,7 +124,7 @@ class Temu2ListingPublishService
             }
             $price = $this->resolvePrice($sku);
             if ($price === null || $price <= 0) {
-                return ['success' => false, 'message' => 'No price found for '.$sku.'. Set temu2_pricing.base_price or Shopify b2c_price.'];
+                return ['success' => false, 'message' => 'No price found for '.$sku.'. Set temu2_pricing.base_price on the master.'];
             }
             $images = $this->resolveSourceImages($product, $sku);
             foreach ($images as $url) {
@@ -141,7 +141,7 @@ class Temu2ListingPublishService
 
         $gallerySources = array_values(array_unique($gallerySources));
         if ($gallerySources === []) {
-            return ['success' => false, 'message' => 'No images found on product master, Shopify, or temu2_metrics.'];
+            return ['success' => false, 'message' => 'No images found on product master (main_image / image1–image19). Add images on CP Master before publishing.'];
         }
 
         $upload = $this->uploadImages($gallerySources);
@@ -491,7 +491,17 @@ class Temu2ListingPublishService
         }
         $price = $this->resolvePrice($sku);
         if ($price === null || $price <= 0) {
-            return ['status' => 'skipped_no_price', 'reason' => 'No price'];
+            return ['status' => 'skipped_no_price', 'reason' => 'No price on master'];
+        }
+        $product = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('sku', $sku)
+            ->first();
+        if (! $product) {
+            return ['status' => 'skipped_missing', 'reason' => 'Not in product master'];
+        }
+        if ($this->resolveSourceImages($product, $sku) === []) {
+            return ['status' => 'skipped_no_image', 'reason' => 'No images on product master'];
         }
 
         return ['status' => 'will_publish', 'reason' => ''];
@@ -626,10 +636,6 @@ class Temu2ListingPublishService
             $product->title150 ?? null,
             $product->title60 ?? null,
         ];
-        $shopify = $this->shopifyRow($sku);
-        if ($shopify) {
-            $candidates[] = $shopify->product_title ?? null;
-        }
 
         foreach ($candidates as $raw) {
             $clean = $this->sanitizeGoodsName((string) $raw);
@@ -717,16 +723,6 @@ class Temu2ListingPublishService
             return $metricPrice;
         }
 
-        $shopify = $this->shopifyRow($sku);
-        if ($shopify) {
-            foreach (['b2c_price', 'price'] as $col) {
-                $v = $shopify->{$col} ?? null;
-                if ($v !== null && (float) $v > 0) {
-                    return (float) $v;
-                }
-            }
-        }
-
         return null;
     }
 
@@ -760,11 +756,6 @@ class Temu2ListingPublishService
 
         $this->pushProductMasterImages($product, $push);
 
-        $shopify = $this->shopifyRow($sku);
-        if ($shopify) {
-            $push((string) ($shopify->image_src ?? ''));
-        }
-
         if ($urls === []) {
             $parentKey = $this->groupKeyForProduct($product);
             if ($parentKey !== '' && strcasecmp($parentKey, trim($sku)) !== 0) {
@@ -779,10 +770,6 @@ class Temu2ListingPublishService
                         ->first();
                 if ($parentProduct) {
                     $this->pushProductMasterImages($parentProduct, $push);
-                    $parentShopify = $this->shopifyRow((string) $parentProduct->sku);
-                    if ($parentShopify) {
-                        $push((string) ($parentShopify->image_src ?? ''));
-                    }
                 }
             }
         }

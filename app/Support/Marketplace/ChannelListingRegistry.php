@@ -4,6 +4,7 @@ namespace App\Support\Marketplace;
 
 use App\Models\BestbuyUsaProduct;
 use App\Models\DobaMetric;
+use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\FaireMetric;
@@ -21,6 +22,7 @@ use App\Models\TikTokProductTwo;
 use App\Models\WalmartMetrics;
 use App\Models\WayfairPricingPrice;
 use App\Models\WayfairListingStatus;
+use App\Models\AliexpressMetric;
 use App\Models\ProductMaster;
 
 /**
@@ -44,6 +46,14 @@ class ChannelListingRegistry
                 'dataView' => \App\Models\EbayDataView::class,
                 'status' => \App\Models\EbayListingStatus::class,
                 'listed' => ['type' => 'column', 'model' => EbayMetric::class, 'column' => 'item_id'],
+                'id_field' => 'eBay_item_id',
+                'buyer_tpl' => 'https://www.ebay.com/itm/{id}',
+                'seller_tpl' => 'https://www.ebay.com/sh/lst/active?keyword={id}&action=search',
+            ],
+            'ebaytwo' => [
+                'dataView' => \App\Models\EbayTwoDataView::class,
+                'status' => \App\Models\EbayTwoListingStatus::class,
+                'listed' => ['type' => 'column', 'model' => Ebay2Metric::class, 'column' => 'item_id'],
                 'id_field' => 'eBay_item_id',
                 'buyer_tpl' => 'https://www.ebay.com/itm/{id}',
                 'seller_tpl' => 'https://www.ebay.com/sh/lst/active?keyword={id}&action=search',
@@ -126,6 +136,14 @@ class ChannelListingRegistry
                 'status' => \App\Models\SheinListingStatus::class,
                 'listed' => ['type' => 'price', 'model' => SheinMetric::class, 'column' => 'price'],
                 'id_field' => 'listing_id',
+                'buyer_tpl' => null,
+                'seller_tpl' => null,
+            ],
+            'aliexpress' => [
+                'dataView' => \App\Models\AliexpressDataView::class,
+                'status' => \App\Models\AliexpressListingStatus::class,
+                'listed' => ['type' => 'column', 'model' => AliexpressMetric::class, 'column' => 'product_id', 'reject_sku' => true],
+                'id_field' => 'product_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
             ],

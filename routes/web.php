@@ -167,6 +167,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSWGearExchangeCon
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemu2Controller;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPublishCommonController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController;
@@ -4666,6 +4667,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_temu2/publish', [ListingTemu2Controller::class, 'publish'])->name('listing_temu2.publish');
     Route::post('/listing_temu2/publish-preview', [ListingTemu2Controller::class, 'publishPreview'])->name('listing_temu2.publish.preview');
     Route::get('/listing_temu2/export', [ListingTemu2Controller::class, 'export'])->name('listing_temu2.export');
+
+    Route::post('/listing-common/publish-preview', [ListingPublishCommonController::class, 'preview'])->name('listing.common.publish.preview');
+    Route::post('/listing-common/publish', [ListingPublishCommonController::class, 'publish'])->name('listing.common.publish');
 
     Route::get('/temu', [TemuController::class, 'temuView'])->name('temu');
     Route::get('/temu-pricing-cvr', [TemuController::class, 'temuPricingCVR'])->name('temu.pricing');
