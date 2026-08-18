@@ -751,6 +751,10 @@ return [
         'cost_template_id' => env('TEMU2_COST_TEMPLATE_ID', ''),
         'shipment_limit_day' => (int) env('TEMU2_SHIPMENT_LIMIT_DAY', 2),
         'import_designation' => env('TEMU2_IMPORT_DESIGNATION', '4'),
+        /** English country name for goodsOriginInfo.originRegion1 (ISO-2 like CN is rejected). */
+        'origin_region1' => env('TEMU2_ORIGIN_REGION1', 'China'),
+        /** China province/region for originRegion2; required when origin_region1 is China. */
+        'origin_region2' => env('TEMU2_ORIGIN_REGION2', 'Guangdong'),
         'currency' => env('TEMU2_CURRENCY', 'USD'),
     ],
 

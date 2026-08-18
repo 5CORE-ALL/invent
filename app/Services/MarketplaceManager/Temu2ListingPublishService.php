@@ -127,8 +127,8 @@ class Temu2ListingPublishService
         $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId);
         $dimensions = $this->api->getProductDimensions($sku);
         $shipmentLimitDay = max(1, (int) config('services.temu2.shipment_limit_day', 2));
-        $importDesignation = trim((string) config('services.temu2.import_designation', '4'));
 
+        $goodsOriginInfo = $this->buildGoodsOriginInfo();
         $payloadV2 = [
             'type' => (string) config('services.temu2.goods_add_type', 'temu.local.goods.v2.add'),
             'language' => 'en',
@@ -140,6 +140,7 @@ class Temu2ListingPublishService
                 'goodsDesc' => $this->resolveDescription($product, $sku),
                 'bulletPoints' => $this->resolveBullets($product, $sku),
                 'brand' => ['noTrademark' => true],
+                'importDesignation' => $goodsOriginInfo['importDesignation'],
                 'goodsGallery' => [
                     'goodsCarouselImage' => $hostedImages,
                     'detailImage' => $hostedImages,
@@ -150,9 +151,7 @@ class Temu2ListingPublishService
                 'fulfillmentType' => 1,
                 'costTemplateId' => $costTemplateId,
             ],
-            'goodsOriginInfo' => [
-                'importDesignation' => is_numeric($importDesignation) ? (int) $importDesignation : $importDesignation,
-            ],
+            'goodsOriginInfo' => $goodsOriginInfo,
             'skuList' => [[
                 'externalSkuId' => $sku,
                 'outSkuSn' => $sku,
@@ -744,6 +743,73 @@ class Temu2ListingPublishService
         }
 
         return null;
+    }
+
+    /**
+     * US add-goods requires originRegion1 as an English country name (error 150011019).
+     * ISO-2 codes like CN are rejected. originRegion2 is required when origin is China.
+     *
+     * @return array{importDesignation: string, originRegion1: string, originRegion2?: string}
+     */
+    private function buildGoodsOriginInfo(): array
+    {
+        $origin1 = $this->normalizeOriginRegion1((string) config('services.temu2.origin_region1', 'China'));
+        $isChina = strcasecmp($origin1, 'China') === 0;
+
+        $info = [
+            'importDesignation' => $this->normalizeImportDesignation((string) config('services.temu2.import_designation', 'Imported')),
+            'originRegion1' => $origin1,
+        ];
+        if ($isChina) {
+            $origin2 = trim((string) config('services.temu2.origin_region2', 'Guangdong'));
+            $info['originRegion2'] = $origin2 !== '' ? $origin2 : 'Guangdong';
+        }
+
+        return $info;
+    }
+
+    private function normalizeOriginRegion1(string $raw): string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return 'China';
+        }
+
+        $map = [
+            'CN' => 'China',
+            'CHN' => 'China',
+            'CHINA' => 'China',
+            'US' => 'United States',
+            'USA' => 'United States',
+            'UNITED STATES' => 'United States',
+            'GB' => 'United Kingdom',
+            'UK' => 'United Kingdom',
+            'UNITED KINGDOM' => 'United Kingdom',
+            'IN' => 'India',
+            'VN' => 'Vietnam',
+            'ID' => 'Indonesia',
+            'TH' => 'Thailand',
+            'MX' => 'Mexico',
+        ];
+
+        return $map[strtoupper($raw)] ?? $raw;
+    }
+
+    private function normalizeImportDesignation(string $raw): string
+    {
+        $raw = trim($raw);
+        $map = [
+            '1' => 'Made in the USA',
+            '2' => 'Made in the USA and Imported',
+            '3' => 'Made in the USA or Imported',
+            '4' => 'Imported',
+            'IMPORTED' => 'Imported',
+            'MADE IN THE USA' => 'Made in the USA',
+            'MADE IN THE USA AND IMPORTED' => 'Made in the USA and Imported',
+            'MADE IN THE USA OR IMPORTED' => 'Made in the USA or Imported',
+        ];
+
+        return $map[strtoupper($raw)] ?? ($raw !== '' ? $raw : 'Imported');
     }
 
     private function resolveCostTemplateId(): string
