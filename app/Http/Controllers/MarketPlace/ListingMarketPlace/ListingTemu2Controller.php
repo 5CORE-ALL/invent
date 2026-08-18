@@ -39,6 +39,9 @@ class ListingTemu2Controller extends Controller
 
     public function saveStatus(Request $request, Temu2ListingPublishService $publisher)
     {
+        if ($request->boolean('preview') || $request->input('action') === 'preview') {
+            return $this->publishPreview($request, $publisher);
+        }
         if ($request->boolean('publish') || $request->input('action') === 'publish') {
             return $this->publish($request, $publisher);
         }
