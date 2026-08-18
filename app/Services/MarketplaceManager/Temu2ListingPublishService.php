@@ -127,7 +127,6 @@ class Temu2ListingPublishService
         $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId);
         $dimensions = $this->api->getProductDimensions($sku);
         $shipmentLimitDay = max(1, (int) config('services.temu2.shipment_limit_day', 2));
-        $importDesignation = trim((string) config('services.temu2.import_designation', '4'));
 
         $payloadV2 = [
             'type' => (string) config('services.temu2.goods_add_type', 'temu.local.goods.v2.add'),
@@ -150,9 +149,7 @@ class Temu2ListingPublishService
                 'fulfillmentType' => 1,
                 'costTemplateId' => $costTemplateId,
             ],
-            'goodsOriginInfo' => [
-                'importDesignation' => is_numeric($importDesignation) ? (int) $importDesignation : $importDesignation,
-            ],
+            'goodsOriginInfo' => $this->buildGoodsOriginInfo(),
             'skuList' => [[
                 'externalSkuId' => $sku,
                 'outSkuSn' => $sku,
@@ -744,6 +741,42 @@ class Temu2ListingPublishService
         }
 
         return null;
+    }
+
+    /**
+     * US add-goods rejects originRegion1:null (error 150011019).
+     * originRegion2 is required when country of origin is China.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildGoodsOriginInfo(): array
+    {
+        $importDesignation = trim((string) config('services.temu2.import_designation', '4'));
+        $rawOrigin1 = trim((string) config('services.temu2.origin_region1', 'CN'));
+        if ($rawOrigin1 === '') {
+            $rawOrigin1 = 'CN';
+        }
+        $originUpper = strtoupper($rawOrigin1);
+        $isChina = in_array($originUpper, ['CN', 'CHN', 'CHINA'], true);
+        $origin1 = $isChina ? 'CN' : (strlen($rawOrigin1) === 2 ? $originUpper : $rawOrigin1);
+
+        $origin2 = '';
+        if ($isChina) {
+            $origin2 = trim((string) config('services.temu2.origin_region2', 'Guangdong'));
+            if ($origin2 === '') {
+                $origin2 = 'Guangdong';
+            }
+        }
+
+        $info = [
+            'importDesignation' => is_numeric($importDesignation) ? (int) $importDesignation : $importDesignation,
+            'originRegion1' => $origin1,
+        ];
+        if ($origin2 !== '') {
+            $info['originRegion2'] = $origin2;
+        }
+
+        return $info;
     }
 
     private function resolveCostTemplateId(): string
