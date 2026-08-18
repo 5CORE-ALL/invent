@@ -231,7 +231,7 @@
             border: none;
             border-radius: 0;
             padding: 0;
-            overflow: hidden;
+            overflow: visible;
             width: 100%;
             box-sizing: border-box;
         }
@@ -297,6 +297,7 @@
             display: flex;
             flex: 0 0 auto;
             align-items: center;
+            gap: 4px;
             margin-left: 0;
         }
 
@@ -464,6 +465,37 @@
             text-decoration: none;
         }
 
+        #shein-listing-wrap .sku-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 100%;
+        }
+
+        #shein-listing-wrap .sku-cell-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #shein-listing-wrap .copy-sku-btn {
+            flex: 0 0 auto;
+            border: none;
+            background: transparent;
+            color: #64748b;
+            padding: 0;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        #shein-listing-wrap .copy-sku-btn:hover {
+            color: #0f172a;
+        }
+
+        #shein-listing-wrap .copy-sku-btn.is-copied {
+            color: #16a34a;
+        }
+
         #shein-listing-wrap a.listing-item-link:hover {
             color: #1d4ed8 !important;
             text-decoration: underline;
@@ -548,27 +580,18 @@
                                 <option value="Listed">Listed Only</option>
                                 <option value="Pending">Missing L</option>
                             </select>
-                            <div class="toolbar-actions dropdown">
+                            <div class="toolbar-actions">
                                 <button type="button"
                                     class="btn btn-sm btn-primary listing-io-btn"
-                                    id="listing-io-btn"
-                                    data-bs-toggle="dropdown"
-                                    aria-expanded="false"
-                                    title="Import / Export">
+                                    id="import-btn"
+                                    title="Import">
                                     <i class="fas fa-file-import"></i>
                                 </button>
-                                <ul class="dropdown-menu dropdown-menu-end listing-io-menu" aria-labelledby="listing-io-btn">
-                                    <li>
-                                        <button type="button" class="dropdown-item" id="import-btn" title="Import">
-                                            <i class="fas fa-file-import text-primary"></i>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="{{ route('listing_shein.export') }}" title="Export">
-                                            <i class="fas fa-file-export text-success"></i>
-                                        </a>
-                                    </li>
-                                </ul>
+                                <a class="btn btn-sm btn-primary listing-io-btn"
+                                    href="{{ route('listing_shein.export') }}"
+                                    title="Export">
+                                    <i class="fas fa-file-export"></i>
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -906,8 +929,19 @@
                         field: 'sku',
                         hozAlign: 'left',
                         headerHozAlign: 'center',
-                        minWidth: 160,
-                        widthGrow: 1.2
+                        minWidth: 180,
+                        widthGrow: 1.2,
+                        formatter: function (cell) {
+                            const sku = String(cell.getValue() || '').trim();
+                            if (!sku) return '';
+                            const safe = escapeHtml(sku);
+                            return `<span class="sku-cell"><span class="sku-cell-text">${safe}</span><button type="button" class="copy-sku-btn" data-sku="${safe}" title="Copy SKU"><i class="fas fa-copy"></i></button></span>`;
+                        },
+                        cellClick: function (e) {
+                            if (e.target.closest('.copy-sku-btn')) {
+                                e.stopPropagation();
+                            }
+                        }
                     },
                     {
                         title: 'INV',
@@ -1023,6 +1057,47 @@
                     missingLFilterActive = false;
                     $('#missing-l-badge').removeClass('is-active');
                 }
+            });
+
+            function copySkuToClipboard(text, $btn) {
+                const done = function () {
+                    showNotification('success', 'Copied: ' + text);
+                    if ($btn && $btn.length) {
+                        $btn.addClass('is-copied');
+                        const $icon = $btn.find('i');
+                        $icon.removeClass('fa-copy').addClass('fa-check');
+                        setTimeout(function () {
+                            $btn.removeClass('is-copied');
+                            $icon.removeClass('fa-check').addClass('fa-copy');
+                        }, 1200);
+                    }
+                };
+                const fallback = function () {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'absolute';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); done(); } catch (err) {
+                        showNotification('danger', 'Could not copy SKU');
+                    }
+                    document.body.removeChild(ta);
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(done).catch(fallback);
+                } else {
+                    fallback();
+                }
+            }
+
+            $(document).on('click', '#shein-listing-wrap .copy-sku-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).attr('data-sku') || '';
+                if (!sku) return;
+                copySkuToClipboard(sku, $(this));
             });
 
             $('#import-btn').on('click', function () {
