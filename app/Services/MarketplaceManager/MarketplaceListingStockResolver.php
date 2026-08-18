@@ -1041,7 +1041,15 @@ final class MarketplaceListingStockResolver
                 ->whereNotNull('remaining_inventory')
                 ->get(['sku', 'remaining_inventory'])
                 ->each(function ($row) use (&$map) {
-                    self::put($map, (string) $row->sku, (int) $row->remaining_inventory);
+                    $raw = (string) $row->sku;
+                    $upper = strtoupper(trim($raw));
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+                    $qty = (int) $row->remaining_inventory;
+                    if ($upper !== '' && $upper === $norm) {
+                        self::putOverwrite($map, $raw, $qty);
+                    } else {
+                        self::put($map, $raw, $qty);
+                    }
                 });
 
             return;
