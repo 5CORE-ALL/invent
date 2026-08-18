@@ -45,24 +45,25 @@ final class MarketplaceListingQtyMatchService
     /**
      * Same number as the listings "Active SKU Mismatch" tab.
      */
-    public function activeMismatchCount(string $mmChannel): int
+    public function activeMismatchCount(string $mmChannel, bool $fetchLiveIfCold = true): int
     {
-        return count($this->activeMismatchSkus($mmChannel));
+        return count($this->activeMismatchSkus($mmChannel, $fetchLiveIfCold));
     }
 
     /**
      * @return list<string>
      */
-    public function activeMismatchSkus(string $mmChannel): array
+    public function activeMismatchSkus(string $mmChannel, bool $fetchLiveIfCold = true): array
     {
         $mismatch = $this->mismatchSkus($mmChannel);
         if ($mismatch === []) {
             return [];
         }
 
-        $liveRows = app(MarketplaceMismatchInventoryPass::class)->liveRowsForStateSplit($mmChannel);
+        $liveRows = app(MarketplaceMismatchInventoryPass::class)->liveRowsForStateSplit($mmChannel, $fetchLiveIfCold);
         if ($liveRows === []) {
-            return [];
+            // Cold live cache: do not fan out to every marketplace API (504s /map-issues).
+            return $fetchLiveIfCold ? [] : $mismatch;
         }
 
         $activeNorms = [];

@@ -22,6 +22,10 @@ class MappingChannelCounts
 
     public const TOTAL_TITAS_CACHE_KEY = 'mapping_pages_titas_total_v2';
 
+    public const MASTER_ROWS_CACHE_KEY = 'mapping_pages_master_rows_v2';
+
+    public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
+
     /**
      * Channels shown on /map-issues.
      * mi_key marks MapIssues channels that have SKU-level detail pages.
@@ -83,7 +87,7 @@ class MappingChannelCounts
             }
         }
 
-        $rows = self::masterRows(false);
+        $rows = self::masterRows(true);
         $total = (int) collect($rows)->sum('missing_mapping_titas');
 
         try {
@@ -106,12 +110,54 @@ class MappingChannelCounts
     }
 
     /**
+     * Cached total only — never scans marketplaces during HTML render.
+     */
+    public static function cachedTotalOrZero(): int
+    {
+        foreach ([self::TOTAL_TITAS_CACHE_KEY, self::TOTAL_CACHE_KEY] as $key) {
+            try {
+                $cached = Cache::get($key);
+                if ($cached !== null) {
+                    return (int) $cached;
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+
+        return 0;
+    }
+
+    public static function forgetMasterCaches(): void
+    {
+        try {
+            Cache::forget(self::TOTAL_TITAS_CACHE_KEY);
+            Cache::forget(self::TOTAL_CACHE_KEY);
+            Cache::forget(self::MASTER_ROWS_CACHE_KEY);
+            Cache::forget(self::API_STATUS_CACHE_KEY);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
      * Master table rows: one row per unique mapping channel (Titas / Active SKU Mismatch).
      *
      * @return list<array{channel: string, channel_slug: string, image: ?string, missing_mapping_titas: int, detail_url: string, listings_url: ?string, has_sku_detail: bool}>
      */
     public static function masterRows(bool $useCache = false): array
     {
+        if ($useCache) {
+            try {
+                $cached = Cache::get(self::MASTER_ROWS_CACHE_KEY);
+                if (is_array($cached) && $cached !== []) {
+                    return $cached;
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+
         $titasCounts = self::collectListingsMismatchCounts();
         $apiStatuses = self::collectApiStatuses();
         $logos = self::logoMap();
@@ -162,6 +208,13 @@ class MappingChannelCounts
             ];
         }
 
+        try {
+            Cache::put(self::MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(10));
+            self::storeTotalTitas((int) collect($rows)->sum('missing_mapping_titas'));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
         return $rows;
     }
 
@@ -174,6 +227,15 @@ class MappingChannelCounts
      */
     public static function collectApiStatuses(): array
     {
+        try {
+            $cached = Cache::get(self::API_STATUS_CACHE_KEY);
+            if (is_array($cached) && $cached !== []) {
+                return $cached;
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
         $config = app(MarketplaceApiConfigService::class);
         $tz = 'Asia/Kolkata';
         $freshAfter = Carbon::now($tz)->subHours(26);
@@ -232,6 +294,12 @@ class MappingChannelCounts
                 'api_updated_at' => $lastLabel,
                 'api_label' => trim(($linkNote !== '' ? $linkNote.' · ' : 'API linked · ').$stale),
             ];
+        }
+
+        try {
+            Cache::put(self::API_STATUS_CACHE_KEY, $out, now()->addMinutes(10));
+        } catch (\Throwable $e) {
+            // ignore
         }
 
         return $out;
@@ -403,7 +471,7 @@ class MappingChannelCounts
             }
             try {
                 if (! array_key_exists($mm, $seenMm)) {
-                    $seenMm[$mm] = $match->activeMismatchCount($mm);
+                    $seenMm[$mm] = $match->activeMismatchCount($mm, false);
                 }
                 $counts[$slug] = (int) $seenMm[$mm];
             } catch (\Throwable $e) {
