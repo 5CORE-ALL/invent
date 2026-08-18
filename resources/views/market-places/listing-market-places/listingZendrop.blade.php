@@ -1086,9 +1086,9 @@
             exportName: 'zendrop_listing',
             channel: 'zendrop',
             channelLabel: "Zendrop",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_zendrop/save-status',
+            publishUrl: '/listing_zendrop/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

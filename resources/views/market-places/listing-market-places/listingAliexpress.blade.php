@@ -1097,9 +1097,9 @@
             exportName: 'aliexpress_listing',
             channel: 'aliexpress',
             channelLabel: "AliExpress",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_aliexpress/save-status',
+            publishUrl: '/listing_aliexpress/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

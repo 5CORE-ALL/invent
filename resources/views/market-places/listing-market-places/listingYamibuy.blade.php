@@ -1086,9 +1086,9 @@
             exportName: 'yamibuy_listing',
             channel: 'yamibuy',
             channelLabel: "Yamibuy",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_yamibuy/save-status',
+            publishUrl: '/listing_yamibuy/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection
