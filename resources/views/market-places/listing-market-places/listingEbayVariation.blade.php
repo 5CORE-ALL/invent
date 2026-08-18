@@ -1086,9 +1086,9 @@
             exportName: 'ebayvariation_listing',
             channel: 'ebayvariation',
             channelLabel: "eBay Variation",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_ebayvariation/save-status',
+            publishUrl: '/listing_ebayvariation/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

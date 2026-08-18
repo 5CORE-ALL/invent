@@ -17,6 +17,7 @@ use App\Support\StoragePathGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
@@ -75,6 +76,34 @@ class AppServiceProvider extends ServiceProvider
 
         View::composer(['layouts.vertical', 'layouts.horizontal'], function (ViewInstance $view) {
             $this->composeLayoutFavicon($view);
+        });
+
+        $this->app->booted(fn () => $this->registerListingPublishRoutes());
+    }
+
+    /**
+     * Cached routes from before listing-common POST existed still expose the
+     * Shopify GET /{first}/{second} wildcard, which 405s publish preview.
+     */
+    private function registerListingPublishRoutes(): void
+    {
+        $hasPost = false;
+        foreach (Route::getRoutes() as $route) {
+            if (in_array('POST', $route->methods(), true) && $route->uri() === 'listing-common/publish-preview') {
+                $hasPost = true;
+                break;
+            }
+        }
+        if ($hasPost) {
+            return;
+        }
+
+        $controller = \App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPublishCommonController::class;
+        Route::middleware(['web', 'auth'])->group(function () use ($controller) {
+            Route::post('/listing-common/publish-preview', [$controller, 'preview']);
+            Route::post('/listing-common/publish', [$controller, 'publish']);
+            Route::post('/listing-publish-preview', [$controller, 'preview']);
+            Route::post('/listing-publish', [$controller, 'publish']);
         });
     }
 

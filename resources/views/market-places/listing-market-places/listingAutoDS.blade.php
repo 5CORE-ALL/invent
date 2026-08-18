@@ -1086,9 +1086,9 @@
             exportName: 'autods_listing',
             channel: 'autods',
             channelLabel: "AutoDS",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_autods/save-status',
+            publishUrl: '/listing_autods/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

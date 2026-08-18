@@ -1086,9 +1086,9 @@
             exportName: 'swgearexchange_listing',
             channel: 'swgearexchange',
             channelLabel: "SW Gear Exchange",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_swgearexchange/save-status',
+            publishUrl: '/listing_swgearexchange/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

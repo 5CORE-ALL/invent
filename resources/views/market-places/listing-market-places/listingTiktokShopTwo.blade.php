@@ -1086,9 +1086,9 @@
             exportName: 'tiktokshop2_listing',
             channel: 'tiktokshop2',
             channelLabel: "TikTok Shop 2",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_tiktokshop2/save-status',
+            publishUrl: '/listing_tiktokshop2/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

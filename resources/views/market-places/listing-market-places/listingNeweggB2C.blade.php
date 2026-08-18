@@ -1086,9 +1086,9 @@
             exportName: 'neweggb2c_listing',
             channel: 'neweggb2c',
             channelLabel: "Newegg B2C",
-            previewUrl: '/listing-common/publish-preview',
-            publishUrl: '/listing-common/publish'
+            previewUrl: '/listing_neweggb2c/save-status',
+            publishUrl: '/listing_neweggb2c/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection
