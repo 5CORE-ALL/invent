@@ -7,6 +7,7 @@ use App\Models\CpHistory;
 use App\Models\ProductMaster;
 use App\Models\User;
 use App\Support\SuperAdminAccess;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -99,6 +100,144 @@ class CpController extends Controller
             'can_approve' => $this->userCanApprove(),
             'history' => $history,
         ]);
+    }
+
+    /**
+     * Daily CP series for the Old CP / CP Master history graph.
+     * Built from cp_histories (step changes) plus today's live Values.cp.
+     * Default window is 365 days; leading empty days are dropped when we
+     * only have a shorter stretch of data.
+     */
+    public function chart(Request $request)
+    {
+        $request->headers->set('Accept', 'application/json');
+
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'days' => 'nullable|integer|min:0|max:730',
+            'current_cp' => 'nullable|numeric',
+        ]);
+
+        $sku = trim($validated['sku']);
+        $days = (int) ($validated['days'] ?? 365);
+        if ($days <= 0) {
+            $days = 365;
+        }
+        if ($days > 0 && $days < 7) {
+            $days = 7;
+        }
+
+        $product = ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+            ->first();
+
+        $currentCp = $product ? $this->currentCp($product) : null;
+        if ($currentCp === null && isset($validated['current_cp']) && is_numeric($validated['current_cp'])) {
+            $currentCp = (float) $validated['current_cp'];
+        }
+
+        $tz = 'America/Los_Angeles';
+        $windowStart = now($tz)->startOfDay()->subDays($days)->toDateString();
+
+        $skuKeys = array_values(array_unique(array_filter([
+            $sku,
+            $product?->sku,
+        ])));
+
+        $records = CpHistory::query()
+            ->where(function ($q) use ($skuKeys, $sku) {
+                $q->whereIn('sku', $skuKeys)
+                    ->orWhereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)]);
+            })
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get(['old_cp', 'new_cp', 'created_at']);
+
+        $byDate = [];
+        $priorCp = null;
+        foreach ($records as $row) {
+            if (! is_numeric($row->new_cp)) {
+                continue;
+            }
+            $created = $row->created_at instanceof Carbon
+                ? $row->created_at->copy()->timezone($tz)
+                : Carbon::parse((string) $row->created_at, $tz);
+            $date = $created->toDateString();
+            $value = (float) $row->new_cp;
+            if ($date < $windowStart) {
+                $priorCp = $value;
+                continue;
+            }
+            if ($priorCp === null && is_numeric($row->old_cp)) {
+                $priorCp = (float) $row->old_cp;
+            }
+            $byDate[$date] = $value;
+        }
+
+        if ($currentCp !== null) {
+            $byDate[now($tz)->toDateString()] = round((float) $currentCp, 2);
+        }
+
+        if ($byDate === [] && $priorCp === null) {
+            return response()->json([
+                'success' => true,
+                'sku' => $product?->sku ?? $sku,
+                'current_cp' => $currentCp,
+                'data' => [],
+            ]);
+        }
+
+        $series = $this->fillDailyCpChartSeries($byDate, $days, $priorCp);
+        if ($priorCp === null) {
+            $first = null;
+            foreach ($series as $i => $point) {
+                if ($point['value'] !== null) {
+                    $first = $i;
+                    break;
+                }
+            }
+            $series = $first === null ? [] : array_values(array_slice($series, $first));
+        }
+
+        return response()->json([
+            'success' => true,
+            'sku' => $product?->sku ?? $sku,
+            'current_cp' => $currentCp,
+            'data' => $series,
+        ]);
+    }
+
+    /**
+     * @param  array<string, float|int>  $byDateKey
+     * @return list<array{date: string, value: float|null}>
+     */
+    private function fillDailyCpChartSeries(array $byDateKey, int $days, ?float $priorCp): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->startOfDay();
+        $start = $end->copy()->subDays($days);
+        $last = $priorCp;
+        $hasAny = $priorCp !== null;
+        $out = [];
+
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->toDateString();
+            if (array_key_exists($key, $byDateKey) && is_numeric($byDateKey[$key])) {
+                $last = (float) $byDateKey[$key];
+                $hasAny = true;
+                $out[] = [
+                    'date' => $d->format('M j'),
+                    'value' => $last,
+                ];
+                continue;
+            }
+            $out[] = [
+                'date' => $d->format('M j'),
+                'value' => $hasAny ? (float) $last : null,
+            ];
+        }
+
+        return $out;
     }
 
     /**

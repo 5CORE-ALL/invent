@@ -73,6 +73,12 @@ class TemuShopifySalesService
     /** Full Temu Price multiplier — inverse of S Recovery 0.88. */
     public const FULL_PRICE_MULT = 1.1364;
 
+    /** Displayed take-home on /temu-decrease GROI / SGROI (R Price × 0.95). */
+    public const DECREASE_TAKEHOME = 0.95;
+
+    /** Displayed Ads% on /temu-decrease (TEMU_FIXED_ADS_PERCENT). */
+    public const DECREASE_ADS_PERCENT = 2.2;
+
     /**
      * Full Temu Price (listing / Sales / GPFT):
      *   (base × 1.1364); if that result ≤ $26.99 then +$2.99.
@@ -90,6 +96,38 @@ class TemuShopifySalesService
         }
 
         return $full;
+    }
+
+    /**
+     * Temu R Price: base, then +$2.99 if base ≤ $26.99.
+     * Same as /temu-decrease temuRPriceFromBase.
+     */
+    public static function computeRPrice(float $basePrice): float
+    {
+        if ($basePrice <= 0) {
+            return 0.0;
+        }
+
+        return round($basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice, 2);
+    }
+
+    /**
+     * S R Price — R-price equivalent of SPRICE (same as /temu-decrease temuSRPriceFromRow).
+     * If SPRICE matches listing Full / R Price, reuse listing R Price; otherwise invert SPRICE as Full Price.
+     */
+    public static function computeSRPrice(float $sprice, float $rPrice = 0.0, float $fullPrice = 0.0): float
+    {
+        if ($sprice <= 0) {
+            return 0.0;
+        }
+        if ($fullPrice > 0 && abs($sprice - $fullPrice) < 0.02) {
+            return $rPrice > 0 ? $rPrice : 0.0;
+        }
+        if ($rPrice > 0 && abs($sprice - $rPrice) < 0.02) {
+            return $rPrice;
+        }
+
+        return self::computeRPrice(self::computeBaseFromFullTemuPrice($sprice));
     }
 
     /**

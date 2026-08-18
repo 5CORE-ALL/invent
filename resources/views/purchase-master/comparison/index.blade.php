@@ -398,7 +398,7 @@
 
     #comparison-cd-image-hover-preview {
         position: fixed;
-        z-index: 2000;
+        z-index: 20050;
         display: none;
         padding: 6px;
         background: #fff;
@@ -410,9 +410,35 @@
 
     #comparison-cd-image-hover-preview img {
         display: block;
-        max-width: 360px;
-        max-height: 360px;
+        max-width: min(520px, 70vw);
+        max-height: min(520px, 70vh);
         object-fit: contain;
+    }
+
+    .comparison-lmp-photo {
+        width: 36px;
+        height: 36px;
+        object-fit: contain;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        cursor: zoom-in;
+        vertical-align: middle;
+    }
+
+    #comparisonLmpModal table.table,
+    #comparison-cd-lmp-list table.table {
+        white-space: nowrap;
+    }
+
+    #comparisonLmpModal table.table th,
+    #comparisonLmpModal table.table td,
+    #comparison-cd-lmp-list table.table th,
+    #comparison-cd-lmp-list table.table td {
+        vertical-align: middle;
+        white-space: nowrap;
+        line-height: 1.2;
+        padding: 4px 6px;
     }
 
     #comparisonCdModal .modal-dialog {
@@ -1742,31 +1768,19 @@
     }
 
     .comparison-roi-table .comparison-roi-calc-cell[data-calc="npft"].comparison-roi-tier-green,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="nroi"].comparison-roi-tier-green,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGpft"].comparison-roi-tier-green,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGroi"].comparison-roi-tier-green,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNroi"].comparison-roi-tier-green,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNpft"].comparison-roi-tier-green {
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="nroi"].comparison-roi-tier-green {
         background: #4ade80;
         color: #14532d;
     }
 
     .comparison-roi-table .comparison-roi-calc-cell[data-calc="npft"].comparison-roi-tier-red,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="nroi"].comparison-roi-tier-red,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGpft"].comparison-roi-tier-red,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGroi"].comparison-roi-tier-red,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNroi"].comparison-roi-tier-red,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNpft"].comparison-roi-tier-red {
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="nroi"].comparison-roi-tier-red {
         background: #f87171;
         color: #7f1d1d;
     }
 
     .comparison-roi-table .comparison-roi-calc-cell[data-calc="npft"].comparison-roi-tier-magenta,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="nroi"].comparison-roi-tier-magenta,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGpft"].comparison-roi-tier-magenta,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGroi"].comparison-roi-tier-magenta,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNroi"].comparison-roi-tier-magenta,
-    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNpft"].comparison-roi-tier-magenta {
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="nroi"].comparison-roi-tier-magenta {
         background: #e879f9;
         color: #701a75;
     }
@@ -1843,22 +1857,62 @@
         background: #fef08a;
     }
 
+    .comparison-roi-table th.comparison-roi-old-cp-th,
     .comparison-roi-table th.comparison-roi-c-price-th,
     .comparison-roi-table th.comparison-roi-site-metrics-th {
-        background: #86efac !important;
+        background: #bbf7d0 !important;
         color: #14532d;
+    }
+
+    .comparison-roi-table .comparison-roi-old-cp-cell,
+    .comparison-roi-table .comparison-roi-price-after-lmp-cell,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGroi"],
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGpft"],
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNroi"],
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNpft"] {
+        background: #dcfce7;
+        font-weight: 600;
+        color: #14532d;
+        min-width: 64px;
+        white-space: nowrap;
+        text-align: center;
     }
 
     .comparison-roi-table .comparison-roi-price-after-lmp-cell {
-        background: #86efac;
-        font-weight: 600;
-        color: #14532d;
         min-width: 72px;
-        white-space: nowrap;
     }
 
-    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-price-after-lmp-cell {
-        background: #4ade80;
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGroi"].comparison-roi-tier-green,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGpft"].comparison-roi-tier-green,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNroi"].comparison-roi-tier-green,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNpft"].comparison-roi-tier-green {
+        background: #dcfce7;
+        color: #14532d;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGroi"].comparison-roi-tier-red,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGpft"].comparison-roi-tier-red,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNroi"].comparison-roi-tier-red,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNpft"].comparison-roi-tier-red {
+        background: #dcfce7;
+        color: #b91c1c;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGroi"].comparison-roi-tier-magenta,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteGpft"].comparison-roi-tier-magenta,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNroi"].comparison-roi-tier-magenta,
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="siteNpft"].comparison-roi-tier-magenta {
+        background: #dcfce7;
+        color: #a21caf;
+    }
+
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-old-cp-cell,
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-price-after-lmp-cell,
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-calc-cell[data-calc="siteGroi"],
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-calc-cell[data-calc="siteGpft"],
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-calc-cell[data-calc="siteNroi"],
+    .comparison-roi-table tr.comparison-roi-overall-row .comparison-roi-calc-cell[data-calc="siteNpft"] {
+        background: #bbf7d0;
     }
 
     .comparison-roi-table .comparison-roi-price-history-dot,
@@ -1867,14 +1921,38 @@
         font-size: 9px;
         vertical-align: middle;
         margin-left: 5px;
+        border: none;
+        background: none;
+        padding: 0 2px;
+        line-height: 1;
     }
 
     .comparison-roi-table .comparison-roi-price-history-dot {
         color: #e83e8c;
     }
 
+    .comparison-roi-table .comparison-roi-price-history-dot-swatch {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #e83e8c;
+        vertical-align: middle;
+    }
+
+    .comparison-roi-table .comparison-roi-price-history-dot[data-marketplace="ebay1"] .comparison-roi-price-history-dot-swatch {
+        background: #6c757d;
+    }
+
+    .comparison-roi-table .comparison-roi-price-history-dot[data-marketplace="temu"] .comparison-roi-price-history-dot-swatch {
+        background: #adb5bd;
+    }
+
+    .comparison-roi-table .comparison-roi-cp-history-dot .comparison-roi-price-history-dot-swatch {
+        background: #166534;
+    }
+
     .comparison-roi-table .comparison-roi-price-history-dot:hover {
-        color: #c2185b;
         transform: scale(1.25);
     }
 
@@ -1889,9 +1967,9 @@
         right: 0;
         bottom: 0;
         top: auto;
-        margin: 0 auto;
-        width: min(960px, 100%);
-        max-width: 100%;
+        margin: 0;
+        width: 100% !important;
+        max-width: 100% !important;
         height: auto;
         max-height: 78vh;
         display: flex;
@@ -1907,6 +1985,7 @@
 
     #comparisonRoiPriceChartModal .comparison-roi-price-chart-bottom-dialog .modal-content {
         border-radius: 16px 16px 0 0;
+        width: 100%;
         max-height: 78vh;
         overflow: hidden;
         box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.22);
@@ -1915,6 +1994,13 @@
     #comparisonRoiPriceChartModal .comparison-roi-price-chart-bottom-dialog .modal-body {
         overflow-y: auto;
         max-height: calc(78vh - 58px);
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    #comparison-roi-price-chart-container,
+    #comparison-roi-price-chart {
+        width: 100%;
     }
 
     .comparison-roi-table .comparison-roi-npft-cell,
@@ -1947,6 +2033,72 @@
     /* Comparison page only: Competitors LMP opens as a bottom modal dialog */
     #comparisonLmpModal.modal {
         padding-right: 0 !important;
+        padding-left: 0 !important;
+    }
+
+    #comparisonLmpModal .modal-dialog {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0;
+    }
+
+    #comparisonLmpModal tr.lmp-ignored-row,
+    #comparison-cd-lmp-list tr.lmp-ignored-row {
+        opacity: 0.55;
+    }
+
+    #comparisonLmpModal tr.lmp-ignored-row td,
+    #comparison-cd-lmp-list tr.lmp-ignored-row td {
+        text-decoration: line-through;
+    }
+
+    #comparisonLmpModal tr.lmp-ignored-row td:last-child,
+    #comparisonLmpModal tr.lmp-ignored-row .comparison-lmp-hide-cell,
+    #comparisonLmpModal tr.lmp-ignored-row .comparison-lmp-hide-cb,
+    #comparison-cd-lmp-list tr.lmp-ignored-row td:last-child,
+    #comparison-cd-lmp-list tr.lmp-ignored-row .comparison-lmp-hide-cell,
+    #comparison-cd-lmp-list tr.lmp-ignored-row .comparison-lmp-hide-cb {
+        text-decoration: none;
+    }
+
+    .comparison-lmp-hide-cb {
+        cursor: pointer;
+    }
+
+    .comparison-lmp-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        padding: 2px 4px;
+        line-height: 1;
+        font-size: 16px;
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+    .comparison-lmp-icon-btn i {
+        display: inline-block;
+        font-size: 16px;
+        line-height: 1;
+        width: auto;
+        height: auto;
+        visibility: visible;
+    }
+
+    .comparison-lmp-icon-btn.comparison-lmp-link-btn,
+    .comparison-lmp-icon-btn.comparison-lmp-link-btn i {
+        color: #0d6efd !important;
+    }
+
+    .comparison-lmp-icon-btn.comparison-lmp-delete-btn,
+    .comparison-lmp-icon-btn.comparison-lmp-delete-btn i {
+        color: #dc3545 !important;
+    }
+
+    .comparison-lmp-icon-btn:hover {
+        opacity: 0.75;
     }
 
     /* Comparison page only: SP box centered in LMP modal header */
@@ -1998,11 +2150,12 @@
         right: 0;
         bottom: 0;
         top: auto;
-        margin: 0 auto;
-        width: min(1200px, 100%);
+        margin: 0;
+        width: 100%;
         max-width: 100%;
         height: auto;
-        max-height: 88vh;
+        min-height: 50vh;
+        max-height: 95vh;
         display: flex;
         flex-direction: column;
         justify-content: flex-end;
@@ -2015,15 +2168,62 @@
     }
 
     #comparisonLmpModal .comparison-lmp-bottom-dialog .modal-content {
-        border-radius: 16px 16px 0 0;
-        max-height: 88vh;
+        border-radius: 12px 12px 0 0;
+        width: 100%;
+        max-width: 100%;
+        min-height: 50vh;
+        max-height: 95vh;
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
         box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.22);
     }
 
     #comparisonLmpModal .comparison-lmp-bottom-dialog .modal-body {
         overflow-y: auto;
-        max-height: calc(88vh - 58px);
+        flex: 1 1 auto;
+        min-height: 50vh;
+        max-height: calc(95vh - 58px);
+    }
+
+    #comparison-lmp-data-list {
+        min-height: 50vh;
+    }
+
+    #comparison-lmp-add-form.comparison-lmp-add-form-inline {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: flex-end;
+        gap: 8px;
+        width: 100%;
+    }
+
+    #comparison-lmp-add-form .comparison-lmp-add-field {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    #comparison-lmp-add-form .comparison-lmp-add-field-sm {
+        flex: 0 0 110px;
+        max-width: 130px;
+    }
+
+    #comparison-lmp-add-form .comparison-lmp-add-field-link {
+        flex: 1.4 1 0;
+    }
+
+    #comparison-lmp-add-form .comparison-lmp-add-actions {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-bottom: 1px;
+        white-space: nowrap;
+    }
+
+    #comparison-lmp-add-form .form-label {
+        font-size: 11px;
+        white-space: nowrap;
     }
 
     .cd-sheet-table .cd-label-cell:focus {
@@ -2403,11 +2603,11 @@
                                             <label class="form-label"><strong>Product Link</strong></label>
                                             <input type="url" class="form-control" id="comparison-cd-add-comp-link" placeholder="https://amazon.com/dp/...">
                                         </div>
-                                        <div class="col-md-2">
+                                        <div class="col-md-2 d-none">
                                             <label class="form-label"><strong>Marketplace</strong></label>
                                             <select class="form-select" id="comparison-cd-add-comp-marketplace">
-                                                <option value="amazon" selected>Amz</option>
-                                                <option value="US">US</option>
+                                                <option value="amazon">Amz</option>
+                                                <option value="US" selected>US</option>
                                             </select>
                                         </div>
                                         <div class="col-12">
@@ -2443,58 +2643,54 @@
             </div>
             <div class="modal-body">
                 <div id="comparison-lmp-add-wrap" class="card mb-3 border-success">
-                    <div class="card-header bg-success text-white d-flex flex-wrap align-items-center justify-content-between gap-2">
-                        <strong><i class="fa fa-plus-circle"></i> Add <span id="comparison-lmp-add-platform-label">Amz</span> LMP</strong>
-                        <a id="comparison-lmp-site-search-link" href="#" target="_blank" rel="noopener"
-                            class="btn btn-sm btn-light text-success fw-semibold">
-                            <i class="fa fa-external-link"></i> Search on <span id="comparison-lmp-site-name">Amazon</span>
-                        </a>
-                    </div>
-                    <div class="card-body">
-                        <form id="comparison-lmp-add-form" class="row g-3">
+                    <span id="comparison-lmp-add-platform-label" class="d-none">Amz</span>
+                    <div class="card-body py-2">
+                        <form id="comparison-lmp-add-form" class="comparison-lmp-add-form-inline">
                             <input type="hidden" id="comparison-lmp-add-platform" value="amazon">
-                            <div class="col-md-3">
-                                <label class="form-label"><strong>SKU</strong></label>
-                                <input type="text" class="form-control" id="comparison-lmp-add-comp-sku" readonly>
+                            <div class="comparison-lmp-add-actions comparison-lmp-add-search">
+                                <a id="comparison-lmp-site-search-link" href="#" target="_blank" rel="noopener"
+                                    class="btn btn-sm btn-outline-success fw-semibold">
+                                    <i class="bi bi-box-arrow-up-right"></i> Search on <span id="comparison-lmp-site-name">Amazon</span>
+                                </a>
                             </div>
-                            <div class="col-md-2 comparison-lmp-field-amazon">
-                                <label class="form-label"><strong>ASIN</strong> <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="comparison-lmp-add-comp-asin" placeholder="B07ABC123">
+                            <div class="comparison-lmp-add-field">
+                                <label class="form-label mb-1"><strong>SKU</strong></label>
+                                <input type="text" class="form-control form-control-sm" id="comparison-lmp-add-comp-sku" readonly>
                             </div>
-                            <div class="col-md-2 comparison-lmp-field-ebay d-none">
-                                <label class="form-label"><strong>Item ID</strong> <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="comparison-lmp-add-comp-item-id" placeholder="123456789012">
+                            <div class="comparison-lmp-add-field comparison-lmp-field-amazon">
+                                <label class="form-label mb-1"><strong>ASIN</strong> <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm" id="comparison-lmp-add-comp-asin" placeholder="B07ABC123">
                             </div>
-                            <div class="col-md-2 comparison-lmp-field-shopify d-none">
-                                <label class="form-label"><strong>Product ID</strong> <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="comparison-lmp-add-comp-product-id" placeholder="google-product-id">
+                            <div class="comparison-lmp-add-field comparison-lmp-field-ebay d-none">
+                                <label class="form-label mb-1"><strong>Item ID</strong> <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm" id="comparison-lmp-add-comp-item-id" placeholder="123456789012">
                             </div>
-                            <div class="col-md-2">
-                                <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
-                                <input type="number" class="form-control" id="comparison-lmp-add-comp-price" placeholder="29.99" step="0.01" min="0.01">
+                            <div class="comparison-lmp-add-field comparison-lmp-field-shopify d-none">
+                                <label class="form-label mb-1"><strong>Product ID</strong> <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm" id="comparison-lmp-add-comp-product-id" placeholder="google-product-id">
                             </div>
-                            <div class="col-md-2 comparison-lmp-field-ebay comparison-lmp-field-temu d-none">
-                                <label class="form-label"><strong>Shipping / Del</strong></label>
-                                <input type="number" class="form-control" id="comparison-lmp-add-comp-shipping" placeholder="0.00" step="0.01" min="0">
+                            <div class="comparison-lmp-add-field comparison-lmp-add-field-sm">
+                                <label class="form-label mb-1"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control form-control-sm" id="comparison-lmp-add-comp-price" placeholder="29.99" step="0.01" min="0.01">
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label"><strong>Product Link</strong></label>
-                                <input type="url" class="form-control" id="comparison-lmp-add-comp-link" placeholder="https://...">
+                            <div class="comparison-lmp-add-field comparison-lmp-add-field-sm comparison-lmp-field-ebay comparison-lmp-field-temu d-none">
+                                <label class="form-label mb-1"><strong>Ship / Del</strong></label>
+                                <input type="number" class="form-control form-control-sm" id="comparison-lmp-add-comp-shipping" placeholder="0.00" step="0.01" min="0">
                             </div>
-                            <div class="col-md-2 comparison-lmp-field-amazon">
-                                <label class="form-label"><strong>Marketplace</strong></label>
-                                <select class="form-select" id="comparison-lmp-add-comp-marketplace">
-                                    <option value="amazon" selected>Amz</option>
-                                    <option value="US">US</option>
+                            <div class="comparison-lmp-add-field comparison-lmp-add-field-link">
+                                <label class="form-label mb-1"><strong>Product Link</strong></label>
+                                <input type="url" class="form-control form-control-sm" id="comparison-lmp-add-comp-link" placeholder="https://...">
+                            </div>
+                            <div class="comparison-lmp-add-field comparison-lmp-add-field-sm d-none">
+                                <label class="form-label mb-1"><strong>Marketplace</strong></label>
+                                <select class="form-select form-select-sm" id="comparison-lmp-add-comp-marketplace">
+                                    <option value="amazon">Amz</option>
+                                    <option value="US" selected>US</option>
                                 </select>
                             </div>
-                            <div class="col-12">
-                                <button type="submit" class="btn btn-success">
-                                    <i class="fa fa-plus"></i> Add LMP
-                                </button>
-                                <button type="reset" class="btn btn-secondary">
-                                    <i class="fa fa-undo"></i> Clear
-                                </button>
+                            <div class="comparison-lmp-add-actions">
+                                <button type="submit" class="btn btn-sm btn-success" id="comparison-lmp-add-submit">Add Amz LMP</button>
+                                <button type="reset" class="btn btn-sm btn-secondary d-none">Clear</button>
                             </div>
                         </form>
                     </div>
@@ -2572,6 +2768,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const temuLmpSaveUrl = @json(route('temu.lmp.save'));
     const googleLmpDataUrl = @json(route('google.lmp.data'));
     const googleLmpAddUrl = @json(route('google.lmp.add'));
+    const cvrMasterLmpIgnoreUrl = @json(route('cvr.master.lmp.ignore'));
     const updateLinkUrl = @json(route('update.rfq.link'));
     const groupMasterCategoriesUrl = @json(route('group.master.categories'));
     const groupMasterUpdateFieldUrl = @json(route('group.master.update.field'));
@@ -2590,6 +2787,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const reviewsIntelligenceUrl = @json(route('reviews.index'));
     const cvrMasterChartDataUrl = @json(route('cvr.master.chart.data'));
     const channelPriceChartDataUrl = @json(route('cvr.master.channel.price.chart'));
+    const cpHistoryChartDataUrl = @json(route('product_master.cp.chart'));
     const cvrMasterBreakdownUrl = @json(route('cvr.master.breakdown'));
     // When set, this page is the dedicated full-page CD editor for one SKU.
     const COMPARISON_CD_PAGE_SKU = @json($cdPageSku ?? null);
@@ -2645,9 +2843,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const ROI_CHANNEL_MARGINS = {
         amazon: 0.80,
         ebay: 0.83,
-        temu: 1.00,
+        temu: 0.95,
         shopify: 0.95,
     };
+    const TEMU_DECREASE_TAKEHOME = 0.95;
+    const TEMU_DECREASE_ADS_PERCENT = 2.2;
+    const TEMU_FULL_PRICE_MULT = 1.1364;
     const ROI_FIELD_OFFSETS = {
         cp: 1,
         cbm: 2,
@@ -5064,11 +5265,53 @@ document.addEventListener('DOMContentLoaded', function () {
         const normalized = String(type).toUpperCase();
         let cls = 'secondary';
         if (normalized === 'FBA') {
-            cls = 'warning';
+            cls = 'warning text-dark';
         } else if (normalized === 'AMZ') {
             cls = 'dark';
         }
         return `<span class="badge bg-${cls}">${escapeHtml(type)}</span>`;
+    }
+
+    function amazonFullPhotoUrl(url) {
+        const raw = String(url || '').trim();
+        if (!raw) {
+            return '';
+        }
+        return raw
+            .replace(/\._AC_SL\d+_\./i, '._AC_SL1000_.')
+            .replace(/\._AC_UL\d+_\./i, '._AC_UL1000_.')
+            .replace(/\._SL\d+_\./i, '._SL1000_.')
+            .replace(/\._SX\d+_SY\d+(?:_CR,[^.]*)?_\./i, '._AC_SL1000_.');
+    }
+
+    function amazonCompetitorLandedPrice(item) {
+        const landed = parseFloat(item?.landed_price);
+        if (Number.isFinite(landed) && landed > 0) {
+            return landed;
+        }
+        const basePrice = parseFloat(item?.price) || 0;
+        let shipCost = 0;
+        if (item?.delivery) {
+            const paidMatch = String(item.delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+            if (paidMatch) {
+                shipCost = parseFloat(paidMatch[1].replace(/,/g, '')) || 0;
+            }
+        }
+        return basePrice + shipCost;
+    }
+
+    function comparisonLmpHideCbHtml(item, marketplace, sku) {
+        const id = item?.id;
+        if (id === '' || id == null) {
+            return '';
+        }
+        const ignored = !!item.ignored;
+        return `<input type="checkbox" class="form-check-input comparison-lmp-hide-cb"
+            title="Hide From LMP Model"
+            ${ignored ? 'checked' : ''}
+            data-id="${escapeHtmlAttr(String(id))}"
+            data-marketplace="${escapeHtmlAttr(marketplace)}"
+            data-sku="${escapeHtmlAttr(sku || '')}">`;
     }
 
     function renderAmazonCompetitorsListHtml(competitors, lowestPrice) {
@@ -5076,17 +5319,26 @@ document.addEventListener('DOMContentLoaded', function () {
             return '<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No competitors found for this SKU.</div>';
         }
 
+        let l1Price = null;
+        competitors.forEach(function (item) {
+            if (item.ignored) {
+                return;
+            }
+            const landed = amazonCompetitorLandedPrice(item);
+            if (landed > 0 && (l1Price === null || landed < l1Price)) {
+                l1Price = landed;
+            }
+        });
+
+        const sku = currentAmazonLmpSku || currentComparisonLmpSku || '';
         let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm mb-0">';
         html += `<thead class="table-light"><tr>
             <th style="width:30px;">#</th>
-            <th style="width:60px;">Image</th>
-            <th style="width:100px;">ASIN</th>
+            <th style="width:44px;">Image</th>
+            <th style="width:52px;" title="Hide From LMP Model">Hide</th>
             <th style="width:250px;">Product Title</th>
-            <th>Seller</th>
             <th style="width:80px;">Price</th>
-            <th style="width:90px;">Revenue<br><small>(30d)</small></th>
-            <th style="width:70px;">Units<br><small>(30d)</small></th>
-            <th style="width:100px;">Buy Box</th>
+            <th style="width:70px;">Units 30d</th>
             <th style="width:60px;">Type</th>
             <th style="width:70px;">Rating</th>
             <th style="width:70px;">Reviews</th>
@@ -5105,11 +5357,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
             const totalPrice = basePrice + shipCost;
-            const isLowest = lowestPrice != null && Math.abs(parseFloat(item.price) - parseFloat(lowestPrice)) < 0.01;
-            const rowClass = isLowest ? 'table-success' : '';
+            const ignored = !!item.ignored;
+            const isLowest = !ignored && l1Price != null && Math.abs(totalPrice - l1Price) < 0.01;
+            const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
+            const hideBadge = ignored ? ' <span class="badge bg-secondary">Hidden</span>' : '';
             const totalFormatted = '$' + totalPrice.toFixed(2);
             const priceInner = shipCost > 0
-                ? `${totalFormatted}<br><small style="color:#888;font-weight:400;">$${basePrice.toFixed(2)} + $${shipCost.toFixed(2)} ship</small>`
+                ? `${totalFormatted} <small style="color:#888;font-weight:400;">($${basePrice.toFixed(2)}+$${shipCost.toFixed(2)})</small>`
                 : totalFormatted;
             const priceBadge = isLowest
                 ? `<span class="badge bg-success">${priceInner} <i class="fa fa-trophy"></i></span>`
@@ -5117,22 +5371,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const productLink = item.link || item.product_link || '#';
             const productTitle = item.title || item.product_title || 'N/A';
-            const sellerName = item.seller_name || '—';
-            const imageUrl = item.image || '';
+            const imageUrl = amazonFullPhotoUrl(item.image || '');
             const imageHtml = imageUrl
-                ? `<img src="${escapeHtmlAttr(imageUrl)}" style="width:50px;height:50px;object-fit:contain;" alt="">`
-                : '<span style="color:#999;">—</span>';
-            const revenue = item.monthly_revenue
-                ? `<span style="color:#28a745;font-weight:600;">$${parseFloat(item.monthly_revenue).toFixed(0)}</span>`
+                ? `<img src="${escapeHtmlAttr(imageUrl)}" class="comparison-lmp-photo comparison-table-sku-image" data-full-src="${escapeHtmlAttr(imageUrl)}" alt="">`
                 : '<span style="color:#999;">—</span>';
             const units = item.monthly_units_sold
                 ? `<span style="color:#007bff;font-weight:600;">${parseInt(item.monthly_units_sold, 10)}</span>`
                 : '<span style="color:#999;">—</span>';
-            const buyBox = item.buy_box_owner
-                ? `<span style="font-size:11px;">${escapeHtml(item.buy_box_owner)}</span>`
-                : '<span style="color:#999;">—</span>';
             const rating = item.rating
-                ? `<span style="color:#ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>`
+                ? `<span style="background:#ffc107;color:#000;font-weight:600;padding:2px 6px;border-radius:4px;">${parseFloat(item.rating).toFixed(1)} <i class="fas fa-star"></i></span>`
                 : '<span style="color:#999;">—</span>';
             const reviews = item.reviews
                 ? `<span>${parseInt(item.reviews, 10).toLocaleString()}</span>`
@@ -5155,29 +5402,26 @@ document.addEventListener('DOMContentLoaded', function () {
             html += `<tr class="${rowClass}">
                 <td class="text-center"><strong>${index + 1}</strong></td>
                 <td class="text-center">${imageHtml}</td>
-                <td><span class="text-primary fw-semibold" style="font-size:11px;">${escapeHtml(item.asin || 'N/A')}</span></td>
-                <td style="font-size:11px;" title="${escapeHtmlAttr(productTitle)}">${escapeHtml(productTitle.length > 60 ? productTitle.substring(0, 60) + '…' : productTitle)}</td>
-                <td style="font-size:11px;">${escapeHtml(sellerName)}</td>
+                <td class="text-center comparison-lmp-hide-cell">${comparisonLmpHideCbHtml(item, 'amazon', sku)}${hideBadge}</td>
+                <td style="font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtmlAttr(productTitle)}">${escapeHtml(productTitle)}</td>
                 <td>${priceBadge}</td>
-                <td class="text-center">${revenue}</td>
                 <td class="text-center">${units}</td>
-                <td style="font-size:11px;">${buyBox}</td>
                 <td class="text-center">${amazonSellerTypeBadge(item.seller_type)}</td>
                 <td class="text-center">${rating}</td>
                 <td class="text-center">${reviews}</td>
                 <td class="text-center">${deliveryHtml}</td>
                 <td class="text-center">
-                    <a href="${escapeHtmlAttr(productLink)}" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View Product on Amz">
-                        <i class="fa fa-external-link"></i>
+                    <a href="${escapeHtmlAttr(productLink)}" target="_blank" rel="noopener" class="comparison-lmp-icon-btn comparison-lmp-link-btn" title="Open listing">
+                        <i class="bi bi-box-arrow-up-right"></i>
                     </a>
                 </td>
                 <td class="text-center">
-                    <button type="button" class="btn btn-sm btn-danger comparison-delete-lmp-btn"
+                    <button type="button" class="comparison-lmp-icon-btn comparison-lmp-delete-btn comparison-delete-lmp-btn"
                         data-id="${escapeHtmlAttr(String(item.id ?? ''))}"
                         data-asin="${escapeHtmlAttr(item.asin || '')}"
                         data-price="${escapeHtmlAttr(String(item.price ?? ''))}"
                         title="Delete this competitor">
-                        <i class="fa fa-trash"></i>
+                        <i class="bi bi-trash"></i>
                     </button>
                 </td>
             </tr>`;
@@ -5210,7 +5454,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (asinInput) asinInput.value = '';
         if (priceInput) priceInput.value = '';
         if (linkInput) linkInput.value = '';
-        if (marketplaceInput) marketplaceInput.value = 'amazon';
+        if (marketplaceInput) marketplaceInput.value = 'US';
     }
 
     function loadAmazonCompetitors(sku, listEl, fieldPrefix) {
@@ -5255,7 +5499,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const asin = document.getElementById(`${fieldPrefix}-add-comp-asin`)?.value.trim();
         const price = parseFloat(document.getElementById(`${fieldPrefix}-add-comp-price`)?.value);
         const link = document.getElementById(`${fieldPrefix}-add-comp-link`)?.value.trim();
-        const marketplace = document.getElementById(`${fieldPrefix}-add-comp-marketplace`)?.value || 'amazon';
+        const marketplace = document.getElementById(`${fieldPrefix}-add-comp-marketplace`)?.value || 'US';
         const form = document.getElementById(formId);
 
         if (!asin) {
@@ -5370,39 +5614,117 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function renderEbayCompetitorsList(competitors, lowestPrice) {
+    function comparisonLmpIgnoreMarketplace(marketplace) {
+        const key = String(marketplace || 'amazon').toLowerCase();
+        if (key === 'shopify') return 'google';
+        if (key === 'ebay1' || key === 'ebayone') return 'ebay';
+        return key;
+    }
+
+    function toggleComparisonLmpHidden(cb) {
+        const id = cb.dataset.id;
+        const marketplace = comparisonLmpIgnoreMarketplace(cb.dataset.marketplace || currentComparisonLmpPlatform || 'amazon');
+        const sku = cb.dataset.sku || currentAmazonLmpSku || currentComparisonLmpSku || '';
+        const ignored = !!cb.checked;
+        if (!id) {
+            cb.checked = !ignored;
+            showComparisonToast('error', 'Invalid competitor ID');
+            return;
+        }
+
+        cb.disabled = true;
+        fetch(cvrMasterLmpIgnoreUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                id,
+                marketplace,
+                sku,
+                ignored: ignored ? 1 : 0,
+            }),
+        })
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok || !data?.success) {
+                throw new Error(data?.error || data?.message || 'Failed to update hide');
+            }
+            showComparisonToast('success', ignored ? 'Hidden from LMP Model' : 'Included in LMP Model');
+            const reload = marketplace === 'amazon'
+                ? reloadCurrentAmazonLmp()
+                : reloadCurrentComparisonLmpList();
+            return reload.then(function () {
+                if (document.getElementById('comparisonRoiModal')?.classList.contains('show')) {
+                    const roiPlatform = marketplace === 'google' ? 'shopify' : marketplace;
+                    return refreshRoiModalAfterLmpChange(roiPlatform);
+                }
+            });
+        })
+        .catch(err => {
+            cb.checked = !ignored;
+            showComparisonToast('error', err.message || 'Failed to update hide');
+        })
+        .finally(() => {
+            cb.disabled = false;
+        });
+    }
+
+    function renderEbayCompetitorsList(competitors, lowestPrice, platform) {
         if (!competitors || competitors.length === 0) {
             return '<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No eBay competitors found for this SKU.</div>';
         }
 
+        const key = channelLmpKey(platform || currentComparisonLmpPlatform || 'ebay');
+        const ignoreMarketplace = key === 'shopify' ? 'google' : key;
+        const sku = currentComparisonLmpSku || '';
+        let l1Price = null;
+        competitors.forEach(function (item) {
+            if (item.ignored) {
+                return;
+            }
+            const total = parseFloat(item.total_price ?? 0);
+            if (total > 0 && (l1Price === null || total < l1Price)) {
+                l1Price = total;
+            }
+        });
+
         let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm mb-0">';
         html += `<thead class="table-light"><tr>
-            <th>#</th><th>Image</th><th>Item ID</th><th>Product Title</th>
+            <th>#</th><th>Image</th><th>Item ID</th>
+            <th class="text-center" title="Hide From LMP Model">Hide</th>
+            <th>Product Title</th>
             <th>Price</th><th>Shipping</th><th>Total</th><th>Link</th>
         </tr></thead><tbody>`;
 
         competitors.forEach(function (item, index) {
             const total = parseFloat(item.total_price ?? 0);
-            const isLowest = lowestPrice != null && Math.abs(total - parseFloat(lowestPrice)) < 0.01;
-            const rowClass = isLowest ? 'table-success' : '';
+            const ignored = !!item.ignored;
+            const isLowest = !ignored && l1Price != null && Math.abs(total - l1Price) < 0.01;
+            const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
+            const hideBadge = ignored ? ' <span class="badge bg-secondary">Hidden</span>' : '';
             const productLink = item.link || '#';
             const productTitle = item.title || 'N/A';
-            const imageUrl = item.image || '';
+            const imageUrl = amazonFullPhotoUrl(item.image || '');
             const imageHtml = imageUrl
-                ? `<img src="${escapeHtmlAttr(imageUrl)}" style="width:50px;height:50px;object-fit:contain;" alt="">`
+                ? `<img src="${escapeHtmlAttr(imageUrl)}" class="comparison-lmp-photo comparison-table-sku-image" data-full-src="${escapeHtmlAttr(imageUrl)}" alt="">`
                 : '<span class="text-muted">—</span>';
 
             html += `<tr class="${rowClass}">
                 <td class="text-center"><strong>${index + 1}</strong></td>
                 <td class="text-center">${imageHtml}</td>
-                <td><span class="text-primary fw-semibold" style="font-size:11px;">${escapeHtmlAttr(item.item_id || 'N/A')}</span></td>
-                <td style="font-size:11px;" title="${escapeHtmlAttr(productTitle)}">${escapeHtml(productTitle.length > 60 ? productTitle.substring(0, 60) + '…' : productTitle)}</td>
+                <td><span class="text-primary fw-semibold" style="font-size:11px;">${escapeHtml(item.item_id || item.asin || 'N/A')}</span>${hideBadge}</td>
+                <td class="text-center comparison-lmp-hide-cell">${comparisonLmpHideCbHtml(item, ignoreMarketplace, sku)}</td>
+                <td style="font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtmlAttr(productTitle)}">${escapeHtml(productTitle)}</td>
                 <td>$${parseFloat(item.price || 0).toFixed(2)}</td>
-                <td>$${parseFloat(item.shipping_cost || 0).toFixed(2)}</td>
+                <td>$${parseFloat(item.shipping_cost || item.delivery || 0).toFixed(2)}</td>
                 <td><strong>$${total.toFixed(2)}${isLowest ? ' <i class="fa fa-trophy text-success"></i>' : ''}</strong></td>
                 <td class="text-center">
-                    <a href="${escapeHtmlAttr(productLink)}" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View listing">
-                        <i class="fa fa-external-link"></i>
+                    <a href="${escapeHtmlAttr(productLink)}" target="_blank" rel="noopener" class="comparison-lmp-icon-btn comparison-lmp-link-btn" title="Open listing">
+                        <i class="bi bi-box-arrow-up-right"></i>
                     </a>
                 </td>
             </tr>`;
@@ -5499,6 +5821,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (platformLabel) {
             platformLabel.textContent = meta.label;
         }
+        const submitBtn = document.getElementById('comparison-lmp-add-submit');
+        if (submitBtn) {
+            submitBtn.textContent = `Add ${meta.label} LMP`;
+        }
         const siteName = document.getElementById('comparison-lmp-site-name');
         if (siteName) {
             siteName.textContent = meta.siteName;
@@ -5555,7 +5881,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         const marketplaceInput = document.getElementById('comparison-lmp-add-comp-marketplace');
         if (marketplaceInput) {
-            marketplaceInput.value = 'amazon';
+            marketplaceInput.value = 'US';
         }
 
         const addWrap = document.getElementById('comparison-lmp-add-wrap');
@@ -5611,7 +5937,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(data => {
                 if (data.success) {
                     const lowest = data.lowest_price != null ? data.lowest_price : data.lmp;
-                    listEl.innerHTML = renderEbayCompetitorsList(data.competitors || [], lowest);
+                    listEl.innerHTML = renderEbayCompetitorsList(data.competitors || [], lowest, platform);
                 } else {
                     listEl.innerHTML = `<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No ${meta.label} LMP yet. Add one above from ${meta.siteName}.</div>`;
                 }
@@ -5675,7 +6001,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(data => {
                 if (data.success) {
                     const lowest = data.lowest_price != null ? data.lowest_price : data.lmp;
-                    listEl.innerHTML = renderEbayCompetitorsList(data.competitors || [], lowest);
+                    listEl.innerHTML = renderEbayCompetitorsList(data.competitors || [], lowest, platform);
                 } else {
                     listEl.innerHTML = `<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No ${meta.label} LMP yet. Add one above from ${meta.siteName}.</div>`;
                 }
@@ -8167,6 +8493,18 @@ document.addEventListener('DOMContentLoaded', function () {
             temu: null,
             shopify: null,
             prices: { amazon: null, ebay: null, temu: null, shopify: null },
+            ads: { amazon: null, ebay: null, temu: null, shopify: null },
+            margin: { amazon: null, ebay: null, temu: null, shopify: null },
+            lp: null,
+            ship: null,
+            temu_ship: null,
+            amazon_sprice: null,
+            ebay_sprice: null,
+            temu_sprice: null,
+            temu_r_price: null,
+            temu_full_price: null,
+            temu_s_r_price: null,
+            old_cp: null,
             npft: { amazon: null, ebay: null, temu: null, shopify: null },
             nroi: { amazon: null, ebay: null, temu: null, shopify: null },
         };
@@ -8193,6 +8531,46 @@ document.addEventListener('DOMContentLoaded', function () {
                     temu: data.temu_price != null ? data.temu_price : null,
                     shopify: data.shopify_price != null ? data.shopify_price : null,
                 },
+                ads: {
+                    amazon: data.ads?.amazon != null ? Number(data.ads.amazon) : null,
+                    ebay: data.ads?.ebay != null ? Number(data.ads.ebay) : null,
+                    temu: data.ads?.temu != null ? Number(data.ads.temu) : null,
+                    shopify: data.ads?.shopify != null ? Number(data.ads.shopify) : null,
+                },
+                margin: {
+                    amazon: 0.80,
+                    ebay: data.margin?.ebay != null && Number(data.margin.ebay) > 0
+                        ? Number(data.margin.ebay)
+                        : 0.83,
+                    temu: 0.95,
+                    shopify: 0.95,
+                },
+                lp: data.lp != null && Number(data.lp) > 0 ? Number(data.lp) : null,
+                ship: data.ship != null && Number.isFinite(Number(data.ship)) ? Number(data.ship) : null,
+                temu_ship: data.temu_ship != null && Number.isFinite(Number(data.temu_ship))
+                    ? Number(data.temu_ship)
+                    : null,
+                amazon_sprice: data.amazon_sprice != null && Number(data.amazon_sprice) > 0
+                    ? Number(data.amazon_sprice)
+                    : null,
+                ebay_sprice: data.ebay_sprice != null && Number(data.ebay_sprice) > 0
+                    ? Number(data.ebay_sprice)
+                    : null,
+                temu_sprice: data.temu_sprice != null && Number(data.temu_sprice) > 0
+                    ? Number(data.temu_sprice)
+                    : null,
+                temu_r_price: data.temu_r_price != null && Number(data.temu_r_price) > 0
+                    ? Number(data.temu_r_price)
+                    : null,
+                temu_full_price: data.temu_full_price != null && Number(data.temu_full_price) > 0
+                    ? Number(data.temu_full_price)
+                    : null,
+                temu_s_r_price: data.temu_s_r_price != null && Number(data.temu_s_r_price) > 0
+                    ? Number(data.temu_s_r_price)
+                    : null,
+                old_cp: data.old_cp != null && Number.isFinite(Number(data.old_cp))
+                    ? Number(data.old_cp)
+                    : null,
                 npft: { amazon: null, ebay: null, temu: null, shopify: null },
                 nroi: { amazon: null, ebay: null, temu: null, shopify: null },
             };
@@ -8212,6 +8590,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function channelRoiMargin(channel, lmpRates) {
         const key = channelLmpKey(channel);
+        // Amazon take-home is always 80% — same as /amazon-tabulator-view SGROI / SGPFT.
+        if (key === 'amazon') {
+            return 0.80;
+        }
+        // Temu displayed take-home on /temu-decrease is always 95% (R Price × 0.95).
+        if (key === 'temu') {
+            return 0.95;
+        }
         const fromRates = lmpRates?.margin?.[key];
         if (fromRates != null && Number.isFinite(Number(fromRates)) && Number(fromRates) > 0) {
             return Number(fromRates);
@@ -8272,6 +8658,14 @@ document.addEventListener('DOMContentLoaded', function () {
     // Back-compat alias used by older call sites.
     async function fetchChannelNpftNroi(sku) {
         return fetchChannelFeeMeta(sku);
+    }
+
+    function getChannelOldCp(lmpRates) {
+        const value = lmpRates?.old_cp;
+        if (value == null || !Number.isFinite(Number(value))) {
+            return '';
+        }
+        return formatRoiNumber(value);
     }
 
     function getChannelPriceAfterLmp(channel, lmpRates) {
@@ -8597,6 +8991,13 @@ document.addEventListener('DOMContentLoaded', function () {
             lmpCell.textContent = rebuilt.lmp || '—';
             lmpCell.classList.toggle('text-muted', !rebuilt.lmp);
         }
+        const oldCpCell = tr.querySelector('.comparison-roi-old-cp-cell');
+        if (oldCpCell) {
+            const display = rebuilt.oldCp || '—';
+            oldCpCell.classList.toggle('text-muted', !rebuilt.oldCp);
+            oldCpCell.innerHTML = `${escapeHtml(display)}${roiOldCpHistoryDotHtml(rebuilt.oldCp)}`;
+            oldCpCell.querySelector('.comparison-roi-cp-history-dot')?.addEventListener('click', handleRoiHistoryDotClick);
+        }
         const priceAfterCell = tr.querySelector('.comparison-roi-price-after-lmp-cell');
         if (priceAfterCell) {
             priceAfterCell.textContent = rebuilt.priceAfterLmp || '—';
@@ -8785,43 +9186,179 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /**
-     * Proposed PRC metrics (same formulas as Pricing Master / site GROI · GPFT · NROI · NPFT):
-     *   gross$  = ProposedPRC × margin − CP − Shipping
-     *   PGROI%  = gross$ / CP × 100
-     *   PGPFT%  = gross$ / ProposedPRC × 100
-     *   PNPFT%  = PGPFT% − Ads%
-     *   PNROI%  = (gross$ − ProposedPRC×Ads%/100) / CP × 100
-     *             (Temu: PGROI% − Ads%, skip subtract when Ads%=100)
-     * Margins: Amz 80%, Ebay 83%, Temu 100%, Shopify 95%.
+     * Analytics tabulator math (Amz / Ebay):
+     *   Profit $ = (S PRC × take-home) − Ship − LP
+     *   PGROI%  = SGROI = Profit $ / LP × 100
+     *   PGPFT%  = SGPFT = Profit $ / S PRC × 100
+     *   PNPFT%  = SPFT  = SGPFT − Ads%
+     *   PNROI%  = SNROI = (Profit $ − S PRC × Ads%/100) / LP × 100
+     */
+    function calculateTabulatorMetrics(price, cp, shipping, adsPct, margin) {
+        if (!(price > 0)) {
+            return { profit: null, pPct: null, roi: null, npft: null, nroi: null };
+        }
+        const takeHome = (Number.isFinite(margin) && margin > 0) ? margin : 0.80;
+        const ads = Number.isFinite(adsPct) && adsPct >= 0 ? adsPct : 0;
+        const grossPft = (price * takeHome) - shipping - cp;
+        const pPct = (grossPft / price) * 100;
+        const roi = cp > 0 ? (grossPft / cp) * 100 : null;
+        const npft = pPct - ads;
+        const nroi = cp > 0 ? ((grossPft - (price * (ads / 100))) / cp) * 100 : null;
+        return { profit: grossPft, pPct, roi, npft, nroi };
+    }
+
+    function calculateAmazonTabulatorMetrics(price, cp, shipping, adsPct) {
+        return calculateTabulatorMetrics(price, cp, shipping, adsPct, 0.80);
+    }
+
+    /** Temu R Price: base, then +$2.99 if base ≤ $26.99 — same as /temu-decrease. */
+    function temuRPriceFromBase(basePrice) {
+        const b = parseFloat(basePrice) || 0;
+        if (!(b > 0)) return 0;
+        return +(b <= 26.99 ? b + 2.99 : b).toFixed(2);
+    }
+
+    function temuFullPriceFromBase(basePrice) {
+        const b = parseFloat(basePrice) || 0;
+        if (b <= 0) return 0;
+        let full = b * TEMU_FULL_PRICE_MULT;
+        if (full <= 26.99) full += 2.99;
+        return full;
+    }
+
+    function temuBaseFromFullPrice(full) {
+        const f = parseFloat(full) || 0;
+        if (!(f > 0)) return 0;
+        const candidates = [(f - 2.99) / TEMU_FULL_PRICE_MULT, f / TEMU_FULL_PRICE_MULT];
+        let best = 0;
+        let bestErr = Infinity;
+        candidates.forEach(function (base) {
+            if (!(base > 0)) return;
+            const rebuilt = temuFullPriceFromBase(base);
+            const err = Math.abs(rebuilt - f);
+            if (err < bestErr - 1e-6) {
+                bestErr = err;
+                best = base;
+            } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
+                best = base;
+            }
+        });
+        return best;
+    }
+
+    /** S R Price from S PRC — same as /temu-decrease temuSRPriceFromRow. */
+    function temuSRPriceFromSprice(sprice, rPrice, fullPrice) {
+        const s = parseFloat(sprice) || 0;
+        if (!(s > 0)) return 0;
+        const r = parseFloat(rPrice) || 0;
+        const full = parseFloat(fullPrice) || 0;
+        if (full > 0 && Math.abs(s - full) < 0.02) return r;
+        if (r > 0 && Math.abs(s - r) < 0.02) return r;
+        return temuRPriceFromBase(temuBaseFromFullPrice(s));
+    }
+
+    function resolveTemuSRPrice(row, sprice) {
+        const sale = Number(sprice) || 0;
+        const storedSprice = Number(row?.temuSprice);
+        const storedSR = Number(row?.temuSRPrice);
+        if (sale > 0 && storedSprice > 0 && storedSR > 0 && Math.abs(sale - storedSprice) < 0.02) {
+            return storedSR;
+        }
+        return temuSRPriceFromSprice(sale, row?.temuRPrice, row?.temuFullPrice);
+    }
+
+    /**
+     * /temu-decrease S metrics:
+     *   SPFT $  = (S R Price × 0.95) − Temu Ship − LP
+     *   SNPFT $ = SPFT − (S PRC × Ads%)
+     *   SGROI%  = SPFT / LP
+     *   SGPRFT% = SPFT / S PRC
+     *   SNROI%  = SNPFT / LP
+     *   SPFT%   = SNPFT / S PRC
+     */
+    function calculateTemuDecreaseSMetrics(sprice, sR, lp, ship, adsPct) {
+        if (!(sprice > 0)) {
+            return { profit: null, pPct: null, roi: null, npft: null, nroi: null };
+        }
+        const r = (sR > 0) ? sR : temuSRPriceFromSprice(sprice, 0, 0);
+        if (!(r > 0)) {
+            return { profit: null, pPct: null, roi: null, npft: null, nroi: null };
+        }
+        const ads = Number.isFinite(adsPct) && adsPct >= 0 ? adsPct : TEMU_DECREASE_ADS_PERCENT;
+        const grossPft = (r * TEMU_DECREASE_TAKEHOME) - ship - lp;
+        const netPft = ads === 100 ? grossPft : (grossPft - (sprice * (ads / 100)));
+        return {
+            profit: grossPft,
+            pPct: (grossPft / sprice) * 100,
+            roi: lp > 0 ? (grossPft / lp) * 100 : null,
+            npft: (netPft / sprice) * 100,
+            nroi: lp > 0 ? (netPft / lp) * 100 : null,
+        };
+    }
+
+    /**
+     * /temu-decrease listing metrics:
+     *   Gpft $  = (R Price × 0.95) − Temu Ship − LP
+     *   NPFT $  = Gpft − (Full Temu Price × Ads%)
+     *   GROI%   = Gpft / LP
+     *   GPRFT%  = Gpft / Full Temu Price
+     *   NROI%   = NPFT / LP
+     *   NPFT%   = NPFT / Full Temu Price
+     */
+    function calculateTemuDecreaseListingMetrics(rPrice, fullPrice, lp, ship, adsPct) {
+        if (!(rPrice > 0)) {
+            return { siteGroi: null, siteGpft: null, siteNroi: null, siteNpft: null };
+        }
+        const ads = Number.isFinite(adsPct) && adsPct >= 0 ? adsPct : TEMU_DECREASE_ADS_PERCENT;
+        const denom = fullPrice > 0 ? fullPrice : rPrice;
+        const grossPft = (rPrice * TEMU_DECREASE_TAKEHOME) - ship - lp;
+        const netPft = ads === 100 ? grossPft : (grossPft - (denom * (ads / 100)));
+        return {
+            siteGroi: lp > 0 ? (grossPft / lp) * 100 : null,
+            siteGpft: denom > 0 ? (grossPft / denom) * 100 : null,
+            siteNroi: lp > 0 ? (netPft / lp) * 100 : null,
+            siteNpft: denom > 0 ? (netPft / denom) * 100 : null,
+        };
+    }
+
+    /**
+     * Proposed PRC metrics (same formulas as Pricing Master / site GROI · GPFT · NROI · NPFT).
+     * Amazon uses /amazon-tabulator-view SPRICE math (80% take-home + Channel Master Ads%).
      */
     function calculateRoiMetrics(row) {
         const cp = parseSheetNumber(row.cp) ?? 0;
         const shipping = parseSheetNumber(row.shipping) ?? 0;
         const sale = parseSheetNumber(row.sale) ?? 0;
         const key = channelLmpKey(row.channel);
+        const adsRaw = row.adsPct != null ? Number(row.adsPct) : 0;
+        const adsPct = Number.isFinite(adsRaw) && adsRaw >= 0 ? adsRaw : 0;
+
+        if (!(sale > 0)) {
+            return { profit: null, pPct: null, roi: null, npft: null, nroi: null };
+        }
+
+        if (key === 'amazon') {
+            return calculateTabulatorMetrics(sale, cp, shipping, adsPct, 0.80);
+        }
+        if (key === 'ebay') {
+            const ebayMargin = (row.margin != null && Number(row.margin) > 0)
+                ? Number(row.margin)
+                : channelRoiMargin('ebay');
+            return calculateTabulatorMetrics(sale, cp, shipping, adsPct, ebayMargin);
+        }
+        if (key === 'temu') {
+            return calculateTemuDecreaseSMetrics(sale, resolveTemuSRPrice(row, sale), cp, shipping, adsPct);
+        }
+
         const margin = (row.margin != null && Number.isFinite(Number(row.margin)) && Number(row.margin) > 0)
             ? Number(row.margin)
             : channelRoiMargin(row.channel);
-        const adsRaw = row.adsPct != null ? Number(row.adsPct) : 0;
-        const adsPct = Number.isFinite(adsRaw) && adsRaw >= 0 ? adsRaw : 0;
-        const hasInputs = sale > 0 || cp > 0 || shipping > 0;
-
-        if (!hasInputs || !(sale > 0)) {
-            return { profit: null, pPct: null, roi: null, npft: null, nroi: null };
-        }
 
         const grossProfit = (sale * margin) - cp - shipping;
         const pPct = (grossProfit / sale) * 100;
         const roi = cp > 0 ? (grossProfit / cp) * 100 : null;
         const npft = pPct - adsPct;
-        let nroi = null;
-        if (cp > 0) {
-            if (key === 'temu') {
-                nroi = adsPct === 100 ? roi : (roi - adsPct);
-            } else {
-                nroi = ((grossProfit - (sale * (adsPct / 100))) / cp) * 100;
-            }
-        }
+        const nroi = cp > 0 ? ((grossProfit - (sale * (adsPct / 100))) / cp) * 100 : null;
 
         return {
             profit: grossProfit,
@@ -8844,16 +9381,24 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /**
-     * Current listing price (C Price) metrics — same formulas as Pricing Master / site:
-     *   gross$  = C Price × margin − CP − Shipping
-     *   GROI%   = gross$ / CP × 100
+     * Current listing price (C Price) metrics use Old CP (CP Master), not P CP:
+     *   gross$  = C Price × margin − Old CP − Shipping
+     *   GROI%   = gross$ / Old CP × 100
      *   GPFT%   = gross$ / C Price × 100
      *   NPFT%   = GPFT% − Ads%
-     *   NROI%   = (gross$ − C Price×Ads%/100) / CP × 100
-     *             (Temu: GROI% − Ads%, skip subtract when Ads%=100)
+     *   NROI%   = (gross$ − C Price×Ads%/100) / Old CP × 100
+     * Temu uses /temu-decrease listing math (R Price × 0.95, ads on Full Temu Price).
      */
+    function resolveRoiOldCp(row) {
+        const oldCp = parseSheetNumber(row.oldCp);
+        if (oldCp != null && oldCp > 0) {
+            return oldCp;
+        }
+        return parseSheetNumber(row.cp) ?? 0;
+    }
+
     function calculateSiteRoiMetrics(row) {
-        const cp = parseSheetNumber(row.cp) ?? 0;
+        const cp = resolveRoiOldCp(row);
         const shipping = parseSheetNumber(row.shipping) ?? 0;
         const price = parseSheetNumber(row.priceAfterLmp) ?? 0;
         const key = channelLmpKey(row.channel);
@@ -8863,22 +9408,36 @@ document.addEventListener('DOMContentLoaded', function () {
         const adsRaw = row.adsPct != null ? Number(row.adsPct) : 0;
         const adsPct = Number.isFinite(adsRaw) && adsRaw >= 0 ? adsRaw : 0;
 
+        if (key === 'temu') {
+            const rPrice = Number(row.temuRPrice) > 0 ? Number(row.temuRPrice) : price;
+            const fullPrice = Number(row.temuFullPrice) > 0 ? Number(row.temuFullPrice) : rPrice;
+            return calculateTemuDecreaseListingMetrics(rPrice, fullPrice, cp, shipping, adsPct);
+        }
+
         if (!(price > 0)) {
             return { siteGroi: null, siteGpft: null, siteNroi: null, siteNpft: null };
+        }
+
+        if (key === 'amazon' || key === 'ebay') {
+            const takeHome = key === 'amazon'
+                ? 0.80
+                : ((row.margin != null && Number(row.margin) > 0) ? Number(row.margin) : channelRoiMargin('ebay'));
+            const calc = calculateTabulatorMetrics(price, cp, shipping, adsPct, takeHome);
+            return {
+                siteGroi: calc.roi,
+                siteGpft: calc.pPct,
+                siteNroi: calc.nroi,
+                siteNpft: calc.npft,
+            };
         }
 
         const grossProfit = (price * margin) - cp - shipping;
         const siteGpft = (grossProfit / price) * 100;
         const siteGroi = cp > 0 ? (grossProfit / cp) * 100 : null;
         const siteNpft = siteGpft - adsPct;
-        let siteNroi = null;
-        if (cp > 0 && siteGroi != null) {
-            if (key === 'temu') {
-                siteNroi = adsPct === 100 ? siteGroi : (siteGroi - adsPct);
-            } else {
-                siteNroi = ((grossProfit - (price * (adsPct / 100))) / cp) * 100;
-            }
-        }
+        const siteNroi = (cp > 0 && siteGroi != null)
+            ? ((grossProfit - (price * (adsPct / 100))) / cp) * 100
+            : null;
 
         return { siteGroi, siteGpft, siteNroi, siteNpft };
     }
@@ -8908,27 +9467,55 @@ document.addEventListener('DOMContentLoaded', function () {
         const gw = metrics.gw != null
             ? formatRoiNumber(metrics.gw)
             : (fromSheet.gw ? formatRoiNumber(fromSheet.gw) : '');
+        const key = channelLmpKey(channel);
+        // Amazon CP / Ship / Proposed PRC must match /amazon-tabulator-view
+        // (Product Master LP + Values.ship + amazon_data_view SPRICE).
+        let cp = metrics.cp != null ? formatRoiNumber(metrics.cp) : '';
+        let shipping = (slabShipping != null && slabShipping !== '')
+            ? formatRoiNumber(slabShipping)
+            : '';
+        let sale = fromSheet.sale || lmpSale || '';
+        if (key === 'amazon' || key === 'ebay') {
+            if (lmpRates?.lp != null && Number(lmpRates.lp) > 0) {
+                cp = formatRoiNumber(lmpRates.lp);
+            }
+            if (lmpRates?.ship != null && Number.isFinite(Number(lmpRates.ship))) {
+                shipping = formatRoiNumber(lmpRates.ship);
+            }
+            const sprice = key === 'amazon' ? lmpRates?.amazon_sprice : lmpRates?.ebay_sprice;
+            if (sprice != null && Number(sprice) > 0) {
+                sale = formatRoiNumber(sprice);
+            }
+        }
+        if (key === 'temu') {
+            if (lmpRates?.lp != null && Number(lmpRates.lp) > 0) {
+                cp = formatRoiNumber(lmpRates.lp);
+            }
+            if (lmpRates?.temu_ship != null && Number.isFinite(Number(lmpRates.temu_ship))) {
+                shipping = formatRoiNumber(lmpRates.temu_ship);
+            }
+            if (lmpRates?.temu_sprice != null && Number(lmpRates.temu_sprice) > 0) {
+                sale = formatRoiNumber(lmpRates.temu_sprice);
+            }
+        }
         const row = {
             channel,
-            // CP always from CD PRICE USD (lowest supplier column) — never from the
-            // Amz/Ebay channel row, where Spec+1 is the Critical priority cell ("Normal").
-            cp: metrics.cp != null ? formatRoiNumber(metrics.cp) : '',
+            cp,
             cbm,
             freight: computeFreightFromCbm(metrics.cbm != null ? metrics.cbm : (fromSheet.cbm || cbm)),
             gw,
-            // Shipping is sourced from Product Master Values.ship for the SKU
-            // (via shipping-slab-rate API; slab consensus is only a fallback).
-            // Never from the comparison sheet, so stale/imported sheet values cannot override.
-            shipping: (slabShipping != null && slabShipping !== '')
-                ? formatRoiNumber(slabShipping)
-                : '',
-            // Sale prefers sheet/manual, then LMP×0.9. Channel listing price is shown separately.
-            sale: fromSheet.sale || lmpSale || '',
+            shipping,
+            sale,
             lmp: rawLmp,
+            oldCp: getChannelOldCp(lmpRates),
             // Current listing price from the respective marketplace channel.
             priceAfterLmp,
             margin: channelRoiMargin(channel, lmpRates),
             adsPct: channelRoiAdsPct(channel, lmpRates),
+            temuSprice: key === 'temu' ? lmpRates?.temu_sprice : null,
+            temuRPrice: key === 'temu' ? lmpRates?.temu_r_price : null,
+            temuFullPrice: key === 'temu' ? lmpRates?.temu_full_price : null,
+            temuSRPrice: key === 'temu' ? lmpRates?.temu_s_r_price : null,
             isOverall: false,
         };
 
@@ -8938,11 +9525,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function buildOverallRoiRow(platformRows, cells, metrics, lmpRates) {
         const fromSheet = readCostCalculatorRowFromSheet(cells || [], ROI_OVERALL_CHANNEL, metrics?.specCol ?? 0);
-        const template = (platformRows || [])[0] || {};
-        const lmps = (platformRows || [])
+        const allRows = platformRows || [];
+        const pricedRows = allRows.filter(r => (parseSheetNumber(r.sale) ?? 0) > 0);
+        const sourceRows = pricedRows.length ? pricedRows : allRows;
+        const template = sourceRows[0] || allRows[0] || {};
+        const lmps = allRows
             .map(r => parseSheetNumber(r.lmp))
             .filter(n => n != null);
-        const sales = (platformRows || [])
+        const sales = sourceRows
             .map(r => parseSheetNumber(r.sale))
             .filter(n => n != null);
         const overallLmp = lmps.length ? Math.min(...lmps) : null;
@@ -8952,7 +9542,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const sale = avgSale != null
             ? formatRoiNumber(avgSale)
             : (fromSheet.sale || (overallLmp != null ? formatRoiNumber(overallLmp * ROI_LMP_SALE_FACTOR) : ''));
-        const priceAfterVals = (platformRows || [])
+        const priceAfterVals = sourceRows
             .map(r => parseSheetNumber(r.priceAfterLmp))
             .filter(n => n != null);
         const priceAfterLmp = priceAfterVals.length
@@ -8960,7 +9550,7 @@ document.addEventListener('DOMContentLoaded', function () {
             : '';
 
         const avgPct = (getter) => {
-            const vals = (platformRows || []).map(getter).filter(n => n != null && Number.isFinite(n));
+            const vals = sourceRows.map(getter).filter(n => n != null && Number.isFinite(n));
             if (!vals.length) return null;
             return vals.reduce((sum, n) => sum + n, 0) / vals.length;
         };
@@ -8977,6 +9567,7 @@ document.addEventListener('DOMContentLoaded', function () {
             shipping: template.shipping || '',
             sale,
             lmp: overallLmp != null ? formatRoiNumber(overallLmp) : '',
+            oldCp: template.oldCp || getChannelOldCp(lmpRates),
             priceAfterLmp,
             margin: avgMargin != null ? avgMargin : channelRoiMargin('amazon', lmpRates),
             adsPct: avgAds != null ? avgAds : 0,
@@ -9040,19 +9631,47 @@ document.addEventListener('DOMContentLoaded', function () {
         return '';
     }
 
+    function roiOldCpHistoryDotHtml(currentCp) {
+        const sku = (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim();
+        if (!sku) {
+            return '';
+        }
+        const current = (currentCp != null && String(currentCp).trim() !== '' && String(currentCp).trim() !== '—')
+            ? String(currentCp).replace(/[$,]/g, '')
+            : '';
+        return ` <button type="button" class="comparison-roi-price-history-dot comparison-roi-cp-history-dot"
+            data-sku="${escapeHtmlAttr(sku)}"
+            data-metric="cp"
+            data-current-price="${escapeHtmlAttr(current)}"
+            data-platform-label="CP Master"
+            title="View CP Master history (Rolling L365)">
+            <span class="comparison-roi-price-history-dot-swatch"></span>
+        </button>`;
+    }
+
+    function roiOldCpCellHtml(row) {
+        const display = row.oldCp || '';
+        const historyDot = roiOldCpHistoryDotHtml(display);
+        if (!display) {
+            return `<td class="comparison-roi-old-cp-cell text-muted" title="No CP in CP Master">—${historyDot}</td>`;
+        }
+        return `<td class="comparison-roi-old-cp-cell" title="CP from CP Master">${escapeHtml(display)}${historyDot}</td>`;
+    }
+
     function roiPriceAfterLmpCellHtml(row) {
         const display = row.priceAfterLmp || '';
         const platform = roiChannelDisplayLabel(row.channel);
         const marketplace = roiChannelMarketplaceKey(row.channel);
         const historyDot = (!row.isOverall && marketplace)
-            ? ` <i class="fas fa-circle comparison-roi-price-history-dot"
+            ? ` <button type="button" class="comparison-roi-price-history-dot"
                 data-sku="${escapeHtmlAttr((currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim())}"
                 data-marketplace="${escapeHtmlAttr(marketplace)}"
                 data-metric="price"
                 data-current-price="${escapeHtmlAttr(display)}"
                 data-platform-label="${escapeHtmlAttr(platform)}"
-                role="button" tabindex="0"
-                title="View ${escapeHtmlAttr(platform)} Price history (Rolling L30)"></i>`
+                title="View ${escapeHtmlAttr(platform)} Price history (same as the ${escapeHtmlAttr(platform)} channel)">
+                <span class="comparison-roi-price-history-dot-swatch"></span>
+            </button>`
             : '';
         if (!display) {
             return `<td class="comparison-roi-price-after-lmp-cell text-muted" title="No ${escapeHtmlAttr(platform)} listing price found">—${historyDot}</td>`;
@@ -9162,6 +9781,26 @@ document.addEventListener('DOMContentLoaded', function () {
         slot.innerHTML = roiAmzReviewsBadgeHtml();
     }
 
+    function roiChannelCalcTitle(row) {
+        const key = channelLmpKey(row.channel);
+        const ads = Number.isFinite(Number(row.adsPct)) ? Number(row.adsPct) : 0;
+        const adsLabel = `${formatRoiNumber(ads, 2)}%`;
+        if (key === 'amazon') {
+            return `Amz Proposed PRC = S Price. Same as Analytics /amazon-tabulator-view: take-home 80%, Ads ${adsLabel} (Channel Master). PGROI=SGROI · PGPFT=SGPFT · PNROI=SNROI · PNPFT=SPFT.`;
+        }
+        if (key === 'ebay') {
+            const takeHome = Number.isFinite(Number(row.margin)) ? Math.round(Number(row.margin) * 100) : 83;
+            return `Ebay Proposed PRC = S Price. Same as Analytics /ebay-tabulator-view: take-home ${takeHome}%, Ads ${adsLabel}. PGROI=SGROI · PGPFT=SGPFT · PNROI=SNROI · PNPFT=SPFT.`;
+        }
+        if (key === 'temu') {
+            return `Temu Proposed PRC = S Price. Same as Analytics /temu-decrease: SPFT = (S R Price × 95%) − Temu Ship − LP, Ads ${adsLabel}. PGROI=SGROI · PGPFT=SGPRFT · PNROI=SNROI · PNPFT=SPFT.`;
+        }
+        if (row.isOverall) {
+            return `Overall averages only channels that have a Proposed PRC. Ads ${adsLabel}.`;
+        }
+        return `${roiChannelDisplayLabel(row.channel)} · Ads ${adsLabel}`;
+    }
+
     function renderRoiModalTable(rows) {
         const tbody = document.getElementById('comparison-roi-tbody');
         if (!tbody) {
@@ -9175,13 +9814,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 return `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}"></td>`;
             };
+            const shipTitle = channelLmpKey(row.channel) === 'temu'
+                ? 'Auto from Product Master (temu_ship). Not editable.'
+                : 'Auto from Product Master (ship). Not editable.';
             const readonlyInputCell = (field, value) =>
-                `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input comparison-roi-input-readonly" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}" readonly tabindex="-1" title="Auto from Product Master (ship). Not editable."></td>`;
+                `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input comparison-roi-input-readonly" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}" readonly tabindex="-1" title="${escapeHtmlAttr(shipTitle)}"></td>`;
             const overall = !!row.isOverall;
             const rowClass = overall ? ' class="comparison-roi-overall-row"' : '';
 
             return `<tr${rowClass}>
-                <td class="comparison-roi-channel">${escapeHtml(row.channel)}</td>
+                <td class="comparison-roi-channel" title="${escapeHtmlAttr(roiChannelCalcTitle(row))}">${escapeHtml(row.channel)}</td>
                 ${inputCell('cp', row.cp, overall)}
                 ${inputCell('cbm', row.cbm, overall)}
                 ${roiCalcCellHtml(rowIndex, 'freight', row.freight)}
@@ -9194,6 +9836,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 ${roiCalcCellHtml(rowIndex, 'pPct', row.pPct)}
                 ${roiCalcCellHtml(rowIndex, 'nroi', row.nroi)}
                 ${roiCalcCellHtml(rowIndex, 'npft', row.npft)}
+                ${roiOldCpCellHtml(row)}
                 ${roiPriceAfterLmpCellHtml(row)}
                 ${roiCalcCellHtml(rowIndex, 'siteGroi', row.siteGroi)}
                 ${roiCalcCellHtml(rowIndex, 'siteGpft', row.siteGpft)}
@@ -9218,38 +9861,43 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
         tbody.querySelectorAll('.comparison-roi-price-history-dot, .comparison-roi-metric-history-dot').forEach(dot => {
-            dot.addEventListener('click', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                openComparisonRoiPriceHistoryChart({
-                    sku: dot.dataset.sku || (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim(),
-                    marketplace: dot.dataset.marketplace || '',
-                    metric: dot.dataset.metric || 'price',
-                    currentPrice: dot.dataset.currentPrice || '',
-                    currentValue: dot.dataset.currentValue || '',
-                    platformLabel: dot.dataset.platformLabel || '',
-                });
-            });
+            dot.addEventListener('click', handleRoiHistoryDotClick);
         });
         tbody.roiRows = rows;
         updateRoiAmzReviewsBadge();
     }
 
     let comparisonRoiPriceChart = null;
-    let comparisonRoiPriceChartDays = 30;
+    let comparisonRoiPriceChartDays = 365;
     let comparisonRoiPriceChartContext = null;
 
     function comparisonRoiMetricLabel(metric) {
         if (metric === 'npft') return 'NPFT';
         if (metric === 'nroi') return 'NROI';
+        if (metric === 'cp') return 'CP';
         return 'Price';
+    }
+
+    function handleRoiHistoryDotClick(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const dot = e.currentTarget;
+        openComparisonRoiPriceHistoryChart({
+            sku: dot.dataset.sku || (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim(),
+            marketplace: dot.dataset.marketplace || '',
+            metric: dot.dataset.metric || 'price',
+            currentPrice: dot.dataset.currentPrice || '',
+            currentValue: dot.dataset.currentValue || '',
+            platformLabel: dot.dataset.platformLabel || '',
+        });
     }
 
     function openComparisonRoiPriceHistoryChart(ctx) {
         const sku = String(ctx?.sku || '').trim();
         const marketplace = String(ctx?.marketplace || '').trim();
         const metric = String(ctx?.metric || 'price').toLowerCase();
-        if (!sku || !marketplace) {
+        const isCp = metric === 'cp';
+        if (!sku || (!isCp && !marketplace)) {
             showComparisonToast('error', 'SKU / marketplace missing for history chart');
             return;
         }
@@ -9257,21 +9905,21 @@ document.addEventListener('DOMContentLoaded', function () {
         comparisonRoiPriceChartContext = {
             sku,
             marketplace,
-            metric: ['npft', 'nroi'].includes(metric) ? metric : 'price',
+            metric: ['npft', 'nroi', 'cp'].includes(metric) ? metric : 'price',
             currentPrice: ctx?.currentPrice || '',
             currentValue: ctx?.currentValue || '',
-            platformLabel: ctx?.platformLabel || marketplace,
+            platformLabel: ctx?.platformLabel || (isCp ? 'CP Master' : marketplace),
         };
-        comparisonRoiPriceChartDays = 30;
+        comparisonRoiPriceChartDays = 365;
         const rangeEl = document.getElementById('comparison-roi-price-chart-range');
         if (rangeEl) {
-            rangeEl.value = '30';
+            rangeEl.value = '365';
         }
 
         const metricLabel = comparisonRoiMetricLabel(comparisonRoiPriceChartContext.metric);
         const titleEl = document.getElementById('comparisonRoiPriceChartModalLabel');
         if (titleEl) {
-            titleEl.innerHTML = `<i class="fas fa-chart-line me-1"></i> ${escapeHtml(comparisonRoiPriceChartContext.platformLabel)} ${escapeHtml(metricLabel)} — ${escapeHtml(sku)} · Rolling L30`;
+            titleEl.innerHTML = `<i class="fas fa-chart-line me-1"></i> ${escapeHtml(comparisonRoiPriceChartContext.platformLabel)} ${escapeHtml(metricLabel)} — ${escapeHtml(sku)} · Rolling L365`;
         }
         const loadingEl = document.getElementById('comparison-roi-price-chart-loading');
         if (loadingEl) {
@@ -9280,7 +9928,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         const noDataEl = document.getElementById('comparison-roi-price-chart-nodata');
         if (noDataEl) {
-            noDataEl.textContent = `No ${metricLabel} history for this channel / SKU yet.`;
+            noDataEl.textContent = comparisonRoiPriceChartContext.metric === 'cp'
+                ? `No CP history for this SKU yet.`
+                : `No ${metricLabel} history for this channel / SKU yet.`;
         }
 
         const modalEl = document.getElementById('comparisonRoiPriceChartModal');
@@ -9315,7 +9965,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (noData) noData.style.display = 'none';
 
         const ctx = comparisonRoiPriceChartContext;
-        if (!ctx?.sku || !ctx?.marketplace) {
+        if (!ctx?.sku || (ctx.metric !== 'cp' && !ctx?.marketplace)) {
             if (loading) loading.style.display = 'none';
             if (noData) noData.style.display = '';
             return;
@@ -9323,18 +9973,26 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const params = new URLSearchParams({
             sku: ctx.sku,
-            marketplace: ctx.marketplace,
-            days: String(comparisonRoiPriceChartDays || 30),
-            metric: ctx.metric || 'price',
+            days: String(comparisonRoiPriceChartDays || 365),
         });
-        if (ctx.currentPrice) {
-            params.set('current_price', String(ctx.currentPrice).replace(/[$,]/g, ''));
-        }
-        if (ctx.currentValue !== '' && ctx.currentValue != null) {
-            params.set('current_value', String(ctx.currentValue).replace('%', ''));
+        let chartUrl = cpHistoryChartDataUrl;
+        if (ctx.metric === 'cp') {
+            if (ctx.currentPrice) {
+                params.set('current_cp', String(ctx.currentPrice).replace(/[$,]/g, ''));
+            }
+        } else {
+            chartUrl = channelPriceChartDataUrl;
+            params.set('marketplace', ctx.marketplace);
+            params.set('metric', ctx.metric || 'price');
+            if (ctx.currentPrice) {
+                params.set('current_price', String(ctx.currentPrice).replace(/[$,]/g, ''));
+            }
+            if (ctx.currentValue !== '' && ctx.currentValue != null) {
+                params.set('current_value', String(ctx.currentValue).replace('%', ''));
+            }
         }
 
-        fetch(`${channelPriceChartDataUrl}?${params.toString()}`, {
+        fetch(`${chartUrl}?${params.toString()}`, {
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         })
             .then(r => r.json())
@@ -9362,6 +10020,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const metric = comparisonRoiPriceChartContext?.metric || 'price';
         const metricLabel = comparisonRoiMetricLabel(metric);
         const isPct = metric === 'npft' || metric === 'nroi';
+        const isCp = metric === 'cp';
         const categories = points.map(p => p.date);
         const values = points.map(p => {
             const v = parseFloat(p.value);
@@ -9374,15 +10033,21 @@ document.addEventListener('DOMContentLoaded', function () {
             comparisonRoiPriceChart = null;
         }
 
-        const color = metric === 'npft' ? '#28a745' : (metric === 'nroi' ? '#17a2b8' : '#e83e8c');
+        const color = isCp ? '#166534' : (metric === 'npft' ? '#28a745' : (metric === 'nroi' ? '#17a2b8' : '#e83e8c'));
 
         comparisonRoiPriceChart = Highcharts.chart(el, {
-            chart: { type: 'line', height: 260, backgroundColor: 'transparent' },
+            chart: {
+                type: 'line',
+                height: 300,
+                backgroundColor: 'transparent',
+                spacing: [8, 8, 12, 8],
+                marginRight: 16,
+            },
             title: { text: null },
             credits: { enabled: false },
             xAxis: { categories, tickInterval: Math.max(1, Math.floor(categories.length / 8)) },
             yAxis: {
-                title: { text: isPct ? `${metricLabel} (%)` : 'Price ($)' },
+                title: { text: isPct ? `${metricLabel} (%)` : (isCp ? 'CP ($)' : 'Price ($)') },
             },
             legend: { enabled: false },
             tooltip: {
@@ -9398,9 +10063,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     marker: { enabled: true, radius: 3 },
                     color,
                     lineWidth: 2,
+                    connectNulls: true,
                 },
             },
             series: [{ name: metricLabel, data: values }],
+        });
+        requestAnimationFrame(function () {
+            try { comparisonRoiPriceChart?.reflow(); } catch (e) {}
         });
     }
 
@@ -9589,6 +10258,16 @@ document.addEventListener('DOMContentLoaded', function () {
             prices: { amazon: null, ebay: null, temu: null, shopify: null },
             ads: { amazon: null, ebay: null, temu: null, shopify: null },
             margin: { amazon: null, ebay: null, temu: null, shopify: null },
+            lp: null,
+            ship: null,
+            temu_ship: null,
+            amazon_sprice: null,
+            ebay_sprice: null,
+            temu_sprice: null,
+            temu_r_price: null,
+            temu_full_price: null,
+            temu_s_r_price: null,
+            old_cp: null,
         };
         setRoiSaveStatus('', false);
 
@@ -9603,6 +10282,7 @@ document.addEventListener('DOMContentLoaded', function () {
             shipping: '',
             sale: '',
             lmp: '',
+            oldCp: '',
             priceAfterLmp: '',
             npft: '',
             nroi: '',
@@ -9621,6 +10301,7 @@ document.addEventListener('DOMContentLoaded', function () {
             shipping: '',
             sale: '',
             lmp: '',
+            oldCp: '',
             priceAfterLmp: '',
             npft: '',
             nroi: '',
@@ -9667,8 +10348,15 @@ document.addEventListener('DOMContentLoaded', function () {
             fetchPlatformLmpRates(sku),
             fetchChannelFeeMeta(sku),
         ]);
-        lmpRates.ads = feeMeta.ads || emptyLmp.ads;
-        lmpRates.margin = feeMeta.margin || emptyLmp.margin;
+        // Channel Master Ads% (same as /amazon-tabulator-view) wins over CVR breakdown.
+        lmpRates.ads = Object.assign({}, emptyLmp.ads, feeMeta.ads || {}, lmpRates.ads || {});
+        lmpRates.margin = Object.assign(
+            {},
+            emptyLmp.margin,
+            feeMeta.margin || {},
+            { amazon: 0.80, temu: 0.95 },
+            lmpRates.margin || {}
+        );
 
         // Ignore stale responses if the user closed/reopened for another SKU.
         const stillSameSku = (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim() === sku;
@@ -9881,12 +10569,13 @@ document.addEventListener('DOMContentLoaded', function () {
         preview.innerHTML = `<img src="${escapeHtmlAttr(url)}" alt="SKU preview">`;
         preview.style.display = 'block';
         const pad = 16;
-        const maxLeft = window.innerWidth - 380;
-        const maxTop = window.innerHeight - 380;
+        const box = 540;
+        const maxLeft = window.innerWidth - box;
+        const maxTop = window.innerHeight - box;
         let left = (clientX || 0) + pad;
         let top = (clientY || 0) + pad;
-        if (left > maxLeft) left = Math.max(8, (clientX || 0) - 380);
-        if (top > maxTop) top = Math.max(8, (clientY || 0) - 380);
+        if (left > maxLeft) left = Math.max(8, (clientX || 0) - box);
+        if (top > maxTop) top = Math.max(8, (clientY || 0) - box);
         preview.style.left = left + 'px';
         preview.style.top = top + 'px';
     }
@@ -11568,7 +12257,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     document.getElementById('comparison-roi-price-chart-range')?.addEventListener('change', function () {
         const days = parseInt(this.value, 10);
-        comparisonRoiPriceChartDays = Number.isFinite(days) ? days : 30;
+        comparisonRoiPriceChartDays = Number.isFinite(days) ? days : 365;
         const ctx = comparisonRoiPriceChartContext;
         if (!ctx) {
             return;
@@ -12201,6 +12890,14 @@ document.addEventListener('DOMContentLoaded', function () {
         e.preventDefault();
         deleteAmazonLmpCompetitor(deleteBtn);
     });
+
+    document.addEventListener('change', function (e) {
+        const hideCb = e.target.closest('.comparison-lmp-hide-cb');
+        if (!hideCb) {
+            return;
+        }
+        toggleComparisonLmpHidden(hideCb);
+    });
 });
 </script>
 @endsection
@@ -12387,9 +13084,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 </h6>
                 <div class="d-flex align-items-center gap-2 ms-auto me-2">
                     <select id="comparison-roi-price-chart-range" class="form-select form-select-sm" style="width: 110px;" title="Rolling window">
+                        <option value="365" selected>L365</option>
                         <option value="90">L90</option>
                         <option value="60">L60</option>
-                        <option value="30" selected>L30</option>
+                        <option value="30">L30</option>
                         <option value="7">L7</option>
                     </select>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -12403,8 +13101,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 <div id="comparison-roi-price-chart-nodata" class="text-center py-4 text-muted" style="display:none;">
                     No price history for this channel / SKU yet.
                 </div>
-                <div id="comparison-roi-price-chart-container" style="display:none;">
-                    <div id="comparison-roi-price-chart" style="min-height: 300px;"></div>
+                <div id="comparison-roi-price-chart-container" style="display:none; width: 100%;">
+                    <div id="comparison-roi-price-chart" style="min-height: 300px; width: 100%;"></div>
                 </div>
             </div>
         </div>
@@ -12493,23 +13191,24 @@ document.addEventListener('DOMContentLoaded', function () {
                         <thead>
                             <tr>
                                 <th>profit calculator</th>
-                                <th>CP</th>
+                                <th title="Proposed CP">P CP</th>
                                 <th>CBM</th>
                                 <th>Freight</th>
                                 <th>GW LB</th>
                                 <th>Shipping</th>
-                                <th>Proposed PRC</th>
+                                <th title="Proposed PRC = S Price (same as Analytics /amazon-tabulator-view SPRICE)">Proposed PRC</th>
                                 <th>LMP</th>
-                                <th class="comparison-roi-proposed-metrics-th" title="Gross $ = Proposed PRC × margin − CP − Shipping">Profit</th>
-                                <th class="comparison-roi-proposed-metrics-th" title="PGROI% (Proposed PRC) = (Proposed PRC × margin − CP − Shipping) ÷ CP × 100 · Amz 80% / Ebay 83% / Temu 100% / Shopify 95%">PGROI%</th>
-                                <th class="comparison-roi-proposed-metrics-th" title="PGPFT% (Proposed PRC) = (Proposed PRC × margin − CP − Shipping) ÷ Proposed PRC × 100">PGPFT%</th>
-                                <th class="comparison-roi-proposed-metrics-th" title="PNROI% (Proposed PRC) = (Gross $ − Proposed PRC × Ads%/100) ÷ CP × 100 (Temu: PGROI% − Ads%)">PNROI%</th>
-                                <th class="comparison-roi-proposed-metrics-th" title="PNPFT% (Proposed PRC) = PGPFT% − Ads% (Ads% from Pricing Master / OV L30)">PNPFT%</th>
+                                <th class="comparison-roi-proposed-metrics-th" title="Amz: (Proposed PRC × 0.80) − Shipping − CP. Other channels: Proposed PRC × margin − CP − Shipping">Profit</th>
+                                <th class="comparison-roi-proposed-metrics-th" title="Amz PGROI% = SGROI = ((SPRICE × 0.80 − Ship − LP) / LP) × 100. Other: (Proposed PRC × margin − CP − Shipping) ÷ CP × 100">PGROI%</th>
+                                <th class="comparison-roi-proposed-metrics-th" title="Amz PGPFT% = SGPFT = ((SPRICE × 0.80 − Ship − LP) / SPRICE) × 100">PGPFT%</th>
+                                <th class="comparison-roi-proposed-metrics-th" title="Amz PNROI% = SNROI = (Profit $ − SPRICE × Ads%/100) ÷ CP × 100. Ads% from Channel Master (same as Analytics)">PNROI%</th>
+                                <th class="comparison-roi-proposed-metrics-th" title="Amz PNPFT% = SPFT = PGPFT% − Ads%. Ads% from Channel Master (same as Analytics)">PNPFT%</th>
+                                <th class="comparison-roi-old-cp-th" title="Cost price from CP Master (product_master.Values.cp)">Old CP</th>
                                 <th class="comparison-roi-c-price-th" title="Current listing price from each marketplace">C Price</th>
-                                <th class="comparison-roi-site-metrics-th" title="GROI% (C Price) = (C Price × margin − CP − Shipping) ÷ CP × 100 · Amz 80% / Ebay 83% / Temu 100% / Shopify 95%">GROI%</th>
-                                <th class="comparison-roi-site-metrics-th" title="GPFT% (C Price) = (C Price × margin − CP − Shipping) ÷ C Price × 100">GPFT%</th>
-                                <th class="comparison-roi-site-metrics-th" title="NROI% (C Price) = (Gross $ − C Price × Ads%/100) ÷ CP × 100 (Temu: GROI% − Ads%)">NROI%</th>
-                                <th class="comparison-roi-site-metrics-th" title="NPFT% (C Price) = GPFT% − Ads% (Ads% from Pricing Master / OV L30)">NPFT%</th>
+                                <th class="comparison-roi-site-metrics-th" title="GROI% uses C Price and Old CP: ((C Price × take-home − Ship − Old CP) / Old CP) × 100">GROI%</th>
+                                <th class="comparison-roi-site-metrics-th" title="GPFT% uses C Price and Old CP: ((C Price × take-home − Ship − Old CP) / C Price) × 100">GPFT%</th>
+                                <th class="comparison-roi-site-metrics-th" title="NROI% = (gross $ − C Price × Ads%/100) ÷ Old CP × 100">NROI%</th>
+                                <th class="comparison-roi-site-metrics-th" title="NPFT% = GPFT% − Ads%. Cost basis is Old CP">NPFT%</th>
                             </tr>
                         </thead>
                         <tbody id="comparison-roi-tbody"></tbody>

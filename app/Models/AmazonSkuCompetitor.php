@@ -140,7 +140,8 @@ class AmazonSkuCompetitor extends Model
      */
     public static function buildGroupedLookup(string $marketplace = 'amazon'): array
     {
-        $records = self::where('marketplace', $marketplace)
+        $records = self::query()
+            ->forMarketplace($marketplace)
             ->wherePositivePrice()
             ->get()
             ->groupBy(fn ($item) => self::normalizeSkuKey($item->sku));
@@ -155,12 +156,22 @@ class AmazonSkuCompetitor extends Model
      * Get the lowest priced competitor for a given SKU
      * Handles SKUs with line breaks, extra spaces, and case differences
      */
+    public static function scopeForMarketplace($query, string $marketplace = 'amazon')
+    {
+        $key = strtolower(trim($marketplace));
+        if (in_array($key, ['amazon', 'amz', 'us'], true)) {
+            return $query->whereRaw('LOWER(TRIM(marketplace)) IN (?, ?, ?)', ['amazon', 'amz', 'us']);
+        }
+
+        return $query->where('marketplace', $marketplace);
+    }
+
     public static function getLowestPriceForSku($sku, $marketplace = 'amazon')
     {
         $normalizedSku = self::normalizeSkuKey($sku);
 
         $q = self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
-            ->where('marketplace', $marketplace)
+            ->forMarketplace($marketplace)
             ->wherePositivePrice();
         if (\Illuminate\Support\Facades\Schema::hasColumn('amazon_sku_competitors', 'ignored')) {
             $q->where(function ($qq) {
@@ -181,7 +192,7 @@ class AmazonSkuCompetitor extends Model
         $normalizedSku = self::normalizeSkuKey($sku);
 
         return self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
-            ->where('marketplace', $marketplace)
+            ->forMarketplace($marketplace)
             ->wherePositivePrice()
             ->orderByNumericPrice('asc')
             ->get();

@@ -4355,7 +4355,7 @@ class OverallAmazonController extends Controller
                     // Use stored image or construct from ASIN (Amazon image URL pattern)
                     $image = $comp->image ?? (
                         $comp->asin
-                            ? 'https://m.media-amazon.com/images/P/' . $comp->asin . '._AC_SL160_.jpg'
+                            ? 'https://m.media-amazon.com/images/P/' . $comp->asin . '._AC_SL1000_.jpg'
                             : null
                     );
                     $delivery = $this->normalizeDeliveryText($comp->delivery);

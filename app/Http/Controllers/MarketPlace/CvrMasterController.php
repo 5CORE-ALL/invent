@@ -5985,6 +5985,20 @@ class CvrMasterController extends Controller
         $out = [];
         $last = null;
         $hasAny = false;
+        $windowStart = $start->toDateString();
+        if ($forwardFill) {
+            $priorDate = null;
+            foreach ($byDateKey as $date => $val) {
+                if (! is_numeric($val) || (string) $date >= $windowStart) {
+                    continue;
+                }
+                if ($priorDate === null || (string) $date > $priorDate) {
+                    $priorDate = (string) $date;
+                    $last = (float) $val;
+                    $hasAny = true;
+                }
+            }
+        }
         for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
             $key = $d->toDateString();
             if (array_key_exists($key, $byDateKey)) {
@@ -6042,6 +6056,9 @@ class CvrMasterController extends Controller
         if ($days > 0 && $days < 7) {
             $days = 7;
         }
+
+        $seedPrice = is_numeric($currentPrice) ? (float) $currentPrice : null;
+        $this->ensureChannelPriceHistorySnapshot($sku, $marketplace, $seedPrice);
 
         $byDateKey = $this->loadChannelPriceHistoryByDate($sku, $marketplace, $days);
 
@@ -6345,6 +6362,27 @@ class CvrMasterController extends Controller
                 }
                 $byDateKey[Carbon::parse($record->record_date)->toDateString()] = round($price, 2);
             }
+
+            // Last snapshot before the window so L30/L7 can draw from day 1.
+            if ($start) {
+                $priorQ = DB::table($table)
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])
+                    ->where('record_date', '<', $start)
+                    ->orderByDesc('record_date');
+                if ($channel !== null && Schema::hasColumn($table, 'channel')) {
+                    $priorQ->where('channel', $channel);
+                }
+                $prior = $priorQ->first();
+                if ($prior) {
+                    $data = is_array($prior->daily_data ?? null)
+                        ? $prior->daily_data
+                        : (json_decode($prior->daily_data ?? '{}', true) ?: []);
+                    $price = (float) ($data['price'] ?? $data['ebay_price'] ?? $data['base_price'] ?? $data['sprice'] ?? 0);
+                    if ($price > 0) {
+                        $byDateKey[Carbon::parse($prior->record_date)->toDateString()] = round($price, 2);
+                    }
+                }
+            }
         };
 
         switch ($marketplace) {
@@ -6382,6 +6420,16 @@ class CvrMasterController extends Controller
                         }
                         $byDateKey[Carbon::parse($record->record_date)->toDateString()] = round($price, 2);
                     }
+                    if ($start) {
+                        $prior = DB::table($table)
+                            ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])
+                            ->where('record_date', '<', $start)
+                            ->orderByDesc('record_date')
+                            ->first();
+                        if ($prior && (float) ($prior->base_price ?? 0) > 0) {
+                            $byDateKey[Carbon::parse($prior->record_date)->toDateString()] = round((float) $prior->base_price, 2);
+                        }
+                    }
                 }
                 break;
             default:
@@ -6390,6 +6438,158 @@ class CvrMasterController extends Controller
         }
 
         return $byDateKey;
+    }
+
+    /**
+     * If this SKU has no price snapshot on the channel daily table, write today's
+     * listing price into the same table the channel tabulator chart uses.
+     * Existing cron snapshots (price already > 0) are left untouched.
+     */
+    public function ensureChannelPriceHistorySnapshot(string $sku, string $marketplace, ?float $currentPrice = null): bool
+    {
+        $sku = trim($sku);
+        $marketplace = strtolower(preg_replace('/\s+/', '', $marketplace));
+        $marketplace = match ($marketplace) {
+            'ebay', 'ebayone' => 'ebay1',
+            'shopifyb2c', 'sb2c' => 'shopify',
+            default => $marketplace,
+        };
+        if ($sku === '' || $marketplace === '') {
+            return false;
+        }
+
+        $live = $this->resolveLiveChannelPriceForChart($sku, $marketplace);
+        $price = ($live !== null && $live > 0)
+            ? (float) $live
+            : ((is_numeric($currentPrice) && (float) $currentPrice > 0) ? (float) $currentPrice : 0.0);
+        if ($price <= 0) {
+            return false;
+        }
+
+        $today = now('America/Los_Angeles')->toDateString();
+        $skuStore = strtoupper(trim($sku));
+
+        try {
+            return match ($marketplace) {
+                'amazon' => $this->upsertJsonSkuDailyPrice('amazon_sku_daily_data', $skuStore, $today, $price),
+                'ebay1' => $this->upsertJsonSkuDailyPrice('ebay_sku_daily_data', $skuStore, $today, $price),
+                'ebay2' => $this->upsertJsonSkuDailyPrice('ebay2_sku_daily_data', $skuStore, $today, $price),
+                'temu' => $this->upsertTemuSkuDailyBasePrice($skuStore, $today, $price),
+                default => false,
+            };
+        } catch (\Throwable $e) {
+            Log::warning('ensureChannelPriceHistorySnapshot failed', [
+                'sku' => $sku,
+                'marketplace' => $marketplace,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
+     * Insert today's price into amazon/ebay sku_daily_data JSON only when missing.
+     */
+    private function upsertJsonSkuDailyPrice(string $table, string $sku, string $date, float $price): bool
+    {
+        if (! Schema::hasTable($table) || $price <= 0) {
+            return false;
+        }
+
+        $row = DB::table($table)
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+            ->where('record_date', $date)
+            ->first();
+
+        $data = [];
+        if ($row) {
+            $data = is_array($row->daily_data ?? null)
+                ? $row->daily_data
+                : (json_decode($row->daily_data ?? '{}', true) ?: []);
+            $existing = (float) ($data['price'] ?? $data['ebay_price'] ?? 0);
+            if ($existing > 0) {
+                return false;
+            }
+        }
+
+        $data['price'] = round($price, 2);
+        $payload = [
+            'daily_data' => json_encode($data),
+            'updated_at' => now(),
+        ];
+
+        if ($row) {
+            DB::table($table)->where('id', $row->id)->update($payload);
+
+            return true;
+        }
+
+        DB::table($table)->insert(array_merge($payload, [
+            'sku' => $sku,
+            'record_date' => $date,
+            'created_at' => now(),
+        ]));
+
+        return true;
+    }
+
+    /**
+     * Insert today's Temu base_price into temu_sku_daily_data only when missing.
+     * Stores listing base (same as /temu-decrease collect), not R / Full price.
+     */
+    private function upsertTemuSkuDailyBasePrice(string $sku, string $date, float $price): bool
+    {
+        if (! Schema::hasTable('temu_sku_daily_data') || $price <= 0) {
+            return false;
+        }
+
+        $row = DB::table('temu_sku_daily_data')
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+            ->where('record_date', $date)
+            ->first();
+
+        if ($row && (float) ($row->base_price ?? 0) > 0) {
+            return false;
+        }
+
+        $base = $price;
+        // Comparison C Price is Temu R Price; persist listing base like the channel cron.
+        $metric = TemuMetric::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+            ->first();
+        if ($metric) {
+            $metricBase = TemuShopifySalesService::resolveListingBasePrice(
+                $metric->base_price ?? 0,
+                $metric->recommended_base_price ?? null
+            );
+            if ($metricBase > 0) {
+                $base = $metricBase;
+            }
+        }
+
+        $payload = [
+            'base_price' => round($base, 2),
+            'updated_at' => now(),
+        ];
+
+        if ($row) {
+            DB::table('temu_sku_daily_data')->where('id', $row->id)->update($payload);
+
+            return true;
+        }
+
+        DB::table('temu_sku_daily_data')->insert(array_merge($payload, [
+            'sku' => $sku,
+            'record_date' => $date,
+            'product_clicks' => 0,
+            'temu_l30' => 0,
+            'cvr_percent' => 0,
+            'spend' => 0,
+            'created_at' => now(),
+        ]));
+
+        return true;
     }
 
     /**

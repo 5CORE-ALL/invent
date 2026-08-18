@@ -5251,6 +5251,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/product-master/download-template', [ProductMasterController::class, 'downloadTemplate'])->name('product_master.download_template');
     Route::post('/product-master/batch-update', [ProductMasterController::class, 'batchUpdate']);
     Route::get('/product-master/cp-history', [\App\Http\Controllers\ProductMaster\CpController::class, 'history'])->name('product_master.cp.history');
+    Route::get('/product-master/cp-chart', [\App\Http\Controllers\ProductMaster\CpController::class, 'chart'])->name('product_master.cp.chart');
     Route::get('/product-master/cp-all-history', [\App\Http\Controllers\ProductMaster\CpController::class, 'allHistory'])->name('product_master.cp.all_history');
     Route::post('/product-master/cp-update', [\App\Http\Controllers\ProductMaster\CpController::class, 'update'])->name('product_master.cp.update');
     Route::post('/product-master/cp-approve', [\App\Http\Controllers\ProductMaster\CpController::class, 'approve'])->name('product_master.cp.approve');

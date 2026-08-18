@@ -2,28 +2,36 @@
 
 namespace App\Http\Controllers\PurchaseMaster;
 
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Models\AmazonListingStatus;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\Category;
+use App\Models\ChannelMasterCalculatedData;
 use App\Models\ComparisonData;
 use App\Models\ComparisonHistory;
+use App\Models\EbayDataView;
 use App\Models\EbayMetric;
 use App\Models\EbaySkuCompetitor;
 use App\Models\ForecastAnalysisHistory;
 use App\Models\GoogleSkuCompetitor;
 use App\Models\InstructionsItemPkg;
 use App\Models\JungleScoutProductData;
+use App\Models\MarketplacePercentage;
 use App\Models\ProductCategory;
 use App\Models\ProductMaster;
 use App\Models\QcMastersEntry;
 use App\Models\RfqForm;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
+use App\Models\TemuDataView;
 use App\Models\TemuLmp;
+use App\Models\TemuMetric;
 use App\Models\TemuPricing;
 use App\Services\ComparisonSheetService;
+use App\Services\TemuShopifySalesService;
 use App\Services\ComparisonSheetStorage;
 use App\Services\ComparisonSkuLinkService;
 use App\Services\LinkedSkuGroupService;
@@ -2306,6 +2314,28 @@ class ComparisonController extends Controller
         $temuLmp = $this->resolveTemuLmpPriceForSku($sku);
         $shopifyLmp = $this->resolveShopifyLmpPriceForSku($sku);
         $channelPrices = $this->resolveChannelPricesForSku($sku);
+        $amazonCosts = $this->resolveAmazonTabulatorCosts($sku);
+        $ebaySprice = $this->resolveEbayTabulatorSprice($sku);
+        $temuCosts = $this->resolveTemuDecreaseCosts($sku);
+        $oldCp = $this->resolveCpForSku($sku);
+
+        try {
+            $cvr = app(\App\Http\Controllers\MarketPlace\CvrMasterController::class);
+            foreach ([
+                ['amazon', $channelPrices['amazon'] ?? null],
+                ['ebay1', $channelPrices['ebay'] ?? null],
+                ['temu', $temuCosts['r_price'] ?? ($channelPrices['temu'] ?? null)],
+                ['shopify', $channelPrices['shopify'] ?? null],
+            ] as [$marketplace, $price]) {
+                $cvr->ensureChannelPriceHistorySnapshot(
+                    $sku,
+                    $marketplace,
+                    is_numeric($price) ? (float) $price : null
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Comparison C Price history seed failed: '.$e->getMessage());
+        }
 
         return response()->json([
             'success' => true,
@@ -2315,9 +2345,303 @@ class ComparisonController extends Controller
             'shopify_lmp' => $shopifyLmp,
             'amazon_price' => $channelPrices['amazon'],
             'ebay_price' => $channelPrices['ebay'],
-            'temu_price' => $channelPrices['temu'],
+            // C Price = Temu R Price (same source as /temu-decrease GROI).
+            'temu_price' => $temuCosts['r_price'] ?? $channelPrices['temu'],
             'shopify_price' => $channelPrices['shopify'],
+            // Same LP / Ship as amazon/ebay tabulator views (Product Master).
+            'lp' => $amazonCosts['lp'],
+            'ship' => $amazonCosts['ship'],
+            // CP Master cost price (Values.cp) — shown as Old CP before C Price.
+            'old_cp' => $oldCp !== null ? round((float) $oldCp, 2) : null,
+            'amazon_sprice' => $amazonCosts['sprice'],
+            'ebay_sprice' => $ebaySprice,
+            'temu_sprice' => $temuCosts['sprice'],
+            'temu_ship' => $temuCosts['temu_ship'],
+            'temu_r_price' => $temuCosts['r_price'],
+            'temu_full_price' => $temuCosts['full_price'],
+            'temu_s_r_price' => $temuCosts['s_r_price'],
+            'ads' => [
+                'amazon' => $this->channelMasterAdsPercent('Amazon'),
+                'ebay' => $this->ebayTabulatorAdsPercent(),
+                'temu' => TemuShopifySalesService::DECREASE_ADS_PERCENT,
+                'shopify' => $this->channelMasterAdsPercent('Shopify'),
+            ],
+            'margin' => [
+                'amazon' => 0.80,
+                'ebay' => MarketplacePercentage::takeHomeDecimal('Ebay'),
+                'temu' => TemuShopifySalesService::DECREASE_TAKEHOME,
+            ],
         ]);
+    }
+
+    /**
+     * LP, Ship, SPRICE — same sources as OverallAmazonController /amazon-tabulator-view.
+     *
+     * @return array{lp: ?float, ship: ?float, sprice: ?float}
+     */
+    protected function resolveAmazonTabulatorCosts(string $sku): array
+    {
+        $out = ['lp' => null, 'ship' => null, 'sprice' => null];
+        $sku = trim($sku);
+        if ($sku === '') {
+            return $out;
+        }
+
+        $pm = ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+            ->first();
+        if ($pm) {
+            $values = $pm->Values;
+            if (is_string($values)) {
+                $values = json_decode($values, true);
+            }
+            if (! is_array($values)) {
+                $values = [];
+            }
+
+            $lp = 0.0;
+            foreach ($values as $key => $value) {
+                if (strtolower((string) $key) === 'lp' && is_numeric($value)) {
+                    $lp = (float) $value;
+                    break;
+                }
+            }
+            if ($lp <= 0 && isset($pm->lp) && is_numeric($pm->lp)) {
+                $lp = (float) $pm->lp;
+            }
+
+            $ship = isset($values['ship']) && is_numeric($values['ship'])
+                ? (float) $values['ship']
+                : (isset($pm->ship) && is_numeric($pm->ship) ? (float) $pm->ship : 0.0);
+
+            $out['lp'] = $lp > 0 ? round($lp, 2) : null;
+            $out['ship'] = round($ship, 2);
+        }
+
+        if (! Schema::hasTable('amazon_data_view')) {
+            return $out;
+        }
+
+        $view = AmazonDataView::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+            ->first();
+        if (! $view) {
+            $compact = strtoupper(str_replace(' ', '', $sku));
+            $view = AmazonDataView::query()
+                ->whereRaw("REPLACE(UPPER(TRIM(sku)), ' ', '') = ?", [$compact])
+                ->first();
+        }
+        $raw = $view?->value;
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true);
+        }
+        if (is_array($raw) && isset($raw['SPRICE']) && is_numeric($raw['SPRICE']) && (float) $raw['SPRICE'] > 0) {
+            $out['sprice'] = round((float) $raw['SPRICE'], 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * eBay S PRC — same store as /ebay-tabulator-view (ebay_data_view.SPRICE).
+     */
+    protected function resolveEbayTabulatorSprice(string $sku): ?float
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! Schema::hasTable('ebay_data_view')) {
+            return null;
+        }
+
+        $view = EbayDataView::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+            ->first();
+        if (! $view) {
+            $compact = strtoupper(str_replace(' ', '', $sku));
+            $view = EbayDataView::query()
+                ->whereRaw("REPLACE(UPPER(TRIM(sku)), ' ', '') = ?", [$compact])
+                ->first();
+        }
+        $raw = $view?->value;
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true);
+        }
+        if (is_array($raw) && isset($raw['SPRICE']) && is_numeric($raw['SPRICE']) && (float) $raw['SPRICE'] > 0) {
+            return round((float) $raw['SPRICE'], 2);
+        }
+
+        return null;
+    }
+
+    /**
+     * Temu S PRC / ship / R Price — same sources as /temu-decrease.
+     *
+     * @return array{sprice: ?float, temu_ship: ?float, r_price: ?float, full_price: ?float, s_r_price: ?float}
+     */
+    protected function resolveTemuDecreaseCosts(string $sku): array
+    {
+        $out = [
+            'sprice' => null,
+            'temu_ship' => null,
+            'r_price' => null,
+            'full_price' => null,
+            's_r_price' => null,
+        ];
+        $sku = trim($sku);
+        if ($sku === '') {
+            return $out;
+        }
+
+        $pm = ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+            ->first();
+        if ($pm) {
+            $values = $pm->Values;
+            if (is_string($values)) {
+                $values = json_decode($values, true);
+            }
+            if (! is_array($values)) {
+                $values = [];
+            }
+
+            $temuShip = 0.0;
+            foreach ($values as $key => $value) {
+                if (strtolower((string) $key) === 'temu_ship' && is_numeric($value)) {
+                    $temuShip = (float) $value;
+                    break;
+                }
+            }
+            if ($temuShip <= 0 && isset($pm->temu_ship) && is_numeric($pm->temu_ship)) {
+                $temuShip = (float) $pm->temu_ship;
+            }
+            $out['temu_ship'] = round($temuShip, 2);
+        }
+
+        if (Schema::hasTable('temu_data_view')) {
+            $view = TemuDataView::query()
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+                ->first();
+            if (! $view) {
+                $compact = strtoupper(str_replace(' ', '', $sku));
+                $view = TemuDataView::query()
+                    ->whereRaw("REPLACE(UPPER(TRIM(sku)), ' ', '') = ?", [$compact])
+                    ->first();
+            }
+            $raw = $view?->value;
+            if (is_string($raw)) {
+                $raw = json_decode($raw, true);
+            }
+            if (is_array($raw)) {
+                $sprice = null;
+                foreach (['SPRICE', 'sprice'] as $key) {
+                    if (isset($raw[$key]) && is_numeric($raw[$key]) && (float) $raw[$key] > 0) {
+                        $sprice = (float) $raw[$key];
+                        break;
+                    }
+                }
+                if ($sprice !== null) {
+                    $out['sprice'] = round($sprice, 2);
+                }
+            }
+        }
+
+        $basePrice = 0.0;
+        if (Schema::hasTable('temu_metrics')) {
+            $metric = TemuMetric::query()
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+                ->first();
+            if (! $metric) {
+                $compact = strtoupper(str_replace(' ', '', $sku));
+                $metric = TemuMetric::query()
+                    ->whereRaw("REPLACE(UPPER(TRIM(sku)), ' ', '') = ?", [$compact])
+                    ->first();
+            }
+            if ($metric) {
+                $basePrice = TemuShopifySalesService::resolveListingBasePrice(
+                    $metric->base_price ?? 0,
+                    $metric->recommended_base_price ?? null
+                );
+            }
+        }
+
+        if ($basePrice <= 0 && Schema::hasTable('temu_pricing')) {
+            $pricing = TemuPricing::query()
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+                ->orderByDesc('id')
+                ->first();
+            if ($pricing) {
+                $basePrice = TemuShopifySalesService::resolveListingBasePrice(
+                    $pricing->base_price ?? 0,
+                    $pricing->recommended_base_price ?? null
+                );
+            }
+        }
+
+        if ($basePrice > 0) {
+            $rPrice = TemuShopifySalesService::computeRPrice($basePrice);
+            $fullPrice = TemuShopifySalesService::computeFullTemuPrice($basePrice);
+            $out['r_price'] = $rPrice > 0 ? $rPrice : null;
+            $out['full_price'] = $fullPrice > 0 ? round($fullPrice, 2) : null;
+        }
+
+        if ($out['sprice'] !== null) {
+            $sR = TemuShopifySalesService::computeSRPrice(
+                $out['sprice'],
+                (float) ($out['r_price'] ?? 0),
+                (float) ($out['full_price'] ?? 0)
+            );
+            $out['s_r_price'] = $sR > 0 ? $sR : null;
+        }
+
+        return $out;
+    }
+
+    /**
+     * eBay Ads% — same TACOS used when saving SPRICE / SNROI on /ebay-tabulator-view.
+     */
+    protected function ebayTabulatorAdsPercent(): float
+    {
+        try {
+            $pct = app(ChannelMasterController::class)->getEbayMasterAdsPercent();
+            if (is_numeric($pct) && (float) $pct >= 0) {
+                return round((float) $pct, 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Comparison eBay ads% lookup failed: '.$e->getMessage());
+        }
+
+        return $this->channelMasterAdsPercent('eBay');
+    }
+
+    /**
+     * Channel Ads% / TACOS — same lookup as OverallAmazonController /amazon-tabulator-view.
+     */
+    protected function channelMasterAdsPercent(string $channel): float
+    {
+        if (! Schema::hasTable('channel_master_calculated_data')) {
+            return 0.0;
+        }
+
+        $aliases = [$channel];
+        if (strcasecmp($channel, 'Ebay') === 0 || strcasecmp($channel, 'eBay') === 0) {
+            $aliases = ['eBay', 'Ebay', 'eBay 1', 'Ebay 1'];
+        }
+
+        foreach ($aliases as $name) {
+            $exact = ChannelMasterCalculatedData::query()
+                ->whereRaw('LOWER(TRIM(channel)) = ?', [strtolower($name)])
+                ->value('ads_percentage');
+            if ($exact !== null && $exact !== '') {
+                return round((float) $exact, 2);
+            }
+        }
+
+        $like = ChannelMasterCalculatedData::query()
+            ->whereRaw('LOWER(channel) LIKE ?', [strtolower($channel).'%'])
+            ->whereRaw('LOWER(channel) NOT LIKE ?', [strtolower($channel).'%two%'])
+            ->whereRaw('LOWER(channel) NOT LIKE ?', [strtolower($channel).'%three%'])
+            ->value('ads_percentage');
+
+        return round((float) ($like ?? 0), 2);
     }
 
     /**

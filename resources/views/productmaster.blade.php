@@ -352,6 +352,27 @@
             transform: none !important;
         }
 
+        .cp-col-history-dot {
+            display: inline-block;
+            border: none;
+            background: none;
+            padding: 0 2px;
+            margin-left: 4px;
+            vertical-align: middle;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .cp-col-history-dot span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #166534;
+        }
+        .cp-col-history-dot:hover {
+            transform: scale(1.25);
+        }
+
         .form-control {
             border: 2px solid #E2E8F0;
             border-radius: 6px;
@@ -1364,6 +1385,40 @@
                         </div>
                     </div>
 
+                    <div class="modal fade" id="cpHistoryChartModal" tabindex="-1" aria-labelledby="cpHistoryChartModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-lg modal-bottom" style="max-width: none; width: 100%; margin: 0; position: fixed; left: 0; right: 0; bottom: 0;">
+                            <div class="modal-content" style="border-radius: 8px 8px 0 0;">
+                                <div class="modal-header py-2">
+                                    <h6 class="modal-title mb-0" id="cpHistoryChartModalLabel">
+                                        <i class="fas fa-chart-line me-1"></i> CP history
+                                    </h6>
+                                    <div class="d-flex align-items-center gap-2 ms-auto me-2">
+                                        <select id="cp-history-chart-range" class="form-select form-select-sm" style="width: 110px;" title="Rolling window">
+                                            <option value="365" selected>L365</option>
+                                            <option value="90">L90</option>
+                                            <option value="60">L60</option>
+                                            <option value="30">L30</option>
+                                            <option value="7">L7</option>
+                                        </select>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                </div>
+                                <div class="modal-body p-3">
+                                    <div id="cp-history-chart-loading" class="text-center py-4 text-muted" style="display:none;">
+                                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                        Loading CP history…
+                                    </div>
+                                    <div id="cp-history-chart-nodata" class="text-center py-4 text-muted" style="display:none;">
+                                        No CP history for this SKU yet.
+                                    </div>
+                                    <div id="cp-history-chart-container" style="display:none; width: 100%;">
+                                        <div id="cp-history-chart" style="min-height: 300px; width: 100%;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- All-SKU CP History Modal -->
                     <div class="modal fade" id="cpAllHistoryModal" tabindex="-1" aria-labelledby="cpAllHistoryModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width: 95%;">
@@ -1899,7 +1954,7 @@
                                     break;
                                 case "CP$":
                                     cell.className = 'text-center';
-                                    cell.textContent = formatNumber(item.cp, 2);
+                                    cell.innerHTML = `${formatNumber(item.cp, 2)}${cpMasterHistoryDotHtml(item.SKU, item.cp)}`;
                                     break;
                                 case "FRGHT":
                                     cell.className = 'text-center';
@@ -2165,7 +2220,7 @@
                                 const cpText = cpValid ? cpFormatted : '<span class="missing-data-indicator" title="Missing Data">M</span>';
                                 const isParentCp = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
                                 const cpPen = isParentCp ? '' : `<button type="button" class="btn btn-sm cp-btn ms-1" data-sku="${escapeHtml(item.SKU)}" title="Edit Cost Price (CP)"><i class="bi bi-pencil-square"></i></button>`;
-                                cell.innerHTML = `<span class="cp-value">${cpText}</span>${cpPen}`;
+                                cell.innerHTML = `<span class="cp-value">${cpText}</span>${cpMasterHistoryDotHtml(item.SKU, item.cp)}${cpPen}`;
                                 break;
                             }
                             case "FRGHT":
@@ -3389,6 +3444,139 @@
                 return parseFloat(v).toFixed(2);
             }
 
+            const cpHistoryChartDataUrl = @json(route('product_master.cp.chart'));
+            let cpMasterHistoryChart = null;
+            let cpMasterHistoryChartDays = 365;
+            let cpMasterHistoryChartSku = '';
+            let cpMasterHistoryChartCurrent = '';
+
+            function cpMasterHistoryDotHtml(sku, currentCp) {
+                const s = String(sku || '').trim();
+                if (!s || s.toUpperCase().includes('PARENT')) {
+                    return '';
+                }
+                const cur = (currentCp !== null && currentCp !== undefined && currentCp !== '' && currentCp !== '-')
+                    ? String(currentCp)
+                    : '';
+                return `<button type="button" class="cp-col-history-dot" data-sku="${escapeHtml(s)}" data-current-cp="${escapeHtml(cur)}" title="View CP history (Rolling L365)"><span></span></button>`;
+            }
+
+            function openCpMasterHistoryChart(sku, currentCp) {
+                const s = String(sku || '').trim();
+                if (!s) {
+                    return;
+                }
+                cpMasterHistoryChartSku = s;
+                cpMasterHistoryChartCurrent = currentCp != null ? String(currentCp) : '';
+                cpMasterHistoryChartDays = 365;
+                const rangeEl = document.getElementById('cp-history-chart-range');
+                if (rangeEl) {
+                    rangeEl.value = '365';
+                }
+                const titleEl = document.getElementById('cpHistoryChartModalLabel');
+                if (titleEl) {
+                    titleEl.innerHTML = `<i class="fas fa-chart-line me-1"></i> CP Master — ${escapeHtml(s)} · Rolling L365`;
+                }
+                const modalEl = document.getElementById('cpHistoryChartModal');
+                if (!modalEl || !window.bootstrap?.Modal) {
+                    return;
+                }
+                if (modalEl.parentElement !== document.body) {
+                    document.body.appendChild(modalEl);
+                }
+                modalEl.addEventListener('shown.bs.modal', function () {
+                    try { cpMasterHistoryChart?.reflow(); } catch (e) {}
+                }, { once: true });
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                loadCpMasterHistoryChart();
+            }
+
+            function loadCpMasterHistoryChart() {
+                const loading = document.getElementById('cp-history-chart-loading');
+                const container = document.getElementById('cp-history-chart-container');
+                const noData = document.getElementById('cp-history-chart-nodata');
+                if (loading) loading.style.display = '';
+                if (container) container.style.display = 'none';
+                if (noData) noData.style.display = 'none';
+                if (!cpMasterHistoryChartSku) {
+                    if (loading) loading.style.display = 'none';
+                    if (noData) noData.style.display = '';
+                    return;
+                }
+                const params = new URLSearchParams({
+                    sku: cpMasterHistoryChartSku,
+                    days: String(cpMasterHistoryChartDays || 365),
+                });
+                if (cpMasterHistoryChartCurrent) {
+                    params.set('current_cp', String(cpMasterHistoryChartCurrent).replace(/[$,]/g, ''));
+                }
+                fetch(`${cpHistoryChartDataUrl}?${params.toString()}`, {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                    .then(r => r.json())
+                    .then(response => {
+                        if (loading) loading.style.display = 'none';
+                        const points = response && response.success && Array.isArray(response.data) ? response.data : [];
+                        if (!points.length) {
+                            if (noData) noData.style.display = '';
+                            return;
+                        }
+                        if (container) container.style.display = '';
+                        renderCpMasterHistoryChart(points);
+                    })
+                    .catch(() => {
+                        if (loading) loading.style.display = 'none';
+                        if (noData) noData.style.display = '';
+                    });
+            }
+
+            function renderCpMasterHistoryChart(points) {
+                const el = document.getElementById('cp-history-chart');
+                if (!el || typeof Highcharts === 'undefined') {
+                    return;
+                }
+                const categories = points.map(p => p.date);
+                const values = points.map(p => {
+                    const v = parseFloat(p.value);
+                    return Number.isFinite(v) ? Math.round(v * 100) / 100 : null;
+                });
+                if (cpMasterHistoryChart) {
+                    try { cpMasterHistoryChart.destroy(); } catch (e) {}
+                    cpMasterHistoryChart = null;
+                }
+                cpMasterHistoryChart = Highcharts.chart(el, {
+                    chart: {
+                        type: 'line',
+                        height: 300,
+                        backgroundColor: 'transparent',
+                        spacing: [8, 8, 12, 8],
+                        marginRight: 16,
+                    },
+                    title: { text: null },
+                    credits: { enabled: false },
+                    xAxis: { categories, tickInterval: Math.max(1, Math.floor(categories.length / 8)) },
+                    yAxis: { title: { text: 'CP ($)' } },
+                    legend: { enabled: false },
+                    tooltip: {
+                        pointFormatter: function () {
+                            return `<b>$${Number(this.y).toFixed(2)}</b>`;
+                        },
+                    },
+                    plotOptions: {
+                        line: {
+                            marker: { enabled: true, radius: 3 },
+                            color: '#166534',
+                            lineWidth: 2,
+                            connectNulls: true,
+                        },
+                    },
+                    series: [{ name: 'CP', data: values }],
+                });
+                requestAnimationFrame(function () {
+                    try { cpMasterHistoryChart?.reflow(); } catch (e) {}
+                });
+            }
+
             function setupCpManager() {
                 if (window.__cpManagerBound) return;
                 window.__cpManagerBound = true;
@@ -3401,6 +3589,24 @@
                     if (!btn) return;
                     e.preventDefault();
                     openCpModal(btn.getAttribute('data-sku'));
+                });
+
+                document.addEventListener('click', function(e) {
+                    const dot = e.target.closest('.cp-col-history-dot');
+                    if (!dot) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openCpMasterHistoryChart(dot.getAttribute('data-sku'), dot.getAttribute('data-current-cp'));
+                });
+
+                document.getElementById('cp-history-chart-range')?.addEventListener('change', function () {
+                    const days = parseInt(this.value, 10);
+                    cpMasterHistoryChartDays = Number.isFinite(days) ? days : 365;
+                    const titleEl = document.getElementById('cpHistoryChartModalLabel');
+                    if (titleEl && cpMasterHistoryChartSku) {
+                        titleEl.innerHTML = `<i class="fas fa-chart-line me-1"></i> CP Master — ${escapeHtml(cpMasterHistoryChartSku)} · Rolling L${cpMasterHistoryChartDays}`;
+                    }
+                    loadCpMasterHistoryChart();
                 });
 
                 // History icon: open the CP modal with the history section expanded.
