@@ -90,6 +90,25 @@ class PlsListingsPageBuilder
         $matchedQty = $classified['matched'] ?? [];
         $mismatchQty = $classified['mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
+
+        if ($mismatchQty !== []) {
+            $liveShopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($mismatchQty);
+            if ($liveShopify === []) {
+                $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
+            }
+            $liveMpByUpper = $this->stockMapForSkus($mismatchQty);
+            $reconciled = MarketplaceListingStockResolver::reconcileLinkedTabsWithLiveQty(
+                $matchedQty,
+                $mismatchQty,
+                $zeroQty,
+                $liveShopify,
+                $liveMpByUpper
+            );
+            $matchedQty = $reconciled['matched'];
+            $mismatchQty = $reconciled['mismatch'];
+            $zeroQty = $reconciled['zero'];
+        }
+
         $counts['matched'] = count($matchedQty);
         $counts['mismatch'] = count($mismatchQty);
         $counts['zero'] = count($zeroQty);

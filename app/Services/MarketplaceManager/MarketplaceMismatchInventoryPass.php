@@ -37,7 +37,7 @@ final class MarketplaceMismatchInventoryPass
             'message' => 'Mismatch pass skipped.',
         ];
 
-        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon', 'tiktok', 'tiktok2'], true)) {
+        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon', 'tiktok', 'tiktok2', 'pls'], true)) {
             return $empty;
         }
 
@@ -75,6 +75,7 @@ final class MarketplaceMismatchInventoryPass
             'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'pls' => app(PlsInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'wayfair' => app(WayfairInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify($mismatch),
@@ -255,6 +256,10 @@ final class MarketplaceMismatchInventoryPass
             return AmazonListingStatusHelper::linkedSkus();
         }
 
+        if ($channel === 'pls') {
+            return app(PlsListingsPageBuilder::class)->linkedSkus();
+        }
+
         if ($channel === 'ebay1' || $channel === 'ebay2' || $channel === 'ebay3') {
             $query = match ($channel) {
                 'ebay1' => EbayMetric::query(),
@@ -333,6 +338,7 @@ final class MarketplaceMismatchInventoryPass
             'amazon' => MarketplaceListingStockResolver::CHANNEL_AMAZON,
             'tiktok' => MarketplaceListingStockResolver::CHANNEL_TIKTOK,
             'tiktok2' => MarketplaceListingStockResolver::CHANNEL_TIKTOK2,
+            'pls' => MarketplaceListingStockResolver::CHANNEL_PLS,
             default => $channel,
         };
 
