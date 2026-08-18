@@ -2559,6 +2559,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const sheetGetUrl = @json(route('comparison.sheet.get'));
     const sheetSaveUrl = @json(route('comparison.sheet.save'));
     const sheetImageUrl = @json(route('comparison.sheet.image'));
+    const sheetPhotoUploadUrl = @json(route('comparison.sheet.photo'));
     const sheetSyncClinkUrl = @json(route('comparison.sheet.sync-clink'));
     const suppliersForSkuUrl = @json(route('comparison.suppliers-for-sku'));
     const supplierListUrl = @json(route('supplier.list'));
@@ -6571,6 +6572,32 @@ document.addEventListener('DOMContentLoaded', function () {
         return { cells, rows: { ...formats.rows }, cols };
     }
 
+    const sheetPastePreviewUrls = new Map();
+
+    function sheetPastePreviewKey(rowIndex, colIndex) {
+        return `${rowIndex}:${colIndex}`;
+    }
+
+    function rememberSheetPastePreview(rowIndex, colIndex, previewUrl) {
+        if (Number.isNaN(rowIndex) || Number.isNaN(colIndex) || !previewUrl) {
+            return;
+        }
+        const key = sheetPastePreviewKey(rowIndex, colIndex);
+        const previous = sheetPastePreviewUrls.get(key);
+        if (previous && previous !== previewUrl && String(previous).startsWith('blob:')) {
+            try { URL.revokeObjectURL(previous); } catch (err) {}
+        }
+        sheetPastePreviewUrls.set(key, previewUrl);
+    }
+
+    function getSheetPastePreview(rowIndex, colIndex) {
+        return sheetPastePreviewUrls.get(sheetPastePreviewKey(rowIndex, colIndex)) || '';
+    }
+
+    function currentSheetSku() {
+        return String(currentCdRow?.sheet_sku || currentCdRow?.sku || '').trim();
+    }
+
     function parseCmpPhotoId(value) {
         const match = String(value || '').match(/^\[cmp-photo:([A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))\]$/i);
         return match ? match[1] : '';
@@ -6614,6 +6641,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (typeof value === 'string') {
             if (
                 value.startsWith('data:image/')
+                || value.startsWith('blob:')
                 || value.startsWith('[embedded-image:')
                 || value.startsWith('[cmp-photo:')
             ) {
@@ -6754,42 +6782,95 @@ document.addEventListener('DOMContentLoaded', function () {
         if (currentSheetCells[rowIndex]) {
             currentSheetCells[rowIndex][colIndex] = storedValue;
         }
+        rememberSheetPastePreview(rowIndex, colIndex, previewUrl);
         const token = storedValue.startsWith('data:image/')
             ? `[embedded-image:${rowIndex}:${colIndex}]`
             : storedValue;
         td.innerHTML = `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(token)}" data-embedded="1" title="Product photo">
-            <img src="${escapeHtmlAttr(previewUrl)}" class="cd-sheet-img" alt="Product photo">
+            <img src="${escapeHtmlAttr(previewUrl)}" class="cd-sheet-img no-img-hover" alt="Product photo" data-no-img-hover>
         </div>`;
+        bindSheetImageFallback(td.querySelector('img'), rowIndex, colIndex);
         return true;
     }
 
+    function uploadSheetPhotoFile(file) {
+        const sheetSku = currentSheetSku();
+        const sku = String(currentCdRow?.sku || sheetSku).trim();
+        if (!sheetSku || !sheetPhotoUploadUrl) {
+            return Promise.reject(new Error('Sheet SKU is missing.'));
+        }
+        const body = new FormData();
+        body.append('sku', sku);
+        body.append('sheet_sku', sheetSku);
+        body.append('image', file, file.name || 'product-photo.png');
+        return fetch(sheetPhotoUploadUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body,
+        }).then(function (response) {
+            return response.json().then(function (data) {
+                if (!response.ok || !data || !data.success || !data.token) {
+                    throw new Error((data && data.message) || 'Could not upload pasted image.');
+                }
+                return data;
+            });
+        });
+    }
+
     function applyPastedImageFileToSheetCell(cell, file) {
+        const rowIndex = parseInt(cell.dataset.row, 10);
+        const colIndex = parseInt(cell.dataset.col, 10);
         const previewUrl = URL.createObjectURL(file);
-        const reader = new FileReader();
-        reader.onload = function () {
-            const dataUrl = String(reader.result || '');
-            if (!dataUrl.startsWith('data:image/')) {
-                URL.revokeObjectURL(previewUrl);
-                setSheetStatus('Could not read pasted image.', true);
-                return;
+        const placeholder = Number.isNaN(rowIndex) || Number.isNaN(colIndex)
+            ? ''
+            : `[embedded-image:${rowIndex}:${colIndex}]`;
+        renderPastedSheetImagePreview(cell, previewUrl, placeholder);
+        uploadSheetPhotoFile(file).then(function (data) {
+            if (currentSheetCells[rowIndex]) {
+                currentSheetCells[rowIndex][colIndex] = data.token;
             }
-            renderPastedSheetImagePreview(cell, previewUrl, dataUrl);
-            scheduleAutoSaveComparisonSheet(400, { rerender: true, refreshTable: false });
-        };
-        reader.onerror = function () {
-            URL.revokeObjectURL(previewUrl);
-            setSheetStatus('Could not read pasted image.', true);
-        };
-        reader.readAsDataURL(file);
+            const live = document.querySelector(
+                `.cd-sheet-cell-image[data-row="${rowIndex}"][data-col="${colIndex}"]`
+            );
+            if (live) {
+                live.dataset.value = data.token;
+            }
+            scheduleAutoSaveComparisonSheet(300, { rerender: false, refreshTable: false });
+        }).catch(function () {
+            const reader = new FileReader();
+            reader.onload = function () {
+                const dataUrl = String(reader.result || '');
+                if (!dataUrl.startsWith('data:image/')) {
+                    setSheetStatus('Could not save pasted image.', true);
+                    return;
+                }
+                if (currentSheetCells[rowIndex]) {
+                    currentSheetCells[rowIndex][colIndex] = dataUrl;
+                }
+                scheduleAutoSaveComparisonSheet(300, { rerender: false, refreshTable: false });
+            };
+            reader.onerror = function () {
+                setSheetStatus('Could not save pasted image.', true);
+            };
+            reader.readAsDataURL(file);
+        });
     }
 
     function applyPastedImageSrcToSheetCell(cell, src) {
-        if (src.startsWith('data:image/')) {
+        if (src.startsWith('data:image/') || src.startsWith('blob:')) {
             fetch(src).then(function (response) { return response.blob(); }).then(function (blob) {
                 applyPastedImageFileToSheetCell(cell, blob);
             }).catch(function () {
-                renderPastedSheetImagePreview(cell, src, src);
-                scheduleAutoSaveComparisonSheet(400, { rerender: true, refreshTable: false });
+                if (src.startsWith('data:image/')) {
+                    renderPastedSheetImagePreview(cell, src, src);
+                    scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
+                    return;
+                }
+                setSheetStatus('Could not read pasted image.', true);
             });
             return;
         }
@@ -6878,19 +6959,20 @@ document.addEventListener('DOMContentLoaded', function () {
             // NEVER put megabyte base64 data-URLs into innerHTML — that freezes the page.
             // Load stored photos via /sheet/image?photo=… (stable) or legacy row/col.
             if (isStoredPhoto) {
-                // Request by current cell position so the server can read this cell's value;
-                // legacy [embedded-image:r:c] coords inside the value still locate the file.
-                const src = sheetEmbeddedImageSrc(rowIndex, colIndex, attrValue);
+                // Prefer the local paste preview so the photo stays visible while the
+                // server URL is still being written (or if that request 404s).
+                const src = getSheetPastePreview(rowIndex, colIndex)
+                    || sheetEmbeddedImageSrc(rowIndex, colIndex, attrValue);
                 if (src) {
                     return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" data-embedded="1" title="Product photo">
-                        <img src="${escapeHtmlAttr(src)}" class="cd-sheet-img" alt="Product photo" loading="lazy" decoding="async">
+                        <img src="${escapeHtmlAttr(src)}" class="cd-sheet-img no-img-hover" alt="Product photo" data-no-img-hover decoding="async">
                     </div>`;
                 }
                 return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" data-embedded="1" title="Embedded image">
                     <span class="cd-sheet-img-ph" aria-hidden="true"><i class="mdi mdi-image-outline"></i></span>
                 </div>`;
             }
-            return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" title="Product photo"><img src="${escapeHtmlAttr(text)}" class="cd-sheet-img" alt="Product photo" referrerpolicy="no-referrer" loading="lazy" decoding="async"></div>`;
+            return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" title="Product photo"><img src="${escapeHtmlAttr(text)}" class="cd-sheet-img no-img-hover" alt="Product photo" data-no-img-hover referrerpolicy="no-referrer" decoding="async"></div>`;
         }
         if (!forceText && isSheetLinkUrl(text)) {
             return `<div class="cd-sheet-cell cd-sheet-cell-link" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(text)}" title="${escapeHtmlAttr(text)}">
@@ -7051,9 +7133,58 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         body.innerHTML = parts.join('');
         sheetRenderColCache = null;
+        bindAllSheetImageFallbacks();
 
         applyPriorityRowFilters();
         updateSupplierCountBadge(currentSheetCells);
+    }
+
+    function bindSheetImageFallback(img, rowIndex, colIndex) {
+        if (!img || img.dataset.fallbackBound === '1') {
+            return;
+        }
+        img.dataset.fallbackBound = '1';
+        img.addEventListener('error', function () {
+            const preview = getSheetPastePreview(rowIndex, colIndex);
+            if (preview && img.getAttribute('src') !== preview) {
+                img.src = preview;
+                return;
+            }
+            img.alt = 'Product photo';
+        });
+    }
+
+    function bindAllSheetImageFallbacks() {
+        document.querySelectorAll('#comparison-cd-sheet-body .cd-sheet-cell-image img').forEach((img) => {
+            const cell = img.closest('.cd-sheet-cell-image');
+            if (!cell) {
+                return;
+            }
+            bindSheetImageFallback(img, parseInt(cell.dataset.row, 10), parseInt(cell.dataset.col, 10));
+        });
+    }
+
+    function syncSheetPhotoTokensInDom(cells) {
+        (cells || []).forEach((row, rowIndex) => {
+            if (!Array.isArray(row)) {
+                return;
+            }
+            row.forEach((value, colIndex) => {
+                const text = String(value ?? '');
+                if (
+                    !text.startsWith('[cmp-photo:')
+                    && !text.startsWith('[embedded-image:')
+                ) {
+                    return;
+                }
+                const cell = document.querySelector(
+                    `.cd-sheet-cell-image[data-row="${rowIndex}"][data-col="${colIndex}"]`
+                );
+                if (cell) {
+                    cell.dataset.value = text;
+                }
+            });
+        });
     }
 
     function applySheetSelectionHighlight() {
@@ -7460,8 +7591,12 @@ document.addEventListener('DOMContentLoaded', function () {
             // Keep editor state in sync without rebuilding DOM (quiet save).
             currentSheetCells = returnedCells;
             applyAutoSheetFormatsFromPayload(data, returnedCells);
+            if (!opts.rerender) {
+                syncSheetPhotoTokensInDom(returnedCells);
+            }
 
             // Quiet save by default: no full sheet rebuild / Tabulator reload (those hang the page).
+            // Never rebuild after a paste — that swaps the working preview for a 404 thumbnail.
             if (opts.rerender) {
                 renderSheetEditor(returnedCells, { migrateDimWt: false, sortByPrice: false });
             }
@@ -11662,7 +11797,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         const htmlSrc = getClipboardHtmlImageSrc(clipboard);
-        if (htmlSrc && (htmlSrc.startsWith('data:image/') || isSheetImageUrl(htmlSrc))) {
+        if (htmlSrc && (htmlSrc.startsWith('data:image/') || htmlSrc.startsWith('blob:') || isSheetImageUrl(htmlSrc))) {
             e.preventDefault();
             applyPastedImageSrcToSheetCell(cell, htmlSrc);
             return;
@@ -11688,7 +11823,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             imgs.forEach(fitSheetCellImageEl);
             const src = imgs[0].getAttribute('src') || imgs[0].src || '';
-            if (src.startsWith('data:image/') || isSheetImageUrl(src)) {
+            if (src.startsWith('data:image/') || src.startsWith('blob:') || isSheetImageUrl(src)) {
                 applyPastedImageSrcToSheetCell(liveCell, src);
             }
         }, 0);

@@ -49,6 +49,8 @@
         '.product-image-enlarged',
         '.no-img-hover',
         '[data-no-img-hover]',
+        '.cd-sheet-table',
+        '.cd-sheet-cell-image',
     ].join(',');
 
     function isEligible(img) {

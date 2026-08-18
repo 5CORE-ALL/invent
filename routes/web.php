@@ -5124,6 +5124,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/history', 'getHistory')->name('comparison.history');
         Route::get('/sheet', 'getSheet')->name('comparison.sheet.get');
         Route::get('/sheet/image', 'getSheetImage')->name('comparison.sheet.image');
+        Route::post('/sheet/photo', 'uploadSheetPhoto')->name('comparison.sheet.photo');
         Route::post('/sheet/save', 'saveSheet')->name('comparison.sheet.save');
         Route::post('/sheet/import-google', 'importGoogleSheet')->name('comparison.sheet.import-google');
         Route::post('/sheet/sync-clink', 'syncFromClink')->name('comparison.sheet.sync-clink');

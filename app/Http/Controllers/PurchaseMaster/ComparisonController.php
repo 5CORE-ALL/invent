@@ -954,6 +954,44 @@ class ComparisonController extends Controller
         ]);
     }
 
+    public function uploadSheetPhoto(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'sheet_sku' => 'nullable|string',
+            'image' => 'required|file|max:20480',
+        ]);
+
+        $sheetSku = trim((string) ($validated['sheet_sku'] ?? ''));
+        if ($sheetSku === '') {
+            $sheetSku = trim((string) $validated['sku']);
+        }
+
+        $file = $request->file('image');
+        if (! $file) {
+            return response()->json(['success' => false, 'message' => 'Image file is required.'], 422);
+        }
+
+        $mime = strtolower((string) ($file->getMimeType() ?: $file->getClientMimeType() ?: ''));
+        if (! str_starts_with($mime, 'image/')) {
+            return response()->json(['success' => false, 'message' => 'Pasted file is not an image.'], 422);
+        }
+
+        $bytes = file_get_contents($file->getRealPath());
+        if ($bytes === false || $bytes === '') {
+            return response()->json(['success' => false, 'message' => 'Could not read pasted image.'], 422);
+        }
+
+        $token = $this->sheetStorage->storePhotoBytes($sheetSku, $bytes, $mime);
+        $photoId = $this->sheetStorage->photoIdFromToken($token);
+
+        return response()->json([
+            'success' => true,
+            'token' => $token,
+            'photo' => $photoId,
+        ]);
+    }
+
     public function saveSheet(Request $request)
     {
         $validated = $request->validate([

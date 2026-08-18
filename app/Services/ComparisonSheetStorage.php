@@ -201,17 +201,30 @@ class ComparisonSheetStorage
             return null;
         }
 
-        if (! preg_match('#^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$#s', $value, $matches)) {
+        // Avoid preg_match() on multi-MB base64 — PCRE backtrack limits silently fail
+        // and the pasted photo then 404s after the sheet re-renders.
+        $comma = strpos($value, ',');
+        if ($comma === false || $comma < 12) {
             return null;
         }
 
-        $bytes = base64_decode($matches[2], true);
+        $meta = strtolower(substr($value, 5, $comma - 5));
+        if (! str_ends_with($meta, ';base64')) {
+            return null;
+        }
+
+        $mime = substr($meta, 0, -7);
+        if (! str_starts_with($mime, 'image/') || strlen($mime) > 64) {
+            return null;
+        }
+
+        $bytes = base64_decode(substr($value, $comma + 1), true);
         if ($bytes === false || $bytes === '') {
             return null;
         }
 
         return [
-            'mime' => $matches[1],
+            'mime' => $mime,
             'bytes' => $bytes,
         ];
     }
