@@ -384,11 +384,15 @@ final class MarketplaceMismatchInventoryPass
      *
      * @return list<array<string, mixed>>
      */
-    public function liveRowsForStateSplit(string $channel): array
+    public function liveRowsForStateSplit(string $channel, bool $fetchIfCold = true): array
     {
         $peeked = $this->peekLiveRows($channel);
         if (is_array($peeked) && $peeked !== []) {
             return $peeked;
+        }
+
+        if (! $fetchIfCold) {
+            return [];
         }
 
         $channel = strtolower(trim($channel));

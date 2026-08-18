@@ -83,7 +83,7 @@
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <span class="badge bg-danger badge-mm-stat" id="stat-missing-mapping" title="Sum of Missing Mapping Titas (Active SKU Mismatch from listings)" style="background-color:#a71d2a !important;">
-                        Missing Mapping: <span id="total-missing-mapping">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::totalTitas(true)) }}</span>
+                        Missing Mapping: <span id="total-missing-mapping">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedTotalOrZero()) }}</span>
                     </span>
                 </div>
             </div>

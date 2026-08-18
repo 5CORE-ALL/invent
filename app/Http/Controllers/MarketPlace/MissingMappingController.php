@@ -55,7 +55,7 @@ class MissingMappingController extends Controller
     public function masterData(Request $request)
     {
         try {
-            $data = collect(MappingChannelCounts::masterRows(false))->values();
+            $data = collect(MappingChannelCounts::masterRows(true))->values();
             $totalTitas = (int) $data->sum('missing_mapping_titas');
 
             MappingChannelCounts::storeTotalTitas($totalTitas);

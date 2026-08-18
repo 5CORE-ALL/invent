@@ -284,8 +284,7 @@ class FaireLinkMapSyncService
         }
         try {
             Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'faire');
-            Cache::forget(MappingChannelCounts::TOTAL_TITAS_CACHE_KEY);
-            Cache::forget(MappingChannelCounts::TOTAL_CACHE_KEY);
+            MappingChannelCounts::forgetMasterCaches();
         } catch (\Throwable $e) {
             // ignore
         }
