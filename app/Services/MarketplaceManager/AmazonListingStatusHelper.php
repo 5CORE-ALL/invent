@@ -156,12 +156,7 @@ final class AmazonListingStatusHelper
                         if (! self::isLinked($row)) {
                             continue;
                         }
-                        $sku = trim((string) $row->sku);
-                        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                        if ($sku === '' || $norm === '' || isset($byNorm[$norm])) {
-                            continue;
-                        }
-                        $byNorm[$norm] = $sku;
+                        self::rememberLinkedSku($byNorm, trim((string) $row->sku));
                     }
                 });
         }
@@ -180,16 +175,40 @@ final class AmazonListingStatusHelper
                         if ($sku === '' || ! preg_match('/^[A-Z0-9]{10}$/', $asin)) {
                             continue;
                         }
-                        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                        if ($norm === '' || isset($byNorm[$norm])) {
-                            continue;
-                        }
-                        $byNorm[$norm] = $sku;
+                        self::rememberLinkedSku($byNorm, $sku);
                     }
                 });
         }
 
         return array_values($byNorm);
+    }
+
+    /**
+     * Keep one seller SKU per normalized key. Prefer the exact form (ND 58)
+     * over a hyphen/underscore alias (ND-58) — those can be different listings
+     * with different Shopify qty.
+     *
+     * @param  array<string, string>  $byNorm
+     */
+    protected static function rememberLinkedSku(array &$byNorm, string $sku): void
+    {
+        $sku = trim($sku);
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($sku === '' || $norm === '') {
+            return;
+        }
+        if (! isset($byNorm[$norm])) {
+            $byNorm[$norm] = $sku;
+
+            return;
+        }
+
+        $existing = $byNorm[$norm];
+        $existingExact = strtoupper(trim($existing)) === ShopifySku::normalizeSkuForShopifyLookup($existing);
+        $newExact = strtoupper($sku) === $norm;
+        if ($newExact && ! $existingExact) {
+            $byNorm[$norm] = $sku;
+        }
     }
 
     /**

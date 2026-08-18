@@ -551,7 +551,15 @@ final class MarketplaceListingStockResolver
             if ($qty === null) {
                 continue;
             }
-            self::put($out, (string) $row->sku, $qty);
+            $raw = (string) $row->sku;
+            $upper = strtoupper(trim($raw));
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+            // Exact SKU (ND 58) must beat a hyphen alias (ND-58) on the shared norm key.
+            if ($upper !== '' && $upper === $norm) {
+                self::putOverwrite($out, $raw, $qty);
+            } else {
+                self::put($out, $raw, $qty);
+            }
         }
 
         return $out;
