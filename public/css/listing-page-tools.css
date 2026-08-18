@@ -1,0 +1,84 @@
+[id$="-listing-toolbar"] {
+    overflow: visible !important;
+}
+[id$="-listing-toolbar"] .toolbar-actions {
+    gap: 6px;
+    overflow: visible;
+}
+.listing-page-tools-btn {
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+}
+.listing-page-tools-btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+.listing-wrap .sku-cell,
+[id$="-listing-wrap"] .sku-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+}
+[id$="-listing-wrap"] .sku-cell-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+[id$="-listing-wrap"] .copy-sku-btn {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    padding: 0;
+    line-height: 1;
+    cursor: pointer;
+}
+[id$="-listing-wrap"] .copy-sku-btn:hover { color: #0f172a; }
+[id$="-listing-wrap"] .copy-sku-btn.is-copied { color: #16a34a; }
+.listing-mp-publish-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: #0d6efd;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.listing-mp-publish-btn:hover { background: #0b5ed7; color: #fff; }
+.listing-publish-modal-note { font-size: 13px; color: #475569; margin-bottom: 12px; }
+.listing-publish-group {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+}
+.listing-publish-group-head {
+    background: #f8fafc;
+    padding: 8px 12px;
+    font-weight: 700;
+    font-size: 13px;
+    color: #0f172a;
+}
+.listing-publish-group table { width: 100%; margin: 0; font-size: 12px; }
+.listing-publish-group th,
+.listing-publish-group td { padding: 6px 10px; vertical-align: middle; }
+.listing-publish-status { font-weight: 700; white-space: nowrap; }
+.listing-publish-status.is-publish { color: #15803d; }
+.listing-publish-status.is-skip { color: #64748b; }
+#listing-publish-progress { font-size: 13px; color: #334155; min-height: 1.2em; }

@@ -3,6 +3,7 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
+    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -580,6 +581,7 @@
                                 <option value="Listed">Listed Only</option>
                                 <option value="Pending">Missing L</option>
                             </select>
+                            <button type="button" class="btn btn-sm btn-primary listing-page-tools-btn" id="bulk-publish-btn" title="Publish selected SKUs as parent variations"><i class="fas fa-cloud-upload-alt"></i> Publish selected</button>
                             <div class="toolbar-actions">
                                 <button type="button"
                                     class="btn btn-sm btn-primary listing-io-btn"
@@ -616,6 +618,9 @@
                             </div>
                         </div>
                     </div>
+
+                    @include('market-places.listing-market-places._listing_publish_modal')
+
 
                     <div id="shein-listing-wrap">
                         <div id="sheinListing-table"></div>
@@ -1060,102 +1065,8 @@
                 }
             });
 
-            function copySkuToClipboard(text, $btn) {
-                const done = function () {
-                    showNotification('success', 'Copied: ' + text);
-                    if ($btn && $btn.length) {
-                        $btn.addClass('is-copied');
-                        const $icon = $btn.find('i');
-                        $icon.removeClass('fa-copy').addClass('fa-check');
-                        setTimeout(function () {
-                            $btn.removeClass('is-copied');
-                            $icon.removeClass('fa-check').addClass('fa-copy');
-                        }, 1200);
-                    }
-                };
-                const fallback = function () {
-                    const ta = document.createElement('textarea');
-                    ta.value = text;
-                    ta.setAttribute('readonly', '');
-                    ta.style.position = 'absolute';
-                    ta.style.left = '-9999px';
-                    document.body.appendChild(ta);
-                    ta.select();
-                    try { document.execCommand('copy'); done(); } catch (err) {
-                        showNotification('danger', 'Could not copy SKU');
-                    }
-                    document.body.removeChild(ta);
-                };
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(text).then(done).catch(fallback);
-                } else {
-                    fallback();
-                }
-            }
-
-            $(document).on('click', '#shein-listing-wrap .copy-sku-btn', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const sku = $(this).attr('data-sku') || '';
-                if (!sku) return;
-                copySkuToClipboard(sku, $(this));
-            });
-
             $('#import-btn').on('click', function () {
                 showBsModal('importModal');
-            });
-
-            function csvCell(value) {
-                const text = String(value ?? '');
-                if (/[",\r\n]/.test(text)) {
-                    return '"' + text.replace(/"/g, '""') + '"';
-                }
-                return text;
-            }
-
-            function exportFilteredListing() {
-                if (!sheinListingTable) {
-                    showNotification('danger', 'Table is still loading.');
-                    return;
-                }
-                const rows = (sheinListingTable.getData('active') || []).filter(function (row) {
-                    return !row.is_parent;
-                });
-                if (!rows.length) {
-                    showNotification('danger', 'No filtered rows to export.');
-                    return;
-                }
-                const header = ['parent', 'sku', 'INV', 'nr_req', 'listed', 'buyer_link', 'seller_link'];
-                const lines = [header.join(',')];
-                rows.forEach(function (row) {
-                    const listed = row.listed === 'Pending' ? 'Missing L' : (row.listed || '');
-                    const nrReq = row.nr_req === 'NR' ? 'NRL' : (row.nr_req || '');
-                    lines.push([
-                        csvCell(row.parent),
-                        csvCell(row.sku),
-                        csvCell(row.INV),
-                        csvCell(nrReq),
-                        csvCell(listed),
-                        csvCell(row.buyer_link),
-                        csvCell(row.seller_link)
-                    ].join(','));
-                });
-                const listedFilter = $('#listed-filter').val();
-                const suffix = listedFilter === 'Pending' ? 'missing_l' : 'filtered';
-                const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = 'shein_listing_' + suffix + '.csv';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(link.href);
-                showNotification('success', 'Exported ' + rows.length + ' filtered row' + (rows.length === 1 ? '' : 's') + '.');
-            }
-
-            $('#export-btn').on('click', function (e) {
-                e.preventDefault();
-                exportFilteredListing();
             });
 
             $(document).on('click', '#confirmImportBtn', function () {
@@ -1205,4 +1116,17 @@
 
         });
     </script>
+
+    <script>
+        window.listingPageConfig = {
+            wrap: '#shein-listing-wrap',
+            tableId: 'sheinListing-table',
+            exportName: 'shein_listing',
+            channel: 'shein',
+            channelLabel: "Shein",
+            previewUrl: '/listing-common/publish-preview',
+            publishUrl: '/listing-common/publish'
+        };
+    </script>
+    <script src="{{ asset('js/listing-page-tools.js') }}"></script>
 @endsection

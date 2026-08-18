@@ -3,6 +3,7 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
+    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -647,27 +648,19 @@
                                 title="Publish selected SKUs as parent variations">
                                 <i class="fas fa-cloud-upload-alt"></i> Publish selected
                             </button>
-                            <div class="toolbar-actions dropdown">
+                            <div class="toolbar-actions">
                                 <button type="button"
                                     class="btn btn-sm btn-primary listing-io-btn"
-                                    id="listing-io-btn"
-                                    data-bs-toggle="dropdown"
-                                    aria-expanded="false"
-                                    title="Import / Export">
+                                    id="import-btn"
+                                    title="Import">
                                     <i class="fas fa-file-import"></i>
                                 </button>
-                                <ul class="dropdown-menu dropdown-menu-end listing-io-menu" aria-labelledby="listing-io-btn">
-                                    <li>
-                                        <button type="button" class="dropdown-item" id="import-btn" title="Import">
-                                            <i class="fas fa-file-import text-primary"></i>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="{{ route('listing_temu2.export') }}" title="Export">
-                                            <i class="fas fa-file-export text-success"></i>
-                                        </a>
-                                    </li>
-                                </ul>
+                                <button type="button"
+                                    class="btn btn-sm btn-primary listing-io-btn"
+                                    id="export-btn"
+                                    title="Export visible / filtered rows">
+                                    <i class="fas fa-file-export"></i>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1451,4 +1444,17 @@
 
         });
     </script>
+
+    <script>
+        window.listingPageConfig = {
+            wrap: '#temu2-listing-wrap',
+            tableId: 'temu2Listing-table',
+            exportName: 'temu2_listing',
+            channel: 'temu2',
+            channelLabel: "Temu 2",
+            previewUrl: '/listing-common/publish-preview',
+            publishUrl: '/listing-common/publish'
+        };
+    </script>
+    <script src="{{ asset('js/listing-page-tools.js') }}"></script>
 @endsection
