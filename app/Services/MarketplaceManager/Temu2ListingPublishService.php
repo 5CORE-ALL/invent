@@ -880,8 +880,9 @@ class Temu2ListingPublishService
     }
 
     /**
-     * Required category attributes, including Temu keyword attributes
-     * (Battery Properties, Wireless Property, Power Mode).
+     * Required category attributes, including Temu keyword attributes.
+     * Child attributes (e.g. Operating Voltage) are only sent with values
+     * allowed by the selected parent (Power Mode, Battery, etc.).
      *
      * @return list<array<string, mixed>>
      */
@@ -894,65 +895,31 @@ class Temu2ListingPublishService
             return [];
         }
 
+        usort($props, function (array $a, array $b): int {
+            $sa = (int) ($a['showType'] ?? 0);
+            $sb = (int) ($b['showType'] ?? 0);
+
+            return $sa <=> $sb;
+        });
+
+        $selectedVidByRefPid = [];
         $out = [];
         $filled = [];
+
         foreach ($props as $prop) {
             if (! is_array($prop)) {
                 continue;
             }
-
-            $name = trim((string) ($prop['attributeName'] ?? $prop['name'] ?? ''));
-            $required = (bool) ($prop['required'] ?? $prop['isRequired'] ?? false);
-            $isKeyword = $this->isKeywordAttribute($name, $prop);
-            if (! $required && ! $isKeyword) {
+            $entry = $this->fillPropertyEntry($prop, $selectedVidByRefPid, $props);
+            if ($entry === null) {
                 continue;
             }
-
-            $refPid = $prop['refPid'] ?? $prop['pid'] ?? $prop['templatePid'] ?? null;
-            if ($refPid === null) {
-                continue;
+            $refPid = (int) $entry['refPid'];
+            if (isset($entry['vid'])) {
+                $selectedVidByRefPid[$refPid] = (int) $entry['vid'];
             }
-
-            $entry = ['refPid' => (int) $refPid];
-            if (isset($prop['pid'])) {
-                $entry['pid'] = (int) $prop['pid'];
-            }
-            if (isset($prop['templatePid'])) {
-                $entry['templatePid'] = (int) $prop['templatePid'];
-            }
-
-            $values = $this->flattenAttributeValues($prop);
-            $picked = $this->pickAttributeValue($values, $name);
-            $controlType = (int) (
-                $prop['controlType']
-                ?? $prop['attributeRules']['controlType']
-                ?? 1
-            );
-
-            if ($picked !== null) {
-                $entry['vid'] = (int) $picked['vid'];
-                if ($picked['value'] !== '') {
-                    $entry['value'] = $picked['value'];
-                }
-            } elseif (in_array($controlType, [0, 16, 19], true)) {
-                $entry['value'] = $this->defaultInputValueForAttribute($name);
-                $units = $prop['valueUnitList'] ?? $prop['attributeValueUnitList'] ?? [];
-                if (is_array($units) && $units !== []) {
-                    $unitId = $units[0]['valueUnitId'] ?? null;
-                    if ($unitId !== null) {
-                        $entry['valueUnitId'] = (int) $unitId;
-                    }
-                }
-            } else {
-                Log::warning('Temu2 publish: could not fill required attribute', [
-                    'catId' => $catId,
-                    'name' => $name,
-                    'refPid' => $refPid,
-                ]);
-                continue;
-            }
-
             $out[] = $entry;
+            $name = trim((string) ($prop['attributeName'] ?? $prop['name'] ?? ''));
             $filled[] = $name !== '' ? $name : ('refPid '.$refPid);
         }
 
@@ -963,6 +930,182 @@ class Temu2ListingPublishService
         ]);
 
         return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $prop
+     * @param  array<int, int>  $selectedVidByRefPid
+     * @param  list<array<string, mixed>>  $allProps
+     * @return array<string, mixed>|null
+     */
+    private function fillPropertyEntry(array $prop, array $selectedVidByRefPid, array $allProps): ?array
+    {
+        $name = trim((string) ($prop['attributeName'] ?? $prop['name'] ?? ''));
+        $required = (bool) ($prop['required'] ?? $prop['isRequired'] ?? false);
+        $isKeyword = $this->isKeywordAttribute($name, $prop);
+        $isSale = ! empty($prop['isSale']);
+        if ($isSale || (! $required && ! $isKeyword)) {
+            return null;
+        }
+
+        $refPid = $prop['refPid'] ?? $prop['pid'] ?? $prop['templatePid'] ?? null;
+        if ($refPid === null) {
+            return null;
+        }
+
+        $showType = (int) ($prop['showType'] ?? 0);
+        if ($showType === 1 && ! $this->childAttributeUnlocked($prop, $selectedVidByRefPid)) {
+            return null;
+        }
+
+        $entry = ['refPid' => (int) $refPid];
+        if (isset($prop['pid'])) {
+            $entry['pid'] = (int) $prop['pid'];
+        }
+        if (isset($prop['templatePid'])) {
+            $entry['templatePid'] = (int) $prop['templatePid'];
+        }
+
+        $values = $this->flattenAttributeValues($prop);
+        $parentVid = $this->selectedParentVidForProp($prop, $selectedVidByRefPid);
+        $preferParentVids = $showType !== 1
+            ? $this->parentVidsThatUnlockChildren((int) $refPid, $allProps)
+            : [];
+        $picked = $this->pickAttributeValue($values, $name, $parentVid, $preferParentVids, $selectedVidByRefPid);
+        $controlType = (int) (
+            $prop['controlType']
+            ?? $prop['attributeRules']['controlType']
+            ?? 1
+        );
+
+        if ($picked !== null) {
+            $entry['vid'] = (int) $picked['vid'];
+            if ($picked['value'] !== '') {
+                $entry['value'] = $picked['value'];
+            }
+
+            return $entry;
+        }
+
+        if ($showType === 1) {
+            Log::info('Temu2 publish: skipped child attribute with no value matching parent', [
+                'name' => $name,
+                'refPid' => $refPid,
+                'parentVid' => $parentVid,
+            ]);
+
+            return null;
+        }
+
+        if (in_array($controlType, [0, 16, 19], true)) {
+            $entry['value'] = $this->defaultInputValueForAttribute($name);
+            $units = $prop['valueUnitList'] ?? $prop['attributeValueUnitList'] ?? [];
+            if (is_array($units) && $units !== []) {
+                $unitId = $units[0]['valueUnitId'] ?? null;
+                if ($unitId !== null) {
+                    $entry['valueUnitId'] = (int) $unitId;
+                }
+            }
+
+            return $entry;
+        }
+
+        Log::warning('Temu2 publish: could not fill required attribute', [
+            'name' => $name,
+            'refPid' => $refPid,
+        ]);
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $prop
+     * @param  array<int, int>  $selectedVidByRefPid
+     */
+    private function childAttributeUnlocked(array $prop, array $selectedVidByRefPid): bool
+    {
+        $conditions = $prop['showCondition'] ?? [];
+        if (! is_array($conditions) || $conditions === []) {
+            return true;
+        }
+
+        foreach ($conditions as $cond) {
+            if (! is_array($cond)) {
+                continue;
+            }
+            $parentRef = (int) ($cond['parentRefPid'] ?? 0);
+            $allowed = array_map('intval', $cond['parentVids'] ?? []);
+            $selected = $selectedVidByRefPid[$parentRef] ?? null;
+            if ($selected !== null && ($allowed === [] || in_array($selected, $allowed, true))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $prop
+     * @param  array<int, int>  $selectedVidByRefPid
+     */
+    private function selectedParentVidForProp(array $prop, array $selectedVidByRefPid): ?int
+    {
+        foreach ($prop['showCondition'] ?? [] as $cond) {
+            if (! is_array($cond)) {
+                continue;
+            }
+            $parentRef = (int) ($cond['parentRefPid'] ?? 0);
+            if ($parentRef > 0 && isset($selectedVidByRefPid[$parentRef])) {
+                return $selectedVidByRefPid[$parentRef];
+            }
+        }
+
+        $parentRef = (int) ($prop['parentRefPid'] ?? $prop['parentTemplatePid'] ?? 0);
+        if ($parentRef > 0 && isset($selectedVidByRefPid[$parentRef])) {
+            return $selectedVidByRefPid[$parentRef];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $allProps
+     * @return list<int>
+     */
+    private function parentVidsThatUnlockChildren(int $parentRefPid, array $allProps): array
+    {
+        $vids = [];
+        foreach ($allProps as $child) {
+            if ((int) ($child['showType'] ?? 0) !== 1) {
+                continue;
+            }
+            foreach ($child['showCondition'] ?? [] as $cond) {
+                if (! is_array($cond)) {
+                    continue;
+                }
+                if ((int) ($cond['parentRefPid'] ?? 0) !== $parentRefPid) {
+                    continue;
+                }
+                foreach ($cond['parentVids'] ?? [] as $pv) {
+                    $vids[] = (int) $pv;
+                }
+            }
+            foreach ($this->flattenAttributeValues($child) as $value) {
+                foreach ($value['parentVids'] ?? [] as $pv) {
+                    $vids[] = (int) $pv;
+                }
+            }
+            foreach ($child['templatePropertyValueParentList'] ?? [] as $rel) {
+                if (! is_array($rel)) {
+                    continue;
+                }
+                foreach ($rel['parentVids'] ?? [] as $pv) {
+                    $vids[] = (int) $pv;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($vids)));
     }
 
     /**
@@ -1039,9 +1182,13 @@ class Temu2ListingPublishService
                 continue;
             }
             foreach ($detail['attributeValueList'] ?? [] as $value) {
-                if (is_array($value)) {
-                    $out[] = $value;
+                if (! is_array($value)) {
+                    continue;
                 }
+                if (empty($value['parentVids']) && ! empty($detail['parentVids'])) {
+                    $value['parentVids'] = $detail['parentVids'];
+                }
+                $out[] = $value;
             }
         }
 
@@ -1061,7 +1208,9 @@ class Temu2ListingPublishService
         return str_contains($lower, 'battery')
             || str_contains($lower, 'wireless')
             || str_contains($lower, 'power mode')
-            || str_contains($lower, 'power supply');
+            || str_contains($lower, 'power supply')
+            || str_contains($lower, 'operating voltage')
+            || str_contains($lower, 'voltage');
     }
 
     private function defaultInputValueForAttribute(string $name): string
@@ -1079,18 +1228,26 @@ class Temu2ListingPublishService
 
     /**
      * @param  mixed  $values
+     * @param  list<int>  $preferVids
+     * @param  array<int, int>  $allSelectedVids
      * @return array{vid: int, value: string}|null
      */
-    private function pickAttributeValue(mixed $values, string $attributeName = ''): ?array
-    {
+    private function pickAttributeValue(
+        mixed $values,
+        string $attributeName = '',
+        ?int $selectedParentVid = null,
+        array $preferVids = [],
+        array $allSelectedVids = []
+    ): ?array {
         if (! is_array($values) || $values === []) {
             return null;
         }
 
         $name = strtolower($attributeName);
         $preferNone = str_contains($name, 'battery') || str_contains($name, 'wireless');
-        $preferPower = str_contains($name, 'power');
+        $preferPower = str_contains($name, 'power') && ! str_contains($name, 'voltage');
         $preferred = null;
+        $selectedSet = array_map('intval', array_values($allSelectedVids));
 
         foreach ($values as $row) {
             if (! is_array($row)) {
@@ -1100,9 +1257,23 @@ class Temu2ListingPublishService
             if ($vid <= 0) {
                 continue;
             }
+
+            $parentVids = array_map('intval', $row['parentVids'] ?? []);
+            if ($parentVids !== []) {
+                if ($selectedParentVid !== null && ! in_array($selectedParentVid, $parentVids, true)) {
+                    continue;
+                }
+                if ($selectedParentVid === null && $selectedSet !== [] && array_intersect($parentVids, $selectedSet) === []) {
+                    continue;
+                }
+            }
+
             $value = trim((string) ($row['value'] ?? $row['specName'] ?? $row['name'] ?? $row['attributeValue'] ?? ''));
             $lower = strtolower($value);
 
+            if ($preferVids !== [] && in_array($vid, $preferVids, true)) {
+                return ['vid' => $vid, 'value' => $value];
+            }
             if (in_array($lower, ['unbranded', 'generic', 'does not apply', 'none', 'other', 'n/a', 'na'], true)) {
                 return ['vid' => $vid, 'value' => $value];
             }
