@@ -84,11 +84,27 @@ class ChannelMasterSummary extends Model
                 ->get()
                 ->first(fn (self $row) => $row->isFullChannelSnapshot());
             if ($prior) {
-                $sd = array_merge($prior->summaryArray(), $sd);
+                $priorSd = $prior->summaryArray();
+                // Keep L30 / views so listing-only writers don't plot $0, but never
+                // reuse yesterday's Y Sales as today's as-of day (that made Aug 16
+                // and Aug 17 look identical on /all-marketplace-master).
+                unset($priorSd['y_sales'], $priorSd['calculated_at']);
+                $priorSd['seeded_from_snapshot'] = $prior->snapshot_date instanceof \DateTimeInterface
+                    ? $prior->snapshot_date->format('Y-m-d')
+                    : (string) $prior->snapshot_date;
+                $sd = array_merge($priorSd, $sd);
             }
         }
 
         $sd = array_merge($sd, $fields);
+
+        // Listing / catalogue merges can run before the daily auto-save. If the
+        // last full calc is from a previous Pacific day, drop copied Y Sales so
+        // the chart recomputes that as-of day from orders.
+        $calcDay = substr((string) ($sd['calculated_at'] ?? ''), 0, 10);
+        if ($calcDay !== '' && $calcDay < $today && ! array_key_exists('y_sales', $fields)) {
+            unset($sd['y_sales']);
+        }
 
         return self::updateOrCreate(
             [

@@ -954,6 +954,38 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Fast-path Amazon Y Sales = Pacific yesterday from amazon_orders
+     * (same window as the Y Sales chart's last point). Without this, the
+     * table keeps channel_master_calculated_data.yesterday_sales (e.g. $2,648
+     * = Aug 16) while the graph already shows Aug 17 (~$3,061).
+     */
+    private function overlayLiveAmazonYSalesOnChannelRows(array $rows): array
+    {
+        try {
+            $yesterdayPacific = Carbon::now('America/Los_Angeles')->startOfDay()->subDay();
+            $amazonYSales = round((float) AmazonOrder::productSalesByOrderDate(
+                $yesterdayPacific->copy()->startOfDay()->utc(),
+                $yesterdayPacific->copy()->endOfDay()->utc()
+            ), 2);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Amazon Y Sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key === 'amazon') {
+                $row['Y Sales'] = $amazonYSales;
+                break;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
      * Cheap Y Sales / L7 overlay for the all-marketplace-master fast path.
      */
     private function overlayLiveEbayYSalesOnChannelRows(array $rows): array
@@ -4262,6 +4294,14 @@ class ChannelMasterController extends Controller
         }
 
         $live = [
+            'amazon' => function () {
+                $yesterdayPacific = Carbon::now('America/Los_Angeles')->startOfDay()->subDay();
+
+                return AmazonOrder::productSalesByOrderDate(
+                    $yesterdayPacific->copy()->startOfDay()->utc(),
+                    $yesterdayPacific->copy()->endOfDay()->utc()
+                );
+            },
             'temu' => fn () => $this->computeTemuYSalesLikeAmazon(false),
             'temu2' => fn () => $this->computeTemuYSalesLikeAmazon(true),
             'ebay' => fn () => $this->computeEbayYSalesLikeAmazon(1),
@@ -4818,6 +4858,7 @@ class ChannelMasterController extends Controller
             // eBay Y/L7 is a small date-window read of ebay{1,2}_order_metrics so a
             // missed daily fetch cannot leave yesterday at $0 until the next rebuild.
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
+            $formattedData = $this->overlayLiveAmazonYSalesOnChannelRows($formattedData);
             $formattedData = $this->overlayLiveEbayYSalesOnChannelRows($formattedData);
             $formattedData = $this->overlayLiveStaleYSalesOnChannelRows($formattedData);
 
@@ -14474,7 +14515,9 @@ class ChannelMasterController extends Controller
                     } elseif ($metric === 'y_sales' || $metric === 'l7_sales') {
                         // Skip days that pre-date the y_sales / l7_sales snapshot field so we don't
                         // draw a long flat-zero line before real history begins.
-                        if (!$hasMetricData) continue;
+                        // Y Sales can still be filled from orders below when listing-copy
+                        // days omitted the key, so do not continue here for y_sales.
+                        if ($metric === 'l7_sales' && !$hasMetricData) continue;
                         $value = round($totalVal, 2);
                     } elseif ($useL7Window && $metricKey !== null && !$hasMetricData) {
                         continue;
@@ -14552,11 +14595,32 @@ class ChannelMasterController extends Controller
                     } else {
                         $requireKey = in_array($metric, ['y_sales', 'l7_sales'], true)
                             || ($useL7Window && $metricKey !== null && ! in_array($metric, ['cvr', 'nroi', 'pft', 'acos', 'ad_sales', 'ad_sold', 'ads_cvr'], true));
-                        if ($requireKey && ! array_key_exists($metricKey, $summaryData)) {
+                        // Missing y_sales on a seeded listing-copy day is OK — we
+                        // fill it from real Pacific-day orders below.
+                        if ($requireKey && $metric !== 'y_sales' && ! array_key_exists($metricKey, $summaryData)) {
                             continue;
                         }
                         $value = floatval($summaryData[$metricKey] ?? 0);
                     }
+                }
+
+                // Y Sales is stored on the snapshot (channel_master_daily_data.y_sales).
+                // Recalculate from orders only when that day was a listing-copy / missing key.
+                if ($metric === 'y_sales' && ! $isAll) {
+                    $snapRow = $rows->first();
+                    $sdForY = $summaryData ?? \App\Models\ChannelMasterSummary::decodeSummaryData($snapRow->summary_data ?? []);
+                    $storedY = array_key_exists('y_sales', $sdForY) ? (float) $sdForY['y_sales'] : null;
+                    // $0 / listing-copy days are holes (eBay Aug 14 stored $0 while orders were $1,762).
+                    if ($storedY === null || $storedY <= 0 || $this->channelSnapshotYSalesIsInherited($snapRow, $sdForY)) {
+                        $realY = $this->realPacificDayYSales($channel, $dateKey);
+                        if ($realY !== null) {
+                            $value = $realY;
+                        } elseif ($storedY === null) {
+                            continue;
+                        }
+                    }
+                } elseif ($metric === 'y_sales' && $isAll && ! ($hasMetricData ?? false)) {
+                    continue;
                 }
 
                 $chartData[] = [
@@ -14571,7 +14635,9 @@ class ChannelMasterController extends Controller
             //   value (EbayTwo views column is live-overlaid; snapshots can lag). Do not
             //   rescale history — that would distort real day-to-day movement.
             // Never touch listing CVR: it is a ratio (Σ qty / Σ views).
-            if (!empty($chartData) && $metric !== 'cvr') {
+            // Never pin Y Sales to the badge: listing-copy snapshots reuse yesterday's
+            // figure, and the badge can be that same stale number.
+            if (!empty($chartData) && $metric !== 'cvr' && $metric !== 'y_sales') {
                 $badgeValue = $request->input('badge_value');
                 $hasBadge = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue));
 
@@ -15145,6 +15211,80 @@ class ChannelMasterController extends Controller
             'nmap' => null,
             default => null,
         };
+    }
+
+    /**
+     * Y Sales for one Pacific day — used only when a snapshot day is missing
+     * or was copied forward by a listing merge.
+     */
+    private function realPacificDayYSales(string $channel, string $ymd): ?float
+    {
+        static $cache = [];
+        $channel = $this->allMarketplaceSnapshotKey($channel);
+        $key = $channel.'|'.$ymd;
+        if (array_key_exists($key, $cache)) {
+            return $cache[$key];
+        }
+
+        try {
+            if ($channel === 'amazon') {
+                $day = Carbon::parse($ymd, 'America/Los_Angeles');
+                $cache[$key] = round((float) AmazonOrder::productSalesByOrderDate(
+                    $day->copy()->startOfDay()->utc(),
+                    $day->copy()->endOfDay()->utc()
+                ), 2);
+
+                return $cache[$key];
+            }
+
+            $ebayWhich = match ($channel) {
+                'ebay' => 1,
+                'ebaytwo', 'ebay2' => 2,
+                'ebaythree', 'ebay3' => 3,
+                default => null,
+            };
+            if ($ebayWhich !== null) {
+                $cache[$key] = EbayChannelMetricsService::sumSalesForPacificDates($ebayWhich, $ymd, $ymd);
+
+                return $cache[$key];
+            }
+
+            if ($channel === 'temu') {
+                $day = Carbon::parse($ymd, TemuShopifySalesService::PST);
+                $cache[$key] = (float) TemuShopifySalesService::computeMetricsFromOrders(
+                    $day->copy()->startOfDay(),
+                    $day->copy()->endOfDay()
+                )['base_sales'];
+
+                return $cache[$key];
+            }
+
+            $cache[$key] = app(YesterdayMarketplaceMetricsService::class)
+                ->salesForPacificDate($channel, $ymd);
+        } catch (\Throwable $e) {
+            Log::warning("realPacificDayYSales {$channel} {$ymd}: ".$e->getMessage());
+            $cache[$key] = null;
+        }
+
+        return $cache[$key];
+    }
+
+    /**
+     * @param  array<string, mixed>  $sd
+     */
+    private function channelSnapshotYSalesIsInherited($row, array $sd): bool
+    {
+        $notes = (string) ($row->notes ?? '');
+        if (stripos($notes, 'Listing Missing L') !== false
+            || stripos($notes, 'Listing Catalogue') !== false
+            || stripos($notes, 'Variations Verify') !== false
+            || stripos($notes, 'L7 window snapshot') !== false) {
+            return true;
+        }
+        $calc = substr((string) ($sd['calculated_at'] ?? ''), 0, 10);
+        $snap = Carbon::parse($row->snapshot_date)->toDateString();
+
+        return $calc !== '' && $calc < $snap;
     }
 
     /**

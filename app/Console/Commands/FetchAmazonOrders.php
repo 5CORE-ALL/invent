@@ -121,6 +121,8 @@ class FetchAmazonOrders extends Command
 
         // Re-sync specific date
         if ($this->option('resync-date')) {
+            $this->input->setOption('with-items', true);
+            $this->input->setOption('no-incremental-refresh', true);
             $date = Carbon::parse($this->option('resync-date'), 'America/Los_Angeles');
             $this->resyncSpecificDate($date);
             $this->queueShopifyImportsIfEnabled();
@@ -142,6 +144,11 @@ class FetchAmazonOrders extends Command
         }
 
         $this->info('✅ Access Token obtained successfully');
+
+        // A mid-day pass can mark a Pacific day "completed" with only morning
+        // orders (Aug 14 froze at 5:34 AM with 6 orders / $231). Re-open those
+        // before we decide what to fetch.
+        $this->reopenDaysFrozenBeforeClose((int) ($this->option('auto-sync-within-days') ?: self::DEFAULT_RECENT_DAYS));
 
         // Auto-sync mode: Process pending/failed days
         if ($this->option('auto-sync')) {
@@ -242,6 +249,53 @@ class FetchAmazonOrders extends Command
         }
         
         return $endDate;
+    }
+
+    /**
+     * True when Amazon's 2-minute cutoff is at or after this Pacific day's end.
+     */
+    private function pacificDayHasClosed($date): bool
+    {
+        $end = Carbon::parse($date, 'America/Los_Angeles')->endOfDay();
+        $cutoff = Carbon::now('America/Los_Angeles')->subMinutes(2);
+
+        return $end->lte($cutoff);
+    }
+
+    /**
+     * Re-open "completed" days that were frozen before the Pacific calendar
+     * day closed (CreatedBefore was still mid-day). Those rows under-report
+     * Y Sales until a full-day fetch runs.
+     */
+    private function reopenDaysFrozenBeforeClose(int $lookbackDays): void
+    {
+        $lookbackDays = max(1, $lookbackDays);
+        $today = Carbon::today('America/Los_Angeles');
+        $cutoff = $today->copy()->subDays($lookbackDays)->toDateString();
+
+        $rows = AmazonDailySync::where('status', AmazonDailySync::STATUS_COMPLETED)
+            ->where('sync_date', '>=', $cutoff)
+            ->where('sync_date', '<', $today->toDateString())
+            ->whereNotNull('completed_at')
+            ->get();
+
+        $reopened = 0;
+        foreach ($rows as $sync) {
+            $dayClose = Carbon::parse($sync->sync_date, 'America/Los_Angeles')->addDay()->startOfDay();
+            $completedAt = Carbon::parse($sync->completed_at);
+            if ($completedAt->lt($dayClose)) {
+                $sync->update([
+                    'status' => AmazonDailySync::STATUS_PENDING,
+                    'next_token' => null,
+                    'error_message' => 'Reopened: marked complete before Pacific day closed',
+                ]);
+                $reopened++;
+            }
+        }
+
+        if ($reopened > 0) {
+            $this->info("↻ Re-opened {$reopened} day(s) that were marked complete before the Pacific day closed.");
+        }
     }
 
     /**
@@ -712,18 +766,33 @@ class FetchAmazonOrders extends Command
                 'last_page_at' => now(),
             ]);
             
-            // If no more pages, mark as completed
+            // If no more pages, mark as completed — but only after the Pacific
+            // day has actually closed. Otherwise we freeze a morning snapshot
+            // (CreatedBefore = now − 2 min) and never pull the rest of the day.
             if (!$nextToken) {
-                if ($this->option('with-items')) {
-                    $this->info("   ✅ Day completed: {$totalOrdersFetched} orders, {$totalItemsFetched} items in {$totalPagesFetched} pages");
+                $dayFullyClosed = $this->pacificDayHasClosed($date);
+                if ($dayFullyClosed) {
+                    if ($this->option('with-items')) {
+                        $this->info("   ✅ Day completed: {$totalOrdersFetched} orders, {$totalItemsFetched} items in {$totalPagesFetched} pages");
+                    } else {
+                        $this->info("   ✅ Day completed: {$totalOrdersFetched} orders in {$totalPagesFetched} pages");
+                    }
+                    $sync->update([
+                        'status' => AmazonDailySync::STATUS_COMPLETED,
+                        'completed_at' => now(),
+                        'next_token' => null,
+                    ]);
                 } else {
-                    $this->info("   ✅ Day completed: {$totalOrdersFetched} orders in {$totalPagesFetched} pages");
+                    $this->info("   ⏳ {$sync->sync_date} is still open (Pacific). Kept pending so later orders are fetched ({$totalOrdersFetched} so far).");
+                    $sync->update([
+                        'status' => AmazonDailySync::STATUS_PENDING,
+                        'completed_at' => null,
+                        'next_token' => null,
+                        'orders_fetched' => $totalOrdersFetched,
+                        'pages_fetched' => $totalPagesFetched,
+                        'items_fetched' => $totalItemsFetched,
+                    ]);
                 }
-                $sync->update([
-                    'status' => AmazonDailySync::STATUS_COMPLETED,
-                    'completed_at' => now(),
-                    'next_token' => null,
-                ]);
                 break;
             }
             
@@ -905,6 +974,8 @@ class FetchAmazonOrders extends Command
         // during a mid-day pass is never re-synced and permanently under-reports the
         // orders placed after that pass (only opportunistically backfilled by the
         // LastUpdated refresh, which can be cut off before it reaches recent days).
+        $this->reopenDaysFrozenBeforeClose((int) ($this->option('auto-sync-within-days') ?: self::DEFAULT_RECENT_DAYS));
+
         $today = Carbon::today('America/Los_Angeles');
         for ($i = 0; $i <= self::RESYNC_TRAILING_DAYS; $i++) {
             $dateString = $today->copy()->subDays($i)->toDateString();
