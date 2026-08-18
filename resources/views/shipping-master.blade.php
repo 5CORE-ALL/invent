@@ -1504,7 +1504,7 @@
                         <div class="row mb-1">
                             <div class="col-12">
                                 <small class="text-secondary fw-semibold">Marketplace ship (Product Master)</small>
-                                <div class="text-muted small">Most carriers are edited from <strong>Slab Rates</strong> (by weight LB). <strong>Temu ship</strong> and <strong>Temu GOFO</strong> can be edited per SKU here.</div>
+                                <div class="text-muted small">Read-only here — change rates only from <strong>Slab Rates</strong> (by weight LB), so a slab stays uniform.</div>
                             </div>
                         </div>
                         <div class="row mb-3">
@@ -1518,11 +1518,11 @@
                             </div>
                             <div class="col-md-3">
                                 <label for="editTemuShip" class="form-label fw-bold">Temu ship</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editTemuShip" name="temu_ship" placeholder="Temu ship" title="Temu ship (per SKU)">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editTemuShip" name="temu_ship" placeholder="Temu ship" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                             <div class="col-md-3">
                                 <label for="editTemuGofo" class="form-label fw-bold">Temu GOFO</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editTemuGofo" name="temu_gofo" placeholder="Temu GOFO" title="Temu GOFO (per SKU)">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editTemuGofo" name="temu_gofo" placeholder="Temu GOFO" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                         </div>
                         <div class="row mb-3">
@@ -1815,7 +1815,7 @@
                         </div>
                         <div class="text-muted mt-1">
                             Slabs use <strong>Itm wt GW Decl</strong> (exact value; falls back to ACT when Decl is empty).
-                            Carriers: Ship, Ship BB, GOFO, Fedex, UPS, USPS, UNI.
+                            Carriers: Ship, Ship BB, Temu ship, Temu GOFO, GOFO, Fedex, UPS, USPS, UNI.
                         </div>
                     </div>
 
@@ -1852,7 +1852,7 @@
                                 </tr>
                             </thead>
                             <tbody id="slabRatesBody">
-                                <tr><td colspan="10" class="text-center text-muted py-3">Loading slabs&hellip;</td></tr>
+                                <tr><td colspan="12" class="text-center text-muted py-3">Loading slabs&hellip;</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1900,14 +1900,14 @@
             const SLAB_RATE_CARRIERS = [
                 { key: 'ship',       label: 'Ship' },
                 { key: 'ship_bb',    label: 'Ship BB' },
+                { key: 'temu_ship',  label: 'Temu ship' },
+                { key: 'temu_gofo',  label: 'Temu GOFO' },
                 { key: 'gofo',       label: 'GOFO' },
                 { key: 'fedex',      label: 'Fedex' },
                 { key: 'ups',        label: 'UPS' },
                 { key: 'usps',       label: 'USPS' },
                 { key: 'uni',        label: 'UNI' }
             ];
-            // Per-SKU carriers: shown/saved from Product Master, not overwritten by slab auto-sync.
-            const PER_SKU_CARRIERS = new Set(['temu_ship', 'temu_gofo']);
             // { carrierKey: { slabKey: rate } } — rebuilt after every data load
             let slabRateIndex = {};
             let slabAutoSyncRunning = false;
@@ -3029,6 +3029,8 @@
                 fba_sku: 'FBA SKU lives in the FBA calculation table. Update it from the FBA module.',
                 ship:       'Ship rates are edited only from Slab Rates (by weight LB), not per SKU.',
                 ship_bb:    'Ship BB is edited only from Slab Rates (by weight LB), not per SKU.',
+                temu_ship:  'Temu ship is edited only from Slab Rates (by weight LB), not per SKU.',
+                temu_gofo:  'Temu GOFO is edited only from Slab Rates (by weight LB), not per SKU.',
                 gofo:       'GOFO is edited only from Slab Rates (by weight LB), not per SKU.',
                 fedex:      'Fedex is edited only from Slab Rates (by weight LB), not per SKU.',
                 ups:        'UPS is edited only from Slab Rates (by weight LB), not per SKU.',
@@ -5393,8 +5395,6 @@
                 { id: 'editCtnWeightKg', key: 'ctn_weight_kg', type: 'num' },
                 { id: 'editFbaShip', key: 'fba_ship_calculation', type: 'num' },
                 { id: 'editFbaManualShip', key: 'fba_manual_ship', type: 'num' },
-                { id: 'editTemuShip', key: 'temu_ship', type: 'num' },
-                { id: 'editTemuGofo', key: 'temu_gofo', type: 'num' },
             ];
 
             function snapshotBulkEditFormValues() {
@@ -5660,17 +5660,7 @@
                     baseFormData.o_size_charge = oSizeChargeVal === '' ? null : oSizeChargeVal;
                     const prChargeVal = normalizePrCharge(document.getElementById('editPrCharge')?.value);
                     baseFormData.pr_charge = prChargeVal === '' ? null : prChargeVal;
-                    // Temu ship / Temu GOFO are editable per SKU; other marketplace ship fields stay slab-only.
-                    addNumericIfPresent('editTemuShip', 'temu_ship');
-                    addNumericIfPresent('editTemuGofo', 'temu_gofo');
-                    const temuShipEl = document.getElementById('editTemuShip');
-                    if (temuShipEl && String(temuShipEl.value ?? '').trim() === '') {
-                        baseFormData.temu_ship = null;
-                    }
-                    const temuGofoEl = document.getElementById('editTemuGofo');
-                    if (temuGofoEl && String(temuGofoEl.value ?? '').trim() === '') {
-                        baseFormData.temu_gofo = null;
-                    }
+                    // Marketplace ship fields are read-only in Edit — only Slab Rates may change them.
 
                     const fbaShipStr = document.getElementById('editFbaShip').value.trim();
                     const fbaManualStr = document.getElementById('editFbaManualShip').value.trim();
@@ -5804,8 +5794,6 @@
                             o_size_charge: baseFormData.o_size_charge,
                             pr_charge: baseFormData.pr_charge
                         };
-                        if (baseFormData.temu_ship !== undefined) comboPayload.temu_ship = baseFormData.temu_ship;
-                        if (baseFormData.temu_gofo !== undefined) comboPayload.temu_gofo = baseFormData.temu_gofo;
                         if (baseFormData.label_qty !== undefined) comboPayload.label_qty = baseFormData.label_qty;
                         if (baseFormData.fba_ship_calculation !== undefined) {
                             comboPayload.fba_ship_calculation = baseFormData.fba_ship_calculation;
@@ -6362,7 +6350,6 @@
             /** Rate shown on the outer table = Slab modal rate for that weight band. */
             function getOuterCarrierDisplayRate(item, carrierKey, isParentRow) {
                 if (!item || isParentRow) return item ? item[carrierKey] : null;
-                if (PER_SKU_CARRIERS.has(carrierKey)) return item[carrierKey];
                 const slabKey = resolveItemSlabKey(item);
                 if (slabKey && slabRateIndex[carrierKey] && slabRateIndex[carrierKey][slabKey] != null) {
                     return slabRateIndex[carrierKey][slabKey];
@@ -6373,7 +6360,6 @@
             /** Tooltip when SKU-stored value differs from the slab rate shown. */
             function annotateOuterCarrierCell(td, item, carrierKey, isParentRow) {
                 if (!td || !item || isParentRow) return;
-                if (PER_SKU_CARRIERS.has(carrierKey)) return;
                 const slabKey = resolveItemSlabKey(item);
                 const slabRate = (slabKey && slabRateIndex[carrierKey])
                     ? slabRateIndex[carrierKey][slabKey]
@@ -6409,7 +6395,6 @@
 
                     const fields = {};
                     SLAB_RATE_CARRIERS.forEach(c => {
-                        if (PER_SKU_CARRIERS.has(c.key)) return;
                         const slabRate = slabRateIndex[c.key] ? slabRateIndex[c.key][slabKey] : null;
                         if (slabRate == null || !Number.isFinite(slabRate)) return;
                         const rate = normalizeSlabRate(slabRate);
