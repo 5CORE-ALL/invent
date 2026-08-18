@@ -8,6 +8,8 @@ use App\Models\ShopifySku;
 use App\Models\TopDawgProduct;
 use App\Services\ShopifyApiService;
 use App\Services\TopDawgApiService;
+use App\Support\Marketplace\MappingChannelCounts;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -21,9 +23,10 @@ class TopDawgInventorySyncService
     /**
      * @param  array<int, string>  $skus
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
+     * @param  bool  $exactShopifyQty  When true (mismatch button), push listings Shopify qty with no percent/max cap.
      * @return array{updated: int, failed: int, skipped: int, message: string}
      */
-    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null, bool $exactShopifyQty = false): array
     {
         $skus = array_values(array_unique(array_filter(array_map(
             static fn ($sku) => trim((string) $sku),
@@ -60,19 +63,41 @@ class TopDawgInventorySyncService
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
 
+        if ($exactShopifyQty) {
+            foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
+                $shopifyQty[$key] = (int) $qty;
+            }
+        }
+
+        $exactMetricSkus = TopDawgProduct::query()
+            ->whereIn('sku', $skus)
+            ->pluck('sku')
+            ->map(static fn ($s) => (string) $s)
+            ->all();
+        $exactSet = array_flip($exactMetricSkus);
+
         $metrics = TopDawgProduct::query()
             ->whereNotNull('topdawg_listing_id')
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'topdawg_listing_id')
             ->get()
-            ->filter(function (TopDawgProduct $metric) use ($wantedNorms, $skus) {
+            ->filter(function (TopDawgProduct $metric) use ($wantedNorms, $skus, $exactSet) {
                 $raw = (string) $metric->sku;
-                if (in_array($raw, $skus, true)) {
+                if (in_array($raw, $skus, true) || isset($exactSet[$raw])) {
                     return true;
                 }
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+                if ($norm === '' || ! isset($wantedNorms[$norm])) {
+                    return false;
+                }
+                foreach ($skus as $requested) {
+                    if (ShopifySku::normalizeSkuForShopifyLookup($requested) === $norm
+                        && isset($exactSet[$requested])) {
+                        return false;
+                    }
+                }
 
-                return $norm !== '' && isset($wantedNorms[$norm]);
+                return true;
             })
             ->values();
 
@@ -102,16 +127,14 @@ class TopDawgInventorySyncService
                 continue;
             }
 
-            $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-            if ($maxQty !== null && $maxQty !== '') {
-                $qty = min($qty, (int) $maxQty);
-            }
-            $qty = max(0, $qty);
+            $pushQty = $exactShopifyQty
+                ? MarketplaceLiveInventoryRules::pushQtyFromLiveShopify($shopifyStock)
+                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
             $inventoryRows[] = [
                 'product_id' => $productId,
                 'sku_code' => $sku,
-                'inventory' => $qty,
+                'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock),
                 'shopify_qty' => $shopifyStock,
             ];
         }
@@ -126,14 +149,23 @@ class TopDawgInventorySyncService
         }
 
         $invResult = $this->pushInventoryRows($inventoryRows);
-        $this->persistLocalStock($inventoryRows);
+        $pushed = (int) ($invResult['pushed'] ?? 0);
+        $failed = (int) ($invResult['failed'] ?? 0);
+        $updatedSkus = $invResult['updated_skus'] ?? [];
+
+        if ($pushed > 0) {
+            $this->persistLocalStock($inventoryRows, $updatedSkus);
+            $this->clearListingCaches();
+        }
 
         return [
-            'updated' => (int) ($invResult['pushed'] ?? 0),
-            'failed' => (int) ($invResult['failed'] ?? 0),
+            'updated' => $pushed,
+            'failed' => $failed,
             'skipped' => $skipped,
             'message' => $invResult['message']
-                ?? ('Pushed '.count($inventoryRows).' inventory row(s) to TopDawg.'),
+                ?? ($pushed > 0
+                    ? 'Synced '.$pushed.' SKU(s) to TopDawg from live Shopify.'
+                    : 'TopDawg inventory update failed.'),
         ];
     }
 
@@ -202,7 +234,7 @@ class TopDawgInventorySyncService
 
     /**
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $inventoryRows
-     * @return array{success: bool, pushed: int, failed: int, message?: string}
+     * @return array{success: bool, pushed: int, failed: int, message?: string, updated_skus: list<string>}
      */
     protected function pushInventoryRows(array $inventoryRows): array
     {
@@ -220,6 +252,7 @@ class TopDawgInventorySyncService
             'success' => ($bulk['pushed'] ?? 0) > 0,
             'pushed' => (int) ($bulk['pushed'] ?? 0),
             'failed' => (int) ($bulk['failed'] ?? 0),
+            'updated_skus' => $bulk['updated_skus'] ?? [],
             'message' => $bulk['error_message'] ?? null,
         ];
     }
@@ -262,24 +295,63 @@ class TopDawgInventorySyncService
     }
 
     /**
+     * After TopDawg accepts a push, store that qty as listings TopDawg Qty.
+     *
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
+     * @param  list<string>  $updatedSkus
      */
-    protected function persistLocalStock(array $rows): void
+    protected function persistLocalStock(array $rows, array $updatedSkus = []): void
     {
+        $allow = [];
+        foreach ($updatedSkus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $allow[strtoupper($sku)] = true;
+            }
+        }
+
         foreach ($rows as $row) {
-            $sku = (string) $row['sku_code'];
-            $qty = (int) $row['inventory'];
+            $sku = trim((string) $row['sku_code']);
+            if ($sku === '') {
+                continue;
+            }
+            if ($allow !== [] && ! isset($allow[strtoupper($sku)])) {
+                continue;
+            }
+            $qty = max(0, (int) $row['inventory']);
+            $upper = strtoupper($sku);
+
             TopDawgProduct::query()
-                ->where('sku', $sku)
-                ->orWhere('sku', strtoupper($sku))
+                ->where(function ($q) use ($sku, $upper) {
+                    $q->where('sku', $sku)
+                        ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$upper]);
+                })
                 ->update(['remaining_inventory' => $qty]);
 
             if (Schema::hasTable('product_stock_mappings')
                 && Schema::hasColumn('product_stock_mappings', 'inventory_topdawg')) {
                 ProductStockMapping::query()
-                    ->where('sku', $sku)
+                    ->where(function ($q) use ($sku, $upper) {
+                        $q->where('sku', $sku)
+                            ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$upper]);
+                    })
                     ->update(['inventory_topdawg' => $qty]);
             }
+        }
+    }
+
+    protected function clearListingCaches(): void
+    {
+        try {
+            app(TopDawgLiveListingsService::class)->clearCache();
+        } catch (\Throwable $e) {
+            // ignore
+        }
+        try {
+            Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'topdawg');
+            MappingChannelCounts::forgetMasterCaches();
+        } catch (\Throwable $e) {
+            // ignore
         }
     }
 }

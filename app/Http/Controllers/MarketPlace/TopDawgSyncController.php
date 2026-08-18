@@ -189,7 +189,9 @@ class TopDawgSyncController extends Controller
                 $productIds[] = $pid;
                 $idToSku[$pid] = (string) $sku;
             }
-            $liveMpByUpper = [];
+            // Same stock map the table columns use so equal Shopify/TopDawg qty
+            // is not left on Mismatch when live product-id lookup misses.
+            $liveMpByUpper = $this->topdawgStockMapForSkus($mismatchQty);
             if ($productIds !== []) {
                 foreach ($liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($productIds)), 0, 80)) as $pid => $row) {
                     $sku = $idToSku[(string) $pid] ?? trim((string) ($row['sku'] ?? ''));
@@ -863,7 +865,7 @@ class TopDawgSyncController extends Controller
             ]);
         }
 
-        $result = app(TopDawgInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(TopDawgInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 
@@ -1396,7 +1398,19 @@ class TopDawgSyncController extends Controller
             ->whereColumn('sku', '!=', 'topdawg_listing_id')
             ->get() as $metric) {
             $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $metric->sku);
-            if ($norm !== '' && ! isset($byNorm[$norm])) {
+            if ($norm === '') {
+                continue;
+            }
+            if (! isset($byNorm[$norm])) {
+                $byNorm[$norm] = $metric;
+
+                continue;
+            }
+            $existing = (string) $byNorm[$norm]->sku;
+            $existingExact = strtoupper(trim($existing)) === ShopifySku::normalizeSkuForShopifyLookup($existing);
+            $thisExact = strtoupper(trim((string) $metric->sku)) === $norm;
+            // Prefer the exact listing (ND 58) over a hyphen alias (ND-58).
+            if ($thisExact && ! $existingExact) {
                 $byNorm[$norm] = $metric;
             }
         }

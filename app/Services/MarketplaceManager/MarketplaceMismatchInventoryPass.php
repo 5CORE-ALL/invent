@@ -72,7 +72,7 @@ final class MarketplaceMismatchInventoryPass
         $result = match ($channel) {
             'newegg' => app(NeweggInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($mismatch),

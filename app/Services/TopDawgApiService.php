@@ -557,13 +557,14 @@ class TopDawgApiService
      * Push inventory quantities via SupplierProduct/update (qty_available).
      *
      * @param  list<array{sku: string, quantity: int}>  $items
-     * @return array{pushed: int, failed: int, error_message?: string}
+     * @return array{pushed: int, failed: int, updated_skus: list<string>, error_message?: string}
      */
     public function updateItemInventoryBulk(array $items): array
     {
         $pushed = 0;
         $failed = 0;
         $errors = [];
+        $updatedSkus = [];
 
         foreach ($items as $item) {
             $sku = trim((string) ($item['sku'] ?? ''));
@@ -581,6 +582,7 @@ class TopDawgApiService
 
             if (! empty($result['success'])) {
                 $pushed++;
+                $updatedSkus[] = $sku;
             } else {
                 $failed++;
                 $errors[] = $sku.': '.($result['message'] ?? 'failed');
@@ -590,6 +592,7 @@ class TopDawgApiService
         return [
             'pushed' => $pushed,
             'failed' => $failed,
+            'updated_skus' => $updatedSkus,
             'error_message' => $errors !== [] ? implode('; ', array_slice($errors, 0, 5)) : null,
         ];
     }
