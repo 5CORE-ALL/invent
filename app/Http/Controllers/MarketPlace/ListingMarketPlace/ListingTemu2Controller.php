@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\Temu2ListingStatus;
+use App\Services\MarketplaceManager\Temu2ListingPublishService;
 use App\Support\Marketplace\AutomatedListingPage;
 use App\Support\Marketplace\ChannelListingRegistry;
 use Illuminate\Http\Request;
@@ -36,8 +37,11 @@ class ListingTemu2Controller extends Controller
         ]);
     }
 
-    public function saveStatus(Request $request)
+    public function saveStatus(Request $request, Temu2ListingPublishService $publisher)
     {
+        if ($request->boolean('publish') || $request->input('action') === 'publish') {
+            return $this->publish($request, $publisher);
+        }
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',
@@ -68,6 +72,28 @@ class ListingTemu2Controller extends Controller
     public function getNrReqCount()
     {
         return ChannelListingRegistry::nrReqCountArray('temu2');
+    }
+
+    public function publish(Request $request, Temu2ListingPublishService $publisher)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:191',
+        ]);
+
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(180);
+        }
+
+        try {
+            $result = $publisher->publish($validated['sku']);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Publish to Temu 2 failed: '.$e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }
 
     public function import(Request $request)

@@ -4663,6 +4663,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_temu2/view-data', [ListingTemu2Controller::class, 'getViewListingTemu2Data']);
     Route::post('/listing_temu2/save-status', [ListingTemu2Controller::class, 'saveStatus']);
     Route::post('/listing_temu2/import', [ListingTemu2Controller::class, 'import'])->name('listing_temu2.import');
+    Route::post('/listing_temu2/publish', [ListingTemu2Controller::class, 'publish'])->name('listing_temu2.publish');
     Route::get('/listing_temu2/export', [ListingTemu2Controller::class, 'export'])->name('listing_temu2.export');
 
     Route::get('/temu', [TemuController::class, 'temuView'])->name('temu');
@@ -7235,7 +7236,8 @@ Route::get('/css/{path}', function (string $path) {
 // =============================================================================
 // STEP 7: SHOPIFY WILDCARD – MUST BE ABSOLUTELY LAST (catches /{first}/{second} only)
 // =============================================================================
-Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView']);
+Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView'])
+    ->where('first', '^(?!listing_temu2$)(?!listing-temu2$).+');
 
 // Temporary test route to debug On Sea Transit
 Route::get('/test-on-sea', function() {

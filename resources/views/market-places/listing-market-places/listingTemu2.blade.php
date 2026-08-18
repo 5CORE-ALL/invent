@@ -457,6 +457,34 @@
             line-height: 1;
         }
 
+        .temu2-publish-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border: 0;
+            border-radius: 6px;
+            background: #0d6efd;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.3;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+        }
+
+        .temu2-publish-btn:hover {
+            background: #0b5ed7;
+            color: #fff;
+        }
+
+        .temu2-publish-btn:disabled,
+        .temu2-publish-btn.is-publishing {
+            opacity: 0.75;
+            cursor: wait;
+        }
+
         /* ========== LINK CELL ========== */
         #temu2-listing-wrap a.listing-item-link {
             font-weight: 600;
@@ -642,7 +670,7 @@
                 </div>
             `);
             $('body').append(notification);
-            setTimeout(() => notification.find('.alert').alert('close'), 3000);
+            setTimeout(() => notification.find('.alert').alert('close'), type === 'danger' ? 10000 : 4000);
         }
 
         function showLoader() {
@@ -857,6 +885,28 @@
             return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Temu goods_id">Missing L</span>`;
         }
 
+        function formatPublishToTemu2(cell) {
+            const data = cell.getRow().getData();
+            if (data.is_parent) return '';
+
+            const goodsId = String(data.goods_id || data.listing_id || data.eBay_item_id || '').trim();
+            if (goodsId) {
+                return '<span class="text-muted" title="Already listed on Temu 2">—</span>';
+            }
+
+            const nrReq = String(data.nr_req || 'REQ');
+            if (nrReq === 'NR' || nrReq === 'NRL') {
+                return '<span class="text-muted" title="NRL SKUs are not published">—</span>';
+            }
+
+            const sku = String(data.sku || '').trim();
+            if (!sku) return '';
+
+            return `<button type="button" class="temu2-publish-btn" data-sku="${escapeHtml(sku)}" title="Publish ${escapeHtml(sku)} to Temu 2 via API">
+                <i class="fas fa-cloud-upload-alt"></i> Publish
+            </button>`;
+        }
+
         $(document).ready(function () {
             showLoader();
 
@@ -974,6 +1024,16 @@
                         width: 130,
                         headerTooltip: 'Automatic from temu2_metrics.goods_id (Missing L when REQ and no goods_id)',
                         formatter: formatListed
+                    },
+                    {
+                        title: 'Publish to Temu2',
+                        field: 'publish_to_temu2',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 150,
+                        headerTooltip: 'Publish Missing L SKUs to Temu 2 via Open API',
+                        formatter: formatPublishToTemu2
                     }
                 ]
             });
@@ -1035,6 +1095,68 @@
                     missingLFilterActive = false;
                     $('#missing-l-badge').removeClass('is-active');
                 }
+            });
+
+            $(document).on('click', '.temu2-publish-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $btn = $(this);
+                if ($btn.prop('disabled')) return;
+
+                const sku = String($btn.data('sku') || '').trim();
+                if (!sku) {
+                    showNotification('danger', 'SKU is missing.');
+                    return;
+                }
+
+                const originalHtml = $btn.html();
+                $btn.prop('disabled', true).addClass('is-publishing');
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> Publishing');
+
+                $.ajax({
+                    url: "{{ url('/listing_temu2/save-status') }}",
+                    type: 'POST',
+                    data: { sku: sku, publish: 1 },
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    timeout: 180000,
+                    success: function (response) {
+                        const goodsId = String((response && response.goods_id) || '').trim();
+                        showNotification('success', (response && response.message) ? response.message : 'Published to Temu 2.');
+                        if (temu2ListingTable && goodsId) {
+                            const match = (temu2ListingTable.getRows() || []).find(function (row) {
+                                return String((row.getData() || {}).sku || '').trim() === sku;
+                            });
+                            if (match) {
+                                match.update({
+                                    goods_id: goodsId,
+                                    listing_id: goodsId,
+                                    eBay_item_id: goodsId,
+                                    listed: 'Listed'
+                                });
+                                calculateTotals();
+                                return;
+                            }
+                        }
+                        if (temu2ListingTable) {
+                            temu2ListingTable.setData('/listing_temu2/view-data');
+                        }
+                    },
+                    error: function (xhr) {
+                        let msg = 'Publish to Temu 2 failed.';
+                        if (xhr.status === 0) {
+                            msg = 'Publish timed out or the connection dropped. Try again.';
+                        } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        } else if (xhr.responseJSON && xhr.responseJSON.errors) {
+                            const first = Object.values(xhr.responseJSON.errors)[0];
+                            msg = Array.isArray(first) ? String(first[0]) : String(first);
+                        } else if (xhr.status === 419) {
+                            msg = 'Session expired. Refresh the page and try Publish again.';
+                        }
+                        showNotification('danger', msg);
+                        $btn.prop('disabled', false).removeClass('is-publishing').html(originalHtml);
+                    }
+                });
             });
 
             $('#import-btn').on('click', function () {

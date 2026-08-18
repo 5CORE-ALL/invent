@@ -2011,6 +2011,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 }
 
                 $urlVariants = [
+                    ['type' => $type, 'fileUrl' => $imageUrl],
                     ['type' => $type, 'url' => $imageUrl],
                     ['type' => $type, 'imageUrl' => $imageUrl],
                     ['type' => $type, 'imgUrl' => $imageUrl],
