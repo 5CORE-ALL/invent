@@ -1114,7 +1114,7 @@
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> Publishing');
 
                 $.ajax({
-                    url: "{{ route('listing_temu2.publish') }}",
+                    url: "{{ url('/listing_temu2/publish') }}",
                     type: 'POST',
                     data: { sku: sku },
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
