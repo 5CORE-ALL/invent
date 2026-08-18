@@ -1284,9 +1284,9 @@
                 $('#temu2-publish-progress').text('');
                 showBsModal('temu2PublishModal');
                 $.ajax({
-                    url: "{{ route('listing_temu2.publish.preview') }}",
+                    url: "{{ url('/listing_temu2/save-status') }}",
                     type: 'POST',
-                    data: { skus: unique },
+                    data: { skus: unique, preview: 1 },
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                     success: function (response) {
                         renderPublishGroups((response && response.groups) || []);
