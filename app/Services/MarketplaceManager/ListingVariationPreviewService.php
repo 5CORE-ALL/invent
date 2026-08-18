@@ -51,7 +51,7 @@ class ListingVariationPreviewService
 
         return [
             'success' => false,
-            'message' => 'API publish is connected for Temu 2. '.$label.' uses the same variation grouping — add images on CP Master and export these SKUs, or publish them from Temu 2.',
+            'message' => $label.' listing API is not connected. Add images on CP Master, then export these SKUs to list them on '.$label.'.',
         ];
     }
 
