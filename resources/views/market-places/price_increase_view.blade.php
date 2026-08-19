@@ -4441,7 +4441,7 @@
                 const views = viewsMissing ? 0 : (parseInt(item.views, 10) || 0);
                 const l30 = parseInt(item.l30 || 0);
                 const cvr = (!viewsMissing && views > 0) ? (l30 / views) * 100 : 0;
-                const gpft = parseFloat(item.gpft || 0);
+                let gpft = parseFloat(item.gpft || 0);
                 const ad = parseFloat(item.ad || 0);
                 const mpLower = (item.marketplace || '').toLowerCase();
                 const isDobaMp = mpLower === 'doba';
