@@ -1802,16 +1802,14 @@
                 <div class="modal-body">
                     <div class="alert alert-info py-2 mb-3" style="font-size: 13px;">
                         <i class="fas fa-info-circle me-2"></i>
-                        Enter a rate in any <em>(slab &times; carrier)</em> cell. On <strong>Apply</strong>, each rate is
-                        written to every non-parent SKU in that slab (saved on each SKU in Product Master — there is no separate slab-rates table).
-                        The outer table shows the same slab rate, and on page load any SKU that differs is <strong>auto-saved</strong> to that rate
-                        so other pages read the same <code>Values</code> keys (<code>ship</code>, <code>ship_bb</code>, etc.).
+                        The number in each slab cell <strong>is</strong> the rate. <strong>Apply</strong> writes that same rate
+                        to every non-parent SKU in that weight slab (saved on Product Master). Empty cells are skipped.
+                        The outer table shows this slab rate. SKUs that already have the same number are left unchanged.
                         <div class="text-muted mt-1">
                             <span class="badge bg-light text-dark border me-1" style="background-color: #f8fafc;">5.49</span>
-                            <span class="me-2">= filled SKUs in the slab share this value.</span>
+                            <span class="me-2">= this slab rate (already on all filled SKUs).</span>
                             <span class="badge bg-warning-subtle text-dark border me-1" style="background-color: #fffbeb;">mixed</span>
-                            <span class="me-2">= SKUs have different stored rates (shows majority; Apply syncs all SKUs to that rate).</span>
-                            Example: type <strong>6</strong> in Ship → Apply → all SKUs in that LB get <code>ship=6</code>, and outer Ship shows <strong>6</strong>.
+                            <span class="me-2">= SKUs differ; the shown number is applied to all of them.</span>
                         </div>
                         <div class="text-muted mt-1">
                             Slabs use <strong>Itm wt GW Decl</strong> (exact value; falls back to ACT when Decl is empty).
@@ -6922,21 +6920,17 @@
                 const slabsTouched = new Set();
                 const historyChanges = [];
 
-                inputs.forEach(inp => {
-                    // Apply writes:
-                    //  1) cells the user typed
-                    //  2) mixed cells (majority shown) — sync outliers so outer
-                    //     Ship matches the LB slab rate without re-typing
-                    //  3) consensus cells with missing SKUs — fill the gaps
-                    const userEdited = inp.getAttribute('data-user-edited') === '1';
-                    const isMixed = inp.getAttribute('data-is-mixed') === '1';
-                    const needsMissing = inp.getAttribute('data-needs-missing-fill') === '1';
-                    if (!userEdited && !isMixed && !needsMissing) return;
+                let hadAnyRate = false;
 
+                inputs.forEach(inp => {
+                    // Source of truth = the number shown in the slab cell.
+                    // Write that same rate to SKUs in the slab (skip SKUs that already match).
+                    if (inp.disabled) return;
                     const raw = String(inp.value || '').trim();
                     if (raw === '') return;
                     const rate = parseFloat(raw);
                     if (!Number.isFinite(rate) || rate < 0) return;
+                    hadAnyRate = true;
                     const slabKey = inp.getAttribute('data-slab-key');
                     const carrierKey = inp.getAttribute('data-carrier-key');
                     if (!slabKey || !carrierKey) return;
@@ -6944,8 +6938,7 @@
                     let items = getNonParentItemsInSlab(slabKey);
                     if (scope === 'missing') {
                         items = items.filter(it => isCarrierValueMissing(it, carrierKey));
-                    } else if (!userEdited && isMixed) {
-                        // Untouched mixed: only rewrite SKUs that differ / are missing
+                    } else {
                         items = items.filter(it => {
                             if (isCarrierValueMissing(it, carrierKey)) return true;
                             const expected = carrierKey === 'temu_ship'
@@ -6954,10 +6947,7 @@
                             const n = parseFloat(it[carrierKey]);
                             return !Number.isFinite(n) || normalizeSlabRate(n) !== expected;
                         });
-                    } else if (!userEdited && needsMissing) {
-                        items = items.filter(it => isCarrierValueMissing(it, carrierKey));
                     }
-                    // userEdited + scope all → every SKU in the slab
                     if (items.length === 0) return;
 
                     totalCellsApplied++;
@@ -6966,6 +6956,7 @@
 
                     const orig = String(inp.getAttribute('data-original') || '').trim();
                     const maj = String(inp.getAttribute('data-majority') || '').trim();
+                    const isMixed = inp.getAttribute('data-is-mixed') === '1';
                     let oldValue = null;
                     if (orig !== '') oldValue = orig;
                     else if (maj !== '') oldValue = maj;
@@ -6994,7 +6985,9 @@
                 });
 
                 if (perSku.size === 0) {
-                    showToast('warning', 'Nothing to apply. Type a rate, or Apply on mixed / partially-filled slab cells to sync outer Ship with the LB slab rate.');
+                    showToast(hadAnyRate ? 'info' : 'warning', hadAnyRate
+                        ? 'SKUs already have these slab rates. Change a cell to update.'
+                        : 'Type a rate in a slab cell, then Apply.');
                     return;
                 }
 

@@ -964,10 +964,9 @@
 
             function gacRawReloadGridForFilters() {
                 if (!table) return;
-                try {
-                    table.setPage(1);
-                } catch (e) { /* ignore */ }
-                table.setData(dataUrl);
+                // setPage(1) + setData() both trigger a remote load; the first
+                // fetch is aborted and Chrome reports TypeError: Failed to fetch.
+                Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
                 gacRawRefreshU7PieChartDebounced();
             }
 
@@ -1294,9 +1293,75 @@
                 });
             })();
 
+            function gacRawSetTotalBadge(text) {
+                var el = document.getElementById('gac-raw-total');
+                if (el) el.textContent = text;
+            }
+
+            function gacRawAppendQueryParams(searchParams, obj, prefix) {
+                Object.keys(obj || {}).forEach(function(key) {
+                    var val = obj[key];
+                    var name = prefix ? prefix + '[' + key + ']' : key;
+                    if (val === undefined) return;
+                    if (val !== null && typeof val === 'object') {
+                        gacRawAppendQueryParams(searchParams, val, name);
+                    } else {
+                        searchParams.set(name, val === null ? '' : String(val));
+                    }
+                });
+            }
+
+            function gacRawIsRetryableLoadError(err, status) {
+                if (status === 502 || status === 503 || status === 504) return true;
+                if (!err) return false;
+                if (err.name === 'AbortError') return false;
+                var msg = String(err.message || err);
+                return err.name === 'TypeError' || /Failed to fetch|NetworkError|ERR_NETWORK|network changed/i.test(msg);
+            }
+
+            /** Retry transient Chrome drops (ERR_NETWORK_CHANGED / Failed to fetch). */
+            function gacRawAjaxRequestFunc(url, config, params) {
+                var attempts = 0;
+                var maxAttempts = 3;
+                var method = (config && config.method) ? String(config.method).toUpperCase() : 'GET';
+                function sleep(ms) {
+                    return new Promise(function(resolve) { setTimeout(resolve, ms); });
+                }
+                function once() {
+                    attempts += 1;
+                    var u = new URL(url, window.location.href);
+                    gacRawAppendQueryParams(u.searchParams, params || {});
+                    return fetch(u.toString(), {
+                        method: method,
+                        credentials: (config && config.credentials) ? config.credentials : 'same-origin',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    }).then(function(res) {
+                        if (!res.ok && gacRawIsRetryableLoadError(null, res.status) && attempts < maxAttempts) {
+                            gacRawSetTotalBadge('Retrying… (' + attempts + '/' + maxAttempts + ')');
+                            return sleep(400 * attempts).then(once);
+                        }
+                        if (!res.ok) {
+                            throw new Error('HTTP ' + res.status);
+                        }
+                        return res.json();
+                    }).catch(function(err) {
+                        if (gacRawIsRetryableLoadError(err, 0) && attempts < maxAttempts) {
+                            gacRawSetTotalBadge('Retrying… (' + attempts + '/' + maxAttempts + ')');
+                            return sleep(400 * attempts).then(once);
+                        }
+                        throw err;
+                    });
+                }
+                return once();
+            }
+
             table = new Tabulator('#google-ads-campaigns-raw-table', {
                 ajaxURL: dataUrl,
                 ajaxConfig: { method: 'GET', credentials: 'same-origin' },
+                ajaxRequestFunc: gacRawAjaxRequestFunc,
                 ajaxParams: function() {
                     return gacRawCurrentFilterParams();
                 },
@@ -1694,10 +1759,7 @@
 
             table.on('dataLoadError', function(error) {
                 console.error('google_ads_campaigns raw data load error', error);
-                const totalEl = document.getElementById('gac-raw-total');
-                if (totalEl) {
-                    totalEl.textContent = 'Load error (see console)';
-                }
+                gacRawSetTotalBadge('Connection dropped — click Refresh');
             });
 
             document.getElementById('gac-raw-refresh').addEventListener('click', function() {

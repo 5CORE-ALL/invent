@@ -654,21 +654,10 @@ class GoogleShoppingCampaignsController extends Controller
 
         $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
 
-        // Persist today's SBGT for every campaign in scope (once per day per channel)
-        // so the SBGT column can show a day-over-day trend dot. Best-effort — never
-        // let snapshotting break the grid response.
-        try {
-            $this->snapshotSbgtForToday($rawRule);
-        } catch (\Throwable $e) {
-            report($e);
-        }
-
-        // Persist today's channel-level Green util (L7) count for the badge history chart.
-        try {
-            $this->snapshotGreenUtilL7ForToday();
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        // Daily SBGT / Green-util snapshots run on the
+        // `google:save-badge-l30-snapshots` cron — not here. Doing a full-table
+        // upsert on the first grid request of the day can stall long enough for
+        // the browser to drop the fetch (ERR_NETWORK_CHANGED / Failed to fetch).
 
         $invResolver = $this->buildInventoryResolver();
 
