@@ -711,7 +711,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=14"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v={{ @filemtime(public_path('js/temu-ads-color-rules.js')) ?: 15 }}"></script>
 @endsection
 
 @section('content')
@@ -4214,37 +4214,51 @@
         let adTotalsFromBackend = null;
         let currentCampaignPeriod = 'L30';
 
-        if (window.TemuAdsColorRules) {
-            TemuAdsColorRules.setUrls(
-                @json(route('temu.ads.color-rules')),
-                @json(route('temu.ads.color-rules.save')),
-                @json(route('temu.ads.auto-pause')),
-                @json(route('temu.ads.toggle')),
-                @json(route('temu.ads.auto-pause-cron'))
-            );
-            TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
-            TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
-            TemuAdsColorRules.bindRuleSummary(document.getElementById('temu-ads-rules-summary'));
-            if (typeof TemuAdsColorRules.bindCronToggleButton === 'function') {
-                TemuAdsColorRules.bindCronToggleButton(
-                    document.getElementById('temu-ads-cron-toggle-btn'),
-                    document.getElementById('temu-ads-cron-status')
-                );
-            }
-            if (typeof TemuAdsColorRules.bindAutoPauseButton === 'function') {
-                TemuAdsColorRules.bindAutoPauseButton(
-                    document.getElementById('temu-ads-auto-pause-btn'),
-                    document.getElementById('temu-ads-pause-status'),
-                    function () {
-                        if (table) table.replaceData();
-                    }
-                );
-            }
-            TemuAdsColorRules.onChange(function () {
-                if (table) {
-                    table.redraw(true);
+        try {
+            if (window.TemuAdsColorRules) {
+                if (typeof TemuAdsColorRules.setUrls === 'function') {
+                    TemuAdsColorRules.setUrls(
+                        @json(route('temu.ads.color-rules')),
+                        @json(route('temu.ads.color-rules.save')),
+                        @json(route('temu.ads.auto-pause')),
+                        @json(route('temu.ads.toggle')),
+                        @json(route('temu.ads.auto-pause-cron'))
+                    );
                 }
-            });
+                if (typeof TemuAdsColorRules.bindThresholdInput === 'function') {
+                    TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
+                }
+                if (typeof TemuAdsColorRules.bindTargetRoasInput === 'function') {
+                    TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
+                }
+                if (typeof TemuAdsColorRules.bindRuleSummary === 'function') {
+                    TemuAdsColorRules.bindRuleSummary(document.getElementById('temu-ads-rules-summary'));
+                }
+                if (typeof TemuAdsColorRules.bindCronToggleButton === 'function') {
+                    TemuAdsColorRules.bindCronToggleButton(
+                        document.getElementById('temu-ads-cron-toggle-btn'),
+                        document.getElementById('temu-ads-cron-status')
+                    );
+                }
+                if (typeof TemuAdsColorRules.bindAutoPauseButton === 'function') {
+                    TemuAdsColorRules.bindAutoPauseButton(
+                        document.getElementById('temu-ads-auto-pause-btn'),
+                        document.getElementById('temu-ads-pause-status'),
+                        function () {
+                            if (table) table.replaceData();
+                        }
+                    );
+                }
+                if (typeof TemuAdsColorRules.onChange === 'function') {
+                    TemuAdsColorRules.onChange(function () {
+                        if (table) {
+                            table.redraw(true);
+                        }
+                    });
+                }
+            }
+        } catch (err) {
+            console.warn('TemuAdsColorRules init skipped', err);
         }
 
         // Play/Pause parent navigation (like pricing-master-cvr)
@@ -5312,12 +5326,12 @@
                     headerSort: false,
                     headerTooltip: "Green = Run when Clicks 7 < 70. Red = Pause when Clicks 7 ≥ 70. Click to push to Temu.",
                     formatter: function(cell) {
-                        if (!window.TemuAdsColorRules) return '';
+                        if (!window.TemuAdsColorRules || typeof TemuAdsColorRules.pauseRunButtonHtml !== 'function') return '';
                         return TemuAdsColorRules.pauseRunButtonHtml(cell.getRow().getData() || {});
                     },
                     cellClick: function(e, cell) {
                         const btn = e.target.closest('.temu-pause-run-btn');
-                        if (!btn || !window.TemuAdsColorRules) return;
+                        if (!btn || !window.TemuAdsColorRules || typeof TemuAdsColorRules.pushPauseRun !== 'function') return;
                         TemuAdsColorRules.pushPauseRun(btn, cell, @json(route('temu.ads.toggle')));
                     },
                     visible: true,
@@ -5330,7 +5344,7 @@
                     headerSort: false,
                     headerTooltip: "Result of the last Pause/Run push. Hover the red cross for the reason.",
                     formatter: function(cell) {
-                        if (!window.TemuAdsColorRules) return '';
+                        if (!window.TemuAdsColorRules || typeof TemuAdsColorRules.pauseRunResultHtml !== 'function') return '';
                         return TemuAdsColorRules.pauseRunResultHtml(cell.getRow().getData() || {});
                     },
                     visible: true,

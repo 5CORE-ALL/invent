@@ -639,7 +639,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=14"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v={{ @filemtime(public_path('js/temu-ads-color-rules.js')) ?: 15 }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const moneyFmt = (cell) => {
@@ -883,7 +883,8 @@
                 }));
                 setBadgeVal('ctr-avg', Number(m.ctr).toFixed(1) + '%');
                 setBadgeVal('cvr-avg', Number(m.cvr).toFixed(1) + '%');
-                setBadgeVal('create-count', Number(createBadgeCount()).toLocaleString());
+                const selected = table ? (table.getSelectedData() || []) : [];
+                setBadgeVal('create-count', Number(selected.length ? createBadgeCount() : m.create).toLocaleString());
                 paintPauseRunBadge(rows);
                 applyCtrAvgColors();
                 return m;
@@ -1302,12 +1303,12 @@
                         },
                         headerTooltip: 'Pause/Run from L7 Clicks slabs (Pause/Run Rule). Click the toggle to push to Temu.',
                         formatter: function (cell) {
-                            if (!window.TemuAdsColorRules) return '';
+                            if (!window.TemuAdsColorRules || typeof TemuAdsColorRules.pauseRunButtonHtml !== 'function') return '';
                             return TemuAdsColorRules.pauseRunButtonHtml(cell.getRow().getData() || {});
                         },
                         cellClick: function (e, cell) {
                             const btn = e.target.closest('.temu-pause-run-btn');
-                            if (!btn || !window.TemuAdsColorRules) return;
+                            if (!btn || !window.TemuAdsColorRules || typeof TemuAdsColorRules.pushPauseRun !== 'function') return;
                             TemuAdsColorRules.pushPauseRun(btn, cell, @json(route('temu.ads.toggle')));
                         }
                     },
@@ -1322,7 +1323,7 @@
                         },
                         headerTooltip: 'Result of the last Pause/Run push. Hover the red cross for the reason.',
                         formatter: function (cell) {
-                            if (!window.TemuAdsColorRules) return '';
+                            if (!window.TemuAdsColorRules || typeof TemuAdsColorRules.pauseRunResultHtml !== 'function') return '';
                             return TemuAdsColorRules.pauseRunResultHtml(cell.getRow().getData() || {});
                         }
                     },
@@ -1385,40 +1386,60 @@
                 ],
             });
 
-            if (window.TemuAdsColorRules) {
-                TemuAdsColorRules.setUrls(
-                    @json(route('temu.ads.color-rules')),
-                    @json(route('temu.ads.color-rules.save')),
-                    @json(route('temu.ads.auto-pause')),
-                    @json(route('temu.ads.toggle')),
-                    @json(route('temu.ads.auto-pause-cron'))
-                );
-                TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
-                TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
-                TemuAdsColorRules.bindRuleSummary(document.getElementById('temu-ads-rules-summary'));
-                if (typeof TemuAdsColorRules.bindCronToggleButton === 'function') {
-                    TemuAdsColorRules.bindCronToggleButton(
-                        document.getElementById('temu-ads-cron-toggle-btn'),
-                        document.getElementById('temu-ads-cron-status')
-                    );
-                }
-                if (typeof TemuAdsColorRules.bindAutoPauseButton === 'function') {
-                    TemuAdsColorRules.bindAutoPauseButton(
-                        document.getElementById('temu-ads-auto-pause-btn'),
-                        document.getElementById('temu-ads-pause-status'),
-                        function () { table.setData(dataUrl()); }
-                    );
-                }
-                TemuAdsColorRules.onChange(function () {
-                    const createRoas = document.getElementById('create-roas');
-                    if (createRoas && document.activeElement !== createRoas) {
-                        createRoas.value = String(TemuAdsColorRules.getTargetRoasBidding());
+            table.on('dataFiltered', updateBadgesFromTable);
+            table.on('dataLoaded', updateBadgesFromTable);
+            table.on('rowSelectionChanged', function () {
+                setBadgeVal('create-count', Number(createBadgeCount()).toLocaleString());
+            });
+
+            try {
+                if (window.TemuAdsColorRules) {
+                    if (typeof TemuAdsColorRules.setUrls === 'function') {
+                        TemuAdsColorRules.setUrls(
+                            @json(route('temu.ads.color-rules')),
+                            @json(route('temu.ads.color-rules.save')),
+                            @json(route('temu.ads.auto-pause')),
+                            @json(route('temu.ads.toggle')),
+                            @json(route('temu.ads.auto-pause-cron'))
+                        );
                     }
-                    renderPauseRunSlabs();
-                    syncPauseRunInvZeroCheckbox();
-                    table.redraw(true);
-                    if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
-                });
+                    if (typeof TemuAdsColorRules.bindThresholdInput === 'function') {
+                        TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
+                    }
+                    if (typeof TemuAdsColorRules.bindTargetRoasInput === 'function') {
+                        TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
+                    }
+                    if (typeof TemuAdsColorRules.bindRuleSummary === 'function') {
+                        TemuAdsColorRules.bindRuleSummary(document.getElementById('temu-ads-rules-summary'));
+                    }
+                    if (typeof TemuAdsColorRules.bindCronToggleButton === 'function') {
+                        TemuAdsColorRules.bindCronToggleButton(
+                            document.getElementById('temu-ads-cron-toggle-btn'),
+                            document.getElementById('temu-ads-cron-status')
+                        );
+                    }
+                    if (typeof TemuAdsColorRules.bindAutoPauseButton === 'function') {
+                        TemuAdsColorRules.bindAutoPauseButton(
+                            document.getElementById('temu-ads-auto-pause-btn'),
+                            document.getElementById('temu-ads-pause-status'),
+                            function () { table.setData(dataUrl()); }
+                        );
+                    }
+                    if (typeof TemuAdsColorRules.onChange === 'function') {
+                        TemuAdsColorRules.onChange(function () {
+                            const createRoas = document.getElementById('create-roas');
+                            if (createRoas && document.activeElement !== createRoas) {
+                                createRoas.value = String(TemuAdsColorRules.getTargetRoasBidding());
+                            }
+                            renderPauseRunSlabs();
+                            syncPauseRunInvZeroCheckbox();
+                            table.redraw(true);
+                            if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
+                        });
+                    }
+                }
+            } catch (err) {
+                console.warn('TemuAdsColorRules init skipped', err);
             }
 
             function pauseRunSlabStatus(html, ok) {
@@ -2007,12 +2028,6 @@
                     saveColumnVisibilityToServer();
                 });
             }
-
-            table.on('dataFiltered', updateBadgesFromTable);
-            table.on('dataLoaded', updateBadgesFromTable);
-            table.on('rowSelectionChanged', function () {
-                setBadgeVal('create-count', Number(createBadgeCount()).toLocaleString());
-            });
 
             document.getElementById('period-filter').addEventListener('change', function () {
                 table.setData(dataUrl());
