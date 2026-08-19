@@ -915,7 +915,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
         $lower = strtolower($message);
         if (str_contains($lower, 'misleading') || str_contains($lower, 'ad approval')) {
-            return 'Temu rejected this listing for ads: misleading statements in the title, images, or description. Open Seller Center for this goods ID, edit the listing copy, wait for review, then retry. The Temu API call succeeded — this is not an SSL or parameter error.';
+            return 'Temu rejected this listing for ads (misleading statements). Fix the title, images, or description in Seller Center, wait for review, then retry.';
         }
         if (str_contains($lower, 'pass the review') || str_contains($lower, 'seller center')) {
             return 'Listing has not passed Temu product review, so an ad cannot be created. Open Seller Center for this goods ID, fix the review, then retry.';
