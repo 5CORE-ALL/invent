@@ -730,7 +730,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     /**
      * Create a Temu search ad for one goods ID.
-     * Budget is cents. Target ROAS multiple (e.g. 5) is sent as Temu LONG (500) plus required roasType.
+     * Budget is cents. Target ROAS is the 0.1–12 multiple; Temu stores it as that × 10000.
      *
      * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
      */
@@ -738,7 +738,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     {
         $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
         $budgetCents = (int) round(max(1, $budgetDollars) * 100);
-        $roasApi = (int) round(max(0.1, $roas) * 100);
+        $roasApi = $this->temuRoasApiValue($roas);
 
         $eligibility = $this->queryAdCreateEligibility((string) $goodsId);
         if (($eligibility['ok'] ?? false) && empty($eligibility['eligible'])) {
@@ -754,68 +754,22 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             ];
         }
 
-        $attempts = [
-            ['roas' => $roasApi, 'roasType' => 1],
-            ['roas' => $roasApi, 'roasType' => 2],
+        $requestBody = [
+            'type' => 'temu.searchrec.ad.create',
+            'createAdReqs' => [[
+                'goodsId' => $goodsIdParam,
+                'budget' => $budgetCents,
+                'roas' => $roasApi,
+                'roasType' => 1,
+            ]],
         ];
 
-        $last = [
-            'ok' => false,
-            'result' => null,
-            'error_code' => null,
-            'error_msg' => 'Create not attempted',
-            'http_status' => null,
-            'request' => [],
-        ];
-        $triedPredict = false;
-
-        foreach ($attempts as $i => $opts) {
-            $requestBody = [
-                'type' => 'temu.searchrec.ad.create',
-                'createAdReqs' => [
-                    [
-                        'goodsId' => $goodsIdParam,
-                        'budget' => $budgetCents,
-                        'roas' => $opts['roas'],
-                        'roasType' => $opts['roasType'],
-                    ],
-                ],
-            ];
-
-            $last = $this->normalizeCreateAdResult(
-                $this->postAdsRouter($requestBody, (string) $goodsId),
-                (string) $goodsId
-            );
-
-            if ($last['ok']) {
-                return $last;
-            }
-
+        $last = $this->normalizeCreateAdResult(
+            $this->postAdsRouter($requestBody, (string) $goodsId),
+            (string) $goodsId
+        );
+        if (! ($last['ok'] ?? false)) {
             $last['error_msg'] = $this->humanizeCreateAdError((string) ($last['error_msg'] ?? ''));
-
-            $code = (string) ($last['error_code'] ?? '');
-            $msg = strtolower((string) ($last['error_msg'] ?? ''));
-            if (str_contains($msg, 'misleading') || str_contains($msg, 'ad approval')) {
-                return $last;
-            }
-            $retryable = $code === '230012000'
-                || str_contains($msg, 'bad query params')
-                || str_contains($msg, 'pass the review');
-            if (! $retryable) {
-                return $last;
-            }
-            if ($i === count($attempts) - 1) {
-                if (! $triedPredict) {
-                    $triedPredict = true;
-                    $predicted = $this->predictedRoasApiValue((string) $goodsId);
-                    if ($predicted !== null && $predicted !== $roasApi) {
-                        $attempts[] = ['roas' => $predicted, 'roasType' => 1];
-                        continue;
-                    }
-                }
-
-                return $last;
-            }
         }
 
         return $last;
@@ -872,39 +826,24 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         ];
     }
 
-    protected function predictedRoasApiValue(string $goodsId): ?int
+    /**
+     * Temu stores target ROAS as the 0.1–12 multiple × 10000 (8.00 → 80000).
+     */
+    protected function temuRoasApiValue(float $roas): int
     {
-        $pred = $this->predictAdRoas($goodsId);
-        if (! ($pred['ok'] ?? false)) {
-            return null;
-        }
-        $rows = $pred['result']['queryAdBidResult'] ?? null;
-        if (! is_array($rows)) {
-            return null;
-        }
-        foreach ($rows as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $list = $row['predList'] ?? [];
-            if (! is_array($list)) {
-                continue;
-            }
-            foreach ($list as $item) {
-                $raw = is_array($item) ? ($item['roas'] ?? null) : $item;
-                if (is_numeric($raw)) {
-                    $n = (float) $raw;
-                    if ($n > 20) {
-                        return (int) round($n);
-                    }
-                    if ($n >= 0.1) {
-                        return (int) round($n * 100);
-                    }
-                }
-            }
+        return (int) round($this->temuTargetRoas($roas) * 10000);
+    }
+
+    protected function temuTargetRoas(float $roas): float
+    {
+        $n = round(max(0.1, $roas), 2);
+        if ($n > 1200 && $n <= 120000) {
+            $n = round($n / 10000, 2);
+        } elseif ($n > 12 && $n <= 1200) {
+            $n = round($n / 100, 2);
         }
 
-        return null;
+        return min(12.0, max(0.1, $n));
     }
 
     protected function humanizeCreateAdError(?string $message): string
@@ -914,6 +853,9 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return 'Temu did not create this ad';
         }
         $lower = strtolower($message);
+        if (str_contains($lower, 'between 0.1 and 12')) {
+            return 'Temu rejected the target ROAS. Use a value from 0.1 to 12.';
+        }
         if (str_contains($lower, 'misleading') || str_contains($lower, 'ad approval')) {
             return 'Temu rejected this listing for ads (misleading statements). Fix the title, images, or description in Seller Center, wait for review, then retry.';
         }
@@ -1032,18 +974,18 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     /**
      * Update target ROAS on an existing Temu search ad (temu.searchrec.ad.modify, status 5).
-     * ROAS multiple (e.g. 8) is sent as Temu LONG (800).
+     * ROAS is the multiple Temu accepts (0.1–12).
      *
      * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
      */
     public function modifyAdRoas(string $goodsId, float $roas): array
     {
         $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
-        $roasApi = (int) round(max(0.1, $roas) * 100);
+        $roasApi = $this->temuRoasApiValue($roas);
 
         $attempts = [
-            ['roas' => $roasApi],
             ['roas' => $roasApi, 'roasType' => 1],
+            ['roas' => $roasApi],
         ];
 
         $last = [

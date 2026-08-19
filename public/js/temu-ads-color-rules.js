@@ -18,12 +18,14 @@
         { min: 70, max: null, action: 'pause' },
     ];
     var DEFAULT_ROAS_RULE_SLABS = [
-        { spend_min: 0, spend_max: 5.99, roas_min: null, roas_max: null, target_roas: 8, style: 'red' },
-        { spend_min: 6, spend_max: 9, roas_min: null, roas_max: null, target_roas: 8, style: 'green' },
-        { spend_min: 9.01, spend_max: null, roas_min: null, roas_max: null, target_roas: 8, style: 'pink' },
+        { spend_min: 0, spend_max: 0, roas_min: null, roas_max: null, target_roas: -3, style: 'red' },
+        { spend_min: 0.01, spend_max: 5.99, roas_min: null, roas_max: null, target_roas: 5, style: 'yellow' },
+        { spend_min: 6, spend_max: 9, roas_min: null, roas_max: null, target_roas: 10, style: 'green' },
+        { spend_min: 9.01, spend_max: null, roas_min: null, roas_max: null, target_roas: 12, style: 'pink' },
     ];
     var ROAS_RULE_STYLES = {
         red: { color: '#a00211', background: '', weight: '700' },
+        yellow: { color: '#111111', background: '#ffc107', weight: '700' },
         green: { color: '#198754', background: '', weight: '700' },
         pink: { color: '#111111', background: '#f9a8d4', weight: '700' },
     };
@@ -104,6 +106,13 @@
         return Math.round(n * 100) / 100;
     }
 
+    function toTargetRoasOrNull(v) {
+        if (v === null || v === undefined || v === '') return null;
+        var n = parseMoney(v);
+        if (!isFinite(n)) return null;
+        return Math.round(n * 100) / 100;
+    }
+
     function normalizeRoasRuleStyle(style) {
         var s = String(style || '').toLowerCase();
         return ROAS_RULE_STYLES[s] ? s : 'red';
@@ -124,8 +133,7 @@
             var spendMax = toMoneyOrNull(item.spend_max != null ? item.spend_max : item.max);
             var roasMin = toMoneyOrNull(item.roas_min);
             var roasMax = toMoneyOrNull(item.roas_max);
-            var targetRoas = toMoneyOrNull(item.target_roas);
-            if (targetRoas !== null && targetRoas < 0.1) targetRoas = 0.1;
+            var targetRoas = toTargetRoasOrNull(item.target_roas);
             if (spendMin === null && spendMax === null && roasMin === null && roasMax === null && targetRoas === null) return;
             if (spendMax !== null && spendMin !== null && spendMax < spendMin) spendMax = spendMin;
             if (roasMax !== null && roasMin !== null && roasMax < roasMin) roasMax = roasMin;
@@ -150,7 +158,25 @@
                 });
             });
         }
-        return out;
+        return migrateLegacyRoasRuleSlabs(out);
+    }
+
+    function migrateLegacyRoasRuleSlabs(slabs) {
+        var first = slabs[0];
+        if (!first || first.spend_min !== 0 || first.spend_max !== 5.99) {
+            return slabs;
+        }
+        return [
+            { spend_min: 0, spend_max: 0, roas_min: null, roas_max: null, target_roas: -3, style: 'red' },
+            {
+                spend_min: 0.01,
+                spend_max: 5.99,
+                roas_min: first.roas_min,
+                roas_max: first.roas_max,
+                target_roas: 5,
+                style: 'yellow',
+            },
+        ].concat(slabs.slice(1));
     }
 
     function loadLocalRoasRuleSlabs() {

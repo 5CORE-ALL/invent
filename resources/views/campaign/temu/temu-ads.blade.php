@@ -402,6 +402,10 @@
                                 data-metric="spend" data-label="Spend"
                                 style="background-color: #6f42c1; color: white; font-weight: bold;"
                                 title="Click for history">Spend: <span class="temu-ads-badge-val">$0</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            <span class="badge fs-6 p-2 temu-ads-chart-badge" id="y-spend-sum"
+                                data-metric="y_spend" data-label="Y spend"
+                                style="background-color: #4c1d95; color: white; font-weight: bold;"
+                                title="Y spend = total of the Y Spend column (last 1 day). Click for history">Y spend: <span class="temu-ads-badge-val">$0</span><span class="temu-ads-history-dot" title="History"></span></span>
                             <span class="badge fs-6 p-2 temu-ads-chart-badge" id="roas-sum"
                                 data-metric="roas" data-label="ROAS"
                                 style="background-color: #7c3aed; color: white; font-weight: bold;"
@@ -547,7 +551,7 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-2">
                         <strong>Spend 1</strong> uses the Spend 1 from/to columns.
-                        Default: <strong>below $6 red</strong>, <strong>$6–$9 green</strong>, <strong>above $9 black text on pink</strong>.
+                        Default: <strong>$0 red</strong>, <strong>$0.01–$5.99 yellow</strong>, <strong>$6–$9 green</strong>, <strong>above $9 black text on pink</strong>.
                         Add a <strong>ROAS Range</strong> on any row to color the ROAS column the same way.
                         <strong>Target ROAS</strong> fills the T ROAS column from the matching Spend 1 slab.
                         <strong>Push ROAS</strong> sends that T ROAS to Temu for existing ads via <code>temu.searchrec.ad.modify</code> (status 5).
@@ -613,7 +617,7 @@
                     <div class="mb-2">
                         <label class="form-label form-label-sm" for="create-roas">Target ROAS</label>
                         <div class="input-group input-group-sm">
-                            <input type="number" id="create-roas" class="form-control" min="0.1" step="0.1" value="8">
+                            <input type="number" id="create-roas" class="form-control" min="0.1" max="12" step="0.1" value="8">
                             <button type="button" class="btn btn-outline-secondary" id="predict-roas-btn">Suggest</button>
                         </div>
                     </div>
@@ -1017,12 +1021,13 @@
 
             function badgeCounts(rows) {
                 const list = Array.isArray(rows) ? rows : [];
-                let impr = 0, clicks = 0, spend = 0, sold = 0, sales = 0, allSales = 0, createN = 0, pauseN = 0, runN = 0;
+                let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, allSales = 0, createN = 0, pauseN = 0, runN = 0;
                 const seenSku = {};
                 list.forEach(function (r) {
                     impr += parseFloat(r.impressions) || 0;
                     clicks += parseFloat(r.clicks) || 0;
                     spend += parseFloat(r.ad_spend) || 0;
+                    ySpend += parseFloat(r.spend_l1) || 0;
                     sold += parseFloat(r.order_pay_cnt) || 0;
                     sales += parseFloat(r.order_pay_amt) || 0;
                     const sku = String(r.sku || '').trim().toUpperCase();
@@ -1040,6 +1045,7 @@
                     impressions: impr,
                     clicks: clicks,
                     spend: spend,
+                    y_spend: ySpend,
                     sold: sold,
                     sales: sales,
                     all_sales: allSales,
@@ -1089,6 +1095,7 @@
                 setBadgeVal('impr-sum', Math.round(m.impressions).toLocaleString());
                 setBadgeVal('click-sum', Math.round(m.clicks).toLocaleString());
                 setBadgeVal('spend-sum', '$' + Math.round(Number(m.spend) || 0).toLocaleString('en-US'));
+                setBadgeVal('y-spend-sum', '$' + Math.round(Number(m.y_spend) || 0).toLocaleString('en-US'));
                 setBadgeVal('roas-sum', Number(m.roas || 0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
                 setBadgeVal('acos-sum', Number(m.acos || 0).toFixed(1) + '%');
                 setBadgeVal('tacos-sum', Number(m.tacos || 0).toFixed(1) + '%');
@@ -1119,6 +1126,7 @@
                             impressions: m.impressions,
                             clicks: m.clicks,
                             spend: m.spend,
+                            y_spend: Math.round((m.y_spend || 0) * 100) / 100,
                             create: m.create,
                             pause: m.pause,
                             run: m.run,
@@ -1141,7 +1149,7 @@
 
             function fmtBadgeChartValue(metric, v) {
                 if (v === null || v === undefined || isNaN(v)) return '—';
-                if (metric === 'spend') {
+                if (metric === 'spend' || metric === 'y_spend') {
                     return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 }
                 if (metric === 'roas') {
@@ -1598,8 +1606,8 @@
                     { title: 'Ord', field: 'order_pay_cnt', width: 56, minWidth: 50, hozAlign: 'center', formatter: numFmt, sorter: 'number' },
                     { title: 'Ord$', field: 'order_pay_amt', width: 70, minWidth: 62, hozAlign: 'center', formatter: moneyFmt, sorter: 'number' },
                     { title: 'Spend 30', field: 'ad_spend', width: 76, minWidth: 68, hozAlign: 'center', formatter: moneyFmt, sorter: 'number' },
-                    { title: 'Spend 1', field: 'spend_l1', width: 70, minWidth: 62, hozAlign: 'center', formatter: moneyFmt, sorter: 'number',
-                      headerTooltip: 'Last 1 day ad spend. Color from ROAS Rule: below $6 red, $6–$9 green, above $9 pink.' },
+                    { title: 'Y Spend', field: 'spend_l1', width: 70, minWidth: 62, hozAlign: 'center', formatter: moneyFmt, sorter: 'number',
+                      headerTooltip: 'Y Spend = last 1 day ad spend. Color from ROAS Rule: $0 red, $0.01–$5.99 yellow, $6–$9 green, above $9 pink.' },
                     {
                         title: 'T ROAS',
                         field: 't_roas',
@@ -1877,10 +1885,11 @@
                         '<td><input type="number" class="form-control form-control-sm rr-spend-max" min="0" step="0.01" placeholder="and above" value="' + roasRuleNumAttr(slab.spend_max) + '"></td>' +
                         '<td><select class="form-select form-select-sm rr-style">' +
                             '<option value="red"' + (style === 'red' ? ' selected' : '') + '>Red text</option>' +
+                            '<option value="yellow"' + (style === 'yellow' ? ' selected' : '') + '>Yellow</option>' +
                             '<option value="green"' + (style === 'green' ? ' selected' : '') + '>Green text</option>' +
                             '<option value="pink"' + (style === 'pink' ? ' selected' : '') + '>Black + pink bg</option>' +
                         '</select></td>' +
-                        '<td><input type="number" class="form-control form-control-sm rr-target-roas" min="0.1" step="0.1" placeholder="T ROAS" title="Target ROAS" value="' + roasRuleNumAttr(slab.target_roas != null ? slab.target_roas : 8) + '"></td>' +
+                        '<td><input type="number" class="form-control form-control-sm rr-target-roas" step="0.1" placeholder="T ROAS" title="Target ROAS" value="' + roasRuleNumAttr(slab.target_roas != null ? slab.target_roas : 8) + '"></td>' +
                         '<td><input type="number" class="form-control form-control-sm rr-roas-min" min="0" step="0.1" placeholder="ROAS from" value="' + roasRuleNumAttr(slab.roas_min) + '"></td>' +
                         '<td><input type="number" class="form-control form-control-sm rr-roas-max" min="0" step="0.1" placeholder="ROAS to" value="' + roasRuleNumAttr(slab.roas_max) + '"></td>' +
                         '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger rr-slab-remove" title="Remove">&times;</button></td>';
