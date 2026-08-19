@@ -94,6 +94,7 @@
         targetRoasBidding: toRoas(global.localStorage && localStorage.getItem(ROAS_STORAGE_KEY), DEFAULT_TARGET_ROAS),
         pauseRunSlabs: loadLocalSlabs(),
         pauseRunInvZero: loadInvZeroPause(),
+        autoPauseCron: true,
     };
 
     function persistLocal() {
@@ -321,14 +322,14 @@
     }
 
     function computedPauseRunAction(row) {
-        if (rules.pauseRunInvZero && rowInv(row) <= 0) {
+        if (rowInv(row) <= 0) {
             return 'pause';
         }
         return actionFromSlabs(row && row.clicks_l7 != null ? row.clicks_l7 : 0);
     }
 
     function pauseRunAction(row) {
-        if (rules.pauseRunInvZero && rowInv(row) <= 0) {
+        if (rowInv(row) <= 0) {
             return 'pause';
         }
         if (row && (row.pause_run === 'pause' || row.pause_run === 'run')) {
@@ -408,6 +409,66 @@
         return '<span class="temu-pause-run-fail" title="' + escapeAttr(row.pause_run_error || 'Failed') + '"><i class="fas fa-times"></i></span>';
     }
 
+    function paintCronToggle(btn, statusEl, enabled) {
+        if (btn) {
+            btn.dataset.enabled = enabled ? '1' : '0';
+            if (enabled) {
+                btn.className = 'btn btn-sm btn-warning';
+                btn.innerHTML = '<i class="fas fa-pause me-1"></i>Pause Cron';
+                btn.title = 'Daily auto-pause cron is ON. Click to pause it.';
+            } else {
+                btn.className = 'btn btn-sm btn-success';
+                btn.innerHTML = '<i class="fas fa-play me-1"></i>Run Cron Daily';
+                btn.title = 'Daily auto-pause cron is PAUSED. Click to run it daily.';
+            }
+        }
+        if (statusEl) {
+            statusEl.textContent = enabled
+                ? 'Daily cron: ON — auto-pause after L7 fetch and at 16:10 IST.'
+                : 'Daily cron: PAUSED — scheduled auto-pause will not run.';
+            statusEl.className = enabled ? 'small mt-2 text-success' : 'small mt-2 text-danger';
+        }
+    }
+
+    function bindCronToggleButton(btn, statusEl) {
+        if (!btn) return;
+        paintCronToggle(btn, statusEl, rules.autoPauseCron !== false);
+        btn.addEventListener('click', function () {
+            var next = btn.dataset.enabled !== '1';
+            var label = next ? 'turn ON daily auto-pause cron' : 'PAUSE daily auto-pause cron';
+            if (!confirm((next ? 'Run Cron Daily' : 'Pause Cron') + '?\n\nThis will ' + label + '.')) {
+                return;
+            }
+            btn.disabled = true;
+            var token = document.querySelector('meta[name="csrf-token"]');
+            fetch(rules.cronUrl || '/temu/ads/auto-pause-cron', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token ? token.getAttribute('content') : '',
+                },
+                body: JSON.stringify({ enabled: next }),
+            })
+                .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+                .then(function (res) {
+                    var enabled = !!(res.data && res.data.enabled);
+                    if (res.ok && res.data && res.data.success) {
+                        rules.autoPauseCron = enabled;
+                        paintCronToggle(btn, statusEl, enabled);
+                    } else {
+                        alert((res.data && res.data.message) ? res.data.message : 'Could not update cron.');
+                    }
+                })
+                .catch(function () {
+                    alert('Could not update cron.');
+                })
+                .then(function () {
+                    btn.disabled = false;
+                });
+        });
+    }
+
     function bindAutoPauseButton(btn, statusEl, onDone) {
         if (!btn) return;
         btn.addEventListener('click', function () {
@@ -471,6 +532,14 @@
                 if (data.pause_run_inv_zero != null) {
                     setPauseRunInvZero(!!data.pause_run_inv_zero, false);
                 }
+                if (data.auto_pause_cron != null) {
+                    rules.autoPauseCron = !!data.auto_pause_cron;
+                    paintCronToggle(
+                        document.getElementById('temu-ads-cron-toggle-btn'),
+                        document.getElementById('temu-ads-cron-status'),
+                        rules.autoPauseCron
+                    );
+                }
             })
             .catch(function () { /* keep local */ });
     }
@@ -498,6 +567,8 @@
         bindTargetRoasInput: bindTargetRoasInput,
         bindRuleSummary: bindRuleSummary,
         bindAutoPauseButton: bindAutoPauseButton,
+        bindCronToggleButton: bindCronToggleButton,
+        paintCronToggle: paintCronToggle,
         pauseRunAction: pauseRunAction,
         computedPauseRunAction: computedPauseRunAction,
         actionFromSlabs: actionFromSlabs,
@@ -513,11 +584,12 @@
         ruleSummaryText: ruleSummaryText,
         onChange: onChange,
         loadFromServer: loadFromServer,
-        setUrls: function (getUrl, saveUrl, pauseUrl, toggleUrl) {
+        setUrls: function (getUrl, saveUrl, pauseUrl, toggleUrl, cronUrl) {
             rules.getUrl = getUrl;
             rules.saveUrl = saveUrl;
             if (pauseUrl) rules.pauseUrl = pauseUrl;
             if (toggleUrl) rules.toggleUrl = toggleUrl;
+            if (cronUrl) rules.cronUrl = cronUrl;
             loadFromServer(getUrl);
         },
     };

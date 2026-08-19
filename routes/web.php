@@ -4762,6 +4762,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/temu/ads/color-rules', 'getColorRules')->name('temu.ads.color-rules');
         Route::post('/temu/ads/color-rules', 'saveColorRules')->name('temu.ads.color-rules.save');
         Route::post('/temu/ads/auto-pause', 'autoPause')->name('temu.ads.auto-pause');
+        Route::post('/temu/ads/auto-pause-cron', 'toggleAutoPauseCron')->name('temu.ads.auto-pause-cron');
         Route::post('/temu/ads/toggle', 'toggleAd')->name('temu.ads.toggle');
         Route::get('/temu/ads/badge-history', 'badgeHistory')->name('temu.ads.badge-history');
         Route::post('/temu/ads/badge-snapshot', 'saveBadgeSnapshot')->name('temu.ads.badge-snapshot');

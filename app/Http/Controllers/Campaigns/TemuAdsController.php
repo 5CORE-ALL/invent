@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChannelTabulatorColumnSetting;
+use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
 use App\Services\TemuAdsApiReportService;
@@ -59,8 +60,9 @@ class TemuAdsController extends Controller
             ->values()
             ->all();
         $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
+        $productMasterByNorm = $this->productMasterByNormalizedSku($skus);
 
-        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $shopifyByNorm) {
+        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $shopifyByNorm, $productMasterByNorm) {
             $clicks = (int) ($r->clicks ?? 0);
             $orders = (int) ($r->order_pay_cnt ?? 0);
             $gid = (string) $r->goods_id;
@@ -75,11 +77,13 @@ class TemuAdsController extends Controller
 
             $skuKey = ShopifySku::normalizeSkuForShopifyLookup((string) ($r->sku ?? ''));
             $shopify = $skuKey !== '' ? ($shopifyByNorm[$skuKey] ?? null) : null;
+            $productMaster = $skuKey !== '' ? ($productMasterByNorm[$skuKey] ?? null) : null;
 
             return [
                 'id' => $r->id,
                 'goods_id' => $r->goods_id,
                 'sku' => $r->sku,
+                'image_path' => $this->productMasterImagePath($productMaster, $shopify),
                 'inv' => $shopify ? (int) ($shopify->inv ?? 0) : 0,
                 'period' => $r->period,
                 'impressions' => $r->impressions,
@@ -331,6 +335,7 @@ class TemuAdsController extends Controller
             'target_roas_bidding' => $pause->targetRoasBidding(),
             'pause_run_slabs' => $this->pauseRunSlabs(),
             'pause_run_inv_zero' => $this->pauseRunInvZero(),
+            'auto_pause_cron' => $pause->cronEnabled(),
             'matching_active_ads' => count($pause->matchingAds()),
         ]);
     }
@@ -387,6 +392,7 @@ class TemuAdsController extends Controller
             'target_roas_bidding' => $targetRoas,
             'pause_run_slabs' => $slabs,
             'pause_run_inv_zero' => $invZero,
+            'auto_pause_cron' => $pause->cronEnabled(),
             'matching_active_ads' => count($pause->matchingAds()),
         ]);
     }
@@ -490,6 +496,25 @@ class TemuAdsController extends Controller
     }
 
     /**
+     * Toggle the daily auto-pause cron (L7 fetch + 16:10 IST job).
+     */
+    public function toggleAutoPauseCron(Request $request, TemuAdsAutoPauseService $pause)
+    {
+        $enabled = $request->has('enabled')
+            ? $request->boolean('enabled')
+            : ! $pause->cronEnabled();
+        $pause->setCronEnabled($enabled);
+
+        return response()->json([
+            'success' => true,
+            'enabled' => $enabled,
+            'message' => $enabled
+                ? 'Daily auto-pause cron is ON. Matching ads will pause after the L7 fetch and at 16:10 IST.'
+                : 'Daily auto-pause cron is PAUSED. Scheduled and post-fetch auto-pause will not run.',
+        ]);
+    }
+
+    /**
      * Pause or run one Temu ad from the Pause/Run toggle.
      */
     public function toggleAd(Request $request, TemuApiService $temuApi)
@@ -542,7 +567,7 @@ class TemuAdsController extends Controller
             $period = 'ALL';
         }
 
-        $allowed = ['rows', 'impressions', 'clicks', 'spend', 'create', 'pause', 'run', 'ctr'];
+        $allowed = ['rows', 'impressions', 'clicks', 'spend', 'create', 'pause', 'run', 'ctr', 'cvr'];
         if (! in_array($metric, $allowed, true)) {
             return response()->json([
                 'success' => false,
@@ -594,6 +619,8 @@ class TemuAdsController extends Controller
             'pause' => 'required|numeric',
             'run' => 'required|numeric',
             'ctr' => 'required|numeric',
+            'cvr' => 'nullable|numeric',
+            'sold' => 'nullable|numeric',
             'period' => 'nullable|string|max:8',
         ]);
 
@@ -612,6 +639,8 @@ class TemuAdsController extends Controller
                 'pause' => (float) $validated['pause'],
                 'run' => (float) $validated['run'],
                 'ctr' => (float) $validated['ctr'],
+                'cvr' => (float) ($validated['cvr'] ?? 0),
+                'sold' => (float) ($validated['sold'] ?? 0),
             ]);
         } catch (\Throwable $e) {
             Log::warning('TemuAdsController::saveBadgeSnapshot failed', ['error' => $e->getMessage()]);
@@ -635,11 +664,13 @@ class TemuAdsController extends Controller
         $impr = 0.0;
         $clicks = 0.0;
         $spend = 0.0;
+        $sold = 0.0;
 
         foreach ($rows as $row) {
             $impr += (float) ($row['impressions'] ?? 0);
             $clicks += (float) ($row['clicks'] ?? 0);
             $spend += (float) ($row['ad_spend'] ?? 0);
+            $sold += (float) ($row['order_pay_cnt'] ?? 0);
             if (($row['ad_status'] ?? '') === 'No ad') {
                 $createN++;
             }
@@ -664,6 +695,8 @@ class TemuAdsController extends Controller
             'pause' => (float) $pauseN,
             'run' => (float) $runN,
             'ctr' => $ctrN ? round($ctrSum / $ctrN, 2) : 0.0,
+            'sold' => $sold,
+            'cvr' => $clicks > 0 ? round(($sold / $clicks) * 100, 2) : 0.0,
         ]);
     }
 
@@ -708,6 +741,78 @@ class TemuAdsController extends Controller
         return is_array($bucket) ? $bucket : [];
     }
 
+    /**
+     * @param  array<int, string>  $skus
+     * @return array<string, ProductMaster>
+     */
+    private function productMasterByNormalizedSku(array $skus): array
+    {
+        $wanted = [];
+        foreach ($skus as $sku) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($key !== '') {
+                $wanted[$key] = true;
+            }
+        }
+        if ($wanted === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach (ProductMaster::query()->whereIn('sku', $skus)->get(['id', 'sku', 'Values', 'main_image']) as $pm) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+            if ($key !== '' && isset($wanted[$key]) && ! isset($out[$key])) {
+                $out[$key] = $pm;
+                unset($wanted[$key]);
+            }
+        }
+        if ($wanted === []) {
+            return $out;
+        }
+
+        ProductMaster::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$out, &$wanted) {
+                foreach ($rows as $pm) {
+                    $key = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+                    if ($key !== '' && isset($wanted[$key]) && ! isset($out[$key])) {
+                        $out[$key] = $pm;
+                        unset($wanted[$key]);
+                    }
+                }
+
+                return count($wanted) > 0;
+            });
+
+        return $out;
+    }
+
+    private function productMasterImagePath(?ProductMaster $productMaster, ?ShopifySku $shopify): ?string
+    {
+        $values = is_array($productMaster?->Values)
+            ? $productMaster->Values
+            : (is_string($productMaster?->Values) ? (json_decode((string) $productMaster->Values, true) ?: []) : []);
+        $local = trim((string) ($values['image_path'] ?? $productMaster?->main_image ?? ''));
+        $shopifyImage = trim((string) ($shopify?->image_src ?? ''));
+
+        if ($local !== '' && (str_contains($local, 'storage/') || str_contains($local, '/storage/'))) {
+            return '/'.ltrim($local, '/');
+        }
+        if ($shopifyImage !== '') {
+            return $shopifyImage;
+        }
+        if ($local === '') {
+            return null;
+        }
+        if (str_starts_with($local, 'http://') || str_starts_with($local, 'https://')) {
+            return $local;
+        }
+
+        return '/'.ltrim($local, '/');
+    }
+
     private function pauseRunInvZero(): bool
     {
         $row = ChannelTabulatorColumnSetting::query()
@@ -723,7 +828,7 @@ class TemuAdsController extends Controller
 
     private function actionFromPauseRunSlabs(int $clicksL7, int $inv = 0): string
     {
-        if ($this->pauseRunInvZero() && $inv <= 0) {
+        if ($inv <= 0) {
             return 'pause';
         }
 

@@ -37,6 +37,34 @@ class TemuAdsAutoPauseService
     }
 
     /**
+     * Daily auto-pause cron (after L7 fetch + 16:10 IST). Default ON.
+     */
+    public function cronEnabled(): bool
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'temu_ads_auto_pause_cron')
+            ->first();
+        if (! $row) {
+            return true;
+        }
+        $raw = is_array($row->column_order) ? ($row->column_order[0] ?? '1') : '1';
+
+        return ! in_array(strtolower((string) $raw), ['0', 'false', 'off', 'paused'], true);
+    }
+
+    public function setCronEnabled(bool $enabled): bool
+    {
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'temu_ads_auto_pause_cron'],
+            ['column_order' => [$enabled ? '1' : '0']]
+        );
+
+        Log::info('TemuAdsAutoPauseService::setCronEnabled', ['enabled' => $enabled]);
+
+        return $enabled;
+    }
+
+    /**
      * @return array<int, array{goods_id: string, sku: mixed, clicks_l7: int, roas: float, ad_spend: float, status: string|null}>
      */
     public function matchingAds(): array

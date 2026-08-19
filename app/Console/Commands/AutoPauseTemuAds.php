@@ -10,6 +10,7 @@ class AutoPauseTemuAds extends Command
 {
     protected $signature = 'temu:auto-pause-ads
                             {--dry-run : List matching ads without calling Temu}
+                            {--force : Run even if the daily cron toggle is paused}
                             {--goods-id= : Comma-separated goods IDs to retry}';
 
     protected $description = 'Pause Active Temu ads that match L7 clicks < threshold and ROAS < Stop ROAS';
@@ -17,6 +18,13 @@ class AutoPauseTemuAds extends Command
     public function handle(TemuAdsAutoPauseService $service): int
     {
         $dryRun = (bool) $this->option('dry-run');
+        if (! $dryRun && ! $this->option('force') && ! $service->cronEnabled()) {
+            $this->warn('Daily auto-pause cron is paused. Use --force to run anyway.');
+            Log::info('temu:auto-pause-ads skipped — cron paused');
+
+            return 0;
+        }
+
         $below = $service->l7ClicksRedBelow();
         $stopRoas = $service->targetRoasBidding();
 
