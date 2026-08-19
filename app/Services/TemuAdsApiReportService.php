@@ -312,6 +312,35 @@ class TemuAdsApiReportService
         ];
     }
 
+    /**
+     * Last calendar day ad spend from reportInfo.reportsItemList (max ts).
+     * Daily adSpend.val is in the same units as stored ad_spend.
+     */
+    public function lastDaySpendFromResult(?array $result): ?float
+    {
+        $items = is_array($result['reportInfo']['reportsItemList'] ?? null)
+            ? $result['reportInfo']['reportsItemList']
+            : [];
+        $latest = null;
+        foreach ($items as $item) {
+            if (! is_array($item) || ! isset($item['ts'])) {
+                continue;
+            }
+            if ($latest === null || (int) $item['ts'] > (int) $latest['ts']) {
+                $latest = $item;
+            }
+        }
+        if ($latest === null) {
+            return null;
+        }
+
+        $val = $this->nestedVal($latest, ['adSpend'])
+            ?? $this->nestedVal($latest, ['netAdSpend'])
+            ?? $this->nestedVal($latest, ['spend']);
+
+        return $val === null ? null : round((float) $val, 4);
+    }
+
     private function syncTemuMetricClicks(string $goodsId, string $period, array $row): void
     {
         if ($period === 'L30') {

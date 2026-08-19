@@ -740,9 +740,23 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $budgetCents = (int) round(max(1, $budgetDollars) * 100);
         $roasApi = (int) round(max(0.1, $roas) * 100);
 
+        $eligibility = $this->queryAdCreateEligibility((string) $goodsId);
+        if (($eligibility['ok'] ?? false) && empty($eligibility['eligible'])) {
+            $reason = trim(implode('; ', $eligibility['reasons'] ?? []));
+
+            return [
+                'ok' => false,
+                'result' => $eligibility['result'] ?? null,
+                'error_code' => 'not_eligible',
+                'error_msg' => $this->humanizeCreateAdError($reason !== '' ? $reason : 'This listing is not eligible to create an ad.'),
+                'http_status' => $eligibility['http_status'] ?? null,
+                'request' => ['goodsId' => $goodsIdParam],
+            ];
+        }
+
         $attempts = [
-            ['roas' => $roasApi, 'roasType' => 2],
             ['roas' => $roasApi, 'roasType' => 1],
+            ['roas' => $roasApi, 'roasType' => 2],
         ];
 
         $last = [
@@ -753,6 +767,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'http_status' => null,
             'request' => [],
         ];
+        $triedPredict = false;
 
         foreach ($attempts as $i => $opts) {
             $requestBody = [
@@ -776,15 +791,131 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 return $last;
             }
 
+            $last['error_msg'] = $this->humanizeCreateAdError((string) ($last['error_msg'] ?? ''));
+
             $code = (string) ($last['error_code'] ?? '');
             $msg = strtolower((string) ($last['error_msg'] ?? ''));
-            $retryable = $code === '230012000' || str_contains($msg, 'bad query params');
-            if (! $retryable || $i === count($attempts) - 1) {
+            $retryable = $code === '230012000'
+                || str_contains($msg, 'bad query params')
+                || str_contains($msg, 'pass the review');
+            if (! $retryable) {
+                return $last;
+            }
+            if ($i === count($attempts) - 1) {
+                if (! $triedPredict) {
+                    $triedPredict = true;
+                    $predicted = $this->predictedRoasApiValue((string) $goodsId);
+                    if ($predicted !== null && $predicted !== $roasApi) {
+                        $attempts[] = ['roas' => $predicted, 'roasType' => 1];
+                        continue;
+                    }
+                }
+
                 return $last;
             }
         }
 
         return $last;
+    }
+
+    /**
+     * Whether Temu will allow ad.create for this goods ID.
+     *
+     * @return array{ok: bool, eligible: bool, reasons: array<int, string>, result: mixed, error_msg: ?string, http_status: ?int}
+     */
+    public function queryAdCreateEligibility(string $goodsId): array
+    {
+        $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
+        $response = $this->postAdsRouter([
+            'type' => 'temu.searchrec.ad.goods.create.query',
+            'goodsIdList' => [$goodsIdParam],
+        ], (string) $goodsId);
+
+        $reasons = [];
+        $result = is_array($response['result'] ?? null) ? $response['result'] : [];
+        $list = $result['goodsInfoList'] ?? null;
+        if (is_array($list)) {
+            foreach ($list as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $rowId = isset($row['goodsId']) ? (string) $row['goodsId'] : '';
+                if ($rowId !== '' && $rowId !== (string) $goodsId) {
+                    continue;
+                }
+                $gray = $row['grayReason'] ?? [];
+                if (! is_array($gray)) {
+                    continue;
+                }
+                foreach ($gray as $item) {
+                    $reason = is_array($item)
+                        ? (string) ($item['reason'] ?? $item['msg'] ?? '')
+                        : (string) $item;
+                    $reason = trim($reason);
+                    if ($reason !== '') {
+                        $reasons[] = $reason;
+                    }
+                }
+            }
+        }
+
+        return [
+            'ok' => (bool) ($response['ok'] ?? false),
+            'eligible' => ($response['ok'] ?? false) && $reasons === [],
+            'reasons' => array_values(array_unique($reasons)),
+            'result' => $response['result'] ?? null,
+            'error_msg' => $response['error_msg'] ?? null,
+            'http_status' => $response['http_status'] ?? null,
+        ];
+    }
+
+    protected function predictedRoasApiValue(string $goodsId): ?int
+    {
+        $pred = $this->predictAdRoas($goodsId);
+        if (! ($pred['ok'] ?? false)) {
+            return null;
+        }
+        $rows = $pred['result']['queryAdBidResult'] ?? null;
+        if (! is_array($rows)) {
+            return null;
+        }
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $list = $row['predList'] ?? [];
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $item) {
+                $raw = is_array($item) ? ($item['roas'] ?? null) : $item;
+                if (is_numeric($raw)) {
+                    $n = (float) $raw;
+                    if ($n > 20) {
+                        return (int) round($n);
+                    }
+                    if ($n >= 0.1) {
+                        return (int) round($n * 100);
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    protected function humanizeCreateAdError(?string $message): string
+    {
+        $message = trim((string) $message);
+        if ($message === '') {
+            return 'Temu did not create this ad';
+        }
+        $lower = strtolower($message);
+        if (str_contains($lower, 'pass the review') || str_contains($lower, 'seller center')) {
+            return 'Listing has not passed Temu product review, so an ad cannot be created. Open Seller Center for this goods ID, fix the review, then retry.';
+        }
+
+        return $message;
     }
 
     /**
@@ -891,6 +1022,77 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         return $modified;
+    }
+
+    /**
+     * Update target ROAS on an existing Temu search ad (temu.searchrec.ad.modify, status 5).
+     * ROAS multiple (e.g. 8) is sent as Temu LONG (800).
+     *
+     * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
+     */
+    public function modifyAdRoas(string $goodsId, float $roas): array
+    {
+        $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
+        $roasApi = (int) round(max(0.1, $roas) * 100);
+
+        $attempts = [
+            ['roas' => $roasApi],
+            ['roas' => $roasApi, 'roasType' => 1],
+        ];
+
+        $last = [
+            'ok' => false,
+            'result' => null,
+            'error_code' => null,
+            'error_msg' => 'ROAS update not attempted',
+            'http_status' => null,
+            'request' => [],
+        ];
+
+        foreach ($attempts as $i => $opts) {
+            $dto = [
+                'goodsId' => $goodsIdParam,
+                'roas' => $opts['roas'],
+            ];
+            if (isset($opts['roasType'])) {
+                $dto['roasType'] = $opts['roasType'];
+            }
+
+            $last = $this->postAdsRouter([
+                'type' => 'temu.searchrec.ad.modify',
+                'modifyAdDTO' => $dto,
+                'status' => 5,
+            ], (string) $goodsId, 20);
+
+            if ($last['ok'] ?? false) {
+                $list = is_array($last['result'] ?? null)
+                    ? ($last['result']['modifyGoodsRespList'] ?? null)
+                    : null;
+                if (is_array($list)) {
+                    foreach ($list as $row) {
+                        if (is_array($row) && array_key_exists('success', $row) && ! $row['success']) {
+                            $last['ok'] = false;
+                            $last['error_msg'] = (string) ($row['reason'] ?? 'Temu did not update ROAS');
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if ($last['ok'] ?? false) {
+                return $last;
+            }
+
+            $code = (string) ($last['error_code'] ?? '');
+            $msg = strtolower((string) ($last['error_msg'] ?? ''));
+            $retryable = $code === '230012000'
+                || str_contains($msg, 'bad query params');
+            if (! $retryable || $i === count($attempts) - 1) {
+                return $last;
+            }
+        }
+
+        return $last;
     }
 
     /**
