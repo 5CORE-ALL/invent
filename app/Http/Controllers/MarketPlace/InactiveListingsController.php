@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Inactive Listings master + per-channel SKU pages.
- * Same Inactive SKU / Inactive SKU Mismatch / pending rows as Marketplace Manager listings.
+ * Same Inactive SKU rows as Marketplace Manager listings.
  */
 class InactiveListingsController extends Controller
 {

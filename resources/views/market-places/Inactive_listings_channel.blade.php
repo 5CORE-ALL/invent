@@ -26,13 +26,13 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <a href="{{ route('inactive.listings') }}" class="btn btn-sm btn-outline-secondary">
+                    <a href="{{ url('/inactive-listings') }}" class="btn btn-sm btn-outline-secondary">
                         <i class="fas fa-arrow-left me-1"></i> Inactive Listings
                     </a>
                     <span class="badge bg-warning text-dark badge-mmc-stat">
                         Inactive Listings: <span id="ilc-total-count">0</span>
                     </span>
-                    <span class="text-muted small">{{ $channelName }} — same as Marketplace Manager Inactive SKU, Inactive SKU Mismatch, and pending listings.</span>
+                    <span class="text-muted small">{{ $channelName }} — same as Marketplace Manager Inactive SKU.</span>
                     @if (!empty($listingsUrl))
                         <a href="{{ $listingsUrl }}" class="btn btn-sm btn-outline-primary">Open listings</a>
                     @endif
@@ -76,7 +76,7 @@
         }
 
         ilcTable = new Tabulator("#ilc-table", {
-            ajaxURL: "{{ route('inactive.listings.channel.data', ['channel' => $channelSlug]) }}",
+            ajaxURL: "{{ url('/inactive-listings/channel/' . $channelSlug . '/data') }}",
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
                 $('#ilc-total-count').text(Number(response && response.count != null ? response.count : data.length).toLocaleString('en-US'));

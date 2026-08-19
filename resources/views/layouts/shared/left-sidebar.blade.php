@@ -203,9 +203,7 @@
                     @php
                         $inactiveListingsCount = \App\Support\Marketplace\MappingChannelCounts::cachedInactiveTotalOrZero();
                     @endphp
-                    @if($inactiveListingsCount > 0)
-                        <span class="badge rounded-pill ms-auto inactive-listings-badge" title="Inactive SKU + pending listings from Marketplace Manager">{{ number_format($inactiveListingsCount) }}</span>
-                    @endif
+                    <span class="badge rounded-pill ms-auto inactive-listings-badge" title="Inactive SKU from Marketplace Manager" @if($inactiveListingsCount <= 0) style="display:none" @endif>{{ number_format($inactiveListingsCount) }}</span>
                 </a>
             </li>
 
@@ -3101,7 +3099,17 @@
         font-weight: 700;
     }
 
+    .side-nav a.inactive-listings-nav {
+        padding-right: calc(var(--tz-menu-item-padding-x, 0.75rem) * 1.5) !important;
+    }
     .side-nav a.inactive-listings-nav > .inactive-listings-badge {
+        position: static !important;
+        display: inline-block;
+        vertical-align: middle;
+        margin: 0 0 0 0.35rem !important;
+        top: auto !important;
+        right: auto !important;
+        transform: none !important;
         background-color: #d97706 !important;
         color: #fff !important;
         font-weight: 700;
