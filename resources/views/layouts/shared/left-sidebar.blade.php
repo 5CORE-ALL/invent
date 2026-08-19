@@ -196,6 +196,19 @@
                 </a>
             </li>
 
+            <li class="side-nav-item">
+                <a href="{{ route('inactive.listings') }}" class="side-nav-link inactive-listings-nav">
+                    <i class="ri-pause-circle-line"></i>
+                    <span>Inactive Listings</span>
+                    @php
+                        $inactiveListingsCount = \App\Support\Marketplace\MappingChannelCounts::cachedInactiveTotalOrZero();
+                    @endphp
+                    @if($inactiveListingsCount > 0)
+                        <span class="badge rounded-pill ms-auto inactive-listings-badge" title="Inactive SKU + pending listings from Marketplace Manager">{{ number_format($inactiveListingsCount) }}</span>
+                    @endif
+                </a>
+            </li>
+
             {{-- Audit --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#auditMaster" aria-expanded="false"
@@ -3084,6 +3097,12 @@
     /* Map Issues — N Map count (same total as /all-marketplace-master). */
     .side-nav a.map-issues-nav > .map-issues-nmap-badge {
         background-color: #a71d2a !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+
+    .side-nav a.inactive-listings-nav > .inactive-listings-badge {
+        background-color: #d97706 !important;
         color: #fff !important;
         font-weight: 700;
     }
