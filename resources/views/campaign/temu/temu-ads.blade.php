@@ -53,6 +53,15 @@
             border-radius: 2px;
             vertical-align: middle;
         }
+        #temu-ads-table .temu-ads-row-cb,
+        #temu-ads-table .temu-ads-select-all {
+            width: 16px;
+            height: 16px;
+            margin: 0;
+            cursor: pointer;
+            accent-color: #0d6efd;
+            vertical-align: middle;
+        }
         .temu-pause-run-btn {
             position: relative;
             display: inline-block;
@@ -794,9 +803,46 @@
                 return (parseInt(row.inv, 10) || 0) > 0;
             }
 
+            const selectedGoodsIds = new Set();
+
+            function rowGoodsId(row) {
+                return String((row && row.goods_id) || '').trim();
+            }
+
+            function pruneSelectedGoodsIds() {
+                if (!table) return;
+                const live = {};
+                (table.getData() || []).forEach(function (row) {
+                    const id = rowGoodsId(row);
+                    if (id) live[id] = true;
+                });
+                Array.from(selectedGoodsIds).forEach(function (id) {
+                    if (!live[id]) selectedGoodsIds.delete(id);
+                });
+            }
+
+            function syncSelectAllCheckbox() {
+                const cb = document.getElementById('temu-ads-select-all');
+                if (!cb || !table) return;
+                const rows = table.getRows('active') || [];
+                let selected = 0;
+                rows.forEach(function (row) {
+                    if (selectedGoodsIds.has(rowGoodsId(row.getData()))) selected++;
+                });
+                cb.checked = rows.length > 0 && selected === rows.length;
+                cb.indeterminate = selected > 0 && selected < rows.length;
+            }
+
+            function selectedRowData() {
+                if (!table || !selectedGoodsIds.size) return [];
+                return (table.getData() || []).filter(function (row) {
+                    return selectedGoodsIds.has(rowGoodsId(row));
+                });
+            }
+
             function createSourceRows() {
                 if (!table) return [];
-                const selected = table.getSelectedData() || [];
+                const selected = selectedRowData();
                 return selected.length ? selected : (table.getData(true) || []);
             }
 
@@ -883,8 +929,7 @@
                 }));
                 setBadgeVal('ctr-avg', Number(m.ctr).toFixed(1) + '%');
                 setBadgeVal('cvr-avg', Number(m.cvr).toFixed(1) + '%');
-                const selected = table ? (table.getSelectedData() || []) : [];
-                setBadgeVal('create-count', Number(selected.length ? createBadgeCount() : m.create).toLocaleString());
+                setBadgeVal('create-count', Number(createBadgeCount()).toLocaleString());
                 paintPauseRunBadge(rows);
                 applyCtrAvgColors();
                 return m;
@@ -1183,10 +1228,7 @@
                 },
                 layout: 'fitDataStretch',
                 height: '70vh',
-                selectableRows: true,
-                selectableRowsCheck: function (row) {
-                    return canCreateAdRow(row.getData());
-                },
+                selectableRows: false,
                 pagination: 'local',
                 paginationSize: 50,
                 paginationSizeSelector: [25, 50, 100, 250, true],
@@ -1201,11 +1243,6 @@
                     {
                         title: '',
                         field: '_select',
-                        formatter: 'rowSelection',
-                        titleFormatter: 'rowSelection',
-                        titleFormatterParams: {
-                            rowRange: 'active',
-                        },
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
@@ -1213,10 +1250,51 @@
                         minWidth: 44,
                         resizable: false,
                         frozen: true,
+                        titleFormatter: function () {
+                            const cb = document.createElement('input');
+                            cb.type = 'checkbox';
+                            cb.id = 'temu-ads-select-all';
+                            cb.className = 'temu-ads-select-all';
+                            cb.title = 'Select all filtered rows';
+                            cb.addEventListener('click', function (e) { e.stopPropagation(); });
+                            cb.addEventListener('change', function (e) {
+                                e.stopPropagation();
+                                if (!table) return;
+                                (table.getRows('active') || []).forEach(function (row) {
+                                    const id = rowGoodsId(row.getData());
+                                    if (!id) return;
+                                    if (cb.checked) selectedGoodsIds.add(id);
+                                    else selectedGoodsIds.delete(id);
+                                });
+                                table.getColumn('_select').getCells().forEach(function (cell) {
+                                    const box = cell.getElement().querySelector('.temu-ads-row-cb');
+                                    const id = rowGoodsId(cell.getRow().getData());
+                                    if (box) box.checked = !!(id && selectedGoodsIds.has(id));
+                                });
+                                syncSelectAllCheckbox();
+                                setBadgeVal('create-count', Number(createBadgeCount()).toLocaleString());
+                            });
+                            return cb;
+                        },
+                        formatter: function (cell) {
+                            const id = rowGoodsId(cell.getRow().getData());
+                            return '<input type="checkbox" class="temu-ads-row-cb" data-gid="' + id + '"' +
+                                (id && selectedGoodsIds.has(id) ? ' checked' : '') + '>';
+                        },
                         cellClick: function (e, cell) {
                             e.stopPropagation();
-                            if (!canCreateAdRow(cell.getRow().getData())) return;
-                            cell.getRow().toggleSelect();
+                            const id = rowGoodsId(cell.getRow().getData());
+                            const cb = cell.getElement().querySelector('.temu-ads-row-cb');
+                            if (!id || !cb) return;
+                            if (selectedGoodsIds.has(id)) {
+                                selectedGoodsIds.delete(id);
+                                cb.checked = false;
+                            } else {
+                                selectedGoodsIds.add(id);
+                                cb.checked = true;
+                            }
+                            syncSelectAllCheckbox();
+                            setBadgeVal('create-count', Number(createBadgeCount()).toLocaleString());
                         },
                     },
                     {
@@ -1401,10 +1479,14 @@
                 ],
             });
 
-            table.on('dataFiltered', updateBadgesFromTable);
-            table.on('dataLoaded', updateBadgesFromTable);
-            table.on('rowSelectionChanged', function () {
-                setBadgeVal('create-count', Number(createBadgeCount()).toLocaleString());
+            table.on('dataFiltered', function () {
+                updateBadgesFromTable();
+                syncSelectAllCheckbox();
+            });
+            table.on('dataLoaded', function () {
+                pruneSelectedGoodsIds();
+                updateBadgesFromTable();
+                syncSelectAllCheckbox();
             });
 
             try {
@@ -2115,14 +2197,14 @@
                 const badge = document.getElementById('create-count');
                 if (!ids.length) {
                     status.style.display = 'block';
-                    const selected = table.getSelectedData() || [];
+                    const selected = selectedRowData();
                     status.innerHTML = selected.length
                         ? '<div class="alert alert-warning py-2 mb-0">No selected rows can be created (need Status No ad and Inv &gt; 0).</div>'
                         : '<div class="alert alert-warning py-2 mb-0">No Create queue rows (Status No ad and Inv &gt; 0).</div>';
                     return;
                 }
                 const defaults = createAdDefaults();
-                const selectedN = (table.getSelectedData() || []).length;
+                const selectedN = selectedRowData().length;
                 if (!confirm(
                     'Create Temu ads for ' + ids.length + ' goods' +
                     (selectedN ? ' (selected)' : '') + '?\n' +
