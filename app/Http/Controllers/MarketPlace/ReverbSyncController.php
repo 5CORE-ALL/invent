@@ -1636,7 +1636,7 @@ class ReverbSyncController extends Controller
             ]);
         }
 
-        $result = app(ReverbInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(ReverbInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

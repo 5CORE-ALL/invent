@@ -828,7 +828,7 @@ class MacySyncController extends Controller
             ]);
         }
 
-        $result = app(MacyInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(MacyInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

@@ -28,7 +28,7 @@ class AlibabaInventorySyncService
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
      * @return array{updated: int, failed: int, skipped: int, message: string}
      */
-    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null, bool $exactShopifyQty = false): array
     {
         $skus = array_values(array_unique(array_filter(array_map(
             static fn ($sku) => trim((string) $sku),
@@ -53,6 +53,9 @@ class AlibabaInventorySyncService
             $skus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
+        if ($exactShopifyQty) {
+            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $skus);
+        }
         $metrics = AlibabaMetric::query()
             ->whereIn('sku', $skus)
             ->whereNotNull('product_id')
@@ -74,9 +77,12 @@ class AlibabaInventorySyncService
 
             $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
             // Rule 4: missing / 0 live Shopify => push 0 (do not skip leaving stale MP stock).
-            $pushQty = $shopifyStock === null
-                ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $pushQty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
+                $shopifyStock,
+                $exactShopifyQty,
+                $qtyPercent,
+                $maxQty
+            );
 
             $inventoryRows[] = [
                 'product_id' => $productId,

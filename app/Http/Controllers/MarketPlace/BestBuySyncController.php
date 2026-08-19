@@ -828,7 +828,7 @@ class BestBuySyncController extends Controller
             ]);
         }
 
-        $result = app(BestBuyInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(BestBuyInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

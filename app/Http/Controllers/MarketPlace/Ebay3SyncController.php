@@ -881,7 +881,7 @@ class Ebay3SyncController extends Controller
                 ]);
             }
 
-            $result = app(Ebay3InventorySyncService::class)->syncSkusFromShopify($batch);
+            $result = app(Ebay3InventorySyncService::class)->syncSkusFromShopify($batch, null, true);
             $nextOffset = $offset + count($batch);
             $done = $nextOffset >= $total;
             if ($done) {

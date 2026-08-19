@@ -23,7 +23,7 @@ class Ebay3InventorySyncService
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
      * @return array{updated: int, failed: int, skipped: int, message: string}
      */
-    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null, bool $exactShopifyQty = false): array
     {
         $skus = array_values(array_unique(array_filter(array_map(
             static fn ($sku) => trim((string) $sku),
@@ -59,6 +59,9 @@ class Ebay3InventorySyncService
             $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
+        if ($exactShopifyQty) {
+            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $fetchSkus);
+        }
 
         $metrics = Ebay3Metric::query()
             ->whereNotNull('item_id')
@@ -105,9 +108,12 @@ class Ebay3InventorySyncService
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requested);
                 }
             }
-            $pushQty = $shopifyStock === null
-                ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $pushQty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
+                $shopifyStock,
+                $exactShopifyQty,
+                $qtyPercent,
+                $maxQty
+            );
 
             $inventoryRows[] = [
                 'product_id' => $itemId,

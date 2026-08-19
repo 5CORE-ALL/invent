@@ -895,7 +895,7 @@ class SheinSyncController extends Controller
             ]);
         }
 
-        $result = app(SheinInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(SheinInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

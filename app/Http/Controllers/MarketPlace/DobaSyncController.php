@@ -830,7 +830,7 @@ class DobaSyncController extends Controller
             ]);
         }
 
-        $result = app(DobaInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(DobaInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

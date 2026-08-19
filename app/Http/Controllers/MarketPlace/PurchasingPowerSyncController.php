@@ -827,7 +827,7 @@ class PurchasingPowerSyncController extends Controller
             ]);
         }
 
-        $result = app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

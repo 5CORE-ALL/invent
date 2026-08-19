@@ -22,7 +22,7 @@ class TikTok2InventorySyncService
      * @param  array<int, string>  $skus
      * @return array{updated: int, failed: int, skipped: int, message: string}
      */
-    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null, bool $exactShopifyQty = false): array
     {
         $skus = $this->normalizeRequestedSkus($skus);
         if ($skus === []) {
@@ -36,6 +36,10 @@ class TikTok2InventorySyncService
         $settings = MarketplaceSyncSettings::getFor('tiktok2');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        if ($exactShopifyQty) {
+            $qtyPercent = 100;
+            $maxQty = null;
+        }
 
         $shopifyQty = $this->shopifyQtyForPush($skus, $shopifyConfig);
         $metrics = $this->metricsForSkus($skus);

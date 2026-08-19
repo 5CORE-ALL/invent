@@ -720,7 +720,7 @@ class AlibabaSyncController extends Controller
             ]);
         }
 
-        $result = app(AlibabaInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(AlibabaInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

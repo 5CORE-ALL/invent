@@ -27,7 +27,7 @@ class Ebay2InventorySyncService
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
      * @return array{updated: int, failed: int, skipped: int, message: string}
      */
-    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null, bool $exactShopifyQty = false): array
     {
         $skus = array_values(array_unique(array_filter(array_map(
             static fn ($sku) => trim((string) $sku),
@@ -73,6 +73,9 @@ class Ebay2InventorySyncService
             $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
+        if ($exactShopifyQty) {
+            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $fetchSkus);
+        }
         $shopifyQty = $this->mergeLocalShopifyQtyFallback($shopifyQty, $fetchSkus);
 
         $this->ensureMetricsForSkus($skus, false);
@@ -134,9 +137,12 @@ class Ebay2InventorySyncService
                     continue;
                 }
             }
-            $pushQty = $shopifyStock === null
-                ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $pushQty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
+                $shopifyStock,
+                $exactShopifyQty,
+                $qtyPercent,
+                $maxQty
+            );
             $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 
             $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;

@@ -908,7 +908,7 @@ class AliexpressSyncController extends Controller
             ]);
         }
 
-        $result = app(AliexpressInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(AliexpressInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

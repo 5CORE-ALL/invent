@@ -823,7 +823,7 @@ class WayfairSyncController extends Controller
             ]);
         }
 
-        $result = app(WayfairInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(WayfairInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

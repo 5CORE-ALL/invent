@@ -307,7 +307,7 @@ class TikTokListingsPageBuilder
             ];
         }
 
-        $result = $this->inventoryService()->syncSkusFromShopify($batch);
+        $result = $this->inventoryService()->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 
