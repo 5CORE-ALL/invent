@@ -37,21 +37,21 @@
             justify-content: center;
             align-items: center;
         }
-        #temu-ads-table .tabulator-cell[tabulator-field="image_path"],
-        #temu-ads-table .tabulator-cell[data-field="image_path"] {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            padding: 2px !important;
-            overflow: hidden;
-        }
-        .temu-ads-thumb-wrap {
+        #temu-ads-table .tabulator-cell[tabulator-field="image_path"] {
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 100%;
-            height: 100%;
-            min-height: 28px;
+            padding: 1px 2px !important;
+            overflow: hidden;
+        }
+        #temu-ads-table .tabulator-cell[tabulator-field="image_path"] .temu-ads-thumb {
+            width: auto;
+            height: 22px;
+            max-width: 100%;
+            max-height: 22px;
+            object-fit: contain;
+            border-radius: 2px;
+            vertical-align: middle;
         }
         .temu-pause-run-btn {
             position: relative;
@@ -236,13 +236,13 @@
         }
         .temu-ad-dot.is-zero-inv { background: #ffc107; }
         .temu-ads-thumb {
-            display: block;
-            width: 28px;
-            height: 28px;
-            max-width: 28px;
-            max-height: 28px;
+            width: auto;
+            height: 22px;
+            max-width: 40px;
+            max-height: 22px;
             object-fit: contain;
-            border-radius: 3px;
+            border-radius: 2px;
+            vertical-align: middle;
         }
         .temu-ads-chart-badge { cursor: pointer; }
         .temu-ads-history-dot {
@@ -797,9 +797,7 @@
             function createSourceRows() {
                 if (!table) return [];
                 const selected = table.getSelectedData() || [];
-                const selectedCreate = selected.filter(canCreateAdRow);
-                if (selectedCreate.length) return selectedCreate;
-                return table.getData(true) || [];
+                return selected.length ? selected : (table.getData(true) || []);
             }
 
             function queueCreateGoodsIdsFromRows(rows) {
@@ -1211,7 +1209,7 @@
                     {
                         title: 'Image',
                         field: 'image_path',
-                        width: 56,
+                        width: 52,
                         hozAlign: 'center',
                         vertAlign: 'middle',
                         headerHozAlign: 'center',
@@ -1221,8 +1219,7 @@
                         formatter: function (cell) {
                             const src = String(cell.getValue() || '').trim();
                             if (!src) return '';
-                            return '<div class="temu-ads-thumb-wrap"><img class="temu-ads-thumb" src="' +
-                                src.replace(/"/g, '&quot;') + '" alt=""></div>';
+                            return '<img class="temu-ads-thumb" src="' + src.replace(/"/g, '&quot;') + '" alt="">';
                         },
                     },
                     { title: 'SKU', field: 'sku', width: 140, sorter: 'string' },
