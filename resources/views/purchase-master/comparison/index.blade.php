@@ -7973,8 +7973,8 @@ document.addEventListener('DOMContentLoaded', function () {
         cancelScheduledAutoSave();
 
         const clink = (row?.clink || data.clink || '').trim();
-        const sheetUrl = data.google_sheet_url || (isGoogleSheetUrl(clink) ? clink : '');
-        document.getElementById('comparison-cd-google-url').value = sheetUrl;
+        // Same C link as the comparison table / Forecast column — never a leftover google_sheet_url.
+        document.getElementById('comparison-cd-google-url').value = clink;
         updateCdGoogleUrlDotUI();
         document.getElementById('comparison-cd-google-tab').value = data.google_sheet_tab || 'Sheet1';
         if (data && data.dim_wt && typeof data.dim_wt === 'object') {
