@@ -65,13 +65,11 @@
                             </select>
                             <input type="text" id="search-input" class="form-control form-control-sm pricing-filter-item"
                                    placeholder="Search Goods ID / SKU" style="width: 220px;">
-                            <div class="d-inline-flex align-items-center gap-1 border rounded px-2 py-1 bg-light pricing-filter-item"
-                                 title="Coloring rule shared with /temu-decrease: Last 7 days clicks below this number are red.">
-                                <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap">L7 Clicks &lt;</label>
-                                <input type="number" id="temu-l7-clicks-red-threshold" class="form-control form-control-sm"
-                                       min="0" max="100000" step="1" value="70" style="width: 70px;">
-                                <span class="small fw-bold" style="color:#a00211;">Red</span>
-                            </div>
+                            <button type="button" id="temu-ads-rules-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
+                                    data-bs-toggle="modal" data-bs-target="#temuAdsRulesModal"
+                                    title="Open L7 Clicks / Stop ROAS bidding rule">
+                                <i class="fas fa-sliders-h me-1"></i><span id="temu-ads-rules-summary">L7 &lt; 70 → ROAS 8</span>
+                            </button>
                         </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                             <button type="button" id="refresh-status-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item"
@@ -117,6 +115,35 @@
         </div>
     </div>
 
+    {{-- Shared L7 Clicks → Stop ROAS bidding rule --}}
+    <div class="modal fade" id="temuAdsRulesModal" tabindex="-1" aria-labelledby="temuAdsRulesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="temuAdsRulesModalLabel">Ad rules</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Shared with /temu-decrease. If L7 clicks are below the threshold, the row is red and those ads use Budget and Bidding Stop ROAS.</p>
+                    <div class="d-inline-flex flex-wrap align-items-center gap-1 border rounded px-3 py-2 bg-light">
+                        <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap">L7 Clicks &lt;</label>
+                        <input type="number" id="temu-l7-clicks-red-threshold" class="form-control form-control-sm"
+                               min="0" max="100000" step="1" value="70" style="width: 70px;">
+                        <span class="small fw-bold" style="color:#a00211;">Red</span>
+                        <span class="text-muted px-1">→</span>
+                        <label for="temu-target-roas-bidding" class="mb-0 small fw-semibold text-nowrap">Stop ROAS</label>
+                        <input type="number" id="temu-target-roas-bidding" class="form-control form-control-sm"
+                               min="0.1" max="1000" step="0.1" value="8" style="width: 70px;">
+                        <span class="small fw-bold" style="color:#0d6efd;">Bidding</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Create Ad modal --}}
     <div class="modal fade" id="createAdModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
@@ -126,7 +153,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-3">Calls <code>temu.searchrec.ad.create</code>. Budget is daily USD. ROAS is the target multiple (12 = 12x).</p>
+                    <p class="text-muted small mb-3">Calls <code>temu.searchrec.ad.create</code>. Budget is daily USD. Target ROAS defaults to the shared Budget and Bidding rule (8).</p>
                     <div class="mb-2">
                         <label class="form-label form-label-sm" for="create-goods-id">Goods ID</label>
                         <input type="text" id="create-goods-id" class="form-control form-control-sm" placeholder="602442267775049">
@@ -138,7 +165,7 @@
                     <div class="mb-2">
                         <label class="form-label form-label-sm" for="create-roas">Target ROAS</label>
                         <div class="input-group input-group-sm">
-                            <input type="number" id="create-roas" class="form-control" min="0.1" step="0.1" value="12">
+                            <input type="number" id="create-roas" class="form-control" min="0.1" step="0.1" value="8">
                             <button type="button" class="btn btn-outline-secondary" id="predict-roas-btn">Suggest</button>
                         </div>
                     </div>
@@ -171,7 +198,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script src="{{ asset('js/temu-ads-color-rules.js') }}"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=4"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const moneyFmt = (cell) => {
@@ -200,12 +227,30 @@
             };
             const pctFmt = (cell) => {
                 const v = cell.getValue();
+                const el = cell.getElement();
+                if (el) {
+                    el.style.color = '';
+                    el.style.fontWeight = '';
+                }
                 if (v === null || v === undefined || v === '') return '';
+                if (window.TemuAdsColorRules && cell.getField && cell.getField() === 'acos') {
+                    const row = cell.getRow ? cell.getRow().getData() : {};
+                    TemuAdsColorRules.colorAcosBidding(el, v, row.clicks_l7 != null ? row.clicks_l7 : row.clicks);
+                }
                 return Number(v).toFixed(2) + '%';
             };
             const decFmt = (cell) => {
                 const v = cell.getValue();
+                const el = cell.getElement();
+                if (el) {
+                    el.style.color = '';
+                    el.style.fontWeight = '';
+                }
                 if (v === null || v === undefined || v === '') return '';
+                if (window.TemuAdsColorRules && cell.getField && cell.getField() === 'roas') {
+                    const row = cell.getRow ? cell.getRow().getData() : {};
+                    TemuAdsColorRules.colorRoasBidding(el, v, row.clicks_l7 != null ? row.clicks_l7 : row.clicks);
+                }
                 return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             };
 
@@ -310,8 +355,10 @@
                     { title: 'Orders', field: 'order_pay_cnt', width: 90, hozAlign: 'right', formatter: numFmt, sorter: 'number' },
                     { title: 'Order $', field: 'order_pay_amt', width: 110, hozAlign: 'right', formatter: moneyFmt, sorter: 'number' },
                     { title: 'Spend', field: 'ad_spend', width: 100, hozAlign: 'right', formatter: moneyFmt, sorter: 'number' },
-                    { title: 'ROAS', field: 'roas', width: 90, hozAlign: 'right', formatter: decFmt, sorter: 'number' },
-                    { title: 'ACOS', field: 'acos', width: 90, hozAlign: 'right', formatter: pctFmt, sorter: 'number' },
+                    { title: 'ROAS', field: 'roas', width: 90, hozAlign: 'right', formatter: decFmt, sorter: 'number',
+                      headerTooltip: 'Actual ROAS. Blue when L7 clicks are below the merged rule and ROAS is below Stop ROAS / Bidding (default 8).' },
+                    { title: 'ACOS', field: 'acos', width: 90, hozAlign: 'right', formatter: pctFmt, sorter: 'number',
+                      headerTooltip: 'ACOS. Blue when L7 clicks are below the merged rule and ACOS is worse than Stop ROAS / Bidding (default 8).' },
                     {
                         title: 'OK',
                         field: 'success',
@@ -376,7 +423,13 @@
                     @json(route('temu.ads.color-rules.save'))
                 );
                 TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
+                TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
+                TemuAdsColorRules.bindRuleSummary(document.getElementById('temu-ads-rules-summary'));
                 TemuAdsColorRules.onChange(function () {
+                    const createRoas = document.getElementById('create-roas');
+                    if (createRoas && document.activeElement !== createRoas) {
+                        createRoas.value = String(TemuAdsColorRules.getTargetRoasBidding());
+                    }
                     table.redraw(true);
                 });
             }
@@ -420,6 +473,9 @@
             function openCreateModal(goodsId) {
                 document.getElementById('create-goods-id').value = goodsId || '';
                 document.getElementById('create-ad-status').style.display = 'none';
+                if (window.TemuAdsColorRules) {
+                    document.getElementById('create-roas').value = String(TemuAdsColorRules.getTargetRoasBidding());
+                }
                 new bootstrap.Modal(document.getElementById('createAdModal')).show();
             }
 

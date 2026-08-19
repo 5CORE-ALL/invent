@@ -674,7 +674,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="{{ asset('js/temu-ads-color-rules.js') }}"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=4"></script>
 @endsection
 
 @section('content')
@@ -1104,13 +1104,11 @@
                             <option value="L7">L7</option>
                         </select>
                     </div>
-                    <div class="d-inline-flex align-items-center gap-1 flex-shrink-0 border rounded px-2 py-1 bg-light ms-1"
-                         title="Coloring rule shared with /temu/ads: Last 7 days clicks below this number are red.">
-                        <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap text-dark">L7 Clicks &lt;</label>
-                        <input type="number" id="temu-l7-clicks-red-threshold" class="form-control form-control-sm"
-                               min="0" max="100000" step="1" value="70" style="width: 70px;">
-                        <span class="small fw-bold" style="color:#a00211;">Red</span>
-                    </div>
+                    <button type="button" id="temu-ads-rules-btn" class="btn btn-sm btn-outline-dark flex-shrink-0"
+                            data-bs-toggle="modal" data-bs-target="#temuAdsRulesModal"
+                            title="Open L7 Clicks / Stop ROAS bidding rule">
+                        <i class="fas fa-sliders-h me-1"></i><span id="temu-ads-rules-summary">L7 &lt; 70 → ROAS 8</span>
+                    </button>
                     <a href="{{ route('temu.ads') }}" class="btn btn-sm btn-outline-warning" title="Ads Spend / Clicks / ACOS / Status come from this page (temu_ads_api_reports)">
                         <i class="fas fa-bullhorn"></i> Ads
                     </a>
@@ -1204,6 +1202,35 @@
                          The table starts directly under the toolbar now. --}}
                     <div id="temu-table-error" class="text-danger small px-2 py-2 d-none"></div>
                     <div id="temu-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Shared L7 Clicks → Stop ROAS bidding rule --}}
+    <div class="modal fade" id="temuAdsRulesModal" tabindex="-1" aria-labelledby="temuAdsRulesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="temuAdsRulesModalLabel">Ad rules</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Shared with /temu/ads. If L7 clicks are below the threshold, the row is red and those ads use Budget and Bidding Stop ROAS.</p>
+                    <div class="d-inline-flex flex-wrap align-items-center gap-1 border rounded px-3 py-2 bg-light">
+                        <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap text-dark">L7 Clicks &lt;</label>
+                        <input type="number" id="temu-l7-clicks-red-threshold" class="form-control form-control-sm"
+                               min="0" max="100000" step="1" value="70" style="width: 70px;">
+                        <span class="small fw-bold" style="color:#a00211;">Red</span>
+                        <span class="text-muted px-1">→</span>
+                        <label for="temu-target-roas-bidding" class="mb-0 small fw-semibold text-nowrap text-dark">Stop ROAS</label>
+                        <input type="number" id="temu-target-roas-bidding" class="form-control form-control-sm"
+                               min="0.1" max="1000" step="0.1" value="8" style="width: 70px;">
+                        <span class="small fw-bold" style="color:#0d6efd;">Bidding</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -4143,6 +4170,8 @@
                 @json(route('temu.ads.color-rules.save'))
             );
             TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
+            TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
+            TemuAdsColorRules.bindRuleSummary(document.getElementById('temu-ads-rules-summary'));
             TemuAdsColorRules.onChange(function () {
                 if (table) {
                     table.redraw(true);
@@ -5196,9 +5225,13 @@
                     field: "acos_ad",
                     hozAlign: "right",
                     sorter: "number",
-                    headerTooltip: "ACOS from /temu/ads (temu_ads_api_reports), matched by Goods ID.",
+                    headerTooltip: "ACOS from /temu/ads. Blue when L7 clicks are below the merged rule and ACOS is worse than Stop ROAS / Bidding (default 8).",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
+                        if (window.TemuAdsColorRules) {
+                            const row = cell.getRow().getData() || {};
+                            TemuAdsColorRules.colorAcosBidding(cell.getElement(), value, row.clicks_l7 != null ? row.clicks_l7 : row.ad_clicks);
+                        }
                         return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                             <span>${Math.round(value)}%</span>
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="ACOS"></i>
@@ -5258,11 +5291,15 @@
                     title: "OUT ROAS",
                     field: "out_roas_l30",
                     hozAlign: "right",
-                    headerTooltip: "ROAS from /temu/ads (temu_ads_api_reports), matched by Goods ID.",
+                    headerTooltip: "ROAS from /temu/ads. Blue when L7 clicks are below the merged rule and ROAS is below Stop ROAS / Bidding (default 8).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         // Use net_roas as OUT ROAS if out_roas_l30 is not available
                         const value = parseFloat(cell.getValue() || rowData.net_roas || 0);
+                        if (window.TemuAdsColorRules) {
+                            const row = cell.getRow().getData() || {};
+                            TemuAdsColorRules.colorRoasBidding(cell.getElement(), value, row.clicks_l7 != null ? row.clicks_l7 : row.ad_clicks);
+                        }
                         return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                             <span>${value.toFixed(2)}</span>
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="OUT ROAS"></i>
@@ -5311,9 +5348,15 @@
                     hozAlign: "center",
                     sorter: "number",
                     visible: false,
+                    headerTooltip: "Budget and Bidding Target ROAS. Empty rows use the shared Stop ROAS default (8).",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return '$' + value.toFixed(2);
+                        let value = parseFloat(cell.getValue());
+                        if (!isFinite(value) || value <= 0) {
+                            value = window.TemuAdsColorRules
+                                ? TemuAdsColorRules.getTargetRoasBidding()
+                                : 8;
+                        }
+                        return Number(value).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
                     }
                 },
                 {

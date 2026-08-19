@@ -231,24 +231,37 @@ class TemuAdsController extends Controller
     {
         return response()->json([
             'l7_clicks_red_below' => $this->l7ClicksRedBelow(),
+            'target_roas_bidding' => $this->targetRoasBidding(),
         ]);
     }
 
     public function saveColorRules(Request $request)
     {
         $request->validate([
-            'l7_clicks_red_below' => 'required|integer|min:0|max:100000',
+            'l7_clicks_red_below' => 'nullable|integer|min:0|max:100000',
+            'target_roas_bidding' => 'nullable|numeric|min:0.1|max:1000',
         ]);
 
-        $below = (int) $request->input('l7_clicks_red_below');
+        $below = $request->has('l7_clicks_red_below')
+            ? (int) $request->input('l7_clicks_red_below')
+            : $this->l7ClicksRedBelow();
+        $targetRoas = $request->has('target_roas_bidding')
+            ? round((float) $request->input('target_roas_bidding'), 1)
+            : $this->targetRoasBidding();
+
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'temu_ads_l7_clicks_red_below'],
             ['column_order' => [(string) $below]]
+        );
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'temu_ads_target_roas_bidding'],
+            ['column_order' => [(string) $targetRoas]]
         );
 
         return response()->json([
             'success' => true,
             'l7_clicks_red_below' => $below,
+            'target_roas_bidding' => $targetRoas,
         ]);
     }
 
@@ -260,6 +273,16 @@ class TemuAdsController extends Controller
         $n = isset($row->column_order[0]) ? (int) $row->column_order[0] : 70;
 
         return $n >= 0 ? $n : 70;
+    }
+
+    private function targetRoasBidding(): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'temu_ads_target_roas_bidding')
+            ->first();
+        $n = isset($row->column_order[0]) ? (float) $row->column_order[0] : 8.0;
+
+        return $n >= 0.1 ? round($n, 1) : 8.0;
     }
 
 }
