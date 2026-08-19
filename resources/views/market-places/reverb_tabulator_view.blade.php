@@ -742,6 +742,10 @@
                     <button id="bulk-mode-btn" class="btn btn-sm btn-primary flex-shrink-0 text-nowrap" title="Toggle bulk price editing — reveal checkboxes, then choose Decrease / Increase / Same Price">
                         <i class="fas fa-sliders-h"></i> Bulk Mode
                     </button>
+                    <button type="button" id="clear-sprice-toolbar-btn" class="btn btn-sm btn-danger flex-shrink-0 text-nowrap clear-sprice-btn"
+                        title="Clear SPRICE for selected SKUs (turn on Bulk Mode to select)">
+                        <i class="fas fa-eraser"></i> Clear SPRICE
+                    </button>
 
                     {{-- Amazon-style: selection count + Bulk Push Prices (visible when SKUs selected) --}}
                     <span class="badge bg-primary fs-6 p-2 flex-shrink-0" id="reverb-selected-rows-count" style="display: none;">
@@ -893,7 +897,7 @@
                         <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
                             <i class="fas fa-copy"></i> Sugg Amz Prc
                         </button>
-                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                        <button id="clear-sprice-btn" type="button" class="btn btn-danger btn-sm clear-sprice-btn">
                             <i class="fas fa-eraser"></i> Clear SPRICE
                         </button>
                         <button id="bulk-push-reverb-btn" class="btn btn-warning btn-sm" title="Bulk push SPRICE to Reverb for selected SKUs">
@@ -2021,8 +2025,8 @@
             applySuggestAmazonPrice();
         });
 
-        // Clear SPRICE button
-        $('#clear-sprice-btn').on('click', function() {
+        // Clear SPRICE — toolbar + bulk-bar buttons
+        $(document).on('click', '.clear-sprice-btn', function() {
             clearSpriceForSelected();
         });
 
@@ -2866,10 +2870,10 @@
             });
         }
 
-        // Clear SPRICE for selected SKUs
+        // Clear SPRICE for selected SKUs (dedicated endpoint — unsets keys, never stores 0)
         function clearSpriceForSelected() {
             if (selectedSkus.size === 0) {
-                showToast('Please select SKUs first', 'error');
+                showToast('Please select SKUs first (turn on Bulk Mode)', 'error');
                 return;
             }
 
@@ -2877,37 +2881,60 @@
                 return;
             }
 
-            let clearedCount = 0;
             const updates = [];
-
-            // Get all rows and filter by selected SKUs
             table.getRows().forEach(row => {
                 const rowData = row.getData();
                 const sku = rowData['(Child) sku'];
-                
-                if (selectedSkus.has(sku)) {
-                    // Clear SPRICE in table
-                    row.update(Object.assign({
-                        SPRICE: 0,
-                        has_custom_sprice: false
-                    }, reverbSpriceMetricPatch(0, rowData)));
-                    
-                    // Store update for backend saving
-                    updates.push({
-                        sku: sku,
-                        sprice: 0
-                    });
-                    
-                    clearedCount++;
+                if (sku && selectedSkus.has(sku)) {
+                    updates.push({ sku: sku });
                 }
             });
 
-            // Save to backend if there are updates
-            if (updates.length > 0) {
-                saveSpriceUpdates(updates);
+            if (updates.length === 0) {
+                showToast('No SPRICE values to clear for selected SKUs', 'warning');
+                return;
             }
 
-            showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
+            $('.clear-sprice-btn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
+
+            $.ajax({
+                url: '/reverb-clear-sprice',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: { updates: updates },
+                success: function(response) {
+                    table.getRows().forEach(row => {
+                        const rowData = row.getData();
+                        const sku = rowData['(Child) sku'];
+                        if (sku && selectedSkus.has(sku)) {
+                            row.update(Object.assign({
+                                SPRICE: 0,
+                                has_custom_sprice: false,
+                                SPRICE_STATUS: null,
+                                SPRICE_STATUS_UPDATED_AT: null,
+                                SPRICE_PUSHED_VALUE: null,
+                                SPRICE_PUSHED_BY: null,
+                                ZERO_SOLD_PRC_APPLIED: false,
+                                ZERO_SOLD_PRC_GROI: null
+                            }, reverbSpriceMetricPatch(0, rowData)));
+                        }
+                    });
+                    const n = (response && response.cleared_count != null) ? response.cleared_count : updates.length;
+                    showToast((response && response.message) ? response.message : `SPRICE cleared for ${n} SKU(s)`, 'success');
+                },
+                error: function(xhr) {
+                    console.error('Failed to clear SPRICE:', xhr.status, xhr.responseJSON || xhr.responseText);
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
+                        ? (xhr.responseJSON.error || xhr.responseJSON.message)
+                        : 'Failed to clear SPRICE data';
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $('.clear-sprice-btn').prop('disabled', false).html('<i class="fas fa-eraser"></i> Clear SPRICE');
+                }
+            });
         }
 
         // SAVE SPRICE to database with retry

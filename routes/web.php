@@ -3657,6 +3657,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb-metrics-history', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getMetricsHistory'])->name('reverb.metrics.history');
     Route::post('/reverb-update-listed-live', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'updateReverbListedLive'])->name('reverb.update.listed.live');
     Route::post('/reverb-save-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveSpriceUpdates'])->name('reverb.save.sprice');
+    Route::post('/reverb-clear-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'clearReverbSprice'])->name('reverb.clear.sprice');
     Route::post('/reverb-update-sprice-status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'updateReverbSpriceStatus'])->name('reverb.update.sprice.status');
     Route::post('/reverb-push-std', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'queuePushStd'])->name('reverb.push-std.queue');
     Route::get('/reverb-push-std/status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'pushStdJobStatus'])->name('reverb.push-std.status');

@@ -5537,7 +5537,7 @@
             // When showing All Rows / Parents, keep parent summary rows visible even if a data filter would drop them
             const parentRowsBypassDataFilters = (parentFilter === 'all' || parentFilter === 'parents');
             // Clear all filters first
-            table.clearFilter();
+            table.clearFilter(true);
 
             // Row type: All Rows / Parents / SKUs (default SKUs — parent-only default is eBay 2 / 3 only)
             if (parentFilter === 'parents') {
@@ -5558,14 +5558,13 @@
                 });
             }
 
-            // Inventory filter
-            if (inventoryFilter !== 'all') {
+            // Inventory filter. All Inventory must include 0-inv rows (not only INV > 0).
+            if (inventoryFilter === 'gt0' || inventoryFilter === 'eq0') {
                 table.addFilter(function(data) {
                     if (isTemuParentRow(data) && parentRowsBypassDataFilters) return true;
                     const inv = parseFloat(data.inventory) || 0;
                     if (inventoryFilter === 'gt0') return inv > 0;
-                    if (inventoryFilter === 'eq0') return inv === 0;
-                    return true;
+                    return inv === 0;
                 });
             }
 
@@ -5808,12 +5807,15 @@
                 }
             }
 
-            // NRL/REQ filter
+            // NRL/REQ filter. Zero-inv rows default to NRL on the backend, so All Inventory
+            // would otherwise still hide them while REQ is selected.
             const nrReqFilter = $('#nr-req-filter').val();
             if (nrReqFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemuParentRow(data) && parentRowsBypassDataFilters) return true;
+                    const inv = parseFloat(data.inventory) || 0;
+                    if (inventoryFilter === 'all' && inv <= 0) return true;
                     const nr_req = data['nr_req'] || 'REQ';
-                    // Handle both NR and NRL as same value
                     const dataValue = (nr_req === 'NR' || nr_req === 'NRL') ? 'NRL' : nr_req;
                     return dataValue === nrReqFilter;
                 });

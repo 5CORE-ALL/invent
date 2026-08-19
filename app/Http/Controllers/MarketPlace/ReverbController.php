@@ -1456,6 +1456,25 @@ class ReverbController extends Controller
                     continue;
                 }
 
+                $sprice = floatval($sprice);
+
+                // SPRICE <= 0 means clear — never persist a literal 0
+                if ($sprice <= 0) {
+                    $reverbViewData = ReverbViewData::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $sku))])->first();
+                    if ($reverbViewData) {
+                        $values = is_array($reverbViewData->values)
+                            ? $reverbViewData->values
+                            : (json_decode($reverbViewData->values, true) ?: []);
+                        if (! is_array($values)) {
+                            $values = [];
+                        }
+                        $reverbViewData->values = $this->unsetReverbSpriceKeys($values);
+                        $reverbViewData->save();
+                    }
+                    $updatedCount++;
+                    continue;
+                }
+
                 // Find or create reverb view data
                 $reverbViewData = ReverbViewData::firstOrNew(['sku' => $sku]);
                 
@@ -1465,7 +1484,7 @@ class ReverbController extends Controller
                     : (json_decode($reverbViewData->values, true) ?: []);
 
                 // Update SPRICE
-                $values['SPRICE'] = floatval($sprice);
+                $values['SPRICE'] = $sprice;
 
                 $status = $update['status'] ?? null;
                 if (in_array($status, ['pushed', 'applied', 'error'], true)) {
@@ -1539,6 +1558,110 @@ class ReverbController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Clear SPRICE for selected SKUs (batch, same pattern as Amazon / eBay).
+     * Unsets SPRICE + related metrics — never leaves a literal 0.
+     */
+    public function clearReverbSprice(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            if (is_object($updates)) {
+                $updates = (array) $updates;
+            }
+
+            $skus = $request->input('skus', []);
+            if (empty($updates) && ! empty($skus) && is_array($skus)) {
+                $updates = array_map(static function ($sku) {
+                    return ['sku' => $sku];
+                }, $skus);
+            }
+
+            if (! is_array($updates) || empty($updates)) {
+                return response()->json(['error' => 'No SKUs provided'], 400);
+            }
+
+            $clearedCount = 0;
+
+            foreach ($updates as $update) {
+                $update = (array) $update;
+                $sku = trim((string) ($update['sku'] ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+
+                $record = ReverbViewData::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+                if (! $record) {
+                    $clearedCount++;
+                    continue;
+                }
+
+                $values = is_array($record->values)
+                    ? $record->values
+                    : (json_decode($record->values ?? '{}', true) ?: []);
+                if (! is_array($values)) {
+                    $values = [];
+                }
+
+                $record->values = $this->unsetReverbSpriceKeys($values);
+                $record->save();
+                $clearedCount++;
+            }
+
+            Log::info('Reverb SPRICE cleared', ['count' => $clearedCount]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "SPRICE cleared for {$clearedCount} SKU(s)",
+                'cleared_count' => $clearedCount,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error clearing Reverb SPRICE', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to clear SPRICE: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove SPRICE and derived metric keys from reverb_view_data.values.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    private function unsetReverbSpriceKeys(array $values): array
+    {
+        unset(
+            $values['SPRICE'],
+            $values['sprice'],
+            $values['SGPFT'],
+            $values['sgpft'],
+            $values['SPFT'],
+            $values['spft'],
+            $values['SROI'],
+            $values['sroi'],
+            $values['SNPFT'],
+            $values['snpft'],
+            $values['SNROI'],
+            $values['snroi'],
+            $values['SGROI'],
+            $values['SPRICE_STATUS'],
+            $values['SPRICE_STATUS_UPDATED_AT'],
+            $values['SPRICE_PUSHED_VALUE'],
+            $values['SPRICE_PUSHED_BY'],
+            $values['SPRICE_PUSHED_BY_ID'],
+            $values['SPRICE_EDITED_AT'],
+            $values['ZERO_SOLD_PRC_APPLIED'],
+            $values['ZERO_SOLD_PRC_GROI']
+        );
+
+        return $values;
     }
 
     /**
