@@ -1184,6 +1184,9 @@
                 layout: 'fitDataStretch',
                 height: '70vh',
                 selectableRows: true,
+                selectableRowsCheck: function (row) {
+                    return canCreateAdRow(row.getData());
+                },
                 pagination: 'local',
                 paginationSize: 50,
                 paginationSizeSelector: [25, 50, 100, 250, true],
@@ -1200,12 +1203,21 @@
                         field: '_select',
                         formatter: 'rowSelection',
                         titleFormatter: 'rowSelection',
+                        titleFormatterParams: {
+                            rowRange: 'active',
+                        },
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
                         width: 44,
                         minWidth: 44,
+                        resizable: false,
                         frozen: true,
+                        cellClick: function (e, cell) {
+                            e.stopPropagation();
+                            if (!canCreateAdRow(cell.getRow().getData())) return;
+                            cell.getRow().toggleSelect();
+                        },
                     },
                     {
                         title: 'Image',
@@ -1273,6 +1285,7 @@
                             return '<span class="temu-ad-dot" title="Ad available"></span>';
                         },
                         cellClick: function (e, cell) {
+                            e.stopPropagation();
                             if (!e.target.closest('.create-row-ad-btn')) return;
                             const goodsId = cell.getRow().getData().goods_id || '';
                             document.getElementById('create-goods-id').value = goodsId;
@@ -1307,6 +1320,7 @@
                             return TemuAdsColorRules.pauseRunButtonHtml(cell.getRow().getData() || {});
                         },
                         cellClick: function (e, cell) {
+                            e.stopPropagation();
                             const btn = e.target.closest('.temu-pause-run-btn');
                             if (!btn || !window.TemuAdsColorRules || typeof TemuAdsColorRules.pushPauseRun !== 'function') return;
                             TemuAdsColorRules.pushPauseRun(btn, cell, @json(route('temu.ads.toggle')));
@@ -1365,6 +1379,7 @@
                             return '<button type="button" class="btn btn-sm btn-outline-secondary view-raw-btn" title="View raw JSON"><i class="fas fa-code"></i></button>';
                         },
                         cellClick: function (e, cell) {
+                            e.stopPropagation();
                             const raw = cell.getRow().getData().raw_response;
                             const el = document.getElementById('raw-json-pre');
                             if (!raw) {
