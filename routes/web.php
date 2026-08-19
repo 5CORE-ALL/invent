@@ -3890,6 +3890,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/missing-listing/dar/history',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'darHistory'])->name('missing.listing.dar.history');
     Route::post('/missing-listing/seller-portal/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateSellerPortal'])->name('missing.listing.seller.portal.save');
 
+    Route::get('/inactive-listings', [\App\Http\Controllers\MarketPlace\InactiveListingController::class, 'index'])->name('inactive.listings');
+
     // Listing Manager — Amazon catalog + multi-channel drafts
     Route::get('/listing-manager', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'index'])->name('listing.manager');
     Route::get('/listing-manager/data', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'data'])->name('listing.manager.data');

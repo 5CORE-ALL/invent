@@ -176,6 +176,15 @@
                 </a>
             </li>
 
+            @if (Route::has('inactive.listings'))
+            <li class="side-nav-item">
+                <a href="{{ route('inactive.listings') }}" class="side-nav-link">
+                    <i class="ri-forbid-line"></i>
+                    <span>Inactive Listings</span>
+                </a>
+            </li>
+            @endif
+
             <li class="side-nav-item">
                 <a href="{{ route('listing.manager') }}" class="side-nav-link">
                     <i class="ri-store-2-line"></i>

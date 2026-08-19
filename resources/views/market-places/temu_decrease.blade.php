@@ -711,7 +711,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=13"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=14"></script>
 @endsection
 
 @section('content')
@@ -4225,17 +4225,21 @@
             TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
             TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
             TemuAdsColorRules.bindRuleSummary(document.getElementById('temu-ads-rules-summary'));
-            TemuAdsColorRules.bindCronToggleButton(
-                document.getElementById('temu-ads-cron-toggle-btn'),
-                document.getElementById('temu-ads-cron-status')
-            );
-            TemuAdsColorRules.bindAutoPauseButton(
-                document.getElementById('temu-ads-auto-pause-btn'),
-                document.getElementById('temu-ads-pause-status'),
-                function () {
-                    if (table) table.replaceData();
-                }
-            );
+            if (typeof TemuAdsColorRules.bindCronToggleButton === 'function') {
+                TemuAdsColorRules.bindCronToggleButton(
+                    document.getElementById('temu-ads-cron-toggle-btn'),
+                    document.getElementById('temu-ads-cron-status')
+                );
+            }
+            if (typeof TemuAdsColorRules.bindAutoPauseButton === 'function') {
+                TemuAdsColorRules.bindAutoPauseButton(
+                    document.getElementById('temu-ads-auto-pause-btn'),
+                    document.getElementById('temu-ads-pause-status'),
+                    function () {
+                        if (table) table.replaceData();
+                    }
+                );
+            }
             TemuAdsColorRules.onChange(function () {
                 if (table) {
                     table.redraw(true);
