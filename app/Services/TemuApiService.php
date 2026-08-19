@@ -755,46 +755,18 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     /**
      * Pause a Temu search ad (temu.searchrec.ad.modify, status 2 = paused).
+     * One modify call only — do not prefetch ad.detail.query (that doubled runtime).
      *
      * @return array{ok: bool, already?: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
      */
     public function pauseAd(string $goodsId): array
     {
         $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
-        $detail = $this->postAdsRouter([
-            'type' => 'temu.searchrec.ad.detail.query',
-            'goodsList' => [$goodsIdParam],
-        ], (string) $goodsId);
-
-        $item = $this->firstAdDetailItem($detail['result'] ?? null, (string) $goodsId);
-        $current = $item !== [] ? self::statusFromAdDetail($item) : null;
-        if (in_array($current, ['Inactive', 'Deleted', 'No ad'], true)) {
-            return [
-                'ok' => true,
-                'already' => true,
-                'result' => $detail['result'] ?? null,
-                'error_code' => null,
-                'error_msg' => null,
-                'http_status' => $detail['http_status'] ?? null,
-                'request' => $detail['request'] ?? [],
-            ];
-        }
-
-        $modifyAdDTO = ['goodsId' => $goodsIdParam];
-        $budget = $this->numericFromAdField($item['budget'] ?? null);
-        $roas = $this->numericFromAdField($item['roas'] ?? null);
-        if ($budget !== null) {
-            $modifyAdDTO['budget'] = (int) round($budget);
-        }
-        if ($roas !== null) {
-            $modifyAdDTO['roas'] = $roas;
-        }
-
         $modified = $this->postAdsRouter([
             'type' => 'temu.searchrec.ad.modify',
-            'modifyAdDTO' => $modifyAdDTO,
+            'modifyAdDTO' => ['goodsId' => $goodsIdParam],
             'status' => 2,
-        ], (string) $goodsId);
+        ], (string) $goodsId, 15);
 
         if ($modified['ok'] ?? false) {
             $list = is_array($modified['result'] ?? null)
@@ -812,41 +784,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         return $modified;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    protected function firstAdDetailItem(mixed $payload, string $goodsId): array
-    {
-        $items = $this->extractAdDetailItems($payload);
-        if (! is_array($items) || $items === []) {
-            return [];
-        }
-
-        foreach ($items as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $gid = (string) ($row['goodsId'] ?? $row['goods_id'] ?? '');
-            if ($gid === $goodsId) {
-                return $row;
-            }
-        }
-
-        return is_array($items[0] ?? null) ? $items[0] : [];
-    }
-
-    protected function numericFromAdField(mixed $raw): ?float
-    {
-        if (is_array($raw)) {
-            $raw = $raw['val'] ?? $raw['value'] ?? $raw['amount'] ?? null;
-        }
-        if ($raw === null || $raw === '' || ! is_numeric($raw)) {
-            return null;
-        }
-
-        return (float) $raw;
     }
 
     /**
@@ -1071,12 +1008,12 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      *
      * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
      */
-    protected function postAdsRouter(array $requestBody, string $goodsId): array
+    protected function postAdsRouter(array $requestBody, string $goodsId, int $timeoutSeconds = 60): array
     {
         $signedRequest = $this->generateSignValue($requestBody);
         $request = Http::withHeaders([
             'Content-Type' => 'application/json',
-        ])->timeout(60);
+        ])->timeout(max(5, $timeoutSeconds));
 
         if (config('filesystems.default') === 'local') {
             $request = $request->withoutVerifying();

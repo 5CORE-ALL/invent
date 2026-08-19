@@ -19,9 +19,27 @@ class AutoPauseTemuAds extends Command
         $below = $service->l7ClicksRedBelow();
         $stopRoas = $service->targetRoasBidding();
 
-        $this->info(($dryRun ? 'Dry-run: ' : '') . "Pausing Active ads with L7 clicks < {$below} and ROAS < {$stopRoas}...");
+        $this->info(($dryRun ? 'Dry-run: ' : '') . "Pausing ads with L7 clicks < {$below} and ROAS < {$stopRoas}...");
 
-        $stats = $service->pauseMatching($dryRun);
+        $bar = null;
+        $onEach = null;
+        if (! $dryRun) {
+            $onEach = function (int $done, int $total) use (&$bar) {
+                if ($bar === null && $total > 0) {
+                    $bar = $this->output->createProgressBar($total);
+                    $bar->start();
+                }
+                if ($bar) {
+                    $bar->setProgress($done);
+                }
+            };
+        }
+
+        $stats = $service->pauseMatching($dryRun, $onEach);
+        if ($bar) {
+            $bar->finish();
+            $this->newLine();
+        }
         Log::info('temu:auto-pause-ads finished', [
             'matched' => $stats['matched'],
             'paused' => $stats['paused'],

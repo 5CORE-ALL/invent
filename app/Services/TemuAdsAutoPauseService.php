@@ -104,16 +104,38 @@ class TemuAdsAutoPauseService
      *   failed_goods: array<int, array<string, mixed>>
      * }
      */
-    public function pauseMatching(bool $dryRun = false): array
+    public function pauseMatching(bool $dryRun = false, ?callable $onEach = null): array
     {
         $matches = $this->matchingAds();
         $paused = [];
         $already = 0;
         $failed = [];
+        $total = count($matches);
+        $liveStatuses = [];
 
-        foreach ($matches as $match) {
+        if (! $dryRun && $matches !== []) {
+            $statusQuery = $this->temuApi->queryAdStatuses(array_column($matches, 'goods_id'));
+            $liveStatuses = $statusQuery['statuses'] ?? [];
+        }
+
+        foreach ($matches as $index => $match) {
             if ($dryRun) {
                 $paused[] = $match;
+                if ($onEach) {
+                    $onEach($index + 1, $total, $match, ['ok' => true, 'already' => true]);
+                }
+                continue;
+            }
+
+            $live = $liveStatuses[$match['goods_id']] ?? null;
+            if (in_array($live, ['Inactive', 'Deleted', 'No ad'], true)) {
+                TemuAdsApiReport::where('goods_id', $match['goods_id'])
+                    ->update(['ad_status' => $live]);
+                $already++;
+                $paused[] = $match;
+                if ($onEach) {
+                    $onEach($index + 1, $total, $match, ['ok' => true, 'already' => true]);
+                }
                 continue;
             }
 
@@ -130,7 +152,9 @@ class TemuAdsAutoPauseService
                     'error' => $result['error_msg'] ?? 'Pause failed',
                 ]);
             }
-            usleep(200000);
+            if ($onEach) {
+                $onEach($index + 1, $total, $match, $result);
+            }
         }
 
         $stats = [
