@@ -53,6 +53,15 @@
             border-radius: 2px;
             vertical-align: middle;
         }
+        #temu-ads-table .temu-ads-row-cb,
+        #temu-ads-table .temu-ads-select-all {
+            width: 16px;
+            height: 16px;
+            margin: 0;
+            cursor: pointer;
+            accent-color: #0d6efd;
+            vertical-align: middle;
+        }
         .temu-pause-run-btn {
             position: relative;
             display: inline-block;
@@ -385,7 +394,7 @@
                                 title="Avg CVR = Sold / Clicks from badges. Click for history">Avg CVR: <span class="temu-ads-badge-val">0.0%</span><span class="temu-ads-history-dot" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="create-count"
                                 style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
-                                title="Create ads for all visible No ad rows with Inv > 0.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
+                                title="Create ads for selected No ad rows (Inv > 0). If nothing is selected, uses all visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="pause-run-count"
                                 style="background-color: #212529; color: white; font-weight: bold; cursor: pointer;"
                                 title="Pause and Run counts. Click for running ads budget and details.">
@@ -794,9 +803,78 @@
                 return (parseInt(row.inv, 10) || 0) > 0;
             }
 
+            const selectedGoodsIds = new Set();
+
+            function rowGoodsId(row) {
+                return String((row && row.goods_id) || '').trim();
+            }
+
+            function pruneSelectedGoodsIds() {
+                if (!table) return;
+                const live = {};
+                (table.getData() || []).forEach(function (row) {
+                    const id = rowGoodsId(row);
+                    if (id) live[id] = true;
+                });
+                Array.from(selectedGoodsIds).forEach(function (id) {
+                    if (!live[id]) selectedGoodsIds.delete(id);
+                });
+            }
+
+            function hasRowSelection() {
+                return selectedGoodsIds.size > 0;
+            }
+
+            function selectedRowData() {
+                if (!table || !hasRowSelection()) return [];
+                return (table.getData() || []).filter(function (row) {
+                    return selectedGoodsIds.has(rowGoodsId(row));
+                });
+            }
+
+            function selectCheckboxHtml(row) {
+                const id = rowGoodsId(row);
+                const on = !!(id && selectedGoodsIds.has(id));
+                return '<input type="checkbox" class="temu-ads-row-cb" data-gid="' + id + '"' + (on ? ' checked' : '') + '>';
+            }
+
+            function refreshSelectCheckboxes() {
+                if (!table) return;
+                const col = table.getColumn('_select');
+                if (col && typeof col.getCells === 'function') {
+                    col.getCells().forEach(function (cell) {
+                        const box = cell.getElement().querySelector('.temu-ads-row-cb');
+                        if (!box) return;
+                        const id = rowGoodsId(cell.getRow().getData());
+                        box.checked = !!(id && selectedGoodsIds.has(id));
+                        box.dataset.gid = id;
+                    });
+                }
+                const allCb = document.getElementById('temu-ads-select-all');
+                if (!allCb) return;
+                const rows = table.getRows('active') || [];
+                let selected = 0;
+                rows.forEach(function (row) {
+                    if (selectedGoodsIds.has(rowGoodsId(row.getData()))) selected++;
+                });
+                allCb.checked = rows.length > 0 && selected === rows.length;
+                allCb.indeterminate = selected > 0 && selected < rows.length;
+            }
+
             function createSourceRows() {
                 if (!table) return [];
+                if (hasRowSelection()) return selectedRowData();
                 return table.getData(true) || [];
+            }
+
+            function paintCreateBadge() {
+                const el = document.getElementById('create-count');
+                const n = createBadgeCount();
+                setBadgeVal('create-count', Number(n).toLocaleString());
+                if (!el) return;
+                el.title = hasRowSelection()
+                    ? 'Create the ' + n + ' selected No ad row(s) with Inv > 0.'
+                    : 'Create all ' + n + ' visible No ad rows with Inv > 0.';
             }
 
             function queueCreateGoodsIdsFromRows(rows) {
@@ -882,7 +960,7 @@
                 }));
                 setBadgeVal('ctr-avg', Number(m.ctr).toFixed(1) + '%');
                 setBadgeVal('cvr-avg', Number(m.cvr).toFixed(1) + '%');
-                setBadgeVal('create-count', Number(createBadgeCount()).toLocaleString());
+                paintCreateBadge();
                 paintPauseRunBadge(rows);
                 applyCtrAvgColors();
                 return m;
@@ -1193,6 +1271,56 @@
                 columns: [
                     { title: 'Period', field: 'period', width: 70, visible: false, sorter: 'string' },
                     {
+                        title: '',
+                        field: '_select',
+                        width: 44,
+                        minWidth: 44,
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        resizable: false,
+                        frozen: true,
+                        titleFormatter: function () {
+                            const cb = document.createElement('input');
+                            cb.type = 'checkbox';
+                            cb.id = 'temu-ads-select-all';
+                            cb.className = 'temu-ads-select-all';
+                            cb.title = 'Select all filtered rows';
+                            cb.addEventListener('click', function (e) { e.stopPropagation(); });
+                            cb.addEventListener('change', function (e) {
+                                e.stopPropagation();
+                                if (!table) return;
+                                (table.getRows('active') || []).forEach(function (row) {
+                                    const id = rowGoodsId(row.getData());
+                                    if (!id) return;
+                                    if (cb.checked) selectedGoodsIds.add(id);
+                                    else selectedGoodsIds.delete(id);
+                                });
+                                refreshSelectCheckboxes();
+                                paintCreateBadge();
+                            });
+                            return cb;
+                        },
+                        formatter: function (cell) {
+                            return selectCheckboxHtml(cell.getRow().getData() || {});
+                        },
+                        cellClick: function (e, cell) {
+                            e.stopPropagation();
+                            const id = rowGoodsId(cell.getRow().getData());
+                            const cb = cell.getElement().querySelector('.temu-ads-row-cb');
+                            if (!id || !cb) return;
+                            if (selectedGoodsIds.has(id)) {
+                                selectedGoodsIds.delete(id);
+                                cb.checked = false;
+                            } else {
+                                selectedGoodsIds.add(id);
+                                cb.checked = true;
+                            }
+                            refreshSelectCheckboxes();
+                            paintCreateBadge();
+                        },
+                    },
+                    {
                         title: 'Image',
                         field: 'image_path',
                         width: 52,
@@ -1374,8 +1502,15 @@
                 ],
             });
 
-            table.on('dataFiltered', updateBadgesFromTable);
-            table.on('dataLoaded', updateBadgesFromTable);
+            table.on('dataFiltered', function () {
+                updateBadgesFromTable();
+                refreshSelectCheckboxes();
+            });
+            table.on('dataLoaded', function () {
+                pruneSelectedGoodsIds();
+                updateBadgesFromTable();
+                refreshSelectCheckboxes();
+            });
 
             try {
                 if (window.TemuAdsColorRules) {
@@ -1565,7 +1700,7 @@
             };
             const COL_VIS_CAT_STORAGE = 'temu_ads_col_vis_cats';
             const LOCKED_HIDDEN_FIELDS = { impressions: true };
-            const SKIP_COLUMN_BOX_FIELDS = { impressions: true };
+            const SKIP_COLUMN_BOX_FIELDS = { _select: true, impressions: true };
 
             function isLockedHiddenField(field) {
                 return !!LOCKED_HIDDEN_FIELDS[String(field || '')];
@@ -1669,6 +1804,10 @@
                 table.getColumns().forEach(function (col) {
                     const field = col.getField && col.getField();
                     if (!field) return;
+                    if (field === '_select') {
+                        col.show();
+                        return;
+                    }
                     if (isLockedHiddenField(field)) {
                         col.hide();
                         return;
@@ -2076,17 +2215,22 @@
             }
 
             async function runBulkCreateQueue() {
+                const usingSelection = hasRowSelection();
                 const ids = queueCreateGoodsIds();
                 const status = document.getElementById('fetch-status');
                 const badge = document.getElementById('create-count');
                 if (!ids.length) {
                     status.style.display = 'block';
-                    status.innerHTML = '<div class="alert alert-warning py-2 mb-0">No Create queue rows (Status No ad and Inv &gt; 0).</div>';
+                    status.innerHTML = usingSelection
+                        ? '<div class="alert alert-warning py-2 mb-0">No selected rows can be created (need Status No ad and Inv &gt; 0).</div>'
+                        : '<div class="alert alert-warning py-2 mb-0">No Create queue rows (Status No ad and Inv &gt; 0).</div>';
                     return;
                 }
                 const defaults = createAdDefaults();
                 if (!confirm(
-                    'Create Temu ads for ' + ids.length + ' goods?\n' +
+                    (usingSelection
+                        ? 'Create Temu ads for the ' + ids.length + ' selected goods?'
+                        : 'Create Temu ads for all ' + ids.length + ' required goods?') + '\n' +
                     'Daily budget: $' + defaults.budget + '\n' +
                     'Target ROAS: ' + defaults.roas + '\n' +
                     '(Same as Create ads Rule)'
