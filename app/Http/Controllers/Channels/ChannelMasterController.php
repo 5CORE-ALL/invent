@@ -107,6 +107,7 @@ use App\Models\SheinListingStatus;
 use App\Models\ShopifySku;
 use App\Models\TemuDailyData;
 use App\Models\TemuDailyDataL60;
+use App\Models\TemuAdsApiReport;
 use App\Models\Temu2CampaignReport;
 use App\Models\Temu2DailyData;
 use App\Models\Temu2DailyDataL60;
@@ -866,7 +867,7 @@ class ChannelMasterController extends Controller
             }
 
             // Temu 2: overlay live Spend from temu2_campaign_reports (same as /temu2/ads).
-            // Temu 1 spend comes from the heavy decrease endpoint — skip here; cache/full rebuild covers it.
+            // Temu 1: overlay Active L30 from temu_ads_api_reports (same as /temu/ads).
             if ($isTemu2) {
                 $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
                 $l30ForAds = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
@@ -890,7 +891,131 @@ class ChannelMasterController extends Controller
         }
         unset($row);
 
+        return $this->overlayLiveTemu1AdsOnChannelRows($rows);
+    }
+
+    /**
+     * Temu 1 ads on /all-marketplace-master — same Active L30 source as /temu/ads and /temu-decrease.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function overlayLiveTemu1AdsOnChannelRows(array $rows): array
+    {
+        $metrics = $this->fetchTemu1AdsApiMetrics('L30');
+        $sp = (float) ($metrics['Total Ad Spend'] ?? 0);
+        $c = (int) ($metrics['clicks'] ?? 0);
+        $s = (float) ($metrics['ad_sales'] ?? 0);
+        $u = (int) ($metrics['ad_sold'] ?? 0);
+        $cvr = $c > 0 ? round(($u / $c) * 100, 2) : 0.0;
+        $acos = $s > 0 ? round(($sp / $s) * 100, 2) : 0.0;
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if (strcasecmp($name, 'Temu') !== 0) {
+                continue;
+            }
+
+            if ($sp <= 0) {
+                $existing = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? $row['KW Spent'] ?? 0));
+                if ($existing > 0) {
+                    continue;
+                }
+            }
+
+            $l30ForAds = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
+            $adsPct = $l30ForAds > 0 ? ($sp / $l30ForAds) * 100 : 0.0;
+            $gProfitPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
+            $gRoi = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['G Roi'] ?? 0));
+
+            $row['Total Ad Spend'] = $sp;
+            $row['KW Spent'] = $sp;
+            $row['clicks'] = $c;
+            $row['Clicks'] = $c;
+            $row['ad_sold'] = $u;
+            $row['Ad Sold'] = $u;
+            $row['Ad Sales'] = $s;
+            $row['Ads CVR'] = $cvr;
+            $row['ACOS'] = $acos;
+            $row['KW Clicks'] = $c;
+            $row['KW Sales'] = $s;
+            $row['KW Sold'] = $u;
+            $row['KW ACOS'] = (float) ($metrics['KW ACOS'] ?? 0);
+            $row['KW CVR'] = (float) ($metrics['KW CVR'] ?? 0);
+            $row['Ads%'] = round($adsPct, 2).'%';
+            $row['TACOS %'] = round($adsPct, 2).'%';
+            $row['TACOS'] = round($adsPct, 2);
+            $row['N PFT'] = round($gProfitPct - $adsPct, 2).'%';
+            $row['N ROI'] = round($gRoi - $adsPct, 2);
+        }
+        unset($row);
+
         return $rows;
+    }
+
+    /**
+     * Active Temu 1 ads totals from temu_ads_api_reports (same as /temu/ads).
+     *
+     * @return array{clicks: int, ad_sales: float, ad_sold: int, Total Ad Spend: float, KW Spent: float, KW Clicks: int, KW Sales: float, KW Sold: int, KW ACOS: float, KW CVR: float}
+     */
+    private function fetchTemu1AdsApiMetrics(string $period = 'L30'): array
+    {
+        $empty = [
+            'clicks' => 0,
+            'ad_sales' => 0.0,
+            'ad_sold' => 0,
+            'Total Ad Spend' => 0.0,
+            'KW Spent' => 0.0,
+            'KW Clicks' => 0,
+            'KW Sales' => 0.0,
+            'KW Sold' => 0,
+            'KW ACOS' => 0.0,
+            'KW CVR' => 0.0,
+        ];
+
+        if (! Schema::hasTable('temu_ads_api_reports')) {
+            return $empty;
+        }
+
+        $select = '
+            COALESCE(SUM(ad_spend), 0) AS spend,
+            COALESCE(SUM(clicks), 0) AS clicks,
+            COALESCE(SUM(order_pay_amt), 0) AS ad_sales,
+            COALESCE(SUM(order_pay_cnt), 0) AS ad_sold
+        ';
+
+        $tot = TemuAdsApiReport::query()
+            ->activeAds()
+            ->where('period', $period)
+            ->selectRaw($select)
+            ->first();
+
+        // Status is often still "No ad" / empty until temu:refresh-ad-status runs
+        // from a whitelisted IP. Fall back to all L30 API rows so Spend/Ads% show.
+        if ((float) ($tot->spend ?? 0) <= 0) {
+            $tot = TemuAdsApiReport::query()
+                ->where('period', $period)
+                ->selectRaw($select)
+                ->first();
+        }
+
+        $sp = round((float) ($tot->spend ?? 0), 2);
+        $c = (int) ($tot->clicks ?? 0);
+        $s = round((float) ($tot->ad_sales ?? 0), 2);
+        $u = (int) ($tot->ad_sold ?? 0);
+
+        return [
+            'clicks' => $c,
+            'ad_sales' => $s,
+            'ad_sold' => $u,
+            'Total Ad Spend' => $sp,
+            'KW Spent' => $sp,
+            'KW Clicks' => $c,
+            'KW Sales' => $s,
+            'KW Sold' => $u,
+            'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0.0,
+            'KW CVR' => $c > 0 ? round(($u / $c) * 100, 1) : 0.0,
+        ];
     }
 
     /**
@@ -3420,6 +3545,26 @@ class ChannelMasterController extends Controller
      */
     private function collectTemuL30GoodsNameSpendPairs(): \Illuminate\Support\Collection
     {
+        if (Schema::hasTable('temu_ads_api_reports')) {
+            $pairs = [];
+            $q = TemuAdsApiReport::query()->activeAds()->where('period', 'L30');
+            if (! (clone $q)->where('ad_spend', '>', 0)->exists()) {
+                $q = TemuAdsApiReport::query()->where('period', 'L30');
+            }
+            foreach ($q->get(['sku', 'goods_id', 'ad_spend']) as $r) {
+                $name = trim((string) ($r->sku ?: $r->goods_id));
+                if ($name === '') {
+                    continue;
+                }
+                $pairs[] = [
+                    'campaignName' => $name,
+                    'spend' => (float) ($r->ad_spend ?? 0),
+                ];
+            }
+
+            return collect($pairs);
+        }
+
         if (! Schema::hasTable('temu_campaign_reports')) {
             return collect();
         }
@@ -4013,63 +4158,21 @@ class ChannelMasterController extends Controller
                 }
 
                 case 'temu': {
-                    // Compute totals exactly like temu-decrease endpoint + frontend badges.
-                    $request = \Illuminate\Http\Request::create('/temu-decrease-data', 'GET');
-                    $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
-                    $response = $temuCtrl->getTemuDecreaseData($request);
-                    $responseData = json_decode($response->getContent(), true);
-                    if (!is_array($responseData)) {
-                        return $defaults;
-                    }
+                    // Same Active L30 source as /temu/ads and /temu-decrease (temu_ads_api_reports).
+                    $metrics = $this->fetchTemu1AdsApiMetrics('L30');
+                    $sp = (float) ($metrics['Total Ad Spend'] ?? 0);
+                    $c = (int) ($metrics['clicks'] ?? 0);
+                    $s = (float) ($metrics['ad_sales'] ?? 0);
+                    $u = (int) ($metrics['ad_sold'] ?? 0);
 
-                    // Prefer the file totals returned in `ad_totals` (computed
-                    // directly from temu_campaign_reports for the active range).
-                    // The previous implementation summed per-row over the
-                    // ProductMaster-matched rows in `data`, which silently dropped
-                    // any campaign row whose goods_id wasn't in temu_pricing AND
-                    // whose SKU column was empty — producing badges below the
-                    // actual upload total. We still fall back to per-row sums for
-                    // older deploys / cached responses that don't include
-                    // ad_totals yet.
-                    $adTotals = is_array($responseData['ad_totals'] ?? null)
-                        ? $responseData['ad_totals']
-                        : null;
+                    $liveSales = $this->getTemuLiveSalesSummaryFromTabulator(false);
+                    $salesRevenue = (float) ($liveSales['total_revenue'] ?? 0);
+                    $adsPercent = $salesRevenue > 0 ? ($sp / $salesRevenue) * 100 : 0;
 
-                    if ($adTotals !== null) {
-                        $sp = round((float) ($adTotals['spend'] ?? 0), 2);
-                        $c  = (int) ($adTotals['clicks'] ?? 0);
-                        $s  = round((float) ($adTotals['base_price_sales'] ?? 0), 2);
-                        $u  = (int) ($adTotals['sub_orders'] ?? 0);
-                        $spSnapshot = $sp;
-                    } else {
-                        $rows = $responseData['data'] ?? [];
-                        $sp = 0; $spSnapshot = 0; $c = 0; $s = 0; $u = 0;
-                        foreach ($rows as $row) {
-                            if (empty($row['sku'])) continue;
-                            $sp += round((float) ($row['spend_l30'] ?? 0), 2);
-                            $spSnapshot += round((float) ($row['spend'] ?? 0), 2);
-                            $c += (int) ($row['clicks_l30'] ?? 0);
-                            $s += round((float) ($row['ad_sales_l30'] ?? 0), 2);
-                            $u += (int) ($row['ad_sold_l30'] ?? 0);
-                        }
-                    }
-
-                    // Same ads% source priority as temu_decrease badge:
-                    // 1) backend aggregate_ads_percent (when positive),
-                    // 2) computed using spend_l30, else spend snapshot over sales_summary revenue.
-                    $aggregateAds = (float) ($responseData['aggregate_ads_percent'] ?? 0);
-                    $salesSummaryRevenue = (float) (($responseData['sales_summary']['total_revenue'] ?? 0));
-                    $spendForAdsPercent = $sp > 0 ? $sp : $spSnapshot;
-                    $adsPercent = $aggregateAds > 0
-                        ? $aggregateAds
-                        : ($salesSummaryRevenue > 0 ? ($spendForAdsPercent / $salesSummaryRevenue) * 100 : 0);
-
-                    return array_merge($defaults, [
-                        'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => $u,
-                        'KW Clicks' => $c, 'KW Sales' => round($s, 2), 'KW Sold' => $u,
-                        'KW Spent' => round($spendForAdsPercent, 2), 'Total Ad Spend' => round($spendForAdsPercent, 2),
-                        'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
-                        'KW CVR' => $c > 0 ? round(($u / $c) * 100, 1) : 0,
+                    return array_merge($defaults, $metrics, [
+                        'clicks' => $c,
+                        'ad_sales' => $s,
+                        'ad_sold' => $u,
                         'Ads%' => round($adsPercent, 2),
                     ]);
                 }
@@ -4724,6 +4827,8 @@ class ChannelMasterController extends Controller
             ]);
             $cachedPayload = \Cache::get($cacheKey);
             if (is_array($cachedPayload) && ($cachedPayload['status'] ?? null) === 200) {
+                $cachedPayload['data'] = $this->overlayLiveTemu1AdsOnChannelRows($cachedPayload['data'] ?? []);
+
                 return response()->json($cachedPayload);
             }
 
@@ -4844,8 +4949,10 @@ class ChannelMasterController extends Controller
                     
                     'Total Ad Spend' => round($channel->total_ad_spend, 2),
                     'Ads%' => round($channel->ads_percentage, 2) . '%',
-                    'Clicks' => $channel->clicks,
-                    'Ad Sold' => $channel->ad_sold,
+                    'clicks' => (int) $channel->clicks,
+                    'Clicks' => (int) $channel->clicks,
+                    'ad_sold' => (int) $channel->ad_sold,
+                    'Ad Sold' => (int) $channel->ad_sold,
                     'Ad Sales' => round($channel->ad_sales, 2),
                     'Ads CVR' => round($channel->cvr, 2),
                     'ACOS' => round($channel->acos, 2),
@@ -4908,6 +5015,7 @@ class ChannelMasterController extends Controller
             // eBay Y/L7 is a small date-window read of ebay{1,2}_order_metrics so a
             // missed daily fetch cannot leave yesterday at $0 until the next rebuild.
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
+            $formattedData = $this->overlayLiveTemu1AdsOnChannelRows($formattedData);
             $formattedData = $this->overlayLiveAmazonYSalesOnChannelRows($formattedData);
             $formattedData = $this->overlayLiveEbayYSalesOnChannelRows($formattedData);
             $formattedData = $this->overlayLiveShopifyYSalesOnChannelRows($formattedData);
@@ -8956,6 +9064,11 @@ class ChannelMasterController extends Controller
         $nPft = round($gProfitPct - $tacosPercentage, 2);
         // Match /temu-decrease badge: NROI% = GROI% − Ads% (updates in lockstep when Ads% drops).
         $nRoi = round($gRoi - $adsPercentage, 2);
+        $adClicks = (int) ($temuAdMetrics['clicks'] ?? 0);
+        $adSales = (float) ($temuAdMetrics['ad_sales'] ?? 0);
+        $adSold = (int) ($temuAdMetrics['ad_sold'] ?? 0);
+        $adsCvr = $adClicks > 0 ? round(($adSold / $adClicks) * 100, 2) : 0.0;
+        $acos = $adSales > 0 ? round(($totalAdSpend / $adSales) * 100, 2) : 0.0;
 
         $growth = $l60SalesReported > 0 ? (($l30SalesReported - $l60SalesReported) / $l60SalesReported) * 100 : 0;
 
@@ -8984,6 +9097,13 @@ class ChannelMasterController extends Controller
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
             'Total Ad Spend' => $totalAdSpend,
+            'clicks'     => $adClicks,
+            'Clicks'     => $adClicks,
+            'Ad Sales'   => $adSales,
+            'ad_sold'    => $adSold,
+            'Ad Sold'    => $adSold,
+            'Ads CVR'    => $adsCvr,
+            'ACOS'       => $acos,
             'Ads%'       => round($adsPercentage, 2) . '%',
             'TACOS %'    => round($tacosPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
