@@ -215,7 +215,7 @@ class GoogleShoppingCampaignsController extends Controller
      */
     protected static function salesL30SqlExpression(): string
     {
-        return 'COALESCE(cGa30.sum_ga4_actual, 0)';
+        return 'COALESCE(agg.sum_ga4_actual, 0)';
     }
 
     /**
@@ -313,11 +313,14 @@ class GoogleShoppingCampaignsController extends Controller
             $days = 30;
         }
 
-        return $this->runArtisanPush(
+        $response = $this->runArtisanPush(
             'app:fetch-google-ads-campaigns',
             ['--days' => (string) $days],
             'app:fetch-google-ads-campaigns'
         );
+        $this->bumpRawGridRowsCache();
+
+        return $response;
     }
 
     /**
@@ -648,16 +651,15 @@ class GoogleShoppingCampaignsController extends Controller
 
         $query = $this->buildRawGridBaseQuery();
         $this->applyRawGridDataFilters($query, $request);
-
-        $summaryQuery = clone $query;
         $this->applyRawGridSort($query, $request);
 
         $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
 
-        // Daily SBGT / Green-util snapshots run on the
-        // `google:save-badge-l30-snapshots` cron — not here. Doing a full-table
-        // upsert on the first grid request of the day can stall long enough for
-        // the browser to drop the fetch (ERR_NETWORK_CHANGED / Failed to fetch).
+        // One filtered result set (~hundreds of campaigns) — paginate + badge
+        // totals in PHP so we do not run the aggregation three times
+        // (COUNT, page SELECT, summary wrap).
+        $collection = $this->rememberRawGridRows($request, $query);
+        $summary = $this->summarizeRawGridRows($collection);
 
         $invResolver = $this->buildInventoryResolver();
 
@@ -666,7 +668,6 @@ class GoogleShoppingCampaignsController extends Controller
         if ($verifyId) {
             @ini_set('max_execution_time', '120');
             set_time_limit(120);
-            $collection = $query->get();
             $allCampaignIds = $collection
                 ->pluck('campaign_id')
                 ->filter(fn ($v) => $v !== null && $v !== '')
@@ -677,7 +678,7 @@ class GoogleShoppingCampaignsController extends Controller
             $prevSbgtMap = $this->previousSbgtMap($allCampaignIds);
 
             $enriched = $collection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver) {
-                $arr = json_decode(json_encode($row), true);
+                $arr = self::rawGridRowToArray($row);
                 if (isset($arr['spend_window_micros'])) {
                     $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
                     unset($arr['spend_window_micros']);
@@ -701,7 +702,6 @@ class GoogleShoppingCampaignsController extends Controller
             $this->attachMerchantIdVerification($pageRows);
 
             $rows = $pageRows->map(static fn (array $arr) => self::prepareRawRowForTabulator($arr))->values();
-            $summary = $this->computeRawGridSummary($summaryQuery);
             $summary['filtered_row_count'] = $total;
 
             return response()->json([
@@ -713,11 +713,12 @@ class GoogleShoppingCampaignsController extends Controller
             ]);
         }
 
-        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
-        $summary = $this->computeRawGridSummary($summaryQuery);
+        $total = $collection->count();
+        $lastPage = max(1, (int) ceil($total / $perPage) ?: 1);
+        $page = min($page, $lastPage);
+        $pageCollection = $collection->slice(($page - 1) * $perPage, $perPage)->values();
 
-        $collection = $paginator->getCollection();
-        $pageCampaignIds = $collection
+        $pageCampaignIds = $pageCollection
             ->pluck('campaign_id')
             ->filter(fn ($v) => $v !== null && $v !== '')
             ->map(fn ($v) => (string) $v)
@@ -726,8 +727,8 @@ class GoogleShoppingCampaignsController extends Controller
             ->all();
         $prevSbgtMap = $this->previousSbgtMap($pageCampaignIds);
 
-        $rows = $collection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver) {
-            $arr = json_decode(json_encode($row), true);
+        $rows = $pageCollection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver) {
+            $arr = self::rawGridRowToArray($row);
             if (isset($arr['spend_window_micros'])) {
                 $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
                 unset($arr['spend_window_micros']);
@@ -742,9 +743,6 @@ class GoogleShoppingCampaignsController extends Controller
 
             return self::prepareRawRowForTabulator($arr);
         })->values();
-
-        $total = (int) $paginator->total();
-        $lastPage = max(1, (int) $paginator->lastPage());
 
         return response()->json([
             'last_page' => $lastPage,
@@ -1640,87 +1638,7 @@ class GoogleShoppingCampaignsController extends Controller
         $l2Bounds = $this->rawTrailingInclusiveDayBounds($bounds, 2);
         $l1Bounds = $this->rawTrailingInclusiveDayBounds($bounds, 1);
 
-        $applyBounds = static function ($q) use ($bounds) {
-            if ($bounds !== null) {
-                $q->whereNotNull('date')
-                    ->whereBetween('date', [$bounds['start'], $bounds['end']]);
-            }
-        };
-
-        $windowApplier = static function (?array $w) {
-            return static function ($q) use ($w) {
-                if ($w !== null) {
-                    $q->whereNotNull('date')
-                        ->whereBetween('date', [$w['start'], $w['end']]);
-                }
-            };
-        };
-        $applyL7Bounds = $windowApplier($l7Bounds);
-        $applyL2Bounds = $windowApplier($l2Bounds);
-        $applyL1Bounds = $windowApplier($l1Bounds);
-
-        $sumSub = DB::table('google_ads_campaigns');
-        $applyBounds($sumSub);
-        $this->applyCampaignNameScope($sumSub);
-        $sumSub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_cost_micros) as sum_micros')
-            ->groupBy('campaign_id');
-
-        $sumL7Sub = DB::table('google_ads_campaigns');
-        $applyL7Bounds($sumL7Sub);
-        $this->applyCampaignNameScope($sumL7Sub);
-        $sumL7Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_cost_micros) as sum_micros_l7')
-            ->groupBy('campaign_id');
-
-        $sumL2Sub = DB::table('google_ads_campaigns');
-        $applyL2Bounds($sumL2Sub);
-        $this->applyCampaignNameScope($sumL2Sub);
-        $sumL2Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_cost_micros) as sum_micros_l2')
-            ->groupBy('campaign_id');
-
-        $sumL1Sub = DB::table('google_ads_campaigns');
-        $applyL1Bounds($sumL1Sub);
-        $this->applyCampaignNameScope($sumL1Sub);
-        $sumL1Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_cost_micros) as sum_micros_l1')
-            ->groupBy('campaign_id');
-
-        $clicks30Sub = DB::table('google_ads_campaigns');
-        $applyBounds($clicks30Sub);
-        $this->applyCampaignNameScope($clicks30Sub);
-        $clicks30Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_30, SUM(metrics_video_views) as sum_views_30, SUM(metrics_impressions) as sum_impr_30')
-            ->groupBy('campaign_id');
-
-        $clicksL7Sub = DB::table('google_ads_campaigns');
-        $applyL7Bounds($clicksL7Sub);
-        $this->applyCampaignNameScope($clicksL7Sub);
-        $clicksL7Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l7, SUM(metrics_video_views) as sum_views_l7')
-            ->groupBy('campaign_id');
-
-        $clicksL2Sub = DB::table('google_ads_campaigns');
-        $applyL2Bounds($clicksL2Sub);
-        $this->applyCampaignNameScope($clicksL2Sub);
-        $clicksL2Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l2, SUM(metrics_video_views) as sum_views_l2')
-            ->groupBy('campaign_id');
-
-        $clicksL1Sub = DB::table('google_ads_campaigns');
-        $applyL1Bounds($clicksL1Sub);
-        $this->applyCampaignNameScope($clicksL1Sub);
-        $clicksL1Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l1, SUM(metrics_video_views) as sum_views_l1')
-            ->groupBy('campaign_id');
-
-        $ga30Sub = DB::table('google_ads_campaigns');
-        $applyBounds($ga30Sub);
-        $this->applyCampaignNameScope($ga30Sub);
-        $ga30Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(ga4_actual_revenue) as sum_ga4_actual, SUM(ga4_ad_sales) as sum_ga4_ads, SUM(ga4_actual_sold_units) as sum_ga4_actual_sold')
-            ->groupBy('campaign_id');
+        $metricsSub = $this->buildRawGridMetricsSubquery($bounds, $l7Bounds, $l2Bounds, $l1Bounds);
 
         // Latest row per campaign in the 30d window, PLUS every PARENT campaign's
         // latest row ever — so parent rows always appear even with no recent metrics.
@@ -1738,32 +1656,8 @@ class GoogleShoppingCampaignsController extends Controller
             ->groupBy('campaign_id');
 
         $query = DB::table('google_ads_campaigns as g')
-            ->leftJoinSub($sumSub, 'cSpend', function ($join) {
-                $join->on('g.campaign_id', '=', 'cSpend.campaign_id');
-            })
-            ->leftJoinSub($sumL7Sub, 'cSpendL7', function ($join) {
-                $join->on('g.campaign_id', '=', 'cSpendL7.campaign_id');
-            })
-            ->leftJoinSub($sumL2Sub, 'cSpendL2', function ($join) {
-                $join->on('g.campaign_id', '=', 'cSpendL2.campaign_id');
-            })
-            ->leftJoinSub($sumL1Sub, 'cSpendL1', function ($join) {
-                $join->on('g.campaign_id', '=', 'cSpendL1.campaign_id');
-            })
-            ->leftJoinSub($clicks30Sub, 'cClicks30', function ($join) {
-                $join->on('g.campaign_id', '=', 'cClicks30.campaign_id');
-            })
-            ->leftJoinSub($clicksL7Sub, 'cClicksL7', function ($join) {
-                $join->on('g.campaign_id', '=', 'cClicksL7.campaign_id');
-            })
-            ->leftJoinSub($clicksL2Sub, 'cClicksL2', function ($join) {
-                $join->on('g.campaign_id', '=', 'cClicksL2.campaign_id');
-            })
-            ->leftJoinSub($clicksL1Sub, 'cClicksL1', function ($join) {
-                $join->on('g.campaign_id', '=', 'cClicksL1.campaign_id');
-            })
-            ->leftJoinSub($ga30Sub, 'cGa30', function ($join) {
-                $join->on('g.campaign_id', '=', 'cGa30.campaign_id');
+            ->leftJoinSub($metricsSub, 'agg', function ($join) {
+                $join->on('g.campaign_id', '=', 'agg.campaign_id');
             })
             ->joinSub($latestSub, 'cLatest', function ($join) {
                 $join->on('g.campaign_id', '=', 'cLatest.campaign_id')
@@ -1781,27 +1675,104 @@ class GoogleShoppingCampaignsController extends Controller
         }
         $this->applyCampaignNameScope($query, 'g.campaign_name');
 
-        $query->select('g.*')
-            ->addSelect(DB::raw('COALESCE(cSpend.sum_micros, 0) as spend_window_micros'))
-            ->addSelect(DB::raw('COALESCE(cSpend.sum_micros, 0) / 1000000 as spend'))
-            ->addSelect(DB::raw('COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000 as l7_spend'))
-            ->addSelect(DB::raw('COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000 as l2_spend'))
-            ->addSelect(DB::raw('COALESCE(cSpendL1.sum_micros_l1, 0) / 1000000 as l1_spend'))
-            ->addSelect(DB::raw('COALESCE(cClicks30.sum_clicks_30, 0) as clicks_sum_30'))
-            ->addSelect(DB::raw('COALESCE(cClicks30.sum_impr_30, 0) as impr_sum_30'))
-            ->addSelect(DB::raw('COALESCE(cClicksL7.sum_clicks_l7, 0) as clicks_sum_l7'))
-            ->addSelect(DB::raw('COALESCE(cClicksL2.sum_clicks_l2, 0) as clicks_sum_l2'))
-            ->addSelect(DB::raw('COALESCE(cClicksL1.sum_clicks_l1, 0) as clicks_sum_l1'))
-            ->addSelect(DB::raw('COALESCE(cClicks30.sum_views_30, 0) as views_sum_30'))
-            ->addSelect(DB::raw('COALESCE(cClicksL7.sum_views_l7, 0) as views_sum_l7'))
-            ->addSelect(DB::raw('COALESCE(cClicksL2.sum_views_l2, 0) as views_sum_l2'))
-            ->addSelect(DB::raw('COALESCE(cClicksL1.sum_views_l1, 0) as views_sum_l1'))
-            ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_actual, 0) as sum_ga4_actual'))
-            ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_ads, 0) as sum_ga4_ads'))
-            ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_actual_sold, 0) as sum_ga4_actual_sold'))
+        $query->select([
+            'g.id',
+            'g.date',
+            'g.campaign_id',
+            'g.campaign_name',
+            'g.campaign_status',
+            'g.budget_amount_micros',
+            'g.bidding_strategy_type',
+        ])
+            ->addSelect(DB::raw('COALESCE(agg.sum_micros, 0) as spend_window_micros'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_micros, 0) / 1000000 as spend'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_micros_l7, 0) / 1000000 as l7_spend'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_micros_l2, 0) / 1000000 as l2_spend'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_micros_l1, 0) / 1000000 as l1_spend'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_clicks_30, 0) as clicks_sum_30'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_impr_30, 0) as impr_sum_30'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_clicks_l7, 0) as clicks_sum_l7'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_clicks_l2, 0) as clicks_sum_l2'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_clicks_l1, 0) as clicks_sum_l1'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_views_30, 0) as views_sum_30'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_views_l7, 0) as views_sum_l7'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_views_l2, 0) as views_sum_l2'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_views_l1, 0) as views_sum_l1'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_ga4_actual, 0) as sum_ga4_actual'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_ga4_ads, 0) as sum_ga4_ads'))
+            ->addSelect(DB::raw('COALESCE(agg.sum_ga4_actual_sold, 0) as sum_ga4_actual_sold'))
             ->addSelect(DB::raw(static::salesL30SqlExpression().' as sales_l30_agg'));
 
         return $query;
+    }
+
+    /**
+     * Single 30-day GROUP BY for spend / clicks / views / GA4 (L7/L2/L1 via CASE).
+     * Replaces the previous 9 separate scans of google_ads_campaigns.
+     *
+     * @param  array{start: string, end: string}|null  $bounds
+     * @param  array{start: string, end: string}|null  $l7Bounds
+     * @param  array{start: string, end: string}|null  $l2Bounds
+     * @param  array{start: string, end: string}|null  $l1Bounds
+     * @return \Illuminate\Database\Query\Builder
+     */
+    private function buildRawGridMetricsSubquery(?array $bounds, ?array $l7Bounds, ?array $l2Bounds, ?array $l1Bounds)
+    {
+        $metricsSub = DB::table('google_ads_campaigns');
+
+        if ($bounds !== null && $l7Bounds !== null && $l2Bounds !== null && $l1Bounds !== null) {
+            $metricsSub->selectRaw(
+                'campaign_id,
+                SUM(metrics_cost_micros) as sum_micros,
+                SUM(CASE WHEN `date` >= ? THEN metrics_cost_micros ELSE 0 END) as sum_micros_l7,
+                SUM(CASE WHEN `date` >= ? THEN metrics_cost_micros ELSE 0 END) as sum_micros_l2,
+                SUM(CASE WHEN `date` >= ? THEN metrics_cost_micros ELSE 0 END) as sum_micros_l1,
+                SUM(metrics_clicks) as sum_clicks_30,
+                SUM(metrics_impressions) as sum_impr_30,
+                SUM(metrics_video_views) as sum_views_30,
+                SUM(CASE WHEN `date` >= ? THEN metrics_clicks ELSE 0 END) as sum_clicks_l7,
+                SUM(CASE WHEN `date` >= ? THEN metrics_clicks ELSE 0 END) as sum_clicks_l2,
+                SUM(CASE WHEN `date` >= ? THEN metrics_clicks ELSE 0 END) as sum_clicks_l1,
+                SUM(CASE WHEN `date` >= ? THEN metrics_video_views ELSE 0 END) as sum_views_l7,
+                SUM(CASE WHEN `date` >= ? THEN metrics_video_views ELSE 0 END) as sum_views_l2,
+                SUM(CASE WHEN `date` >= ? THEN metrics_video_views ELSE 0 END) as sum_views_l1,
+                SUM(ga4_actual_revenue) as sum_ga4_actual,
+                SUM(ga4_ad_sales) as sum_ga4_ads,
+                SUM(ga4_actual_sold_units) as sum_ga4_actual_sold',
+                [
+                    $l7Bounds['start'], $l2Bounds['start'], $l1Bounds['start'],
+                    $l7Bounds['start'], $l2Bounds['start'], $l1Bounds['start'],
+                    $l7Bounds['start'], $l2Bounds['start'], $l1Bounds['start'],
+                ]
+            );
+            $metricsSub->whereNotNull('date')
+                ->whereBetween('date', [$bounds['start'], $bounds['end']]);
+        } else {
+            $metricsSub->selectRaw(
+                'campaign_id,
+                SUM(metrics_cost_micros) as sum_micros,
+                SUM(metrics_cost_micros) as sum_micros_l7,
+                SUM(metrics_cost_micros) as sum_micros_l2,
+                SUM(metrics_cost_micros) as sum_micros_l1,
+                SUM(metrics_clicks) as sum_clicks_30,
+                SUM(metrics_impressions) as sum_impr_30,
+                SUM(metrics_video_views) as sum_views_30,
+                SUM(metrics_clicks) as sum_clicks_l7,
+                SUM(metrics_clicks) as sum_clicks_l2,
+                SUM(metrics_clicks) as sum_clicks_l1,
+                SUM(metrics_video_views) as sum_views_l7,
+                SUM(metrics_video_views) as sum_views_l2,
+                SUM(metrics_video_views) as sum_views_l1,
+                SUM(ga4_actual_revenue) as sum_ga4_actual,
+                SUM(ga4_ad_sales) as sum_ga4_ads,
+                SUM(ga4_actual_sold_units) as sum_ga4_actual_sold'
+            );
+        }
+
+        $this->applyCampaignNameScope($metricsSub);
+        $metricsSub->whereNotNull('campaign_id')->groupBy('campaign_id');
+
+        return $metricsSub;
     }
 
     /**
@@ -1828,9 +1799,9 @@ class GoogleShoppingCampaignsController extends Controller
             $query->whereRaw('UPPER(g.campaign_name) LIKE ? ESCAPE \'\\\\\'', [$like]);
         }
 
-        $ub7Expr = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)';
-        $ub2Expr = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)';
-        $ub1Expr = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL1.sum_micros_l1, 0) / 1000000.0) / (g.budget_amount_micros / 1000000.0) * 100.0 ELSE 0 END)';
+        $ub7Expr = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(agg.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)';
+        $ub2Expr = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(agg.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)';
+        $ub1Expr = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(agg.sum_micros_l1, 0) / 1000000.0) / (g.budget_amount_micros / 1000000.0) * 100.0 ELSE 0 END)';
 
         if ($includeUb7) {
             $this->whereUbColorBand($query, $ub7Expr, $ub7);
@@ -1841,8 +1812,8 @@ class GoogleShoppingCampaignsController extends Controller
 
         // CTR / CVR min-max range filters. Expressions mirror ctr_l30 / cvr_l30 so the
         // filtered rows match the displayed (and colour-flagged) values to the percent.
-        $ctrExpr = '(CASE WHEN COALESCE(cClicks30.sum_impr_30, 0) > 0 THEN (COALESCE(cClicks30.sum_clicks_30, 0) / COALESCE(cClicks30.sum_impr_30, 0)) * 100.0 ELSE 0 END)';
-        $cvrExpr = '(CASE WHEN COALESCE(cClicks30.sum_clicks_30, 0) > 0 THEN (COALESCE(cGa30.sum_ga4_actual_sold, 0) / COALESCE(cClicks30.sum_clicks_30, 0)) * 100.0 ELSE 0 END)';
+        $ctrExpr = '(CASE WHEN COALESCE(agg.sum_impr_30, 0) > 0 THEN (COALESCE(agg.sum_clicks_30, 0) / COALESCE(agg.sum_impr_30, 0)) * 100.0 ELSE 0 END)';
+        $cvrExpr = '(CASE WHEN COALESCE(agg.sum_clicks_30, 0) > 0 THEN (COALESCE(agg.sum_ga4_actual_sold, 0) / COALESCE(agg.sum_clicks_30, 0)) * 100.0 ELSE 0 END)';
         $this->whereRangeBand($query, $ctrExpr, $ctrMin, $ctrMax);
         $this->whereRangeBand($query, $cvrExpr, $cvrMin, $cvrMax);
 
@@ -1857,7 +1828,7 @@ class GoogleShoppingCampaignsController extends Controller
 
         // Verify ID: L30 spend = 0 (INV > 0 applied after inventory attach in data()).
         if ($request->boolean('filter_verify_id')) {
-            $query->whereRaw('COALESCE(cSpend.sum_micros, 0) = 0');
+            $query->whereRaw('COALESCE(agg.sum_micros, 0) = 0');
         }
     }
 
@@ -1933,17 +1904,17 @@ class GoogleShoppingCampaignsController extends Controller
      */
     private function applyRawGridSort($query, Request $request): void
     {
-        $spend = '(cSpend.sum_micros / 1000000.0)';
-        $spendL7 = '(COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0)';
-        $spendL2 = '(COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000.0)';
-        $spendL1 = '(COALESCE(cSpendL1.sum_micros_l1, 0) / 1000000.0)';
+        $spend = '(COALESCE(agg.sum_micros, 0) / 1000000.0)';
+        $spendL7 = '(COALESCE(agg.sum_micros_l7, 0) / 1000000.0)';
+        $spendL2 = '(COALESCE(agg.sum_micros_l2, 0) / 1000000.0)';
+        $spendL1 = '(COALESCE(agg.sum_micros_l1, 0) / 1000000.0)';
         $sales = static::salesL30SqlExpression();
-        $sold = 'COALESCE(cGa30.sum_ga4_actual_sold, 0)';
-        $clicks = 'COALESCE(cClicks30.sum_clicks_30, 0)';
-        $clicksL7 = 'COALESCE(cClicksL7.sum_clicks_l7, 0)';
-        $clicksL2 = 'COALESCE(cClicksL2.sum_clicks_l2, 0)';
-        $clicksL1 = 'COALESCE(cClicksL1.sum_clicks_l1, 0)';
-        $impr = 'COALESCE(cClicks30.sum_impr_30, 0)';
+        $sold = 'COALESCE(agg.sum_ga4_actual_sold, 0)';
+        $clicks = 'COALESCE(agg.sum_clicks_30, 0)';
+        $clicksL7 = 'COALESCE(agg.sum_clicks_l7, 0)';
+        $clicksL2 = 'COALESCE(agg.sum_clicks_l2, 0)';
+        $clicksL1 = 'COALESCE(agg.sum_clicks_l1, 0)';
+        $impr = 'COALESCE(agg.sum_impr_30, 0)';
         $acosExpr = "(CASE "
             ."WHEN ROUND({$sales}) >= 1 THEN (ROUND({$spend}) / ROUND({$sales})) * 100.0 "
             ."WHEN ROUND({$spend}) > 0 THEN 100.0 "
@@ -1957,20 +1928,20 @@ class GoogleShoppingCampaignsController extends Controller
         $cpcL7 = "(CASE WHEN {$clicksL7} > 0 THEN {$spendL7} / {$clicksL7} ELSE 0 END)";
         $cpcL2 = "(CASE WHEN {$clicksL2} > 0 THEN {$spendL2} / {$clicksL2} ELSE 0 END)";
         $cpcL1 = "(CASE WHEN {$clicksL1} > 0 THEN {$spendL1} / {$clicksL1} ELSE 0 END)";
-        $ub7 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)';
-        $ub2 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)';
-        $ub1 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL1.sum_micros_l1, 0) / 1000000.0) / (g.budget_amount_micros / 1000000.0) * 100.0 ELSE 0 END)';
+        $ub7 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(agg.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)';
+        $ub2 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(agg.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)';
+        $ub1 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(agg.sum_micros_l1, 0) / 1000000.0) / (g.budget_amount_micros / 1000000.0) * 100.0 ELSE 0 END)';
         $sbgtExpr = $this->sbgtSortSqlExpression($acosExpr);
         $sbidExpr = $this->sbidSortSqlExpression($ub7, $ub1, $cpcL1, $cpcL7);
 
         $sortMap = [
             'campaign_status' => 'g.campaign_status',
             'campaign_name' => 'g.campaign_name',
-            'spend' => 'cSpend.sum_micros',
-            'l7_spend' => 'COALESCE(cSpendL7.sum_micros_l7, 0)',
-            'l2_spend' => 'COALESCE(cSpendL2.sum_micros_l2, 0)',
-            'l1_spend' => 'COALESCE(cSpendL1.sum_micros_l1, 0)',
-            'metrics_clicks' => 'COALESCE(cClicks30.sum_clicks_30, 0)',
+            'spend' => 'COALESCE(agg.sum_micros, 0)',
+            'l7_spend' => 'COALESCE(agg.sum_micros_l7, 0)',
+            'l2_spend' => 'COALESCE(agg.sum_micros_l2, 0)',
+            'l1_spend' => 'COALESCE(agg.sum_micros_l1, 0)',
+            'metrics_clicks' => 'COALESCE(agg.sum_clicks_30, 0)',
             'ctr_l30' => $ctrExpr,
             'cpc_L30' => $cpcL30,
             'cpc_L7' => $cpcL7,
@@ -2158,7 +2129,7 @@ class GoogleShoppingCampaignsController extends Controller
             return;
         }
 
-        $spend = '(cSpend.sum_micros / 1000000.0)';
+        $spend = '(COALESCE(agg.sum_micros, 0) / 1000000.0)';
         $sales = static::salesL30SqlExpression();
         $acosExpr = "(CASE "
             ."WHEN ROUND({$sales}) >= 1 THEN (ROUND({$spend}) / ROUND({$sales})) * 100.0 "
@@ -2306,6 +2277,118 @@ class GoogleShoppingCampaignsController extends Controller
             'avg_ctr' => round($avgCtr, 2),
             'avg_cvr' => round($avgCvr, 2),
         ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, mixed>  $rows
+     * @return array{spi30: float, acos_pct: int, filtered_row_count: int, active_count: int, green_util_l7_count: int, avg_ctr: float, avg_cvr: float}
+     */
+    private function summarizeRawGridRows($rows): array
+    {
+        $sumSpend = 0.0;
+        $sumSales = 0.0;
+        $sumClicks = 0.0;
+        $sumImpr = 0.0;
+        $sumSold = 0.0;
+        $active = 0;
+        $green = 0;
+        $count = 0;
+
+        foreach ($rows as $row) {
+            $arr = self::rawGridRowToArray($row);
+            $count++;
+            $spend = (float) ($arr['spend'] ?? 0);
+            $sales = (float) ($arr['sales_l30_agg'] ?? 0);
+            $sumSpend += $spend;
+            $sumSales += $sales;
+            $sumClicks += (float) ($arr['clicks_sum_30'] ?? 0);
+            $sumImpr += (float) ($arr['impr_sum_30'] ?? 0);
+            $sumSold += (float) ($arr['sum_ga4_actual_sold'] ?? 0);
+            if (strtoupper(trim((string) ($arr['campaign_status'] ?? ''))) === 'ENABLED') {
+                $active++;
+            }
+            $bgtMicros = (float) ($arr['budget_amount_micros'] ?? 0);
+            $l7 = (float) ($arr['l7_spend'] ?? 0);
+            if ($bgtMicros > 0) {
+                $ub7 = $l7 / (($bgtMicros / 1000000.0) * 7.0) * 100.0;
+                if ($ub7 >= 66 && $ub7 <= 99) {
+                    $green++;
+                }
+            }
+        }
+
+        $acos = 0.0;
+        if ($sumSales >= 1.0) {
+            $acos = ($sumSpend / $sumSales) * 100.0;
+        } elseif ($sumSpend > 0) {
+            $acos = 100.0;
+        }
+
+        return [
+            'spi30' => round($sumSales, 2),
+            'acos_pct' => (int) round($acos),
+            'filtered_row_count' => $count,
+            'active_count' => $active,
+            'green_util_l7_count' => $green,
+            'avg_ctr' => $sumImpr > 0 ? round(($sumClicks / $sumImpr) * 100.0, 2) : 0.0,
+            'avg_cvr' => $sumClicks > 0 ? round(($sumSold / $sumClicks) * 100.0, 2) : 0.0,
+        ];
+    }
+
+    /**
+     * @param  object|array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private static function rawGridRowToArray($row): array
+    {
+        if (is_array($row)) {
+            return $row;
+        }
+
+        return get_object_vars($row);
+    }
+
+    /**
+     * Cache the filtered campaign set for 60s so paging / refresh does not
+     * re-run the 30-day aggregation. Bumped after Pull Data.
+     *
+     * @param  \Illuminate\Database\Query\Builder  $query
+     * @return \Illuminate\Support\Collection<int, mixed>
+     */
+    private function rememberRawGridRows(Request $request, $query)
+    {
+        $key = 'gads_raw_grid_rows_v1:'
+            .$this->channelKey().':'
+            .$this->rawGridRowsCacheVersion().':'
+            .sha1((string) json_encode([
+                $this->rawGridDateBoundaries(),
+                $request->only([
+                    'filter_ub7', 'filter_ub1', 'filter_ub2', 'filter_acos', 'filter_stat',
+                    'filter_ctr_min', 'filter_ctr_max', 'filter_cvr_min', 'filter_cvr_max',
+                    'q', 'sort',
+                ]),
+                $request->boolean('filter_verify_id'),
+            ]));
+
+        return Cache::remember($key, now()->addSeconds(60), static fn () => $query->get());
+    }
+
+    private function rawGridRowsCacheVersion(): int
+    {
+        return (int) Cache::get('gads_raw_grid_ver:'.$this->channelKey(), 1);
+    }
+
+    /**
+     * Invalidate cached Shopping / SERP / YouTube grids (shared google_ads_campaigns).
+     */
+    protected function bumpRawGridRowsCache(): void
+    {
+        foreach (['shopping', 'serp', 'youtube'] as $channel) {
+            $k = 'gads_raw_grid_ver:'.$channel;
+            if (! Cache::add($k, 2, now()->addYear())) {
+                Cache::increment($k);
+            }
+        }
     }
 
     /**
@@ -2549,7 +2632,7 @@ class GoogleShoppingCampaignsController extends Controller
     private function buildInventoryResolver(): \Closure
     {
         $channel = $this->channelKey();
-        $payload = Cache::remember("gads_{$channel}_inv_resolver_v1", 300, function () {
+        $payload = Cache::remember("gads_{$channel}_inv_resolver_v1", 900, function () {
             $allPm = ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
