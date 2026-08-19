@@ -123,7 +123,7 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
-     * Inactive + pending linked listings (same as listings Inactive SKU + Inactive SKU Mismatch).
+     * Inactive SKU tab only (matched qty, inactive state). Excludes Inactive SKU Mismatch and pending.
      *
      * @return list<string>
      */
@@ -145,28 +145,18 @@ final class MarketplaceListingQtyMatchService
     public function inactiveListingRows(string $mmChannel, bool $fetchLiveIfCold = true): array
     {
         $classified = $this->classify($mmChannel);
-        $candidates = array_values(array_unique(array_merge(
-            $classified['matched'] ?? [],
-            $classified['mismatch'] ?? []
-        )));
+        $candidates = array_values(array_unique($classified['matched'] ?? []));
         if ($candidates === []) {
             return [];
         }
 
         $index = $this->liveInactiveIndex($mmChannel, $fetchLiveIfCold);
-        if ($index['inactive'] === [] && $index['pending'] === []) {
+        if ($index['inactive'] === []) {
             return [];
         }
 
         $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($candidates);
         $mp = $this->localStockMap($mmChannel, $candidates);
-        $mismatchSet = [];
-        foreach ($classified['mismatch'] ?? [] as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $mismatchSet[$n] = true;
-            }
-        }
 
         $out = [];
         $seen = [];
@@ -176,27 +166,19 @@ final class MarketplaceListingQtyMatchService
             if ($norm === '' || isset($seen[$norm])) {
                 continue;
             }
-            $isPending = isset($index['pending'][$norm]);
-            $isInactive = isset($index['inactive'][$norm]);
-            if (! $isPending && ! $isInactive) {
+            if (isset($index['pending'][$norm]) || ! isset($index['inactive'][$norm])) {
                 continue;
             }
             $seen[$norm] = true;
             $inv = (int) (MarketplaceListingStockResolver::qtyFromMap($shopify, $sku) ?? 0);
             $channelInv = (int) (MarketplaceListingStockResolver::qtyFromMap($mp, $sku) ?? 0);
-            $status = 'Inactive';
-            if ($isPending) {
-                $status = 'Pending';
-            } elseif (isset($mismatchSet[$norm])) {
-                $status = 'Inactive mismatch';
-            }
             $out[] = [
                 'sku' => $sku,
                 'channel_sku' => $sku,
                 'inv' => $inv,
                 'channel_inv' => $channelInv,
                 'diff' => abs($inv - $channelInv),
-                'status' => $status,
+                'status' => 'Inactive',
                 'state' => (string) ($index['state'][$norm] ?? 'inactive'),
             ];
         }

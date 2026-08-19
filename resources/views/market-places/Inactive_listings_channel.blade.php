@@ -32,7 +32,7 @@
                     <span class="badge bg-warning text-dark badge-mmc-stat">
                         Inactive Listings: <span id="ilc-total-count">0</span>
                     </span>
-                    <span class="text-muted small">{{ $channelName }} — same as Marketplace Manager Inactive SKU, Inactive SKU Mismatch, and pending listings.</span>
+                    <span class="text-muted small">{{ $channelName }} — same as Marketplace Manager Inactive SKU.</span>
                     @if (!empty($listingsUrl))
                         <a href="{{ $listingsUrl }}" class="btn btn-sm btn-outline-primary">Open listings</a>
                     @endif
