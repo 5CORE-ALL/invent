@@ -2455,21 +2455,26 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
 
             $data = json_decode(json_encode($xmlResp), true) ?: [];
             $ack = $data['Ack'] ?? 'Failure';
+            $errBlob = json_encode($data['Errors'] ?? []);
+            if ($this->listingLooksEnded($errBlob) || $this->listingLooksEnded((string) ($data['Errors']['LongMessage'] ?? ''))) {
+                $msg = $this->flattenEbayErrors($data);
+
+                return ['success' => false, 'ended' => true, 'message' => $msg ?: 'Listing ended.', 'data' => $data];
+            }
+
             if ($ack === 'Success' || $ack === 'Warning') {
+                $returnedQty = $this->extractReturnedInventoryQuantity($data);
+
                 return [
                     'success' => true,
+                    'quantity_confirmed' => $returnedQty === null || $returnedQty === $quantity,
+                    'returned_qty' => $returnedQty,
                     'message' => 'Inventory updated.',
                     'data' => $data,
                 ];
             }
 
-            $errors = $data['Errors'] ?? [];
-            $errors = is_array($errors) ? $errors : [$errors];
-            $messages = [];
-            foreach ($errors as $err) {
-                $messages[] = $this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]);
-            }
-            $msg = implode('; ', array_filter($messages)) ?: 'ReviseInventoryStatus failed.';
+            $msg = $this->flattenEbayErrors($data) ?: 'ReviseInventoryStatus failed.';
 
             Log::warning('eBay1 ReviseInventoryStatus failed', [
                 'itemId' => $itemId,
@@ -2479,7 +2484,12 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
                 'message' => $msg,
             ]);
 
-            return ['success' => false, 'message' => $msg, 'data' => $data];
+            return [
+                'success' => false,
+                'ended' => $this->listingLooksEnded($msg),
+                'message' => $msg,
+                'data' => $data,
+            ];
         } catch (\Throwable $e) {
             Log::warning('eBay1 ReviseInventoryStatus exception', [
                 'itemId' => $itemId,
@@ -2489,6 +2499,99 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Qty-only variation revise (no StartPrice) when ReviseInventoryStatus is a no-op.
+     *
+     * @return array{success: bool, message: string, data?: array, ended?: bool}
+     */
+    public function reviseVariationQuantity(string $itemId, string $sku, int $quantity): array
+    {
+        $itemId = trim($itemId);
+        $sku = trim($sku);
+        if ($itemId === '' || $sku === '') {
+            return ['success' => false, 'message' => 'ItemID and SKU are required.'];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $this->generateBearerToken() ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+
+            $item = $xml->addChild('Item');
+            $item->addChild('ItemID', $itemId);
+            $variations = $item->addChild('Variations');
+            $variation = $variations->addChild('Variation');
+            $variation->addChild('SKU', $sku);
+            $variation->addChild('Quantity', (string) max(0, $quantity));
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME' => $this->devId,
+                'X-EBAY-API-APP-NAME' => $this->appId,
+                'X-EBAY-API-CERT-NAME' => $this->certId,
+                'X-EBAY-API-CALL-NAME' => 'ReviseFixedPriceItem',
+                'X-EBAY-API-SITEID' => $this->siteId,
+                'Content-Type' => 'text/xml',
+            ];
+
+            $response = Http::timeout(60)
+                ->withHeaders($headers)
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.', 'raw' => $body];
+            }
+
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            $msg = $this->flattenEbayErrors($data);
+            if ($ack === 'Success' || $ack === 'Warning') {
+                if ($this->ebayErrorLooksLikeNonVariationListing(
+                    isset($data['Errors'][0]) ? $data['Errors'] : (isset($data['Errors']) && is_array($data['Errors']) ? [$data['Errors']] : []),
+                    $msg
+                )) {
+                    return ['success' => false, 'message' => $msg ?: 'Not a multi-SKU listing.', 'data' => $data];
+                }
+
+                return ['success' => true, 'message' => 'Variation quantity updated.', 'data' => $data];
+            }
+
+            return [
+                'success' => false,
+                'ended' => $this->listingLooksEnded($msg),
+                'message' => $msg ?: 'ReviseFixedPriceItem quantity failed.',
+                'data' => $data,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function listingLooksEnded(?string $message): bool
+    {
+        $blob = strtolower((string) $message);
+        if ($blob === '') {
+            return false;
+        }
+
+        return str_contains($blob, 'this item cannot be accessed')
+            || str_contains($blob, 'listing has been ended')
+            || str_contains($blob, 'auction has been closed')
+            || str_contains($blob, 'ended')
+            || str_contains($blob, 'completed')
+            || str_contains($blob, 'errorcode>17')
+            || str_contains($blob, '"17"')
+            || str_contains($blob, '21916250')
+            || str_contains($blob, 'error 291')
+            || str_contains($blob, '#291');
     }
 
     /**
@@ -2539,6 +2642,70 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => 'Connection test failed: '.$e->getMessage()];
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function flattenEbayErrors(array $data): string
+    {
+        $errors = $data['Errors'] ?? [];
+        $errors = is_array($errors) ? $errors : [$errors];
+        if ($errors !== [] && ! isset($errors[0]) && isset($errors['ShortMessage'])) {
+            $errors = [$errors];
+        }
+        $messages = [];
+        foreach ($errors as $err) {
+            $messages[] = $this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]);
+        }
+
+        return implode('; ', array_filter($messages));
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function extractReturnedInventoryQuantity(array $data): ?int
+    {
+        $status = $data['InventoryStatus'] ?? null;
+        if (! is_array($status)) {
+            return null;
+        }
+        if (isset($status['Quantity'])) {
+            return (int) $status['Quantity'];
+        }
+        if (isset($status[0]['Quantity'])) {
+            return (int) $status[0]['Quantity'];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<mixed>  $errors
+     */
+    private function ebayErrorLooksLikeNonVariationListing(array $errors, string $message): bool
+    {
+        $blob = strtolower($message);
+        foreach ($errors as $err) {
+            if (! is_array($err)) {
+                continue;
+            }
+            $blob .= ' '.strtolower((string) ($err['LongMessage'] ?? ''));
+            $blob .= ' '.strtolower((string) ($err['ShortMessage'] ?? ''));
+            $blob .= ' '.(string) ($err['ErrorCode'] ?? '');
+        }
+
+        return str_contains($blob, 'not a multi-variation')
+            || str_contains($blob, 'not a multi-sku')
+            || str_contains($blob, 'invalid multi-sku')
+            || str_contains($blob, 'supplied with variations')
+            || str_contains($blob, 'variations node')
+            || str_contains($blob, 'does not have variations')
+            || str_contains($blob, '21916587')
+            || str_contains($blob, '21916613')
+            || str_contains($blob, '21916317')
+            || str_contains($blob, '21916635');
     }
 
     /**
