@@ -176,15 +176,6 @@
                 </a>
             </li>
 
-            @if (Route::has('inactive.listings'))
-            <li class="side-nav-item">
-                <a href="{{ route('inactive.listings') }}" class="side-nav-link">
-                    <i class="ri-forbid-line"></i>
-                    <span>Inactive Listings</span>
-                </a>
-            </li>
-            @endif
-
             <li class="side-nav-item">
                 <a href="{{ route('listing.manager') }}" class="side-nav-link">
                     <i class="ri-store-2-line"></i>
@@ -201,6 +192,19 @@
                     @endphp
                     @if($mapIssuesNmapCount > 0)
                         <span class="badge rounded-pill ms-auto map-issues-nmap-badge" title="N Map total from each channel pricing page (Missing Mapping)">{{ number_format($mapIssuesNmapCount) }}</span>
+                    @endif
+                </a>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ url('/inactive-listings') }}" class="side-nav-link inactive-listings-nav">
+                    <i class="ri-pause-circle-line"></i>
+                    <span>Inactive Listings</span>
+                    @php
+                        $inactiveListingsCount = \App\Support\Marketplace\MappingChannelCounts::cachedInactiveTotalOrZero();
+                    @endphp
+                    @if($inactiveListingsCount > 0)
+                        <span class="badge rounded-pill ms-auto inactive-listings-badge" title="Inactive SKU + pending listings from Marketplace Manager">{{ number_format($inactiveListingsCount) }}</span>
                     @endif
                 </a>
             </li>
@@ -3093,6 +3097,12 @@
     /* Map Issues — N Map count (same total as /all-marketplace-master). */
     .side-nav a.map-issues-nav > .map-issues-nmap-badge {
         background-color: #a71d2a !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+
+    .side-nav a.inactive-listings-nav > .inactive-listings-badge {
+        background-color: #d97706 !important;
         color: #fff !important;
         font-weight: 700;
     }

@@ -123,6 +123,161 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
+     * Inactive + pending linked listings (same as listings Inactive SKU + Inactive SKU Mismatch).
+     *
+     * @return list<string>
+     */
+    public function inactiveListingSkus(string $mmChannel, bool $fetchLiveIfCold = true): array
+    {
+        $rows = $this->inactiveListingRows($mmChannel, $fetchLiveIfCold);
+
+        return array_values(array_map(static fn (array $row): string => (string) $row['sku'], $rows));
+    }
+
+    public function inactiveListingCount(string $mmChannel, bool $fetchLiveIfCold = true): int
+    {
+        return count($this->inactiveListingSkus($mmChannel, $fetchLiveIfCold));
+    }
+
+    /**
+     * @return list<array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float, status: string, state: string}>
+     */
+    public function inactiveListingRows(string $mmChannel, bool $fetchLiveIfCold = true): array
+    {
+        $classified = $this->classify($mmChannel);
+        $candidates = array_values(array_unique(array_merge(
+            $classified['matched'] ?? [],
+            $classified['mismatch'] ?? []
+        )));
+        if ($candidates === []) {
+            return [];
+        }
+
+        $index = $this->liveInactiveIndex($mmChannel, $fetchLiveIfCold);
+        if ($index['inactive'] === [] && $index['pending'] === []) {
+            return [];
+        }
+
+        $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($candidates);
+        $mp = $this->localStockMap($mmChannel, $candidates);
+        $mismatchSet = [];
+        foreach ($classified['mismatch'] ?? [] as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n !== '') {
+                $mismatchSet[$n] = true;
+            }
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($candidates as $sku) {
+            $sku = (string) $sku;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $isPending = isset($index['pending'][$norm]);
+            $isInactive = isset($index['inactive'][$norm]);
+            if (! $isPending && ! $isInactive) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $inv = (int) (MarketplaceListingStockResolver::qtyFromMap($shopify, $sku) ?? 0);
+            $channelInv = (int) (MarketplaceListingStockResolver::qtyFromMap($mp, $sku) ?? 0);
+            $status = 'Inactive';
+            if ($isPending) {
+                $status = 'Pending';
+            } elseif (isset($mismatchSet[$norm])) {
+                $status = 'Inactive mismatch';
+            }
+            $out[] = [
+                'sku' => $sku,
+                'channel_sku' => $sku,
+                'inv' => $inv,
+                'channel_inv' => $channelInv,
+                'diff' => abs($inv - $channelInv),
+                'status' => $status,
+                'state' => (string) ($index['state'][$norm] ?? 'inactive'),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{inactive: array<string, true>, pending: array<string, true>, state: array<string, string>}
+     */
+    protected function liveInactiveIndex(string $mmChannel, bool $fetchLiveIfCold): array
+    {
+        $empty = ['inactive' => [], 'pending' => [], 'state' => []];
+        $liveRows = app(MarketplaceMismatchInventoryPass::class)->localRowsForStateSplit($mmChannel, $fetchLiveIfCold);
+        if ($liveRows === []) {
+            return $empty;
+        }
+
+        $inactive = [];
+        $pending = [];
+        $stateByNorm = [];
+        foreach ($liveRows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm === '') {
+                continue;
+            }
+            $state = strtolower(trim((string) ($row['state'] ?? '')));
+            $inv = $row['inventory'] ?? null;
+            $stateByNorm[$norm] = $state !== '' ? $state : 'inactive';
+            if ($this->listingStateIsPending($state)) {
+                $pending[$norm] = true;
+                $inactive[$norm] = true;
+                continue;
+            }
+            if (! $this->listingStateIsActive($state, $inv)) {
+                $inactive[$norm] = true;
+            }
+        }
+
+        return ['inactive' => $inactive, 'pending' => $pending, 'state' => $stateByNorm];
+    }
+
+    protected function listingStateIsPending(string $state): bool
+    {
+        return in_array($state, [
+            'pending',
+            'draft',
+            'unpublished',
+            'review',
+            'in_review',
+            'awaiting',
+            'awaiting_approval',
+            'pending_review',
+            'under_review',
+            'pending_hub',
+        ], true);
+    }
+
+    /**
+     * Same Active vs Inactive split as Marketplace Manager listings tabs.
+     */
+    protected function listingStateIsActive(string $state, mixed $inv): bool
+    {
+        $isActive = in_array($state, ['active', '1', 'true', 'onselling', 'on_selling'], true)
+            || ($state === '' && $inv !== 0 && $inv !== '0' && $inv !== null);
+        if (in_array($state, ['inactive', '0', 'false', 'offline', 'ended', 'disabled', 'delisted', 'out_of_stock', 'deleted'], true)
+            || $inv === 0 || $inv === '0') {
+            $isActive = false;
+        }
+
+        return $isActive;
+    }
+
+    /**
      * @return list<string>
      */
     public function mismatchSkus(string $mmChannel): array
