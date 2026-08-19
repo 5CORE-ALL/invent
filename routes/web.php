@@ -3218,6 +3218,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/map-issues-data', [MapIssuesController::class, 'data'])->name('map.issues.data');
     Route::post('/map-issues-update-nr', [MapIssuesController::class, 'updateNrReq'])->name('map.issues.update.nr');
 
+    // Inactive Listings (master + per-channel SKU pages)
+    Route::redirect('/inactive_listings', '/inactive-listings');
+    Route::get('/inactive-listings', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'index'])->name('inactive.listings');
+    Route::get('/inactive-listings/channels-data', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'masterData'])->name('inactive.listings.channels');
+    Route::get('/inactive-listings/channel/{channel}', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'channel'])->name('inactive.listings.channel');
+    Route::get('/inactive-listings/channel/{channel}/data', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'channelData'])->name('inactive.listings.channel.data');
+
     // Stock Balance
     Route::get('/stock-balance-view', [StockBalanceController::class, 'index'])->name('stock.balance.view');
     Route::get('/stock-balance-tabulator', [StockBalanceController::class, 'tabulatorView'])->name('stock.balance.tabulator');

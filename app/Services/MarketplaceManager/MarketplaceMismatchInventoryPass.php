@@ -405,6 +405,27 @@ final class MarketplaceMismatchInventoryPass
     }
 
     /**
+     * Active/inactive split from each channel's local listings catalog.
+     * Does not require a warm live cache. Reverb/AliExpress full API warm only when $allowApiWarm.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function localRowsForStateSplit(string $channel, bool $allowApiWarm = false): array
+    {
+        $channel = strtolower(trim($channel));
+        $peeked = $this->peekLiveRows($channel);
+        if (is_array($peeked) && $peeked !== []) {
+            return $peeked;
+        }
+
+        if (in_array($channel, ['reverb', 'aliexpress'], true) && ! $allowApiWarm) {
+            return [];
+        }
+
+        return $this->liveRowsForStateSplit($channel, true);
+    }
+
+    /**
      * Same rows the listings page uses to split Active vs Inactive.
      * Peeks the warm cache, then loads from the channel's local listings source.
      *

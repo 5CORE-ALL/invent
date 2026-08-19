@@ -26,6 +26,10 @@ class MappingChannelCounts
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
 
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v1';
+
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v2';
+
     /**
      * Channels shown on /map-issues.
      * mi_key marks MapIssues channels that have SKU-level detail pages.
@@ -135,6 +139,8 @@ class MappingChannelCounts
             Cache::forget(self::TOTAL_CACHE_KEY);
             Cache::forget(self::MASTER_ROWS_CACHE_KEY);
             Cache::forget(self::API_STATUS_CACHE_KEY);
+            Cache::forget(self::INACTIVE_TOTAL_CACHE_KEY);
+            Cache::forget(self::INACTIVE_MASTER_ROWS_CACHE_KEY);
         } catch (\Throwable $e) {
             // ignore
         }
@@ -211,6 +217,97 @@ class MappingChannelCounts
         try {
             Cache::put(self::MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(10));
             self::storeTotalTitas((int) collect($rows)->sum('missing_mapping_titas'));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return $rows;
+    }
+
+    public static function cachedInactiveTotalOrZero(): int
+    {
+        try {
+            $cached = Cache::get(self::INACTIVE_TOTAL_CACHE_KEY);
+            if ($cached !== null) {
+                return (int) $cached;
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return 0;
+    }
+
+    public static function storeInactiveTotal(int $total): void
+    {
+        try {
+            Cache::put(self::INACTIVE_TOTAL_CACHE_KEY, $total, now()->addMinutes(30));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
+     * Master table rows: Inactive SKU + Inactive SKU Mismatch + pending listings.
+     *
+     * @return list<array{channel: string, channel_slug: string, image: ?string, inactive_listings: int, detail_url: string, listings_url: ?string, has_sku_detail: bool, api_status: string, api_connected: bool, api_updated_at: ?string, api_label: string}>
+     */
+    public static function inactiveMasterRows(bool $useCache = false): array
+    {
+        if ($useCache) {
+            try {
+                $cached = Cache::get(self::INACTIVE_MASTER_ROWS_CACHE_KEY);
+                if (is_array($cached) && $cached !== []) {
+                    return $cached;
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+
+        $inactiveCounts = self::collectListingsInactiveCounts();
+        $apiStatuses = self::collectApiStatuses();
+        $logos = self::logoMap();
+        $displayNames = self::displayNameMap();
+        $seen = [];
+        $rows = [];
+        $order = [
+            'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
+            'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
+            'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
+        ];
+
+        foreach ($order as $slug) {
+            if (! isset(self::$sources[$slug]) || isset($seen[$slug])) {
+                continue;
+            }
+            $seen[$slug] = true;
+            $label = $displayNames[$slug] ?? self::$sources[$slug]['label'];
+            $api = $apiStatuses[$slug] ?? [
+                'api_status' => 'red',
+                'api_connected' => false,
+                'api_updated_at' => null,
+                'api_label' => 'API not linked',
+            ];
+
+            $rows[] = [
+                'channel' => $label,
+                'channel_slug' => $slug,
+                'image' => $logos[$slug] ?? null,
+                'inactive_listings' => (int) ($inactiveCounts[$slug] ?? 0),
+                'detail_url' => route('inactive.listings.channel', ['channel' => $slug]),
+                'listings_url' => self::listingsInactiveUrlForSlug($slug),
+                'has_sku_detail' => MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
+                'api_status' => $api['api_status'],
+                'api_connected' => $api['api_connected'],
+                'api_updated_at' => $api['api_updated_at'],
+                'api_label' => $api['api_label'],
+            ];
+        }
+
+        try {
+            Cache::put(self::INACTIVE_MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(10));
+            self::storeInactiveTotal((int) collect($rows)->sum('inactive_listings'));
         } catch (\Throwable $e) {
             // ignore
         }
@@ -450,6 +547,50 @@ class MappingChannelCounts
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    public static function listingsInactiveUrlForSlug(string $slug): ?string
+    {
+        $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
+        if ($mm === null) {
+            return null;
+        }
+
+        try {
+            return url('/marketplace/'.$mm.'/products?link=matched_inactive');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Inactive SKU + Inactive SKU Mismatch + pending from Marketplace Manager listings.
+     *
+     * @return array<string, int>
+     */
+    public static function collectListingsInactiveCounts(): array
+    {
+        $counts = [];
+        $match = app(MarketplaceListingQtyMatchService::class);
+        $seenMm = [];
+
+        foreach (self::$sources as $slug => $meta) {
+            $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
+            if ($mm === null) {
+                continue;
+            }
+            try {
+                if (! array_key_exists($mm, $seenMm)) {
+                    $seenMm[$mm] = $match->inactiveListingCount($mm, false);
+                }
+                $counts[$slug] = (int) $seenMm[$mm];
+            } catch (\Throwable $e) {
+                Log::warning("MappingChannelCounts {$slug} inactive listings failed: ".$e->getMessage());
+                $counts[$slug] = (int) ($seenMm[$mm] ?? 0);
+            }
+        }
+
+        return $counts;
     }
 
     /**
