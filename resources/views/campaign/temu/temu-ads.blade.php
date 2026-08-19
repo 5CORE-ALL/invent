@@ -402,6 +402,18 @@
                                 data-metric="spend" data-label="Spend"
                                 style="background-color: #6f42c1; color: white; font-weight: bold;"
                                 title="Click for history">Spend: <span class="temu-ads-badge-val">$0</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            <span class="badge fs-6 p-2 temu-ads-chart-badge" id="roas-sum"
+                                data-metric="roas" data-label="ROAS"
+                                style="background-color: #7c3aed; color: white; font-weight: bold;"
+                                title="ROAS = total ad sales (Ord$) ÷ total Spend from badges. Click for history">ROAS: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            <span class="badge fs-6 p-2 temu-ads-chart-badge" id="acos-sum"
+                                data-metric="acos" data-label="Acos%"
+                                style="background-color: #e11d48; color: white; font-weight: bold;"
+                                title="Acos% = total Spend ÷ total ad sales (Ord$) from badges. Click for history">Acos%: <span class="temu-ads-badge-val">0%</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            <span class="badge fs-6 p-2 temu-ads-chart-badge" id="tacos-sum"
+                                data-metric="tacos" data-label="TAcos%"
+                                style="background-color: #b45309; color: white; font-weight: bold;"
+                                title="TAcos% = total Spend ÷ total all sales (Shopify L30 × price). Click for history">TAcos%: <span class="temu-ads-badge-val">0%</span><span class="temu-ads-history-dot" title="History"></span></span>
                             <span class="badge fs-6 p-2 temu-ads-chart-badge" id="ctr-avg"
                                 data-metric="ctr" data-label="CTR"
                                 style="background-color: #0891b2; color: white; font-weight: bold;"
@@ -1005,12 +1017,19 @@
 
             function badgeCounts(rows) {
                 const list = Array.isArray(rows) ? rows : [];
-                let impr = 0, clicks = 0, spend = 0, sold = 0, createN = 0, pauseN = 0, runN = 0;
+                let impr = 0, clicks = 0, spend = 0, sold = 0, sales = 0, allSales = 0, createN = 0, pauseN = 0, runN = 0;
+                const seenSku = {};
                 list.forEach(function (r) {
                     impr += parseFloat(r.impressions) || 0;
                     clicks += parseFloat(r.clicks) || 0;
                     spend += parseFloat(r.ad_spend) || 0;
                     sold += parseFloat(r.order_pay_cnt) || 0;
+                    sales += parseFloat(r.order_pay_amt) || 0;
+                    const sku = String(r.sku || '').trim().toUpperCase();
+                    if (!sku || !seenSku[sku]) {
+                        if (sku) seenSku[sku] = true;
+                        allSales += parseFloat(r.all_sale) || 0;
+                    }
                     if (canCreateAdRow(r)) createN++;
                     const action = rowPauseRunAction(r);
                     if (action === 'run') runN++;
@@ -1022,11 +1041,16 @@
                     clicks: clicks,
                     spend: spend,
                     sold: sold,
+                    sales: sales,
+                    all_sales: allSales,
                     create: createN,
                     pause: pauseN,
                     run: runN,
                     ctr: impr > 0 ? (clicks / impr) * 100 : 0,
                     cvr: clicks > 0 ? (sold / clicks) * 100 : 0,
+                    roas: spend > 0 ? (sales / spend) : 0,
+                    acos: sales > 0 ? (spend / sales) * 100 : (spend > 0 ? 100 : 0),
+                    tacos: allSales > 0 ? (spend / allSales) * 100 : (spend > 0 ? 100 : 0),
                 };
             }
 
@@ -1065,6 +1089,9 @@
                 setBadgeVal('impr-sum', Math.round(m.impressions).toLocaleString());
                 setBadgeVal('click-sum', Math.round(m.clicks).toLocaleString());
                 setBadgeVal('spend-sum', '$' + Math.round(Number(m.spend) || 0).toLocaleString('en-US'));
+                setBadgeVal('roas-sum', Number(m.roas || 0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+                setBadgeVal('acos-sum', Number(m.acos || 0).toFixed(1) + '%');
+                setBadgeVal('tacos-sum', Number(m.tacos || 0).toFixed(1) + '%');
                 setBadgeVal('ctr-avg', Number(m.ctr).toFixed(1) + '%');
                 setBadgeVal('cvr-avg', Number(m.cvr).toFixed(1) + '%');
                 paintCreateBadge();
@@ -1097,7 +1124,11 @@
                             run: m.run,
                             ctr: Math.round(m.ctr * 100) / 100,
                             cvr: Math.round(m.cvr * 100) / 100,
+                            roas: Math.round((m.roas || 0) * 100) / 100,
+                            acos: Math.round((m.acos || 0) * 100) / 100,
+                            tacos: Math.round((m.tacos || 0) * 100) / 100,
                             sold: m.sold,
+                            sales: m.sales,
                             period: currentPeriodKey(),
                         }),
                     }).catch(function () {});
@@ -1113,7 +1144,10 @@
                 if (metric === 'spend') {
                     return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 }
-                if (metric === 'ctr' || metric === 'cvr') {
+                if (metric === 'roas') {
+                    return Number(v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+                }
+                if (metric === 'acos' || metric === 'tacos' || metric === 'ctr' || metric === 'cvr') {
                     return Number(v).toFixed(1) + '%';
                 }
                 return Math.round(Number(v)).toLocaleString('en-US');

@@ -102,6 +102,8 @@ class TemuAdsController extends Controller
             $skuKey = ShopifySku::normalizeSkuForShopifyLookup((string) ($r->sku ?? ''));
             $shopify = $skuKey !== '' ? ($shopifyByNorm[$skuKey] ?? null) : null;
             $productMaster = $skuKey !== '' ? ($productMasterByNorm[$skuKey] ?? null) : null;
+            $soldQty = $shopify ? (float) ($shopify->quantity ?? $shopify->shopify_l30 ?? 0) : 0;
+            $unitPrice = $shopify ? (float) ($shopify->price ?? $shopify->b2c_price ?? 0) : 0;
 
             return [
                 'id' => $r->id,
@@ -119,6 +121,7 @@ class TemuAdsController extends Controller
                 'cart_cnt' => $r->cart_cnt,
                 'order_pay_cnt' => $r->order_pay_cnt,
                 'order_pay_amt' => $r->order_pay_amt,
+                'all_sale' => round($soldQty * $unitPrice, 2),
                 'ad_spend' => $r->ad_spend,
                 'spend_l1' => $spendL1,
                 'roas' => $r->roas,
@@ -785,7 +788,7 @@ class TemuAdsController extends Controller
             $period = 'ALL';
         }
 
-        $allowed = ['rows', 'impressions', 'clicks', 'spend', 'create', 'pause', 'run', 'ctr', 'cvr'];
+        $allowed = ['rows', 'impressions', 'clicks', 'spend', 'create', 'pause', 'run', 'ctr', 'cvr', 'roas', 'acos', 'tacos'];
         if (! in_array($metric, $allowed, true)) {
             return response()->json([
                 'success' => false,
@@ -838,7 +841,11 @@ class TemuAdsController extends Controller
             'run' => 'required|numeric',
             'ctr' => 'required|numeric',
             'cvr' => 'nullable|numeric',
+            'roas' => 'nullable|numeric',
+            'acos' => 'nullable|numeric',
+            'tacos' => 'nullable|numeric',
             'sold' => 'nullable|numeric',
+            'sales' => 'nullable|numeric',
             'period' => 'nullable|string|max:8',
         ]);
 
@@ -858,7 +865,11 @@ class TemuAdsController extends Controller
                 'run' => (float) $validated['run'],
                 'ctr' => (float) $validated['ctr'],
                 'cvr' => (float) ($validated['cvr'] ?? 0),
+                'roas' => (float) ($validated['roas'] ?? 0),
+                'acos' => (float) ($validated['acos'] ?? 0),
+                'tacos' => (float) ($validated['tacos'] ?? 0),
                 'sold' => (float) ($validated['sold'] ?? 0),
+                'sales' => (float) ($validated['sales'] ?? 0),
             ]);
         } catch (\Throwable $e) {
             Log::warning('TemuAdsController::saveBadgeSnapshot failed', ['error' => $e->getMessage()]);
@@ -881,12 +892,23 @@ class TemuAdsController extends Controller
         $clicks = 0.0;
         $spend = 0.0;
         $sold = 0.0;
+        $sales = 0.0;
+        $allSales = 0.0;
+        $seenSku = [];
 
         foreach ($rows as $row) {
             $impr += (float) ($row['impressions'] ?? 0);
             $clicks += (float) ($row['clicks'] ?? 0);
             $spend += (float) ($row['ad_spend'] ?? 0);
             $sold += (float) ($row['order_pay_cnt'] ?? 0);
+            $sales += (float) ($row['order_pay_amt'] ?? 0);
+            $skuKey = strtoupper(trim((string) ($row['sku'] ?? '')));
+            if ($skuKey === '' || ! isset($seenSku[$skuKey])) {
+                if ($skuKey !== '') {
+                    $seenSku[$skuKey] = true;
+                }
+                $allSales += (float) ($row['all_sale'] ?? 0);
+            }
             if (($row['ad_status'] ?? '') === 'No ad') {
                 $createN++;
             }
@@ -908,7 +930,11 @@ class TemuAdsController extends Controller
             'run' => (float) $runN,
             'ctr' => $impr > 0 ? round(($clicks / $impr) * 100, 2) : 0.0,
             'sold' => $sold,
+            'sales' => $sales,
             'cvr' => $clicks > 0 ? round(($sold / $clicks) * 100, 2) : 0.0,
+            'roas' => $spend > 0 ? round($sales / $spend, 2) : 0.0,
+            'acos' => $sales > 0 ? round(($spend / $sales) * 100, 2) : ($spend > 0 ? 100.0 : 0.0),
+            'tacos' => $allSales > 0 ? round(($spend / $allSales) * 100, 2) : ($spend > 0 ? 100.0 : 0.0),
         ]);
     }
 
