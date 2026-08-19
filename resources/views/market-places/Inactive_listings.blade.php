@@ -125,7 +125,7 @@
 
     $(document).ready(function() {
         table = new Tabulator("#inactive-listings-table", {
-            ajaxURL: "{{ route('inactive.listings.channels') }}",
+            ajaxURL: "{{ url('/inactive-listings/channels-data') }}",
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
                 updateStats(data, response && response.total_inactive);

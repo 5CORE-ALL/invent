@@ -295,7 +295,7 @@ class MappingChannelCounts
                 'channel_slug' => $slug,
                 'image' => $logos[$slug] ?? null,
                 'inactive_listings' => (int) ($inactiveCounts[$slug] ?? 0),
-                'detail_url' => route('inactive.listings.channel', ['channel' => $slug]),
+                'detail_url' => url('/inactive-listings/channel/'.$slug),
                 'listings_url' => self::listingsInactiveUrlForSlug($slug),
                 'has_sku_detail' => MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
                 'api_status' => $api['api_status'],
