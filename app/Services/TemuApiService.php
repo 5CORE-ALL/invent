@@ -730,27 +730,102 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     /**
      * Create a Temu search ad for one goods ID.
-     * Budget is sent in cents (Temu money unit). ROAS is the target multiple (e.g. 12 = 12x).
+     * Budget is cents. Target ROAS multiple (e.g. 5) is sent as Temu LONG (500) plus required roasType.
      *
      * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
      */
     public function createAd(string $goodsId, float $budgetDollars, float $roas): array
     {
         $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
-        $budgetCents = (int) round($budgetDollars * 100);
+        $budgetCents = (int) round(max(1, $budgetDollars) * 100);
+        $roasApi = (int) round(max(0.1, $roas) * 100);
 
-        $requestBody = [
-            'type' => 'temu.searchrec.ad.create',
-            'createAdReqs' => [
-                [
-                    'goodsId' => $goodsIdParam,
-                    'budget' => $budgetCents,
-                    'roas' => $roas,
-                ],
-            ],
+        $attempts = [
+            ['roas' => $roasApi, 'roasType' => 2],
+            ['roas' => $roasApi, 'roasType' => 1],
         ];
 
-        return $this->postAdsRouter($requestBody, (string) $goodsId);
+        $last = [
+            'ok' => false,
+            'result' => null,
+            'error_code' => null,
+            'error_msg' => 'Create not attempted',
+            'http_status' => null,
+            'request' => [],
+        ];
+
+        foreach ($attempts as $i => $opts) {
+            $requestBody = [
+                'type' => 'temu.searchrec.ad.create',
+                'createAdReqs' => [
+                    [
+                        'goodsId' => $goodsIdParam,
+                        'budget' => $budgetCents,
+                        'roas' => $opts['roas'],
+                        'roasType' => $opts['roasType'],
+                    ],
+                ],
+            ];
+
+            $last = $this->normalizeCreateAdResult(
+                $this->postAdsRouter($requestBody, (string) $goodsId),
+                (string) $goodsId
+            );
+
+            if ($last['ok']) {
+                return $last;
+            }
+
+            $code = (string) ($last['error_code'] ?? '');
+            $msg = strtolower((string) ($last['error_msg'] ?? ''));
+            $retryable = $code === '230012000' || str_contains($msg, 'bad query params');
+            if (! $retryable || $i === count($attempts) - 1) {
+                return $last;
+            }
+        }
+
+        return $last;
+    }
+
+    /**
+     * Temu may return HTTP success with per-goods failures in createGoodsFailObjList.
+     *
+     * @param  array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}  $response
+     * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
+     */
+    protected function normalizeCreateAdResult(array $response, string $goodsId): array
+    {
+        if (! ($response['ok'] ?? false)) {
+            return $response;
+        }
+
+        $result = is_array($response['result'] ?? null) ? $response['result'] : [];
+        $failList = $result['createGoodsFailObjList'] ?? null;
+        if (is_array($failList)) {
+            foreach ($failList as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $rowId = isset($row['goodsId']) ? (string) $row['goodsId'] : '';
+                $failed = array_key_exists('success', $row) ? empty($row['success']) : true;
+                if ($failed && ($rowId === '' || $rowId === $goodsId)) {
+                    $response['ok'] = false;
+                    $response['error_msg'] = (string) ($row['reason'] ?? 'Temu did not create this ad');
+                    $response['error_code'] = $response['error_code'] ?? 'create_failed';
+
+                    return $response;
+                }
+            }
+        }
+
+        $failMap = $result['createGoodsFailMap'] ?? null;
+        if (is_array($failMap) && isset($failMap[$goodsId]) && $failMap[$goodsId] !== '') {
+            $response['ok'] = false;
+            $response['error_msg'] = (string) $failMap[$goodsId];
+            $response['error_code'] = $response['error_code'] ?? 'create_failed';
+        }
+
+        return $response;
     }
 
     /**
