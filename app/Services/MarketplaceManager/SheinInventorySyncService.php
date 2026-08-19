@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\MarketplaceSyncSettings;
+use App\Models\SheinListingStatus;
 use App\Models\SheinMmMetric;
 use App\Models\SheinPricingPrice;
 use App\Models\ProductStockMapping;
@@ -90,8 +91,8 @@ class SheinInventorySyncService
         foreach ($metrics as $metric) {
             $sku = (string) $metric->sku;
             $productId = (string) $metric->product_id;
-            if (! MarketplaceLiveInventoryRules::isLinked($productId, $sku)) {
-                $skipped++;
+            if (! MarketplaceLiveInventoryRules::isLinked($productId, $sku)
+                || ! $this->sheinApi->isPlatformSkuCode($productId, $sku)) {
                 continue;
             }
 
@@ -124,11 +125,35 @@ class SheinInventorySyncService
             }
         }
 
-        // Listed/Pending Hub rows often have `--` qty and no shein_metric product_id.
-        // Still push Shopify qty by seller SKU so mismatch sync can fill hyphen stock.
+        // Hyphen / Hub-listed rows often have no shein_metric product_id. Resolve the
+        // real Shein skuCode (never send seller SKU — API returns 商品SKU不存在).
+        $unresolved = [];
         foreach ($skus as $sku) {
+            if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
+                $skipped++;
+                continue;
+            }
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             if ($norm !== '' && isset($seenNorms[$norm])) {
+                continue;
+            }
+            $unresolved[] = $sku;
+        }
+        $resolved = [];
+        if ($unresolved !== []) {
+            $resolved = $this->sheinApi->resolvePlatformSkuCodesForSellerSkus(
+                $unresolved,
+                SheinListingStatus::spuNamesForSellerSkus($unresolved),
+                true
+            );
+        }
+        foreach ($unresolved as $sku) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $hit = ($norm !== '' && isset($resolved[$norm])) ? $resolved[$norm] : ($resolved[$sku] ?? null);
+            $skuCode = trim((string) ($hit['sku_code'] ?? ''));
+            if (! $this->sheinApi->isPlatformSkuCode($skuCode, $sku)) {
+                $skipped++;
+                Log::info('SheinInventorySyncService: no platform skuCode, skip', ['sku' => $sku]);
                 continue;
             }
             $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
@@ -138,13 +163,17 @@ class SheinInventorySyncService
                 $qtyPercent,
                 $maxQty
             );
-            $skuCode = $this->sheinApi->resolveSheinSkuCode($sku);
-            $inventoryRows[] = [
-                'product_id' => $skuCode !== '' ? $skuCode : $sku,
+            $row = [
+                'product_id' => $skuCode,
                 'sku_code' => $sku,
                 'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
                 'shopify_qty' => $shopifyStock ?? 0,
             ];
+            $warehouse = trim((string) ($hit['warehouse_code'] ?? ''));
+            if ($warehouse !== '') {
+                $row['warehouse_code'] = $warehouse;
+            }
+            $inventoryRows[] = $row;
             if ($norm !== '') {
                 $seenNorms[$norm] = true;
             }
@@ -153,9 +182,11 @@ class SheinInventorySyncService
         if ($inventoryRows === []) {
             return [
                 'updated' => 0,
-                'failed' => count($skus),
+                'failed' => 0,
                 'skipped' => $skipped,
-                'message' => 'No linked Shein SKUs found for inventory sync.',
+                'message' => $skipped > 0
+                    ? 'No Shein skuCode for '.$skipped.' listing(s). They are Listed in Seller Hub but Shein has not assigned a platform SKU yet.'
+                    : 'No linked Shein SKUs found for inventory sync.',
             ];
         }
 
@@ -189,7 +220,8 @@ class SheinInventorySyncService
                 'updated' => (int) ($invResult['pushed'] ?? count($persisted)),
                 'failed' => (int) ($invResult['failed'] ?? 0),
                 'skipped' => $skipped,
-                'message' => 'Synced '.((int) ($invResult['pushed'] ?? 0)).' SKU(s) to Shein from live Shopify.',
+                'message' => 'Synced '.((int) ($invResult['pushed'] ?? 0)).' SKU(s) to Shein from live Shopify.'
+                    .($skipped > 0 ? ' Skipped '.$skipped.' without a Shein skuCode.' : ''),
             ];
         }
 
@@ -417,6 +449,7 @@ class SheinInventorySyncService
                 'sku' => $sku,
                 'sku_code' => trim((string) ($row['product_id'] ?? '')),
                 'quantity' => max(0, (int) ($row['inventory'] ?? 0)),
+                'warehouse_code' => trim((string) ($row['warehouse_code'] ?? '')),
             ];
         }
 
