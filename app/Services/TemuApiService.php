@@ -755,20 +755,37 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     /**
      * Pause a Temu search ad (temu.searchrec.ad.modify, status 2 = paused).
-     * One modify call only — do not prefetch ad.detail.query (that doubled runtime).
      *
      * @return array{ok: bool, already?: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
      */
     public function pauseAd(string $goodsId): array
     {
+        return $this->setAdStatus($goodsId, 2);
+    }
+
+    /**
+     * Resume / run a Temu search ad (status 1 = delivering).
+     *
+     * @return array{ok: bool, already?: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
+     */
+    public function resumeAd(string $goodsId): array
+    {
+        return $this->setAdStatus($goodsId, 1);
+    }
+
+    /**
+     * @return array{ok: bool, already?: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
+     */
+    public function setAdStatus(string $goodsId, int $status): array
+    {
         $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
-        $modified = ['ok' => false, 'error_msg' => 'Pause not attempted'];
+        $modified = ['ok' => false, 'error_msg' => 'Ad status update not attempted'];
 
         for ($attempt = 1; $attempt <= 3; $attempt++) {
             $modified = $this->postAdsRouter([
                 'type' => 'temu.searchrec.ad.modify',
                 'modifyAdDTO' => ['goodsId' => $goodsIdParam],
-                'status' => 2,
+                'status' => $status,
             ], (string) $goodsId, 20);
 
             if ($modified['ok'] ?? false) {
@@ -779,7 +796,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                     foreach ($list as $row) {
                         if (is_array($row) && array_key_exists('success', $row) && ! $row['success']) {
                             $modified['ok'] = false;
-                            $modified['error_msg'] = (string) ($row['reason'] ?? 'Temu did not pause this ad');
+                            $modified['error_msg'] = (string) ($row['reason'] ?? 'Temu did not update this ad');
                             break;
                         }
                     }

@@ -8,8 +8,14 @@
 
     var CLICKS_STORAGE_KEY = 'temu_ads_l7_clicks_red_below';
     var ROAS_STORAGE_KEY = 'temu_ads_target_roas_bidding';
+    var SLABS_STORAGE_KEY = 'temu_ads_pause_run_slabs';
+    var INV_ZERO_STORAGE_KEY = 'temu_ads_pause_run_inv_zero';
     var DEFAULT_BELOW = 70;
     var DEFAULT_TARGET_ROAS = 8;
+    var DEFAULT_PAUSE_RUN_SLABS = [
+        { min: 0, max: 69, action: 'run' },
+        { min: 70, max: null, action: 'pause' },
+    ];
     var RED = '#a00211';
     var BIDDING_COLOR = '#0d6efd';
     var listeners = [];
@@ -38,15 +44,64 @@
         return isFinite(n) && n >= 0.1 ? Math.round(n * 10) / 10 : fallback;
     }
 
+    function normalizePauseRunSlabs(raw) {
+        var list = raw;
+        if (typeof raw === 'string') {
+            try { list = JSON.parse(raw); } catch (e) { list = null; }
+        }
+        if (!Array.isArray(list) || !list.length) {
+            list = DEFAULT_PAUSE_RUN_SLABS;
+        }
+        var out = [];
+        list.forEach(function (item) {
+            if (!item || typeof item !== 'object') return;
+            var min = parseInt(item.min, 10);
+            if (!isFinite(min) || min < 0) min = 0;
+            var max = item.max === null || item.max === '' || item.max === undefined
+                ? null
+                : parseInt(item.max, 10);
+            if (max !== null && (!isFinite(max) || max < min)) max = min;
+            var action = String(item.action || '').toLowerCase() === 'run' ? 'run' : 'pause';
+            out.push({ min: min, max: max, action: action });
+        });
+        if (!out.length) {
+            DEFAULT_PAUSE_RUN_SLABS.forEach(function (s) { out.push({ min: s.min, max: s.max, action: s.action }); });
+        }
+        out.sort(function (a, b) { return a.min - b.min; });
+        return out;
+    }
+
+    function loadLocalSlabs() {
+        try {
+            return normalizePauseRunSlabs(global.localStorage && localStorage.getItem(SLABS_STORAGE_KEY));
+        } catch (e) {
+            return normalizePauseRunSlabs(null);
+        }
+    }
+
+    function loadInvZeroPause() {
+        try {
+            var raw = global.localStorage && localStorage.getItem(INV_ZERO_STORAGE_KEY);
+            if (raw === null || raw === undefined || raw === '') return true;
+            return raw === '1' || raw === 'true';
+        } catch (e) {
+            return true;
+        }
+    }
+
     var rules = {
         l7ClicksRedBelow: toInt(global.localStorage && localStorage.getItem(CLICKS_STORAGE_KEY), DEFAULT_BELOW),
         targetRoasBidding: toRoas(global.localStorage && localStorage.getItem(ROAS_STORAGE_KEY), DEFAULT_TARGET_ROAS),
+        pauseRunSlabs: loadLocalSlabs(),
+        pauseRunInvZero: loadInvZeroPause(),
     };
 
     function persistLocal() {
         try {
             localStorage.setItem(CLICKS_STORAGE_KEY, String(rules.l7ClicksRedBelow));
             localStorage.setItem(ROAS_STORAGE_KEY, String(rules.targetRoasBidding));
+            localStorage.setItem(SLABS_STORAGE_KEY, JSON.stringify(rules.pauseRunSlabs));
+            localStorage.setItem(INV_ZERO_STORAGE_KEY, rules.pauseRunInvZero ? '1' : '0');
         } catch (e) { /* ignore */ }
     }
 
@@ -88,6 +143,59 @@
         notify();
         if (doSaveRemote === false) return;
         saveRemote();
+    }
+
+    function setPauseRunSlabs(slabs, doSaveRemote) {
+        rules.pauseRunSlabs = normalizePauseRunSlabs(slabs);
+        persistLocal();
+        notify();
+        if (doSaveRemote === false) return;
+        savePauseRunSlabsRemote();
+    }
+
+    function savePauseRunSlabsRemote() {
+        var url = rules.saveUrl;
+        if (!url) return;
+        var token = document.querySelector('meta[name="csrf-token"]');
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': token ? token.getAttribute('content') : '',
+            },
+            body: JSON.stringify({
+                pause_run_slabs: rules.pauseRunSlabs,
+                pause_run_inv_zero: !!rules.pauseRunInvZero,
+            }),
+        }).catch(function () { /* keep local value */ });
+    }
+
+    function setPauseRunInvZero(on, doSaveRemote) {
+        rules.pauseRunInvZero = !!on;
+        persistLocal();
+        notify();
+        if (doSaveRemote === false) return;
+        savePauseRunSlabsRemote();
+    }
+
+    function rowInv(row) {
+        if (!row) return 0;
+        var v = row.inv != null ? row.inv : row.inventory;
+        if (v === null || v === undefined || v === '') return 0;
+        var n = parseInt(String(v).replace(/,/g, '').trim(), 10);
+        return isFinite(n) ? n : 0;
+    }
+
+    function actionFromSlabs(clicks) {
+        var n = parseClicks(clicks);
+        if (!isFinite(n)) n = 0;
+        var slabs = normalizePauseRunSlabs(rules.pauseRunSlabs);
+        for (var i = 0; i < slabs.length; i++) {
+            var s = slabs[i];
+            if (n >= s.min && (s.max == null || n <= s.max)) return s.action;
+        }
+        return n < rules.l7ClicksRedBelow ? 'run' : 'pause';
     }
 
     function isLowL7Clicks(clicks) {
@@ -212,6 +320,94 @@
         onChange(paint);
     }
 
+    function computedPauseRunAction(row) {
+        if (rules.pauseRunInvZero && rowInv(row) <= 0) {
+            return 'pause';
+        }
+        return actionFromSlabs(row && row.clicks_l7 != null ? row.clicks_l7 : 0);
+    }
+
+    function pauseRunAction(row) {
+        if (rules.pauseRunInvZero && rowInv(row) <= 0) {
+            return 'pause';
+        }
+        if (row && (row.pause_run === 'pause' || row.pause_run === 'run')) {
+            return row.pause_run;
+        }
+        return actionFromSlabs(row && row.clicks_l7 != null ? row.clicks_l7 : 0);
+    }
+
+    function pauseRunButtonHtml(row) {
+        var action = pauseRunAction(row || {});
+        var goodsId = String((row && row.goods_id) || '');
+        return '<button type="button" class="temu-pause-run-btn is-' + action + '" data-goods-id="' + goodsId +
+            '" data-action="' + action + '" title="' + (action === 'pause' ? 'Pause' : 'Run') + ' — click to ' +
+            (action === 'pause' ? 'run' : 'pause') + ' this ad on Temu">' +
+            '<span class="temu-pause-run-knob"></span></button>';
+    }
+
+    function pushPauseRun(btn, cell, toggleUrl) {
+        if (!btn || btn.disabled) return;
+        var goodsId = btn.getAttribute('data-goods-id') || '';
+        var current = btn.getAttribute('data-action') || 'pause';
+        var next = current === 'pause' ? 'run' : 'pause';
+        if (!goodsId) return;
+        btn.disabled = true;
+        var token = document.querySelector('meta[name="csrf-token"]');
+        fetch(toggleUrl || '/temu/ads/toggle', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': token ? token.getAttribute('content') : '',
+            },
+            body: JSON.stringify({ goods_id: goodsId, action: next }),
+        })
+            .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+            .then(function (res) {
+                var ok = !!(res.ok && res.data && res.data.success);
+                var reason = (res.data && res.data.message) ? String(res.data.message) : 'Temu toggle failed';
+                if (cell && cell.getRow) {
+                    var patch = {
+                        pause_run_ok: ok,
+                        pause_run_error: ok ? '' : reason,
+                    };
+                    if (ok) {
+                        patch.pause_run = next;
+                        if (res.data.ad_status) patch.ad_status = res.data.ad_status;
+                    }
+                    cell.getRow().update(patch);
+                }
+            })
+            .catch(function () {
+                if (cell && cell.getRow) {
+                    cell.getRow().update({
+                        pause_run_ok: false,
+                        pause_run_error: 'Temu toggle failed',
+                    });
+                }
+            })
+            .then(function () {
+                btn.disabled = false;
+            });
+    }
+
+    function escapeAttr(s) {
+        return String(s || '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    function pauseRunResultHtml(row) {
+        if (!row || row.pause_run_ok == null) return '';
+        if (row.pause_run_ok) {
+            return '<span class="temu-pause-run-ok" title="Success"><i class="fas fa-check"></i></span>';
+        }
+        return '<span class="temu-pause-run-fail" title="' + escapeAttr(row.pause_run_error || 'Failed') + '"><i class="fas fa-times"></i></span>';
+    }
+
     function bindAutoPauseButton(btn, statusEl, onDone) {
         if (!btn) return;
         btn.addEventListener('click', function () {
@@ -269,6 +465,12 @@
                 if (data.target_roas_bidding != null) {
                     setTargetRoasBidding(data.target_roas_bidding, false);
                 }
+                if (data.pause_run_slabs != null) {
+                    setPauseRunSlabs(data.pause_run_slabs, false);
+                }
+                if (data.pause_run_inv_zero != null) {
+                    setPauseRunInvZero(!!data.pause_run_inv_zero, false);
+                }
             })
             .catch(function () { /* keep local */ });
     }
@@ -296,13 +498,26 @@
         bindTargetRoasInput: bindTargetRoasInput,
         bindRuleSummary: bindRuleSummary,
         bindAutoPauseButton: bindAutoPauseButton,
+        pauseRunAction: pauseRunAction,
+        computedPauseRunAction: computedPauseRunAction,
+        actionFromSlabs: actionFromSlabs,
+        getPauseRunSlabs: function () { return normalizePauseRunSlabs(rules.pauseRunSlabs); },
+        setPauseRunSlabs: setPauseRunSlabs,
+        getPauseRunInvZero: function () { return !!rules.pauseRunInvZero; },
+        setPauseRunInvZero: setPauseRunInvZero,
+        normalizePauseRunSlabs: normalizePauseRunSlabs,
+        DEFAULT_PAUSE_RUN_SLABS: DEFAULT_PAUSE_RUN_SLABS,
+        pauseRunButtonHtml: pauseRunButtonHtml,
+        pauseRunResultHtml: pauseRunResultHtml,
+        pushPauseRun: pushPauseRun,
         ruleSummaryText: ruleSummaryText,
         onChange: onChange,
         loadFromServer: loadFromServer,
-        setUrls: function (getUrl, saveUrl, pauseUrl) {
+        setUrls: function (getUrl, saveUrl, pauseUrl, toggleUrl) {
             rules.getUrl = getUrl;
             rules.saveUrl = saveUrl;
             if (pauseUrl) rules.pauseUrl = pauseUrl;
+            if (toggleUrl) rules.toggleUrl = toggleUrl;
             loadFromServer(getUrl);
         },
     };

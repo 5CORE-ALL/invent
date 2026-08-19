@@ -6,6 +6,43 @@
         <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 
     <style>
+        .temu-pause-run-btn {
+            position: relative;
+            display: inline-block;
+            border: 0;
+            border-radius: 999px;
+            width: 44px;
+            height: 24px;
+            padding: 0;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        .temu-pause-run-btn.is-pause { background: #dc3545; }
+        .temu-pause-run-btn.is-run { background: #198754; }
+        .temu-pause-run-knob {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+        }
+        .temu-pause-run-btn.is-run .temu-pause-run-knob { left: auto; right: 3px; }
+        .temu-pause-run-btn:disabled { opacity: 0.65; cursor: wait; }
+        .temu-pause-run-ok {
+            color: #198754;
+            font-weight: 800;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+        .temu-pause-run-fail {
+            color: #dc3545;
+            font-weight: 800;
+            font-size: 1.2rem;
+            line-height: 1;
+            cursor: help;
+        }
         /* Target ROI% / Target GPFT% inputs — narrow enough for ~2 digits and
            strip the native number-input spinner arrows (the up/down chevrons
            that Chrome/Edge/Firefox draw on type="number"). Targeted by ID so
@@ -674,7 +711,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=5"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=11"></script>
 @endsection
 
 @section('content')
@@ -4175,7 +4212,8 @@
             TemuAdsColorRules.setUrls(
                 @json(route('temu.ads.color-rules')),
                 @json(route('temu.ads.color-rules.save')),
-                @json(route('temu.ads.auto-pause'))
+                @json(route('temu.ads.auto-pause')),
+                @json(route('temu.ads.toggle'))
             );
             TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
             TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
@@ -5217,11 +5255,28 @@
                     width: 100
                 },
                 {
-                    title: "Ad Clicks",
+                    title: "Clicks 30",
                     field: "ad_clicks",
                     hozAlign: "right",
                     sorter: "number",
-                    headerTooltip: "Clicks from /temu/ads. Red when Last 7 days clicks are below the shared coloring rule (default 70).",
+                    headerTooltip: "Last 30 days ad clicks from /temu/ads. Red when below 300.",
+                    formatter: function(cell) {
+                        const value = parseInt(String(cell.getValue() ?? '0').replace(/,/g, ''), 10) || 0;
+                        const color = value < 300 ? 'color:#a00211;font-weight:700;' : '';
+                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                            <span style="${color}">${value.toLocaleString()}</span>
+                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Clicks 30"></i>
+                        </div>`;
+                    },
+                    visible: true,
+                    width: 110
+                },
+                {
+                    title: "Clicks 7",
+                    field: "clicks_l7",
+                    hozAlign: "right",
+                    sorter: "number",
+                    headerTooltip: "Last 7 days ad clicks from /temu/ads. Red when below the shared L7 Clicks rule (default 70).",
                     formatter: function(cell) {
                         const value = parseInt(String(cell.getValue() ?? '0').replace(/,/g, ''), 10) || 0;
                         if (window.TemuAdsColorRules) {
@@ -5229,11 +5284,42 @@
                         }
                         return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                             <span>${value.toLocaleString()}</span>
-                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Ad Clicks"></i>
+                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Clicks 7"></i>
                         </div>`;
                     },
                     visible: true,
+                    width: 100
+                },
+                {
+                    title: "Pause/Run",
+                    field: "pause_run",
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Green = Run when Clicks 7 < 70. Red = Pause when Clicks 7 ≥ 70. Click to push to Temu.",
+                    formatter: function(cell) {
+                        if (!window.TemuAdsColorRules) return '';
+                        return TemuAdsColorRules.pauseRunButtonHtml(cell.getRow().getData() || {});
+                    },
+                    cellClick: function(e, cell) {
+                        const btn = e.target.closest('.temu-pause-run-btn');
+                        if (!btn || !window.TemuAdsColorRules) return;
+                        TemuAdsColorRules.pushPauseRun(btn, cell, @json(route('temu.ads.toggle')));
+                    },
+                    visible: true,
                     width: 110
+                },
+                {
+                    title: "Success",
+                    field: "pause_run_ok",
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Result of the last Pause/Run push. Hover the red cross for the reason.",
+                    formatter: function(cell) {
+                        if (!window.TemuAdsColorRules) return '';
+                        return TemuAdsColorRules.pauseRunResultHtml(cell.getRow().getData() || {});
+                    },
+                    visible: true,
+                    width: 80
                 },
                 {
                     title: "ACOS",
@@ -5349,7 +5435,8 @@
                         let cls = 'bg-secondary';
                         if (value === 'Active') cls = 'bg-success';
                         else if (value === 'Inactive') cls = 'bg-warning text-dark';
-                        else if (value === 'Deleted' || value === 'No ad') cls = 'bg-dark';
+                        else if (value === 'Deleted') cls = 'bg-dark';
+                        else if (value === 'No ad') cls = 'bg-danger';
                         else if (value === 'Not Created') cls = 'bg-warning text-dark';
                         else if (value === 'Not sync') cls = 'bg-secondary';
                         return '<span class="badge ' + cls + '">' + value + '</span>';
@@ -6827,7 +6914,7 @@
 
             // Advertisement
             if (
-                /^(spend|ad_sold_l60|ad_sales_l60|acos_ad|ad_clicks|impressions|add_to_cart_number|out_roas_l30|in_roas_l30|campaign_status|target|ads_percent|has_campaign)$/i.test(f) ||
+                /^(spend|ad_sold_l60|ad_sales_l60|acos_ad|ad_clicks|clicks_l7|pause_run|pause_run_ok|impressions|add_to_cart_number|out_roas_l30|in_roas_l30|campaign_status|target|ads_percent|has_campaign)$/i.test(f) ||
                 /\b(spend|ad\s*sold|ad\s*sales|acos|ad\s*clicks|impressions|add\s*to\s*cart|roas|target|ads\s*%|campaign|has\s*campaign)\b/i.test(tl)
             ) {
                 return 'advertisement';

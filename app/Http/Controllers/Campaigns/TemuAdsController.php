@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChannelTabulatorColumnSetting;
+use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
 use App\Services\TemuAdsApiReportService;
 use App\Services\TemuAdsAutoPauseService;
@@ -45,22 +46,46 @@ class TemuAdsController extends Controller
             ->get(['goods_id', 'clicks'])
             ->keyBy(fn (TemuAdsApiReport $r) => (string) $r->goods_id);
 
-        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods) {
+        $l30ClicksByGoods = TemuAdsApiReport::query()
+            ->where('period', 'L30')
+            ->whereNotNull('goods_id')
+            ->get(['goods_id', 'clicks'])
+            ->keyBy(fn (TemuAdsApiReport $r) => (string) $r->goods_id);
+
+        $skus = $records->pluck('sku')
+            ->filter(fn ($s) => $s !== null && trim((string) $s) !== '')
+            ->map(fn ($s) => (string) $s)
+            ->unique()
+            ->values()
+            ->all();
+        $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
+
+        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $shopifyByNorm) {
             $clicks = (int) ($r->clicks ?? 0);
             $orders = (int) ($r->order_pay_cnt ?? 0);
-            $l7Row = $l7ClicksByGoods->get((string) $r->goods_id);
+            $gid = (string) $r->goods_id;
+            $l7Row = $l7ClicksByGoods->get($gid);
+            $l30Row = $l30ClicksByGoods->get($gid);
             $clicksL7 = $r->period === 'L7'
                 ? $clicks
                 : (int) (optional($l7Row)->clicks ?? 0);
+            $clicksL30 = $r->period === 'L30'
+                ? $clicks
+                : (int) (optional($l30Row)->clicks ?? 0);
+
+            $skuKey = ShopifySku::normalizeSkuForShopifyLookup((string) ($r->sku ?? ''));
+            $shopify = $skuKey !== '' ? ($shopifyByNorm[$skuKey] ?? null) : null;
 
             return [
                 'id' => $r->id,
                 'goods_id' => $r->goods_id,
                 'sku' => $r->sku,
+                'inv' => $shopify ? (int) ($shopify->inv ?? 0) : 0,
                 'period' => $r->period,
                 'impressions' => $r->impressions,
                 'clicks' => $r->clicks,
                 'clicks_l7' => $clicksL7,
+                'clicks_l30' => $clicksL30,
                 'ctr' => $r->ctr,
                 'cvr' => $clicks > 0 ? round($orders / $clicks * 100, 2) : 0,
                 'cart_cnt' => $r->cart_cnt,
@@ -77,6 +102,12 @@ class TemuAdsController extends Controller
                 'raw_response' => $r->raw_response,
             ];
         })->values();
+
+        try {
+            $this->snapshotBadgeMetricsFromRows($rows, $period ?: 'ALL');
+        } catch (\Throwable $e) {
+            Log::warning('TemuAdsController badge snapshot failed', ['error' => $e->getMessage()]);
+        }
 
         return response()->json([
             'data' => $rows,
@@ -176,6 +207,71 @@ class TemuAdsController extends Controller
     }
 
     /**
+     * Create Temu search ads for many goods IDs (same budget / ROAS as Create Ad).
+     */
+    public function createAdsBulk(Request $request, TemuApiService $temuApi)
+    {
+        $request->validate([
+            'goods_ids' => 'required|array|min:1|max:20',
+            'goods_ids.*' => 'string|max:64',
+            'budget' => 'required|numeric|min:1|max:10000',
+            'roas' => 'required|numeric|min:0.1|max:1000',
+        ]);
+
+        @set_time_limit(180);
+
+        $budget = (float) $request->input('budget');
+        $roas = (float) $request->input('roas');
+        $ids = [];
+        foreach ($request->input('goods_ids', []) as $id) {
+            $gid = trim((string) $id);
+            if ($gid !== '' && ! in_array($gid, $ids, true)) {
+                $ids[] = $gid;
+            }
+        }
+
+        $created = [];
+        $failed = [];
+        foreach ($ids as $i => $goodsId) {
+            if ($i > 0) {
+                usleep(250000);
+            }
+            $result = $temuApi->createAd($goodsId, $budget, $roas);
+            if ($result['ok'] ?? false) {
+                TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => 'Active']);
+                $created[] = $goodsId;
+            } else {
+                $failed[] = [
+                    'goods_id' => $goodsId,
+                    'message' => (string) ($result['error_msg'] ?? 'unknown error'),
+                ];
+            }
+        }
+
+        Log::info('TemuAdsController::createAdsBulk', [
+            'budget' => $budget,
+            'roas' => $roas,
+            'requested' => count($ids),
+            'created' => count($created),
+            'failed' => count($failed),
+        ]);
+
+        $ok = count($created);
+        $fail = count($failed);
+        $success = $ok > 0 || $fail === 0;
+
+        return response()->json([
+            'success' => $success,
+            'message' => "Created {$ok}/".count($ids).' ads'
+                .($fail > 0 ? ", failed {$fail}" : ''),
+            'created' => $created,
+            'failed' => $failed,
+            'budget' => $budget,
+            'roas' => $roas,
+        ], $success ? 200 : 422);
+    }
+
+    /**
      * Suggested ROAS from Temu (temu.searchrec.ad.roas.pred).
      */
     public function predictRoas(Request $request, TemuApiService $temuApi)
@@ -233,6 +329,8 @@ class TemuAdsController extends Controller
         return response()->json([
             'l7_clicks_red_below' => $pause->l7ClicksRedBelow(),
             'target_roas_bidding' => $pause->targetRoasBidding(),
+            'pause_run_slabs' => $this->pauseRunSlabs(),
+            'pause_run_inv_zero' => $this->pauseRunInvZero(),
             'matching_active_ads' => count($pause->matchingAds()),
         ]);
     }
@@ -242,6 +340,11 @@ class TemuAdsController extends Controller
         $request->validate([
             'l7_clicks_red_below' => 'nullable|integer|min:0|max:100000',
             'target_roas_bidding' => 'nullable|numeric|min:0.1|max:1000',
+            'pause_run_slabs' => 'nullable|array',
+            'pause_run_slabs.*.min' => 'required_with:pause_run_slabs|integer|min:0|max:1000000',
+            'pause_run_slabs.*.max' => 'nullable|integer|min:0|max:1000000',
+            'pause_run_slabs.*.action' => 'required_with:pause_run_slabs|in:pause,run',
+            'pause_run_inv_zero' => 'nullable|boolean',
         ]);
 
         $below = $request->has('l7_clicks_red_below')
@@ -260,12 +363,94 @@ class TemuAdsController extends Controller
             ['column_order' => [(string) $targetRoas]]
         );
 
+        $slabs = $this->pauseRunSlabs();
+        if ($request->has('pause_run_slabs')) {
+            $slabs = $this->normalizePauseRunSlabs($request->input('pause_run_slabs'));
+            ChannelTabulatorColumnSetting::query()->updateOrCreate(
+                ['channel_name' => 'temu_ads_pause_run_slabs'],
+                ['column_order' => [json_encode($slabs)]]
+            );
+        }
+
+        $invZero = $this->pauseRunInvZero();
+        if ($request->has('pause_run_inv_zero')) {
+            $invZero = $request->boolean('pause_run_inv_zero');
+            ChannelTabulatorColumnSetting::query()->updateOrCreate(
+                ['channel_name' => 'temu_ads_pause_run_inv_zero'],
+                ['column_order' => [$invZero ? '1' : '0']]
+            );
+        }
+
         return response()->json([
             'success' => true,
             'l7_clicks_red_below' => $below,
             'target_roas_bidding' => $targetRoas,
+            'pause_run_slabs' => $slabs,
+            'pause_run_inv_zero' => $invZero,
             'matching_active_ads' => count($pause->matchingAds()),
         ]);
+    }
+
+    /**
+     * @return array<int, array{min: int, max: int|null, action: string}>
+     */
+    private function defaultPauseRunSlabs(): array
+    {
+        return [
+            ['min' => 0, 'max' => 69, 'action' => 'run'],
+            ['min' => 70, 'max' => null, 'action' => 'pause'],
+        ];
+    }
+
+    /**
+     * @return array<int, array{min: int, max: int|null, action: string}>
+     */
+    private function pauseRunSlabs(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'temu_ads_pause_run_slabs')
+            ->first();
+        $raw = $row && is_array($row->column_order) ? $row->column_order : [];
+
+        return $this->normalizePauseRunSlabs($raw) ?: $this->defaultPauseRunSlabs();
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return array<int, array{min: int, max: int|null, action: string}>
+     */
+    private function normalizePauseRunSlabs($raw): array
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+        if (count($raw) === 1 && is_string($raw[0] ?? null)) {
+            $decoded = json_decode((string) $raw[0], true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+
+        $out = [];
+        foreach ($raw as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $min = max(0, (int) ($item['min'] ?? 0));
+            $max = array_key_exists('max', $item) && $item['max'] !== null && $item['max'] !== ''
+                ? (int) $item['max']
+                : null;
+            if ($max !== null && $max < $min) {
+                $max = $min;
+            }
+            $action = (($item['action'] ?? '') === 'run') ? 'run' : 'pause';
+            $out[] = ['min' => $min, 'max' => $max, 'action' => $action];
+        }
+        usort($out, fn ($a, $b) => $a['min'] <=> $b['min']);
+
+        return $out;
     }
 
     /**
@@ -302,5 +487,254 @@ class TemuAdsController extends Controller
             'message' => $message,
             'stats' => $stats,
         ], $success ? 200 : 422);
+    }
+
+    /**
+     * Pause or run one Temu ad from the Pause/Run toggle.
+     */
+    public function toggleAd(Request $request, TemuApiService $temuApi)
+    {
+        $request->validate([
+            'goods_id' => 'required|string|max:64',
+            'action' => 'required|in:pause,run',
+        ]);
+
+        $goodsId = trim((string) $request->input('goods_id'));
+        $action = (string) $request->input('action');
+        $result = $action === 'run'
+            ? $temuApi->resumeAd($goodsId)
+            : $temuApi->pauseAd($goodsId);
+
+        if ($result['ok'] ?? false) {
+            TemuAdsApiReport::where('goods_id', $goodsId)->update([
+                'ad_status' => $action === 'run' ? 'Active' : 'Inactive',
+            ]);
+        }
+
+        Log::info('TemuAdsController::toggleAd', [
+            'goods_id' => $goodsId,
+            'action' => $action,
+            'ok' => $result['ok'] ?? false,
+            'error' => $result['error_msg'] ?? null,
+        ]);
+
+        $verb = $action === 'run' ? 'Run' : 'Pause';
+
+        return response()->json([
+            'success' => (bool) ($result['ok'] ?? false),
+            'action' => $action,
+            'ad_status' => $action === 'run' ? 'Active' : 'Inactive',
+            'message' => ($result['ok'] ?? false)
+                ? "{$verb} sent to Temu for goods {$goodsId}"
+                : ("{$verb} failed: " . ($result['error_msg'] ?? 'unknown error')),
+        ], ($result['ok'] ?? false) ? 200 : 422);
+    }
+
+    /**
+     * Daily badge history for the Temu Ads summary strip (Chart.js dot graph).
+     */
+    public function badgeHistory(Request $request)
+    {
+        $metric = strtolower((string) $request->query('metric', ''));
+        $days = max(1, min(180, (int) $request->query('days', 30)));
+        $period = strtoupper((string) $request->query('period', 'L30'));
+        if ($period === '') {
+            $period = 'ALL';
+        }
+
+        $allowed = ['rows', 'impressions', 'clicks', 'spend', 'create', 'pause', 'run', 'ctr'];
+        if (! in_array($metric, $allowed, true)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Unknown metric',
+                'data' => [],
+            ], 422);
+        }
+
+        $hist = $this->badgeHistoryStore($period);
+        ksort($hist);
+        $from = now()->subDays($days - 1)->toDateString();
+        $data = [];
+        foreach ($hist as $date => $metrics) {
+            if (! is_string($date) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                continue;
+            }
+            if ($date < $from) {
+                continue;
+            }
+            if (! is_array($metrics)) {
+                continue;
+            }
+            $data[] = [
+                'date' => date('M d', strtotime($date)),
+                'value' => (float) ($metrics[$metric] ?? 0),
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'metric' => $metric,
+            'days' => $days,
+            'period' => $period,
+            'data' => $data,
+        ]);
+    }
+
+    /**
+     * Persist today's badge totals (same numbers the summary strip shows).
+     */
+    public function saveBadgeSnapshot(Request $request)
+    {
+        $validated = $request->validate([
+            'rows' => 'required|numeric',
+            'impressions' => 'required|numeric',
+            'clicks' => 'required|numeric',
+            'spend' => 'required|numeric',
+            'create' => 'required|numeric',
+            'pause' => 'required|numeric',
+            'run' => 'required|numeric',
+            'ctr' => 'required|numeric',
+            'period' => 'nullable|string|max:8',
+        ]);
+
+        $period = strtoupper((string) ($validated['period'] ?? 'L30'));
+        if ($period === '') {
+            $period = 'ALL';
+        }
+
+        try {
+            $this->storeBadgeSnapshot($period, [
+                'rows' => (float) $validated['rows'],
+                'impressions' => (float) $validated['impressions'],
+                'clicks' => (float) $validated['clicks'],
+                'spend' => (float) $validated['spend'],
+                'create' => (float) $validated['create'],
+                'pause' => (float) $validated['pause'],
+                'run' => (float) $validated['run'],
+                'ctr' => (float) $validated['ctr'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('TemuAdsController::saveBadgeSnapshot failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Snapshot failed'], 500);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows
+     */
+    private function snapshotBadgeMetricsFromRows($rows, string $period): void
+    {
+        $createN = 0;
+        $pauseN = 0;
+        $runN = 0;
+        $ctrSum = 0.0;
+        $ctrN = 0;
+        $impr = 0.0;
+        $clicks = 0.0;
+        $spend = 0.0;
+
+        foreach ($rows as $row) {
+            $impr += (float) ($row['impressions'] ?? 0);
+            $clicks += (float) ($row['clicks'] ?? 0);
+            $spend += (float) ($row['ad_spend'] ?? 0);
+            if (($row['ad_status'] ?? '') === 'No ad') {
+                $createN++;
+            }
+            $action = $this->actionFromPauseRunSlabs((int) ($row['clicks_l7'] ?? 0), (int) ($row['inv'] ?? 0));
+            if ($action === 'run') {
+                $runN++;
+            } else {
+                $pauseN++;
+            }
+            if ($row['ctr'] !== null && $row['ctr'] !== '' && is_numeric($row['ctr'])) {
+                $ctrSum += (float) $row['ctr'];
+                $ctrN++;
+            }
+        }
+
+        $this->storeBadgeSnapshot($period, [
+            'rows' => (float) $rows->count(),
+            'impressions' => $impr,
+            'clicks' => $clicks,
+            'spend' => $spend,
+            'create' => (float) $createN,
+            'pause' => (float) $pauseN,
+            'run' => (float) $runN,
+            'ctr' => $ctrN ? round($ctrSum / $ctrN, 2) : 0.0,
+        ]);
+    }
+
+    /**
+     * @param  array<string, float|int>  $metrics
+     */
+    private function storeBadgeSnapshot(string $period, array $metrics): void
+    {
+        $period = strtoupper($period !== '' ? $period : 'ALL');
+        $today = now()->toDateString();
+        $row = ChannelTabulatorColumnSetting::query()->firstOrNew([
+            'channel_name' => 'temu_ads_badge_history',
+        ]);
+        $hist = is_array($row->visibility) ? $row->visibility : [];
+        if (! isset($hist[$period]) || ! is_array($hist[$period])) {
+            $hist[$period] = [];
+        }
+        $hist[$period][$today] = $metrics;
+        ksort($hist[$period]);
+        if (count($hist[$period]) > 180) {
+            $hist[$period] = array_slice($hist[$period], -180, 180, true);
+        }
+        $row->visibility = $hist;
+        if ($row->column_order === null) {
+            $row->column_order = [];
+        }
+        $row->save();
+    }
+
+    /**
+     * @return array<string, array<string, float|int>>
+     */
+    private function badgeHistoryStore(string $period): array
+    {
+        $period = strtoupper($period !== '' ? $period : 'ALL');
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'temu_ads_badge_history')
+            ->first();
+        $hist = is_array($row?->visibility) ? $row->visibility : [];
+        $bucket = $hist[$period] ?? [];
+
+        return is_array($bucket) ? $bucket : [];
+    }
+
+    private function pauseRunInvZero(): bool
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'temu_ads_pause_run_inv_zero')
+            ->first();
+        if (! $row) {
+            return true;
+        }
+        $raw = is_array($row->column_order) ? ($row->column_order[0] ?? '1') : '1';
+
+        return ! in_array(strtolower((string) $raw), ['0', 'false', 'off'], true);
+    }
+
+    private function actionFromPauseRunSlabs(int $clicksL7, int $inv = 0): string
+    {
+        if ($this->pauseRunInvZero() && $inv <= 0) {
+            return 'pause';
+        }
+
+        foreach ($this->pauseRunSlabs() as $slab) {
+            $min = (int) ($slab['min'] ?? 0);
+            $max = $slab['max'] ?? null;
+            if ($clicksL7 >= $min && ($max === null || $clicksL7 <= (int) $max)) {
+                return (($slab['action'] ?? '') === 'run') ? 'run' : 'pause';
+            }
+        }
+
+        return $clicksL7 < 70 ? 'run' : 'pause';
     }
 }

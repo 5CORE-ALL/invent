@@ -13,9 +13,65 @@
             background: #fd7e14;
             color: #fff;
             border-right: 1px solid rgba(255,255,255,0.25);
+            text-align: center;
+        }
+        #temu-ads-table .tabulator-header .tabulator-col .tabulator-col-content,
+        #temu-ads-table .tabulator-header .tabulator-col .tabulator-col-title {
+            text-align: center;
+            justify-content: center;
+        }
+        #temu-ads-table .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0;
+        }
+        #temu-ads-table .tabulator-col .tabulator-col-sorter,
+        #temu-ads-table .tabulator-col .tabulator-col-sorter-element,
+        #temu-ads-table .tabulator-col .tabulator-arrow {
+            display: none !important;
+        }
+        #temu-ads-table .tabulator-header .tabulator-col.tabulator-sortable {
+            cursor: pointer;
         }
         #temu-ads-table .tabulator-cell {
             font-size: 0.85rem;
+            text-align: center !important;
+            justify-content: center;
+        }
+        .temu-pause-run-btn {
+            position: relative;
+            display: inline-block;
+            border: 0;
+            border-radius: 999px;
+            width: 44px;
+            height: 24px;
+            padding: 0;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        .temu-pause-run-btn.is-pause { background: #dc3545; }
+        .temu-pause-run-btn.is-run { background: #198754; }
+        .temu-pause-run-knob {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+        }
+        .temu-pause-run-btn.is-run .temu-pause-run-knob { left: auto; right: 3px; }
+        .temu-pause-run-btn:disabled { opacity: 0.65; cursor: wait; }
+        .temu-pause-run-ok {
+            color: #198754;
+            font-weight: 800;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+        .temu-pause-run-fail {
+            color: #dc3545;
+            font-weight: 800;
+            font-size: 1.2rem;
+            line-height: 1;
+            cursor: help;
         }
         #temu-ads-table .tabulator-footer {
             background: #f4f7fa;
@@ -42,6 +98,157 @@
             white-space: pre-wrap;
             word-break: break-word;
         }
+        #temu-ads-column-dropdown-menu.show {
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.55rem 0.6rem;
+        }
+        #temu-ads-column-dropdown-menu > li.col-vis-full {
+            list-style: none;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-selections-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 8px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+            user-select: none;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-selections-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(140px, 1fr));
+            gap: 8px;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px 8px 8px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-group.col-vis-drop-over {
+            outline: 2px dashed #0d6efd;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+            user-select: none;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-item {
+            cursor: grab;
+            border-radius: 4px;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-item.col-vis-dragging {
+            opacity: 0.4;
+            cursor: grabbing;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-item.col-vis-drop-before {
+            box-shadow: inset 0 2px 0 #0d6efd;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-item.col-vis-drop-after {
+            box-shadow: inset 0 -2px 0 #0d6efd;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: grab;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+        }
+        #temu-ads-column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+        .temu-ad-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #198754;
+            vertical-align: middle;
+        }
+        .temu-ad-dot.is-zero-inv { background: #ffc107; }
+        .temu-ads-chart-badge { cursor: pointer; }
+        .temu-ads-history-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            margin-left: 6px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0, 0, 0, 0.18);
+            vertical-align: middle;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+        }
+        .temu-ads-history-dot:hover { transform: scale(1.3); }
+        #temuAdsBadgeChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #temuAdsBadgeChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #temuAdsBadgeChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
+        }
     </style>
 @endsection
 
@@ -63,13 +270,40 @@
                                 <option value="L30" selected>L30</option>
                                 <option value="L60">L60</option>
                             </select>
-                            <input type="text" id="search-input" class="form-control form-control-sm pricing-filter-item"
-                                   placeholder="Search Goods ID / SKU" style="width: 220px;">
+                            <input type="text" id="search-goods-id" class="form-control form-control-sm pricing-filter-item"
+                                   placeholder="Search Goods ID" style="width: 170px;">
+                            <input type="text" id="search-sku" class="form-control form-control-sm pricing-filter-item"
+                                   placeholder="Search SKU" style="width: 150px;">
+                            <select id="status-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Filter by Status">
+                                <option value="">All Status</option>
+                                <option value="Active">Active</option>
+                                <option value="Inactive">Inactive</option>
+                                <option value="No ad">No ad</option>
+                                <option value="Deleted">Deleted</option>
+                                <option value="Not sync">Not sync</option>
+                            </select>
+                            <select id="pause-run-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Filter by Pause/Run">
+                                <option value="">All Pause/Run</option>
+                                <option value="pause">Pause</option>
+                                <option value="run">Run</option>
+                            </select>
                             <button type="button" id="temu-ads-rules-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
                                     data-bs-toggle="modal" data-bs-target="#temuAdsRulesModal"
                                     title="Open L7 Clicks / Stop ROAS bidding rule">
                                 <i class="fas fa-sliders-h me-1"></i><span id="temu-ads-rules-summary">L7 &lt; 70 → ROAS 8</span>
                             </button>
+                            <div class="dropdown d-inline-block pricing-filter-item">
+                                <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                    id="temuAdsColumnVisibilityDropdown" data-bs-toggle="dropdown"
+                                    data-bs-auto-close="outside" aria-expanded="false"
+                                    title="Show / hide table columns">
+                                    <i class="fas fa-table-columns"></i>
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="temuAdsColumnVisibilityDropdown"
+                                    id="temu-ads-column-dropdown-menu"></ul>
+                            </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                             <button type="button" id="refresh-status-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item"
@@ -77,8 +311,13 @@
                                 <i class="fa fa-toggle-on"></i> Refresh Status
                             </button>
                             <button type="button" id="create-ad-btn" class="btn btn-sm btn-warning pricing-filter-item"
-                                    title="Create a Temu search ad for a goods ID">
-                                <i class="fa fa-plus"></i> Create Ad
+                                    title="Create ads Rule — budget and target ROAS used for Create">
+                                <i class="fa fa-plus"></i> Create ads Rule
+                            </button>
+                            <button type="button" id="pause-run-rule-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
+                                    data-bs-toggle="modal" data-bs-target="#pauseRunRuleModal"
+                                    title="Pause/Run slabs by L7 Clicks">
+                                <i class="fas fa-sliders-h"></i> Pause/Run Rule
                             </button>
                             <button type="button" id="refresh-btn" class="btn btn-sm btn-primary pricing-filter-item"
                                     title="Fetch from Temu API and store raw data">
@@ -94,14 +333,35 @@
 
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                         <div class="temu-ads-badge-row" role="group" aria-label="Summary metrics">
-                            <span class="badge bg-dark fs-6 p-2" id="row-count"
-                                style="color: white; font-weight: bold;">Rows: 0</span>
-                            <span class="badge fs-6 p-2" id="impr-sum"
-                                style="background-color: #0d6efd; color: white; font-weight: bold;">Impr: 0</span>
-                            <span class="badge fs-6 p-2" id="click-sum"
-                                style="background-color: #e83e8c; color: white; font-weight: bold;">Clicks: 0</span>
-                            <span class="badge fs-6 p-2" id="spend-sum"
-                                style="background-color: #6f42c1; color: white; font-weight: bold;">Spend: $0.00</span>
+                            <span class="badge bg-dark fs-6 p-2 temu-ads-chart-badge" id="row-count"
+                                data-metric="rows" data-label="Rows"
+                                style="color: white; font-weight: bold;"
+                                title="Click for history">Rows: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            <span class="badge fs-6 p-2 temu-ads-chart-badge" id="impr-sum"
+                                data-metric="impressions" data-label="Impr"
+                                style="background-color: #0d6efd; color: white; font-weight: bold;"
+                                title="Click for history">Impr: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            <span class="badge fs-6 p-2 temu-ads-chart-badge" id="click-sum"
+                                data-metric="clicks" data-label="Clicks"
+                                style="background-color: #e83e8c; color: white; font-weight: bold;"
+                                title="Click for history">Clicks: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            <span class="badge fs-6 p-2 temu-ads-chart-badge" id="spend-sum"
+                                data-metric="spend" data-label="Spend"
+                                style="background-color: #6f42c1; color: white; font-weight: bold;"
+                                title="Click for history">Spend: <span class="temu-ads-badge-val">$0.00</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            <span class="badge fs-6 p-2 temu-ads-chart-badge" id="ctr-avg"
+                                data-metric="ctr" data-label="CTR"
+                                style="background-color: #0891b2; color: white; font-weight: bold;"
+                                title="Average CTR from the CTR column. Click for history">CTR: <span class="temu-ads-badge-val">0.0%</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            <span class="badge fs-6 p-2" id="create-count"
+                                style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
+                                title="Create ads for all No ad rows (same budget and ROAS as Create ads Rule)">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
+                            <span class="badge fs-6 p-2" id="pause-run-count"
+                                style="background-color: #212529; color: white; font-weight: bold; cursor: pointer;"
+                                title="Pause and Run counts. Click for running ads budget and details.">
+                                Pause <span id="pause-count-num" style="color:#ff8a80;">0</span><span class="temu-ads-history-dot" data-metric="pause" data-label="Pause" title="Pause history"></span>
+                                / Run <span id="run-count-num" style="color:#81c784;">0</span><span class="temu-ads-history-dot" data-metric="run" data-label="Run" title="Run history"></span>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -149,12 +409,64 @@
         </div>
     </div>
 
+    {{-- Pause/Run Rule slabs --}}
+    <div class="modal fade" id="pauseRunRuleModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Pause/Run Rule</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">
+                        Slabs by <strong>Clicks 7</strong>. First matching range wins.
+                        Leave <strong>To</strong> empty for that value and above.
+                        Default: <strong>0–69 → Run</strong>, <strong>70+ → Pause</strong>.
+                    </p>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="pause-run-inv-zero" checked>
+                        <label class="form-check-label" for="pause-run-inv-zero">
+                            <strong>Inv = 0 → Pause</strong>
+                            <span class="text-muted"> — SKUs with 0 inventory are Pause (overrides L7 clicks slabs)</span>
+                        </label>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-2">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>L7 Clicks from</th>
+                                    <th>L7 Clicks to</th>
+                                    <th>Pause/Run</th>
+                                    <th style="width:70px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="pause-run-slabs-tbody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pause-run-slab-add-btn">
+                        <i class="fa fa-plus"></i> Add slab
+                    </button>
+                    <div id="pause-run-rule-status" class="small mt-2"></div>
+                </div>
+                <div class="modal-footer flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="pause-run-rule-save-btn"
+                            title="Store slabs only">Save</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="pause-run-rule-apply-btn"
+                            title="Save and update Pause/Run on this page">Apply</button>
+                    <button type="button" class="btn btn-sm btn-success" id="pause-run-rule-apply-site-btn"
+                            title="Save for /temu/ads and /temu-decrease, then update this page">Apply To Site</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Create Ad modal --}}
     <div class="modal fade" id="createAdModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Create Temu Ad</h5>
+                    <h5 class="modal-title">Create ads Rule</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -184,6 +496,93 @@
         </div>
     </div>
 
+    {{-- Running ads (Pause/Run badge) --}}
+    <div class="modal fade" id="pauseRunRunningModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Running ads</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex flex-wrap gap-2 mb-3" id="pause-run-running-summary"></div>
+                    <div class="table-responsive" style="max-height: 55vh;">
+                        <table class="table table-sm table-striped table-bordered mb-0" id="pause-run-running-table">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>Goods ID</th>
+                                    <th>Status</th>
+                                    <th>Clicks 7</th>
+                                    <th>Clicks 30</th>
+                                    <th>Impr</th>
+                                    <th>Spend</th>
+                                    <th>Orders</th>
+                                    <th>Order $</th>
+                                    <th>ROAS</th>
+                                    <th>ACOS</th>
+                                    <th>Budget</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Badge history chart — same Rolling L30 dot graph as Temu / campaign ads --}}
+    <div class="modal fade p-0" id="temuAdsBadgeChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size:13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span>Temu Ads - <span id="temuAdsBadgeChartTitle">CTR</span> <span id="temuAdsBadgeChartSuffix">(Rolling L30)</span></span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="temuAdsBadgeChartRange" class="form-select form-select-sm bg-white" style="width:110px;height:26px;font-size:11px;padding:1px 8px;" aria-label="Chart date range">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="temuAdsBadgeChartContainer" style="height:20vh;display:flex;align-items:stretch;">
+                        <div style="flex:1;min-width:0;position:relative;">
+                            <canvas id="temuAdsBadgeChartCanvas"></canvas>
+                            <p class="text-center text-muted small mb-0 py-4 d-none" id="temuAdsBadgeChartEmpty">
+                                No history available for this metric in the selected window.
+                            </p>
+                        </div>
+                        <div style="width:100px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;">
+                            <div style="text-align:center;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#dc3545;margin-bottom:1px;">Highest</div>
+                                <div id="temuAdsBadgeChartHighest" style="font-size:13px;font-weight:700;color:#dc3545;">-</div>
+                            </div>
+                            <div style="text-align:center;border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#6c757d;margin-bottom:1px;">Median</div>
+                                <div id="temuAdsBadgeChartMedian" style="font-size:13px;font-weight:700;color:#6c757d;">-</div>
+                            </div>
+                            <div style="text-align:center;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#198754;margin-bottom:1px;">Lowest</div>
+                                <div id="temuAdsBadgeChartLowest" style="font-size:13px;font-weight:700;color:#198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Raw JSON modal --}}
     <div class="modal fade" id="rawJsonModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -203,13 +602,14 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=11"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const moneyFmt = (cell) => {
                 const v = cell.getValue();
                 if (v === null || v === undefined || v === '') return '';
-                return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
             };
             const numFmt = (cell) => {
                 const v = cell.getValue();
@@ -230,19 +630,46 @@
                 }
                 return n.toLocaleString('en-US');
             };
-            const pctFmt = (cell) => {
-                const v = cell.getValue();
+            const clicks30Fmt = (cell) => {
+                const shown = cell.getValue();
                 const el = cell.getElement();
                 if (el) {
                     el.style.color = '';
                     el.style.fontWeight = '';
                 }
+                if (shown === null || shown === undefined || shown === '') return '';
+                const n = Number(String(shown).replace(/,/g, ''));
+                if (isFinite(n) && n < 300) {
+                    if (el) {
+                        el.style.color = '#a00211';
+                        el.style.fontWeight = '700';
+                    }
+                }
+                return n.toLocaleString('en-US');
+            };
+            let currentAvgCtr = 0;
+            const pctFmt = (cell) => {
+                const v = cell.getValue();
+                const el = cell.getElement();
+                const field = (cell.getField && cell.getField()) || '';
+                if (el) {
+                    el.style.color = '';
+                    el.style.fontWeight = '';
+                }
                 if (v === null || v === undefined || v === '') return '';
-                if (window.TemuAdsColorRules && cell.getField && cell.getField() === 'acos') {
+                if (window.TemuAdsColorRules && field === 'acos') {
                     const row = cell.getRow ? cell.getRow().getData() : {};
                     TemuAdsColorRules.colorAcosBidding(el, v, row.clicks_l7 != null ? row.clicks_l7 : row.clicks);
                 }
-                return Number(v).toFixed(2) + '%';
+                if (field === 'ctr' && el) {
+                    const n = Number(v);
+                    if (isFinite(n) && n < currentAvgCtr) {
+                        el.style.color = '#dc3545';
+                        el.style.fontWeight = '700';
+                    }
+                }
+                const digits = field === 'acos' ? 0 : 1;
+                return Number(v).toFixed(digits) + '%';
             };
             const decFmt = (cell) => {
                 const v = cell.getValue();
@@ -256,7 +683,15 @@
                     const row = cell.getRow ? cell.getRow().getData() : {};
                     TemuAdsColorRules.colorRoasBidding(el, v, row.clicks_l7 != null ? row.clicks_l7 : row.clicks);
                 }
-                return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return Number(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+            };
+            const fetchedFmt = (cell) => {
+                const v = cell.getValue();
+                if (v === null || v === undefined || v === '') return '';
+                const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (!m) return String(v);
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return String(Number(m[3])) + ' ' + months[Number(m[2]) - 1];
             };
 
             function dataUrl() {
@@ -266,50 +701,395 @@
                 return url;
             }
 
-            function setBadges(rows, response) {
-                const n = rows.length;
-                document.getElementById('row-count').textContent = 'Rows: ' + Number(n).toLocaleString();
-
-                let impr = response && response.impressions_sum != null
-                    ? Number(response.impressions_sum)
-                    : rows.reduce((s, r) => s + (parseFloat(r.impressions) || 0), 0);
-                let clicks = response && response.clicks_sum != null
-                    ? Number(response.clicks_sum)
-                    : rows.reduce((s, r) => s + (parseFloat(r.clicks) || 0), 0);
-                let spend = response && response.spend_sum != null
-                    ? Number(response.spend_sum)
-                    : rows.reduce((s, r) => s + (parseFloat(r.ad_spend) || 0), 0);
-
-                // When locally filtered, recompute from visible rows
-                if (table) {
-                    const visible = table.getData(true);
-                    if (visible && visible.length !== n) {
-                        // getData(true) = filtered; use that for badge after filter
-                    }
+            function rowPauseRunAction(row) {
+                if (window.TemuAdsColorRules && TemuAdsColorRules.pauseRunAction) {
+                    return TemuAdsColorRules.pauseRunAction(row || {});
                 }
+                return String((row && row.pause_run) || '');
+            }
 
-                document.getElementById('impr-sum').textContent = 'Impr: ' + Number(impr).toLocaleString();
-                document.getElementById('click-sum').textContent = 'Clicks: ' + Number(clicks).toLocaleString();
-                document.getElementById('spend-sum').textContent = 'Spend: $' + Number(spend).toLocaleString('en-US', {
-                    minimumFractionDigits: 2, maximumFractionDigits: 2
+            function paintPauseRunBadge(rows) {
+                const list = Array.isArray(rows) ? rows : [];
+                let pauseN = 0;
+                let runN = 0;
+                list.forEach(function (r) {
+                    if (rowPauseRunAction(r) === 'run') runN++;
+                    else if (rowPauseRunAction(r) === 'pause') pauseN++;
                 });
+                const pauseEl = document.getElementById('pause-count-num');
+                const runEl = document.getElementById('run-count-num');
+                if (pauseEl) pauseEl.textContent = Number(pauseN).toLocaleString();
+                if (runEl) runEl.textContent = Number(runN).toLocaleString();
+                return { pause: pauseN, run: runN };
+            }
+
+            function setBadgeVal(id, text) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const val = el.querySelector('.temu-ads-badge-val');
+                if (val) val.textContent = text;
+            }
+
+            function avgCtrFromRows(rows) {
+                let sum = 0, n = 0;
+                (rows || []).forEach(function (r) {
+                    if (r.ctr == null || r.ctr === '') return;
+                    const v = Number(r.ctr);
+                    if (!isFinite(v)) return;
+                    sum += v;
+                    n++;
+                });
+                return n ? (sum / n) : 0;
+            }
+
+            function badgeCounts(rows) {
+                const list = Array.isArray(rows) ? rows : [];
+                let impr = 0, clicks = 0, spend = 0, createN = 0, pauseN = 0, runN = 0;
+                list.forEach(function (r) {
+                    impr += parseFloat(r.impressions) || 0;
+                    clicks += parseFloat(r.clicks) || 0;
+                    spend += parseFloat(r.ad_spend) || 0;
+                    if (String(r.ad_status || '') === 'No ad' && (parseInt(r.inv, 10) || 0) > 0) createN++;
+                    const action = rowPauseRunAction(r);
+                    if (action === 'run') runN++;
+                    else if (action === 'pause') pauseN++;
+                });
+                return {
+                    rows: list.length,
+                    impressions: impr,
+                    clicks: clicks,
+                    spend: spend,
+                    create: createN,
+                    pause: pauseN,
+                    run: runN,
+                    ctr: avgCtrFromRows(list),
+                };
+            }
+
+            function currentPeriodKey() {
+                return (document.getElementById('period-filter').value || 'ALL');
+            }
+
+            function applyCtrAvgColors() {
+                if (!table) return;
+                const col = table.getColumn('ctr');
+                if (!col || typeof col.getCells !== 'function') return;
+                col.getCells().forEach(function (cell) {
+                    const el = cell.getElement();
+                    if (!el) return;
+                    const raw = cell.getValue();
+                    if (raw === null || raw === undefined || raw === '') {
+                        el.style.color = '';
+                        el.style.fontWeight = '';
+                        return;
+                    }
+                    const n = Number(raw);
+                    if (isFinite(n) && n < currentAvgCtr) {
+                        el.style.color = '#dc3545';
+                        el.style.fontWeight = '700';
+                    } else {
+                        el.style.color = '';
+                        el.style.fontWeight = '';
+                    }
+                });
+            }
+
+            function paintMetricBadges(rows) {
+                const m = badgeCounts(rows);
+                currentAvgCtr = Number(m.ctr) || 0;
+                setBadgeVal('row-count', Number(m.rows).toLocaleString());
+                setBadgeVal('impr-sum', Math.round(m.impressions).toLocaleString());
+                setBadgeVal('click-sum', Math.round(m.clicks).toLocaleString());
+                setBadgeVal('spend-sum', '$' + Number(m.spend).toLocaleString('en-US', {
+                    minimumFractionDigits: 2, maximumFractionDigits: 2
+                }));
+                setBadgeVal('ctr-avg', Number(m.ctr).toFixed(1) + '%');
+                setBadgeVal('create-count', Number(m.create).toLocaleString());
+                paintPauseRunBadge(rows);
+                applyCtrAvgColors();
+                return m;
+            }
+
+            let badgeSnapshotTimer = null;
+            function snapshotBadgeHistory() {
+                if (!table) return;
+                const m = badgeCounts(table.getData() || []);
+                clearTimeout(badgeSnapshotTimer);
+                badgeSnapshotTimer = setTimeout(function () {
+                    fetch(@json(route('temu.ads.badge-snapshot')), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            rows: m.rows,
+                            impressions: m.impressions,
+                            clicks: m.clicks,
+                            spend: m.spend,
+                            create: m.create,
+                            pause: m.pause,
+                            run: m.run,
+                            ctr: Math.round(m.ctr * 100) / 100,
+                            period: currentPeriodKey(),
+                        }),
+                    }).catch(function () {});
+                }, 600);
+            }
+
+            let temuAdsBadgeChart = null;
+            let activeBadgeMetric = null;
+            let activeBadgeLabel = '';
+
+            function fmtBadgeChartValue(metric, v) {
+                if (v === null || v === undefined || isNaN(v)) return '—';
+                if (metric === 'spend') {
+                    return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+                if (metric === 'ctr') {
+                    return Number(v).toFixed(1) + '%';
+                }
+                return Math.round(Number(v)).toLocaleString('en-US');
+            }
+
+            function openTemuAdsBadgeChart(metric, label) {
+                if (!metric) return;
+                activeBadgeMetric = metric;
+                activeBadgeLabel = label || metric.toUpperCase();
+                const days = parseInt(document.getElementById('temuAdsBadgeChartRange').value || '30', 10);
+                document.getElementById('temuAdsBadgeChartTitle').textContent = activeBadgeLabel;
+                document.getElementById('temuAdsBadgeChartSuffix').textContent = '(Rolling L' + days + ')';
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('temuAdsBadgeChartModal')).show();
+                loadTemuAdsBadgeChart();
+            }
+
+            function loadTemuAdsBadgeChart() {
+                if (!activeBadgeMetric) return;
+                const days = parseInt(document.getElementById('temuAdsBadgeChartRange').value || '30', 10);
+                document.getElementById('temuAdsBadgeChartTitle').textContent = activeBadgeLabel;
+                document.getElementById('temuAdsBadgeChartSuffix').textContent = '(Rolling L' + days + ')';
+                const params = new URLSearchParams({
+                    metric: activeBadgeMetric,
+                    days: String(days),
+                    period: currentPeriodKey(),
+                });
+                fetch(@json(route('temu.ads.badge-history')) + '?' + params.toString(), { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (resp) {
+                        renderTemuAdsBadgeChart(activeBadgeMetric, (resp && resp.data) || []);
+                    })
+                    .catch(function () {
+                        renderTemuAdsBadgeChart(activeBadgeMetric, []);
+                    });
+            }
+
+            function renderTemuAdsBadgeChart(metric, data) {
+                const canvas = document.getElementById('temuAdsBadgeChartCanvas');
+                const emptyEl = document.getElementById('temuAdsBadgeChartEmpty');
+                if (!canvas) return;
+                if (temuAdsBadgeChart) {
+                    temuAdsBadgeChart.destroy();
+                    temuAdsBadgeChart = null;
+                }
+                ['temuAdsBadgeChartHighest', 'temuAdsBadgeChartMedian', 'temuAdsBadgeChartLowest'].forEach(function (id) {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = '-';
+                });
+                if (!data.length) {
+                    canvas.style.display = 'none';
+                    emptyEl.classList.remove('d-none');
+                    return;
+                }
+                canvas.style.display = '';
+                emptyEl.classList.add('d-none');
+
+                const labels = data.map(function (d) { return d.date; });
+                const values = data.map(function (d) { return Number(d.value) || 0; });
+                const dataMin = Math.min.apply(null, values);
+                const dataMax = Math.max.apply(null, values);
+                const sorted = values.slice().sort(function (a, b) { return a - b; });
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2 !== 0
+                    ? sorted[mid]
+                    : (sorted[mid - 1] + sorted[mid]) / 2;
+                const range = (dataMax - dataMin) || 1;
+                const yMin = Math.max(0, dataMin - range * 0.1);
+                const yMax = dataMax + range * 0.1;
+                const refRed = '#dc3545', refGray = '#6c757d', refGreen = '#198754';
+
+                document.getElementById('temuAdsBadgeChartHighest').textContent = fmtBadgeChartValue(metric, dataMax);
+                document.getElementById('temuAdsBadgeChartMedian').textContent = fmtBadgeChartValue(metric, median);
+                document.getElementById('temuAdsBadgeChartLowest').textContent = fmtBadgeChartValue(metric, dataMin);
+
+                const dotColors = values.map(function (v, i) {
+                    if (i === 0) return refGray;
+                    return v > values[i - 1] ? '#28a745' : (v < values[i - 1] ? refRed : refGray);
+                });
+                const labelColors = values.map(function (v) {
+                    return v === 0 ? refGreen : (v > 0 ? refRed : refGray);
+                });
+
+                const medianLinePlugin = {
+                    id: 'temuAdsMedianLine',
+                    afterDraw: function (chart) {
+                        const yScale = chart.scales.y;
+                        const xScale = chart.scales.x;
+                        const ctx = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(median);
+                        ctx.save();
+                        ctx.setLineDash([6, 4]);
+                        ctx.strokeStyle = '#6c757d';
+                        ctx.lineWidth = 1.2;
+                        ctx.beginPath();
+                        ctx.moveTo(xScale.left, yPixel);
+                        ctx.lineTo(xScale.right, yPixel);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                };
+                const valueLabelsPlugin = {
+                    id: 'temuAdsValueLabels',
+                    afterDatasetsDraw: function (chart) {
+                        const meta = chart.getDatasetMeta(0);
+                        const ctx = chart.ctx;
+                        ctx.save();
+                        ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        meta.data.forEach(function (point, i) {
+                            ctx.fillStyle = labelColors[i];
+                            ctx.fillText(fmtBadgeChartValue(metric, values[i]), point.x, point.y + ((i % 2 === 0) ? -10 : -20));
+                        });
+                        ctx.restore();
+                    }
+                };
+
+                temuAdsBadgeChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: activeBadgeLabel,
+                            data: values,
+                            backgroundColor: 'rgba(108,117,125,0.08)',
+                            borderColor: '#adb5bd',
+                            borderWidth: 1.5,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 24, right: 16, bottom: 12, left: 16 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function (ctx) { return fmtBadgeChartValue(metric, ctx.parsed.y); }
+                                }
+                            },
+                        },
+                        scales: {
+                            y: {
+                                min: yMin,
+                                max: yMax,
+                                ticks: { callback: function (v) { return fmtBadgeChartValue(metric, v); } }
+                            },
+                            x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45 } },
+                        },
+                    },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
+                });
+            }
+
+            function runningAdsRows(rows) {
+                const seen = {};
+                const out = [];
+                (rows || []).forEach(function (r) {
+                    if (rowPauseRunAction(r) !== 'run') return;
+                    const gid = String(r.goods_id || '').trim();
+                    const key = gid || ('sku:' + String(r.sku || ''));
+                    if (seen[key]) return;
+                    seen[key] = true;
+                    out.push(r);
+                });
+                return out;
+            }
+
+            function dailyCreateBudget() {
+                const el = document.getElementById('create-budget');
+                const n = parseFloat(el && el.value ? el.value : 10);
+                return (isFinite(n) && n >= 1) ? n : 10;
+            }
+
+            function moneyText(n) {
+                return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+            }
+
+            function fillRunningAdsModal() {
+                const rows = runningAdsRows(table ? table.getData(true) : []);
+                const budgetEach = dailyCreateBudget();
+                const totalBudget = rows.length * budgetEach;
+                let spend = 0, impr = 0, clicks7 = 0, clicks30 = 0, orders = 0, orderAmt = 0;
+                rows.forEach(function (r) {
+                    spend += parseFloat(r.ad_spend) || 0;
+                    impr += parseFloat(r.impressions) || 0;
+                    clicks7 += parseFloat(r.clicks_l7) || 0;
+                    clicks30 += parseFloat(r.clicks_l30) || 0;
+                    orders += parseFloat(r.order_pay_cnt) || 0;
+                    orderAmt += parseFloat(r.order_pay_amt) || 0;
+                });
+                const roas = spend > 0 ? (orderAmt / spend) : 0;
+                const summary = document.getElementById('pause-run-running-summary');
+                const pills = [
+                    ['Running ads', rows.length.toLocaleString()],
+                    ['Daily budget each', moneyText(budgetEach)],
+                    ['Total ads budget', moneyText(totalBudget)],
+                    ['Spend', moneyText(spend)],
+                    ['Impr', Math.round(impr).toLocaleString()],
+                    ['Clicks 7', Math.round(clicks7).toLocaleString()],
+                    ['Clicks 30', Math.round(clicks30).toLocaleString()],
+                    ['Orders', Math.round(orders).toLocaleString()],
+                    ['Order $', moneyText(orderAmt)],
+                    ['ROAS', String(Math.round(roas))],
+                ];
+                summary.innerHTML = pills.map(function (p) {
+                    return '<span class="badge bg-light text-dark border fs-6 p-2">' + p[0] + ': <strong>' + p[1] + '</strong></span>';
+                }).join('');
+                const tbody = document.querySelector('#pause-run-running-table tbody');
+                tbody.innerHTML = rows.length ? rows.map(function (r) {
+                    return '<tr>' +
+                        '<td>' + String(r.sku || '') + '</td>' +
+                        '<td>' + String(r.goods_id || '') + '</td>' +
+                        '<td>' + String(r.ad_status || '') + '</td>' +
+                        '<td>' + Number(r.clicks_l7 || 0).toLocaleString() + '</td>' +
+                        '<td>' + Number(r.clicks_l30 || 0).toLocaleString() + '</td>' +
+                        '<td>' + Number(r.impressions || 0).toLocaleString() + '</td>' +
+                        '<td>' + moneyText(r.ad_spend) + '</td>' +
+                        '<td>' + Number(r.order_pay_cnt || 0).toLocaleString() + '</td>' +
+                        '<td>' + moneyText(r.order_pay_amt) + '</td>' +
+                        '<td>' + String(Math.round(Number(r.roas) || 0)) + '</td>' +
+                        '<td>' + String(Math.round(Number(r.acos) || 0)) + '%</td>' +
+                        '<td>' + moneyText(budgetEach) + '</td>' +
+                        '</tr>';
+                }).join('') : '<tr><td colspan="12" class="text-center text-muted">No running ads in the current view.</td></tr>';
+            }
+
+            function setBadges(rows) {
+                paintMetricBadges(rows);
             }
 
             function updateBadgesFromTable() {
                 if (!table) return;
-                const rows = table.getData(true);
-                let impr = 0, clicks = 0, spend = 0;
-                rows.forEach(function (r) {
-                    impr += parseFloat(r.impressions) || 0;
-                    clicks += parseFloat(r.clicks) || 0;
-                    spend += parseFloat(r.ad_spend) || 0;
-                });
-                document.getElementById('row-count').textContent = 'Rows: ' + rows.length.toLocaleString();
-                document.getElementById('impr-sum').textContent = 'Impr: ' + Math.round(impr).toLocaleString();
-                document.getElementById('click-sum').textContent = 'Clicks: ' + Math.round(clicks).toLocaleString();
-                document.getElementById('spend-sum').textContent = 'Spend: $' + spend.toLocaleString('en-US', {
-                    minimumFractionDigits: 2, maximumFractionDigits: 2
-                });
+                paintMetricBadges(table.getData(true));
+                snapshotBadgeHistory();
             }
 
             const table = new Tabulator('#temu-ads-table', {
@@ -325,79 +1105,151 @@
                 paginationSize: 50,
                 paginationSizeSelector: [25, 50, 100, 250, true],
                 placeholder: 'No Temu ads API data yet — click “Fetch from API”.',
+                columnDefaults: {
+                    hozAlign: 'center',
+                    headerHozAlign: 'center',
+                    headerSort: true,
+                },
                 columns: [
-                    { title: 'Period', field: 'period', width: 70, headerFilter: 'list',
-                      headerFilterParams: { values: { L7: 'L7', L30: 'L30', L60: 'L60', '': '' } } },
-                    { title: 'Goods ID', field: 'goods_id', width: 150, headerFilter: 'input' },
-                    { title: 'SKU', field: 'sku', width: 140, headerFilter: 'input' },
+                    { title: 'Period', field: 'period', width: 70, visible: false, sorter: 'string' },
+                    { title: 'SKU', field: 'sku', width: 140, sorter: 'string' },
+                    { title: 'Inv', field: 'inv', width: 80, hozAlign: 'center', formatter: numFmt, sorter: 'number',
+                      headerTooltip: 'Inventory from shopify_skus.inv' },
                     {
                         title: 'Status',
                         field: 'ad_status',
                         width: 110,
                         hozAlign: 'center',
-                        headerFilter: 'list',
-                        headerFilterParams: { values: { Active: 'Active', Inactive: 'Inactive', 'No ad': 'No ad', Deleted: 'Deleted', 'Not sync': 'Not sync', '': '' } },
+                        sorter: 'string',
                         headerTooltip: 'Temu ad campaign status from ad.detail.query (Active / Inactive / No ad). Not sync = API not confirmed.',
                         formatter: function (cell) {
                             const v = String(cell.getValue() || 'Not sync');
                             let cls = 'bg-secondary';
                             if (v === 'Active') cls = 'bg-success';
                             else if (v === 'Inactive') cls = 'bg-warning text-dark';
-                            else if (v === 'Deleted' || v === 'No ad') cls = 'bg-dark';
+                            else if (v === 'Deleted') cls = 'bg-dark';
+                            else if (v === 'No ad') cls = 'bg-danger';
                             else if (v === 'Not sync') cls = 'bg-secondary';
                             return '<span class="badge ' + cls + '">' + v + '</span>';
                         }
                     },
-                    { title: 'Impressions', field: 'impressions', width: 120, hozAlign: 'right', formatter: numFmt, sorter: 'number',
-                      headerTooltip: 'Impressions (Overall) — same as Temu Data Report' },
-                    { title: 'Clicks', field: 'clicks', width: 100, hozAlign: 'right', formatter: clicksFmt, sorter: 'number',
-                      headerTooltip: 'Clicks (Overall). Red when Last 7 days clicks are below the shared coloring rule (default 70).' },
-                    { title: 'CTR', field: 'ctr', width: 90, hozAlign: 'right', formatter: pctFmt, sorter: 'number',
-                      headerTooltip: 'CTR (Overall)' },
-                    { title: 'CVR', field: 'cvr', width: 90, hozAlign: 'right', formatter: pctFmt, sorter: 'number',
-                      headerTooltip: 'CVR (Overall) = Orders ÷ Clicks' },
-                    { title: 'Cart', field: 'cart_cnt', width: 90, hozAlign: 'right', formatter: numFmt, sorter: 'number' },
-                    { title: 'Orders', field: 'order_pay_cnt', width: 90, hozAlign: 'right', formatter: numFmt, sorter: 'number' },
-                    { title: 'Order $', field: 'order_pay_amt', width: 110, hozAlign: 'right', formatter: moneyFmt, sorter: 'number' },
-                    { title: 'Spend', field: 'ad_spend', width: 100, hozAlign: 'right', formatter: moneyFmt, sorter: 'number' },
-                    { title: 'ROAS', field: 'roas', width: 90, hozAlign: 'right', formatter: decFmt, sorter: 'number',
-                      headerTooltip: 'Actual ROAS. Blue when L7 clicks are below the merged rule and ROAS is below Stop ROAS / Bidding (default 8).' },
-                    { title: 'ACOS', field: 'acos', width: 90, hozAlign: 'right', formatter: pctFmt, sorter: 'number',
-                      headerTooltip: 'ACOS. Blue when L7 clicks are below the merged rule and ACOS is worse than Stop ROAS / Bidding (default 8).' },
-                    {
-                        title: 'OK',
-                        field: 'success',
-                        width: 60,
-                        hozAlign: 'center',
-                        formatter: function (cell) {
-                            return cell.getValue()
-                                ? '<span class="text-success"><i class="fas fa-check"></i></span>'
-                                : '<span class="text-danger" title="' + (cell.getRow().getData().error_msg || '') + '"><i class="fas fa-x"></i></span>';
-                        }
-                    },
-                    { title: 'Fetched', field: 'fetched_at', width: 160 },
                     {
                         title: 'Ad',
                         field: 'create_ad',
                         width: 80,
                         hozAlign: 'center',
-                        headerSort: false,
-                        formatter: function () {
-                            return '<button type="button" class="btn btn-sm btn-outline-warning create-row-ad-btn" title="Create Temu ad">Create</button>';
+                        sorter: function (a, b, aRow, bRow) {
+                            function rank(row) {
+                                const data = row.getData() || {};
+                                const inv = parseInt(String(data.inv != null ? data.inv : 0).replace(/,/g, ''), 10) || 0;
+                                if (String(data.ad_status || '') === 'No ad' && inv > 0) return 0;
+                                if (inv <= 0) return 1;
+                                return 2;
+                            }
+                            return rank(aRow) - rank(bRow);
+                        },
+                        headerTooltip: 'Create is shown only when Status is No ad and Inv > 0. Yellow dot = 0 inventory. Green dot = ad already available.',
+                        formatter: function (cell) {
+                            const data = cell.getRow().getData() || {};
+                            const status = String(data.ad_status || '');
+                            const inv = parseInt(String(data.inv != null ? data.inv : 0).replace(/,/g, ''), 10) || 0;
+                            if (inv <= 0) {
+                                return '<span class="temu-ad-dot is-zero-inv" title="0 inventory — Create hidden"></span>';
+                            }
+                            if (status === 'No ad') {
+                                return '<button type="button" class="btn btn-sm btn-outline-warning create-row-ad-btn" title="Create Temu ad">Create</button>';
+                            }
+                            return '<span class="temu-ad-dot" title="Ad available"></span>';
                         },
                         cellClick: function (e, cell) {
+                            if (!e.target.closest('.create-row-ad-btn')) return;
                             const goodsId = cell.getRow().getData().goods_id || '';
                             document.getElementById('create-goods-id').value = goodsId;
                             document.getElementById('create-ad-status').style.display = 'none';
                             new bootstrap.Modal(document.getElementById('createAdModal')).show();
                         }
                     },
+                    { title: 'Impressions', field: 'impressions', width: 120, visible: false, hozAlign: 'center', formatter: numFmt, sorter: 'number',
+                      headerTooltip: 'Impressions (Overall) — same as Temu Data Report' },
+                    { title: 'Clicks 30', field: 'clicks_l30', width: 110, hozAlign: 'center', formatter: clicks30Fmt, sorter: 'number',
+                      headerTooltip: 'Last 30 days clicks (Overall). Red when below 300.' },
+                    { title: 'Clicks 7', field: 'clicks_l7', width: 100, hozAlign: 'center', formatter: clicksFmt, sorter: 'number',
+                      headerTooltip: 'Last 7 days clicks (Overall). Red when below the shared L7 Clicks rule (default 70).' },
+                    {
+                        title: 'Pause/Run',
+                        field: 'pause_run',
+                        width: 110,
+                        hozAlign: 'center',
+                        sorter: function (a, b, aRow, bRow) {
+                            function action(row) {
+                                const data = row.getData() || {};
+                                if (window.TemuAdsColorRules && TemuAdsColorRules.pauseRunAction) {
+                                    return TemuAdsColorRules.pauseRunAction(data);
+                                }
+                                return String(data.pause_run || '');
+                            }
+                            return action(aRow).localeCompare(action(bRow));
+                        },
+                        headerTooltip: 'Pause/Run from L7 Clicks slabs (Pause/Run Rule). Click the toggle to push to Temu.',
+                        formatter: function (cell) {
+                            if (!window.TemuAdsColorRules) return '';
+                            return TemuAdsColorRules.pauseRunButtonHtml(cell.getRow().getData() || {});
+                        },
+                        cellClick: function (e, cell) {
+                            const btn = e.target.closest('.temu-pause-run-btn');
+                            if (!btn || !window.TemuAdsColorRules) return;
+                            TemuAdsColorRules.pushPauseRun(btn, cell, @json(route('temu.ads.toggle')));
+                        }
+                    },
+                    {
+                        title: 'Success',
+                        field: 'pause_run_ok',
+                        width: 80,
+                        hozAlign: 'center',
+                        sorter: function (a, b) {
+                            const rank = function (v) { return v === true ? 2 : (v === false ? 1 : 0); };
+                            return rank(a) - rank(b);
+                        },
+                        headerTooltip: 'Result of the last Pause/Run push. Hover the red cross for the reason.',
+                        formatter: function (cell) {
+                            if (!window.TemuAdsColorRules) return '';
+                            return TemuAdsColorRules.pauseRunResultHtml(cell.getRow().getData() || {});
+                        }
+                    },
+                    { title: 'CTR', field: 'ctr', width: 90, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
+                      headerTooltip: 'CTR (Overall)' },
+                    { title: 'CVR', field: 'cvr', width: 90, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
+                      headerTooltip: 'CVR (Overall) = Orders ÷ Clicks' },
+                    { title: 'Cart', field: 'cart_cnt', width: 90, hozAlign: 'center', formatter: numFmt, sorter: 'number' },
+                    { title: 'Orders', field: 'order_pay_cnt', width: 90, hozAlign: 'center', formatter: numFmt, sorter: 'number' },
+                    { title: 'Order $', field: 'order_pay_amt', width: 110, hozAlign: 'center', formatter: moneyFmt, sorter: 'number' },
+                    { title: 'Spend', field: 'ad_spend', width: 100, hozAlign: 'center', formatter: moneyFmt, sorter: 'number' },
+                    { title: 'ROAS', field: 'roas', width: 90, hozAlign: 'center', formatter: decFmt, sorter: 'number',
+                      headerTooltip: 'Actual ROAS. Blue when L7 clicks are below the merged rule and ROAS is below Stop ROAS / Bidding (default 8).' },
+                    { title: 'ACOS', field: 'acos', width: 90, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
+                      headerTooltip: 'ACOS. Blue when L7 clicks are below the merged rule and ACOS is worse than Stop ROAS / Bidding (default 8).' },
+                    {
+                        title: 'OK',
+                        field: 'success',
+                        width: 60,
+                        hozAlign: 'center',
+                        sorter: 'boolean',
+                        formatter: function (cell) {
+                            return cell.getValue()
+                                ? '<span class="text-success"><i class="fas fa-check"></i></span>'
+                                : '<span class="text-danger" title="' + (cell.getRow().getData().error_msg || '') + '"><i class="fas fa-x"></i></span>';
+                        }
+                    },
+                    { title: 'Fetched', field: 'fetched_at', width: 90, formatter: fetchedFmt, sorter: 'string',
+                      headerTooltip: 'Date the Ads API row was last fetched' },
                     {
                         title: 'Raw',
                         field: 'raw_response',
                         width: 70,
                         hozAlign: 'center',
-                        headerSort: false,
+                        sorter: function (a, b) {
+                            return (a ? String(a).length : 0) - (b ? String(b).length : 0);
+                        },
                         formatter: function () {
                             return '<button type="button" class="btn btn-sm btn-outline-secondary view-raw-btn" title="View raw JSON"><i class="fas fa-code"></i></button>';
                         },
@@ -419,6 +1271,7 @@
                             new bootstrap.Modal(document.getElementById('rawJsonModal')).show();
                         }
                     },
+                    { title: 'Goods ID', field: 'goods_id', width: 150, sorter: 'string' },
                 ],
             });
 
@@ -426,7 +1279,8 @@
                 TemuAdsColorRules.setUrls(
                     @json(route('temu.ads.color-rules')),
                     @json(route('temu.ads.color-rules.save')),
-                    @json(route('temu.ads.auto-pause'))
+                    @json(route('temu.ads.auto-pause')),
+                    @json(route('temu.ads.toggle'))
                 );
                 TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
                 TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
@@ -441,7 +1295,588 @@
                     if (createRoas && document.activeElement !== createRoas) {
                         createRoas.value = String(TemuAdsColorRules.getTargetRoasBidding());
                     }
+                    renderPauseRunSlabs();
+                    syncPauseRunInvZeroCheckbox();
                     table.redraw(true);
+                    if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
+                });
+            }
+
+            function pauseRunSlabStatus(html, ok) {
+                const el = document.getElementById('pause-run-rule-status');
+                if (!el) return;
+                el.innerHTML = html
+                    ? '<div class="alert ' + (ok ? 'alert-success' : 'alert-danger') + ' py-1 px-2 mb-0">' + html + '</div>'
+                    : '';
+            }
+
+            function renderPauseRunSlabs(slabs) {
+                const tbody = document.getElementById('pause-run-slabs-tbody');
+                if (!tbody || !window.TemuAdsColorRules) return;
+                const list = Array.isArray(slabs) ? slabs : TemuAdsColorRules.getPauseRunSlabs();
+                tbody.innerHTML = '';
+                list.forEach(function (slab) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML =
+                        '<td><input type="number" class="form-control form-control-sm pr-slab-min" min="0" step="1" value="' + slab.min + '"></td>' +
+                        '<td><input type="number" class="form-control form-control-sm pr-slab-max" min="0" step="1" placeholder="and above" value="' +
+                            (slab.max == null ? '' : slab.max) + '"></td>' +
+                        '<td><select class="form-select form-select-sm pr-slab-action">' +
+                            '<option value="run"' + (slab.action === 'run' ? ' selected' : '') + '>Run</option>' +
+                            '<option value="pause"' + (slab.action === 'pause' ? ' selected' : '') + '>Pause</option>' +
+                        '</select></td>' +
+                        '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger pr-slab-remove" title="Remove">&times;</button></td>';
+                    tbody.appendChild(tr);
+                });
+            }
+
+            function collectPauseRunSlabs() {
+                const rows = document.querySelectorAll('#pause-run-slabs-tbody tr');
+                const slabs = [];
+                rows.forEach(function (tr) {
+                    const minEl = tr.querySelector('.pr-slab-min');
+                    const maxEl = tr.querySelector('.pr-slab-max');
+                    const actEl = tr.querySelector('.pr-slab-action');
+                    const min = parseInt(minEl && minEl.value, 10);
+                    const maxRaw = maxEl ? String(maxEl.value || '').trim() : '';
+                    const max = maxRaw === '' ? null : parseInt(maxRaw, 10);
+                    slabs.push({
+                        min: isFinite(min) && min >= 0 ? min : 0,
+                        max: (max === null || !isFinite(max)) ? null : max,
+                        action: (actEl && actEl.value) === 'run' ? 'run' : 'pause',
+                    });
+                });
+                return window.TemuAdsColorRules
+                    ? TemuAdsColorRules.normalizePauseRunSlabs(slabs)
+                    : slabs;
+            }
+
+            function applyPauseRunSlabsToTable() {
+                if (!table || !window.TemuAdsColorRules) return 0;
+                let n = 0;
+                table.getRows().forEach(function (row) {
+                    const data = row.getData() || {};
+                    const action = TemuAdsColorRules.computedPauseRunAction
+                        ? TemuAdsColorRules.computedPauseRunAction(data)
+                        : TemuAdsColorRules.actionFromSlabs(data.clicks_l7 != null ? data.clicks_l7 : 0);
+                    row.update({ pause_run: action });
+                    n++;
+                });
+                table.redraw(true);
+                if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
+                return n;
+            }
+
+            renderPauseRunSlabs();
+            syncPauseRunInvZeroCheckbox();
+
+            const slabTbody = document.getElementById('pause-run-slabs-tbody');
+            if (slabTbody) {
+                slabTbody.addEventListener('click', function (e) {
+                    const btn = e.target.closest('.pr-slab-remove');
+                    if (!btn) return;
+                    const rows = slabTbody.querySelectorAll('tr');
+                    if (rows.length <= 1) return;
+                    btn.closest('tr').remove();
+                });
+            }
+            const addSlabBtn = document.getElementById('pause-run-slab-add-btn');
+            if (addSlabBtn) {
+                addSlabBtn.addEventListener('click', function () {
+                    const current = collectPauseRunSlabs();
+                    const last = current[current.length - 1];
+                    const nextMin = last && last.max != null ? last.max + 1 : (last ? last.min + 1 : 0);
+                    current.push({ min: nextMin, max: null, action: 'pause' });
+                    renderPauseRunSlabs(current);
+                });
+            }
+            function syncPauseRunInvZeroCheckbox() {
+                const el = document.getElementById('pause-run-inv-zero');
+                if (!el || !window.TemuAdsColorRules || !TemuAdsColorRules.getPauseRunInvZero) return;
+                el.checked = !!TemuAdsColorRules.getPauseRunInvZero();
+            }
+
+            function savePauseRunSlabsFromModal() {
+                if (!window.TemuAdsColorRules) return collectPauseRunSlabs();
+                const invZeroEl = document.getElementById('pause-run-inv-zero');
+                if (invZeroEl && TemuAdsColorRules.setPauseRunInvZero) {
+                    TemuAdsColorRules.setPauseRunInvZero(invZeroEl.checked, false);
+                }
+                const slabs = collectPauseRunSlabs();
+                TemuAdsColorRules.setPauseRunSlabs(slabs, true);
+                return slabs;
+            }
+            document.getElementById('pause-run-rule-save-btn').addEventListener('click', function () {
+                savePauseRunSlabsFromModal();
+                pauseRunSlabStatus('Slabs saved.', true);
+            });
+            document.getElementById('pause-run-rule-apply-btn').addEventListener('click', function () {
+                savePauseRunSlabsFromModal();
+                const n = applyPauseRunSlabsToTable();
+                pauseRunSlabStatus('Saved and applied Pause/Run to ' + n + ' rows on this page.', true);
+            });
+            document.getElementById('pause-run-rule-apply-site-btn').addEventListener('click', function () {
+                savePauseRunSlabsFromModal();
+                const n = applyPauseRunSlabsToTable();
+                pauseRunSlabStatus('Saved for /temu/ads and /temu-decrease. Applied Pause/Run to ' + n + ' rows on this page.', true);
+            });
+
+            const TABULATOR_COLUMN_CHANNEL = 'temu_ads';
+            const TABULATOR_COLUMN_VISIBILITY_URL = @json(url('/tabulator-column-visibility'));
+            const TABULATOR_COLUMN_ORDER_URL = @json(url('/tabulator-column-order'));
+            const csrfToken = document.querySelector('meta[name="csrf-token"]');
+            const csrfHeaders = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken ? csrfToken.getAttribute('content') : '',
+            };
+            let savedColumnVisibilityMap = {};
+            let applyingColumnOrder = false;
+            const COL_VIS_CATEGORY_KEYS = ['basic', 'ads', 'others'];
+            const COL_VIS_CATEGORY_LABELS = {
+                basic: 'Basic',
+                ads: 'Ads Statistics',
+                others: 'Others',
+            };
+            const COL_VIS_CAT_STORAGE = 'temu_ads_col_vis_cats';
+            const LOCKED_HIDDEN_FIELDS = { impressions: true };
+
+            function isLockedHiddenField(field) {
+                return !!LOCKED_HIDDEN_FIELDS[String(field || '')];
+            }
+
+            function columnTitle(col) {
+                const def = col.getDefinition ? col.getDefinition() : {};
+                const raw = def.title || def.field || '';
+                return String(raw).replace(/<[^>]*>/g, '').trim() || String(def.field || '');
+            }
+
+            function classifyTemuAdsColumn(field) {
+                const f = String(field || '');
+                if (/^(sku|inv|ad_status|create_ad|goods_id|period)$/.test(f)) return 'basic';
+                if (/^(impressions|clicks_l30|clicks_l7|pause_run|pause_run_ok|ctr|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|roas|acos)$/.test(f)) {
+                    return 'ads';
+                }
+                return 'others';
+            }
+
+            function loadCategoryOverrides() {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(COL_VIS_CAT_STORAGE) || '{}');
+                    return parsed && typeof parsed === 'object' ? parsed : {};
+                } catch (e) {
+                    return {};
+                }
+            }
+
+            function saveCategoryOverrides(map) {
+                try { localStorage.setItem(COL_VIS_CAT_STORAGE, JSON.stringify(map || {})); } catch (e) { /* ignore */ }
+            }
+
+            function resolveCategory(field) {
+                const over = loadCategoryOverrides();
+                if (over[field] && COL_VIS_CATEGORY_KEYS.indexOf(over[field]) !== -1) return over[field];
+                return classifyTemuAdsColumn(field);
+            }
+
+            function syncGroupHeaderCheckbox(groupEl) {
+                if (!groupEl) return;
+                const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+                const itemCbs = groupEl.querySelectorAll('.col-vis-field-toggle');
+                if (!headerCb || !itemCbs.length) {
+                    if (headerCb) {
+                        headerCb.checked = false;
+                        headerCb.indeterminate = false;
+                    }
+                    return;
+                }
+                let checked = 0;
+                itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
+                headerCb.checked = checked === itemCbs.length;
+                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
+
+            function syncSelectionHeaderCheckbox() {
+                const menu = document.getElementById('temu-ads-column-dropdown-menu');
+                if (!menu) return;
+                menu.querySelectorAll('.col-vis-group').forEach(syncGroupHeaderCheckbox);
+                const headerCb = menu.querySelector('.col-vis-selections-toggle');
+                const itemCbs = menu.querySelectorAll('.col-vis-field-toggle');
+                if (!headerCb || !itemCbs.length) return;
+                let checked = 0;
+                itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
+                headerCb.checked = checked === itemCbs.length;
+                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
+
+            function saveColumnVisibilityToServer() {
+                const visibility = {};
+                const boxChecks = document.querySelectorAll('#temu-ads-column-dropdown-menu .col-vis-field-toggle');
+                if (boxChecks.length) {
+                    boxChecks.forEach(function (cb) {
+                        if (cb.value) visibility[cb.value] = !!cb.checked;
+                    });
+                } else {
+                    table.getColumns().forEach(function (col) {
+                        const field = col.getField && col.getField();
+                        if (field) visibility[field] = col.isVisible();
+                    });
+                }
+                savedColumnVisibilityMap = visibility;
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    headers: csrfHeaders,
+                    body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
+                        visibility: visibility,
+                    }),
+                }).catch(function (err) { console.error('Error saving column visibility:', err); });
+            }
+
+            function applyColumnVisibility(map) {
+                if (!map || typeof map !== 'object') return;
+                savedColumnVisibilityMap = map;
+                table.getColumns().forEach(function (col) {
+                    const field = col.getField && col.getField();
+                    if (!field) return;
+                    if (isLockedHiddenField(field)) {
+                        col.hide();
+                        return;
+                    }
+                    if (!map.hasOwnProperty(field)) return;
+                    if (map[field]) col.show();
+                    else col.hide();
+                });
+            }
+
+            function currentColumnOrder() {
+                return table.getColumns()
+                    .map(function (col) { return col.getField && col.getField(); })
+                    .filter(Boolean);
+            }
+
+            function applyColumnOrder(order) {
+                if (!table || !Array.isArray(order) || !order.length) return;
+                const existing = currentColumnOrder();
+                if (!existing.length) return;
+                const valid = [];
+                const seen = {};
+                order.forEach(function (f) {
+                    if (!f || seen[f] || existing.indexOf(f) === -1) return;
+                    seen[f] = true;
+                    valid.push(f);
+                });
+                existing.forEach(function (f) {
+                    if (!seen[f]) valid.push(f);
+                });
+                applyingColumnOrder = true;
+                try {
+                    for (let i = 0; i < valid.length; i++) {
+                        const field = valid[i];
+                        const cols = table.getColumns().filter(function (c) { return !!c.getField(); });
+                        const currentIdx = cols.findIndex(function (c) { return c.getField() === field; });
+                        if (currentIdx === i || currentIdx < 0) continue;
+                        if (i === 0) {
+                            const firstField = cols[0].getField();
+                            if (firstField && firstField !== field) {
+                                table.moveColumn(field, firstField, false);
+                            }
+                        } else if (valid[i - 1]) {
+                            table.moveColumn(field, valid[i - 1], true);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error applying column order:', err);
+                } finally {
+                    applyingColumnOrder = false;
+                }
+            }
+
+            function saveColumnOrderToServer() {
+                if (applyingColumnOrder) return;
+                const order = currentColumnOrder();
+                if (!order.length) return;
+                fetch(TABULATOR_COLUMN_ORDER_URL, {
+                    method: 'POST',
+                    headers: csrfHeaders,
+                    body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
+                        order: order,
+                    }),
+                }).catch(function (err) { console.error('Error saving column order:', err); });
+            }
+
+            function orderFromBox() {
+                return Array.from(document.querySelectorAll('#temu-ads-column-dropdown-menu .col-vis-item'))
+                    .map(function (el) { return el.dataset.field; })
+                    .filter(Boolean);
+            }
+
+            function persistBoxOrderAndCategories() {
+                const overrides = loadCategoryOverrides();
+                document.querySelectorAll('#temu-ads-column-dropdown-menu .col-vis-group').forEach(function (group) {
+                    const cat = group.dataset.category;
+                    group.querySelectorAll('.col-vis-item').forEach(function (item) {
+                        if (item.dataset.field && cat) overrides[item.dataset.field] = cat;
+                    });
+                });
+                saveCategoryOverrides(overrides);
+                applyColumnOrder(orderFromBox());
+                saveColumnOrderToServer();
+                syncSelectionHeaderCheckbox();
+            }
+
+            function bindColumnBoxDrag(root) {
+                if (!root) return;
+                let dragEl = null;
+
+                function clearDropMarks() {
+                    root.querySelectorAll('.col-vis-drop-before, .col-vis-drop-after, .col-vis-drop-over').forEach(function (el) {
+                        el.classList.remove('col-vis-drop-before', 'col-vis-drop-after', 'col-vis-drop-over');
+                    });
+                }
+
+                root.querySelectorAll('.col-vis-item').forEach(function (item) {
+                    item.draggable = true;
+                    const checkbox = item.querySelector('.col-vis-field-toggle');
+                    if (checkbox) {
+                        item.dataset.field = checkbox.value;
+                        checkbox.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+                    }
+                    item.addEventListener('dragstart', function (e) {
+                        if (e.target && e.target.closest && e.target.closest('input')) {
+                            e.preventDefault();
+                            return;
+                        }
+                        dragEl = item;
+                        item.classList.add('col-vis-dragging');
+                        e.dataTransfer.setData('text/plain', item.dataset.field || '');
+                        e.dataTransfer.effectAllowed = 'move';
+                    });
+                    item.addEventListener('dragend', function () {
+                        item.classList.remove('col-vis-dragging');
+                        clearDropMarks();
+                        dragEl = null;
+                    });
+                    item.addEventListener('dragover', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!dragEl || dragEl === item) return;
+                        const rect = item.getBoundingClientRect();
+                        const before = e.clientY < rect.top + rect.height / 2;
+                        item.classList.toggle('col-vis-drop-before', before);
+                        item.classList.toggle('col-vis-drop-after', !before);
+                        e.dataTransfer.dropEffect = 'move';
+                    });
+                    item.addEventListener('dragleave', function () {
+                        item.classList.remove('col-vis-drop-before', 'col-vis-drop-after');
+                    });
+                    item.addEventListener('drop', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const before = item.classList.contains('col-vis-drop-before');
+                        clearDropMarks();
+                        if (!dragEl || dragEl === item) return;
+                        const list = item.parentNode;
+                        if (before) list.insertBefore(dragEl, item);
+                        else list.insertBefore(dragEl, item.nextSibling);
+                        persistBoxOrderAndCategories();
+                    });
+                });
+
+                root.querySelectorAll('.col-vis-group-list').forEach(function (list) {
+                    const group = list.closest('.col-vis-group');
+                    list.addEventListener('dragover', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (group) group.classList.add('col-vis-drop-over');
+                        e.dataTransfer.dropEffect = 'move';
+                    });
+                    list.addEventListener('dragleave', function (e) {
+                        if (group && !group.contains(e.relatedTarget)) {
+                            group.classList.remove('col-vis-drop-over');
+                        }
+                    });
+                    list.addEventListener('drop', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (group) group.classList.remove('col-vis-drop-over');
+                        if (!dragEl) return;
+                        if (e.target.closest('.col-vis-item')) return;
+                        list.appendChild(dragEl);
+                        persistBoxOrderAndCategories();
+                    });
+                });
+            }
+
+            function buildColumnDropdown(map) {
+                const menu = document.getElementById('temu-ads-column-dropdown-menu');
+                if (!menu) return;
+                const vis = (map && typeof map === 'object') ? map : savedColumnVisibilityMap;
+                menu.innerHTML = '';
+
+                const showAllLi = document.createElement('li');
+                showAllLi.className = 'col-vis-full';
+                showAllLi.innerHTML = '<a class="dropdown-item py-1" href="#" id="temu-ads-show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
+                menu.appendChild(showAllLi);
+
+                const boxLi = document.createElement('li');
+                boxLi.className = 'col-vis-full';
+                const wrap = document.createElement('div');
+                wrap.className = 'col-vis-selections';
+
+                const selTitle = document.createElement('label');
+                selTitle.className = 'col-vis-selections-title';
+                const selCb = document.createElement('input');
+                selCb.type = 'checkbox';
+                selCb.className = 'col-vis-selections-toggle';
+                selCb.title = 'Select / deselect all columns';
+                selTitle.appendChild(selCb);
+                selTitle.appendChild(document.createTextNode('Selections'));
+                wrap.appendChild(selTitle);
+
+                const groupsWrap = document.createElement('div');
+                groupsWrap.className = 'col-vis-groups';
+                const lists = {};
+                COL_VIS_CATEGORY_KEYS.forEach(function (cat) {
+                    const group = document.createElement('div');
+                    group.className = 'col-vis-group';
+                    group.dataset.category = cat;
+                    const titleEl = document.createElement('label');
+                    titleEl.className = 'col-vis-group-title';
+                    const groupCb = document.createElement('input');
+                    groupCb.type = 'checkbox';
+                    groupCb.className = 'col-vis-group-toggle';
+                    groupCb.dataset.group = cat;
+                    groupCb.title = 'Select / deselect all in ' + COL_VIS_CATEGORY_LABELS[cat];
+                    titleEl.appendChild(groupCb);
+                    titleEl.appendChild(document.createTextNode(COL_VIS_CATEGORY_LABELS[cat]));
+                    group.appendChild(titleEl);
+                    const list = document.createElement('div');
+                    list.className = 'col-vis-group-list';
+                    group.appendChild(list);
+                    groupsWrap.appendChild(group);
+                    lists[cat] = list;
+                });
+
+                table.getColumns().forEach(function (col) {
+                    const field = col.getField && col.getField();
+                    if (!field || isLockedHiddenField(field)) return;
+                    const title = columnTitle(col);
+                    const cat = resolveCategory(field);
+                    const item = document.createElement('div');
+                    item.className = 'col-vis-item';
+                    item.dataset.field = field;
+                    item.dataset.group = cat;
+                    const label = document.createElement('label');
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = field;
+                    checkbox.className = 'col-vis-field-toggle';
+                    checkbox.dataset.group = cat;
+                    checkbox.checked = vis.hasOwnProperty(field) ? (vis[field] !== false) : col.isVisible();
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(title));
+                    label.title = title + ' — drag to reorder';
+                    item.appendChild(label);
+                    lists[cat].appendChild(item);
+                });
+
+                wrap.appendChild(groupsWrap);
+                boxLi.appendChild(wrap);
+                menu.appendChild(boxLi);
+                syncSelectionHeaderCheckbox();
+                bindColumnBoxDrag(wrap);
+            }
+
+            function loadAndApplyColumnVisibility() {
+                const visReq = fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    headers: csrfHeaders,
+                }).then(function (r) { return r.json(); });
+                const orderReq = fetch(TABULATOR_COLUMN_ORDER_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    headers: csrfHeaders,
+                }).then(function (r) { return r.json(); }).catch(function () { return {}; });
+
+                Promise.all([visReq, orderReq])
+                    .then(function (results) {
+                        const saved = results[0];
+                        const orderResp = results[1];
+                        const map = (saved && typeof saved === 'object') ? saved : {};
+                        applyColumnVisibility(map);
+                        if (orderResp && orderResp.success && Array.isArray(orderResp.order)) {
+                            applyColumnOrder(orderResp.order);
+                        }
+                        buildColumnDropdown(map);
+                    })
+                    .catch(function (err) {
+                        console.error('Error loading column visibility:', err);
+                        buildColumnDropdown({});
+                    });
+            }
+
+            table.on('tableBuilt', loadAndApplyColumnVisibility);
+
+            const colMenu = document.getElementById('temu-ads-column-dropdown-menu');
+            if (colMenu) {
+                colMenu.addEventListener('change', function (e) {
+                    if (e.target.type !== 'checkbox') return;
+                    if (e.target.classList.contains('col-vis-selections-toggle')) {
+                        const checked = e.target.checked;
+                        colMenu.querySelectorAll('.col-vis-field-toggle').forEach(function (cb) {
+                            cb.checked = checked;
+                            const col = table.getColumn(cb.value);
+                            if (!col) return;
+                            if (checked) col.show();
+                            else col.hide();
+                        });
+                        e.target.indeterminate = false;
+                        syncSelectionHeaderCheckbox();
+                        saveColumnVisibilityToServer();
+                        return;
+                    }
+                    if (e.target.classList.contains('col-vis-group-toggle')) {
+                        const checked = e.target.checked;
+                        const groupEl = e.target.closest('.col-vis-group');
+                        const itemCbs = groupEl
+                            ? groupEl.querySelectorAll('.col-vis-field-toggle')
+                            : colMenu.querySelectorAll('.col-vis-field-toggle[data-group="' + e.target.dataset.group + '"]');
+                        itemCbs.forEach(function (cb) {
+                            cb.checked = checked;
+                            const col = table.getColumn(cb.value);
+                            if (!col) return;
+                            if (checked) col.show();
+                            else col.hide();
+                        });
+                        e.target.indeterminate = false;
+                        syncSelectionHeaderCheckbox();
+                        saveColumnVisibilityToServer();
+                        return;
+                    }
+                    const col = table.getColumn(e.target.value);
+                    if (col) {
+                        if (e.target.checked) col.show();
+                        else col.hide();
+                    }
+                    syncSelectionHeaderCheckbox();
+                    saveColumnVisibilityToServer();
+                });
+                colMenu.addEventListener('click', function (e) {
+                    const showAll = e.target.closest('#temu-ads-show-all-columns-btn');
+                    if (!showAll) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    table.getColumns().forEach(function (col) {
+                        const field = col.getField && col.getField();
+                        if (isLockedHiddenField(field)) {
+                            col.hide();
+                            return;
+                        }
+                        col.show();
+                    });
+                    buildColumnDropdown({});
+                    saveColumnVisibilityToServer();
                 });
             }
 
@@ -452,19 +1887,33 @@
                 table.setData(dataUrl());
             });
 
-            document.getElementById('search-input').addEventListener('input', function () {
-                const q = (this.value || '').trim().toLowerCase();
-                if (!q) {
+            function applySearchFilters() {
+                const goodsQ = (document.getElementById('search-goods-id').value || '').trim().toLowerCase();
+                const skuQ = (document.getElementById('search-sku').value || '').trim().toLowerCase();
+                const statusQ = (document.getElementById('status-filter').value || '').trim();
+                const pauseRunQ = (document.getElementById('pause-run-filter').value || '').trim();
+                if (!goodsQ && !skuQ && !statusQ && !pauseRunQ) {
                     table.clearFilter(true);
                     updateBadgesFromTable();
                     return;
                 }
                 table.setFilter(function (data) {
-                    return [data.goods_id, data.sku]
-                        .some(v => String(v || '').toLowerCase().includes(q));
+                    const goodsOk = !goodsQ || String(data.goods_id || '').toLowerCase().includes(goodsQ);
+                    const skuOk = !skuQ || String(data.sku || '').toLowerCase().includes(skuQ);
+                    const status = String(data.ad_status || 'Not sync');
+                    const statusOk = !statusQ || status === statusQ;
+                    const action = (window.TemuAdsColorRules && TemuAdsColorRules.pauseRunAction)
+                        ? TemuAdsColorRules.pauseRunAction(data || {})
+                        : String((data && data.pause_run) || '');
+                    const pauseRunOk = !pauseRunQ || action === pauseRunQ;
+                    return goodsOk && skuOk && statusOk && pauseRunOk;
                 });
                 updateBadgesFromTable();
-            });
+            }
+            document.getElementById('search-goods-id').addEventListener('input', applySearchFilters);
+            document.getElementById('search-sku').addEventListener('input', applySearchFilters);
+            document.getElementById('status-filter').addEventListener('change', applySearchFilters);
+            document.getElementById('pause-run-filter').addEventListener('change', applySearchFilters);
 
             document.getElementById('export-btn').addEventListener('click', function () {
                 table.download('csv', 'temu-ads-api-reports.csv', {}, {
@@ -480,6 +1929,133 @@
                 el.style.display = 'block';
                 el.innerHTML = html;
             }
+
+            function queueCreateGoodsIds() {
+                if (!table) return [];
+                const seen = {};
+                const ids = [];
+                (table.getData(true) || []).forEach(function (row) {
+                    if (String(row.ad_status || '') !== 'No ad') return;
+                    if ((parseInt(row.inv, 10) || 0) <= 0) return;
+                    const gid = String(row.goods_id || '').trim();
+                    if (!gid || seen[gid]) return;
+                    seen[gid] = true;
+                    ids.push(gid);
+                });
+                return ids;
+            }
+
+            function createAdDefaults() {
+                const budgetEl = document.getElementById('create-budget');
+                const roasEl = document.getElementById('create-roas');
+                const budget = parseFloat(budgetEl && budgetEl.value ? budgetEl.value : 10);
+                let roas = parseFloat(roasEl && roasEl.value ? roasEl.value : 8);
+                if (window.TemuAdsColorRules && TemuAdsColorRules.getTargetRoasBidding) {
+                    roas = Number(TemuAdsColorRules.getTargetRoasBidding()) || roas;
+                }
+                return {
+                    budget: (isFinite(budget) && budget >= 1) ? budget : 10,
+                    roas: (isFinite(roas) && roas >= 0.1) ? roas : 8,
+                };
+            }
+
+            async function runBulkCreateQueue() {
+                const ids = queueCreateGoodsIds();
+                const status = document.getElementById('fetch-status');
+                const badge = document.getElementById('create-count');
+                if (!ids.length) {
+                    status.style.display = 'block';
+                    status.innerHTML = '<div class="alert alert-warning py-2 mb-0">No Create queue rows (Status No ad).</div>';
+                    return;
+                }
+                const defaults = createAdDefaults();
+                if (!confirm(
+                    'Create Temu ads for ' + ids.length + ' goods in the Create queue?\n' +
+                    'Daily budget: $' + defaults.budget + '\n' +
+                    'Target ROAS: ' + defaults.roas + '\n' +
+                    '(Same as Create ads Rule)'
+                )) {
+                    return;
+                }
+                if (badge) badge.style.pointerEvents = 'none';
+                status.style.display = 'block';
+                let created = 0;
+                let failed = 0;
+                const failNotes = [];
+                const chunkSize = 5;
+                for (let i = 0; i < ids.length; i += chunkSize) {
+                    const chunk = ids.slice(i, i + chunkSize);
+                    status.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fas fa-spinner fa-spin me-1"></i> Creating ads ' +
+                        Math.min(i + chunk.length, ids.length) + '/' + ids.length +
+                        ' (budget $' + defaults.budget + ', ROAS ' + defaults.roas + ')…</div>';
+                    try {
+                        const res = await fetch(@json(route('temu.ads.create-bulk')), {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            },
+                            body: JSON.stringify({
+                                goods_ids: chunk,
+                                budget: defaults.budget,
+                                roas: defaults.roas,
+                            }),
+                        });
+                        const data = await res.json();
+                        created += (data.created && data.created.length) ? data.created.length : 0;
+                        if (data.failed && data.failed.length) {
+                            failed += data.failed.length;
+                            data.failed.slice(0, 5).forEach(function (row) {
+                                failNotes.push((row.goods_id || '') + ': ' + (row.message || 'failed'));
+                            });
+                        }
+                    } catch (err) {
+                        failed += chunk.length;
+                        failNotes.push('Chunk failed: ' + (err && err.message ? err.message : 'network error'));
+                    }
+                    if (badge) {
+                        setBadgeVal('create-count', Math.max(ids.length - created - failed, 0).toLocaleString());
+                    }
+                }
+                let cls = failed === 0 ? 'alert-success' : (created > 0 ? 'alert-warning' : 'alert-danger');
+                let msg = 'Created ' + created + '/' + ids.length + ' ads (budget $' + defaults.budget + ', ROAS ' + defaults.roas + ')';
+                if (failed > 0) msg += '. Failed ' + failed;
+                if (failNotes.length) msg += ' — ' + failNotes.slice(0, 3).join('; ');
+                status.innerHTML = '<div class="alert ' + cls + ' py-2 mb-0">' + msg + '</div>';
+                if (badge) badge.style.pointerEvents = '';
+                table.setData(dataUrl());
+            }
+
+            document.getElementById('create-count').addEventListener('click', function (e) {
+                if (e.target.closest('.temu-ads-history-dot')) return;
+                runBulkCreateQueue();
+            });
+
+            document.getElementById('pause-run-count').addEventListener('click', function (e) {
+                if (e.target.closest('.temu-ads-history-dot')) return;
+                fillRunningAdsModal();
+                new bootstrap.Modal(document.getElementById('pauseRunRunningModal')).show();
+            });
+
+            document.querySelectorAll('.temu-ads-chart-badge').forEach(function (el) {
+                el.addEventListener('click', function () {
+                    openTemuAdsBadgeChart(this.dataset.metric, this.dataset.label);
+                });
+            });
+            document.querySelectorAll('.temu-ads-history-dot').forEach(function (dot) {
+                dot.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const host = this.closest('[data-metric]') || this;
+                    const metric = this.dataset.metric || (host && host.dataset.metric);
+                    const label = this.dataset.label || (host && host.dataset.label) || metric;
+                    openTemuAdsBadgeChart(metric, label);
+                });
+            });
+            document.getElementById('temuAdsBadgeChartRange').addEventListener('change', function () {
+                if (activeBadgeMetric) loadTemuAdsBadgeChart();
+            });
 
             function openCreateModal(goodsId) {
                 document.getElementById('create-goods-id').value = goodsId || '';
@@ -519,7 +2095,7 @@
             });
 
             document.getElementById('create-ad-btn').addEventListener('click', function () {
-                const q = (document.getElementById('search-input').value || '').trim();
+                const q = (document.getElementById('search-goods-id').value || '').trim();
                 openCreateModal(/^\d+$/.test(q) ? q : '');
             });
 

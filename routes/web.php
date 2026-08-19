@@ -4756,11 +4756,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/temu/ads/data', 'getTemuAdsData')->name('temu.ads.data');
         Route::post('/temu/ads/refresh', 'refresh')->name('temu.ads.refresh');
         Route::post('/temu/ads/create', 'createAd')->name('temu.ads.create');
+        Route::post('/temu/ads/create-bulk', 'createAdsBulk')->name('temu.ads.create-bulk');
         Route::post('/temu/ads/predict-roas', 'predictRoas')->name('temu.ads.predict-roas');
         Route::post('/temu/ads/refresh-status', 'refreshStatus')->name('temu.ads.refresh-status');
         Route::get('/temu/ads/color-rules', 'getColorRules')->name('temu.ads.color-rules');
         Route::post('/temu/ads/color-rules', 'saveColorRules')->name('temu.ads.color-rules.save');
         Route::post('/temu/ads/auto-pause', 'autoPause')->name('temu.ads.auto-pause');
+        Route::post('/temu/ads/toggle', 'toggleAd')->name('temu.ads.toggle');
+        Route::get('/temu/ads/badge-history', 'badgeHistory')->name('temu.ads.badge-history');
+        Route::post('/temu/ads/badge-snapshot', 'saveBadgeSnapshot')->name('temu.ads.badge-snapshot');
     });
 
     // Temu 2 Ads — raw temu2_campaign_reports (upload + Tabulator, no matching)
