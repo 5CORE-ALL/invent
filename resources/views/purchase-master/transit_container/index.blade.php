@@ -1231,6 +1231,41 @@ TAB_NAMES.forEach((tabName, index) => {
               }
             },
             {
+              title: "Active",
+              headerTooltip: "CP Master status",
+              field: "active",
+              headerSort: true,
+              hozAlign: "center",
+              width: 78,
+              formatter: function(cell) {
+                const raw = String(cell.getValue() || "").trim();
+                if (!raw) return '<span class="text-muted">—</span>';
+                const lower = raw.toLowerCase();
+                let color = "#64748b";
+                if (lower === "active") color = "#16a34a";
+                else if (lower === "inactive") color = "#dc2626";
+                else if (raw.toUpperCase() === "DC" || raw.toUpperCase() === "2BDC") color = "#b45309";
+                else if (lower === "upcoming") color = "#2563eb";
+                return `<span style="font-weight:700;color:${color};">${escapeHtmlTransit(raw)}</span>`;
+              }
+            },
+            {
+              title: "Inv",
+              headerTooltip: "Inventory from CP Master (shopify_skus.inv)",
+              field: "inv",
+              sorter: "number",
+              headerSort: true,
+              hozAlign: "center",
+              width: 64,
+              formatter: function(cell) {
+                const v = cell.getValue();
+                if (v === null || v === undefined || v === "") {
+                  return '<span class="text-muted">—</span>';
+                }
+                return String(v);
+              }
+            },
+            {
               title: "Stat",
               headerTooltip: "Status",
               field: "push_status",
@@ -1903,9 +1938,13 @@ async function pushSingleWithRetry(row, tableRow, table, tabName, forceRepush) {
             const response = await res.json();
 
             if (response.status === 'success') {
-                tableRow.update({ push_status: 'success', pushed: 1 });
+                const rowUpdate = { push_status: 'success', pushed: 1 };
+                if (response.inv !== null && response.inv !== undefined && response.inv !== '') {
+                    rowUpdate.inv = response.inv;
+                }
+                tableRow.update(rowUpdate);
                 tableRow.deselect();
-                return { status: 'success', attempts: attempt };
+                return { status: 'success', attempts: attempt, sku: row.our_sku || '' };
             }
 
             if (response.status === 'skipped') {
@@ -1993,6 +2032,7 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
     let failedCount  = 0;
     let skippedCount = 0;
     const stillFailed = [];
+    const pushedSkus = [];
 
     for (let i = 0; i < rowsToPush.length; i++) {
         const row    = rowsToPush[i];
@@ -2005,6 +2045,7 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
 
         if (result.status === 'success') {
             successCount++;
+            if (row.our_sku) pushedSkus.push(row.our_sku);
         } else if (result.status === 'skipped') {
             skippedCount++;
         } else {
@@ -2034,6 +2075,7 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
             if (result.status === 'success') {
                 successCount++;
                 failedCount--;
+                if (item.row && item.row.our_sku) pushedSkus.push(item.row.our_sku);
             } else if (result.status === 'skipped') {
                 skippedCount++;
                 failedCount--;
@@ -2045,6 +2087,19 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
         }
     }
 
+    let pullNote = '';
+    if (pushedSkus.length > 0) {
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pulling Shopify…';
+        const pull = await pullShopifyInvAfterPush(pushedSkus, table);
+        if (pull.pulled > 0) {
+            pullNote = `\n🔄 Shopify inv pulled: ${pull.pulled} SKU(s)`;
+        } else if (pull.error) {
+            pullNote = `\n⚠️ Shopify pull failed: ${pull.error}`;
+        } else {
+            pullNote = `\n⚠️ Shopify inv pull did not return updated qty.`;
+        }
+    }
+
     button.disabled = false;
     button.innerHTML = originalText;
 
@@ -2052,10 +2107,64 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
     if (successCount > 0) message += `✅ Successfully pushed: ${successCount}\n`;
     if (skippedCount > 0) message += `⚠️ Skipped (already pushed): ${skippedCount}\n`;
     if (failedCount  > 0) message += `❌ Failed: ${failedCount}\n`;
+    if (pullNote) message += pullNote;
 
     alert(message);
     updateActiveTabSummary(index, table);
 });
+
+function normalizeTransitSkuKey(sku) {
+    return String(sku || '').trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+async function pullShopifyInvAfterPush(skus, table) {
+    const unique = [...new Set((skus || []).map(normalizeTransitSkuKey).filter(Boolean))];
+    if (!unique.length) {
+        return { pulled: 0 };
+    }
+    try {
+        // Give Shopify a moment to commit the inventory adjust before we read it back.
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const res = await fetch('/inventory-warehouse/pull-shopify-inv', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({ skus: unique })
+        });
+        const data = await res.json().catch(() => null);
+        if (!data || !data.inv || typeof data.inv !== 'object') {
+            return { pulled: 0, error: (data && data.message) || ('HTTP ' + res.status) };
+        }
+        const invMap = {};
+        Object.keys(data.inv).forEach(function (key) {
+            invMap[normalizeTransitSkuKey(key)] = data.inv[key];
+        });
+        (table.getRows() || []).forEach(function (row) {
+            const sku = normalizeTransitSkuKey((row.getData() || {}).our_sku);
+            const compact = sku.replace(/[-_]/g, ' ').replace(/\s+/g, ' ');
+            let inv;
+            if (Object.prototype.hasOwnProperty.call(invMap, sku)) {
+                inv = invMap[sku];
+            } else if (Object.prototype.hasOwnProperty.call(invMap, compact)) {
+                inv = invMap[compact];
+            } else {
+                return;
+            }
+            if (inv === null || inv === undefined || inv === '') {
+                return;
+            }
+            row.update({ inv: inv });
+        });
+        table.redraw();
+        return { pulled: Object.keys(invMap).length, message: data.message || '' };
+    } catch (err) {
+        console.error('Shopify inv pull after push failed', err);
+        return { pulled: 0, error: (err && err.message) || 'Network error' };
+    }
+}
 
 
 

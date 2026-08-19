@@ -173,10 +173,22 @@ class TransitContainerDetailsController extends Controller
             $mfrgSupplierBySku[$k] = trim((string) ($r->supplier ?? ''));
         }
 
-        $shopifyImages = ShopifySku::pluck('image_src', 'sku')->mapWithKeys(function ($value, $key) {
-            $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $key)));
-            return [$normSku => $value];
-        })->toArray();
+        $shopifyImages = [];
+        $shopifyInvMap = [];
+        foreach (ShopifySku::query()->get(['sku', 'image_src', 'inv']) as $shopifyRow) {
+            $keys = array_unique(array_filter([
+                $normalizeSku($shopifyRow->sku),
+                ShopifySku::normalizeSkuForShopifyLookup((string) $shopifyRow->sku),
+            ]));
+            foreach ($keys as $k) {
+                if (! array_key_exists($k, $shopifyImages)) {
+                    $shopifyImages[$k] = $shopifyRow->image_src;
+                }
+                if (! array_key_exists($k, $shopifyInvMap)) {
+                    $shopifyInvMap[$k] = $shopifyRow->inv;
+                }
+            }
+        }
 
         $productValuesMap = ProductMaster::pluck('Values', 'sku')->mapWithKeys(function ($value, $key) {
             $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $key)));
@@ -261,6 +273,7 @@ class TransitContainerDetailsController extends Controller
             $skuParentMap,
             $parentSupplierMap,
             $shopifyImages,
+            $shopifyInvMap,
             $productValuesMap,
             $pushedMap,
             $clinkBySku,
@@ -295,8 +308,21 @@ class TransitContainerDetailsController extends Controller
                 $record->supplier_name = $mfrgSupplierBySku[$sku] ?? '';
             }
 
-            $record->image_src = $shopifyImages[$sku] ?? null;
+            $record->image_src = $shopifyImages[$sku]
+                ?? $shopifyImages[ShopifySku::normalizeSkuForShopifyLookup($sku)]
+                ?? null;
             $record->Values = $productValuesMap[$sku] ?? null;
+
+            $values = $record->Values;
+            if (is_string($values)) {
+                $values = json_decode($values, true);
+            }
+            $record->active = is_array($values) ? trim((string) ($values['status'] ?? '')) : '';
+
+            $invRaw = $shopifyInvMap[$sku]
+                ?? $shopifyInvMap[ShopifySku::normalizeSkuForShopifyLookup($sku)]
+                ?? null;
+            $record->inv = $invRaw === null || $invRaw === '' ? null : (int) $invRaw;
 
             if (isset($pushedMap[$key])) {
                 $record->pushed = (int) $pushedMap[$key]['pushed'];

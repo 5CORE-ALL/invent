@@ -1056,11 +1056,15 @@ class InventoryWarehouseController extends Controller
                 ]
             );
 
+            $available = $adjustResponse->json('inventory_level.available');
+            $this->writeShopifyInvForSku($sku, $available);
+
             return response()->json([
                 'success' => true,
                 'status' => 'success',
                 'row_id' => $rowId,
                 'sku' => $sku,
+                'inv' => $available === null ? null : (int) $available,
                 'message' => 'Successfully pushed to Shopify'
             ]);
 
@@ -1087,6 +1091,113 @@ class InventoryWarehouseController extends Controller
                 'row_id' => $rowId,
                 'sku' => $sku,
                 'message' => 'Exception: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * After transit Push Inv. finishes, pull live Shopify qty into shopify_skus
+     * (same source as CP Master Inventory) and return inv by SKU.
+     */
+    public function pullShopifyInventoryAfterPush(Request $request)
+    {
+        @set_time_limit(180);
+
+        $skus = $request->input('skus', []);
+        if (! is_array($skus)) {
+            $skus = [];
+        }
+        $skus = array_values(array_unique(array_filter(array_map(function ($s) {
+            return $this->normalizeSku($s);
+        }, $skus), static fn ($s) => $s !== '')));
+
+        if ($skus === []) {
+            return response()->json([
+                'success' => false,
+                'inv' => [],
+                'message' => 'No SKUs to pull.',
+            ], 422);
+        }
+
+        try {
+            $ok = app(ShopifyApiInventoryController::class)->syncLiveInventoryForSkuList($skus, 0);
+            Cache::forget('shopify_skus_list');
+
+            $inv = $this->shopifyInvMapForSkus($skus);
+
+            return response()->json([
+                'success' => (bool) $ok || $inv !== [],
+                'inv' => $inv,
+                'message' => $ok
+                    ? 'Pulled live Shopify inventory for '.count($inv).' SKU(s).'
+                    : 'Could not refresh live Shopify inventory for all SKUs.',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('pullShopifyInventoryAfterPush failed', [
+                'skus' => $skus,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'inv' => [],
+                'message' => 'Shopify pull failed: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * @param  list<string>  $normalizedSkus
+     * @return array<string, int>
+     */
+    protected function shopifyInvMapForSkus(array $normalizedSkus): array
+    {
+        $wanted = array_flip($normalizedSkus);
+        $inv = [];
+        $rows = ShopifySku::query()
+            ->where(function ($q) use ($normalizedSkus) {
+                $q->whereIn('sku', $normalizedSkus);
+                foreach ($normalizedSkus as $s) {
+                    $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$s]);
+                }
+            })
+            ->get(['sku', 'inv']);
+        foreach ($rows as $row) {
+            $n = $this->normalizeSku($row->sku);
+            $n2 = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            $key = isset($wanted[$n]) ? $n : (isset($wanted[$n2]) ? $n2 : $n);
+            if ($key === '') {
+                continue;
+            }
+            $inv[$key] = $row->inv === null || $row->inv === '' ? null : (int) $row->inv;
+        }
+
+        return $inv;
+    }
+
+    protected function writeShopifyInvForSku(string $sku, mixed $available): void
+    {
+        if ($available === null || $available === '') {
+            return;
+        }
+        $qty = (int) $available;
+        $norm = $this->normalizeSku($sku);
+        try {
+            ShopifySku::query()
+                ->where(function ($q) use ($sku, $norm) {
+                    $q->where('sku', $sku)
+                        ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$norm]);
+                })
+                ->update([
+                    'inv' => $qty,
+                    'available_to_sell' => $qty,
+                    'updated_at' => now(),
+                ]);
+            Cache::forget('shopify_skus_list');
+        } catch (\Throwable $e) {
+            Log::warning('writeShopifyInvForSku failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
             ]);
         }
     }

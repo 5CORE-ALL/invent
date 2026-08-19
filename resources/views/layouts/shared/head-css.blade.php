@@ -31,6 +31,41 @@
     .badge.bg-success * {
         color: #000 !important;
     }
+
+    /*
+     * Yellow / warning chips and buttons (e.g. Syncing… 0): always black text.
+     * Theme + .text-white otherwise wash out on #ffc107.
+     */
+    .badge.bg-warning,
+    .badge.badge-warning,
+    .badge.text-bg-warning,
+    .badge.bg-warning-subtle,
+    .badge.bg-warning-subtle.text-warning,
+    .btn-warning,
+    .btn.btn-warning,
+    .btn.btn-warning.text-white,
+    .btn-warning.text-white,
+    .text-bg-warning {
+        --bs-btn-color: #000 !important;
+        --bs-btn-hover-color: #000 !important;
+        --bs-btn-active-color: #000 !important;
+        --bs-btn-disabled-color: #000 !important;
+        --bs-badge-color: #000 !important;
+        color: #000 !important;
+    }
+    .badge.bg-warning i,
+    .badge.bg-warning *,
+    .badge.badge-warning *,
+    .badge.text-bg-warning *,
+    .badge.bg-warning-subtle *,
+    .btn-warning i,
+    .btn-warning *,
+    .btn.btn-warning i,
+    .btn.btn-warning *,
+    .btn.btn-warning.text-white *,
+    .text-bg-warning * {
+        color: #000 !important;
+    }
 </style>
 
 {{-- Global: PARENT rows light yellow + ParentExpand triangle column helpers --}}

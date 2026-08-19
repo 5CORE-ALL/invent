@@ -792,10 +792,13 @@ final class MarketplaceListingStockResolver
             if ($sku === '') {
                 continue;
             }
-            if (! array_key_exists('inventory', $row) || $row['inventory'] === null) {
+            if (! array_key_exists('inventory', $row)) {
                 continue;
             }
-            $qty = (int) $row['inventory'];
+            $qty = self::normalizeMarketplaceQtyValue($row['inventory']);
+            if ($qty === null) {
+                continue;
+            }
             $upper = strtoupper($sku);
             $map[$upper] = $qty;
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
@@ -834,10 +837,9 @@ final class MarketplaceListingStockResolver
 
     /**
      * Tab classification stock map. Local DB qty is what listings columns use
-     * after inventory sync; warm live cache (often a 6h snapshot of the same
-     * tables) only fills SKUs local omitted or left null so equal Shopify /
-     * marketplace qtys are not stuck on Mismatch.
-     * Reverb/AliExpress pages that need API-first call mergeLocalAndLiveStockMaps($local, $live) themselves.
+     * after inventory sync; warm live cache fills SKUs local omitted.
+     * Live `--`/null inventory is NOT filled from local — that is a mismatch
+     * against in-stock Shopify (Shein Pending, empty eBay qty, etc.).
      *
      * @param  array<int, array{sku?: string, inventory?: int|null}>|null  $liveRows
      * @param  array<string, int>  $localMap
@@ -845,10 +847,109 @@ final class MarketplaceListingStockResolver
      */
     public static function classifyStockMapFromLiveOrLocal(?array $liveRows, array $localMap): array
     {
-        return self::mergeLocalAndLiveStockMaps(
+        $merged = self::mergeLocalAndLiveStockMaps(
             self::stockMapFromLiveListingRows($liveRows),
             $localMap
         );
+        foreach (self::nullInventoryKeysFromLiveListingRows($liveRows) as $key) {
+            $merged[$key] = 0;
+        }
+
+        return $merged;
+    }
+
+    /**
+     * SKUs whose live listing exists but qty is null/`--` (UI hyphen).
+     *
+     * @param  array<int, array{sku?: string, inventory?: mixed}>|null  $rows
+     * @return list<string>
+     */
+    public static function nullInventoryKeysFromLiveListingRows(?array $rows): array
+    {
+        if (! is_array($rows) || $rows === []) {
+            return [];
+        }
+
+        $keys = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '' || ! array_key_exists('inventory', $row)) {
+                continue;
+            }
+            if (self::normalizeMarketplaceQtyValue($row['inventory']) !== null) {
+                continue;
+            }
+            $upper = strtoupper($sku);
+            $keys[$upper] = true;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $keys[$norm] = true;
+            }
+        }
+
+        return array_keys($keys);
+    }
+
+    /**
+     * Qty shown on listings. Live `--`/null stays null (mismatch), never falls back to local.
+     *
+     * @param  array{inventory?: mixed}|null  $live
+     * @param  array{inventory?: mixed}|null  $cached
+     */
+    public static function displayedMarketplaceQty(?array $live, ?array $cached, ?int $localQty): ?int
+    {
+        if (is_array($live) && array_key_exists('inventory', $live)) {
+            return self::normalizeMarketplaceQtyValue($live['inventory']);
+        }
+        if (is_array($cached) && array_key_exists('inventory', $cached)) {
+            $cachedQty = self::normalizeMarketplaceQtyValue($cached['inventory']);
+            if ($cachedQty !== null) {
+                return $cachedQty;
+            }
+
+            return null;
+        }
+
+        return $localQty;
+    }
+
+    /**
+     * Treat hyphen / empty / "Not Listed" as missing marketplace qty.
+     */
+    public static function normalizeMarketplaceQtyValue(mixed $raw): ?int
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        if (is_bool($raw)) {
+            return null;
+        }
+        if (is_string($raw)) {
+            $trim = trim($raw);
+            if ($trim === ''
+                || $trim === '--'
+                || $trim === '—'
+                || $trim === '-'
+                || strcasecmp($trim, 'n/a') === 0
+                || strcasecmp($trim, 'na') === 0
+                || strcasecmp($trim, 'null') === 0
+                || strcasecmp($trim, 'not listed') === 0) {
+                return null;
+            }
+            if (! is_numeric($trim)) {
+                return null;
+            }
+
+            return (int) $trim;
+        }
+        if (! is_numeric($raw)) {
+            return null;
+        }
+
+        return (int) $raw;
     }
 
     /**
@@ -1284,10 +1385,11 @@ final class MarketplaceListingStockResolver
             ->get(['sku', $column])
             ->each(function ($row) use (&$map, $column) {
                 $raw = $row->{$column};
-                if ($raw === null || $raw === '' || ! is_numeric($raw)) {
+                $qty = self::normalizeMarketplaceQtyValue($raw);
+                if ($qty === null) {
                     return;
                 }
-                self::put($map, (string) $row->sku, (int) $raw);
+                self::put($map, (string) $row->sku, $qty);
             });
     }
 

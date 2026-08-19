@@ -212,9 +212,12 @@ class ReverbSyncController extends Controller
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         // Prefer warm live cache, but fill gaps from local stock (ended/inactive often omit qty).
         $localMpStock = $this->reverbStockMapForSkus($allLinkedVerified);
-        $liveMpStock = MarketplaceListingStockResolver::stockMapFromLiveListingRows($liveService->peekCached());
-        $mpStock = MarketplaceListingStockResolver::mergeLocalAndLiveStockMaps($localMpStock, $liveMpStock);
-        if ($liveMpStock === [] && ! $forceLive && ! $clearCache) {
+        $liveRows = $liveService->peekCached();
+        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+            $liveRows,
+            $localMpStock
+        );
+        if (($liveRows === null || $liveRows === []) && ! $forceLive && ! $clearCache) {
             WarmReverbLiveListingsCache::dispatch();
         }
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
@@ -397,7 +400,13 @@ class ReverbSyncController extends Controller
             $shopifyPrice = $row->b2c_price ?? $row->price ?? null;
             $pid = $linked ? (string) ($metric->product_id ?? '') : '';
             $live = ($pid !== '' && isset($liveReverb[$pid])) ? $liveReverb[$pid] : null;
-            $aeQty = $linked ? ($live['inventory'] ?? null) : null;
+            $aeQty = $linked
+                ? MarketplaceListingStockResolver::displayedMarketplaceQty(
+                    is_array($live) ? $live : null,
+                    null,
+                    null
+                )
+                : null;
             $incomplete = $linked
                 ? $listingValidator->incompletenessFromLive(is_array($live) ? $live : null)
                 : ['incomplete' => false, 'issue_count' => 0];

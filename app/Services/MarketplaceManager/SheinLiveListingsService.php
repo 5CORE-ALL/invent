@@ -2,9 +2,11 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\SheinListingStatus;
 use App\Models\SheinMetric;
 use App\Models\SheinMmMetric;
 use App\Models\SheinPricingPrice;
+use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -39,13 +41,15 @@ final class SheinLiveListingsService
         }
 
         try {
-            return Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
+            $rows = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
                 return $this->fetchFromLocal();
             });
+
+            return $this->withListedNullInventoryRows(is_array($rows) ? $rows : []);
         } catch (\Throwable $e) {
             Log::warning('SheinLiveListingsService: cache unavailable', ['error' => $e->getMessage()]);
 
-            return $this->fetchFromLocal();
+            return $this->withListedNullInventoryRows($this->fetchFromLocal());
         }
     }
 
@@ -57,7 +61,7 @@ final class SheinLiveListingsService
         try {
             $cached = Cache::get(self::CACHE_KEY);
 
-            return is_array($cached) ? $cached : null;
+            return is_array($cached) ? $this->withListedNullInventoryRows($cached) : null;
         } catch (\Throwable $e) {
             return null;
         }
@@ -105,7 +109,7 @@ final class SheinLiveListingsService
     protected function fetchFromLocal(): array
     {
         if (! Schema::hasTable('shein_pricing_prices')) {
-            return [];
+            return $this->withListedNullInventoryRows([]);
         }
 
         $mmBySku = [];
@@ -142,7 +146,55 @@ final class SheinLiveListingsService
                 }
             });
 
-        return $out;
+        return $this->withListedNullInventoryRows($out);
+    }
+
+    /**
+     * Pending Hub listings often have `--` qty and no shein_pricing_prices row.
+     * Keep them in the live map as active + null inventory so they classify as mismatch.
+     *
+     * @param  array<int, array{product_id?: string, sku?: string, state?: string, inventory?: int|null, title?: ?string, price?: ?float}>  $rows
+     * @return array<int, array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float}>
+     */
+    protected function withListedNullInventoryRows(array $rows): array
+    {
+        $have = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $have[strtoupper($sku)] = true;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $have[$norm] = true;
+            }
+        }
+
+        foreach (SheinListingStatus::listedSellerSkus() as $sku) {
+            $upper = strtoupper($sku);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if (isset($have[$upper]) || ($norm !== '' && isset($have[$norm]))) {
+                continue;
+            }
+            $have[$upper] = true;
+            if ($norm !== '') {
+                $have[$norm] = true;
+            }
+            $rows[] = [
+                'product_id' => $sku,
+                'sku' => $sku,
+                'state' => 'active',
+                'inventory' => null,
+                'title' => null,
+                'price' => null,
+            ];
+        }
+
+        return $rows;
     }
 
     /**

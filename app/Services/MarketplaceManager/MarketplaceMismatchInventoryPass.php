@@ -8,6 +8,7 @@ use App\Models\FaireMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
+use App\Models\SheinListingStatus;
 use App\Models\SheinMmMetric;
 use App\Models\EbayMetric;
 use App\Models\Ebay2Metric;
@@ -258,6 +259,25 @@ final class MarketplaceMismatchInventoryPass
 
         if ($channel === 'pls') {
             return app(PlsListingsPageBuilder::class)->linkedSkus();
+        }
+
+        if ($channel === 'shein') {
+            $fromMetric = SheinMmMetric::query()
+                ->whereNotNull('sku')
+                ->whereNotNull('product_id')
+                ->where('sku', '!=', '')
+                ->where('product_id', '!=', '')
+                ->whereColumn('sku', '!=', 'product_id')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->all();
+            $fromListed = SheinListingStatus::listedSellerSkus();
+
+            return collect(array_merge($fromMetric, $fromListed))
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
         }
 
         if ($channel === 'ebay1' || $channel === 'ebay2' || $channel === 'ebay3') {
