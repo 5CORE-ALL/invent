@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Log;
 class AutoPauseTemuAds extends Command
 {
     protected $signature = 'temu:auto-pause-ads
-                            {--dry-run : List matching ads without calling Temu}';
+                            {--dry-run : List matching ads without calling Temu}
+                            {--goods-id= : Comma-separated goods IDs to retry}';
 
     protected $description = 'Pause Active Temu ads that match L7 clicks < threshold and ROAS < Stop ROAS';
 
@@ -35,7 +36,14 @@ class AutoPauseTemuAds extends Command
             };
         }
 
-        $stats = $service->pauseMatching($dryRun, $onEach);
+        $onlyGoodsIds = null;
+        $goodsOpt = trim((string) $this->option('goods-id'));
+        if ($goodsOpt !== '') {
+            $onlyGoodsIds = array_values(array_filter(array_map('trim', explode(',', $goodsOpt))));
+            $this->info('Retrying goods: '.implode(', ', $onlyGoodsIds));
+        }
+
+        $stats = $service->pauseMatching($dryRun, $onEach, $onlyGoodsIds);
         if ($bar) {
             $bar->finish();
             $this->newLine();

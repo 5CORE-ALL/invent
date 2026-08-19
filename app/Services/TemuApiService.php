@@ -762,25 +762,40 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     public function pauseAd(string $goodsId): array
     {
         $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
-        $modified = $this->postAdsRouter([
-            'type' => 'temu.searchrec.ad.modify',
-            'modifyAdDTO' => ['goodsId' => $goodsIdParam],
-            'status' => 2,
-        ], (string) $goodsId, 15);
+        $modified = ['ok' => false, 'error_msg' => 'Pause not attempted'];
 
-        if ($modified['ok'] ?? false) {
-            $list = is_array($modified['result'] ?? null)
-                ? ($modified['result']['modifyGoodsRespList'] ?? null)
-                : null;
-            if (is_array($list)) {
-                foreach ($list as $row) {
-                    if (is_array($row) && array_key_exists('success', $row) && ! $row['success']) {
-                        $modified['ok'] = false;
-                        $modified['error_msg'] = (string) ($row['reason'] ?? 'Temu did not pause this ad');
-                        break;
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $modified = $this->postAdsRouter([
+                'type' => 'temu.searchrec.ad.modify',
+                'modifyAdDTO' => ['goodsId' => $goodsIdParam],
+                'status' => 2,
+            ], (string) $goodsId, 20);
+
+            if ($modified['ok'] ?? false) {
+                $list = is_array($modified['result'] ?? null)
+                    ? ($modified['result']['modifyGoodsRespList'] ?? null)
+                    : null;
+                if (is_array($list)) {
+                    foreach ($list as $row) {
+                        if (is_array($row) && array_key_exists('success', $row) && ! $row['success']) {
+                            $modified['ok'] = false;
+                            $modified['error_msg'] = (string) ($row['reason'] ?? 'Temu did not pause this ad');
+                            break;
+                        }
                     }
                 }
             }
+
+            if ($modified['ok'] ?? false) {
+                return $modified;
+            }
+
+            $err = strtolower((string) ($modified['error_msg'] ?? ''));
+            $isTimeout = str_contains($err, 'curl error 28') || str_contains($err, 'timeout');
+            if (! $isTimeout || $attempt === 3) {
+                return $modified;
+            }
+            usleep(500000 * $attempt);
         }
 
         return $modified;

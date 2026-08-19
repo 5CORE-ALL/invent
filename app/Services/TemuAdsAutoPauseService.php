@@ -104,9 +104,16 @@ class TemuAdsAutoPauseService
      *   failed_goods: array<int, array<string, mixed>>
      * }
      */
-    public function pauseMatching(bool $dryRun = false, ?callable $onEach = null): array
+    public function pauseMatching(bool $dryRun = false, ?callable $onEach = null, ?array $onlyGoodsIds = null): array
     {
         $matches = $this->matchingAds();
+        if ($onlyGoodsIds !== null && $onlyGoodsIds !== []) {
+            $want = array_fill_keys(array_map('strval', $onlyGoodsIds), true);
+            $matches = array_values(array_filter(
+                $matches,
+                static fn (array $row) => isset($want[(string) $row['goods_id']])
+            ));
+        }
         $paused = [];
         $already = 0;
         $failed = [];
