@@ -77,7 +77,7 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-warning text-dark badge-mm-stat" id="stat-inactive-listings" title="Inactive SKU + Inactive SKU Mismatch + pending listings from Marketplace Manager">
+                    <span class="badge bg-warning text-dark badge-mm-stat" id="stat-inactive-listings" title="Inactive SKU from Marketplace Manager listings">
                         Inactive Listings: <span id="total-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedInactiveTotalOrZero()) }}</span>
                     </span>
                 </div>
@@ -98,13 +98,27 @@
 <script>
     let table = null;
 
-    function updateStats(rows, totalInactive) {
-        if (totalInactive !== undefined && totalInactive !== null && !isNaN(Number(totalInactive))) {
-            $('#total-inactive-listings').text(Number(totalInactive).toLocaleString('en-US'));
-            return;
+    function updateSidebarInactiveCount(n) {
+        const $b = $('.inactive-listings-badge');
+        if (!$b.length) return;
+        const v = Number(n || 0);
+        $b.text(v.toLocaleString('en-US'));
+        if (v > 0) {
+            $b.css('display', 'inline-block');
+        } else {
+            $b.hide();
         }
-        const total = (rows || []).reduce((sum, r) => sum + Number(r.inactive_listings || 0), 0);
+    }
+
+    function updateStats(rows, totalInactive) {
+        let total;
+        if (totalInactive !== undefined && totalInactive !== null && !isNaN(Number(totalInactive))) {
+            total = Number(totalInactive);
+        } else {
+            total = (rows || []).reduce((sum, r) => sum + Number(r.inactive_listings || 0), 0);
+        }
         $('#total-inactive-listings').text(total.toLocaleString('en-US'));
+        updateSidebarInactiveCount(total);
     }
 
     function escapeHtml(s) {
@@ -125,7 +139,7 @@
 
     $(document).ready(function() {
         table = new Tabulator("#inactive-listings-table", {
-            ajaxURL: "{{ route('inactive.listings.channels') }}",
+            ajaxURL: "{{ url('/inactive-listings/channels-data') }}",
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
                 updateStats(data, response && response.total_inactive);
@@ -160,7 +174,7 @@
                     minWidth: 260,
                     formatter: function(cell) {
                         const name = (cell.getValue() || '').trim();
-                        const url = (cell.getRow().getData().detail_url || '').trim();
+                        const url = (cell.getRow().getData().listings_url || '').trim();
                         if (!name) return '';
                         if (!url) return escapeHtml(name);
                         return `<a href="${escapeHtml(url)}" class="mm-channel-link" style="color:inherit;font-weight:600;text-decoration:none;">${escapeHtml(name)}</a>`;
@@ -208,11 +222,11 @@
                     width: 230,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Inactive SKU + Inactive SKU Mismatch + pending from Marketplace Manager listings",
+                    headerTooltip: "Inactive SKU from Marketplace Manager listings",
                     formatter: function(cell) {
                         const v = Number(cell.getValue() || 0);
-                        const url = (cell.getRow().getData().detail_url || '').trim();
-                        const color = v === 0 ? '#198754' : '#d97706';
+                        const url = (cell.getRow().getData().listings_url || '').trim();
+                        const color = v === 0 ? '#198754' : '#dc3545';
                         const html = `<span style="color:${color};font-weight:700;">${v.toLocaleString('en-US')}</span>`;
                         if (!url) return html;
                         return `<a href="${escapeHtml(url)}" style="text-decoration:none;">${html}</a>`;

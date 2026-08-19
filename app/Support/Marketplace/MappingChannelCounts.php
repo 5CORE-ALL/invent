@@ -26,9 +26,9 @@ class MappingChannelCounts
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
 
-    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v1';
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v3';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v2';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v3';
 
     /**
      * Channels shown on /map-issues.
@@ -235,6 +235,15 @@ class MappingChannelCounts
             // ignore
         }
 
+        try {
+            $rows = Cache::get(self::INACTIVE_MASTER_ROWS_CACHE_KEY);
+            if (is_array($rows) && $rows !== []) {
+                return (int) collect($rows)->sum('inactive_listings');
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
         return 0;
     }
 
@@ -248,7 +257,7 @@ class MappingChannelCounts
     }
 
     /**
-     * Master table rows: Inactive SKU + Inactive SKU Mismatch + pending listings.
+     * Master table rows: Marketplace Manager Inactive SKU tab only.
      *
      * @return list<array{channel: string, channel_slug: string, image: ?string, inactive_listings: int, detail_url: string, listings_url: ?string, has_sku_detail: bool, api_status: string, api_connected: bool, api_updated_at: ?string, api_label: string}>
      */
@@ -295,7 +304,7 @@ class MappingChannelCounts
                 'channel_slug' => $slug,
                 'image' => $logos[$slug] ?? null,
                 'inactive_listings' => (int) ($inactiveCounts[$slug] ?? 0),
-                'detail_url' => route('inactive.listings.channel', ['channel' => $slug]),
+                'detail_url' => url('/inactive-listings/channel/'.$slug),
                 'listings_url' => self::listingsInactiveUrlForSlug($slug),
                 'has_sku_detail' => MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
                 'api_status' => $api['api_status'],
@@ -564,7 +573,7 @@ class MappingChannelCounts
     }
 
     /**
-     * Inactive SKU + Inactive SKU Mismatch + pending from Marketplace Manager listings.
+     * Inactive SKU tab count from Marketplace Manager listings.
      *
      * @return array<string, int>
      */
