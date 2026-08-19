@@ -4760,6 +4760,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/temu/ads/refresh-status', 'refreshStatus')->name('temu.ads.refresh-status');
         Route::get('/temu/ads/color-rules', 'getColorRules')->name('temu.ads.color-rules');
         Route::post('/temu/ads/color-rules', 'saveColorRules')->name('temu.ads.color-rules.save');
+        Route::post('/temu/ads/auto-pause', 'autoPause')->name('temu.ads.auto-pause');
     });
 
     // Temu 2 Ads — raw temu2_campaign_reports (upload + Tabulator, no matching)

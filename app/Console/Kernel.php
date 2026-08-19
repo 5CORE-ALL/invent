@@ -2123,6 +2123,8 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L30', 'temu-ads-data-sync-l30', '15:40');
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L60', 'temu-ads-data-sync-l60', '15:50');
         $retryFiveTimesUntil('temu:fetch-ads-api-reports --period=L7', 'temu-ads-api-reports-l7', '15:55');
+        // After L7 reports: pause Active ads that match L7 clicks / Stop ROAS
+        $retryFiveTimesUntil('temu:auto-pause-ads', 'temu-ads-auto-pause', '16:10');
         // Recommended supply prices → temu_metrics.recommended_base_price (10=low traffic, 20=restricted)
         $retryFiveTimesUntil('temu:fetch-recommended-prices --both', 'temu-recommended-prices', '16:05');
 

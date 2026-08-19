@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\TemuAdsApiReportService;
+use App\Services\TemuAdsAutoPauseService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -59,6 +60,12 @@ class FetchTemuAdsApiReports extends Command
         $this->newLine();
         $this->info("✅ Done. Total: {$stats['total']}, OK: {$stats['ok']}, Fail: {$stats['fail']}");
         Log::info('temu:fetch-ads-api-reports finished', $stats);
+
+        if ($period === 'L7' && $goodsId === null && $stats['ok'] > 0) {
+            $pauseStats = app(TemuAdsAutoPauseService::class)->pauseMatching();
+            $this->info("Auto-pause: paused {$pauseStats['paused']}/{$pauseStats['matched']} (failed {$pauseStats['failed']})");
+            Log::info('temu:fetch-ads-api-reports auto-pause', $pauseStats);
+        }
 
         return $stats['fail'] > 0 && $stats['ok'] === 0 ? 1 : 0;
     }

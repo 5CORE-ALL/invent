@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\TemuAdsApiReport;
 use App\Services\TemuAdsApiReportService;
+use App\Services\TemuAdsAutoPauseService;
 use App\Services\TemuApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -227,15 +228,16 @@ class TemuAdsController extends Controller
         ], $success ? 200 : 422);
     }
 
-    public function getColorRules()
+    public function getColorRules(TemuAdsAutoPauseService $pause)
     {
         return response()->json([
-            'l7_clicks_red_below' => $this->l7ClicksRedBelow(),
-            'target_roas_bidding' => $this->targetRoasBidding(),
+            'l7_clicks_red_below' => $pause->l7ClicksRedBelow(),
+            'target_roas_bidding' => $pause->targetRoasBidding(),
+            'matching_active_ads' => count($pause->matchingAds()),
         ]);
     }
 
-    public function saveColorRules(Request $request)
+    public function saveColorRules(Request $request, TemuAdsAutoPauseService $pause)
     {
         $request->validate([
             'l7_clicks_red_below' => 'nullable|integer|min:0|max:100000',
@@ -244,10 +246,10 @@ class TemuAdsController extends Controller
 
         $below = $request->has('l7_clicks_red_below')
             ? (int) $request->input('l7_clicks_red_below')
-            : $this->l7ClicksRedBelow();
+            : $pause->l7ClicksRedBelow();
         $targetRoas = $request->has('target_roas_bidding')
             ? round((float) $request->input('target_roas_bidding'), 1)
-            : $this->targetRoasBidding();
+            : $pause->targetRoasBidding();
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'temu_ads_l7_clicks_red_below'],
@@ -262,27 +264,43 @@ class TemuAdsController extends Controller
             'success' => true,
             'l7_clicks_red_below' => $below,
             'target_roas_bidding' => $targetRoas,
+            'matching_active_ads' => count($pause->matchingAds()),
         ]);
     }
 
-    private function l7ClicksRedBelow(): int
+    /**
+     * Pause Active ads that match the L7 clicks / Stop ROAS rule.
+     */
+    public function autoPause(Request $request, TemuAdsAutoPauseService $pause)
     {
-        $row = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', 'temu_ads_l7_clicks_red_below')
-            ->first();
-        $n = isset($row->column_order[0]) ? (int) $row->column_order[0] : 70;
+        $dryRun = $request->boolean('dry_run');
+        $stats = $pause->pauseMatching($dryRun);
 
-        return $n >= 0 ? $n : 70;
+        $rule = "L7 < {$stats['l7_clicks_red_below']} → ROAS {$stats['target_roas_bidding']}";
+        if ($dryRun) {
+            $message = "{$stats['matched']} Active ads match {$rule}";
+        } elseif ($stats['matched'] === 0) {
+            $message = "No Active ads match {$rule}";
+        } else {
+            $message = "Paused {$stats['paused']}/{$stats['matched']} ads ({$rule})";
+            if ($stats['failed'] > 0) {
+                $message .= ". Failed {$stats['failed']}";
+            }
+        }
+
+        $success = $stats['failed'] === 0 || $stats['paused'] > 0 || $stats['matched'] === 0;
+
+        Log::info('TemuAdsController::autoPause', [
+            'dry_run' => $dryRun,
+            'matched' => $stats['matched'],
+            'paused' => $stats['paused'],
+            'failed' => $stats['failed'],
+        ]);
+
+        return response()->json([
+            'success' => $success,
+            'message' => $message,
+            'stats' => $stats,
+        ], $success ? 200 : 422);
     }
-
-    private function targetRoasBidding(): float
-    {
-        $row = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', 'temu_ads_target_roas_bidding')
-            ->first();
-        $n = isset($row->column_order[0]) ? (float) $row->column_order[0] : 8.0;
-
-        return $n >= 0.1 ? round($n, 1) : 8.0;
-    }
-
 }

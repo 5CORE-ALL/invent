@@ -251,6 +251,57 @@ class EbayController extends Controller
         }
     }
 
+    /**
+     * Per-SKU and per-listing L30 units from ebay_orders (period=l30).
+     * Same cancel/refund exclusions as fetchEbayL30OrdersAggregate / Qty badge.
+     * Used to overlay the E L30 column so CVR vs CPN Apply sees real sales
+     * when ebay_metrics.ebay_l30 is stale or still 0.
+     *
+     * @return array{sku: array<string,int>, item: array<string,int>}
+     */
+    private function fetchEbayL30OrderQtyMaps(): array
+    {
+        $bySku = [];
+        $byItem = [];
+        try {
+            if (! Schema::hasTable('ebay_orders') || ! Schema::hasTable('ebay_order_items')) {
+                return ['sku' => $bySku, 'item' => $byItem];
+            }
+
+            $orders = \App\Models\EbayOrder::with('items')->where('period', 'l30')->get();
+            foreach ($orders as $order) {
+                $raw = is_array($order->raw_data)
+                    ? $order->raw_data
+                    : json_decode((string) $order->raw_data, true);
+                if (is_array($raw)) {
+                    $cancelState = $raw['cancelStatus']['cancelState'] ?? '';
+                    $paymentStatus = $raw['orderPaymentStatus'] ?? '';
+                    if ($cancelState === 'CANCELED' || $paymentStatus === 'FULLY_REFUNDED') {
+                        continue;
+                    }
+                }
+                foreach ($order->items as $line) {
+                    $qty = (int) ($line->quantity ?? 0);
+                    if ($qty <= 0) {
+                        continue;
+                    }
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($line->sku ?? ''));
+                    if ($norm !== '') {
+                        $bySku[$norm] = ($bySku[$norm] ?? 0) + $qty;
+                    }
+                    $itemId = trim((string) ($line->item_id ?? ''));
+                    if ($itemId !== '' && $itemId !== '0') {
+                        $byItem[$itemId] = ($byItem[$itemId] ?? 0) + $qty;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('fetchEbayL30OrderQtyMaps failed: ' . $e->getMessage());
+        }
+
+        return ['sku' => $bySku, 'item' => $byItem];
+    }
+
     /** Cast a request value to float, treating blanks/nulls as "no bound". */
     private function numOrNull($v)
     {
@@ -687,6 +738,10 @@ class EbayController extends Controller
                 return ShopifySku::normalizeSkuForShopifyLookup($metric->sku);
             });
 
+        $orderL30Maps = $this->fetchEbayL30OrderQtyMaps();
+        $orderL30BySku = $orderL30Maps['sku'];
+        $orderL30ByItem = $orderL30Maps['item'];
+
         // Prior-day Price / INV / OV L30 (California) for green/red/gray trend dots.
         // Latest snapshot before today (exact yesterday when collect ran; otherwise last known day).
         $todayPt = Carbon::now('America/Los_Angeles')->toDateString();
@@ -1102,20 +1157,29 @@ class EbayController extends Controller
                 }
             }
 
-            // eBay Metrics
-            $row["eBay L30"] = $ebayMetric->ebay_l30 ?? 0;
-            $row["eBay L60"] = $ebayMetric->ebay_l60 ?? 0;
-            $row["eBay L45"] = round((($row["eBay L30"] ?? 0) + ($row["eBay L60"] ?? 0)) / 2, 2);
-            $row["eBay L7"] = $ebayMetric->ebay_l7 ?? 0;
-            $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
+            // eBay Metrics. E L30 prefers live ebay_orders (same source as the Qty badge)
+            // so CVR vs CPN / Dil vs PRMT Apply can see sales when ebay_metrics.ebay_l30 is 0.
             $pmNorm = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+            $itemId = trim((string) ($ebayMetric?->item_id ?? ''));
+            $orderSkuL30 = (float) ($orderL30BySku[$pmNorm] ?? 0);
+            $orderItemL30 = ($itemId !== '' && $itemId !== '0')
+                ? (float) ($orderL30ByItem[$itemId] ?? 0)
+                : 0.0;
+            $metricL30 = (float) ($ebayMetric?->ebay_l30 ?? 0);
+            $row["eBay L30"] = $orderSkuL30 > 0
+                ? $orderSkuL30
+                : ($orderItemL30 > 0 ? $orderItemL30 : $metricL30);
+            $row["eBay L60"] = $ebayMetric?->ebay_l60 ?? 0;
+            $row["eBay L45"] = round((($row["eBay L30"] ?? 0) + ($row["eBay L60"] ?? 0)) / 2, 2);
+            $row["eBay L7"] = $ebayMetric?->ebay_l7 ?? 0;
+            $row["eBay Price"] = $ebayMetric?->ebay_price ?? 0;
             $row['price_yesterday'] = $priceYesterdayBySku[$pmNorm] ?? null;
             $row['price_yesterday_date'] = $priceYesterdayDateBySku[$pmNorm] ?? null;
             // inv_yesterday / l30_yesterday already set above with INV / L30
-            $row['eBay Stock'] = $ebayMetric->ebay_stock ?? 0;
-            $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
-            $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
-            $row['views'] = $ebayMetric->views ?? 0;
+            $row['eBay Stock'] = $ebayMetric?->ebay_stock ?? 0;
+            $row['price_lmpa'] = $ebayMetric?->price_lmpa ?? null;
+            $row['eBay_item_id'] = $ebayMetric?->item_id ?? null;
+            $row['views'] = $ebayMetric?->views ?? 0;
 
             // Get bid percentage from campaign listings
             if ($ebayMetric && isset($campaignListings[$ebayMetric->item_id])) {

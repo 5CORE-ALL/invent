@@ -212,6 +212,47 @@
         onChange(paint);
     }
 
+    function bindAutoPauseButton(btn, statusEl, onDone) {
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            var rule = ruleSummaryText();
+            if (!confirm('Pause all Active Temu ads that match ' + rule + '?\n\nL7 clicks below the threshold and ROAS below Stop ROAS will be set Inactive on Temu.')) {
+                return;
+            }
+            btn.disabled = true;
+            if (statusEl) {
+                statusEl.style.display = 'block';
+                statusEl.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fas fa-spinner fa-spin me-1"></i> Pausing matching ads…</div>';
+            }
+            var token = document.querySelector('meta[name="csrf-token"]');
+            fetch(rules.pauseUrl || '/temu/ads/auto-pause', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token ? token.getAttribute('content') : '',
+                },
+                body: JSON.stringify({}),
+            })
+                .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+                .then(function (res) {
+                    var msg = (res.data && res.data.message) ? res.data.message : (res.ok ? 'Done' : 'Pause failed');
+                    if (statusEl) {
+                        statusEl.innerHTML = '<div class="alert ' + (res.ok && res.data && res.data.success ? 'alert-success' : 'alert-danger') + ' py-2 mb-0">' + msg + '</div>';
+                    }
+                    if (typeof onDone === 'function') onDone(res.data || {});
+                })
+                .catch(function () {
+                    if (statusEl) {
+                        statusEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Pause failed</div>';
+                    }
+                })
+                .then(function () {
+                    btn.disabled = false;
+                });
+        });
+    }
+
     function onChange(fn) {
         if (typeof fn === 'function') listeners.push(fn);
     }
@@ -254,12 +295,14 @@
         bindThresholdInput: bindThresholdInput,
         bindTargetRoasInput: bindTargetRoasInput,
         bindRuleSummary: bindRuleSummary,
+        bindAutoPauseButton: bindAutoPauseButton,
         ruleSummaryText: ruleSummaryText,
         onChange: onChange,
         loadFromServer: loadFromServer,
-        setUrls: function (getUrl, saveUrl) {
+        setUrls: function (getUrl, saveUrl, pauseUrl) {
             rules.getUrl = getUrl;
             rules.saveUrl = saveUrl;
+            if (pauseUrl) rules.pauseUrl = pauseUrl;
             loadFromServer(getUrl);
         },
     };

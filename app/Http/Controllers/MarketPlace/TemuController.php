@@ -4212,9 +4212,9 @@ class TemuController extends Controller
                         ->distinct()
                         ->count('goods_id')
                     : 0;
+                // Same spend total as /temu/ads (all ads for the period, not Active-only).
                 $totalAdSpend = $apiAds
                     ? round((float) TemuAdsApiReport::query()
-                        ->activeAds()
                         ->where('period', $campaignRange)
                         ->sum('ad_spend'), 2)
                     : 0.0;
@@ -4301,8 +4301,8 @@ class TemuController extends Controller
                     $adTotals['row_count'] = (int) $tot->row_count;
                 }
             } elseif (Schema::hasTable('temu_ads_api_reports')) {
+                // Match /temu/ads spend_sum / clicks_sum: every report row for the period.
                 $tot = TemuAdsApiReport::query()
-                    ->activeAds()
                     ->where('period', $campaignRange)
                     ->selectRaw("
                         COUNT(*) AS row_count,
@@ -4367,7 +4367,7 @@ class TemuController extends Controller
     }
 
     /**
-     * Temu 1 ads indexes from Ads API. Metrics are Active-only; Status stays the real /temu/ads status.
+     * Temu 1 ads indexes from Ads API. Spend / clicks / ACOS match /temu/ads (all statuses).
      *
      * @return array{0: \Illuminate\Support\Collection, 1: \Illuminate\Support\Collection, 2: \Illuminate\Support\Collection, 3: \Illuminate\Support\Collection, 4: \Illuminate\Support\Collection, 5: \Illuminate\Support\Collection, 6: \Illuminate\Support\Collection, 7: \Illuminate\Support\Collection, 8: \Illuminate\Support\Collection}
      */
@@ -4381,26 +4381,24 @@ class TemuController extends Controller
                     ->whereNotNull('goods_id')
                     ->get()
                     ->map(function (TemuAdsApiReport $r) {
-                        $active = $r->isActiveAd();
-
                         return (object) [
                             'goods_id' => $r->goods_id,
                             'sku' => $r->sku,
-                            'spend_l30' => $active ? (float) ($r->ad_spend ?? 0) : 0.0,
-                            'clicks_l30' => $active ? (int) ($r->clicks ?? 0) : 0,
-                            'clicks_l7' => $active ? (int) ($r->clicks ?? 0) : 0,
-                            'spend_l60' => $active ? (float) ($r->ad_spend ?? 0) : 0.0,
-                            'ad_sold_l60' => $active ? (int) ($r->order_pay_cnt ?? 0) : 0,
-                            'ad_sales_l60' => $active ? (float) ($r->order_pay_amt ?? 0) : 0.0,
-                            'roas_l30' => $active ? (float) ($r->roas ?? 0) : 0.0,
-                            'net_roas_l30' => $active ? (float) ($r->roas ?? 0) : 0.0,
+                            'spend_l30' => (float) ($r->ad_spend ?? 0),
+                            'clicks_l30' => (int) ($r->clicks ?? 0),
+                            'clicks_l7' => (int) ($r->clicks ?? 0),
+                            'spend_l60' => (float) ($r->ad_spend ?? 0),
+                            'ad_sold_l60' => (int) ($r->order_pay_cnt ?? 0),
+                            'ad_sales_l60' => (float) ($r->order_pay_amt ?? 0),
+                            'roas_l30' => (float) ($r->roas ?? 0),
+                            'net_roas_l30' => (float) ($r->roas ?? 0),
                             'in_roas_l30' => 0.0,
-                            'acos_ad_l30' => $active ? (float) ($r->acos ?? 0) : 0.0,
+                            'acos_ad_l30' => (float) ($r->acos ?? 0),
                             'status_l30' => $r->displayAdStatus(),
-                            'ad_sales_l30' => $active ? (float) ($r->order_pay_amt ?? 0) : 0.0,
-                            'ad_sold_l30' => $active ? (int) ($r->order_pay_cnt ?? 0) : 0,
-                            'impressions_l30' => $active ? (int) ($r->impressions ?? 0) : 0,
-                            'add_to_cart_l30' => $active ? (int) ($r->cart_cnt ?? 0) : 0,
+                            'ad_sales_l30' => (float) ($r->order_pay_amt ?? 0),
+                            'ad_sold_l30' => (int) ($r->order_pay_cnt ?? 0),
+                            'impressions_l30' => (int) ($r->impressions ?? 0),
+                            'add_to_cart_l30' => (int) ($r->cart_cnt ?? 0),
                             'target_l30' => 0.0,
                         ];
                     });

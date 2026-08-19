@@ -674,7 +674,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=4"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v=5"></script>
 @endsection
 
 @section('content')
@@ -813,7 +813,7 @@
                               class="badge text-center temu-ads-badge"
                               data-ads-filter="total-spend"
                               style="background-color: #6f42c1; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
-                              title="Active ad spend from /temu/ads (temu_ads_api_reports). Click to filter rows with spend.">Spend $0</span>
+                              title="Ad spend from /temu/ads (temu_ads_api_reports). Click to filter rows with spend.">Spend: $0.00</span>
                         <span id="temu-total-ad-clicks-badge"
                               class="badge text-center temu-ads-badge"
                               data-ads-filter="ad-clicks"
@@ -1216,7 +1216,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-3">Shared with /temu/ads. If L7 clicks are below the threshold, the row is red and those ads use Budget and Bidding Stop ROAS.</p>
+                    <p class="text-muted small mb-3">Shared with /temu/ads. If L7 clicks are below the threshold, the row is red. Active ads with L7 clicks below the threshold and ROAS below Stop ROAS are paused automatically after the daily L7 fetch.</p>
                     <div class="d-inline-flex flex-wrap align-items-center gap-1 border rounded px-3 py-2 bg-light">
                         <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap text-dark">L7 Clicks &lt;</label>
                         <input type="number" id="temu-l7-clicks-red-threshold" class="form-control form-control-sm"
@@ -1226,10 +1226,15 @@
                         <label for="temu-target-roas-bidding" class="mb-0 small fw-semibold text-nowrap text-dark">Stop ROAS</label>
                         <input type="number" id="temu-target-roas-bidding" class="form-control form-control-sm"
                                min="0.1" max="1000" step="0.1" value="8" style="width: 70px;">
-                        <span class="small fw-bold" style="color:#0d6efd;">Bidding</span>
+                        <span class="small fw-bold" style="color:#0d6efd;">Pause</span>
                     </div>
+                    <div id="temu-ads-pause-status" class="mt-3" style="display:none;"></div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-danger" id="temu-ads-auto-pause-btn"
+                            title="Pause Active ads that match this rule on Temu now">
+                        <i class="fas fa-pause me-1"></i>Pause matching ads
+                    </button>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -4137,7 +4142,9 @@
             const campaignCount = totalCampaignCountFromBackend > 0 ? totalCampaignCountFromBackend : uniqueCampaignSkus.size;
 
             $('#temu-campaign-count').text('Campaign ' + campaignCount);
-            $('#temu-total-spend-badge').text('Spend $' + Math.round(spendForBadges).toLocaleString());
+            $('#temu-total-spend-badge').text('Spend: $' + Number(spendForBadges).toLocaleString('en-US', {
+                minimumFractionDigits: 2, maximumFractionDigits: 2
+            }));
             $('#temu-status-active-badge').text('Active ' + statusActive);
             $('#temu-status-inactive-badge').text('Inactive ' + statusInactive);
             $('#temu-status-no-ad-badge').text('No ad ' + statusNoAd);
@@ -4167,11 +4174,19 @@
         if (window.TemuAdsColorRules) {
             TemuAdsColorRules.setUrls(
                 @json(route('temu.ads.color-rules')),
-                @json(route('temu.ads.color-rules.save'))
+                @json(route('temu.ads.color-rules.save')),
+                @json(route('temu.ads.auto-pause'))
             );
             TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
             TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
             TemuAdsColorRules.bindRuleSummary(document.getElementById('temu-ads-rules-summary'));
+            TemuAdsColorRules.bindAutoPauseButton(
+                document.getElementById('temu-ads-auto-pause-btn'),
+                document.getElementById('temu-ads-pause-status'),
+                function () {
+                    if (table) table.replaceData();
+                }
+            );
             TemuAdsColorRules.onChange(function () {
                 if (table) {
                     table.redraw(true);

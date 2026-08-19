@@ -2838,6 +2838,23 @@
             }
             const roots = table.getRows('active') || [];
             for (let i = 0; i < roots.length; i++) addRow(roots[i]);
+            // View=Parent hides children. Apply still needs those SKUs.
+            if (!out.length) {
+                const visibleParents = new Set();
+                for (let i = 0; i < roots.length; i++) {
+                    const d = roots[i] && typeof roots[i].getData === 'function' ? roots[i].getData() : null;
+                    if (!d || !chPromoIsParentRow(d)) continue;
+                    const p = chPromoParentName(d).toUpperCase();
+                    if (p) visibleParents.add(p);
+                }
+                if (visibleParents.size) {
+                    chPromoEachTableRow(function(row, d) {
+                        if (!chPromoIsChildRow(d)) return;
+                        const p = chPromoParentName(d).toUpperCase();
+                        if (p && visibleParents.has(p)) addRow(row);
+                    });
+                }
+            }
             return out;
         }
 
@@ -2896,6 +2913,30 @@
         /** eBay units sold (E L30). Dil vs PRMT / CVR vs CPN Apply only write SKUs with sale > 0. */
         function chPromoEbaySaleQty(d) {
             return Number(d && (d['eBay L30'] != null ? d['eBay L30'] : (d.ebay_l30 || d['E L30']))) || 0;
+        }
+        /**
+         * Listing-level E L30: own qty, else max among the same eBay item_id / Parent.
+         * Variation children often have 0 on the SKU row while the listing sold.
+         */
+        function chPromoEbayListingSaleQty(d) {
+            const own = chPromoEbaySaleQty(d);
+            if (own > 0) return own;
+            const itemId = String((d && (d.eBay_item_id || d.item_id || d.ebay_item_id)) || '').trim();
+            const parent = chPromoParentName(d).toUpperCase();
+            if (!itemId && !parent) return 0;
+            let max = 0;
+            const dataset = chPromoPromoDataset();
+            for (let i = 0; i < dataset.length; i++) {
+                const row = dataset[i];
+                if (!row) continue;
+                const sameItem = itemId && itemId !== '0'
+                    && String(row.eBay_item_id || row.item_id || row.ebay_item_id || '').trim() === itemId;
+                const sameParent = parent && chPromoParentName(row).toUpperCase() === parent;
+                if (!sameItem && !sameParent) continue;
+                const q = chPromoEbaySaleQty(row);
+                if (q > max) max = q;
+            }
+            return max;
         }
         function chPromoLp(d) {
             const lp = Number(d && (d.LP_productmaster != null ? d.LP_productmaster : d.LP));
@@ -3655,7 +3696,7 @@
             if (chPromoIsEbayChannel()) {
                 targets = targets.filter(function(t) {
                     const d = (t.d || (t.row && t.row.getData())) || {};
-                    return chPromoEbaySaleQty(d) > 0;
+                    return chPromoEbayListingSaleQty(d) > 0;
                 });
                 if (!targets.length) {
                     chPromoToast('error', 'No rows with eBay sale (E L30) > 0 to apply');
@@ -3700,7 +3741,7 @@
             if (chPromoIsEbayChannel()) {
                 targets = targets.filter(function(t) {
                     const d = (t.d || (t.row && t.row.getData())) || {};
-                    return chPromoEbaySaleQty(d) > 0;
+                    return chPromoEbayListingSaleQty(d) > 0;
                 });
                 if (!targets.length) {
                     chPromoToast('error', 'No rows with eBay sale (E L30) > 0 to apply');
@@ -3802,7 +3843,7 @@
             const ready = targets.filter(function(t) {
                 const d = (t.d || (t.row && t.row.getData())) || {};
                 return chPromoIsChildRow(d)
-                    && chPromoEbaySaleQty(d) <= 0
+                    && chPromoEbayListingSaleQty(d) <= 0
                     && chPromoInv(d) > 0
                     && chPromoLp(d) > 0;
             });
@@ -3942,7 +3983,7 @@
                 applyTargets = targets.filter(function(item) {
                     const d = (item.d || (item.row && item.row.getData())) || {};
                     if (!chPromoIsChildRow(d)) return false;
-                    if (chPromoEbaySaleQty(d) <= 0) return false;
+                    if (chPromoEbayListingSaleQty(d) <= 0) return false;
                     const k = keyOf(d);
                     if (k) keys.add(k);
                     return true;
@@ -4108,7 +4149,7 @@
             if (chPromoIsEbayChannel()) {
                 targets = targets.filter(function(item) {
                     const d = (item.d || (item.row && item.row.getData())) || {};
-                    return chPromoIsChildRow(d) && chPromoEbaySaleQty(d) > 0;
+                    return chPromoIsChildRow(d) && chPromoEbayListingSaleQty(d) > 0;
                 });
                 if (!targets.length) {
                     chPromoToast('error', 'No rows with eBay sale (E L30) > 0 to apply');
