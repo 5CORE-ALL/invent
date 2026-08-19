@@ -381,10 +381,12 @@ class TemuSyncController extends Controller
             $cached = $this->aeCachedRowForSku($sku, $stateIndex);
             $live = ($pid !== '' && isset($pageLiveByProduct[$pid])) ? $pageLiveByProduct[$pid] : null;
             $state = (string) ($live['state'] ?? $cached['state'] ?? '');
-            if ($linked && $live !== null && array_key_exists('inventory', $live) && $live['inventory'] !== null) {
-                $aeQty = (int) $live['inventory'];
-            } elseif ($linked && $cached && array_key_exists('inventory', $cached) && $cached['inventory'] !== null) {
-                $aeQty = (int) $cached['inventory'];
+            if ($linked) {
+                $aeQty = MarketplaceListingStockResolver::displayedMarketplaceQty(
+                    is_array($live) ? $live : null,
+                    is_array($cached) ? $cached : null,
+                    $aeQty
+                );
             }
 
             return (object) [
@@ -854,7 +856,7 @@ class TemuSyncController extends Controller
             ]);
         }
 
-        $result = app(TemuInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(TemuInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

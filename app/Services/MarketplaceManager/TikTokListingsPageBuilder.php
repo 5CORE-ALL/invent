@@ -213,8 +213,12 @@ class TikTokListingsPageBuilder
             } elseif (isset($pageLive[$sku])) {
                 $live = $pageLive[$sku];
             }
-            if ($linked && $live !== null && array_key_exists('inventory', $live) && $live['inventory'] !== null) {
-                $mpQty = (int) $live['inventory'];
+            if ($linked) {
+                $mpQty = MarketplaceListingStockResolver::displayedMarketplaceQty(
+                    is_array($live) ? $live : null,
+                    null,
+                    $mpQty
+                );
             }
 
             return (object) [
@@ -303,7 +307,7 @@ class TikTokListingsPageBuilder
             ];
         }
 
-        $result = $this->inventoryService()->syncSkusFromShopify($batch);
+        $result = $this->inventoryService()->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 

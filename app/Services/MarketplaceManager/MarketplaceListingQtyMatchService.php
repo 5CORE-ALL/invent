@@ -269,17 +269,6 @@ final class MarketplaceListingQtyMatchService
         $verified = $catalog->filterLinkedToVerified($linked);
         $mpStock = $pass->stockMap($mmChannel, $verified);
 
-        if ($mmChannel === 'reverb') {
-            $local = MarketplaceListingStockResolver::stockMapForSkus(
-                MarketplaceListingStockResolver::CHANNEL_REVERB,
-                $verified
-            );
-            $live = MarketplaceListingStockResolver::stockMapFromLiveListingRows(
-                app(ReverbLiveListingsService::class)->peekCached()
-            );
-            $mpStock = MarketplaceListingStockResolver::mergeLocalAndLiveStockMaps($local, $live);
-        }
-
         return [$linked, $mpStock];
     }
 

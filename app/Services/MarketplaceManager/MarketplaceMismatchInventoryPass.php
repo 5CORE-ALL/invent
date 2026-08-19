@@ -8,6 +8,7 @@ use App\Models\FaireMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
+use App\Models\SheinListingStatus;
 use App\Models\SheinMmMetric;
 use App\Models\EbayMetric;
 use App\Models\Ebay2Metric;
@@ -70,27 +71,27 @@ final class MarketplaceMismatchInventoryPass
         ]);
 
         $result = match ($channel) {
-            'newegg' => app(NeweggInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'newegg' => app(NeweggInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'pls' => app(PlsInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'wayfair' => app(WayfairInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'macy' => app(MacyInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'doba' => app(DobaInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'wayfair' => app(WayfairInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'macy' => app(MacyInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'doba' => app(DobaInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'ebay1' => app(Ebay1InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'ebay2' => app(Ebay2InventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'ebay3' => app(Ebay3InventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'aliexpress' => app(AliexpressInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'alibaba' => app(AlibabaInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'ebay2' => app(Ebay2InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'ebay3' => app(Ebay3InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'aliexpress' => app(AliexpressInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'alibaba' => app(AlibabaInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'faire' => app(FaireInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
-            'amazon' => app(AmazonInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'tiktok' => app(TikTokInventorySyncService::class)->syncSkusFromShopify($mismatch),
-            'tiktok2' => app(TikTok2InventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'amazon' => app(AmazonInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'tiktok' => app(TikTokInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
+            'tiktok2' => app(TikTok2InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             default => $empty,
         };
 
@@ -258,6 +259,25 @@ final class MarketplaceMismatchInventoryPass
 
         if ($channel === 'pls') {
             return app(PlsListingsPageBuilder::class)->linkedSkus();
+        }
+
+        if ($channel === 'shein') {
+            $fromMetric = SheinMmMetric::query()
+                ->whereNotNull('sku')
+                ->whereNotNull('product_id')
+                ->where('sku', '!=', '')
+                ->where('product_id', '!=', '')
+                ->whereColumn('sku', '!=', 'product_id')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->all();
+            $fromListed = SheinListingStatus::listedSellerSkus();
+
+            return collect(array_merge($fromMetric, $fromListed))
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
         }
 
         if ($channel === 'ebay1' || $channel === 'ebay2' || $channel === 'ebay3') {

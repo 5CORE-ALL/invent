@@ -28,7 +28,7 @@ class BestBuyInventorySyncService
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
      * @return array{updated: int, failed: int, skipped: int, message: string}
      */
-    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null, bool $exactShopifyQty = false): array
     {
         $skus = array_values(array_unique(array_filter(array_map(
             static fn ($sku) => trim((string) $sku),
@@ -64,6 +64,9 @@ class BestBuyInventorySyncService
             $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
+        if ($exactShopifyQty) {
+            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $fetchSkus);
+        }
 
         $products = BestbuyUsaProduct::query()
             ->whereNotNull('sku')
@@ -98,9 +101,12 @@ class BestBuyInventorySyncService
             }
 
             // Match AliExpress/Amazon: missing Shopify qty => push 0 (do not skip and leave stale MP stock).
-            $qty = $shopifyStock === null
-                ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $qty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
+                $shopifyStock,
+                $exactShopifyQty,
+                $qtyPercent,
+                $maxQty
+            );
 
             $apiItems[] = [
                 'sku' => $sku,

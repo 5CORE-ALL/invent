@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Jobs\WarmSheinLiveListingsCache;
 use App\Models\SheinMmMetric;
+use App\Models\SheinListingStatus;
 use App\Models\SheinOrderMetric;
 use App\Models\SheinPricingPrice;
 use App\Models\MarketplaceSyncSettings;
@@ -162,8 +163,7 @@ class SheinSyncController extends Controller
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $linkedSkus = $this->linkedSheinSkus();
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
-        // Live cache often omits inventory for inactive rows — fill gaps from local map
-        // so qty-matched inactive SKUs land in Inactive & Matched (not Mismatch).
+        // Live `--`/null qty is mismatch vs in-stock Shopify; numeric live qty still overlays local.
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
             $liveService->peekCached(),
             $this->sheinStockMapForSkus($allLinkedVerified)
@@ -385,10 +385,12 @@ class SheinSyncController extends Controller
             $cached = $this->aeCachedRowForSku($sku, $stateIndex);
             $live = ($pid !== '' && isset($pageLiveByProduct[$pid])) ? $pageLiveByProduct[$pid] : null;
             $state = (string) ($live['state'] ?? $cached['state'] ?? '');
-            if ($linked && $live !== null && array_key_exists('inventory', $live) && $live['inventory'] !== null) {
-                $aeQty = (int) $live['inventory'];
-            } elseif ($linked && $cached && array_key_exists('inventory', $cached) && $cached['inventory'] !== null) {
-                $aeQty = (int) $cached['inventory'];
+            if ($linked) {
+                $aeQty = MarketplaceListingStockResolver::displayedMarketplaceQty(
+                    is_array($live) ? $live : null,
+                    is_array($cached) ? $cached : null,
+                    $aeQty
+                );
             }
 
             return (object) [
@@ -893,7 +895,7 @@ class SheinSyncController extends Controller
             ]);
         }
 
-        $result = app(SheinInventorySyncService::class)->syncSkusFromShopify($batch);
+        $result = app(SheinInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 
@@ -1162,7 +1164,7 @@ class SheinSyncController extends Controller
     protected function aeStateBucket(?string $state): string
     {
         $state = strtolower(trim((string) $state));
-        if (in_array($state, ['active', '1', 'true', 'onselling', 'on_selling'], true)) {
+        if (in_array($state, ['active', '1', 'true', 'onselling', 'on_selling', 'pending', 'auditing', 'listed'], true)) {
             return 'active';
         }
         if (in_array($state, ['inactive', '0', 'false', 'offline', 'ended'], true)) {
@@ -1248,20 +1250,24 @@ class SheinSyncController extends Controller
      */
     protected function linkedSheinSkus(): array
     {
-        if (! Schema::hasTable('shein_metric')) {
-            return [];
+        $fromMetric = [];
+        if (Schema::hasTable('shein_metric')) {
+            $fromMetric = SheinMmMetric::query()
+                ->whereNotNull('sku')
+                ->whereNotNull('product_id')
+                ->where('sku', '!=', '')
+                ->where('product_id', '!=', '')
+                ->whereColumn('sku', '!=', 'product_id')
+                ->pluck('sku')
+                ->unique()
+                ->values()
+                ->all();
         }
 
-        return SheinMmMetric::query()
-            ->whereNotNull('sku')
-            ->whereNotNull('product_id')
-            ->where('sku', '!=', '')
-            ->where('product_id', '!=', '')
-            ->whereColumn('sku', '!=', 'product_id')
-            ->pluck('sku')
-            ->unique()
-            ->values()
-            ->all();
+        return array_values(array_unique(array_merge(
+            $fromMetric,
+            $this->sheinListedSellerSkus()
+        )));
     }
 
     /**
@@ -1463,16 +1469,60 @@ class SheinSyncController extends Controller
 
     protected function isShopifySkuLinkedOnShein(?SheinMmMetric $metric, string $shopifySku): bool
     {
-        if (! $metric || empty($metric->product_id)) {
-            return false;
+        if ($metric && ! empty($metric->product_id)) {
+            $mappedSku = trim((string) $metric->sku);
+            if ($mappedSku !== '' && $mappedSku !== (string) $metric->product_id) {
+                if (ShopifySku::normalizeSkuForShopifyLookup($mappedSku)
+                    === ShopifySku::normalizeSkuForShopifyLookup($shopifySku)) {
+                    return true;
+                }
+            }
         }
 
-        $mappedSku = trim((string) $metric->sku);
-        if ($mappedSku === '' || $mappedSku === (string) $metric->product_id) {
-            return false;
+        return $this->sheinSellerSkuIsListed($shopifySku);
+    }
+
+    /**
+     * Seller SKUs marked Listed in shein_listing_statuses (Pending Hub listings
+     * often have `--` stock and no shein_metric product_id yet).
+     *
+     * @return list<string>
+     */
+    protected function sheinListedSellerSkus(): array
+    {
+        return SheinListingStatus::listedSellerSkus();
+    }
+
+    protected function sheinSellerSkuIsListed(string $shopifySku): bool
+    {
+        $listed = $this->sheinListedSellerSkuNorms();
+        $raw = trim($shopifySku);
+        if ($raw !== '' && isset($listed[$raw])) {
+            return true;
+        }
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
+
+        return $norm !== '' && isset($listed[$norm]);
+    }
+
+    /**
+     * @return array<string, true> raw sku and normalized sku keys
+     */
+    protected function sheinListedSellerSkuNorms(): array
+    {
+        static $cache = null;
+        if (is_array($cache)) {
+            return $cache;
+        }
+        $cache = [];
+        foreach (SheinListingStatus::listedSellerSkus() as $sku) {
+            $cache[$sku] = true;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $cache[$norm] = true;
+            }
         }
 
-        return ShopifySku::normalizeSkuForShopifyLookup($mappedSku)
-            === ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
+        return $cache;
     }
 }

@@ -28,7 +28,7 @@ class WayfairInventorySyncService
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
      * @return array{updated: int, failed: int, skipped: int, message: string}
      */
-    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null, bool $exactShopifyQty = false): array
     {
         $skus = array_values(array_unique(array_filter(array_map(
             static fn ($sku) => trim((string) $sku),
@@ -64,6 +64,9 @@ class WayfairInventorySyncService
             $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
+        if ($exactShopifyQty) {
+            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $fetchSkus);
+        }
 
         $products = WayfairPricingPrice::query()
             ->whereNotNull('sku')
@@ -108,7 +111,12 @@ class WayfairInventorySyncService
                 continue;
             }
 
-            $qty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $qty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
+                $shopifyStock,
+                $exactShopifyQty,
+                $qtyPercent,
+                $maxQty
+            );
             $qty = MarketplaceLiveInventoryRules::clampPushQty($qty, $shopifyStock);
 
             $currentMp = $product->wayfair_stock !== null ? (int) $product->wayfair_stock : null;

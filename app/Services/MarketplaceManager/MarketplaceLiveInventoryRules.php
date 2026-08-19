@@ -86,6 +86,38 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
+     * Mismatch-button qty: exact Shopify when requested, else settings percent/max.
+     *
+     * @param  int|string|null  $maxQty
+     */
+    public static function qtyForMismatchPush(?int $shopifyStock, bool $exactShopifyQty, int $qtyPercent = 100, $maxQty = null): int
+    {
+        if ($shopifyStock === null) {
+            return self::qtyWhenMissingFromShopify();
+        }
+
+        return $exactShopifyQty
+            ? self::pushQtyFromLiveShopify($shopifyStock)
+            : self::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+    }
+
+    /**
+     * Overlay listings-page Shopify qty (shopify_skus) onto an API qty map.
+     *
+     * @param  array<string, int>  $shopifyQty
+     * @param  list<string>  $skus
+     * @return array<string, int>
+     */
+    public static function overlayListingsShopifyQty(array $shopifyQty, array $skus): array
+    {
+        foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus) as $key => $qty) {
+            $shopifyQty[$key] = (int) $qty;
+        }
+
+        return $shopifyQty;
+    }
+
+    /**
      * Draft-like states (UI / filters). Inventory: only true "draft" may update qty;
      * unpublished / suspended / dead stay blocked via reverbIsInactiveBlocked().
      */

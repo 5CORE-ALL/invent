@@ -259,10 +259,12 @@ class PlsListingsPageBuilder
             $cached = $this->cachedRowForSku($sku, $stateIndex);
             $live = ($pid !== '' && isset($pageLive[$pid])) ? $pageLive[$pid] : null;
             $state = (string) ($live['state'] ?? $cached['state'] ?? ($metric->status ?? ''));
-            if ($linked && $live !== null && array_key_exists('inventory', $live) && $live['inventory'] !== null) {
-                $mpQty = (int) $live['inventory'];
-            } elseif ($linked && $cached && array_key_exists('inventory', $cached) && $cached['inventory'] !== null) {
-                $mpQty = (int) $cached['inventory'];
+            if ($linked) {
+                $mpQty = MarketplaceListingStockResolver::displayedMarketplaceQty(
+                    is_array($live) ? $live : null,
+                    is_array($cached) ? $cached : null,
+                    $mpQty
+                );
             }
 
             return (object) [
@@ -407,8 +409,8 @@ class PlsListingsPageBuilder
         if ($linked && ! empty($metric->product_id)) {
             $live = $this->liveService()->liveDetailsByProductIds([(string) $metric->product_id]);
             $live = $live[(string) $metric->product_id] ?? $live[strtoupper($sku)] ?? $live[$sku] ?? null;
-            if (is_array($live) && array_key_exists('inventory', $live) && $live['inventory'] !== null) {
-                $mpQty = (int) $live['inventory'];
+            if (is_array($live)) {
+                $mpQty = MarketplaceListingStockResolver::displayedMarketplaceQty($live, null, $mpQty);
             }
         }
 
