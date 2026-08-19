@@ -795,6 +795,9 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
             $code = (string) ($last['error_code'] ?? '');
             $msg = strtolower((string) ($last['error_msg'] ?? ''));
+            if (str_contains($msg, 'misleading') || str_contains($msg, 'ad approval')) {
+                return $last;
+            }
             $retryable = $code === '230012000'
                 || str_contains($msg, 'bad query params')
                 || str_contains($msg, 'pass the review');
@@ -911,6 +914,9 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return 'Temu did not create this ad';
         }
         $lower = strtolower($message);
+        if (str_contains($lower, 'misleading') || str_contains($lower, 'ad approval')) {
+            return 'Temu rejected this listing for ads: misleading statements in the title, images, or description. Open Seller Center for this goods ID, edit the listing copy, wait for review, then retry. The Temu API call succeeded — this is not an SSL or parameter error.';
+        }
         if (str_contains($lower, 'pass the review') || str_contains($lower, 'seller center')) {
             return 'Listing has not passed Temu product review, so an ad cannot be created. Open Seller Center for this goods ID, fix the review, then retry.';
         }
@@ -1320,80 +1326,115 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     protected function postAdsRouter(array $requestBody, string $goodsId, int $timeoutSeconds = 60): array
     {
         $signedRequest = $this->generateSignValue($requestBody);
-        $request = Http::withHeaders([
-            'Content-Type' => 'application/json',
-        ])->timeout(max(5, $timeoutSeconds));
+        $last = [
+            'ok' => false,
+            'result' => null,
+            'error_code' => null,
+            'error_msg' => 'Temu ads request not attempted',
+            'http_status' => null,
+            'request' => $requestBody,
+        ];
 
-        if (config('filesystems.default') === 'local') {
-            $request = $request->withoutVerifying();
-        }
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $request = Http::withHeaders([
+                'Content-Type' => 'application/json',
+            ])->timeout(max(5, $timeoutSeconds))->withoutVerifying();
 
-        try {
-            $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
-            $httpStatus = $response->status();
-            $data = $response->json();
+            try {
+                $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
+                $httpStatus = $response->status();
+                $data = $response->json();
 
-            if ($response->failed() || ! is_array($data)) {
-                Log::error('Temu ads router request failed', [
-                    'type' => $requestBody['type'] ?? null,
-                    'goods_id' => $goodsId,
-                    'status' => $httpStatus,
-                ]);
+                if ($response->failed() || ! is_array($data)) {
+                    Log::error('Temu ads router request failed', [
+                        'type' => $requestBody['type'] ?? null,
+                        'goods_id' => $goodsId,
+                        'status' => $httpStatus,
+                        'attempt' => $attempt,
+                    ]);
+
+                    $last = [
+                        'ok' => false,
+                        'result' => is_array($data) ? ($data['result'] ?? $data) : null,
+                        'error_code' => $httpStatus,
+                        'error_msg' => is_array($data) ? (string) ($data['errorMsg'] ?? 'HTTP '.$httpStatus) : 'HTTP '.$httpStatus,
+                        'http_status' => $httpStatus,
+                        'request' => $requestBody,
+                    ];
+                    if ($attempt < 3 && $this->isTemuSslOrTimeoutError($last['error_msg'])) {
+                        usleep(400000 * $attempt);
+                        continue;
+                    }
+
+                    return $last;
+                }
+
+                if (! ($data['success'] ?? false)) {
+                    $errorCode = $data['errorCode'] ?? null;
+                    $errorMsg = (string) ($data['errorMsg'] ?? 'Unknown error');
+                    Log::error('Temu ads router API error', [
+                        'type' => $requestBody['type'] ?? null,
+                        'goods_id' => $goodsId,
+                        'error' => $errorMsg,
+                        'errorCode' => $errorCode,
+                    ]);
+
+                    return [
+                        'ok' => false,
+                        'result' => $data['result'] ?? null,
+                        'error_code' => $errorCode,
+                        'error_msg' => trim($errorCode !== null ? "{$errorCode}: {$errorMsg}" : $errorMsg),
+                        'http_status' => $httpStatus,
+                        'request' => $requestBody,
+                    ];
+                }
 
                 return [
-                    'ok' => false,
-                    'result' => is_array($data) ? ($data['result'] ?? $data) : null,
-                    'error_code' => $httpStatus,
-                    'error_msg' => is_array($data) ? (string) ($data['errorMsg'] ?? 'HTTP '.$httpStatus) : 'HTTP '.$httpStatus,
+                    'ok' => true,
+                    'result' => $data['result'] ?? $data,
+                    'error_code' => null,
+                    'error_msg' => null,
                     'http_status' => $httpStatus,
                     'request' => $requestBody,
                 ];
-            }
-
-            if (! ($data['success'] ?? false)) {
-                $errorCode = $data['errorCode'] ?? null;
-                $errorMsg = (string) ($data['errorMsg'] ?? 'Unknown error');
-                Log::error('Temu ads router API error', [
+            } catch (\Exception $e) {
+                Log::error('Temu ads router exception', [
                     'type' => $requestBody['type'] ?? null,
                     'goods_id' => $goodsId,
-                    'error' => $errorMsg,
-                    'errorCode' => $errorCode,
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
                 ]);
 
-                return [
+                $last = [
                     'ok' => false,
-                    'result' => $data['result'] ?? null,
-                    'error_code' => $errorCode,
-                    'error_msg' => trim($errorCode !== null ? "{$errorCode}: {$errorMsg}" : $errorMsg),
-                    'http_status' => $httpStatus,
+                    'result' => null,
+                    'error_code' => null,
+                    'error_msg' => $e->getMessage(),
+                    'http_status' => null,
                     'request' => $requestBody,
                 ];
+                if ($attempt < 3 && $this->isTemuSslOrTimeoutError($e->getMessage())) {
+                    usleep(400000 * $attempt);
+                    continue;
+                }
+
+                return $last;
             }
-
-            return [
-                'ok' => true,
-                'result' => $data['result'] ?? $data,
-                'error_code' => null,
-                'error_msg' => null,
-                'http_status' => $httpStatus,
-                'request' => $requestBody,
-            ];
-        } catch (\Exception $e) {
-            Log::error('Temu ads router exception', [
-                'type' => $requestBody['type'] ?? null,
-                'goods_id' => $goodsId,
-                'error' => $e->getMessage(),
-            ]);
-
-            return [
-                'ok' => false,
-                'result' => null,
-                'error_code' => null,
-                'error_msg' => $e->getMessage(),
-                'http_status' => null,
-                'request' => $requestBody,
-            ];
         }
+
+        return $last;
+    }
+
+    protected function isTemuSslOrTimeoutError(?string $message): bool
+    {
+        $msg = strtolower((string) $message);
+
+        return str_contains($msg, 'curl error 28')
+            || str_contains($msg, 'ssl connection timeout')
+            || str_contains($msg, 'ssl certificate')
+            || str_contains($msg, 'operation timed out')
+            || str_contains($msg, 'connection reset')
+            || str_contains($msg, 'connection timed out');
     }
 
     /**
