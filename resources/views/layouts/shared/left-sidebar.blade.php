@@ -197,7 +197,7 @@
             </li>
 
             <li class="side-nav-item">
-                <a href="{{ route('inactive.listings') }}" class="side-nav-link inactive-listings-nav">
+                <a href="{{ url('/inactive-listings') }}" class="side-nav-link inactive-listings-nav">
                     <i class="ri-pause-circle-line"></i>
                     <span>Inactive Listings</span>
                     @php
