@@ -1,9 +1,10 @@
-@extends('layouts.vertical', ['title' => 'Ebay 2 - Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Ebay 2 - Analytics', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         /* Toolbar: compact controls, wrap to next row if needed.
            NOTE: do NOT use overflow-x on this row — it clips Bootstrap dropdown menus
@@ -443,9 +444,8 @@
 @endsection
 
 @section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    @include('partials.lazy-chart-js')
 @endsection
 
 @section('content')
@@ -1802,6 +1802,14 @@
         }
 
         function loadSkuMetricsData(sku, days = 30) {
+            if (typeof Chart === 'undefined') {
+                if (typeof loadChartJs === 'function') {
+                    loadChartJs().then(function() { loadSkuMetricsData(sku, days); });
+                }
+                return;
+            }
+            if (!skuMetricsChart) initSkuMetricsChart();
+            if (!skuMetricsChart) return;
             $('#skuChartLoading').show();
             $('#skuChartContainer').hide();
             $('#chart-no-data-message').hide();
@@ -2385,9 +2393,6 @@
                     }
                 });
             });
-
-            // Initialize SKU-specific chart only
-            initSkuMetricsChart();
 
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {

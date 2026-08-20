@@ -1,9 +1,10 @@
-@extends('layouts.vertical', ['title' => 'Ebay 2 Open Box Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Ebay 2 Open Box Analytics', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         /* LMP modal: full-viewport backdrop (avoid black gaps behind modal) */
         #lmpModal {
@@ -216,9 +217,8 @@
 @endsection
 
 @section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    @include('partials.lazy-chart-js')
 @endsection
 
 @section('content')
@@ -1116,7 +1116,11 @@
 
         // SKU-specific chart
         function initSkuMetricsChart() {
-            const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+            const canvas = document.getElementById('skuMetricsChart');
+            if (!canvas || typeof Chart === 'undefined') {
+                return;
+            }
+            const ctx = canvas.getContext('2d');
             skuMetricsChart = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -1294,6 +1298,14 @@
         }
 
         function loadSkuMetricsData(sku, days = 30) {
+            if (typeof Chart === 'undefined') {
+                if (typeof loadChartJs === 'function') {
+                    loadChartJs().then(function() { loadSkuMetricsData(sku, days); });
+                }
+                return;
+            }
+            if (!skuMetricsChart) initSkuMetricsChart();
+            if (!skuMetricsChart) return;
             console.log('Loading metrics data for SKU:', sku, 'Days:', days);
             fetch(`/ebay-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
                 .then(response => {
@@ -1406,9 +1418,6 @@
                     }
                 });
             });
-
-            // Initialize SKU-specific chart only
-            initSkuMetricsChart();
 
             (function initEbay2opImageHoverPreview() {
                 if (document.getElementById('ebay2op-img-hover-preview')) return;

@@ -1,9 +1,10 @@
-@extends('layouts.vertical', ['title' => 'Ebay 3 - Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Ebay 3 - Analytics', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         /* Image column hover preview (forecast.analysis) */
         #image-hover-preview {
@@ -429,9 +430,8 @@
 @endsection
 
 @section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    @include('partials.lazy-chart-js')
 @endsection
 
 @section('content')
@@ -1218,6 +1218,12 @@
     }
 
     function renderEbay3MetricChart(data) {
+        if (typeof Chart === 'undefined') {
+            if (typeof loadChartJs === 'function') {
+                loadChartJs().then(function() { renderEbay3MetricChart(data); });
+            }
+            return;
+        }
         const ctx = document.getElementById('ebay3MetricChart').getContext('2d');
         if (ebay3ChartInstance) {
             ebay3ChartInstance.destroy();

@@ -1,10 +1,11 @@
-@extends('layouts.vertical', ['title' => 'Ebay - Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Ebay - Analytics', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         /* Toolbar + badges — same rules as /amazon-tabulator-view */
         #ebay-filter-bar .form-select {
@@ -584,9 +585,8 @@
 @endsection
 
 @section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    @include('partials.lazy-chart-js')
 @endsection
 
 @section('content')
@@ -1728,6 +1728,12 @@
         }
 
         function renderEbay1MetricChart(data) {
+            if (typeof Chart === 'undefined') {
+                if (typeof loadChartJs === 'function') {
+                    loadChartJs().then(function() { renderEbay1MetricChart(data); });
+                }
+                return;
+            }
             const ctx = document.getElementById('ebay1MetricChart').getContext('2d');
             if (ebay1ChartInstance) {
                 ebay1ChartInstance.destroy();
@@ -2607,6 +2613,14 @@
         window.openEbaySkuHistoryChart = openEbaySkuHistoryChart;
 
         function loadSkuMetricsData(sku, days = 30) {
+            if (typeof Chart === 'undefined') {
+                if (typeof loadChartJs === 'function') {
+                    loadChartJs().then(function() { loadSkuMetricsData(sku, days); });
+                }
+                return;
+            }
+            if (!skuMetricsChart) initSkuMetricsChart();
+            if (!skuMetricsChart) return;
             $('#skuChartLoading').show();
             $('#skuChartContainer').hide();
             $('#chart-no-data-message').hide();
@@ -2779,9 +2793,6 @@
             if (lmpModalEl) {
                 lmpModalEl.addEventListener('hidden.bs.modal', cleanupLmpModalBackdrop);
             }
-
-            // Initialize SKU-specific chart
-            initSkuMetricsChart();
 
             // Promo history dots sit inside editable cells. Capture-phase click
             // opens the graph before Tabulator starts the editor / swallows the event.

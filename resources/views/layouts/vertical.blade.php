@@ -5,11 +5,12 @@
 
 <head>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    @unless($skipHighcharts ?? false)
     <script src="https://cdn.jsdelivr.net/npm/highcharts@11/highcharts.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/highcharts@11/modules/exporting.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/highcharts@11/modules/export-data.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/highcharts@11/modules/accessibility.js"></script>
-    <!-- Highcharts default theme used; optional: https://code.highcharts.com/themes/adaptive.js -->
+    @endunless
     @include('layouts.shared/title-meta', [
         'title' => $title,
         'favicon' => $favicon ?? null,
