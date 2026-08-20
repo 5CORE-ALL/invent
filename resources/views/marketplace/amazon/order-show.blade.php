@@ -74,12 +74,19 @@
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-pull-amazon-order" data-id="{{ $order->id }}">
                         <i class="ri-download-cloud-line"></i> Pull address from Amazon
                     </button>
-                    @if($order->shopify_order_id)
-                        @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'amazon', 'fetchTrackingOrderId' => $order->id, 'fetchTrackingShopifyId' => $order->shopify_order_id])
-                        <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-amazon" data-id="{{ $order->id }}" title="If Shopify has no tracking, fetch it from Veeqo or GOFO (4Seller) first, then confirm shipment on Amazon">
-                            <i class="ri-truck-line"></i> Push tracking to Amazon
-                        </button>
-                    @endif
+                @endif
+                @php
+                    $amazonShopifyId = trim((string) ($order->shopify_order_id ?? ''));
+                    $amazonShopifyOk = $amazonShopifyId !== '' && ! str_starts_with($amazonShopifyId, 'manual');
+                    $amazonShowFetch = $amazonShopifyOk && ! $order->isFba();
+                @endphp
+                @if($amazonShowFetch)
+                    @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'amazon', 'fetchTrackingOrderId' => $order->id, 'fetchTrackingShopifyId' => $amazonShopifyId])
+                @endif
+                @if(($connected ?? true) && $amazonShopifyOk)
+                    <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-amazon" data-id="{{ $order->id }}" title="If Shopify has no tracking, fetch it from Veeqo or GOFO (4Seller) first, then confirm shipment on Amazon">
+                        <i class="ri-truck-line"></i> Push tracking to Amazon
+                    </button>
                 @endif
             </div>
         </div>

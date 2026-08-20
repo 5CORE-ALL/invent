@@ -59,14 +59,6 @@ class AmazonTrackingSyncService
         }
 
         $status = strtoupper(trim((string) ($order->status ?? '')));
-        if (in_array($status, ['SHIPPED', 'CANCELED', 'CANCELLED'], true)) {
-            return [
-                'success' => true,
-                'skipped' => true,
-                'action' => 'already_shipped',
-                'message' => 'Amazon order is already '.$status.'.',
-            ];
-        }
 
         $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
         if (empty($shopifyFulfillment['tracking'])) {
@@ -81,6 +73,19 @@ class AmazonTrackingSyncService
                     ];
                 }
             }
+        }
+
+        if (in_array($status, ['SHIPPED', 'CANCELED', 'CANCELLED'], true)) {
+            return [
+                'success' => true,
+                'skipped' => true,
+                'action' => 'already_shipped',
+                'message' => empty($shopifyFulfillment['tracking'])
+                    ? 'Amazon order is already '.$status.'.'
+                    : 'Shopify tracking '.$shopifyFulfillment['tracking'].' saved. Amazon is already '.$status.'.',
+                'shopify_tracking' => $shopifyFulfillment['tracking'] ?? null,
+                'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
+            ];
         }
         if (empty($shopifyFulfillment['tracking'])) {
             return [

@@ -96,7 +96,7 @@
                             <input class="form-check-input" type="checkbox" name="order[push_tracking_to_amazon]" value="1" {{ ($settings['order']['push_tracking_to_amazon'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically push tracking numbers to Amz</span>
                         </label>
-                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments. If Shopify has no tracking yet, it tries Veeqo / GOFO (4Seller labels), fulfills the Shopify order, then confirms shipment on Amazon. A separate job also fetches tracking onto unfulfilled Shopify copies for every marketplace every 10 minutes.</div>
+                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments. If Shopify has no tracking yet, it tries Veeqo / GOFO (4Seller labels), fulfills the Shopify order, then confirms shipment on Amazon. Every 10 minutes a separate job also fetches tracking for old and new unfulfilled Shopify copies (last 180 days).</div>
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>

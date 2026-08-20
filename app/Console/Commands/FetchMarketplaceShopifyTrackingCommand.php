@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 class FetchMarketplaceShopifyTrackingCommand extends Command
 {
     protected $signature = 'marketplace:fetch-shopify-tracking
-                            {--limit=120 : Max linked marketplace orders to check}';
+                            {--limit=200 : Max linked marketplace orders to check}';
 
     protected $description = 'Fetch Veeqo / GOFO (4Seller) / marketplace tracking onto unfulfilled Shopify copies.';
 

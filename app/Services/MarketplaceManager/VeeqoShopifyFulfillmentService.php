@@ -28,6 +28,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Services\FourSellerApiService;
 use App\Services\GofoExpressService;
 use App\Services\VeeqoApiService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -218,20 +219,21 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
-     * Auto-run: linked Shopify orders from the last 30 days that still need a fulfillment.
+     * Auto-run: Shopify-linked orders from the last 180 days that still need a fulfillment.
      *
      * @return array{checked: int, fulfilled: int, skipped: int, failed: int, message: string}
      */
     public function syncPendingUnfulfilled(int $limit = 80): array
     {
-        $limit = max(1, min(250, $limit));
+        $limit = max(1, min(400, $limit));
         $marketplaces = [
             'amazon', 'ebay1', 'ebay2', 'ebay3', 'temu', 'temu2',
             'newegg', 'shein', 'reverb', 'faire', 'tiktok', 'tiktok2',
             'aliexpress', 'alibaba', 'topdawg', 'bestbuy', 'macy',
             'wayfair', 'purchasingpower', 'doba', 'pls',
         ];
-        $perMarket = max(5, (int) ceil($limit / count($marketplaces)));
+        $amazonShare = max(25, (int) ceil($limit * 0.45));
+        $otherShare = max(4, (int) ceil(($limit - $amazonShare) / max(1, count($marketplaces) - 1)));
         $checked = 0;
         $fulfilled = 0;
         $skipped = 0;
@@ -241,12 +243,14 @@ class VeeqoShopifyFulfillmentService
             if ($checked >= $limit) {
                 break;
             }
+            $perMarket = $slug === 'amazon' ? $amazonShare : $otherShare;
             foreach ($this->pendingLinkedOrderIds($slug, $perMarket) as $orderId) {
                 if ($checked >= $limit) {
                     break;
                 }
                 $checked++;
                 $result = $this->fulfillMarketplaceOrder($slug, $orderId);
+                $this->rememberAutoFetchResult($slug, $orderId, $result);
                 if (! empty($result['success']) && ($result['action'] ?? '') === 'shopify_fulfilled') {
                     $fulfilled++;
                 } elseif (! empty($result['skipped']) || (($result['action'] ?? '') === 'already_on_shopify')) {
@@ -254,7 +258,7 @@ class VeeqoShopifyFulfillmentService
                 } else {
                     $failed++;
                 }
-                usleep(150000);
+                usleep(120000);
             }
         }
 
@@ -867,11 +871,11 @@ class VeeqoShopifyFulfillmentService
      */
     protected function pendingLinkedOrderIds(string $marketplace, int $limit): array
     {
-        $since = now()->subDays(30);
+        $since = now()->subDays(180);
         $limit = max(1, min(80, $limit));
 
         if ($marketplace === 'amazon' && Schema::hasTable('amazon_orders') && Schema::hasColumn('amazon_orders', 'shopify_order_id')) {
-            return AmazonOrder::query()
+            $ids = AmazonOrder::query()
                 ->whereNotNull('shopify_order_id')
                 ->where('shopify_order_id', '!=', '')
                 ->where('shopify_order_id', 'not like', 'manual%')
@@ -885,10 +889,12 @@ class VeeqoShopifyFulfillmentService
                     $q->where('order_date', '>=', $since)->orWhere('created_at', '>=', $since);
                 })
                 ->orderByDesc('id')
-                ->limit($limit)
+                ->limit(max(80, $limit * 12))
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id)
                 ->all();
+
+            return $this->filterAutoFetchCandidates('amazon', $ids, $limit);
         }
 
         $map = [
@@ -963,26 +969,25 @@ class VeeqoShopifyFulfillmentService
             if ($uniqueCol && Schema::hasColumn($table, $uniqueCol)) {
                 $ids = [];
                 $seen = [];
-                foreach ($query->orderByDesc('id')->limit($limit * 8)->get(['id', $uniqueCol]) as $row) {
+                foreach ($query->orderByDesc('id')->limit($limit * 16)->get(['id', $uniqueCol]) as $row) {
                     $key = trim((string) ($row->{$uniqueCol} ?? ''));
                     if ($key === '' || isset($seen[$key])) {
                         continue;
                     }
                     $seen[$key] = true;
                     $ids[] = (int) $row->id;
-                    if (count($ids) >= $limit) {
-                        break;
-                    }
                 }
 
-                return $ids;
+                return $this->filterAutoFetchCandidates($marketplace, $ids, $limit);
             }
 
-            return $query->orderByDesc('id')
-                ->limit($limit)
+            $ids = $query->orderByDesc('id')
+                ->limit(max(40, $limit * 12))
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id)
                 ->all();
+
+            return $this->filterAutoFetchCandidates($marketplace, $ids, $limit);
         } catch (\Throwable $e) {
             Log::info('VeeqoShopifyFulfillmentService: pending query skipped', [
                 'marketplace' => $marketplace,
@@ -991,6 +996,58 @@ class VeeqoShopifyFulfillmentService
 
             return [];
         }
+    }
+
+    /**
+     * Skip orders we already fulfilled, or recently checked with no label yet,
+     * so auto-run rotates through older orders instead of the same newest IDs.
+     *
+     * @param  list<int>  $ids
+     * @return list<int>
+     */
+    protected function filterAutoFetchCandidates(string $marketplace, array $ids, int $limit): array
+    {
+        $out = [];
+        foreach ($ids as $id) {
+            $id = (int) $id;
+            if ($id < 1) {
+                continue;
+            }
+            if (Cache::has($this->autoFetchCacheKey($marketplace, $id, 'done'))) {
+                continue;
+            }
+            if (Cache::has($this->autoFetchCacheKey($marketplace, $id, 'miss'))) {
+                continue;
+            }
+            $out[] = $id;
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    protected function rememberAutoFetchResult(string $marketplace, int $orderId, array $result): void
+    {
+        $action = (string) ($result['action'] ?? '');
+        if (in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
+            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'done'), 1, now()->addDays(7));
+
+            return;
+        }
+        if (in_array($action, ['tracking_not_found', 'not_linked', 'unsupported'], true)
+            || (! empty($result['skipped']) && $action !== 'shopify_fulfilled')) {
+            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'miss'), 1, now()->addHours(2));
+        }
+    }
+
+    protected function autoFetchCacheKey(string $marketplace, int $orderId, string $kind): string
+    {
+        return 'mm_fetch_tracking_'.$kind.':'.$marketplace.':'.$orderId;
     }
 
     protected function flattenScalarStrings(array $data): string

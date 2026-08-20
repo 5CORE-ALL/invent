@@ -24,6 +24,7 @@ use App\Http\Controllers\MarketPlace\TikTokSyncController;
 use App\Http\Controllers\MarketPlace\TikTok2SyncController;
 use App\Http\Controllers\MarketPlace\PlsSyncController;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
+use App\Jobs\FetchMarketplaceShopifyTrackingJob;
 use App\Services\MarketplaceManager\MarketplaceManagerQueueStatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -389,6 +390,22 @@ class MarketplaceController extends Controller
             'carrier' => $result['carrier'] ?? null,
             'source' => $result['action'] ?? null,
         ], ! empty($result['success']) || ! empty($result['skipped']) ? 200 : 422);
+    }
+
+    public function fetchTrackingNow(string $marketplace): JsonResponse
+    {
+        FetchMarketplaceShopifyTrackingJob::dispatch(200);
+
+        $limit = strtolower($marketplace) === 'amazon' ? 8 : 6;
+        $result = app(VeeqoShopifyFulfillmentService::class)->syncPendingUnfulfilled($limit);
+
+        return response()->json([
+            'success' => true,
+            'message' => ($result['message'] ?? 'Tracking fetch started.')
+                .' A background job will keep checking old and new orders every 10 minutes.',
+            'checked' => $result['checked'] ?? 0,
+            'fulfilled' => $result['fulfilled'] ?? 0,
+        ]);
     }
 
     public function orders(Request $request, string $marketplace): View
