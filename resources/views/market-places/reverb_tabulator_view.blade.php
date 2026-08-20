@@ -1318,9 +1318,6 @@
     }
     function reverbChannelPromoColumns() {
         const cols = typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [];
-        if (typeof channelPromoSprcCpnColumn === 'function') {
-            cols.push(channelPromoSprcCpnColumn());
-        }
         // S PRC already has its own Push column — do not show Push % / push_prmt.
         return cols.filter(function(c) { return !c || c.field !== 'push_prmt'; });
     }
@@ -2082,7 +2079,7 @@
         const missingHiddenColumnFields = [
             'RV Price',
             'GPFT%', 'ROI%', 'NPFT', 'NROI', 'SPRICE', 'SGPFT', 'SROI', 'SNPFT', 'SNROI',
-            'prmt_pct', 'cpn_pct', 'sprc_cpn', 'push_std_prc',
+            'prmt_pct', 'cpn_pct', 'push_std_prc',
             'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
             'Views', 'CVR',
             'L30', 'RV Dil%', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
@@ -5923,7 +5920,7 @@
             STANDARD_PRICE: 1, push_std_prc: 1, 'RV Price': 1, 'A Price': 1, lmp_price: 1,
             linked_lmp_skus: 1, linked_lmp_sku_add: 1, 'ROI%': 1, 'GPFT%': 1, NPFT: 1, NROI: 1,
             Profit: 1, 'Sales L30': 1, LP_productmaster: 1, Ship_productmaster: 1, prmt_pct: 1,
-            cpn_pct: 1, sprc_cpn: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
+            cpn_pct: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
         };
         const COL_VIS_ADS = {
             Missing_Ad: 1, Bump: 1, API_REC_BID: 1, RE_BID: 1, push_bump: 1
@@ -5934,7 +5931,6 @@
             if (field === 'push_bump') return 'Push B%';
             if (field === 'prmt_pct') return 'PRMT %';
             if (field === 'cpn_pct') return 'CPN %';
-            if (field === 'sprc_cpn') return 'Sprc CPN';
             if (field === 'push_price') return 'Push';
             const raw = (def && def.title != null) ? def.title : field;
             const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();

@@ -23,6 +23,10 @@ use Illuminate\Support\Facades\Log;
  * - PRMT% = 0 → Remove from all sale events
  * - Never create a second sale at the same %; reuse the seller's campaign
  * - If no sale exists at that %, create PEF SALE {n}%
+ * - New PEF sales set blockPriceIncreaseInItemRevision=false so tabulator /
+ *   Push Prc StartPrice revises are not rejected ("part of a sale")
+ * - withPriceRevisionAllowed() unlocks or temporarily removes the SKU when an
+ *   existing Hub sale still blocks price updates, then restores the sale
  */
 class Ebay1PromotionService
 {
@@ -177,6 +181,7 @@ class Ebay1PromotionService
         if ($existing !== null) {
             $promoId = (string) $existing['promotion_id'];
             if (! empty($existing['already_has_sku'])) {
+                $this->tryUnlockSale($token, $promoId, false);
                 $this->persistDv($dv, $val, $promoId, $pctInt);
 
                 return [
@@ -189,6 +194,7 @@ class Ebay1PromotionService
 
             $added = $this->addSkuToSale($token, $promoId, $apiSku, $itemId);
             if ($added['success']) {
+                $this->tryUnlockSale($token, $promoId, false);
                 $this->resumeIfNeeded($token, $promoId);
                 $this->persistDv($dv, $val, $promoId, $pctInt);
 
@@ -230,6 +236,684 @@ class Ebay1PromotionService
             'promotion_id' => $newId,
             'percent' => (float) $pctInt,
         ];
+    }
+
+    /**
+     * Run a StartPrice revise. If eBay blocks it because the listing is on a
+     * markdown sale, unlock the sale (always allow price updates) and/or
+     * temporarily remove the SKU, revise, then put the listing back on sale.
+     *
+     * @param  callable(): array<string, mixed>  $revise
+     * @return array<string, mixed>
+     */
+    public function withPriceRevisionAllowed(string $sku, callable $revise): array
+    {
+        $first = $revise();
+        if ($this->reviseSucceeded($first) || ! $this->isSalePriceLockError($first)) {
+            return $first;
+        }
+
+        Log::warning($this->label.' StartPrice blocked by markdown sale — will pause/unlock or remove-revise-restore', [
+            'sku' => $sku,
+            'errors' => $first['errors'] ?? ($first['message'] ?? null),
+        ]);
+
+        // RUNNING sales reject the flag unless paused. Keep paused until revise finishes.
+        $unlocked = $this->unlockPriceUpdatesForSku($sku, true, false);
+        try {
+            $second = $revise();
+            if ($this->reviseSucceeded($second) || ! $this->isSalePriceLockError($second)) {
+                Log::info($this->label.' StartPrice succeeded after sale unlock', [
+                    'sku' => $sku,
+                    'unlocked' => $unlocked['unlocked'] ?? 0,
+                ]);
+
+                return $second;
+            }
+
+            return $this->removeReviseRestore($sku, $revise);
+        } finally {
+            $this->resumeSalesForSku($sku);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    public function isSalePriceLockError(array $result): bool
+    {
+        $blob = strtolower((string) ($result['message'] ?? ''));
+        $errors = $result['errors'] ?? [];
+        if ($errors === [] && is_array($result['data']['Errors'] ?? null)) {
+            $errors = $result['data']['Errors'];
+        }
+        if (! is_array($errors)) {
+            $errors = [$errors];
+        } elseif ($errors !== [] && ! isset($errors[0])) {
+            $errors = [$errors];
+        }
+
+        foreach ($errors as $error) {
+            if (! is_array($error)) {
+                $blob .= ' '.strtolower((string) $error);
+
+                continue;
+            }
+            $blob .= ' '.strtolower((string) ($error['message'] ?? ''));
+            $blob .= ' '.strtolower((string) ($error['LongMessage'] ?? ''));
+            $blob .= ' '.strtolower((string) ($error['ShortMessage'] ?? ''));
+            $blob .= ' '.(string) ($error['ErrorCode'] ?? $error['code'] ?? '');
+            $params = $error['ErrorParameters'] ?? [];
+            if (is_array($params)) {
+                foreach ($params as $param) {
+                    if (is_array($param) && isset($param['Value'])) {
+                        $blob .= ' '.strtolower((string) $param['Value']);
+                    }
+                }
+            }
+        }
+
+        return str_contains($blob, 'part of a sale')
+            || str_contains($blob, 'always allow price updates')
+            || str_contains($blob, 'blockpriceincrease')
+            || str_contains($blob, '21919248');
+    }
+
+    /**
+     * @return array{success:bool,unlocked:int,message:string}
+     */
+    public function unlockPriceUpdatesForSku(string $sku, bool $pauseIfNeeded = false, bool $resumeAfter = true): array
+    {
+        $sku = trim($sku);
+        $metric = $this->findMetric($sku);
+        $itemId = $metric?->item_id ? trim((string) $metric->item_id) : '';
+        if ($itemId === '') {
+            return ['success' => false, 'unlocked' => 0, 'message' => $this->label.' item_id not found for SKU'];
+        }
+
+        $dv = $this->findOrNewDataView($sku);
+        $val = is_array($dv->value) ? $dv->value : [];
+        $storedPromoId = isset($val[self::DV_PROMO_ID]) ? trim((string) $val[self::DV_PROMO_ID]) : '';
+        $apiSku = trim((string) ($metric->sku ?: $sku));
+
+        try {
+            $token = $this->ebay->generateBearerToken();
+        } catch (\Throwable $e) {
+            return ['success' => false, 'unlocked' => 0, 'message' => $this->label.' token: '.$e->getMessage()];
+        }
+
+        $memberships = $this->salesContainingSku($token, $apiSku, $itemId, $storedPromoId);
+        $canPause = $pauseIfNeeded;
+        if ($memberships === []) {
+            // Unknown membership — try the flag on locked sales, but do not
+            // pause every Hub campaign just to find this SKU.
+            $memberships = $this->salesBlockingPriceRevisions($token);
+            $canPause = false;
+        }
+
+        $unlocked = 0;
+        foreach ($memberships as $row) {
+            if ($this->tryUnlockSale($token, (string) $row['promotion_id'], $canPause, $resumeAfter)) {
+                $unlocked++;
+            }
+        }
+
+        return [
+            'success' => $unlocked > 0,
+            'unlocked' => $unlocked,
+            'message' => $unlocked > 0
+                ? ('Unlocked '.$unlocked.' '.$this->label.' sale event'.($unlocked > 1 ? 's' : ''))
+                : ('No '.$this->label.' sale event could be unlocked'),
+        ];
+    }
+
+    private function resumeSalesForSku(string $sku): void
+    {
+        $sku = trim($sku);
+        $metric = $this->findMetric($sku);
+        $itemId = $metric?->item_id ? trim((string) $metric->item_id) : '';
+        if ($itemId === '') {
+            return;
+        }
+
+        $dv = $this->findOrNewDataView($sku);
+        $val = is_array($dv->value) ? $dv->value : [];
+        $storedPromoId = isset($val[self::DV_PROMO_ID]) ? trim((string) $val[self::DV_PROMO_ID]) : '';
+        $apiSku = trim((string) ($metric->sku ?: $sku));
+
+        try {
+            $token = $this->ebay->generateBearerToken();
+        } catch (\Throwable) {
+            return;
+        }
+
+        foreach ($this->salesContainingSku($token, $apiSku, $itemId, $storedPromoId) as $row) {
+            $this->resumeIfNeeded($token, (string) $row['promotion_id']);
+        }
+    }
+
+    /**
+     * @param  callable(): array<string, mixed>  $revise
+     * @return array<string, mixed>
+     */
+    private function removeReviseRestore(string $sku, callable $revise): array
+    {
+        $sku = trim($sku);
+        $metric = $this->findMetric($sku);
+        $itemId = $metric?->item_id ? trim((string) $metric->item_id) : '';
+        if ($itemId === '') {
+            return [
+                'success' => false,
+                'message' => $this->label.' item_id not found for SKU',
+                'errors' => [['code' => 'NotFound', 'message' => $this->label.' item_id not found for SKU']],
+            ];
+        }
+
+        $dv = $this->findOrNewDataView($sku);
+        $val = is_array($dv->value) ? $dv->value : [];
+        $storedPromoId = isset($val[self::DV_PROMO_ID]) ? trim((string) $val[self::DV_PROMO_ID]) : '';
+        $apiSku = trim((string) ($metric->sku ?: $sku));
+
+        try {
+            $token = $this->ebay->generateBearerToken();
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => $this->label.' token: '.$e->getMessage(),
+                'errors' => [['code' => 'AuthError', 'message' => $this->label.' token: '.$e->getMessage()]],
+            ];
+        }
+
+        $memberships = $this->salesContainingSku($token, $apiSku, $itemId, $storedPromoId);
+        if ($memberships === []) {
+            $this->detachListingIdFromSales($token, $itemId);
+            $memberships = $this->salesContainingSku($token, $apiSku, $itemId, $storedPromoId);
+        }
+
+        $removed = [];
+        foreach ($memberships as $row) {
+            if (! empty($row['rule_based'])) {
+                $this->tryUnlockSale($token, (string) $row['promotion_id'], true);
+
+                continue;
+            }
+            $detail = is_array($row['detail'] ?? null)
+                ? $row['detail']
+                : $this->getMarkdown($token, (string) $row['promotion_id']);
+            if (! is_array($detail)) {
+                continue;
+            }
+            $rm = $this->removeListingFromSale(
+                $token,
+                (string) $row['promotion_id'],
+                $itemId,
+                $apiSku,
+                $detail,
+                false
+            );
+            if (empty($rm['success'])) {
+                Log::warning($this->label.' sale remove-before-revise failed', [
+                    'sku' => $sku,
+                    'promotion_id' => $row['promotion_id'] ?? null,
+                    'error' => $rm['message'] ?? '',
+                ]);
+
+                continue;
+            }
+
+            $check = $this->getMarkdown($token, (string) $row['promotion_id']);
+            if (is_array($check) && $this->saleContainsSku($check, $apiSku, $itemId)) {
+                Log::warning($this->label.' sale still contains SKU after remove — retry detach', [
+                    'sku' => $sku,
+                    'promotion_id' => $row['promotion_id'] ?? null,
+                ]);
+                $this->detachListingIdFromSales($token, $itemId);
+                $check = $this->getMarkdown($token, (string) $row['promotion_id']);
+                if (is_array($check) && $this->saleContainsSku($check, $apiSku, $itemId)) {
+                    continue;
+                }
+            }
+
+            $removed[] = $row;
+        }
+
+        if ($removed !== []) {
+            usleep(1500000);
+        }
+
+        try {
+            return $revise();
+        } finally {
+            foreach ($removed as $row) {
+                $promoId = (string) $row['promotion_id'];
+                $added = $this->addSkuToSale($token, $promoId, $apiSku, $itemId);
+                if (! empty($added['success'])) {
+                    $this->tryUnlockSale($token, $promoId, false);
+                    $this->resumeIfNeeded($token, $promoId);
+
+                    continue;
+                }
+                $pct = $row['percent'] ?? null;
+                Log::warning($this->label.' sale restore after price revise failed', [
+                    'sku' => $sku,
+                    'promotion_id' => $promoId,
+                    'error' => $added['message'] ?? '',
+                ]);
+                if (is_numeric($pct) && (int) $pct >= 5) {
+                    $this->syncSkuPromotionPercent($sku, (float) $pct);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    private function reviseSucceeded(array $result): bool
+    {
+        return ! empty($result['success']);
+    }
+
+    private function tryUnlockSale(string $token, string $promoId, bool $pauseIfNeeded, bool $resumeAfter = true): bool
+    {
+        $promoId = trim($promoId);
+        if ($promoId === '') {
+            return false;
+        }
+
+        $detail = $this->getMarkdown($token, $promoId);
+        if ($detail === null) {
+            return false;
+        }
+        $wasRunning = strtoupper((string) ($detail['promotionStatus'] ?? '')) === 'RUNNING';
+        if (! $this->saleBlocksPriceRevision($detail) && ! $pauseIfNeeded) {
+            return true;
+        }
+
+        if ($wasRunning && $pauseIfNeeded) {
+            if (! $this->ensureSalePaused($token, $promoId)) {
+                Log::warning($this->label.' sale unlock skipped — could not pause RUNNING sale', [
+                    'promotion_id' => $promoId,
+                ]);
+
+                return false;
+            }
+            $detail = $this->getMarkdown($token, $promoId) ?? $detail;
+        }
+
+        $items = $this->saleInventoryItems($detail);
+        $payload = $this->saleWritePayload(
+            $detail,
+            $this->saleListingIds($detail),
+            $items !== [] ? $items : null
+        );
+        $payload['blockPriceIncreaseInItemRevision'] = false;
+
+        $resp = $this->putMarkdown($token, $promoId, $payload);
+        $ok = $resp->successful() || $resp->status() === 204;
+        if (! $ok) {
+            Log::warning($this->label.' sale unlock PUT failed', [
+                'promotion_id' => $promoId,
+                'http' => $resp->status(),
+                'body' => mb_substr($resp->body(), 0, 800),
+            ]);
+            if ($wasRunning && $pauseIfNeeded && $resumeAfter) {
+                $this->resumeIfNeeded($token, $promoId);
+            }
+
+            return false;
+        }
+
+        $check = $this->getMarkdown($token, $promoId);
+        $unlocked = is_array($check) ? ! $this->saleBlocksPriceRevision($check) : $ok;
+        Log::info($this->label.' sale unlock PUT', [
+            'promotion_id' => $promoId,
+            'unlocked' => $unlocked,
+            'status' => $check['promotionStatus'] ?? null,
+            'block' => $check['blockPriceIncreaseInItemRevision'] ?? null,
+        ]);
+
+        if ($resumeAfter && $wasRunning) {
+            $this->resumeIfNeeded($token, $promoId);
+        }
+
+        return $unlocked;
+    }
+
+    /**
+     * @param  array<string, mixed>  $detail
+     */
+    private function saleBlocksPriceRevision(array $detail): bool
+    {
+        if (! array_key_exists('blockPriceIncreaseInItemRevision', $detail)) {
+            return true;
+        }
+        $value = $detail['blockPriceIncreaseInItemRevision'];
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_string($value)) {
+            return ! in_array(strtolower($value), ['false', '0', 'no'], true);
+        }
+
+        return (bool) $value;
+    }
+
+    /**
+     * @return list<array{promotion_id:string,percent:?int,rule_based:bool,detail:array<string, mixed>}>
+     */
+    private function salesContainingSku(string $token, string $sku, string $itemId, string $storedPromoId = ''): array
+    {
+        $candidates = $this->listMarkdownIds($token);
+        if ($storedPromoId !== '' && ! in_array($storedPromoId, $candidates, true)) {
+            array_unshift($candidates, $storedPromoId);
+        }
+
+        $found = [];
+        foreach ($candidates as $promoId) {
+            $detail = $this->getMarkdown($token, $promoId);
+            if ($detail === null) {
+                continue;
+            }
+            $status = (string) ($detail['promotionStatus'] ?? '');
+            if (! in_array($status, ['RUNNING', 'SCHEDULED', 'PAUSED', 'DRAFT'], true)) {
+                continue;
+            }
+            if (! $this->saleContainsSku($detail, $sku, $itemId)) {
+                continue;
+            }
+            $found[] = [
+                'promotion_id' => $promoId,
+                'percent' => $this->salePercent($detail),
+                'rule_based' => $this->saleIsRuleBased($detail),
+                'detail' => $detail,
+            ];
+        }
+
+        return $found;
+    }
+
+    /**
+     * @return list<array{promotion_id:string,percent:?int,rule_based:bool,detail:array<string, mixed>}>
+     */
+    private function salesBlockingPriceRevisions(string $token): array
+    {
+        $found = [];
+        foreach ($this->listMarkdownIds($token) as $promoId) {
+            $detail = $this->getMarkdown($token, $promoId);
+            if ($detail === null) {
+                continue;
+            }
+            $status = (string) ($detail['promotionStatus'] ?? '');
+            if (! in_array($status, ['RUNNING', 'SCHEDULED', 'PAUSED'], true)) {
+                continue;
+            }
+            if (! $this->saleBlocksPriceRevision($detail)) {
+                continue;
+            }
+            $found[] = [
+                'promotion_id' => $promoId,
+                'percent' => $this->salePercent($detail),
+                'rule_based' => $this->saleIsRuleBased($detail),
+                'detail' => $detail,
+            ];
+        }
+
+        return $found;
+    }
+
+    /**
+     * End every active markdown sale (RUNNING / SCHEDULED / PAUSED) by setting
+     * endDate to now. RUNNING sales only accept inventory + endDate.
+     *
+     * @return array{success:bool,ended:int,failed:int,skipped:int,errors:list<string>}
+     */
+    public function endAllSales(): array
+    {
+        try {
+            $token = $this->ebay->generateBearerToken();
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'ended' => 0,
+                'failed' => 1,
+                'skipped' => 0,
+                'errors' => [$this->label.' token: '.$e->getMessage()],
+            ];
+        }
+
+        $ended = 0;
+        $failed = 0;
+        $skipped = 0;
+        $errors = [];
+        foreach ($this->listMarkdownIds($token) as $promoId) {
+            $res = $this->endMarkdownSale($token, $promoId);
+            if (! empty($res['skipped'])) {
+                $skipped++;
+
+                continue;
+            }
+            if (! empty($res['success'])) {
+                $ended++;
+            } else {
+                $failed++;
+                $errors[] = $promoId.': '.((string) ($res['message'] ?? 'end failed'));
+            }
+        }
+
+        return [
+            'success' => $failed === 0,
+            'ended' => $ended,
+            'failed' => $failed,
+            'skipped' => $skipped,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * @return array{success:bool,message:string,skipped?:bool}
+     */
+    private function endMarkdownSale(string $token, string $promoId): array
+    {
+        $detail = $this->getMarkdown($token, $promoId);
+        if ($detail === null) {
+            return ['success' => false, 'message' => 'Sale not found'];
+        }
+        $status = strtoupper((string) ($detail['promotionStatus'] ?? ''));
+        if (in_array($status, ['ENDED', 'EXPIRED'], true)) {
+            return ['success' => true, 'message' => 'already ended', 'skipped' => true];
+        }
+
+        if (in_array($status, ['DRAFT', 'SCHEDULED'], true)) {
+            $del = $this->http($token)->delete(
+                'https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($this->markdownApiId($promoId))
+            );
+            $gone = $this->getMarkdown($token, $promoId);
+            $goneStatus = strtoupper((string) ($gone['promotionStatus'] ?? ''));
+            if ($del->successful() || $gone === null || in_array($goneStatus, ['ENDED', 'EXPIRED'], true)) {
+                Log::info($this->label.' sale delete', [
+                    'promotion_id' => $promoId,
+                    'http' => $del->status(),
+                    'status' => $goneStatus ?: $status,
+                ]);
+
+                return ['success' => true, 'message' => 'deleted'];
+            }
+        }
+
+        $startAt = strtotime((string) ($detail['startDate'] ?? '')) ?: time();
+        $minEnd = $startAt + 86400 + 120;
+        $endTs = max(time() + 120, $minEnd);
+        $listingIds = $this->saleListingIds($detail);
+        $items = $this->saleInventoryItems($detail);
+        $payload = $this->runningInventoryWritePayload(
+            $detail,
+            $listingIds,
+            $listingIds === [] ? ($items !== [] ? $items : null) : null
+        );
+        $payload['endDate'] = gmdate('Y-m-d\TH:i:s.000\Z', $endTs);
+        $resp = $this->putMarkdown($token, $promoId, $payload);
+        $ok = $resp->successful() || $resp->status() === 204;
+        $check = $this->getMarkdown($token, $promoId) ?? $detail;
+        $nowStatus = strtoupper((string) ($check['promotionStatus'] ?? ''));
+        $endAt = strtotime((string) ($check['endDate'] ?? '')) ?: 0;
+        $endingSoon = $ok && $endAt > 0 && $endAt <= time() + 180;
+        $scheduledEnd = $ok && $endAt > 0 && $endAt <= $minEnd + 300;
+        $ended = $check === null
+            || in_array($nowStatus, ['ENDED', 'EXPIRED'], true)
+            || ($endAt > 0 && $endAt <= time() + 90)
+            || $endingSoon
+            || $scheduledEnd;
+
+        Log::info($this->label.' sale end PUT', [
+            'promotion_id' => $promoId,
+            'http' => $resp->status(),
+            'status' => $nowStatus ?: $status,
+            'ended' => $ended,
+            'end_date' => $check['endDate'] ?? null,
+            'body' => mb_substr((string) $resp->body(), 0, 400),
+        ]);
+
+        if ($ended) {
+            return [
+                'success' => true,
+                'message' => ($endingSoon || in_array($nowStatus, ['ENDED', 'EXPIRED'], true))
+                    ? 'ended'
+                    : ('scheduled to end '.((string) ($check['endDate'] ?? ''))),
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => $ok
+                ? ('eBay kept sale '.$nowStatus)
+                : ('End failed: '.$this->ebayErrorMessage($resp)),
+        ];
+    }
+
+    /**
+     * RUNNING markdowns younger than 24h cannot change endDate. Remove every
+     * listing via markupListingIds so prices revert immediately.
+     *
+     * @param  array<string, mixed>  $detail
+     * @return array{success:bool,message:string}
+     */
+    private function drainMarkdownSale(string $token, string $promoId, array $detail): array
+    {
+        $listingIds = $this->saleListingIds($detail);
+        $items = $this->saleInventoryItems($detail);
+        if ($listingIds === [] && $items === []) {
+            return ['success' => true, 'message' => 'already empty'];
+        }
+
+        $left = 0;
+        $lastMsg = 'drain failed';
+        foreach (array_chunk($listingIds !== [] ? $listingIds : [null], 500) as $idChunk) {
+            $idChunk = array_values(array_filter($idChunk, fn ($id) => $id !== null && $id !== ''));
+            $itemChunk = $listingIds === [] ? $items : [];
+            $res = $this->markupListingsOnSale($token, $promoId, $detail, $idChunk, $itemChunk);
+            $lastMsg = (string) ($res['message'] ?? $lastMsg);
+            $check = $this->getMarkdown($token, $promoId);
+            if (! is_array($check)) {
+                return ['success' => true, 'message' => 'sale gone'];
+            }
+            $detail = $check;
+            $listingIds = $this->saleListingIds($detail);
+            $items = $this->saleInventoryItems($detail);
+            $left = count($listingIds) + count($items);
+            if ($left === 0) {
+                return ['success' => true, 'message' => 'listings removed'];
+            }
+        }
+
+        if ($items !== []) {
+            $res = $this->markupListingsOnSale($token, $promoId, $detail, [], $items);
+            $lastMsg = (string) ($res['message'] ?? $lastMsg);
+            $check = $this->getMarkdown($token, $promoId);
+            $left = is_array($check)
+                ? count($this->saleListingIds($check)) + count($this->saleInventoryItems($check))
+                : 0;
+            if ($left === 0) {
+                return ['success' => true, 'message' => 'listings removed'];
+            }
+        }
+
+        return [
+            'success' => $left === 0,
+            'message' => $left === 0 ? 'listings removed' : ($lastMsg.' ('.$left.' still on sale)'),
+        ];
+    }
+
+    /**
+     * @param  list<string>  $listingIds
+     * @param  list<array<string, mixed>>  $inventoryItems
+     * @param  array<string, mixed>  $detail
+     * @return array{success:bool,message:string}
+     */
+    private function markupListingsOnSale(
+        string $token,
+        string $promoId,
+        array $detail,
+        array $listingIds,
+        array $inventoryItems
+    ): array {
+        $currentIds = $this->saleListingIds($detail);
+        $currentItems = $this->saleInventoryItems($detail);
+        $wantIds = array_fill_keys(array_map(
+            fn ($id) => $this->markdownListingId((string) $id),
+            $listingIds
+        ), true);
+        $wantSkus = [];
+        foreach ($inventoryItems as $it) {
+            $sku = strtoupper(trim((string) ($it['inventoryReferenceId'] ?? '')));
+            if ($sku !== '') {
+                $wantSkus[$sku] = true;
+            }
+        }
+
+        $keptIds = [];
+        foreach ($currentIds as $lid) {
+            $norm = $this->markdownListingId((string) $lid);
+            if ($norm !== '' && ! isset($wantIds[$norm])) {
+                $keptIds[] = $norm;
+            }
+        }
+        $keptItems = [];
+        foreach ($currentItems as $it) {
+            $sku = strtoupper(trim((string) ($it['inventoryReferenceId'] ?? '')));
+            if ($sku !== '' && ! isset($wantSkus[$sku])) {
+                $keptItems[] = $it;
+            }
+        }
+
+        $preferListingIds = $currentIds !== [] || $listingIds !== [];
+        $payload = $this->runningInventoryWritePayload(
+            $detail,
+            $preferListingIds ? $keptIds : [],
+            $preferListingIds ? null : ($keptItems !== [] ? $keptItems : null)
+        );
+        if ($keptIds === [] && $keptItems === []) {
+            $payload['selectedInventoryDiscounts'][0]['inventoryCriterion'] = [
+                'inventoryCriterionType' => 'INVENTORY_BY_VALUE',
+                'listingIds' => [],
+            ];
+        }
+        // Official update of a RUNNING markdown must send SCHEDULED or eBay
+        // accepts 200 and ignores listingIds.
+        $payload['promotionStatus'] = 'SCHEDULED';
+        $resp = $this->putMarkdown($token, $promoId, $payload);
+        Log::info($this->label.' sale inventory replace PUT', [
+            'promotion_id' => $promoId,
+            'http' => $resp->status(),
+            'kept_listings' => count($keptIds),
+            'kept_items' => count($keptItems),
+            'body' => mb_substr((string) $resp->body(), 0, 400),
+        ]);
+        if ($resp->successful() || $resp->status() === 204) {
+            return ['success' => true, 'message' => 'inventory replace accepted'];
+        }
+
+        return ['success' => false, 'message' => 'Inventory replace failed: '.$this->ebayErrorMessage($resp)];
     }
 
     public function campaignNameForPercent(int $percent): string
@@ -566,66 +1250,66 @@ class Ebay1PromotionService
         string $promoId,
         string $itemId,
         string $sku,
-        array $detail
+        array $detail,
+        bool $resumeAfter = true
     ): array {
         $listingIds = $this->saleListingIds($detail);
         $items = $this->saleInventoryItems($detail);
-        $usesItems = $items !== [];
+        $wantSku = strtoupper(trim($sku));
+        $wantLid = $this->markdownListingId($itemId);
 
-        if ($usesItems) {
-            $want = strtoupper(trim($sku));
-            $keptItems = [];
-            foreach ($items as $it) {
-                $id = strtoupper(trim((string) ($it['inventoryReferenceId'] ?? '')));
-                if ($id !== '' && $want !== '' && $id === $want) {
-                    continue;
-                }
+        $removeIds = [];
+        $keptIds = [];
+        foreach ($listingIds as $lid) {
+            $lid = trim((string) $lid);
+            if ($lid === '') {
+                continue;
+            }
+            if ($wantLid !== '' && $this->markdownListingId($lid) === $wantLid) {
+                $removeIds[] = $lid;
+            } else {
+                $keptIds[] = $lid;
+            }
+        }
+        $removeItems = [];
+        $keptItems = [];
+        foreach ($items as $it) {
+            $id = strtoupper(trim((string) ($it['inventoryReferenceId'] ?? '')));
+            if ($id !== '' && $wantSku !== '' && $id === $wantSku) {
+                $removeItems[] = $it;
+            } else {
                 $keptItems[] = $it;
             }
-            $isEmpty = $keptItems === [];
-            $writeIds = [];
-            $writeItems = $keptItems;
-        } else {
-            $kept = [];
-            foreach ($listingIds as $lid) {
-                $lid = trim((string) $lid);
-                if ($lid === '' || ($itemId !== '' && $lid === $itemId)) {
-                    continue;
-                }
-                $kept[] = $lid;
-            }
-            $kept = array_values(array_unique($kept));
-            $isEmpty = $kept === [];
-            $writeIds = $kept;
-            $writeItems = null;
         }
 
-        $status = (string) ($detail['promotionStatus'] ?? '');
-        if ($status === 'RUNNING') {
-            $this->pauseSale($token, $promoId);
+        if ($removeIds === [] && $removeItems === []) {
+            return ['success' => true, 'message' => 'SKU not on this sale'];
+        }
+        if ($keptIds === [] && $keptItems === []) {
+            return [
+                'success' => false,
+                'message' => 'eBay will not empty a sale (needs at least 1 listing). Sale ends '
+                    .((string) ($detail['endDate'] ?? 'after 24h')),
+            ];
         }
 
-        if ($isEmpty) {
-            $paused = $this->pauseSale($token, $promoId);
-            if ($paused) {
-                return ['success' => true, 'message' => 'SKU removed; sale kept (no items left)'];
-            }
-
-            return ['success' => false, 'message' => 'Pause empty sale failed'];
+        $res = $this->markupListingsOnSale($token, $promoId, $detail, $removeIds, $removeItems);
+        $check = $this->getMarkdown($token, $promoId);
+        $stillOn = is_array($check) && $this->saleContainsSku($check, $sku, $itemId);
+        Log::info($this->label.' sale remove via inventory replace', [
+            'promotion_id' => $promoId,
+            'still_on_sale' => $stillOn,
+            'kept_listings' => count($keptIds),
+            'message' => $res['message'] ?? null,
+        ]);
+        if ($stillOn) {
+            return ['success' => false, 'message' => (string) ($res['message'] ?? 'eBay ignored listing remove')];
+        }
+        if ($resumeAfter) {
+            $this->resumeIfNeeded($token, $promoId);
         }
 
-        $payload = $this->saleWritePayload($detail, $writeIds, $writeItems);
-        $resp = $this->putMarkdown($token, $promoId, $payload);
-
-        if ($resp->successful() || $resp->status() === 204) {
-            if ($status === 'RUNNING') {
-                $this->resumeIfNeeded($token, $promoId);
-            }
-
-            return ['success' => true, 'message' => 'remove item ok'];
-        }
-
-        return ['success' => false, 'message' => 'Remove item failed: '.$this->ebayErrorMessage($resp)];
+        return ['success' => true, 'message' => 'remove item ok'];
     }
 
     /**
@@ -653,15 +1337,28 @@ class Ebay1PromotionService
             'marketplaceId' => (string) ($detail['marketplaceId'] ?? self::MARKETPLACE),
             'startDate' => $start,
             'endDate' => $end,
-            // RUNNING: only inventory/endDate may change. Forcing SCHEDULED without
-            // the existing discountId makes eBay return "The discount ID is invalid."
-            'promotionStatus' => $status === 'RUNNING' ? 'RUNNING' : 'SCHEDULED',
+            // RUNNING inventory PUTs are ignored unless the sale is PAUSED first.
+            // Sending SCHEDULED for a paused sale also makes eBay ignore listingIds.
+            'promotionStatus' => match ($status) {
+                'RUNNING' => 'RUNNING',
+                'PAUSED' => 'PAUSED',
+                default => 'SCHEDULED',
+            },
         ];
 
-        foreach (['promotionImageUrl', 'applyFreeShipping', 'autoSelectFutureInventory', 'blockPriceIncreaseInItemRevision', 'priority'] as $key) {
+        foreach (['promotionImageUrl', 'applyFreeShipping', 'autoSelectFutureInventory', 'priority'] as $key) {
             if (array_key_exists($key, $detail) && $detail[$key] !== null && $detail[$key] !== '') {
                 $payload[$key] = $detail[$key];
             }
+        }
+
+        // Non-running writes always allow StartPrice revises. RUNNING keeps the
+        // current flag so inventory-only PUTs are not rejected by eBay.
+        if ($status === 'RUNNING' && array_key_exists('blockPriceIncreaseInItemRevision', $detail)
+            && $detail['blockPriceIncreaseInItemRevision'] !== null && $detail['blockPriceIncreaseInItemRevision'] !== '') {
+            $payload['blockPriceIncreaseInItemRevision'] = $detail['blockPriceIncreaseInItemRevision'];
+        } else {
+            $payload['blockPriceIncreaseInItemRevision'] = false;
         }
 
         $discounts = $detail['selectedInventoryDiscounts'] ?? [];
@@ -673,13 +1370,16 @@ class Ebay1PromotionService
         $criterion = [
             'inventoryCriterionType' => 'INVENTORY_BY_VALUE',
         ];
-        if ($inventoryItems !== null) {
-            $criterion['inventoryItems'] = array_values($inventoryItems);
-        } else {
+        // eBay rejects listingIds and inventoryItems in the same request.
+        if ($listingIds !== []) {
             $criterion['listingIds'] = array_values(array_map(
                 fn ($id) => $this->markdownListingId((string) $id),
                 $listingIds
             ));
+        } elseif ($inventoryItems !== null && $inventoryItems !== []) {
+            $criterion['inventoryItems'] = array_values($inventoryItems);
+        } else {
+            $criterion['listingIds'] = [];
         }
 
         $discount = [
@@ -805,7 +1505,7 @@ class Ebay1PromotionService
             'endDate' => $end,
             'promotionStatus' => 'SCHEDULED',
             'promotionImageUrl' => $imageUrl,
-            'blockPriceIncreaseInItemRevision' => true,
+            'blockPriceIncreaseInItemRevision' => false,
             'selectedInventoryDiscounts' => [
                 [
                     'discountBenefit' => [
@@ -991,10 +1691,122 @@ class Ebay1PromotionService
 
     private function pauseSale(string $token, string $promoId): bool
     {
-        $url = 'https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($this->markdownApiId($promoId)).'/pause';
-        $resp = $this->http($token)->post($url);
+        return $this->ensureSalePaused($token, $promoId);
+    }
 
-        return $resp->successful() || in_array($resp->status(), [204, 400, 409], true);
+    /**
+     * Pause is only success when GET returns PAUSED. HTTP 400/409 is not enough —
+     * those were treated as OK while PEF SALE 10% stayed RUNNING.
+     */
+    private function ensureSalePaused(string $token, string $promoId): bool
+    {
+        $detail = $this->getMarkdown($token, $promoId);
+        $status = strtoupper((string) ($detail['promotionStatus'] ?? ''));
+        if ($status === 'PAUSED') {
+            return true;
+        }
+
+        $apiId = $this->markdownApiId($promoId);
+        $urls = [
+            'https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($apiId).'/pause',
+            'https://api.ebay.com/sell/marketing/v1/promotion/'.rawurlencode($apiId).'/pause',
+        ];
+
+        foreach ($urls as $url) {
+            $resp = $this->http($token)->post($url);
+            Log::info($this->label.' sale pause', [
+                'promotion_id' => $promoId,
+                'http' => $resp->status(),
+                'url' => $url,
+                'body' => mb_substr((string) $resp->body(), 0, 400),
+            ]);
+            usleep(500000);
+            $check = $this->getMarkdown($token, $promoId);
+            $now = strtoupper((string) ($check['promotionStatus'] ?? ''));
+            if ($now === 'PAUSED') {
+                return true;
+            }
+        }
+
+        Log::warning($this->label.' sale pause did not stick', [
+            'promotion_id' => $promoId,
+            'status' => $this->getMarkdown($token, $promoId)['promotionStatus'] ?? null,
+        ]);
+
+        return false;
+    }
+
+    /**
+     * RUNNING markdowns only accept inventory / endDate. Sending
+     * blockPriceIncreaseInItemRevision makes eBay return 200 and no-op.
+     *
+     * @param  list<string>  $listingIds
+     * @param  list<array<string, mixed>>|null  $inventoryItems
+     * @param  array<string, mixed>  $detail
+     * @return array<string, mixed>
+     */
+    private function runningInventoryWritePayload(array $detail, array $listingIds, ?array $inventoryItems): array
+    {
+        $pct = $this->salePercent($detail) ?? 10;
+        $start = trim((string) ($detail['startDate'] ?? ''));
+        $end = trim((string) ($detail['endDate'] ?? ''));
+        if ($end === '') {
+            [, $end] = $this->saleDateWindow($detail);
+        }
+
+        $discounts = $detail['selectedInventoryDiscounts'] ?? [];
+        $first = is_array($discounts[0] ?? null) ? $discounts[0] : [];
+        $benefit = is_array($first['discountBenefit'] ?? null)
+            ? $first['discountBenefit']
+            : ['percentageOffItem' => (string) $pct];
+
+        $criterion = [
+            'inventoryCriterionType' => 'INVENTORY_BY_VALUE',
+        ];
+        // eBay rejects listingIds and inventoryItems in the same request.
+        if ($listingIds !== []) {
+            $criterion['listingIds'] = array_values(array_map(
+                fn ($id) => $this->markdownListingId((string) $id),
+                $listingIds
+            ));
+        } elseif ($inventoryItems !== null && $inventoryItems !== []) {
+            $criterion['inventoryItems'] = array_values($inventoryItems);
+        } else {
+            $criterion['listingIds'] = [];
+        }
+
+        $discount = [
+            'discountBenefit' => $benefit,
+            'inventoryCriterion' => $criterion,
+        ];
+        $discountId = trim((string) ($first['discountId'] ?? $first['discount_id'] ?? ''));
+        if ($discountId !== '') {
+            $discount['discountId'] = $discountId;
+        }
+        if (array_key_exists('ruleOrder', $first) && $first['ruleOrder'] !== null && $first['ruleOrder'] !== '') {
+            $discount['ruleOrder'] = $first['ruleOrder'];
+        }
+
+        $payload = [
+            'name' => (string) ($detail['name'] ?? $this->campaignNameForPercent($pct)),
+            'marketplaceId' => (string) ($detail['marketplaceId'] ?? self::MARKETPLACE),
+            'promotionStatus' => 'RUNNING',
+            'endDate' => $end,
+            'selectedInventoryDiscounts' => [$discount],
+        ];
+        if ($start !== '') {
+            $payload['startDate'] = $start;
+        }
+        $desc = trim((string) ($detail['description'] ?? ''));
+        if ($desc !== '') {
+            $payload['description'] = $this->clipDescription($desc);
+        }
+        $image = trim((string) ($detail['promotionImageUrl'] ?? ''));
+        if ($image !== '') {
+            $payload['promotionImageUrl'] = $image;
+        }
+
+        return $payload;
     }
 
     private function resumeIfNeeded(string $token, string $promoId): void
@@ -1092,8 +1904,12 @@ class Ebay1PromotionService
 
         $status = strtoupper((string) ($existingDetail['promotionStatus'] ?? ''));
         $existingStart = trim((string) ($existingDetail['startDate'] ?? ''));
-        if ($status === 'RUNNING' && $existingStart !== '') {
+        $existingEnd = trim((string) ($existingDetail['endDate'] ?? ''));
+        if ($existingStart !== '' && in_array($status, ['RUNNING', 'PAUSED', 'SCHEDULED'], true)) {
             $start = $existingStart;
+        }
+        if ($existingEnd !== '') {
+            $end = $existingEnd;
         }
 
         return [$start, $end];

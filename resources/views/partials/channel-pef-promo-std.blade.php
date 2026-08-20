@@ -541,7 +541,6 @@
         window.chPromoPaintPushStdPrcSpinner = chPromoPaintPushStdPrcSpinner;
         window.chPromoRefreshPushStdPrcCell = chPromoRefreshPushStdPrcCell;
         window.channelPromoPricingColumns = function() { return []; };
-        window.channelPromoSprcCpnColumn = function() { return null; };
         window.channelPromoPushPrmtColumn = function() { return null; };
         window.channelPromoPushCpnColumn = function() { return null; };
 @endif

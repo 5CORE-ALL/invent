@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use App\Models\EbayListingStatus;
 use App\Services\EbayApiService;
+use App\Services\Ebay1PromotionService;
 use App\Services\EbayPushService;
 use App\Services\EbayLivePriceFetcher;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -747,6 +748,8 @@ class EbayController extends Controller
         $todayPt = Carbon::now('America/Los_Angeles')->toDateString();
         $priceYesterdayBySku = [];
         $priceYesterdayDateBySku = [];
+        $spriceYesterdayBySku = [];
+        $spriceYesterdayDateBySku = [];
         $invYesterdayBySku = [];
         $l30YesterdayBySku = [];
         $latestPriorRows = collect();
@@ -777,6 +780,10 @@ class EbayController extends Controller
             $priceYesterdayDateBySku[$norm] = $recDate
                 ? Carbon::parse($recDate, 'America/Los_Angeles')->toDateString()
                 : null;
+            if (isset($data['sprice']) && is_numeric($data['sprice']) && (float) $data['sprice'] > 0) {
+                $spriceYesterdayBySku[$norm] = round((float) $data['sprice'], 2);
+                $spriceYesterdayDateBySku[$norm] = $priceYesterdayDateBySku[$norm];
+            }
             if (array_key_exists('ovl30', $data)) {
                 $l30YesterdayBySku[$norm] = (int) $data['ovl30'];
             }
@@ -1175,6 +1182,8 @@ class EbayController extends Controller
             $row["eBay Price"] = $ebayMetric?->ebay_price ?? 0;
             $row['price_yesterday'] = $priceYesterdayBySku[$pmNorm] ?? null;
             $row['price_yesterday_date'] = $priceYesterdayDateBySku[$pmNorm] ?? null;
+            $row['sprice_yesterday'] = $spriceYesterdayBySku[$pmNorm] ?? null;
+            $row['sprice_yesterday_date'] = $spriceYesterdayDateBySku[$pmNorm] ?? null;
             // inv_yesterday / l30_yesterday already set above with INV / L30
             $row['eBay Stock'] = $ebayMetric?->ebay_stock ?? 0;
             $row['price_lmpa'] = $ebayMetric?->price_lmpa ?? null;
@@ -1986,6 +1995,8 @@ class EbayController extends Controller
         Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'sgroi' => $sgroi, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
 
         // Lock + merge so concurrent Dil/CPN promo saves cannot wipe PEF_* / other keys.
+        $this->syncEbay1DailySprice($sku, $spriceFloat);
+
         $saved = DB::transaction(function () use ($sku, $spriceFloat, $spft, $sroi, $sgroi, $sgpft) {
             $ebayDataView = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim($sku))])
                 ->lockForUpdate()
@@ -2014,12 +2025,33 @@ class EbayController extends Controller
         });
         Log::info('Data saved successfully', ['sku' => $sku]);
 
+        $skipPush = $request->boolean('skip_push');
+        $push = [
+            'success' => false,
+            'status' => $skipPush ? 'skipped' : 'error',
+            'message' => $skipPush ? 'Push skipped' : '',
+            'ebay_price' => null,
+        ];
+        if (! $skipPush) {
+            $push = $this->pushEbay1PriceAndPullLive($sku, $spriceFloat);
+            $this->saveSpriceStatus($sku, $push['success'] ? 'pushed' : ($push['status'] ?: 'error'));
+        } else {
+            $this->saveSpriceStatus($sku, 'saved');
+        }
+
         return response()->json([
             'message' => 'Data saved successfully.',
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
             'sgroi_percent' => $sgroi,
-            'sgpft_percent' => $sgpft
+            'sgpft_percent' => $sgpft,
+            'price_push_success' => (bool) ($push['success'] ?? false),
+            'price_push_status' => $push['status'] ?? null,
+            'price_push_message' => $push['message'] ?? '',
+            'ebay_price' => $push['ebay_price'] ?? null,
+            'SPRICE_STATUS' => $push['success']
+                ? 'pushed'
+                : ($skipPush ? 'saved' : ($push['status'] ?: 'error')),
         ]);
     }
 
@@ -2983,6 +3015,120 @@ class EbayController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     * @return array{prmt_pct: ?float, cpn_pct: ?float, push_prc: ?float, sprice: ?float}
+     */
+    private function ebay1PromoFromDaily(array $data): array
+    {
+        $push = null;
+        if (isset($data['push_prc']) && is_numeric($data['push_prc'])) {
+            $push = round((float) $data['push_prc'], 2);
+        } elseif (isset($data['PUSH_PRC_VALUE']) && is_numeric($data['PUSH_PRC_VALUE'])) {
+            $push = round((float) $data['PUSH_PRC_VALUE'], 2);
+        }
+        $sprice = null;
+        if (isset($data['sprice']) && is_numeric($data['sprice']) && (float) $data['sprice'] > 0) {
+            $sprice = round((float) $data['sprice'], 2);
+        } elseif (isset($data['SPRICE']) && is_numeric($data['SPRICE']) && (float) $data['SPRICE'] > 0) {
+            $sprice = round((float) $data['SPRICE'], 2);
+        }
+
+        return [
+            'prmt_pct' => isset($data['prmt_pct']) && is_numeric($data['prmt_pct'])
+                ? round((float) $data['prmt_pct'], 2)
+                : null,
+            'cpn_pct' => isset($data['cpn_pct']) && is_numeric($data['cpn_pct'])
+                ? round((float) $data['cpn_pct'], 2)
+                : null,
+            'push_prc' => $push,
+            'sprice' => $sprice,
+        ];
+    }
+
+    /**
+     * Current PEF promo % / S PRC from ebay_data_view (live overlay for the history graph).
+     *
+     * @return array{prmt_pct: ?float, cpn_pct: ?float, push_prc: ?float, sprice: ?float}
+     */
+    private function ebay1LivePromoPercents(string $skuNorm): array
+    {
+        $empty = ['prmt_pct' => null, 'cpn_pct' => null, 'push_prc' => null, 'sprice' => null];
+        try {
+            $row = EbayDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])->first();
+            if (! $row) {
+                return $empty;
+            }
+            $val = is_array($row->value)
+                ? $row->value
+                : (json_decode($row->value ?? '{}', true) ?: []);
+            $sprice = isset($val['SPRICE']) && is_numeric($val['SPRICE']) && (float) $val['SPRICE'] > 0
+                ? round((float) $val['SPRICE'], 2)
+                : null;
+
+            return [
+                'prmt_pct' => isset($val['PEF_PRMT_PCT']) && is_numeric($val['PEF_PRMT_PCT'])
+                    ? round((float) $val['PEF_PRMT_PCT'], 2)
+                    : null,
+                'cpn_pct' => isset($val['PEF_CPN_PCT']) && is_numeric($val['PEF_CPN_PCT'])
+                    ? round((float) $val['PEF_CPN_PCT'], 2)
+                    : null,
+                'push_prc' => isset($val['PUSH_PRC_VALUE']) && is_numeric($val['PUSH_PRC_VALUE'])
+                    ? round((float) $val['PUSH_PRC_VALUE'], 2)
+                    : null,
+                'sprice' => $sprice,
+            ];
+        } catch (\Throwable $e) {
+            return $empty;
+        }
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $dataByDate
+     */
+    private function ebay1OverlayLivePromo(array &$dataByDate, string $skuNorm, string $asOfEnd): void
+    {
+        $live = $this->ebay1LivePromoPercents($skuNorm);
+        if ($live['prmt_pct'] === null && $live['cpn_pct'] === null && $live['push_prc'] === null && $live['sprice'] === null) {
+            return;
+        }
+        if (! isset($dataByDate[$asOfEnd])) {
+            return;
+        }
+        if ($live['prmt_pct'] !== null) {
+            $dataByDate[$asOfEnd]['prmt_pct'] = $live['prmt_pct'];
+        }
+        if ($live['cpn_pct'] !== null) {
+            $dataByDate[$asOfEnd]['cpn_pct'] = $live['cpn_pct'];
+        }
+        if ($live['push_prc'] !== null) {
+            $dataByDate[$asOfEnd]['push_prc'] = $live['push_prc'];
+        }
+        if ($live['sprice'] !== null) {
+            $dataByDate[$asOfEnd]['sprice'] = $live['sprice'];
+        }
+    }
+
+    private function syncEbay1DailySprice(string $skuNorm, float $sprice): void
+    {
+        try {
+            $today = Carbon::now('America/Los_Angeles')->toDateString();
+            $daily = EbaySkuDailyData::firstOrNew([
+                'sku' => $skuNorm,
+                'record_date' => $today,
+            ]);
+            $payload = is_array($daily->daily_data) ? $daily->daily_data : [];
+            $payload['sprice'] = round($sprice, 2);
+            $daily->daily_data = $payload;
+            $daily->save();
+        } catch (\Throwable $e) {
+            Log::warning('Could not sync eBay1 S PRC to daily history', [
+                'sku' => $skuNorm,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Daily E Stock > 0 views + rolling L30 qty, collapse-carried.
      *
      * @return list<array{date: string, full_date: string, views: float, qty: float}>
@@ -3285,7 +3431,7 @@ class EbayController extends Controller
                     $cvr = $views > 0
                         ? round(($ebayL30 / $views) * 100, 2)
                         : round((float) ($data['cvr_percent'] ?? 0), 2);
-                    $dataByDate[$dateKey] = [
+                    $dataByDate[$dateKey] = array_merge([
                         'date' => $dateKey,
                         'date_formatted' => $asOf['date'],
                         'price' => round((float) ($data['price'] ?? 0), 2),
@@ -3295,7 +3441,7 @@ class EbayController extends Controller
                         'ad_percent' => round((float) ($data['ad_percent'] ?? 0), 2),
                         'ebay_l30' => $ebayL30,
                         'recorded' => true,
-                    ];
+                    ], $this->ebay1PromoFromDaily($data));
                 }
             } else {
                 // Aggregate data for all SKUs
@@ -3379,6 +3525,7 @@ class EbayController extends Controller
                     $l7 = $prevL7;
                 }
 
+                $livePromo = $this->ebay1LivePromoPercents($skuNorm);
                 $dataByDate[$asOfKey] = [
                     'date' => $asOfKey,
                     'date_formatted' => $endDate->format('M d'),
@@ -3389,6 +3536,10 @@ class EbayController extends Controller
                     'ad_percent' => round((float) ($existing['ad_percent'] ?? 0), 2),
                     'ebay_l30' => (int) ($existing['ebay_l30'] ?? 0),
                     'recorded' => true,
+                    'prmt_pct' => $livePromo['prmt_pct'] ?? ($existing['prmt_pct'] ?? null),
+                    'cpn_pct' => $livePromo['cpn_pct'] ?? ($existing['cpn_pct'] ?? null),
+                    'push_prc' => $livePromo['push_prc'] ?? ($existing['push_prc'] ?? null),
+                    'sprice' => $livePromo['sprice'] ?? ($existing['sprice'] ?? null),
                 ];
             }
         }
@@ -3408,7 +3559,7 @@ class EbayController extends Controller
                     : (json_decode($prior->daily_data ?? '{}', true) ?: []);
                 $pViews = (int) ($priorData['views'] ?? 0);
                 $pL30 = (int) ($priorData['ebay_l30'] ?? 0);
-                $carry = [
+                $carry = array_merge([
                     'price' => round((float) ($priorData['price'] ?? 0), 2),
                     'views' => $pViews,
                     'l7_views' => (int) ($priorData['l7_views'] ?? 0),
@@ -3418,7 +3569,7 @@ class EbayController extends Controller
                     'ad_percent' => round((float) ($priorData['ad_percent'] ?? 0), 2),
                     'ebay_l30' => $pL30,
                     'recorded' => false,
-                ];
+                ], $this->ebay1PromoFromDaily($priorData));
             }
         }
 
@@ -3451,6 +3602,10 @@ class EbayController extends Controller
                             : null,
                         'ad_percent' => (float) ($carry['ad_percent'] ?? 0),
                         'ebay_l30' => (int) ($carry['ebay_l30'] ?? 0),
+                        'prmt_pct' => $carry['prmt_pct'] ?? null,
+                        'cpn_pct' => $carry['cpn_pct'] ?? null,
+                        'push_prc' => $carry['push_prc'] ?? null,
+                        'sprice' => $carry['sprice'] ?? null,
                         'recorded' => false,
                     ];
                 }
@@ -3474,6 +3629,10 @@ class EbayController extends Controller
                             : null,
                         'ad_percent' => (float) ($leadCarry['ad_percent'] ?? 0),
                         'ebay_l30' => (int) ($leadCarry['ebay_l30'] ?? 0),
+                        'prmt_pct' => $leadCarry['prmt_pct'] ?? null,
+                        'cpn_pct' => $leadCarry['cpn_pct'] ?? null,
+                        'push_prc' => $leadCarry['push_prc'] ?? null,
+                        'sprice' => $leadCarry['sprice'] ?? null,
                         'recorded' => false,
                     ];
                 }
@@ -3514,6 +3673,10 @@ class EbayController extends Controller
                 $currentDate->addDay();
             }
             $dataByDate = $filledAgg;
+        }
+
+        if ($skuNorm) {
+            $this->ebay1OverlayLivePromo($dataByDate, $skuNorm, $endDate->toDateString());
         }
 
         // Sort by date and convert to array
@@ -3567,22 +3730,27 @@ class EbayController extends Controller
                 ], 404);
             }
 
-            // Push price DIRECTLY to eBay via the local EbayApiService (no microservice).
-            $ebayService = new EbayApiService();
-            // Pass variation SKU so multi-variation listings update the correct child price.
-            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
-            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat, null, $apiSku);
-
-            // --- Success path ---
-            if (isset($result['success']) && $result['success']) {
+            $pushed = $this->pushEbay1PriceAndPullLive($sku, $priceFloat);
+            if ($pushed['success']) {
                 $this->saveSpriceStatus($sku, 'pushed');
                 Log::info('[EbayController] eBay price push successful via microservice', [
                     'sku'     => $sku,
                     'price'   => $priceFloat,
                     'item_id' => $ebayMetric->item_id,
+                    'ebay_price' => $pushed['ebay_price'] ?? null,
                 ]);
-                return response()->json(['success' => true, 'message' => 'Price updated successfully']);
+                return response()->json([
+                    'success' => true,
+                    'message' => $pushed['message'] ?: 'Price updated successfully',
+                    'ebay_price' => $pushed['ebay_price'] ?? $priceFloat,
+                ]);
             }
+
+            $result = [
+                'success' => false,
+                'accountRestricted' => ($pushed['status'] ?? '') === 'account_restricted',
+                'errors' => $pushed['errors'] ?? [['code' => 'UnknownError', 'message' => $pushed['message'] ?? 'Failed to update price']],
+            ];
 
             // --- Failure path ---
 
@@ -3694,6 +3862,241 @@ class EbayController extends Controller
             return response()->json([
                 'errors' => [['code' => 'Exception', 'message' => 'An error occurred: ' . $e->getMessage()]]
             ], 500);
+        }
+    }
+
+    /**
+     * Push S PRC to eBay, then GetItem and write the live price to ebay_metrics.
+     *
+     * @return array{success: bool, status: string, message: string, ebay_price: ?float, errors: array}
+     */
+    private function pushEbay1PriceAndPullLive(string $sku, float $priceFloat): array
+    {
+        $empty = [
+            'success' => false,
+            'status' => 'error',
+            'message' => '',
+            'ebay_price' => null,
+            'errors' => [],
+        ];
+
+        $ebayMetric = EbayMetric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])->first()
+            ?? EbayMetric::query()->where('sku', $sku)->first();
+
+        if (! $ebayMetric || ! $ebayMetric->item_id) {
+            return array_merge($empty, [
+                'status' => 'not_listed',
+                'message' => 'eBay listing not found for SKU: '.$sku,
+                'errors' => [['code' => 'NotFound', 'message' => 'eBay listing not found for SKU: '.$sku]],
+            ]);
+        }
+
+        $current = round((float) ($ebayMetric->ebay_price ?? 0), 2);
+        if ($current > 0 && abs($current - $priceFloat) < 0.005) {
+            return [
+                'success' => true,
+                'status' => 'already_live',
+                'message' => 'eBay already at $'.number_format($priceFloat, 2),
+                'ebay_price' => $current,
+                'errors' => [],
+            ];
+        }
+
+        try {
+            $ebayService = new EbayApiService();
+            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
+            $result = Ebay1PromotionService::for('ebay1')->withPriceRevisionAllowed(
+                $sku,
+                fn () => $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat, null, $apiSku)
+            );
+        } catch (\Throwable $e) {
+            Log::error('[EbayController] Auto-push S PRC failed', [
+                'sku' => $sku,
+                'price' => $priceFloat,
+                'error' => $e->getMessage(),
+            ]);
+
+            return array_merge($empty, [
+                'message' => $e->getMessage(),
+                'errors' => [['code' => 'Exception', 'message' => $e->getMessage()]],
+            ]);
+        }
+
+        if (! isset($result['success']) || ! $result['success']) {
+            $isAccountRestricted = ! empty($result['accountRestricted']);
+            $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => $result['message'] ?? 'Failed to update price']];
+            if (! is_array($errors)) {
+                $errors = [$errors];
+            }
+
+            return [
+                'success' => false,
+                'status' => $isAccountRestricted ? 'account_restricted' : 'error',
+                'message' => $this->ebay1FirstPushErrorMessage($errors),
+                'ebay_price' => null,
+                'errors' => $errors,
+            ];
+        }
+
+        $live = $this->ebay1PullLivePriceAndUpdateMetric($ebayMetric, $sku, $ebayService);
+        if ($live === null) {
+            $live = $priceFloat;
+            $ebayMetric->ebay_price = $live;
+            $ebayMetric->save();
+            $this->ebay1SyncDailyPrice($sku, $live);
+        }
+
+        Log::info('[EbayController] S PRC auto-pushed and live price pulled', [
+            'sku' => $sku,
+            'pushed' => $priceFloat,
+            'ebay_price' => $live,
+            'item_id' => $ebayMetric->item_id,
+        ]);
+
+        return [
+            'success' => true,
+            'status' => 'pushed',
+            'message' => 'Price updated successfully',
+            'ebay_price' => $live,
+            'errors' => [],
+        ];
+    }
+
+    /**
+     * @param  array<int, mixed>  $errors
+     */
+    private function ebay1FirstPushErrorMessage(array $errors): string
+    {
+        foreach ($errors as $error) {
+            if (is_array($error)) {
+                $msg = (string) ($error['message'] ?? $error['LongMessage'] ?? $error['ShortMessage'] ?? '');
+                if ($msg !== '') {
+                    return $msg;
+                }
+            } elseif (is_string($error) && $error !== '') {
+                return $error;
+            }
+        }
+
+        return 'Failed to update price';
+    }
+
+    private function ebay1PullLivePriceAndUpdateMetric(EbayMetric $ebayMetric, string $sku, ?EbayApiService $ebayService = null): ?float
+    {
+        try {
+            $ebayService = $ebayService ?: new EbayApiService();
+            $info = $ebayService->getItem((string) $ebayMetric->item_id);
+            $item = is_array($info['Item'] ?? null) ? $info['Item'] : [];
+            if ($item === []) {
+                return null;
+            }
+            $live = $this->ebay1LivePriceFromGetItem($item, $sku);
+            if ($live === null || $live <= 0) {
+                return null;
+            }
+            $ebayMetric->ebay_price = $live;
+            $ebayMetric->save();
+            $this->ebay1SyncDailyPrice($sku, $live);
+
+            return $live;
+        } catch (\Throwable $e) {
+            Log::warning('[EbayController] GetItem after S PRC push failed', [
+                'sku' => $sku,
+                'item_id' => $ebayMetric->item_id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function ebay1LivePriceFromGetItem(array $item, string $sku): ?float
+    {
+        $skuNorm = strtoupper(trim($sku));
+        $vars = $item['Variations']['Variation'] ?? null;
+        if (is_array($vars) && $vars !== []) {
+            if (isset($vars['SKU']) || isset($vars['StartPrice'])) {
+                $vars = [$vars];
+            }
+            foreach ($vars as $variation) {
+                if (! is_array($variation)) {
+                    continue;
+                }
+                $vSku = strtoupper(trim((string) ($variation['SKU'] ?? '')));
+                if ($vSku !== '' && $vSku === $skuNorm) {
+                    $price = $this->ebay1ParseMoney($variation['StartPrice'] ?? null)
+                        ?? $this->ebay1ParseMoney($variation['SellingStatus']['CurrentPrice'] ?? null);
+                    if ($price !== null && $price > 0) {
+                        return $price;
+                    }
+                }
+            }
+        }
+
+        return $this->ebay1ParseMoney($item['StartPrice'] ?? null)
+            ?? $this->ebay1ParseMoney($item['SellingStatus']['CurrentPrice'] ?? null);
+    }
+
+    private function ebay1ParseMoney(mixed $raw): ?float
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        if (is_numeric($raw)) {
+            $n = round((float) $raw, 2);
+
+            return $n > 0 ? $n : null;
+        }
+        if (is_array($raw)) {
+            foreach (['@content', '#text', '_', 'value', 'Value'] as $key) {
+                if (isset($raw[$key]) && is_numeric($raw[$key])) {
+                    $n = round((float) $raw[$key], 2);
+
+                    return $n > 0 ? $n : null;
+                }
+            }
+            if (isset($raw[0]) && is_numeric($raw[0])) {
+                $n = round((float) $raw[0], 2);
+
+                return $n > 0 ? $n : null;
+            }
+            foreach ($raw as $val) {
+                if (is_numeric($val)) {
+                    $n = round((float) $val, 2);
+
+                    return $n > 0 ? $n : null;
+                }
+            }
+        }
+        if (is_string($raw) && preg_match('/[\d.]+/', $raw, $m)) {
+            $n = round((float) $m[0], 2);
+
+            return $n > 0 ? $n : null;
+        }
+
+        return null;
+    }
+
+    private function ebay1SyncDailyPrice(string $skuNorm, float $price): void
+    {
+        try {
+            $today = Carbon::now('America/Los_Angeles')->toDateString();
+            $daily = EbaySkuDailyData::firstOrNew([
+                'sku' => $skuNorm,
+                'record_date' => $today,
+            ]);
+            $payload = is_array($daily->daily_data) ? $daily->daily_data : [];
+            $payload['price'] = round($price, 2);
+            $daily->daily_data = $payload;
+            $daily->save();
+        } catch (\Throwable $e) {
+            Log::warning('Could not sync eBay1 live price to daily history', [
+                'sku' => $skuNorm,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

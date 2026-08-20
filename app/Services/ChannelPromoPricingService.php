@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\DobaDataView;
 use App\Models\DobaWithoutShipDataView;
 use App\Models\EbayDataView;
+use App\Models\EbaySkuDailyData;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
 use App\Models\BestbuyUSADataView;
@@ -17,7 +18,9 @@ use App\Models\TemuDataView;
 use App\Models\WalmartDataView;
 use App\Models\WayfairDataView;
 use Illuminate\Database\Eloquent\Model;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -374,6 +377,10 @@ class ChannelPromoPricingService
             $row->value = $existing;
             $row->save();
 
+            if ($channel === 'ebay1') {
+                $this->syncEbay1DailyPromo($skuNorm, $existing);
+            }
+
             return $this->mapFromValue($existing) ?? [
                 'prmt_pct' => null,
                 'zero_sold_prmt' => null,
@@ -507,5 +514,41 @@ class ChannelPromoPricingService
         }
 
         return round((float) $val, 2);
+    }
+
+    /**
+     * Write today's PDT snapshot so PRMT% / CPN% history dots have a point.
+     *
+     * @param  array<string, mixed>  $existing
+     */
+    private function syncEbay1DailyPromo(string $skuNorm, array $existing): void
+    {
+        try {
+            $today = Carbon::now('America/Los_Angeles')->toDateString();
+            $daily = EbaySkuDailyData::firstOrNew([
+                'sku' => $skuNorm,
+                'record_date' => $today,
+            ]);
+            $payload = is_array($daily->daily_data) ? $daily->daily_data : [];
+            if (isset($existing['PEF_PRMT_PCT']) && is_numeric($existing['PEF_PRMT_PCT'])) {
+                $payload['prmt_pct'] = round((float) $existing['PEF_PRMT_PCT'], 2);
+            }
+            if (isset($existing['PEF_CPN_PCT']) && is_numeric($existing['PEF_CPN_PCT'])) {
+                $payload['cpn_pct'] = round((float) $existing['PEF_CPN_PCT'], 2);
+            }
+            if (isset($existing['PUSH_PRC_VALUE']) && is_numeric($existing['PUSH_PRC_VALUE'])) {
+                $payload['push_prc'] = round((float) $existing['PUSH_PRC_VALUE'], 2);
+            }
+            if (isset($existing['SPRICE']) && is_numeric($existing['SPRICE']) && (float) $existing['SPRICE'] > 0) {
+                $payload['sprice'] = round((float) $existing['SPRICE'], 2);
+            }
+            $daily->daily_data = $payload;
+            $daily->save();
+        } catch (\Throwable $e) {
+            Log::warning('Could not sync eBay1 promo to daily history', [
+                'sku' => $skuNorm,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

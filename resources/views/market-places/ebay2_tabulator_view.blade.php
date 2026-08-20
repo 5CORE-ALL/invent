@@ -1166,7 +1166,7 @@
             const adSpend = price * adsFrac;
             return ((grossPft - adSpend) / lp) * 100;
         }
-        /** S GPFT / S GROI / SNROI / SNPFT use S PRC (SPRICE), not Sprc CPN. */
+        /** S GPFT / S GROI / SNROI / SNPFT use S PRC (SPRICE). */
         function ebay2ComputeSgpftFromSprice(rowData) {
             if (!rowData) return null;
             const price = parseFloat(rowData.SPRICE);
@@ -3048,6 +3048,9 @@
                                                 errorMsg.includes('account is restricted') ||
                                                 errorMsg.includes('embargoed country');
                     
+                    const isSalePriceLock = errorMsg.includes('part of a sale') ||
+                        errorMsg.includes('always allow price updates');
+
                     if (isAccountRestricted) {
                         // Account restriction - don't retry, mark as account_restricted
                         if (rowData) {
@@ -3063,6 +3066,21 @@
                         }
                         
                         showToast(`Account restriction detected for SKU: ${sku}. Please resolve account restrictions in eBay before updating prices.`, 'error');
+                        return false;
+                    }
+
+                    if (isSalePriceLock) {
+                        if (rowData) {
+                            rowData.SPRICE_STATUS = 'error';
+                            row.update(rowData);
+                        }
+                        if ($btn && cell) {
+                            $btn.prop('disabled', false);
+                            $btn.html('<i class="fa-solid fa-x"></i>');
+                            $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                            $btn.attr('title', errorMsg);
+                        }
+                        showToast(errorMsg || (`SKU ${sku} is on an eBay sale that blocked the price update.`), 'error');
                         return false;
                     }
 
@@ -4454,15 +4472,22 @@
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
-                            if (value == null || value === '' || isNaN(spriceNum) || spriceNum <= 0) {
+                            let sprice = isNaN(spriceNum) ? 0 : spriceNum;
+                            if (!(sprice > 0) && typeof chPromoSpriceFromStdTPromo === 'function'
+                                && !rowData.is_parent_summary
+                                && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
+                                const calc = chPromoSpriceFromStdTPromo(rowData);
+                                if (calc > 0) sprice = calc;
+                            }
+                            if (!(sprice > 0)) {
                                 return '';
                             }
 
-                            const formattedValue = '$' + spriceNum.toFixed(2);
+                            const formattedValue = '$' + sprice.toFixed(2);
                             const lmp = parseFloat(rowData.lmp_price) || 0;
-                            if (lmp > 0 && spriceNum > lmp) {
+                            if (lmp > 0 && sprice > lmp) {
                                 return '<span style="color:#dc3545;font-weight:600;white-space:nowrap;" title="S PRC $'
-                                    + spriceNum.toFixed(2) + ' &gt; LMP $' + lmp.toFixed(2) + '">'
+                                    + sprice.toFixed(2) + ' &gt; LMP $' + lmp.toFixed(2) + '">'
                                     + formattedValue
                                     + ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;"></i></span>';
                             }
@@ -5434,7 +5459,7 @@
                 }
 
                 if (
-                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|push_std_prc|prmt_pct|push_prmt|cpn_pct|push_cpn|t_promo|dsc|appr|push_prc|sprc_cpn)$/i.test(f) ||
+                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|push_std_prc|prmt_pct|push_prmt|cpn_pct|push_cpn|dsc|appr|push_prc)$/i.test(f) ||
                     /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|prmt|cpn|t\s*promo|dsc|appr|push\s*prc|push\s*std\s*prc|push\s*prmt)\b/i.test(tl) ||
                     /^(_accept|\+)$/i.test(t)
                 ) {
@@ -5609,6 +5634,11 @@
             });
 
             table.on('dataLoaded', function() {
+                if (typeof autopopulateEbaySpriceFromStdPrmtCpn === 'function') {
+                    setTimeout(function() {
+                        autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
+                    }, 80);
+                }
                 updateCalcValues();
                 updateSummary();
                 // Refresh checkboxes to reflect selectedSkus set (matching Amazon approach)

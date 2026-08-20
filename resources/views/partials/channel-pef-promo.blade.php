@@ -28,7 +28,6 @@
         .tabulator-row .tabulator-cell[tabulator-field="sale_event"],
         .tabulator-row .tabulator-cell[tabulator-field="push_prmt"],
         .tabulator-row .tabulator-cell[tabulator-field="cpn_pct"],
-        .tabulator-row .tabulator-cell[tabulator-field="t_promo"],
         .tabulator-row .tabulator-cell[tabulator-field="push_cpn"],
         .tabulator-row .tabulator-cell[tabulator-field="push_std_prc"],
         .tabulator-row .tabulator-cell[tabulator-field="dsc"],
@@ -48,12 +47,35 @@
             display: inline-block !important;
             animation: ch-promo-spin 0.75s linear infinite !important;
         }
+        .ch-promo-col-del {
+            border: none;
+            background: none;
+            cursor: pointer;
+            color: #dc3545;
+            padding: 0;
+            line-height: 1;
+            margin-left: 3px;
+            font-size: 11px;
+            vertical-align: middle;
+        }
+        .ch-promo-col-del:hover,
+        .ch-promo-col-del:focus {
+            color: #a71d2a;
+        }
+        .ch-promo-header-with-del {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            line-height: 1.15;
+        }
         #ch-promo-dil-prmt-table .ch-promo-dil-prmt-input,
         #ch-promo-zero-sold-prmt-table .ch-promo-dil-prmt-input,
         #ch-promo-gt-sold-prc-table .ch-promo-gt-sold-pct-input,
         #ch-promo-cvr-cpn-table .ch-promo-cvr-cpn-input,
         #ch-promo-zero-sold-dil-table .ch-promo-zero-sold-dil-roi-input,
-        #ch-promo-prmt-menu-btn {
+        #ch-promo-prmt-menu-btn,
+        #ch-promo-dil-vs-prmt-btn {
             background: #198754;
             border-color: #198754;
             color: #fff;
@@ -61,6 +83,8 @@
         #ch-promo-prmt-menu-btn:hover,
         #ch-promo-prmt-menu-btn:focus,
         #ch-promo-prmt-menu-btn.show,
+        #ch-promo-dil-vs-prmt-btn:hover,
+        #ch-promo-dil-vs-prmt-btn:focus,
         #ch-promo-zero-sold-menu-btn:hover,
         #ch-promo-zero-sold-menu-btn:focus,
         #ch-promo-zero-sold-menu-btn.show {
@@ -87,14 +111,17 @@
         #ch-promo-gt-sold-prc-table .ch-promo-gt-sold-dir-select {
             min-width: 108px;
         }
-        #ch-promo-cpn-menu-btn {
+        #ch-promo-cpn-menu-btn,
+        #ch-promo-cvr-vs-cpn-btn {
             background: #20c997;
             border-color: #20c997;
             color: #fff;
         }
         #ch-promo-cpn-menu-btn:hover,
         #ch-promo-cpn-menu-btn:focus,
-        #ch-promo-cpn-menu-btn.show {
+        #ch-promo-cpn-menu-btn.show,
+        #ch-promo-cvr-vs-cpn-btn:hover,
+        #ch-promo-cvr-vs-cpn-btn:focus {
             background: #1aa179;
             border-color: #1aa179;
             color: #fff;
@@ -124,6 +151,20 @@
             background: #0b5ed7;
             border-color: #0a58ca;
             color: #fff;
+        }
+        #ch-promo-sprice-vs-tpromo-del-btn {
+            background: #dc3545;
+            border-color: #dc3545;
+            color: #fff;
+        }
+        #ch-promo-sprice-vs-tpromo-del-btn:hover,
+        #ch-promo-sprice-vs-tpromo-del-btn:focus {
+            background: #bb2d3b;
+            border-color: #b02a37;
+            color: #fff;
+        }
+        #ch-promo-sprice-vs-tpromo-del-btn:disabled {
+            opacity: 0.65;
         }
         #ch-promo-zero-sold-vs-dil-btn {
             background: #0f766e;
@@ -270,23 +311,23 @@
 @if($channelPromoPart === 'buttons' || $channelPromoPart === 'all')
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     <div class="btn-group">
-                        <button type="button" class="btn btn-sm dropdown-toggle" id="ch-promo-prmt-menu-btn"
-                            data-bs-toggle="dropdown" aria-expanded="false"
-                            title="Dil vs PRMT rules + apply/push Prmt%">
+                        <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-prmt-btn"
+                            title="Map Dil% slabs to PRMT%. Apply writes PRMT% only (no sale-event push).">
                             <i class="fas fa-sliders-h"></i> Prmt%
+                        </button>
+                        @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
+                        <button type="button" class="btn btn-sm dropdown-toggle dropdown-toggle-split" id="ch-promo-prmt-menu-btn"
+                            data-bs-toggle="dropdown" aria-expanded="false" title="More Prmt% actions">
+                            <span class="visually-hidden">More</span>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="ch-promo-prmt-menu-btn">
                             <li>
-                                <a class="dropdown-item" href="#" id="ch-promo-dil-vs-prmt-btn">
-                                    <i class="fas fa-sliders-h me-1 text-success"></i> Dil vs PRMT…
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item" href="#" id="ch-promo-push-prmt-btn">
-                                    <i class="fas fa-upload me-1 text-success"></i> Push Prmt%
+                                <a class="dropdown-item text-danger" href="#" id="ch-promo-end-sales-btn">
+                                    <i class="fas fa-ban me-1"></i> End all sales
                                 </a>
                             </li>
                         </ul>
+                        @endif
                     </div>
                     @endunless
                     @if($channelPromoShowZeroSoldRules)
@@ -326,31 +367,37 @@
                     @endif
                     @unless($channelPromoHideCvrCpn)
                     <div class="btn-group">
-                        <button type="button" class="btn btn-sm dropdown-toggle" id="ch-promo-cpn-menu-btn"
-                            data-bs-toggle="dropdown" aria-expanded="false"
-                            title="CVR Vs CPN rules + Push CPN%">
-                            CVR Vs CPN
+                        <button type="button" class="btn btn-sm" id="ch-promo-cvr-vs-cpn-btn"
+                            title="Map CVR% slabs to CPN%. Apply writes CPN% only (no coupon push).">
+                            CVR%
+                        </button>
+                        @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
+                        <button type="button" class="btn btn-sm dropdown-toggle dropdown-toggle-split" id="ch-promo-cpn-menu-btn"
+                            data-bs-toggle="dropdown" aria-expanded="false" title="More CVR% actions">
+                            <span class="visually-hidden">More</span>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="ch-promo-cpn-menu-btn">
                             <li>
-                                <a class="dropdown-item" href="#" id="ch-promo-cvr-vs-cpn-btn">
-                                    CVR vs CPN…
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item" href="#" id="ch-promo-push-cpn-btn">
-                                    <i class="fas fa-upload me-1" style="color:#20c997;"></i> Push CPN%
+                                <a class="dropdown-item text-danger" href="#" id="ch-promo-end-coupons-btn">
+                                    <i class="fas fa-ban me-1"></i> End all coupons
                                 </a>
                             </li>
                         </ul>
+                        @endif
                     </div>
                     @endunless
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
-                    @if(in_array($channelPromoChannel, ['ebay2', 'ebay2op', 'ebay3']))
+                    @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3']))
+                    <div class="btn-group" role="group">
                     <button type="button" class="btn btn-sm" id="ch-promo-sprice-vs-tpromo-btn"
                         title="Autofill S PRC = Std × (1 − T Promo/100). T Promo = PRMT% + CPN%. Selected SKUs if checked; otherwise all visible. Skips INV = 0. No marketplace push. S PRC &gt; LMP shows a red triangle.">
                         Sprice vs T promo
                     </button>
+                    <button type="button" class="btn btn-sm" id="ch-promo-sprice-vs-tpromo-del-btn"
+                        title="Clear S PRC filled by Sprice vs T promo. Selected SKUs if checked; otherwise all visible. No marketplace push.">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                    </div>
                     @if($channelPromoShowZeroSoldDilRule)
                     <button type="button" class="btn btn-sm" id="ch-promo-zero-sold-vs-dil-btn"
                         title="0 Sold vs Dil: map Dil% slabs to Target ROI%, then set S PRC so GROI equals that target. Only SKUs with E L30 = 0. Selected if checked; otherwise all visible. No marketplace push.">
@@ -389,7 +436,7 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="chPromoCvrVsCpnModalLabel">
-                        CVR vs CPN
+                        CVR%
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -398,10 +445,10 @@
                         @if(in_array($channelPromoChannel, ['ebay2', 'ebay2op', 'ebay3'], true))
                             Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
-                            (database only — no eBay coupon). Use <strong>Push CPN%</strong> to create/add public coupons.
+                            (database only — no eBay coupon).
                         @else
                             Map CVR% slabs to <strong>CPN %</strong>. Apply saves rules and CPN% to the database only
-                            (no eBay coupon). Use <strong>Push CPN%</strong> to create/add public coupons.
+                            (no eBay coupon).
                         @endif
                     </p>
                     <div class="table-responsive">
@@ -923,6 +970,172 @@
             }
             return { ok: false };
         }
+
+        function chPromoHeaderWithDelete(label, pushClass, delClass, pushTitle, delTitle) {
+            return '<span class="ch-promo-header-with-del">'
+                + '<button type="button" class="btn btn-sm p-0 ' + pushClass + '" title="' + chPromoEscAttr(pushTitle) + '" '
+                + 'style="border:none;background:none;cursor:pointer;color:#000;font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
+                + chPromoEscAttr(label) + '</button>'
+                + '<button type="button" class="ch-promo-col-del ' + delClass + '" title="' + chPromoEscAttr(delTitle) + '">'
+                + '<i class="fa-solid fa-xmark"></i></button></span>';
+        }
+        function chPromoDeleteIconBtn(cls, sku, title) {
+            return '<button type="button" class="ch-promo-col-del ' + cls + '" data-sku="'
+                + chPromoEscAttr(sku) + '" title="' + chPromoEscAttr(title) + '">'
+                + '<i class="fa-solid fa-xmark"></i></button>';
+        }
+        function chPromoCollectDeleteTargets(isEligible) {
+            let targets = collectChPromoSelectedRows();
+            let scope = 'selected';
+            if (!targets.length) {
+                targets = collectChPromoVisibleRows();
+                scope = 'visible';
+            }
+            return {
+                scope: scope,
+                rows: targets.filter(function(t) { return chPromoIsChildRow(t.d) && isEligible(t.d); }),
+            };
+        }
+
+        async function deleteChannelSaleEventOne(row, opts) {
+            opts = opts || {};
+            const d = row.getData() || {};
+            const sku = chPromoSku(d);
+            if (!sku) return { ok: false };
+            row.update({ PUSH_SALE_STATUS: 'processing' });
+            const api = await syncEbay1Promotion(sku, 0);
+            if (api.ok) {
+                row.update({
+                    PUSH_SALE_STATUS: null,
+                    PEF_SALE_PCT: 0,
+                    PEF_PRMT_PROMOTION_ID: null,
+                    sale_event: null,
+                });
+                try { row.reformat(); } catch (e) { /* ignore */ }
+                if (!opts.silent) chPromoToast('success', api.message || ('Removed ' + sku + ' from sale events'));
+                return { ok: true };
+            }
+            row.update({ PUSH_SALE_STATUS: 'error' });
+            if (!opts.silent) chPromoToast('error', api.message || ('Could not remove ' + sku + ' from sale'));
+            return { ok: false };
+        }
+        async function bulkDeleteChannelSaleEvent() {
+            const pack = chPromoCollectDeleteTargets(function(d) {
+                return chPromoLastSalePct(d) >= 5 || String(d.PUSH_SALE_STATUS || '') === 'pushed';
+            });
+            if (!pack.rows.length) {
+                chPromoToast('info', 'No SKUs on a sale event to remove');
+                return;
+            }
+            if (!confirm('Remove ' + pack.rows.length + ' ' + pack.scope + ' SKU(s) from eBay sale events?\n\nPRMT% stays. This calls the Sale Event remove function.')) return;
+            let ok = 0;
+            let fail = 0;
+            for (let i = 0; i < pack.rows.length; i++) {
+                const r = await deleteChannelSaleEventOne(pack.rows[i].row, { silent: true });
+                if (r.ok) ok++; else fail++;
+            }
+            chPromoToast(fail && !ok ? 'error' : 'success', 'Sale Event delete: ' + ok + ' removed' + (fail ? (', ' + fail + ' failed') : ''));
+        }
+
+        async function deleteChannelCpnOne(row, opts) {
+            opts = opts || {};
+            const d = row.getData() || {};
+            const sku = chPromoSku(d);
+            if (!sku) return { ok: false };
+            row.update({ PUSH_CPN_STATUS: 'processing' });
+            const api = await syncEbay1CodedCoupon(sku, 0);
+            if (api.ok) {
+                row.update({
+                    PUSH_CPN_STATUS: null,
+                    PEF_COUPON_PCT: 0,
+                    PEF_COUPON_CODE: null,
+                    coupon_code: null,
+                    PEF_COUPON_PROMOTION_ID: null,
+                    push_cpn: null,
+                });
+                try { row.reformat(); } catch (e) { /* ignore */ }
+                if (!opts.silent) chPromoToast('success', api.message || ('Removed ' + sku + ' from coupons'));
+                return { ok: true };
+            }
+            row.update({ PUSH_CPN_STATUS: 'error' });
+            if (!opts.silent) chPromoToast('error', api.message || ('Could not remove ' + sku + ' from coupon'));
+            return { ok: false };
+        }
+        async function bulkDeleteChannelCpn() {
+            const pack = chPromoCollectDeleteTargets(function(d) {
+                return chPromoLastCouponPct(d) >= 5 || String(d.PUSH_CPN_STATUS || '') === 'pushed';
+            });
+            if (!pack.rows.length) {
+                chPromoToast('info', 'No SKUs on a coupon to remove');
+                return;
+            }
+            if (!confirm('Remove ' + pack.rows.length + ' ' + pack.scope + ' SKU(s) from eBay coupons?\n\nCPN% stays. This calls the Push CPN remove function.')) return;
+            let ok = 0;
+            let fail = 0;
+            for (let i = 0; i < pack.rows.length; i++) {
+                const r = await deleteChannelCpnOne(pack.rows[i].row, { silent: true });
+                if (r.ok) ok++; else fail++;
+            }
+            chPromoToast(fail && !ok ? 'error' : 'success', 'Push CPN delete: ' + ok + ' removed' + (fail ? (', ' + fail + ' failed') : ''));
+        }
+
+        function deleteChannelStdPrcStatusOne(row, opts) {
+            opts = opts || {};
+            const d = row.getData() || {};
+            const sku = chPromoSku(d);
+            if (!sku) return Promise.resolve({ ok: false });
+            return saveChannelPromoFields(sku, {
+                push_std_prc_status: '',
+                push_std_prc_value: 0,
+                push_std_prc_pushed_at: '',
+            }).then(function() {
+                row.update({
+                    PUSH_STD_PRC_STATUS: null,
+                    PUSH_STD_PRC_VALUE: null,
+                    push_std_prc: null,
+                });
+                try { row.reformat(); } catch (e) { /* ignore */ }
+                if (!opts.silent) chPromoToast('success', 'Cleared Push Std Prc for ' + sku);
+                return { ok: true };
+            }).fail(function(xhr) {
+                if (!opts.silent) {
+                    chPromoToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Could not clear Push Std Prc');
+                }
+                return { ok: false };
+            });
+        }
+        async function bulkDeleteChannelStdPrcStatus() {
+            const pack = chPromoCollectDeleteTargets(function(d) {
+                return String(d.PUSH_STD_PRC_STATUS || '') === 'pushed' || chPromoStdPrcLastPushed(d) > 0;
+            });
+            if (!pack.rows.length) {
+                chPromoToast('info', 'No Push Std Prc checkmarks to clear');
+                return;
+            }
+            if (!confirm('Clear Push Std Prc status for ' + pack.rows.length + ' ' + pack.scope + ' SKU(s)?\n\nDoes not change eBay price. Green checks become the upload icon again.')) return;
+            let ok = 0;
+            let fail = 0;
+            for (let i = 0; i < pack.rows.length; i++) {
+                const r = await deleteChannelStdPrcStatusOne(pack.rows[i].row, { silent: true });
+                if (r && r.ok) ok++; else fail++;
+            }
+            chPromoToast(fail && !ok ? 'error' : 'success', 'Push Std Prc delete: ' + ok + ' cleared' + (fail ? (', ' + fail + ' failed') : ''));
+        }
+        function hideChannelPushCpnColumn() {
+            if (typeof table === 'undefined' || !table) return;
+            if (!confirm('Hide the Push CPN column?')) return;
+            try { table.hideColumn('push_cpn'); } catch (e) { /* ignore */ }
+            if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+            chPromoToast('success', 'Push CPN column hidden');
+        }
+        function hideChannelPushStdPrcColumn() {
+            if (typeof table === 'undefined' || !table) return;
+            if (!confirm('Hide the Push Std Prc column?')) return;
+            try { table.hideColumn('push_std_prc'); } catch (e) { /* ignore */ }
+            if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+            if (typeof chPromoToast === 'function') chPromoToast('success', 'Push Std Prc column hidden');
+        }
+
         let chPromoSaleEventBusy = false;
         async function bulkPushChannelSaleEvent() {
             if (CHANNEL_PROMO_CHANNEL !== 'ebay1') {
@@ -2995,6 +3208,17 @@
                 updates.sgprft_percent = saveRes.sgprft_percent != null ? saveRes.sgprft_percent : saveRes.sgpft_percent;
                 updates.spft_percent = saveRes.spft_percent;
             }
+            if (saveRes && saveRes.ebay_price != null) {
+                const live = parseFloat(saveRes.ebay_price);
+                if (isFinite(live) && live > 0) {
+                    updates['eBay Price'] = live;
+                }
+            }
+            if (saveRes && saveRes.SPRICE_STATUS) {
+                updates.SPRICE_STATUS = saveRes.SPRICE_STATUS;
+            } else if (saveRes && saveRes.price_push_success) {
+                updates.SPRICE_STATUS = 'pushed';
+            }
             row.update(updates);
             try { row.reformat(); } catch (e) { /* ignore */ }
         }
@@ -4052,15 +4276,12 @@
                             skipSprice = false;
                         }
                     } else if (ebay1PrmtOnly) {
-                        const std = chPromoStdBase(d);
-                        if (std > 0) {
-                            newPrice = std;
-                            if (prmt > 0 && prmt < 100) {
-                                newPrice = chPromoRound2(std * (1 - (prmt / 100)));
-                                if (!(newPrice >= 0.01)) newPrice = std;
+                        if (chPromoInv(d) > 0) {
+                            newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { prmt: prmt });
+                            if (newPrice > 0) {
+                                Object.assign(patch, chPromoSpricePatch(newPrice));
+                                skipSprice = false;
                             }
-                            Object.assign(patch, chPromoSpricePatch(newPrice));
-                            skipSprice = false;
                         }
                     } else if (chPromoReverbComboEnabled()) {
                         if (chPromoKeepZeroSoldPrcSprice(d)) {
@@ -4130,7 +4351,7 @@
                         ? (' from ' + listingCount + ' listing Dil' + (listingCount === 1 ? '' : 's'))
                         : '')
                     + (skipped ? ('; skipped ' + skipped) : '')
-                    + (ebay1PrmtOnly ? ' (S PRC = Std − PRMT%)' : '')
+                    + (ebay1PrmtOnly ? ' (S PRC = Std − PRMT% − CPN%)' : '')
                     + (chPromoPrmtCpnComboEnabled()
                         ? ' (S PRC = Std − (PRMT% + CPN%))'
                         : '')
@@ -4182,6 +4403,12 @@
                             item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
                             jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: false });
                         }
+                    } else if (ebay1) {
+                        const newPrice = chPromoInv(d) === 0 ? 0 : chPromoSpriceFromStdPrmtCpnWith(d, { cpn: 0 });
+                        const patch = { cpn_pct: String(cpn), _cpn_pct_applied: 0 };
+                        if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
+                        item.row.update(patch);
+                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: !(newPrice > 0) });
                     } else {
                         item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
                         jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: ebay1 });
@@ -4190,9 +4417,11 @@
                     continue;
                 }
                 if (ebay1) {
-                    // Coupon is at checkout — Apply only fills/saves CPN% (no S PRC rewrite, no eBay API)
-                    item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
-                    jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: true });
+                    const newPrice = chPromoInv(d) === 0 ? 0 : chPromoSpriceFromStdPrmtCpnWith(d, { cpn: cpn });
+                    const patch = { cpn_pct: String(cpn), _cpn_pct_applied: cpn };
+                    if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
+                    item.row.update(patch);
+                    jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: !(newPrice > 0) });
                 } else if (chPromoPrmtCpnComboEnabled()) {
                     const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: cpn });
                     if (newPrice > 0) {
@@ -4393,9 +4622,12 @@
                     } else if (kind === 'prmt' && chPromoReverbComboEnabled() && !chPromoKeepZeroSoldPrcSprice(d)) {
                         const recalc = chPromoReverbSpriceFromStdBothPrmt(d, { prmt: 0 });
                         if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
-                    } else if (kind === 'prmt' && CHANNEL_PROMO_CHANNEL === 'ebay1') {
-                        const std = chPromoStdBase(d);
-                        if (std > 0) Object.assign(patch, chPromoSpricePatch(std));
+                    } else if ((kind === 'prmt' || kind === 'cpn') && chPromoEbayStdMinusPrmtCpnEnabled()) {
+                        const recalc = chPromoInv(d) === 0 ? 0 : chPromoSpriceFromStdPrmtCpnWith(
+                            d,
+                            kind === 'prmt' ? { prmt: 0 } : { cpn: 0 }
+                        );
+                        if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
                     }
                     item.row.update(patch);
                     const extra = {};
@@ -4403,7 +4635,7 @@
                     if (kind === 'cpn') extra.cpn_pct = 0;
                     if (kind === 'dsc') { extra.dsc = 0; extra.appr = false; }
                     const savePrice = ((kind === 'prmt' || kind === 'cpn') && patch.SPRICE != null && (
-                        CHANNEL_PROMO_CHANNEL === 'ebay1'
+                        chPromoEbayStdMinusPrmtCpnEnabled()
                         || chPromoPrmtCpnComboEnabled()
                         || chPromoReverbComboEnabled()
                     ))
@@ -4413,24 +4645,16 @@
                     skipped++;
                     continue;
                 }
-                // eBay 1 PRMT%: S PRC = Std × (1 − PRMT%/100) only
-                // eBay CPN%: checkout coupon — persist % only (Push CPN% talks to eBay)
+                // eBay: S PRC = Std × (1 − (PRMT% + CPN%)/100)
                 // Temu: S PRC = Std × (1 − (PRMT% + CPN%)/100)
                 let base;
                 let newPrice;
-                if (kind === 'cpn' && (
-                    CHANNEL_PROMO_CHANNEL === 'ebay1'
-                    || CHANNEL_PROMO_CHANNEL === 'ebay2'
-                    || CHANNEL_PROMO_CHANNEL === 'ebay2op'
-                    || CHANNEL_PROMO_CHANNEL === 'ebay3'
-                )) {
-                    base = 0;
-                    newPrice = null;
-                } else if (CHANNEL_PROMO_CHANNEL === 'ebay1' && kind === 'prmt') {
+                if (chPromoEbayStdMinusPrmtCpnEnabled() && (kind === 'prmt' || kind === 'cpn')) {
                     base = chPromoStdBase(d);
-                    newPrice = (base > 0 && promo.value < 100)
-                        ? chPromoRound2(base * (1 - (promo.value / 100)))
-                        : null;
+                    newPrice = chPromoInv(d) === 0 ? 0 : chPromoSpriceFromStdPrmtCpnWith(
+                        d,
+                        kind === 'prmt' ? { prmt: promo.value } : { cpn: promo.value }
+                    );
                 } else if (chPromoPrmtCpnComboEnabled() && (kind === 'prmt' || kind === 'cpn')) {
                     base = chPromoStdBase(d);
                     newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt'
@@ -5044,7 +5268,7 @@
                 'Clear S PRC and refill for ' + ready.length + ' ' + scopeLabel + ' SKU(s)?'
                 + (skippedInv ? ('\n(Skip ' + skippedInv + ' with INV = 0)') : '')
                 + '\n\nFormula (no marketplace push):\n'
-                + (temuCombo
+                + (temuCombo || chPromoEbayStdMinusPrmtCpnEnabled()
                     ? 'S PRC = Std × (1 − (PRMT% + CPN%)/100)\n'
                     : (reverbCombo
                         ? 'S PRC = Std × (1 − (PRMT% + 0 Sold PRMT%)/100)\n'
@@ -5092,7 +5316,9 @@
                     ? (chPromoTemuSpriceFromStdPrmtCpn(rowData) || 0)
                     : (chPromoReverbComboEnabled()
                         ? (chPromoReverbSpriceFromStdBothPrmt(rowData) || 0)
-                        : chPromoPlanSaleSprice(plan));
+                        : (chPromoEbayStdMinusPrmtCpnEnabled()
+                            ? (chPromoSpriceFromStdTPromo(rowData) || 0)
+                            : chPromoPlanSaleSprice(plan)));
                 if (!plan || !(fill > 0)) {
                     fail++;
                     next();
@@ -5150,13 +5376,151 @@
             next();
         }
 
-        /** S PRC = Std × (1 − T Promo/100). T Promo = PRMT% + CPN%. */
+        function postChannelEndPromo(url, confirmText, $trigger) {
+            if (!confirm(confirmText)) return;
+            const $btn = $trigger && $trigger.length ? $trigger : $();
+            const html = $btn.html();
+            $btn.prop('disabled', true);
+            $.ajax({
+                url: url,
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
+                data: { _token: chPromoCsrf() },
+            }).done(function(res) {
+                chPromoToast((res && res.success) ? 'success' : 'error', (res && res.message) || 'Done');
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Request failed';
+                chPromoToast('error', msg);
+            }).always(function() {
+                if ($btn.length) $btn.prop('disabled', false).html(html);
+            });
+        }
+
+        function endAllChannelSales() {
+            postChannelEndPromo(
+                '/channel-end-sales/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL),
+                'End ALL active markdown sale events on ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL)
+                    + '?\n\nThis sets each sale endDate to now. Listings return to list price.\nNo S PRC or marketplace price push.',
+                $('#ch-promo-prmt-menu-btn')
+            );
+        }
+
+        function endAllChannelCoupons() {
+            postChannelEndPromo(
+                '/channel-end-coupons/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL),
+                'End ALL active coded coupons on ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL)
+                    + '?\n\nThis pauses every running coupon. No S PRC or marketplace price push.',
+                $('#ch-promo-cpn-menu-btn')
+            );
+        }
+
+        function chPromoEbayStdMinusPrmtCpnEnabled() {
+            return CHANNEL_PROMO_CHANNEL === 'ebay1'
+                || CHANNEL_PROMO_CHANNEL === 'ebay2'
+                || CHANNEL_PROMO_CHANNEL === 'ebay2op'
+                || CHANNEL_PROMO_CHANNEL === 'ebay3';
+        }
+
+        /** S PRC = Std × (1 − (PRMT% + CPN%)/100). T Promo = PRMT% + CPN%. Skip INV = 0. */
         function chPromoSpriceFromStdTPromo(d) {
+            if (chPromoInv(d) === 0) return 0;
             const std = chPromoStdBase(d);
             if (!(std > 0)) return 0;
             const t = Math.min(99.99, Math.max(0, chPromoTPromoPct(d)));
             const price = t > 0 ? chPromoRound2(std * (1 - t / 100)) : chPromoRound2(std);
             return price >= 0.01 ? price : 0;
+        }
+
+        function chPromoSpriceFromStdPrmtCpnWith(d, override) {
+            override = override || {};
+            const tmp = Object.assign({}, d);
+            if (override.prmt != null) {
+                tmp.prmt_pct = override.prmt;
+                tmp._prmt_pct_applied = override.prmt;
+            }
+            if (override.cpn != null) {
+                tmp.cpn_pct = override.cpn;
+                tmp._cpn_pct_applied = override.cpn;
+            }
+            return chPromoSpriceFromStdTPromo(tmp);
+        }
+
+        let chPromoEbaySpriceAutoBusy = false;
+        /** Fill empty S PRC cells: Std × (1 − (PRMT% + CPN%)/100). Skips INV = 0. */
+        function autopopulateEbaySpriceFromStdPrmtCpn(opts) {
+            opts = opts || {};
+            if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
+            if (typeof table === 'undefined' || !table) return;
+            if (chPromoEbaySpriceAutoBusy) return;
+            const persist = opts.persist !== false;
+            const silent = opts.silent !== false;
+            const jobs = [];
+            const blocked = typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                chPromoEachTableRow(function(row, d) {
+                    if (!chPromoIsChildRow(d)) return;
+                    if (chPromoGetSprice(d) > 0) return;
+                    const fill = chPromoSpriceFromStdTPromo(d);
+                    if (!(fill > 0)) return;
+                    const sku = chPromoSku(d);
+                    if (!sku) return;
+                    row.update(chPromoSpricePatch(fill));
+                    jobs.push({ row: row, sku: sku, price: fill });
+                });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            if (!jobs.length) return;
+            try { table.redraw(true); } catch (e) { /* ignore */ }
+            if (!persist) {
+                if (!silent) chPromoToast('success', 'S PRC = Std − PRMT% − CPN% → ' + jobs.length + ' SKU(s)');
+                return;
+            }
+            chPromoEbaySpriceAutoBusy = true;
+            const conc = (CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8;
+            chPromoMapLimit(jobs, conc, async function(job) {
+                try {
+                    const saveRes = await Promise.resolve(saveChannelSprice(job.sku, job.price, true, { skip_push: true }));
+                    chPromoApplySpriceSavePatch(job.row, job.price, saveRes);
+                } catch (e) {
+                    chPromoApplySpriceSavePatch(job.row, job.price, null);
+                }
+            }).then(function() {
+                chPromoEbaySpriceAutoBusy = false;
+                if (!silent) {
+                    chPromoToast('success', 'S PRC = Std − PRMT% − CPN% → ' + jobs.length + ' SKU(s)');
+                }
+            }).catch(function() {
+                chPromoEbaySpriceAutoBusy = false;
+            });
+        }
+
+        function bindEbaySpriceAutofill() {
+            if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
+            let tries = 0;
+            function attach() {
+                if (typeof table !== 'undefined' && table && typeof table.on === 'function') {
+                    if (table._chPromoEbaySpriceAuto) return;
+                    table._chPromoEbaySpriceAuto = true;
+                    table.on('dataLoaded', function() {
+                        setTimeout(function() {
+                            autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
+                        }, 80);
+                    });
+                    try {
+                        const n = (typeof table.getDataCount === 'function') ? table.getDataCount() : 0;
+                        if (n > 0) {
+                            setTimeout(function() {
+                                autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
+                            }, 80);
+                        }
+                    } catch (e) { /* ignore */ }
+                    return;
+                }
+                if (++tries < 50) setTimeout(attach, 200);
+            }
+            attach();
         }
 
         function fillSpriceFromTPromo() {
@@ -5275,43 +5639,74 @@
             next();
         }
 
-        /** Sprc CPN = S PRC × (1 − CPN%/100). */
-        function chPromoSprcCpnValue(d) {
-            const sprice = chPromoGetSprice(d);
-            if (!(sprice > 0)) return null;
-            const cpn = Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
-            if (cpn <= 0) return chPromoRound2(sprice);
-            if (cpn >= 100) return null;
-            const v = chPromoRound2(sprice * (1 - (cpn / 100)));
-            return v >= 0.01 ? v : null;
-        }
+        function clearSpriceFromTPromo() {
+            if (typeof table === 'undefined' || !table) {
+                chPromoToast('error', 'Load data first');
+                return;
+            }
+            let targets = collectChPromoSelectedRows();
+            let scopeLabel = 'selected';
+            if (!targets.length) {
+                targets = collectChPromoVisibleRows();
+                scopeLabel = 'all visible';
+            }
+            const ready = targets.filter(function(t) {
+                return chPromoIsChildRow(t.d) && chPromoGetSprice(t.d) > 0;
+            });
+            if (!ready.length) {
+                chPromoToast('info', 'No S PRC values to clear');
+                return;
+            }
+            if (!confirm(
+                'Clear S PRC for ' + ready.length + ' ' + scopeLabel + ' SKU(s)?\n\n'
+                + 'This undoes Sprice vs T promo (Std − T Promo).\n'
+                + 'PRMT% / CPN% stay. No marketplace push.'
+            )) return;
 
-        function channelPromoSprcCpnColumn() {
-            return {
-                title: 'Sprc CPN',
-                field: 'sprc_cpn',
-                width: 78,
-                hozAlign: 'center',
-                vertAlign: 'middle',
-                headerSort: false,
-                editable: false,
-                headerTooltip: 'Sprc CPN = S PRC × (1 − CPN%/100). Read-only.',
-                formatter: function(cell) {
-                    const d = cell.getRow().getData() || {};
-                    if (d.is_parent_summary || !chPromoIsChildRow(d)) return '';
-                    const v = chPromoSprcCpnValue(d);
-                    if (!(v > 0)) {
-                        return '<span class="ch-pef-promo-cell">—</span>';
-                    }
-                    const cpn = Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
-                    const sprice = chPromoGetSprice(d);
-                    const tip = 'S PRC $' + sprice.toFixed(2)
-                        + (cpn > 0 ? (' − ' + cpn + '% CPN') : ' (no CPN%)')
-                        + ' = $' + v.toFixed(2);
-                    return '<span class="ch-pef-promo-cell has-val" title="' + chPromoEscAttr(tip) + '">$'
-                        + v.toFixed(2) + '</span>';
-                },
-            };
+            const $btn = $('#ch-promo-sprice-vs-tpromo-del-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+            let ok = 0;
+            let fail = 0;
+            let i = 0;
+            function next() {
+                if (i >= ready.length) {
+                    $btn.prop('disabled', false).html(html);
+                    if (table) table.redraw(true);
+                    chPromoToast(
+                        fail && !ok ? 'error' : 'success',
+                        'Sprice vs T promo delete: ' + ok + ' cleared'
+                            + (fail ? (', ' + fail + ' failed') : '')
+                    );
+                    return;
+                }
+                const item = ready[i++];
+                const sku = chPromoSku(item.d);
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
+                saveChannelSprice(sku, 0, true)
+                    .done(function() {
+                        item.row.update(Object.assign({
+                            SGPFT: null,
+                            'Spft%': null,
+                            SPFT: null,
+                            SNPFT: null,
+                            SROI: null,
+                            SGROI: null,
+                            SNROI: null,
+                            has_custom_sprice: false,
+                            SPRICE_STATUS: null,
+                        }, chPromoSpricePatch(0)));
+                        try { item.row.reformat(); } catch (e) { /* ignore */ }
+                        ok++;
+                        next();
+                    })
+                    .fail(function() {
+                        fail++;
+                        next();
+                    });
+            }
+            next();
         }
 
         function chPromoStdPrcRound2(n) {
@@ -5523,13 +5918,21 @@
                 headerSort: false,
                 headerTooltip: 'Push Std Prc — send Std to the live eBay listing price. Only SKUs whose Std changed since the last push are sent. Click this header to bulk selected (or visible) SKUs.',
                 titleFormatter: function() {
-                    return '<button type="button" class="btn btn-sm p-0 ebay-push-std-prc-header-btn" '
-                        + 'title="Bulk Push Std Prc for selected SKUs whose Std changed since last push" '
-                        + 'style="border:none;background:none;cursor:pointer;color:#000;'
-                        + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
-                        + 'Push Std Prc</button>';
+                    return chPromoHeaderWithDelete(
+                        'Push Std Prc',
+                        'ebay-push-std-prc-header-btn',
+                        'ebay-push-std-prc-header-del',
+                        'Bulk Push Std Prc for selected SKUs whose Std changed since last push',
+                        'Hide the Push Std Prc column'
+                    );
                 },
                 headerClick: function(e) {
+                    if (e.target.closest('.ebay-push-std-prc-header-del')) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        hideChannelPushStdPrcColumn();
+                        return false;
+                    }
                     if (e.target.closest('.ebay-push-std-prc-header-btn')) {
                         e.stopPropagation();
                         e.preventDefault();
@@ -5568,15 +5971,28 @@
                         tip = 'Std changed $' + last.toFixed(2) + ' → $' + std.toFixed(2)
                             + ' — click to push to eBay Price';
                     }
-                    return '<button type="button" class="btn btn-sm p-0 ebay-push-std-prc-btn" '
+                    const canDel = status === 'pushed' || last > 0;
+                    return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:2px;">'
+                        + '<button type="button" class="btn btn-sm p-0 ebay-push-std-prc-btn" '
                         + 'data-sku="' + chPromoEscAttr(sku) + '" '
                         + 'data-price="' + std.toFixed(2) + '" '
                         + 'title="' + chPromoEscAttr(tip) + '" '
                         + 'style="border:none;background:none;cursor:pointer;color:' + color
                         + ';padding:0;line-height:1;vertical-align:middle;">'
-                        + icon + '</button>';
+                        + icon + '</button>'
+                        + (canDel && status !== 'processing'
+                            ? chPromoDeleteIconBtn('ebay-push-std-prc-del', sku, 'Clear this Push Std Prc checkmark')
+                            : '')
+                        + '</span>';
                 },
                 cellClick: function(e, cell) {
+                    const del = e.target.closest('.ebay-push-std-prc-del');
+                    if (del) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        deleteChannelStdPrcStatusOne(cell.getRow());
+                        return false;
+                    }
                     const btn = e.target.closest('.ebay-push-std-prc-btn');
                     if (!btn) return;
                     e.stopPropagation();
@@ -5624,10 +6040,14 @@
                             + dot + fmtChPromoCell(val, '%') + '</span>';
                     },
                     cellClick: function(e) {
-                        if (e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot')) {
-                            e.stopPropagation();
-                            return false;
+                        const el = e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot');
+                        if (!el) return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (typeof openEbaySkuHistoryChart === 'function') {
+                            openEbaySkuHistoryChart(el.getAttribute('data-sku'), el.getAttribute('data-metric') || 'prmt');
                         }
+                        return false;
                     },
                     cellEdited: function(cell) {
                         applyChPromoFromCell(cell, 'prmt');
@@ -5727,96 +6147,8 @@
                 ...(CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay2op' || CHANNEL_PROMO_CHANNEL === 'ebay3'
                     ? [channelPromoPushPrmtColumn()]
                     : []),
-                ...(CHANNEL_PROMO_CHANNEL === 'ebay1' ? [{
-                    title: 'Sale Event',
-                    field: 'sale_event',
-                    width: 72,
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    headerSort: false,
-                    headerTooltip: 'Sale Event — 7-day markdown at this PRMT%. Creates the % sale if needed, adds this SKU. If PRMT% changed, removes from the old sale first. Click header to bulk selected (or visible) SKUs.',
-                    titleFormatter: function() {
-                        return '<button type="button" class="btn btn-sm p-0 ch-promo-sale-event-header-btn" '
-                            + 'title="Bulk Sale Event for selected SKUs whose PRMT% changed" '
-                            + 'style="border:none;background:none;cursor:pointer;color:#000;'
-                            + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
-                            + 'Sale Event</button>';
-                    },
-                    headerClick: function(e) {
-                        if (e.target.closest('.ch-promo-sale-event-header-btn')) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            bulkPushChannelSaleEvent();
-                            return false;
-                        }
-                    },
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (!chPromoIsChildRow(d)) return '';
-                        const sku = chPromoSku(d);
-                        const prmt = chPromoPrmtInt(d);
-                        const last = chPromoLastSalePct(d);
-                        const status = String(d.PUSH_SALE_STATUS || '');
-                        if (prmt > 0 && (prmt < 5 || prmt > 80)) {
-                            return '<span style="color:#adb5bd;" title="eBay sale % must be 5–80">—</span>';
-                        }
-                        if (prmt === 0 && last < 5 && status !== 'error') {
-                            return '<span style="color:#adb5bd;" title="Set PRMT% then click to create a 7-day sale">—</span>';
-                        }
-                        let icon = '<i class="fas fa-upload"></i>';
-                        let color = '#FF9900';
-                        let tip = prmt > 0
-                            ? ('Push 7-day ' + prmt + '% sale event for this SKU')
-                            : 'Remove this SKU from sale events';
-                        if (status === 'processing') {
-                            icon = '<i class="fas fa-spinner fa-spin"></i>';
-                            color = '#ffc107';
-                            tip = 'Pushing sale event…';
-                        } else if (status === 'error') {
-                            icon = '<i class="fa-solid fa-xmark"></i>';
-                            color = '#dc3545';
-                            tip = 'Last Sale Event push failed — click to retry';
-                        } else if (!chPromoSaleNeedsPush(d)) {
-                            icon = '<i class="fa-solid fa-check-double"></i>';
-                            color = '#28a745';
-                            tip = 'On ' + last + '% sale event — click to push again';
-                        } else if (last >= 5 && prmt > 0 && last !== prmt) {
-                            tip = 'PRMT% changed ' + last + '% → ' + prmt
-                                + '% — click to remove from old sale and push to ' + prmt + '%';
-                        } else if (prmt === 0 && last >= 5) {
-                            icon = '<i class="fa-solid fa-xmark"></i>';
-                            color = '#dc3545';
-                            tip = 'PRMT% is 0 — click to remove from ' + last + '% sale';
-                        }
-                        return '<button type="button" class="btn btn-sm p-0 ch-promo-sale-event-btn" '
-                            + 'data-sku="' + chPromoEscAttr(sku) + '" '
-                            + 'title="' + chPromoEscAttr(tip) + '" '
-                            + 'style="border:none;background:none;cursor:pointer;color:' + color
-                            + ';padding:0;line-height:1;vertical-align:middle;">'
-                            + icon + '</button>';
-                    },
-                    cellClick: function(e, cell) {
-                        const btn = e.target.closest('.ch-promo-sale-event-btn');
-                        if (!btn) return;
-                        e.stopPropagation();
-                        e.preventDefault();
-                        if (btn.disabled) return false;
-                        const d = cell.getRow().getData() || {};
-                        if (String(d.PUSH_SALE_STATUS || '') === 'processing') return false;
-                        const selected = collectChPromoSelectedRows();
-                        const clickedKey = chPromoSkuKey(chPromoSku(d));
-                        if (selected.length > 1 && selected.some(function(t) {
-                            return chPromoSkuKey(chPromoSku(t.d)) === clickedKey;
-                        })) {
-                            bulkPushChannelSaleEvent();
-                            return false;
-                        }
-                        pushChannelSaleEventOne(cell.getRow());
-                        return false;
-                    },
-                }] : []),
                 ...(CHANNEL_PROMO_HIDE_CVR_CPN ? [] : [{
-                    title: 'CPN %',
+                    title: chPromoIsEbayChannel() ? 'cvr %' : 'CPN %',
                     field: 'cpn_pct',
                     width: 70,
                     hozAlign: 'center',
@@ -5837,10 +6169,14 @@
                             + dot + fmtChPromoCell(val, '%') + '</span>';
                     },
                     cellClick: function(e) {
-                        if (e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot')) {
-                            e.stopPropagation();
-                            return false;
+                        const el = e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot');
+                        if (!el) return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (typeof openEbaySkuHistoryChart === 'function') {
+                            openEbaySkuHistoryChart(el.getAttribute('data-sku'), el.getAttribute('data-metric') || 'cpn');
                         }
+                        return false;
                     },
                     cellEdited: function(cell) {
                         applyChPromoFromCell(cell, 'cpn');
@@ -5849,10 +6185,10 @@
                 ...(!CHANNEL_PROMO_HIDE_CVR_CPN && (CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay2op' || CHANNEL_PROMO_CHANNEL === 'ebay3')
                     ? [channelPromoPushCpnColumn()]
                     : []),
-                ...(CHANNEL_PROMO_CHANNEL === 'ebay1' || CHANNEL_PROMO_CHANNEL === 'temu' ? [{
+                ...(CHANNEL_PROMO_CHANNEL === 'temu' ? [{
                     title: 'Push CPN',
                     field: 'push_cpn',
-                    width: 64,
+                    width: 72,
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
@@ -5860,13 +6196,21 @@
                         ? 'Push CPN — queue this CPN% (bulk from header). Worker saves coupon % and pushes S PRC to Temu.'
                         : 'Push CPN — create the public coded coupon for this CPN% if needed, then add this SKU. If CPN% changed, removes from the old coupon first. Click header to bulk selected (or visible) SKUs.',
                     titleFormatter: function() {
-                        return '<button type="button" class="btn btn-sm p-0 ch-promo-push-cpn-header-btn" '
-                            + 'title="Bulk Push CPN for selected SKUs whose CPN% changed" '
-                            + 'style="border:none;background:none;cursor:pointer;color:#000;'
-                            + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
-                            + 'Push CPN</button>';
+                        return chPromoHeaderWithDelete(
+                            'Push CPN',
+                            'ch-promo-push-cpn-header-btn',
+                            'ch-promo-push-cpn-header-del',
+                            'Bulk Push CPN for selected SKUs whose CPN% changed',
+                            'Hide the Push CPN column'
+                        );
                     },
                     headerClick: function(e) {
+                        if (e.target.closest('.ch-promo-push-cpn-header-del')) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            hideChannelPushCpnColumn();
+                            return false;
+                        }
                         if (e.target.closest('.ch-promo-push-cpn-header-btn')) {
                             e.stopPropagation();
                             e.preventDefault();
@@ -5917,14 +6261,27 @@
                             color = '#dc3545';
                             tip = 'CPN% is 0 — click to remove from ' + last + '% coupon';
                         }
-                        return '<button type="button" class="btn btn-sm p-0 ch-promo-push-cpn-col-btn" '
+                        const onCpn = last >= 5 || status === 'pushed';
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:2px;">'
+                            + '<button type="button" class="btn btn-sm p-0 ch-promo-push-cpn-col-btn" '
                             + 'data-sku="' + chPromoEscAttr(sku) + '" '
                             + 'title="' + chPromoEscAttr(tip) + '" '
                             + 'style="border:none;background:none;cursor:pointer;color:' + color
                             + ';padding:0;line-height:1;vertical-align:middle;">'
-                            + icon + '</button>';
+                            + icon + '</button>'
+                            + (onCpn && status !== 'processing'
+                                ? chPromoDeleteIconBtn('ch-promo-push-cpn-del', sku, 'Remove this SKU from coupons')
+                                : '')
+                            + '</span>';
                     },
                     cellClick: function(e, cell) {
+                        const del = e.target.closest('.ch-promo-push-cpn-del');
+                        if (del) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            deleteChannelCpnOne(cell.getRow());
+                            return false;
+                        }
                         const btn = e.target.closest('.ch-promo-push-cpn-col-btn');
                         if (!btn) return;
                         e.stopPropagation();
@@ -5944,31 +6301,6 @@
                         return false;
                     },
                 }] : []),
-                ...(CHANNEL_PROMO_HIDE_CVR_CPN ? [] : [{
-                    title: 'T Promo',
-                    field: 't_promo',
-                    width: 72,
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        return chPromoTPromoPct(aRow.getData()) - chPromoTPromoPct(bRow.getData());
-                    },
-                    headerTooltip: 'T Promo = PRMT% + CPN% (promo + coupon).',
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent_summary || !chPromoIsChildRow(d)) return '';
-                        const total = chPromoTPromoPct(d);
-                        if (!(total > 0)) {
-                            return '<span class="ch-pef-promo-cell">%</span>';
-                        }
-                        const shown = (Math.round(total * 10) / 10) === Math.round(total)
-                            ? String(Math.round(total))
-                            : String(total);
-                        return '<span class="ch-pef-promo-cell has-val" title="PRMT% + CPN%">'
-                            + shown + '</span>';
-                    },
-                }]),
             ];
         }
 
@@ -6281,8 +6613,7 @@
                         help.innerHTML = 'Map CVR% slabs to <strong>CPN %</strong>. '
                             + (CH_PEF_CVR_CPN_SKIP_ZERO ? 'There is no <strong>0%</strong> CVR slab. ' : '')
                             + '<strong>Apply</strong> writes CPN% only on selected or visible SKUs with '
-                            + '<strong>eBay sale (E L30) &gt; 0</strong> (database only — no eBay coupon). '
-                            + 'Use <strong>Push CPN%</strong> to create/add public coupons.';
+                            + '<strong>eBay sale (E L30) &gt; 0</strong> (database only — no eBay coupon).';
                     }
                 }
                 renderChPromoCvrCpnModalTable();
@@ -6390,6 +6721,18 @@
                 e.preventDefault();
                 fillSpriceFromTPromo();
             });
+            $('#ch-promo-sprice-vs-tpromo-del-btn').off('click.chpromo').on('click.chpromo', function(e) {
+                e.preventDefault();
+                clearSpriceFromTPromo();
+            });
+            $('#ch-promo-end-sales-btn').off('click.chpromo').on('click.chpromo', function(e) {
+                e.preventDefault();
+                endAllChannelSales();
+            });
+            $('#ch-promo-end-coupons-btn').off('click.chpromo').on('click.chpromo', function(e) {
+                e.preventDefault();
+                endAllChannelCoupons();
+            });
             if (CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE) {
                 $('#ch-promo-zero-sold-vs-dil-btn').off('click.chpromo').on('click.chpromo', function(e) {
                     e.preventDefault();
@@ -6401,7 +6744,8 @@
                 });
                 $('#ch-promo-zero-sold-dil-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoZeroSoldDil);
             }
-            if (chPromoPrmtCpnComboEnabled()) {
+            bindEbaySpriceAutofill();
+            if (chPromoPrmtCpnComboEnabled() || chPromoEbayStdMinusPrmtCpnEnabled()) {
                 $('#ch-promo-sprice-recalc-btn').attr(
                     'title',
                     'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.'
@@ -6419,12 +6763,25 @@
         window.channelPromoPushPrmtColumn = channelPromoPushPrmtColumn;
         window.channelPromoPushCpnColumn = channelPromoPushCpnColumn;
         window.channelPromoPushStdPrcColumn = channelPromoPushStdPrcColumn;
+        window.chPromoHeaderWithDelete = chPromoHeaderWithDelete;
+        window.chPromoDeleteIconBtn = chPromoDeleteIconBtn;
+        window.deleteChannelSaleEventOne = deleteChannelSaleEventOne;
+        window.bulkDeleteChannelSaleEvent = bulkDeleteChannelSaleEvent;
+        window.deleteChannelCpnOne = deleteChannelCpnOne;
+        window.bulkDeleteChannelCpn = bulkDeleteChannelCpn;
+        window.deleteChannelStdPrcStatusOne = deleteChannelStdPrcStatusOne;
+        window.bulkDeleteChannelStdPrcStatus = bulkDeleteChannelStdPrcStatus;
+        window.hideChannelPushStdPrcColumn = hideChannelPushStdPrcColumn;
+        window.hideChannelPushCpnColumn = hideChannelPushCpnColumn;
         window.chPromoTemuSpriceFromStdPrmtCpn = chPromoTemuSpriceFromStdPrmtCpn;
+        window.chPromoSpriceFromStdTPromo = chPromoSpriceFromStdTPromo;
+        window.chPromoSpriceFromStdPrmtCpnWith = chPromoSpriceFromStdPrmtCpnWith;
+        window.chPromoEbayStdMinusPrmtCpnEnabled = chPromoEbayStdMinusPrmtCpnEnabled;
+        window.autopopulateEbaySpriceFromStdPrmtCpn = autopopulateEbaySpriceFromStdPrmtCpn;
         window.chPromoPrmtCpnComboEnabled = chPromoPrmtCpnComboEnabled;
         window.chPromoPlanSaleSprice = chPromoPlanSaleSprice;
         window.chPromoPaintPushStdPrcSpinner = chPromoPaintPushStdPrcSpinner;
         window.chPromoRefreshPushStdPrcCell = chPromoRefreshPushStdPrcCell;
-        window.channelPromoSprcCpnColumn = channelPromoSprcCpnColumn;
         window.computeChannelPushPrcPlan = computeChannelPushPrcPlan;
         window.chPromoPrmtForRow = chPromoPrmtForRow;
         window.chPromoDilColorBand = chPromoDilColorBand;

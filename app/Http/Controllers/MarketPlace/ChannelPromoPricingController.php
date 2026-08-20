@@ -2,17 +2,27 @@
 
 namespace App\Http\Controllers\MarketPlace;
 
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\Controller;
 use App\Jobs\RunChannelPushCpnJob;
 use App\Jobs\RunChannelPushPrcJob;
 use App\Jobs\RunChannelPushPrmtJob;
+use App\Models\AmazonDataView;
 use App\Models\ChannelTabulatorColumnSetting;
+use App\Models\EbayDataView;
+use App\Models\EbayMetric;
+use App\Models\MarketplacePercentage;
+use App\Models\ProductMaster;
+use App\Models\ShopifySku;
 use App\Services\ChannelPromoPricingService;
+use App\Services\Ebay1CouponService;
+use App\Services\Ebay1PromotionService;
 use App\Services\Support\ChannelPushCpnJobStore;
 use App\Services\Support\ChannelPushPrcJobStore;
 use App\Services\Support\ChannelPushPrmtJobStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ChannelPromoPricingController extends Controller
@@ -156,6 +166,234 @@ class ChannelPromoPricingController extends Controller
             'success' => true,
             'message' => 'Push Prc cancelled.',
         ]));
+    }
+
+    /**
+     * End every active eBay markdown sale event for the channel.
+     */
+    public function endAllSales(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $res = Ebay1PromotionService::for($channel)->endAllSales();
+        Log::info('Channel end-all sales', ['channel' => $channel] + $res);
+
+        return response()->json(array_merge($res, [
+            'message' => 'Sales ended: '.((int) ($res['ended'] ?? 0))
+                .' · failed '.((int) ($res['failed'] ?? 0))
+                .' · already ended '.((int) ($res['skipped'] ?? 0)),
+        ]), ! empty($res['success']) ? 200 : 400);
+    }
+
+    /**
+     * Pause/end every active eBay coded coupon for the channel.
+     */
+    public function endAllCoupons(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $res = Ebay1CouponService::for($channel)->endAllCoupons();
+        Log::info('Channel end-all coupons', ['channel' => $channel] + $res);
+
+        return response()->json(array_merge($res, [
+            'message' => 'Coupons ended: '.((int) ($res['ended'] ?? 0))
+                .' · failed '.((int) ($res['failed'] ?? 0))
+                .' · already ended '.((int) ($res['skipped'] ?? 0)),
+        ]), ! empty($res['success']) ? 200 : 400);
+    }
+
+    /**
+     * S PRC = Std × (1 − T Promo/100). T Promo = PRMT% + CPN%. Skips INV = 0.
+     */
+    public function applySpriceFromTPromo(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if ($channel !== 'ebay1') {
+            return response()->json(['success' => false, 'message' => 'Sprice vs T promo apply is wired for ebay1'], 422);
+        }
+
+        $only = [];
+        $onlySkus = $request->input('skus', []);
+        if (is_array($onlySkus)) {
+            foreach ($onlySkus as $sku) {
+                $sku = strtoupper(trim((string) $sku));
+                if ($sku !== '') {
+                    $only[$sku] = true;
+                }
+            }
+        }
+
+        $skus = [];
+        EbayMetric::query()
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->orderBy('sku')
+            ->pluck('sku')
+            ->each(function ($raw) use (&$skus, $only) {
+                $sku = strtoupper(trim((string) $raw));
+                if ($sku === '' || isset($skus[$sku])) {
+                    return;
+                }
+                if ($only !== [] && ! isset($only[$sku])) {
+                    return;
+                }
+                $skus[$sku] = $sku;
+            });
+        $skus = array_values($skus);
+        if ($skus === []) {
+            return response()->json([
+                'success' => true,
+                'ok' => 0,
+                'fail' => 0,
+                'skipped' => 0,
+                'skipped_inv' => 0,
+                'message' => 'No listed eBay1 SKUs to fill',
+            ]);
+        }
+
+        $stdBySku = [];
+        $invBySku = [];
+        $lpBySku = [];
+        foreach (array_chunk($skus, 400) as $chunk) {
+            $in = 'UPPER(TRIM(sku)) in ('.implode(',', array_fill(0, count($chunk), '?')).')';
+            AmazonDataView::query()
+                ->whereRaw($in, $chunk)
+                ->get(['sku', 'value'])
+                ->each(function ($row) use (&$stdBySku) {
+                    $val = is_array($row->value) ? $row->value : [];
+                    $std = $val['STANDARD_PRICE'] ?? null;
+                    if (is_numeric($std) && (float) $std > 0) {
+                        $stdBySku[strtoupper(trim((string) $row->sku))] = round((float) $std, 2);
+                    }
+                });
+            ShopifySku::query()
+                ->whereRaw($in, $chunk)
+                ->get(['sku', 'inv'])
+                ->each(function ($row) use (&$invBySku) {
+                    $invBySku[strtoupper(trim((string) $row->sku))] = (int) ($row->inv ?? 0);
+                });
+            ProductMaster::query()
+                ->whereRaw($in, $chunk)
+                ->get(['sku', 'Values'])
+                ->each(function ($pm) use (&$lpBySku) {
+                    $values = is_array($pm->Values)
+                        ? $pm->Values
+                        : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+                    $lp = 0.0;
+                    foreach ($values as $k => $v) {
+                        if (strtolower((string) $k) === 'lp') {
+                            $lp = (float) $v;
+                            break;
+                        }
+                    }
+                    if ($lp <= 0 && isset($pm->lp)) {
+                        $lp = (float) $pm->lp;
+                    }
+                    $ship = isset($values['ship'])
+                        ? (float) $values['ship']
+                        : (isset($pm->ship) ? (float) $pm->ship : 0.0);
+                    $lpBySku[strtoupper(trim((string) $pm->sku))] = ['lp' => $lp, 'ship' => $ship];
+                });
+        }
+
+        $promoMap = $this->promo->mapForSkus('ebay1', $skus);
+        $percentage = MarketplacePercentage::takeHomeDecimal('Ebay');
+        try {
+            $adPercent = (float) app(ChannelMasterController::class)->getEbayMasterAdsPercent();
+        } catch (\Throwable $e) {
+            $adPercent = 0.0;
+        }
+        $adDecimal = $adPercent / 100;
+
+        $ok = 0;
+        $fail = 0;
+        $skipped = 0;
+        $skippedInv = 0;
+        foreach ($skus as $sku) {
+            if (($invBySku[$sku] ?? 0) <= 0) {
+                $skippedInv++;
+
+                continue;
+            }
+            $std = $stdBySku[$sku] ?? 0;
+            if (! ($std > 0)) {
+                $skipped++;
+
+                continue;
+            }
+            $promo = $promoMap[$sku] ?? [];
+            $prmt = is_numeric($promo['prmt_pct'] ?? null)
+                ? (float) $promo['prmt_pct']
+                : (float) ($promo['_prmt_pct_applied'] ?? 0);
+            $cpn = is_numeric($promo['cpn_pct'] ?? null)
+                ? (float) $promo['cpn_pct']
+                : (float) ($promo['_cpn_pct_applied'] ?? 0);
+            $t = min(99.99, max(0, $prmt + $cpn));
+            $sprice = $t > 0 ? round($std * (1 - $t / 100), 2) : $std;
+            if ($sprice < 0.01) {
+                $fail++;
+
+                continue;
+            }
+
+            $lp = (float) (($lpBySku[$sku]['lp'] ?? 0));
+            $ship = (float) (($lpBySku[$sku]['ship'] ?? 0));
+            $sgpft = $sprice > 0 ? round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2) : 0;
+            $spft = round($sgpft - $adPercent, 2);
+            $sgroi = round($lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
+            $sroi = round(
+                $lp > 0 ? ((($sprice * $percentage - $ship - $lp) - ($sprice * $adDecimal)) / $lp) * 100 : 0,
+                2
+            );
+
+            try {
+                DB::transaction(function () use ($sku, $sprice, $spft, $sroi, $sgroi, $sgpft) {
+                    $dv = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower($sku)])
+                        ->lockForUpdate()
+                        ->first();
+                    if (! $dv) {
+                        $dv = new EbayDataView();
+                        $dv->sku = $sku;
+                    }
+                    $existing = is_array($dv->value)
+                        ? $dv->value
+                        : (json_decode((string) $dv->value, true) ?: []);
+                    $dv->value = array_merge($existing, [
+                        'SPRICE' => $sprice,
+                        'SPFT' => $spft,
+                        'SROI' => $sroi,
+                        'SGROI' => $sgroi,
+                        'SGPFT' => $sgpft,
+                    ]);
+                    $dv->save();
+                });
+                $ok++;
+            } catch (\Throwable $e) {
+                $fail++;
+                Log::warning('Sprice vs T promo save failed', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return response()->json([
+            'success' => $fail === 0,
+            'ok' => $ok,
+            'fail' => $fail,
+            'skipped' => $skipped,
+            'skipped_inv' => $skippedInv,
+            'message' => 'S PRC = Std − T Promo: '.$ok.' filled'
+                .($fail ? (', '.$fail.' failed') : '')
+                .($skippedInv ? (', '.$skippedInv.' skipped INV=0') : '')
+                .($skipped ? (', '.$skipped.' skipped (no Std)') : ''),
+        ]);
     }
 
     /**
@@ -604,7 +842,7 @@ class ChannelPromoPricingController extends Controller
         }
 
         $fields = [];
-        foreach (['prmt_pct', 'zero_sold_prmt', 'cpn_pct', 'dsc_pct', 'dsc', 'appr', 'push_prc_status', 'push_prc_value', 'push_std_prc_status', 'push_std_prc_value'] as $key) {
+        foreach (['prmt_pct', 'zero_sold_prmt', 'cpn_pct', 'dsc_pct', 'dsc', 'appr', 'push_prc_status', 'push_prc_value', 'push_std_prc_status', 'push_std_prc_value', 'push_std_prc_pushed_at'] as $key) {
             if ($request->exists($key)) {
                 $fields[$key] = $request->input($key);
             }

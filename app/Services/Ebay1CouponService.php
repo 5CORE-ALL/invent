@@ -235,6 +235,71 @@ class Ebay1CouponService
     }
 
     /**
+     * Pause/end every active coded coupon campaign.
+     *
+     * @return array{success:bool,ended:int,failed:int,skipped:int,errors:list<string>}
+     */
+    public function endAllCoupons(): array
+    {
+        try {
+            $token = $this->ebay->generateBearerToken();
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'ended' => 0,
+                'failed' => 1,
+                'skipped' => 0,
+                'errors' => [$this->label.' token: '.$e->getMessage()],
+            ];
+        }
+
+        $ended = 0;
+        $failed = 0;
+        $skipped = 0;
+        $errors = [];
+        foreach ($this->listCodedCouponIds($token) as $promoId) {
+            $detail = $this->getItemPromotion($token, $promoId);
+            $status = strtoupper((string) ($detail['promotionStatus'] ?? ''));
+            if (in_array($status, ['ENDED', 'EXPIRED'], true)) {
+                $skipped++;
+
+                continue;
+            }
+            if ($status === 'PAUSED') {
+                $ended++;
+
+                continue;
+            }
+
+            $url = 'https://api.ebay.com/sell/marketing/v1/promotion/'.rawurlencode($this->couponApiId($promoId)).'/pause';
+            $resp = $this->http($token)->post($url);
+            $after = $this->getItemPromotion($token, $promoId);
+            $now = strtoupper((string) ($after['promotionStatus'] ?? ''));
+            $ok = in_array($now, ['PAUSED', 'ENDED', 'EXPIRED'], true);
+            Log::info($this->label.' coupon pause', [
+                'promotion_id' => $promoId,
+                'http' => $resp->status(),
+                'status' => $now ?: $status,
+                'body' => mb_substr((string) $resp->body(), 0, 400),
+            ]);
+            if ($ok) {
+                $ended++;
+            } else {
+                $failed++;
+                $errors[] = $promoId.': '.($this->ebayErrorMessage($resp).' status='.($now ?: $status));
+            }
+        }
+
+        return [
+            'success' => $failed === 0,
+            'ended' => $ended,
+            'failed' => $failed,
+            'skipped' => $skipped,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
      * Autogenerate public coupon code from percent: 5 → SAVE05PCT (8–15 chars).
      */
     public function couponCodeForPercent(int $percent): string

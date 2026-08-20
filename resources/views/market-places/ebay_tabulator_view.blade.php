@@ -1350,7 +1350,7 @@
             const adSpend = price * adsFrac;
             return ((grossPft - adSpend) / lp) * 100;
         }
-        /** S GPFT / S GROI / SNROI / SNPFT use S PRC (SPRICE), not Sprc CPN. */
+        /** S GPFT / S GROI / SNROI / SNPFT use S PRC (SPRICE). */
         function ebayComputeSgpftFromSprice(rowData) {
             if (!rowData) return null;
             const price = parseFloat(rowData.SPRICE);
@@ -1375,7 +1375,7 @@
         const EBAY_DATA_JSON_URL = @json(url('/ebay-data-json'));
         let skuMetricsChart = null;
         let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, valueFmt } for ref panel & plugins
-        let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views'
+        let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views' | 'prmt' | 'cpn' | 'push_prc'
         let currentSku = null;
         let table = null; // Global table reference
         let allTableData = []; // Full dataset for ParentExpand
@@ -1427,7 +1427,10 @@
             const fmt = key ? ebay1MetricFormat(key) : 'number';
             const isPct = fmt === 'pct' || /percent|cvr|pct/i.test(key);
             if (fmt === 'money') return '$' + Math.round(n).toLocaleString('en-US');
-            if (isPct) return n.toFixed(1) + '%';
+            if (isPct) {
+                if (/prmt|cpn/i.test(key)) return Math.round(n) + '%';
+                return n.toFixed(1) + '%';
+            }
             return Math.round(n).toLocaleString('en-US');
         }
 
@@ -2349,226 +2352,12 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
-                try {
-                    const cell = r.getCell('push_std_prc');
-                    if (cell) cell.reformat();
-                } catch (e) { /* ignore */ }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
         }
 
-        function ebayStdPrcRound2(n) {
-            const v = Number(n);
-            return isFinite(v) ? Math.round(v * 100) / 100 : 0;
-        }
-        function ebayPushStdPrcSku(d) {
-            return String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim();
-        }
-        function ebayStdPrcCurrent(d) {
-            return ebayStdPrcRound2(d && (d.STANDARD_PRICE != null ? d.STANDARD_PRICE : d.standard_price));
-        }
-        function ebayStdPrcLastPushed(d) {
-            return ebayStdPrcRound2(d && d.PUSH_STD_PRC_VALUE);
-        }
-        /** True when Std exists and differs from the last successful Push Std Prc. */
-        function ebayStdPrcNeedsPush(d) {
-            const std = ebayStdPrcCurrent(d);
-            if (!(std > 0)) return false;
-            if (String(d.PUSH_STD_PRC_STATUS || '') === 'error') return true;
-            const last = ebayStdPrcLastPushed(d);
-            if (!(last > 0)) return true;
-            return last.toFixed(2) !== std.toFixed(2);
-        }
-        function ebayPushStdPrcCollectTargets() {
-            if (typeof collectChPromoSelectedRows === 'function') {
-                const selected = collectChPromoSelectedRows();
-                if (selected.length) return selected;
-                if (typeof collectChPromoVisibleRows === 'function') {
-                    return collectChPromoVisibleRows();
-                }
-            }
-            if (typeof table === 'undefined' || !table) return [];
-            return (table.getRows('active') || []).filter(function(row) {
-                const d = row.getData();
-                return d && !d.is_parent_summary && ebayPushStdPrcSku(d);
-            }).map(function(row) {
-                return { row: row, d: row.getData() };
-            });
-        }
-        function ebayRefreshPushStdPrcCell(row) {
-            if (!row) return;
-            if (typeof chPromoRefreshPushStdPrcCell === 'function') {
-                chPromoRefreshPushStdPrcCell(row);
-                return;
-            }
-            try {
-                const cell = row.getCell && row.getCell('push_std_prc');
-                if (cell && typeof cell.reformat === 'function') cell.reformat();
-            } catch (e) { /* ignore */ }
-        }
-        async function ebayPushStdPrcOne(row, opts) {
-            opts = opts || {};
-            const silent = !!opts.silent;
-            const force = !!opts.force;
-            const d = row.getData() || {};
-            const sku = ebayPushStdPrcSku(d);
-            const std = ebayStdPrcCurrent(d);
-            if (!sku || !(std > 0)) {
-                if (!silent) showToast('error', 'Std Prc required');
-                ebayRefreshPushStdPrcCell(row);
-                return { ok: false, skipped: true };
-            }
-            if (!force && !ebayStdPrcNeedsPush(d)) {
-                if (!silent) showToast('info', 'Std Prc unchanged since last push for ' + sku);
-                ebayRefreshPushStdPrcCell(row);
-                return { ok: true, skipped: true };
-            }
-            row.update({ PUSH_STD_PRC_STATUS: 'processing', push_std_prc: 'processing' });
-            if (typeof chPromoRefreshPushStdPrcCell === 'function') {
-                chPromoRefreshPushStdPrcCell(row);
-            } else {
-                try {
-                    const cell = row.getCell && row.getCell('push_std_prc');
-                    if (cell && typeof cell.reformat === 'function') cell.reformat();
-                    const el = row.getElement && row.getElement();
-                    const btn = el && el.querySelector && el.querySelector('.ebay-push-std-prc-btn');
-                    if (btn) {
-                        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                        btn.style.color = '#ffc107';
-                    }
-                } catch (e) { /* ignore */ }
-            }
-            if (!silent && typeof setChPromoPushPrcProgress === 'function') {
-                clearTimeout(setChPromoPushPrcProgress._hideTimer);
-                setChPromoPushPrcProgress({
-                    active: true, done: 0, total: 1, ok: 0, fail: 0, pct: 20,
-                    title: 'Pushing',
-                    msg: sku + ' · Std $' + std.toFixed(2),
-                });
-            }
-            try {
-                const ajax = (typeof pushChannelPriceAjax === 'function')
-                    ? pushChannelPriceAjax(sku, std)
-                    : $.ajax({
-                        url: '/push-ebay-price-tabulator',
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                        data: { sku: sku, price: std }
-                    });
-                const response = await Promise.resolve(ajax);
-                if (response && response.errors && response.errors.length) {
-                    throw new Error(response.errors[0].message || 'API error');
-                }
-                row.update({
-                    PUSH_STD_PRC_STATUS: 'pushed',
-                    PUSH_STD_PRC_VALUE: std,
-                    'eBay Price': std,
-                    push_std_prc: 'pushed'
-                });
-                if (typeof chPromoRefreshPushStdPrcCell === 'function') chPromoRefreshPushStdPrcCell(row);
-                if (typeof saveChannelPromoFields === 'function') {
-                    try {
-                        await Promise.resolve(saveChannelPromoFields(sku, {
-                            record_push_std_prc: 1,
-                            push_std_prc_value: std
-                        }));
-                    } catch (saveErr) {
-                        console.warn('Push Std Prc listing ok, but last-push record failed', sku, saveErr);
-                    }
-                }
-                if (!silent) {
-                    if (typeof setChPromoPushPrcProgress === 'function') {
-                        setChPromoPushPrcProgress({
-                            active: false, done: 1, total: 1, ok: 1, fail: 0, pct: 100,
-                            title: 'Pushed',
-                            msg: sku + ' · Std $' + std.toFixed(2),
-                        });
-                    }
-                    showToast('success', 'Std Prc $' + std.toFixed(2) + ' pushed to eBay for ' + sku);
-                }
-                return { ok: true };
-            } catch (e) {
-                row.update({ PUSH_STD_PRC_STATUS: 'error', push_std_prc: 'error' });
-                if (typeof chPromoRefreshPushStdPrcCell === 'function') chPromoRefreshPushStdPrcCell(row);
-                if (!silent) {
-                    const msg = (e && e.responseJSON && (e.responseJSON.message || (e.responseJSON.errors && e.responseJSON.errors[0] && e.responseJSON.errors[0].message)))
-                        || (e && e.message)
-                        || 'Failed to push Std Prc';
-                    if (typeof setChPromoPushPrcProgress === 'function') {
-                        setChPromoPushPrcProgress({
-                            active: false, done: 1, total: 1, ok: 0, fail: 1, pct: 100,
-                            title: 'Push failed',
-                            msg: sku + ' · ' + msg,
-                        });
-                    }
-                    showToast('error', msg + ' (' + sku + ')');
-                }
-                return { ok: false };
-            }
-        }
-        let ebayPushStdPrcBusy = false;
-        async function ebayBulkPushStdPrcChanged() {
-            if (ebayPushStdPrcBusy) {
-                showToast('info', 'Push Std Prc already running');
-                return;
-            }
-            const all = ebayPushStdPrcCollectTargets();
-            const targets = all.filter(function(t) { return ebayStdPrcNeedsPush(t.d); });
-            const skipped = all.length - targets.length;
-            if (!targets.length) {
-                showToast('info', skipped
-                    ? ('No Std Prc changes since last push (' + skipped + ' unchanged)')
-                    : 'No SKUs to push');
-                all.forEach(function(t) { ebayRefreshPushStdPrcCell(t.row); });
-                return;
-            }
-            if (!confirm(
-                'Push Std Prc to eBay for ' + targets.length + ' SKU(s) changed since last push'
-                + (skipped ? (' (' + skipped + ' unchanged skipped)') : '') + '?'
-            )) {
-                all.forEach(function(t) { ebayRefreshPushStdPrcCell(t.row); });
-                return;
-            }
-            ebayPushStdPrcBusy = true;
-            let ok = 0, fail = 0;
-            if (typeof setChPromoPushPrcProgress === 'function') {
-                clearTimeout(setChPromoPushPrcProgress._hideTimer);
-                setChPromoPushPrcProgress({
-                    active: true, done: 0, total: targets.length, ok: 0, fail: 0, pct: 5,
-                    title: 'Pushing',
-                    msg: 'Starting ' + targets.length + ' Std Prc…',
-                });
-            }
-            try {
-                for (let i = 0; i < targets.length; i++) {
-                    const sku = ebayPushStdPrcSku(targets[i].d);
-                    if (typeof setChPromoPushPrcProgress === 'function') {
-                        setChPromoPushPrcProgress({
-                            active: true, done: i, total: targets.length, ok: ok, fail: fail,
-                            title: 'Pushing',
-                            msg: sku + ' · Std Prc',
-                        });
-                    }
-                    const res = await ebayPushStdPrcOne(targets[i].row, { silent: true });
-                    if (res && res.ok && !res.skipped) ok++;
-                    else if (!(res && res.skipped)) fail++;
-                }
-            } finally {
-                ebayPushStdPrcBusy = false;
-                if (typeof setChPromoPushPrcProgress === 'function') {
-                    setChPromoPushPrcProgress({
-                        active: false, done: targets.length, total: targets.length, ok: ok, fail: fail, pct: 100,
-                        title: fail && !ok ? 'Push failed' : 'Pushed',
-                        msg: ok + ' ok' + (fail ? (' · ' + fail + ' failed') : ''),
-                    });
-                }
-            }
-            showToast(fail ? 'error' : 'success',
-                'Push Std Prc: ' + ok + ' pushed'
-                + (fail ? (', ' + fail + ' failed') : '')
-                + (skipped ? (', ' + skipped + ' unchanged skipped') : ''));
-        }
+
 
         // Shared LMP modal SP box (lmp-modal-sp.js) → keep grid Std Prc in sync
         document.addEventListener('lmp-modal-sp-saved', function(e) {
@@ -2764,6 +2553,59 @@
             });
         }
 
+        function ebay1LivePromoFromTable(sku, metric) {
+            if (typeof table === 'undefined' || !table) return null;
+            const want = String(sku || '').trim().toUpperCase();
+            if (!want) return null;
+            let found = null;
+            try {
+                const rows = (typeof table.getRows === 'function') ? (table.getRows('all') || table.getRows() || []) : [];
+                for (let i = 0; i < rows.length; i++) {
+                    const d = rows[i].getData() || {};
+                    const s = String(d['(Child) sku'] || d.sku || '').trim().toUpperCase();
+                    if (s === want) { found = d; break; }
+                }
+            } catch (e) { /* ignore */ }
+            if (!found) return null;
+            if (metric === 'prmt') {
+                const n = Number(found.prmt_pct != null && found.prmt_pct !== '' ? found.prmt_pct : found._prmt_pct_applied);
+                return isFinite(n) ? n : null;
+            }
+            if (metric === 'cpn') {
+                const n = Number(found.cpn_pct != null && found.cpn_pct !== '' ? found.cpn_pct : found._cpn_pct_applied);
+                return isFinite(n) ? n : null;
+            }
+            if (metric === 'push_prc') {
+                const n = Number(found.PUSH_PRC_VALUE != null ? found.PUSH_PRC_VALUE : found.push_prc);
+                return isFinite(n) && n > 0 ? n : null;
+            }
+            if (metric === 'sprice') {
+                let n = Number(found.SPRICE);
+                if (!(isFinite(n) && n > 0) && typeof chPromoSpriceFromStdTPromo === 'function') {
+                    n = Number(chPromoSpriceFromStdTPromo(found));
+                }
+                return isFinite(n) && n > 0 ? n : null;
+            }
+            return null;
+        }
+
+        function openEbaySkuHistoryChart(sku, metric) {
+            if (!sku) return;
+            currentSkuChartMetric = metric || 'price';
+            currentSku = sku;
+            $('#modalSkuName').text(sku);
+            $('#sku-chart-days-filter').val('30');
+            const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC' };
+            const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
+            $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30 · PT)');
+            $('#skuChartLoading').show();
+            $('#skuChartContainer').hide();
+            $('#chart-no-data-message').hide();
+            loadSkuMetricsData(sku, 30);
+            $('#skuMetricsModal').modal('show');
+        }
+        window.openEbaySkuHistoryChart = openEbaySkuHistoryChart;
+
         function loadSkuMetricsData(sku, days = 30) {
             $('#skuChartLoading').show();
             $('#skuChartContainer').hide();
@@ -2817,9 +2659,21 @@
                     const isCvr = currentSkuChartMetric === 'cvr';
                     const isViews = currentSkuChartMetric === 'views';
                     const isL7 = currentSkuChartMetric === 'l7_views';
+                    const isPrmt = currentSkuChartMetric === 'prmt';
+                    const isCpn = currentSkuChartMetric === 'cpn';
+                    const isPushPrc = currentSkuChartMetric === 'push_prc';
+                    const isSprice = currentSkuChartMetric === 'sprice';
                     const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
                     const cvrFmt = v => (Number(v) === v ? Number(v).toFixed(1) : v) + '%';
-                    const valueField = isCvr ? 'cvr_percent' : isViews ? 'views' : isL7 ? 'l7_views' : 'price';
+                    const pctIntFmt = v => Math.round(Number(v) || 0) + '%';
+                    const valueField = isCvr ? 'cvr_percent'
+                        : isViews ? 'views'
+                        : isL7 ? 'l7_views'
+                        : isPrmt ? 'prmt_pct'
+                        : isCpn ? 'cpn_pct'
+                        : isPushPrc ? 'push_prc'
+                        : isSprice ? 'sprice'
+                        : 'price';
                     const mapped = data.map(function(d) {
                         const raw = d[valueField];
                         const has = raw !== null && raw !== undefined && raw !== '';
@@ -2829,16 +2683,36 @@
                             value: has ? Number(raw) : null
                         };
                     }).filter(function(d) {
-                        return d.date && d.full_date && d.value != null && isFinite(d.value);
+                        if (!d.date || !d.full_date || d.value == null || !isFinite(d.value)) return false;
+                        if (isSprice && d.value <= 0) return false;
+                        return true;
                     });
+                    if (isPrmt || isCpn || isPushPrc || isSprice) {
+                        const liveVal = ebay1LivePromoFromTable(sku, currentSkuChartMetric);
+                        if (liveVal != null && isFinite(liveVal)) {
+                            const asOf = (typeof ebay1LastCompletedPtDate === 'function')
+                                ? ebay1LastCompletedPtDate()
+                                : '';
+                            const last = mapped.length ? mapped[mapped.length - 1] : null;
+                            if (last && asOf && last.full_date === asOf) {
+                                last.value = liveVal;
+                            } else if (asOf) {
+                                mapped.push({
+                                    date: (typeof ebay1ChartDateLabel === 'function') ? ebay1ChartDateLabel(asOf) : asOf,
+                                    full_date: asOf,
+                                    value: liveVal
+                                });
+                            }
+                        }
+                    }
                     const filled = ebay1FillEveryDate(mapped, daysNum);
                     const labels = filled.map(function(d) { return d.date; });
                     const values = filled.map(function(d) { return d.value; });
 
-                    const refLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View' };
+                    const refLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC' };
                     const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
-                    const refColors = { cvr: '#008000', views: '#0000FF', l7_views: '#0dcaf0' };
-                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', l7_views: 'rgba(13, 202, 240, 0.1)' };
+                    const refColors = { cvr: '#008000', views: '#0000FF', l7_views: '#0dcaf0', prmt: '#0d6efd', cpn: '#20c997', push_prc: '#FF9900', sprice: '#0d6efd' };
+                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', l7_views: 'rgba(13, 202, 240, 0.1)', prmt: 'rgba(13,110,253,0.1)', cpn: 'rgba(32,201,151,0.1)', push_prc: 'rgba(255,153,0,0.12)', sprice: 'rgba(13,110,253,0.1)' };
                     const refDotEl = document.getElementById('skuChartRefDot');
                     const refLabelEl = document.getElementById('skuChartRefLabel');
                     if (refLabelEl) refLabelEl.textContent = refLabelText;
@@ -2850,18 +2724,22 @@
                     }
                     skuMetricsChart.data.labels = labels;
                     skuMetricsChart.data.datasets[0].data = values;
-                    skuMetricsChart.data.datasets[0].label = refLabelText + (currentSkuChartMetric === 'price' ? ' (USD)' : '');
+                    skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isPushPrc || isSprice) ? ' (USD)' : ((isPrmt || isCpn || isCvr) ? ' (%)' : ''));
                     skuMetricsChart.data.datasets[0].borderColor = refColors[currentSkuChartMetric] || '#adb5bd';
                     skuMetricsChart.data.datasets[0].backgroundColor = bgColors[currentSkuChartMetric] || 'rgba(108,117,125,0.08)';
 
-                    const refFmt = isCvr ? cvrFmt : (isViews || isL7) ? intFmt : skuChartFmtVal;
+                    const refFmt = isCvr ? cvrFmt : (isPrmt || isCpn) ? pctIntFmt : (isViews || isL7) ? intFmt : skuChartFmtVal;
                     if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y) {
-                        if (isCvr) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Number(v).toFixed(0) + '%'; };
+                        if (isCvr || isPrmt || isCpn) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Number(v).toFixed(0) + '%'; };
                         else if (isViews || isL7) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Math.round(v).toLocaleString('en-US'); };
                         else skuMetricsChart.options.scales.y.ticks.callback = function(v) { return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US')); };
                     }
                     if (skuMetricsChart.options.plugins && skuMetricsChart.options.plugins.tooltip && skuMetricsChart.options.plugins.tooltip.callbacks) {
                         if (isCvr) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'CVR%: ' + (context.parsed.y != null ? (Number(context.parsed.y).toFixed(1) + '%') : '-'); };
+                        else if (isPrmt) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'PRMT %: ' + (context.parsed.y != null ? (Math.round(Number(context.parsed.y)) + '%') : '-'); };
+                        else if (isCpn) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'cvr %: ' + (context.parsed.y != null ? (Math.round(Number(context.parsed.y)) + '%') : '-'); };
+                        else if (isPushPrc) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Push Prc: ' + skuChartFmtVal(context.parsed.y || 0); };
+                        else if (isSprice) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'S PRC: ' + skuChartFmtVal(context.parsed.y || 0); };
                         else if (isViews) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'L30 View: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isL7) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'L7 View: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Price: ' + skuChartFmtVal(context.parsed.y || 0); };
@@ -2904,6 +2782,16 @@
 
             // Initialize SKU-specific chart
             initSkuMetricsChart();
+
+            // Promo history dots sit inside editable cells. Capture-phase click
+            // opens the graph before Tabulator starts the editor / swallows the event.
+            document.addEventListener('click', function(e) {
+                const el = e.target && e.target.closest ? e.target.closest('.ch-pef-hist-dot') : null;
+                if (!el) return;
+                e.preventDefault();
+                e.stopPropagation();
+                openEbaySkuHistoryChart(el.getAttribute('data-sku'), el.getAttribute('data-metric') || 'cpn');
+            }, true);
 
             // Dot click → rolling history (chart + table). Filter badges keep badge-body click for filters.
             $(document).on('click', '#summary-stats .summary-trend-dot', function(e) {
@@ -3137,17 +3025,7 @@
                         success: function(response) {
                             successCount++;
                             // Field names match the existing eBay saveSpriceWithRetry update payload.
-                            const updateData = {
-                                SPRICE: item.sprice,
-                                SPFT: response.spft_percent != null ? response.spft_percent : 0,
-                                SROI: response.sroi_percent != null ? response.sroi_percent : 0,
-                                SGROI: response.sgroi_percent != null ? response.sgroi_percent : 0,
-                                SGPFT: response.sgpft_percent != null ? response.sgpft_percent : 0,
-                                SPRICE_STATUS: 'saved',
-                                has_custom_sprice: true
-                            };
-                            item.row.update(updateData);
-                            item.row.reformat();
+                            applyEbay1SpriceSaveLive(item.row, response, item.sprice);
                         },
                         error: function() { errorCount++; },
                         complete: function() {
@@ -3279,19 +3157,12 @@
                 }
             });
 
-            // Apply All button handler
-            $(document).on('click', '#apply-all-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                window.applyAllSelectedPrices();
-            });
-
             // SKU chart days filter (Rolling Lx · PT — same pattern as all-marketplace-master)
             $('#sku-chart-days-filter').on('change', function() {
                 const days = $(this).val();
                 const daysNum = parseInt(days, 10);
                 const rangeLabel = daysNum === 0 ? 'Lifetime' : 'L' + daysNum;
-                const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View' };
+                const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC' };
                 const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
                 $('#skuChartModalSuffix').text(metricLabel + ' (Rolling ' + rangeLabel + ' · PT)');
                 if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0);
@@ -3336,122 +3207,44 @@
                 }
             }
 
-            // Background retry storage key
-            const BACKGROUND_RETRY_KEY = 'ebay_failed_price_pushes';
-
-            // Save failed SKU to localStorage for background retry
-            function saveFailedSkuForRetry(sku, price, retryCount = 0) {
-                try {
-                    const failedSkus = JSON.parse(localStorage.getItem(BACKGROUND_RETRY_KEY) || '{}');
-                    failedSkus[sku] = {
-                        sku: sku,
-                        price: price,
-                        retryCount: retryCount,
-                        timestamp: Date.now()
-                    };
-                    localStorage.setItem(BACKGROUND_RETRY_KEY, JSON.stringify(failedSkus));
-                } catch (e) {
-                    console.error('Error saving failed SKU to localStorage:', e);
+            function applyEbay1SpriceSaveLive(row, response, sprice) {
+                if (!row) return;
+                const numSprice = typeof sprice === 'number' && !isNaN(sprice) ? sprice : parseFloat(sprice);
+                const live = (response && response.ebay_price != null) ? parseFloat(response.ebay_price) : NaN;
+                const status = (response && response.SPRICE_STATUS)
+                    ? response.SPRICE_STATUS
+                    : ((response && response.price_push_success) ? 'pushed' : (numSprice > 0 ? 'saved' : null));
+                const patch = {
+                    SPRICE: numSprice,
+                    SPFT: response && response.spft_percent != null ? response.spft_percent : 0,
+                    SROI: response && response.sroi_percent != null ? response.sroi_percent : 0,
+                    SGROI: response && response.sgroi_percent != null ? response.sgroi_percent : 0,
+                    SGPFT: response && response.sgpft_percent != null ? response.sgpft_percent : 0,
+                    SPRICE_STATUS: status,
+                    has_custom_sprice: numSprice > 0
+                };
+                if (isFinite(live) && live > 0) {
+                    patch['eBay Price'] = live;
                 }
+                row.update(patch);
+                try { row.reformat(); } catch (e) { /* ignore */ }
             }
 
-            // Remove SKU from background retry list
-            function removeFailedSkuFromRetry(sku) {
-                try {
-                    const failedSkus = JSON.parse(localStorage.getItem(BACKGROUND_RETRY_KEY) || '{}');
-                    delete failedSkus[sku];
-                    localStorage.setItem(BACKGROUND_RETRY_KEY, JSON.stringify(failedSkus));
-                } catch (e) {
-                    console.error('Error removing SKU from localStorage:', e);
+            function ebay1SpriceSaveToast(sku, response) {
+                const live = response && response.ebay_price != null ? parseFloat(response.ebay_price) : NaN;
+                const liveTxt = (isFinite(live) && live > 0) ? ('$' + live.toFixed(2)) : '';
+                if (response && response.price_push_success) {
+                    showToast('success', 'S PRC pushed to eBay'
+                        + (liveTxt ? ('. Price is now ' + liveTxt) : '')
+                        + (sku ? (' for ' + sku) : ''));
+                    return;
                 }
-            }
-
-            // Background retry function (runs even after page refresh)
-            async function backgroundRetryFailedSkus() {
-                try {
-                    const failedSkus = JSON.parse(localStorage.getItem(BACKGROUND_RETRY_KEY) || '{}');
-                    const skuKeys = Object.keys(failedSkus);
-
-                    if (skuKeys.length === 0) return;
-
-                    console.log(`Found ${skuKeys.length} failed SKU(s) to retry in background`);
-
-                    for (const sku of skuKeys) {
-                        const failedData = failedSkus[sku];
-
-                        // Skip if already retried 5 times
-                        if (failedData.retryCount >= 5) {
-                            console.log(`SKU ${sku} has reached max retries (5), removing from retry list`);
-                            removeFailedSkuFromRetry(sku);
-                            continue;
-                        }
-
-                        // Skip if account is restricted (check status in table if available)
-                        let isAccountRestricted = false;
-                        if (table) {
-                            try {
-                                const rows = table.getRows();
-                                for (let i = 0; i < rows.length; i++) {
-                                    const rowData = rows[i].getData();
-                                    if (rowData['(Child) sku'] === sku) {
-                                        if (rowData.SPRICE_STATUS === 'account_restricted') {
-                                            isAccountRestricted = true;
-                                        }
-                                        break;
-                                    }
-                                }
-                            } catch (e) {
-                                // Continue if table check fails
-                            }
-                        }
-
-                        if (isAccountRestricted) {
-                            console.log(`SKU ${sku} is account restricted, skipping background retry`);
-                            removeFailedSkuFromRetry(sku);
-                            continue;
-                        }
-
-                        // Try to find the cell in the table for UI update
-                        let cell = null;
-                        if (table) {
-                            try {
-                                const rows = table.getRows();
-                                for (let i = 0; i < rows.length; i++) {
-                                    const rowData = rows[i].getData();
-                                    if (rowData['(Child) sku'] === sku) {
-                                        cell = rows[i].getCell('_accept');
-                                        break;
-                                    }
-                                }
-                            } catch (e) {
-                                // Table might not be ready, continue without UI update
-                            }
-                        }
-
-                        // Retry the price push once (background retry)
-                        const success = await applyPriceWithRetry(sku, failedData.price, cell, 0, true);
-
-                        if (!success) {
-                            // Increment retry count if still failed
-                            failedData.retryCount++;
-                            saveFailedSkuForRetry(sku, failedData.price, failedData.retryCount);
-                            console.log(`Background retry ${failedData.retryCount}/5 failed for SKU: ${sku}`);
-                        } else {
-                            // Success - already removed from retry list in applyPriceWithRetry
-                            // Update table if it's loaded
-                            if (table) {
-                                setTimeout(() => {
-                                    table.replaceData();
-                                }, 1000);
-                            }
-                        }
-
-                        // Small delay between SKUs to avoid burst calls
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                    }
-                } catch (e) {
-                    console.error('Error in background retry:', e);
+                if (response && response.price_push_status === 'not_listed') {
+                    showToast('warning', 'S PRC saved. No eBay listing to push' + (sku ? (' for ' + sku) : ''));
+                    return;
                 }
+                const msg = (response && response.price_push_message) ? response.price_push_message : 'eBay push failed';
+                showToast('error', 'S PRC saved, but push failed: ' + msg);
             }
 
             // Retry function for saving SPRICE (only 1 retry for eBay)
@@ -3483,24 +3276,7 @@
                                         r;
                                 });
                             }
-                            const numSprice = typeof sprice === 'number' && !isNaN(sprice) ?
-                                sprice : parseFloat(sprice);
-                            if (targetRow) {
-                                targetRow.update({
-                                    SPRICE: numSprice,
-                                    SPFT: response.spft_percent != null ? response
-                                        .spft_percent : 0,
-                                    SROI: response.sroi_percent != null ? response
-                                        .sroi_percent : 0,
-                                    SGROI: response.sgroi_percent != null ? response
-                                        .sgroi_percent : 0,
-                                    SGPFT: response.sgpft_percent != null ? response
-                                        .sgpft_percent : 0,
-                                    SPRICE_STATUS: numSprice > 0 ? 'saved' : null,
-                                    has_custom_sprice: numSprice > 0
-                                });
-                                targetRow.reformat();
-                            }
+                            applyEbay1SpriceSaveLive(targetRow, response, sprice);
                             resolve(response);
                         },
                         error: function(xhr) {
@@ -3536,499 +3312,6 @@
                 });
             }
 
-            // Apply price with retry logic (for pushing to eBay)
-            async function applyPriceWithRetry(sku, price, cell, retries = 0, isBackgroundRetry = false) {
-                const $btn = cell ? $(cell.getElement()).find('.apply-price-btn') : null;
-                const row = cell ? cell.getRow() : null;
-                const rowData = row ? row.getData() : null;
-
-                // Background mode: single attempt, no internal recursion (global max 5 handled via retryCount)
-                if (isBackgroundRetry) {
-                    try {
-                        const response = await $.ajax({
-                            url: '/push-ebay-price-tabulator',
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                            },
-                            data: {
-                                sku: sku,
-                                price: price
-                            }
-                        });
-
-                        if (response.errors && response.errors.length > 0) {
-                            throw new Error(response.errors[0].message || 'API error');
-                        }
-
-                        // Success - update UI and remove from retry list
-                        if (rowData) {
-                            rowData.SPRICE_STATUS = 'pushed';
-                            row.update(rowData);
-                        }
-                        if ($btn && cell) {
-                            $btn.prop('disabled', false);
-                            $btn.html('<i class="fa-solid fa-check-double"></i>');
-                            $btn.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
-                        }
-                        removeFailedSkuFromRetry(sku);
-                        return true;
-                    } catch (e) {
-                        // Background failure is handled by retryCount in backgroundRetryFailedSkus
-                        if (rowData) {
-                            rowData.SPRICE_STATUS = 'error';
-                            row.update(rowData);
-                        }
-                        if ($btn && cell) {
-                            $btn.prop('disabled', false);
-                            $btn.html('<i class="fa-solid fa-x"></i>');
-                            $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
-                        }
-                        return false;
-                    }
-                }
-
-                // Foreground mode (user click): up to 5 immediate retries with spinner UI
-                // Set initial loading state (only if cell exists)
-                if (retries === 0 && cell && $btn && row) {
-                    $btn.prop('disabled', true);
-                    $btn.html('<i class="fas fa-spinner fa-spin"></i>');
-                    $btn.attr('style',
-                    'border: none; background: none; color: #ffc107; padding: 0;'); // Yellow text, no background
-                    if (rowData) {
-                        rowData.SPRICE_STATUS = 'processing';
-                        row.update(rowData);
-                    }
-                }
-
-                try {
-                    const response = await $.ajax({
-                        url: '/push-ebay-price-tabulator',
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                        },
-                        data: {
-                            sku: sku,
-                            price: price
-                        }
-                    });
-
-                    if (response.errors && response.errors.length > 0) {
-                        throw new Error(response.errors[0].message || 'API error');
-                    }
-
-                    // Success - update UI
-                    if (rowData) {
-                        rowData.SPRICE_STATUS = 'pushed';
-                        row.update(rowData);
-                    }
-
-                    if ($btn && cell) {
-                        $btn.prop('disabled', false);
-                        $btn.html('<i class="fa-solid fa-check-double"></i>');
-                        $btn.attr('style',
-                        'border: none; background: none; color: #28a745; padding: 0;'); // Green text, no background
-                    }
-
-                    if (!isBackgroundRetry) {
-                        showToast(`Price $${price.toFixed(2)} pushed successfully for SKU: ${sku}`, 'success');
-                    }
-
-                    return true;
-                } catch (xhr) {
-                    const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr
-                        .responseJSON?.message || 'Failed to apply price';
-                    const errorCode = xhr.responseJSON?.errors?.[0]?.code || '';
-                    console.error(`Attempt ${retries + 1} for SKU ${sku} failed:`, errorMsg);
-
-                    // Check if this is an account restriction error (don't retry)
-                    const isAccountRestricted = errorCode === 'AccountRestricted' ||
-                        errorMsg.includes('ACCOUNT RESTRICTION') ||
-                        errorMsg.includes('account is restricted') ||
-                        errorMsg.includes('embargoed country');
-
-                    if (isAccountRestricted) {
-                        // Account restriction - don't retry, mark as account_restricted
-                        if (rowData) {
-                            rowData.SPRICE_STATUS = 'account_restricted';
-                            row.update(rowData);
-                        }
-
-                        if ($btn && cell) {
-                            $btn.prop('disabled', false);
-                            $btn.html('<i class="fa-solid fa-ban"></i>');
-                            $btn.attr('style',
-                            'border: none; background: none; color: #ff6b00; padding: 0;'); // Orange text for restriction
-                            $btn.attr('title', 'Account restricted - cannot update price');
-                        }
-
-                        showToast(
-                            `Account restriction detected for SKU: ${sku}. Please resolve account restrictions in eBay before updating prices.`,
-                            'error');
-                        return false;
-                    }
-
-                    if (retries < 5) {
-                        console.log(`Retrying SKU ${sku} in 5 seconds...`);
-                        await new Promise(resolve => setTimeout(resolve, 5000));
-                        return applyPriceWithRetry(sku, price, cell, retries + 1, isBackgroundRetry);
-                    } else {
-                        // Final failure - mark error and save for background retry
-                        if (rowData) {
-                            rowData.SPRICE_STATUS = 'error';
-                            row.update(rowData);
-                        }
-
-                        if ($btn && cell) {
-                            $btn.prop('disabled', false);
-                            $btn.html('<i class="fa-solid fa-x"></i>');
-                            $btn.attr('style',
-                            'border: none; background: none; color: #dc3545; padding: 0;'); // Red text, no background
-                        }
-
-                        // Save for background retry (only if not already a background retry)
-                        saveFailedSkuForRetry(sku, price, 0);
-                        showToast(
-                            `Failed to apply price for SKU: ${sku} after multiple retries. Will retry in background (max 5 times).`,
-                            'error');
-
-                        return false;
-                    }
-                }
-            }
-
-            // Retry function for applying price with up to 5 attempts (Promise-based for Apply All)
-            function applyPriceWithRetryPromise(sku, price, maxRetries = 5, delay = 5000) {
-                return new Promise((resolve, reject) => {
-                    let attempt = 0;
-
-                    function attemptApply() {
-                        attempt++;
-
-                        $.ajax({
-                            url: '/push-ebay-price-tabulator',
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                            },
-                            data: {
-                                sku: sku,
-                                price: price,
-                                _token: '{{ csrf_token() }}'
-                            },
-                            success: function(response) {
-                                if (response.errors && response.errors.length > 0) {
-                                    const errorMsg = response.errors[0].message ||
-                                        'Unknown error';
-                                    const errorCode = response.errors[0].code || '';
-                                    console.error(`Attempt ${attempt} for SKU ${sku} failed:`,
-                                        errorMsg, 'Code:', errorCode);
-
-                                    if (attempt < maxRetries) {
-                                        console.log(
-                                            `Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`
-                                            );
-                                        setTimeout(attemptApply, delay);
-                                    } else {
-                                        console.error(`Max retries reached for SKU ${sku}`);
-                                        reject({
-                                            error: true,
-                                            response: response
-                                        });
-                                    }
-                                } else {
-                                    console.log(
-                                        `Successfully pushed price for SKU ${sku} on attempt ${attempt}`
-                                        );
-                                    resolve({
-                                        success: true,
-                                        response: response
-                                    });
-                                }
-                            },
-                            error: function(xhr) {
-                                const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr
-                                    .responseJSON?.error || xhr.responseText || 'Network error';
-                                console.error(`Attempt ${attempt} for SKU ${sku} failed:`,
-                                    errorMsg);
-
-                                if (attempt < maxRetries) {
-                                    console.log(
-                                        `Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`
-                                        );
-                                    setTimeout(attemptApply, delay);
-                                } else {
-                                    console.error(`Max retries reached for SKU ${sku}`);
-                                    reject({
-                                        error: true,
-                                        xhr: xhr
-                                    });
-                                }
-                            }
-                        });
-                    }
-
-                    attemptApply();
-                });
-            }
-
-            // Apply all selected prices
-            window.applyAllSelectedPrices = function() {
-                if (selectedSkus.size === 0) {
-                    showToast('Please select at least one SKU to apply prices', 'error');
-                    return;
-                }
-
-                const $btn = $('#apply-all-btn');
-                if ($btn.length === 0) {
-                    showToast('Apply All button not found', 'error');
-                    return;
-                }
-
-                if ($btn.prop('disabled')) {
-                    return;
-                }
-
-                const originalHtml = $btn.html();
-
-                // Disable button and show loading state
-                $btn.prop('disabled', true);
-                $btn.html('<i class="fas fa-spinner fa-spin" style="color: #ffc107;"></i>');
-
-                // Get all table data to find SPRICE for selected SKUs
-                const tableData = table.getData('all');
-                const skusToProcess = [];
-
-                // Build list of SKUs with their prices
-                selectedSkus.forEach(sku => {
-                    const row = tableData.find(r => r['(Child) sku'] === sku);
-                    if (row) {
-                        const sprice = parseFloat(row.SPRICE) || 0;
-                        if (sprice > 0) {
-                            skusToProcess.push({
-                                sku: sku,
-                                price: sprice
-                            });
-                        }
-                    }
-                });
-
-                if (skusToProcess.length === 0) {
-                    $btn.prop('disabled', false);
-                    $btn.html(originalHtml);
-                    showToast('No valid prices found for selected SKUs', 'error');
-                    return;
-                }
-
-                let successCount = 0;
-                let errorCount = 0;
-                let currentIndex = 0;
-
-                // Process SKUs sequentially (one by one) with delay to avoid rate limiting
-                function processNextSku() {
-                    if (currentIndex >= skusToProcess.length) {
-                        // All SKUs processed
-                        $btn.prop('disabled', false);
-
-                        if (errorCount === 0) {
-                            // All successful
-                            $btn.html(`<i class="fas fa-check-double" style="color: #28a745;"></i>`);
-                            showToast(
-                                `Successfully applied prices to ${successCount} SKU${successCount > 1 ? 's' : ''}`,
-                                'success');
-
-                            // Reset to original state after 3 seconds
-                            setTimeout(() => {
-                                $btn.html(originalHtml);
-                            }, 3000);
-                        } else {
-                            $btn.html(originalHtml);
-                            showToast(
-                                `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`,
-                                'error');
-                        }
-                        return;
-                    }
-
-                    const {
-                        sku,
-                        price
-                    } = skusToProcess[currentIndex];
-
-                    // Find the row and update button to show spinner
-                    const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
-                    if (row) {
-                        const acceptCell = row.getCell('_accept');
-                        if (acceptCell) {
-                            const $cellElement = $(acceptCell.getElement());
-                            const $btnInCell = $cellElement.find('.apply-price-btn');
-                            if ($btnInCell.length) {
-                                $btnInCell.prop('disabled', true);
-                                $btnInCell.html('<i class="fas fa-spinner fa-spin"></i>');
-                                $btnInCell.attr('style',
-                                    'border: none; background: none; color: #ffc107; padding: 0;');
-                            }
-                        }
-                    }
-
-                    // First save to database (like SPRICE edit does), then push to eBay
-                    console.log(
-                        `Processing SKU ${sku} (${currentIndex + 1}/${skusToProcess.length}): Saving SPRICE ${price} to database...`
-                        );
-
-                    $.ajax({
-                        url: '/save-sprice-ebay',
-                        method: 'POST',
-                        data: {
-                            sku: sku,
-                            sprice: price,
-                            _token: '{{ csrf_token() }}'
-                        },
-                        success: function(saveResponse) {
-                            console.log(`SKU ${sku}: Database save successful`, saveResponse);
-                            if (saveResponse.error) {
-                                console.error(`Failed to save SPRICE for SKU ${sku}:`, saveResponse
-                                    .error);
-                                errorCount++;
-
-                                // Update row data with error status
-                                if (row) {
-                                    const rowData = row.getData();
-                                    rowData.SPRICE_STATUS = 'error';
-                                    row.update(rowData);
-
-                                    const acceptCell = row.getCell('_accept');
-                                    if (acceptCell) {
-                                        const $cellElement = $(acceptCell.getElement());
-                                        const $btnInCell = $cellElement.find('.apply-price-btn');
-                                        if ($btnInCell.length) {
-                                            $btnInCell.prop('disabled', false);
-                                            $btnInCell.html('<i class="fa-solid fa-x"></i>');
-                                            $btnInCell.attr('style',
-                                                'border: none; background: none; color: #dc3545; padding: 0;'
-                                                );
-                                        }
-                                    }
-                                }
-
-                                // Process next SKU
-                                currentIndex++;
-                                setTimeout(() => {
-                                    processNextSku();
-                                }, 2000);
-                                return;
-                            }
-
-                            // After saving, push to eBay using retry function
-                            console.log(`SKU ${sku}: Starting eBay price push...`);
-                            applyPriceWithRetryPromise(sku, price, 5, 5000)
-                                .then((result) => {
-                                    successCount++;
-
-                                    // Update row data with pushed status instantly
-                                    if (row) {
-                                        const rowData = row.getData();
-                                        rowData.SPRICE_STATUS = 'pushed';
-                                        row.update(rowData);
-
-                                        // Update button to show green check-double
-                                        const acceptCell = row.getCell('_accept');
-                                        if (acceptCell) {
-                                            const $cellElement = $(acceptCell.getElement());
-                                            const $btnInCell = $cellElement.find(
-                                                '.apply-price-btn');
-                                            if ($btnInCell.length) {
-                                                $btnInCell.prop('disabled', false);
-                                                $btnInCell.html(
-                                                    '<i class="fa-solid fa-check-double"></i>'
-                                                    );
-                                                $btnInCell.attr('style',
-                                                    'border: none; background: none; color: #28a745; padding: 0;'
-                                                    );
-                                            }
-                                        }
-                                    }
-
-                                    // Process next SKU with delay to avoid rate limiting (2 seconds between requests)
-                                    currentIndex++;
-                                    setTimeout(() => {
-                                        processNextSku();
-                                    }, 2000);
-                                })
-                                .catch((error) => {
-                                    errorCount++;
-
-                                    // Update row data with error status
-                                    if (row) {
-                                        const rowData = row.getData();
-                                        rowData.SPRICE_STATUS = 'error';
-                                        row.update(rowData);
-
-                                        // Update button to show error icon
-                                        const acceptCell = row.getCell('_accept');
-                                        if (acceptCell) {
-                                            const $cellElement = $(acceptCell.getElement());
-                                            const $btnInCell = $cellElement.find(
-                                                '.apply-price-btn');
-                                            if ($btnInCell.length) {
-                                                $btnInCell.prop('disabled', false);
-                                                $btnInCell.html(
-                                                '<i class="fa-solid fa-x"></i>');
-                                                $btnInCell.attr('style',
-                                                    'border: none; background: none; color: #dc3545; padding: 0;'
-                                                    );
-                                            }
-                                        }
-                                    }
-
-                                    // Save for background retry
-                                    saveFailedSkuForRetry(sku, price, 0);
-
-                                    // Process next SKU with delay to avoid rate limiting
-                                    currentIndex++;
-                                    setTimeout(() => {
-                                        processNextSku();
-                                    }, 2000);
-                                });
-                        },
-                        error: function(xhr) {
-                            console.error(`Failed to save SPRICE for SKU ${sku}:`, xhr
-                                .responseJSON || xhr.responseText);
-                            errorCount++;
-
-                            // Update row data with error status
-                            if (row) {
-                                const rowData = row.getData();
-                                rowData.SPRICE_STATUS = 'error';
-                                row.update(rowData);
-
-                                const acceptCell = row.getCell('_accept');
-                                if (acceptCell) {
-                                    const $cellElement = $(acceptCell.getElement());
-                                    const $btnInCell = $cellElement.find('.apply-price-btn');
-                                    if ($btnInCell.length) {
-                                        $btnInCell.prop('disabled', false);
-                                        $btnInCell.html('<i class="fa-solid fa-x"></i>');
-                                        $btnInCell.attr('style',
-                                            'border: none; background: none; color: #dc3545; padding: 0;'
-                                            );
-                                    }
-                                }
-                            }
-
-                            // Process next SKU
-                            currentIndex++;
-                            setTimeout(() => {
-                                processNextSku();
-                            }, 2000);
-                        }
-                    });
-                }
-
-                // Start processing
-                processNextSku();
-            };
 
             // Apply discount to selected SKUs (same flow as Amazon: validate, round .99/.49, re-find row on save)
             function applyDiscount() {
@@ -5065,102 +4348,6 @@
                     },
 
                     {
-                        title: "Push Std Prc",
-                        field: "push_std_prc",
-                        width: 72,
-                        hozAlign: "center",
-                        vertAlign: "middle",
-                        headerSort: false,
-                        headerTooltip: "Push Std Prc — send Std to the live eBay listing price. Only SKUs whose Std changed since the last push are sent. Click this header to bulk selected (or visible) SKUs.",
-                        titleFormatter: function() {
-                            return '<button type="button" class="btn btn-sm p-0 ebay-push-std-prc-header-btn" '
-                                + 'title="Bulk Push Std Prc for selected SKUs whose Std changed since last push" '
-                                + 'style="border:none;background:none;cursor:pointer;color:#000;'
-                                + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
-                                + 'Push Std Prc</button>';
-                        },
-                        headerClick: function(e) {
-                            if (e.target.closest('.ebay-push-std-prc-header-btn')) {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                ebayBulkPushStdPrcChanged();
-                                return false;
-                            }
-                        },
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData() || {};
-                            if (d.is_parent_summary) return '';
-                            const sku = ebayPushStdPrcSku(d);
-                            if (!sku || String(d.Parent || '').toUpperCase().startsWith('PARENT')) return '';
-                            const std = ebayStdPrcCurrent(d);
-                            if (!(std > 0)) {
-                                return '<span style="color:#adb5bd;" title="Std Prc required">—</span>';
-                            }
-                            const status = String(d.PUSH_STD_PRC_STATUS || '');
-                            const last = ebayStdPrcLastPushed(d);
-                            const needs = ebayStdPrcNeedsPush(d);
-                            let icon = '<i class="fas fa-upload"></i>';
-                            let color = '#FF9900';
-                            let tip = 'Push Std $' + std.toFixed(2) + ' to eBay Price';
-                            if (status === 'processing') {
-                                icon = '<i class="fas fa-spinner fa-spin"></i>';
-                                color = '#ffc107';
-                                tip = 'Pushing Std Prc to eBay…';
-                            } else if (status === 'error') {
-                                icon = '<i class="fa-solid fa-xmark"></i>';
-                                color = '#dc3545';
-                                tip = 'Last Push Std Prc failed — click to retry';
-                            } else if (!needs) {
-                                icon = '<i class="fa-solid fa-check-double"></i>';
-                                color = '#28a745';
-                                tip = 'Already pushed $' + last.toFixed(2)
-                                    + ' — click to push Std to eBay Price again';
-                            } else if (last > 0) {
-                                tip = 'Std changed $' + last.toFixed(2) + ' → $' + std.toFixed(2)
-                                    + ' — click to push to eBay Price';
-                            }
-                            return '<button type="button" class="btn btn-sm p-0 ebay-push-std-prc-btn" '
-                                + 'data-sku="' + escAttr(sku) + '" '
-                                + 'data-price="' + std.toFixed(2) + '" '
-                                + 'title="' + escAttr(tip) + '" '
-                                + 'style="border:none;background:none;cursor:pointer;color:' + color
-                                + ';padding:0;line-height:1;vertical-align:middle;">'
-                                + icon + '</button>';
-                        },
-                        cellClick: function(e, cell) {
-                            const btn = e.target.closest('.ebay-push-std-prc-btn');
-                            if (!btn) return;
-                            e.stopPropagation();
-                            e.preventDefault();
-                            if (btn.disabled) return false;
-                            const d = cell.getRow().getData() || {};
-                            if (String(d.PUSH_STD_PRC_STATUS || '') === 'processing') return false;
-                            const selected = (typeof collectChPromoSelectedRows === 'function')
-                                ? collectChPromoSelectedRows()
-                                : [];
-                            const clickedKey = String(ebayPushStdPrcSku(d) || '').trim().toUpperCase();
-                            if (selected.length > 1 && selected.some(function(t) {
-                                return String(ebayPushStdPrcSku(t.d) || '').trim().toUpperCase() === clickedKey;
-                            })) {
-                                if (typeof chPromoPaintPushStdPrcSpinner === 'function') chPromoPaintPushStdPrcSpinner(btn);
-                                else {
-                                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                                    btn.style.color = '#ffc107';
-                                }
-                                ebayBulkPushStdPrcChanged();
-                                return false;
-                            }
-                            if (typeof chPromoPaintPushStdPrcSpinner === 'function') chPromoPaintPushStdPrcSpinner(btn);
-                            else {
-                                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                                btn.style.color = '#ffc107';
-                            }
-                            ebayPushStdPrcOne(cell.getRow(), { force: true });
-                            return false;
-                        }
-                    },
-
-                    {
                         title: "Price",
                         field: "eBay Price",
                         hozAlign: "center",
@@ -5323,6 +4510,7 @@
                         // Ads % shown on /all-marketplace-master.
                         title: "Ads %",
                         field: "_ads_pct",
+                        visible: false,
                         hozAlign: "center",
                         headerSort: false,
                         headerTooltip: "eBay channel Ads% (Total Ad Spend / L30 Sales × 100). Channel-level — same value on /all-marketplace-master.",
@@ -5451,170 +4639,81 @@
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
-                        editor: "input",
+                        editable: false,
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + CPN%)/100). Read-only. Dot = vs last recorded S PRC (green up, red down, gray same). Click the dot for Rolling L30.",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const spriceNum = (value != null && value !== '') ? parseFloat(value) :
                                 NaN;
-                            const sprice = isNaN(spriceNum) ? 0 : spriceNum;
+                            let sprice = isNaN(spriceNum) ? 0 : spriceNum;
+
+                            if (!(sprice > 0) && typeof chPromoSpriceFromStdTPromo === 'function'
+                                && !rowData.is_parent_summary
+                                && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
+                                const calc = chPromoSpriceFromStdTPromo(rowData);
+                                if (calc > 0) sprice = calc;
+                            }
 
                             // Blank only when SPRICE is missing or zero (no override)
-                            if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) {
+                            if (!(sprice > 0)) {
                                 return '';
                             }
 
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
-                            // If SPRICE is above the LMP (lowest market price), flag it in red.
                             const lmp = parseFloat(rowData.lmp_price) || 0;
+                            const sku = rowData['(Child) sku'] || '';
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+
+                            const yesterday = parseFloat(rowData.sprice_yesterday);
+                            const hasYesterday = isFinite(yesterday) && yesterday > 0;
+                            const yDate = String(rowData.sprice_yesterday_date || '');
+                            const yestPt = (typeof ebay1LastCompletedPtDate === 'function') ? ebay1LastCompletedPtDate() : '';
+                            const isActualYesterday = yDate !== '' && yDate === yestPt;
+                            const vsWhen = isActualYesterday
+                                ? ('yesterday ($' + yesterday.toFixed(2) + ')')
+                                : (yDate
+                                    ? ('last recorded ' + (typeof ebay1ChartDateLabel === 'function' ? ebay1ChartDateLabel(yDate) : yDate) + ' ($' + yesterday.toFixed(2) + ')')
+                                    : ('last recorded ($' + yesterday.toFixed(2) + ')'));
+
+                            let dotColor = '#6c757d';
+                            let dotTip = hasYesterday
+                                ? ('Same as ' + vsWhen)
+                                : 'No prior S PRC snapshot yet';
+                            if (hasYesterday) {
+                                if (sprice > yesterday) {
+                                    dotColor = '#28a745';
+                                    dotTip = 'Up vs ' + vsWhen;
+                                } else if (sprice < yesterday) {
+                                    dotColor = '#a00211';
+                                    dotTip = 'Down vs ' + vsWhen;
+                                }
+                            }
+                            const dotBtn = (sku && !isParent && !rowData.is_parent_summary)
+                                ? `<button type="button" class="btn btn-sm p-0 view-sku-chart ch-pef-hist-dot align-middle" data-sku="${sku}" data-metric="sprice" title="${dotTip} — click for S PRC chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>`
+                                : '';
+
+                            let priceHtml = formattedValue;
                             if (lmp > 0 && sprice > lmp) {
-                                return `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>`;
+                                priceHtml = `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>`;
+                            } else if (hasCustomSprice === false) {
+                                priceHtml = `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
                             }
-                            if (hasCustomSprice === false) {
-                                return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
-                            }
-                            return formattedValue;
+
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${priceHtml}${dotBtn}</span>`;
                         },
-                        width: 80
-                    },
-                    ...(typeof channelPromoSprcCpnColumn === 'function' ? [channelPromoSprcCpnColumn()] : []),
-                    {
-                        field: "_accept",
-                        hozAlign: "center",
-                        headerSort: false,
-                        titleFormatter: function(column) {
-                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
-                                <span>Accept</span>
-                                <button type="button" class="btn btn-sm" id="apply-all-btn" title="Apply All Selected Prices to eBay" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;">
-                                    <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
-                                </button>
-                            </div>`;
+                        cellClick: function(e) {
+                            const el = e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot');
+                            if (!el) return;
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (typeof openEbaySkuHistoryChart === 'function') {
+                                openEbaySkuHistoryChart(el.getAttribute('data-sku'), el.getAttribute('data-metric') || 'sprice');
+                            }
+                            return false;
                         },
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
-
-                            // if (isParent) return '';
-
-                            const sku = rowData['(Child) sku'];
-                            const sprice = parseFloat(rowData.SPRICE) || 0;
-                            const status = rowData.SPRICE_STATUS || null;
-
-                            if (!sprice || sprice === 0) {
-                                return '<span style="color: #999;">N/A</span>';
-                            }
-
-                            let icon = '<i class="fas fa-check"></i>';
-                            let iconColor = '#28a745'; // Green for ready
-                            let titleText = 'Apply Price to eBay';
-
-                            if (status === 'processing') {
-                                icon = '<i class="fas fa-spinner fa-spin"></i>';
-                                iconColor = '#ffc107'; // Yellow text
-                                titleText = 'Price pushing in progress...';
-                            } else if (status === 'pushed') {
-                                icon = '<i class="fa-solid fa-check-double"></i>';
-                                iconColor = '#28a745'; // Green text
-                                titleText =
-                                'Price pushed to eBay (Double-click to mark as Applied)';
-                            } else if (status === 'applied') {
-                                icon = '<i class="fa-solid fa-check-double"></i>';
-                                iconColor = '#28a745'; // Green text
-                                titleText = 'Price applied to eBay (Double-click to change)';
-                            } else if (status === 'saved') {
-                                icon = '<i class="fa-solid fa-check-double"></i>';
-                                iconColor = '#28a745'; // Green text
-                                titleText = 'SPRICE saved (Click to push to eBay)';
-                            } else if (status === 'error') {
-                                icon = '<i class="fa-solid fa-x"></i>';
-                                iconColor = '#dc3545'; // Red text
-                                titleText = 'Error applying price to eBay';
-                            } else if (status === 'account_restricted') {
-                                icon = '<i class="fa-solid fa-ban"></i>';
-                                iconColor = '#ff6b00'; // Orange text
-                                titleText =
-                                    'Account restricted - Cannot update price. Please resolve account restrictions in eBay.';
-                            }
-
-                            // Show only icon with color, no background
-                            return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${sku}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
-                                ${icon}
-                            </button>`;
-                        },
-                        cellClick: function(e, cell) {
-                            const $target = $(e.target);
-
-                            // Handle double-click to change status from 'pushed' to 'applied'
-                            if (e.originalEvent && e.originalEvent.detail === 2) {
-                                const $btn = $target.hasClass('apply-price-btn') ? $target : $target
-                                    .closest('.apply-price-btn');
-                                const currentStatus = $btn.attr('data-status') || '';
-
-                                if (currentStatus === 'pushed') {
-                                    const sku = $btn.attr('data-sku') || $btn.data('sku');
-                                    $.ajax({
-                                        url: '/update-ebay-sprice-status',
-                                        method: 'POST',
-                                        headers: {
-                                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]')
-                                                .attr('content')
-                                        },
-                                        data: {
-                                            sku: sku,
-                                            status: 'applied'
-                                        },
-                                        success: function(response) {
-                                            if (response.success) {
-                                                table.replaceData();
-                                                showToast('Status updated to Applied',
-                                                    'success');
-                                            }
-                                        }
-                                    });
-                                }
-                                return;
-                            }
-
-                            if ($target.hasClass('apply-price-btn') || $target.closest(
-                                    '.apply-price-btn').length) {
-                                e.stopPropagation();
-                                const $btn = $target.hasClass('apply-price-btn') ? $target : $target
-                                    .closest('.apply-price-btn');
-                                const sku = $btn.attr('data-sku') || $btn.data('sku');
-                                const price = parseFloat($btn.attr('data-price') || $btn.data(
-                                    'price'));
-                                const currentStatus = $btn.attr('data-status') || '';
-
-                                if (!sku || !price || price <= 0 || isNaN(price)) {
-                                    showToast('Invalid SKU or price', 'error');
-                                    return;
-                                }
-
-                                // If status is 'saved' or null, first save SPRICE, then push to eBay
-                                if (currentStatus === 'saved' || !currentStatus) {
-                                    const row = cell.getRow();
-                                    row.update({
-                                        SPRICE_STATUS: 'processing'
-                                    });
-
-                                    saveSpriceWithRetry(sku, price, row)
-                                        .then((response) => {
-                                            // After saving, push to eBay
-                                            applyPriceWithRetry(sku, price, cell, 0);
-                                        })
-                                        .catch((error) => {
-                                            row.update({
-                                                SPRICE_STATUS: 'error'
-                                            });
-                                            showToast('Failed to save SPRICE', 'error');
-                                        });
-                                } else {
-                                    // If already saved, just push to eBay
-                                    applyPriceWithRetry(sku, price, cell, 0);
-                                }
-                            }
-                        }
+                        width: 92
                     },
 
                     {
@@ -6093,7 +5192,7 @@
 
                     saveSpriceWithRetry(data['(Child) sku'], value, row)
                         .then((response) => {
-                            showToast('SPRICE saved successfully', 'success');
+                            ebay1SpriceSaveToast(data['(Child) sku'], response);
                         })
                         .catch((error) => {
                             showToast('Failed to save SPRICE', 'error');
@@ -6414,7 +5513,7 @@
             });
 
             // Columns that should ALWAYS stay hidden, regardless of saved state.
-            var alwaysHiddenColumns = ['CVR_60', 'CVR_45', 'eBay L60', 'eBay L45'];
+            var alwaysHiddenColumns = ['CVR_60', 'CVR_45', 'eBay L60', 'eBay L45', '_ads_pct'];
             function enforceAlwaysHiddenColumns() {
                 alwaysHiddenColumns.forEach(function(col) {
                     try { table.hideColumn(col); } catch (e) {}
@@ -6670,9 +5769,9 @@
 
                 // Pricing
                 if (
-                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|dsc|appr|push_prc|push_std_prc|sale_event|push_cpn|sprc_cpn)$/i.test(f) ||
+                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|dsc|appr|push_prc)$/i.test(f) ||
                     /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|prmt|cpn|dsc|appr|push\s*prc|push\s*std\s*prc|sale\s*event|push\s*cpn)\b/i.test(tl) ||
-                    /^(_accept|\+)$/i.test(t)
+                    /^\+$/i.test(t)
                 ) {
                     return 'pricing';
                 }
@@ -6820,6 +5919,7 @@
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             if (!def.field) return;
+                            if (alwaysHiddenColumns.indexOf(def.field) !== -1) return;
 
                             const title = def.title || def.field;
                             const itemKey = colVisItemKey(def.field, title);
@@ -6955,14 +6055,14 @@
                 buildColumnDropdown();
                 applyFilters();
                 loadEbay1ShopifySales();
-
-                // Set up periodic background retry check (every 30 seconds)
-                setInterval(() => {
-                    backgroundRetryFailedSkus();
-                }, 30000);
             });
 
             table.on('dataLoaded', function() {
+                if (typeof autopopulateEbaySpriceFromStdPrmtCpn === 'function') {
+                    setTimeout(function() {
+                        autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
+                    }, 80);
+                }
                 // Build the unique parent list for Play/Next/Previous navigation.
                 var allRows = table.getData('all') || [];
                 var parents = [];
@@ -7105,6 +6205,9 @@
                         if (showAll) {
                             e.preventDefault();
                             table.getColumns().forEach(col => col.show());
+                            if (typeof enforceAlwaysHiddenColumns === 'function') {
+                                enforceAlwaysHiddenColumns();
+                            }
                             buildColumnDropdown();
                             saveColumnVisibilityToServer();
                             closeColumnDropdown();
@@ -7152,14 +6255,7 @@
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
                     $('#sku-chart-days-filter').val('30');
-                    const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View' };
-                    const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
-                    $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30 · PT)');
-                    $('#skuChartLoading').show();
-                    $('#skuChartContainer').hide();
-                    $('#chart-no-data-message').hide();
-                    loadSkuMetricsData(sku, 30);
-                    $('#skuMetricsModal').modal('show');
+                    openEbaySkuHistoryChart(sku, currentSkuChartMetric);
                 }
             });
 
@@ -7210,8 +6306,7 @@
 
                 const columns = table.getColumns().filter(col => {
                     const field = col.getField();
-                    return field && exportColumnMapping[field] && field !== '_select' && field !==
-                    '_accept';
+                    return field && exportColumnMapping[field] && field !== '_select';
                 });
 
                 columns.forEach(col => {

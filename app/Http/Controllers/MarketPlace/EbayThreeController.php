@@ -28,6 +28,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
 use App\Services\ChannelPromoPricingService;
+use App\Services\Ebay1PromotionService;
 use App\Services\EbayPushService;
 use App\Services\LmpSkuGroupService;
 
@@ -1571,7 +1572,10 @@ class EbayThreeController extends Controller
             // Pass the SKU so variation listings update the correct variation's price
             // (eBay ignores item-level price for multi-variation listings).
             $ebayService = new \App\Services\EbayThreeApiService();
-            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat, null, $sku);
+            $result = Ebay1PromotionService::for('ebay3')->withPriceRevisionAllowed(
+                $sku,
+                fn () => $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat, null, $sku)
+            );
 
             if (isset($result['success']) && $result['success']) {
                 // Keep local metric price in sync so /pricing-master-cvr + tabulator show the new price.

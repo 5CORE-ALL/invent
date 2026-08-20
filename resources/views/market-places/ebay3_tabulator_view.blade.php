@@ -1109,7 +1109,7 @@
         return ((price * margin - lp - ship) / lp) * 100;
     }
 
-    /** S GPFT / SNPFT use S PRC (SPRICE), not Sprc CPN. */
+    /** S GPFT / SNPFT use S PRC (SPRICE). */
     function ebay3ComputeSgpftFromSprice(rowData) {
         if (!rowData) return null;
         const price = parseFloat(rowData.SPRICE);
@@ -1825,6 +1825,9 @@
                                             errorMsg.includes('account is restricted') ||
                                             errorMsg.includes('embargoed country');
             
+            const isSalePriceLock = errorMsg.includes('part of a sale') ||
+                errorMsg.includes('always allow price updates');
+
             if (isAccountRestricted) {
                 // Account restriction - don't retry, mark as account_restricted
                 if (rowData) {
@@ -1840,6 +1843,21 @@
                 }
                 
                 showToast(`Account restriction detected for SKU: ${sku}. Please resolve account restrictions in eBay before updating prices.`, 'error');
+                return false;
+            }
+
+            if (isSalePriceLock) {
+                if (rowData) {
+                    rowData.SPRICE_STATUS = 'error';
+                    row.update(rowData);
+                }
+                if ($btn && cell) {
+                    $btn.prop('disabled', false);
+                    $btn.html('<i class="fa-solid fa-x"></i>');
+                    $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                    $btn.attr('title', errorMsg);
+                }
+                showToast(errorMsg || (`SKU ${sku} is on an eBay sale that blocked the price update.`), 'error');
                 return false;
             }
 
@@ -3690,9 +3708,15 @@
                         const rowData = cell.getRow().getData();
                         const hasCustomSprice = rowData.has_custom_sprice;
                         const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
-                        const sprice = isNaN(spriceNum) ? 0 : spriceNum;
-                        
-                        if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) return '';
+                        let sprice = isNaN(spriceNum) ? 0 : spriceNum;
+                        if (!(sprice > 0) && typeof chPromoSpriceFromStdTPromo === 'function'
+                            && !rowData.is_parent_summary
+                            && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
+                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                            if (calc > 0) sprice = calc;
+                        }
+
+                        if (!(sprice > 0)) return '';
                         const formattedValue = `$${Number(sprice).toFixed(2)}`;
                         if (hasCustomSprice === false) {
                             return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;

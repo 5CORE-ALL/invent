@@ -5354,6 +5354,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-push-cpn/{channel}', [ChannelPromoPricingController::class, 'queuePushCpn'])->name('channel.push-cpn.queue');
     Route::get('/channel-push-cpn/{channel}/status', [ChannelPromoPricingController::class, 'pushCpnJobStatus'])->name('channel.push-cpn.status');
     Route::post('/channel-push-cpn/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushCpn'])->name('channel.push-cpn.cancel');
+    Route::post('/channel-end-sales/{channel}', [ChannelPromoPricingController::class, 'endAllSales'])->name('channel.end-sales');
+    Route::post('/channel-end-coupons/{channel}', [ChannelPromoPricingController::class, 'endAllCoupons'])->name('channel.end-coupons');
+    Route::post('/channel-apply-sprice-tpromo/{channel}', [ChannelPromoPricingController::class, 'applySpriceFromTPromo'])->name('channel.apply-sprice-tpromo');
 
     // ebay db save routes
     Route::post('/ebay/save-nr', [EbayController::class, 'saveNrToDatabase']);

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\EbaySkuDailyData;
+use App\Models\EbayDataView;
 use App\Models\EbayMetric;
 use App\Models\EbayPriorityReport;
 use App\Models\EbayGeneralReport;
@@ -87,6 +88,24 @@ class CollectEbayMetrics extends Command
             ) {
                 $chunkCollected = 0;
                 $chunkSkipped = 0;
+                $promoBySku = [];
+                $chunkSkus = [];
+                foreach ($rows as $row) {
+                    $s = strtoupper(trim((string) ($row->sku ?? '')));
+                    if ($s !== '' && stripos($s, 'PARENT') === false) {
+                        $chunkSkus[] = $s;
+                    }
+                }
+                if ($chunkSkus) {
+                    EbayDataView::query()
+                        ->whereIn('sku', $chunkSkus)
+                        ->get()
+                        ->each(function ($dv) use (&$promoBySku) {
+                            $key = strtoupper(trim((string) $dv->sku));
+                            $val = is_array($dv->value) ? $dv->value : (json_decode($dv->value ?? '{}', true) ?: []);
+                            $promoBySku[$key] = $val;
+                        });
+                }
 
                 foreach ($rows as $ebayMetric) {
                     $sku = strtoupper(trim((string) $ebayMetric->sku));
@@ -117,6 +136,11 @@ class CollectEbayMetrics extends Command
                         $adPercent = $totalRevenue > 0 ? ($adSpendL30 / $totalRevenue) * 100 : 0;
 
                         $shopify = $shopifyBySku->get(ShopifySku::normalizeSkuForShopifyLookup($sku));
+                        $existingDaily = EbaySkuDailyData::query()
+                            ->where('sku', $sku)
+                            ->where('record_date', $today)
+                            ->first();
+                        $existingPayload = is_array($existingDaily?->daily_data) ? $existingDaily->daily_data : [];
                         $dailyData = [
                             'price' => round($price, 2),
                             'views' => $views,
@@ -128,6 +152,23 @@ class CollectEbayMetrics extends Command
                             'inv' => (int) ($shopify->inv ?? 0),
                             'ovl30' => (int) ($shopify->quantity ?? 0),
                         ];
+                        $dvVal = $promoBySku[$sku] ?? [];
+                        $prmt = $dvVal['PEF_PRMT_PCT'] ?? ($existingPayload['prmt_pct'] ?? null);
+                        $cpn = $dvVal['PEF_CPN_PCT'] ?? ($existingPayload['cpn_pct'] ?? null);
+                        $push = $dvVal['PUSH_PRC_VALUE'] ?? ($existingPayload['push_prc'] ?? null);
+                        $sprice = $dvVal['SPRICE'] ?? ($existingPayload['sprice'] ?? null);
+                        if (is_numeric($prmt)) {
+                            $dailyData['prmt_pct'] = round((float) $prmt, 2);
+                        }
+                        if (is_numeric($cpn)) {
+                            $dailyData['cpn_pct'] = round((float) $cpn, 2);
+                        }
+                        if (is_numeric($push)) {
+                            $dailyData['push_prc'] = round((float) $push, 2);
+                        }
+                        if (is_numeric($sprice) && (float) $sprice > 0) {
+                            $dailyData['sprice'] = round((float) $sprice, 2);
+                        }
 
                         EbaySkuDailyData::updateOrCreate(
                             [

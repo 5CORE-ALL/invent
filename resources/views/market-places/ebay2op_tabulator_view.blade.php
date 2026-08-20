@@ -1970,6 +1970,9 @@
                                                 errorMsg.includes('account is restricted') ||
                                                 errorMsg.includes('embargoed country');
                     
+                    const isSalePriceLock = errorMsg.includes('part of a sale') ||
+                        errorMsg.includes('always allow price updates');
+
                     if (isAccountRestricted) {
                         // Account restriction - don't retry, mark as account_restricted
                         if (rowData) {
@@ -1985,6 +1988,21 @@
                         }
                         
                         showToast(`Account restriction detected for SKU: ${sku}. Please resolve account restrictions in eBay before updating prices.`, 'error');
+                        return false;
+                    }
+
+                    if (isSalePriceLock) {
+                        if (rowData) {
+                            rowData.SPRICE_STATUS = 'error';
+                            row.update(rowData);
+                        }
+                        if ($btn && cell) {
+                            $btn.prop('disabled', false);
+                            $btn.html('<i class="fa-solid fa-x"></i>');
+                            $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                            $btn.attr('title', errorMsg);
+                        }
+                        showToast(errorMsg || (`SKU ${sku} is on an eBay sale that blocked the price update.`), 'error');
                         return false;
                     }
 
@@ -3296,12 +3314,18 @@
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const ebay2Price = parseFloat(rowData['eBay Price']) || 0;
-                            const sprice = parseFloat(value) || 0;
-                            
-                            if (!value) return '';
+                            let sprice = parseFloat(value) || 0;
+                            if (!(sprice > 0) && typeof chPromoSpriceFromStdTPromo === 'function'
+                                && !rowData.is_parent_summary
+                                && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
+                                const calc = chPromoSpriceFromStdTPromo(rowData);
+                                if (calc > 0) sprice = calc;
+                            }
+
+                            if (!(sprice > 0)) return '';
                             
                             // Always show SPRICE when it has a value — even if it equals the eBay price.
-                            const formattedValue = `$${parseFloat(value).toFixed(2)}`;
+                            const formattedValue = `$${Number(sprice).toFixed(2)}`;
                             
                             // If using default eBay Price (not custom), show in blue
                             if (hasCustomSprice === false) {
@@ -3312,7 +3336,6 @@
                         },
                         width: 80
                     },
-                    ...(typeof channelPromoSprcCpnColumn === 'function' ? [channelPromoSprcCpnColumn()] : []),
                     {
                         field: "_accept",
                         hozAlign: "center",
@@ -4833,7 +4856,7 @@
                 'image_path', 'E Stock', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
                 'lmp_price', 'STANDARD_PRICE',
-                'prmt_pct', 'push_prmt', 'cpn_pct', 'push_cpn', 'dsc', 'appr', 'push_prc', 'sprc_cpn',
+                'prmt_pct', 'push_prmt', 'cpn_pct', 'push_cpn', 'dsc', 'appr', 'push_prc',
                 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI',
                 'AD_Spend_L30'
             ];

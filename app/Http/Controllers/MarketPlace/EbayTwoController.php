@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\ProductMaster;
 use App\Models\EbayTwoDataView;
 use App\Services\Ebay2ApiService;
+use App\Services\Ebay1PromotionService;
 use App\Services\EbayPushService;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Channels\ChannelMasterController;
@@ -2298,7 +2299,10 @@ class EbayTwoController extends Controller
             // Pass variation SKU — multi-variation listings ignore item-level StartPrice.
             $service = new Ebay2ApiService();
             $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
-            $result  = $service->reviseFixedPriceItem(itemId: $ebayMetric->item_id, price: $priceFloat, sku: $apiSku);
+            $result = Ebay1PromotionService::for('ebay2')->withPriceRevisionAllowed(
+                $sku,
+                fn () => $service->reviseFixedPriceItem(itemId: $ebayMetric->item_id, price: $priceFloat, sku: $apiSku)
+            );
 
             if (isset($result['success']) && $result['success']) {
                 $ebayMetric->ebay_price = $priceFloat;
