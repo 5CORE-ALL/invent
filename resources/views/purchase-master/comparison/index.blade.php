@@ -7849,11 +7849,20 @@ document.addEventListener('DOMContentLoaded', function () {
                     return;
                 }
 
-                if (stored) {
-                    row[colIndex] = stored;
+                // Link / company / other chrome cells: visible text is not the stored value.
+                if (
+                    cell.classList.contains('cd-sheet-cell-link')
+                    || cell.classList.contains('cd-sheet-cell-company')
+                    || cell.getAttribute('contenteditable') !== 'true'
+                ) {
+                    row[colIndex] = stored || (currentSheetCells[rowIndex] || [])[colIndex] || '';
                     return;
                 }
-                row[colIndex] = (cell.textContent || '').trimEnd();
+
+                // Live typed text wins — data-value is only the last render snapshot.
+                const liveText = (cell.textContent || '').trimEnd();
+                row[colIndex] = liveText;
+                cell.dataset.value = liveText;
             });
 
             rows.push(row);
