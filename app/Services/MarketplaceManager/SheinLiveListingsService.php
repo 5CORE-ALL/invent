@@ -45,11 +45,17 @@ final class SheinLiveListingsService
                 return $this->fetchFromLocal();
             });
 
-            return $this->withListedNullInventoryRows(is_array($rows) ? $rows : []);
+            return MarketplacePortalInactiveCount::applyToLiveRows(
+                'shein',
+                $this->withListedNullInventoryRows(is_array($rows) ? $rows : [])
+            );
         } catch (\Throwable $e) {
             Log::warning('SheinLiveListingsService: cache unavailable', ['error' => $e->getMessage()]);
 
-            return $this->withListedNullInventoryRows($this->fetchFromLocal());
+            return MarketplacePortalInactiveCount::applyToLiveRows(
+                'shein',
+                $this->withListedNullInventoryRows($this->fetchFromLocal())
+            );
         }
     }
 
@@ -61,7 +67,9 @@ final class SheinLiveListingsService
         try {
             $cached = Cache::get(self::CACHE_KEY);
 
-            return is_array($cached) ? $this->withListedNullInventoryRows($cached) : null;
+            return is_array($cached)
+                ? MarketplacePortalInactiveCount::applyToLiveRows('shein', $this->withListedNullInventoryRows($cached))
+                : null;
         } catch (\Throwable $e) {
             return null;
         }

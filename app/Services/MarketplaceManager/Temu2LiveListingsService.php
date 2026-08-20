@@ -69,7 +69,7 @@ class Temu2LiveListingsService
             Cache::forget(self::CACHE_KEY);
         }
 
-        return $rows;
+        return MarketplacePortalInactiveCount::applyToLiveRows('temu2', $rows);
     }
 
     /**
@@ -104,7 +104,7 @@ class Temu2LiveListingsService
             return null;
         }
 
-        return $cached;
+        return MarketplacePortalInactiveCount::applyToLiveRows('temu2', $cached);
     }
 
     /**

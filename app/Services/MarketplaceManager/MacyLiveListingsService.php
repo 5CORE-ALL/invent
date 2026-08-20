@@ -33,7 +33,7 @@ class MacyLiveListingsService
         $rows = $this->fetchFromLocal();
         Cache::put(self::CACHE_KEY, $rows, now()->addHours(6));
 
-        return $rows;
+        return MarketplacePortalInactiveCount::applyToLiveRows('macy', $rows);
     }
 
     /**
@@ -43,7 +43,7 @@ class MacyLiveListingsService
     {
         $cached = Cache::get(self::CACHE_KEY);
 
-        return is_array($cached) ? $cached : null;
+        return is_array($cached) ? MarketplacePortalInactiveCount::applyToLiveRows('macy', $cached) : null;
     }
 
     /**

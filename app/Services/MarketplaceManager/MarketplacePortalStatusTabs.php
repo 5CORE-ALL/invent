@@ -30,7 +30,7 @@ final class MarketplacePortalStatusTabs
             'delisted', 'deleted', 'unpublished', 'auditing', 'editingrequired',
             'editing_required', 'service_delete', 'pending', 'under_review',
             'seller_deactivated', 'platform_deactivated', 'freeze', 'failed',
-            'incomplete', 'suppressed', 'blocked', 'unsold',
+            'incomplete', 'suppressed', 'blocked', 'unsold', 'archived',
         ], true)) {
             return 'inactive';
         }

@@ -4,6 +4,7 @@ namespace App\Support\Marketplace;
 
 use App\Models\ChannelMaster;
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
+use App\Services\MarketplaceManager\MarketplacePortalInactiveCount;
 use App\Services\ShopifyPlsTokenService;
 use App\Services\Support\MarketplaceApiConfigService;
 use Carbon\Carbon;
@@ -26,9 +27,9 @@ class MappingChannelCounts
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
 
-    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v3';
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v4';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v3';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v4';
 
     /**
      * Channels shown on /map-issues.
@@ -580,7 +581,6 @@ class MappingChannelCounts
     public static function collectListingsInactiveCounts(): array
     {
         $counts = [];
-        $match = app(MarketplaceListingQtyMatchService::class);
         $seenMm = [];
 
         foreach (self::$sources as $slug => $meta) {
@@ -590,7 +590,7 @@ class MappingChannelCounts
             }
             try {
                 if (! array_key_exists($mm, $seenMm)) {
-                    $seenMm[$mm] = $match->inactiveListingCount($mm, false);
+                    $seenMm[$mm] = MarketplacePortalInactiveCount::count($mm);
                 }
                 $counts[$slug] = (int) $seenMm[$mm];
             } catch (\Throwable $e) {

@@ -43,7 +43,7 @@ class TikTokLiveListingsService
             Cache::forget($this->cacheKey);
         }
 
-        return $rows;
+        return MarketplacePortalInactiveCount::applyToLiveRows($this->syncChannel, $rows);
     }
 
     /**
@@ -61,7 +61,7 @@ class TikTokLiveListingsService
             return null;
         }
 
-        return $cached;
+        return MarketplacePortalInactiveCount::applyToLiveRows($this->syncChannel, $cached);
     }
 
     public function clearCache(): void

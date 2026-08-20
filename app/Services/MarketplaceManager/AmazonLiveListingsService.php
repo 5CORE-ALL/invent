@@ -41,7 +41,7 @@ class AmazonLiveListingsService
             Cache::forget(self::CACHE_KEY);
         }
 
-        return $rows;
+        return MarketplacePortalInactiveCount::applyToLiveRows('amazon', $rows);
     }
 
     /**
@@ -59,7 +59,7 @@ class AmazonLiveListingsService
             return null;
         }
 
-        return $cached;
+        return MarketplacePortalInactiveCount::applyToLiveRows('amazon', $cached);
     }
 
     /**
