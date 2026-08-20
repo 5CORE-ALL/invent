@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\TemuMetric;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class TemuLiveListingsService
 {
-    private const CACHE_KEY = 'mm.temu.live_listings.v1';
+    private const CACHE_KEY = 'mm.temu.live_listings.v2';
 
     public function clearCache(): void
     {
@@ -27,6 +28,19 @@ class TemuLiveListingsService
             $cached = $this->peekCached();
             if ($cached !== null) {
                 return $cached;
+            }
+        }
+
+        if ($forceRefresh) {
+            try {
+                $api = app(\App\Services\TemuApiService::class);
+                if (method_exists($api, 'syncSkuListingStatuses')) {
+                    $api->syncSkuListingStatuses();
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TemuLiveListingsService: status sync failed', [
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -141,13 +155,26 @@ class TemuLiveListingsService
             $title = $sku;
         }
 
+        $status = 'other';
+        $inactiveReason = null;
+        if (Schema::hasColumn('temu_metrics', 'listing_status')) {
+            $status = strtolower(trim((string) ($row->listing_status ?? '')));
+            if (! in_array($status, ['active', 'inactive'], true)) {
+                $status = 'other';
+            }
+            if ($status === 'inactive' && Schema::hasColumn('temu_metrics', 'inactive_reason')) {
+                $inactiveReason = trim((string) ($row->inactive_reason ?? '')) ?: null;
+            }
+        }
+
         return [
             'product_id' => $productId,
             'sku' => $sku,
-            'state' => 'active',
+            'state' => $status,
             'inventory' => $row->quantity !== null ? (int) $row->quantity : null,
             'title' => $title,
             'price' => $row->base_price !== null ? (float) $row->base_price : null,
+            'inactive_reason' => $inactiveReason,
         ];
     }
 }

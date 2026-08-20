@@ -7,8 +7,8 @@
         @include('marketplace._page-heading', ['slug' => 'topdawg', 'heading' => 'TopDawg Listings'])
         <p class="text-muted mb-3">
             Linked tabs: <strong>All</strong> = every Shopify live SKU.
-            <strong>Active SKU / Inactive SKU</strong> = qty matched, split by TopDawg status.
-            <strong>Active SKU Mismatch / Inactive SKU Mismatch</strong> = qty differs, split by TopDawg status.
+            <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs TopDawg quantity (same qty, or gap at most max(3 units, 3% of Shopify)).
+            <strong>Active SKU / Inactive SKU</strong> = actual TopDawg seller portal status (not inventory match).
             <em>Refresh live</em> warms TopDawg status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
@@ -32,13 +32,13 @@
                     @elseif(($linkTab ?? '') === 'unlinked')
                         {{ $products->total() }} not on TopDawg (in-stock Shopify)
                     @elseif(($linkTab ?? '') === 'matched')
+                        {{ $products->total() }} Inv SKU Match
+                    @elseif(($linkTab ?? '') === 'mismatch')
+                        {{ $products->total() }} Inv SKU Mismatch
+                    @elseif(($linkTab ?? '') === 'mismatch_inactive')
                         {{ $products->total() }} Active SKU
                     @elseif(($linkTab ?? '') === 'matched_inactive')
-                        {{ $products->total() }} inActive SKU
-                    @elseif(($linkTab ?? '') === 'mismatch')
-                        {{ $products->total() }} Active SKU Mismatch
-                    @elseif(($linkTab ?? '') === 'mismatch_inactive')
-                        {{ $products->total() }} inActive SKU Mismatch
+                        {{ $products->total() }} Inactive SKU
                     @elseif(($linkTab ?? '') === 'zero')
                         {{ $products->total() }} zero on Shopify
                     @else
@@ -54,8 +54,8 @@
                             <i class="ri-delete-bin-line"></i> Clear cache
                         </a>
                     @endif
-                    @if(in_array(($linkTab ?? ''), ['mismatch', 'mismatch_inactive'], true))
-                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="{{ $linkTab }}">
+                    @if(($linkTab ?? '') === 'mismatch')
+                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="mismatch">
                             <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
                         </button>
                     @endif
@@ -94,26 +94,13 @@
                             <input type="text" name="search_sku" class="form-control form-control-sm" value="{{ $searchSku }}" placeholder="SKU" style="min-width: 120px;">
                         </div>
                         <input type="hidden" name="link" value="{{ $linkTab ?? 'all' }}">
-                        @if($isLinkedTab)
-                            <div class="col-auto">
-                                <label class="form-label small mb-0">State</label>
-                                <select name="state" class="form-select form-select-sm" style="min-width: 180px;" onchange="this.form.submit()">
-                                    <option value="all" @selected($stateTab === 'all')>All ({{ (int) ($stateCounts['all'] ?? 0) }})</option>
-                                    <option value="active" @selected($stateTab === 'active')>Active ({{ (int) ($stateCounts['active'] ?? 0) }})</option>
-                                    <option value="inactive" @selected($stateTab === 'inactive')>Inactive ({{ (int) ($stateCounts['inactive'] ?? 0) }})</option>
-                                    @if(!empty($stateCounts['other']))
-                                        <option value="other" @selected($stateTab === 'other')>Other ({{ (int) $stateCounts['other'] }})</option>
-                                    @endif
-                                </select>
-                            </div>
-                        @endif
                         <div class="col-auto">
                             <button type="submit" class="btn btn-primary btn-sm">Search</button>
                             <a href="{{ request()->url() }}?link={{ urlencode($linkTab ?? 'all') }}" class="btn btn-outline-secondary btn-sm">Clear</a>
                         </div>
                     </div>
-                    @if($isLinkedTab && empty($stateCacheReady))
-                        <p class="small text-muted mt-2 mb-0">State counts need the live TopDawg catalog cache — click <em>Refresh live</em>, wait a minute, then reload.</p>
+                    @if(in_array(($linkTab ?? ''), ['matched_inactive', 'mismatch_inactive'], true) && empty($stateCacheReady) && (int) ($counts[$linkTab] ?? 0) === 0)
+                        <p class="small text-muted mt-2 mb-0">Active / Inactive counts need the live TopDawg catalog — click <em>Refresh live</em>, wait a minute, then reload.</p>
                     @endif
                 </form>
 
@@ -122,19 +109,19 @@
                         <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=matched&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Active SKU {{ $counts['matched'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=matched&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Inv SKU Match {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Active SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Inv SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=matched_inactive&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched_inactive' ? 'active' : '' }}">Inactive SKU {{ $counts['matched_inactive'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch_inactive&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch_inactive' ? 'active' : '' }}">Active SKU {{ $counts['mismatch_inactive'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch_inactive&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch_inactive' ? 'active' : '' }}">Inactive SKU Mismatch {{ $counts['mismatch_inactive'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=matched_inactive&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched_inactive' ? 'active' : '' }}">Inactive SKU {{ $counts['matched_inactive'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=zero&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'zero' ? 'active' : '' }}">Zero on Shopify {{ $counts['zero'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=zero&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'zero' ? 'active' : '' }}">Zero on Shopify {{ $counts['zero'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=unlinked&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on TopDawg {{ $counts['unlinked'] ?? 0 }}</a>
@@ -150,6 +137,7 @@
                                 <th>{{ ($linkTab ?? '') === 'not_in_shopify' ? 'Title (TopDawg)' : 'Title (Shopify)' }}</th>
                                 <th>TopDawg ID</th>
                                 <th>State</th>
+                                <th>Inactive Reason</th>
                                 <th>Shopify Qty</th>
                                 <th>TopDawg Qty</th>
                                 <th>Shopify Price</th>
@@ -196,6 +184,7 @@
                                             —
                                         @endif
                                     </td>
+                                    <td class="small">{{ !empty($p->inactive_reason) ? $p->inactive_reason : '—' }}</td>
                                     <td>{{ $p->shopify_quantity !== null ? $p->shopify_quantity : '—' }}</td>
                                     <td>{{ ($p->ae_quantity ?? $p->quantity) !== null ? ($p->ae_quantity ?? $p->quantity) : '—' }}</td>
                                     <td>{{ isset($p->shopify_price) ? number_format((float)$p->shopify_price, 2) : '—' }}</td>
@@ -212,7 +201,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="10" class="text-center text-muted py-4">
+                                    <td colspan="11" class="text-center text-muted py-4">
                                         @if(($linkTab ?? 'all') === 'not_in_shopify')
                                             No TopDawg listings found without a matching Shopify SKU.
                                         @else
@@ -327,7 +316,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
     var btn = this;
     var scope = btn.getAttribute('data-scope') || 'mismatch';
-    if (!confirm('Sync ' + (scope === 'mismatch_inactive' ? 'Inactive' : 'Active') + ' Mismatch SKUs from live Shopify → TopDawg right now (no queue)? This runs in batches and may take a few minutes.')) {
+    if (!confirm('Sync Inv SKU Mismatch SKUs from live Shopify → TopDawg right now (no queue)? This runs in batches and may take a few minutes.')) {
         return;
     }
     btn.disabled = true;

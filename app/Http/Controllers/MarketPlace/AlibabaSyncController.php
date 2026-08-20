@@ -20,6 +20,7 @@ use App\Services\MarketplaceManager\AlibabaOrderPushService;
 use App\Services\MarketplaceManager\AlibabaOrderSyncService;
 use App\Services\MarketplaceManager\AlibabaTrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
@@ -196,7 +197,6 @@ class AlibabaSyncController extends Controller
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
-        // Local cache — inactive state tabs stay empty until live API state is wired.
         $counts['matched_inactive'] = 0;
         $counts['mismatch_inactive'] = 0;
 
@@ -245,12 +245,57 @@ class AlibabaSyncController extends Controller
             $counts['linked_zero_inv'] = $counts['zero'];
         }
 
+        $liveRows = $liveService->peekCached();
+        if (! is_array($liveRows) || $liveRows === []) {
+            $liveRows = $liveService->all(false);
+        }
+        $overlay = MarketplacePortalStatusTabs::overlayQtyAndPortal(
+            $counts,
+            $matchedQty,
+            $mismatchQty,
+            $zeroQty,
+            $liveRows
+        );
+        $counts = $overlay['counts'];
+        $matchedActive = $overlay['matchedActive'];
+        $matchedInactive = $overlay['matchedInactive'];
+        $mismatchActive = $overlay['mismatchActive'];
+        $mismatchInactive = $overlay['mismatchInactive'];
+
+        $portalTabs = ['matched_inactive', 'mismatch_inactive'];
+        if (in_array($linkTab, $portalTabs, true)) {
+            if ($counts[$linkTab] === 0 && ! $forceLive) {
+                WarmAlibabaLiveListingsCache::dispatch();
+            }
+            $paginator = MarketplacePortalStatusTabs::paginate(
+                $linkTab === 'mismatch_inactive' ? 'active' : 'inactive',
+                $linkTab === 'mismatch_inactive' ? $mismatchInactive : $matchedInactive,
+                $liveRows,
+                $searchSku,
+                $searchName,
+                $page,
+                $perPage,
+                'alibaba_state',
+                'alibaba_title'
+            );
+
+            return view('marketplace.alibaba.products', [
+                'products' => $paginator,
+                'title' => 'Alibaba — Listings',
+                'searchSku' => $searchSku,
+                'searchName' => $searchName,
+                'linkTab' => $linkTab,
+                'counts' => $counts,
+                'apiError' => $apiError,
+                'connected' => $this->apiConfig->isConfigured('alibaba'),
+                'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
+            ]);
+        }
+
         $linkedVerified = match ($linkTab) {
-            'mismatch' => $mismatchQty,
-            'mismatch_inactive' => [],
+            'mismatch' => $mismatchActive,
             'zero' => $zeroQty,
-            'matched_inactive' => [],
-            'matched' => $matchedQty,
+            'matched' => $matchedActive,
             default => [],
         };
 
@@ -700,7 +745,11 @@ class AlibabaSyncController extends Controller
             $this->alibabaStockMapForSkus($verified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
-        $mismatch = $classified['mismatch'] ?? [];
+        $mismatchQty = $classified['mismatch'] ?? [];
+        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
+        $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
+            ? []
+            : $mismatchQty;
 
         $offset = max(0, (int) $request->input('offset', 0));
         $limit = max(1, min(40, (int) $request->input('limit', 25)));

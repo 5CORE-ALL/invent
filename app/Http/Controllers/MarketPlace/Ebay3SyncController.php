@@ -18,6 +18,7 @@ use App\Services\MarketplaceManager\Ebay3OrderPushService;
 use App\Services\MarketplaceManager\Ebay3OrderSyncService;
 use App\Services\MarketplaceManager\Ebay3TrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
@@ -133,7 +134,7 @@ class Ebay3SyncController extends Controller
         $clearCache = $request->boolean('clear_cache');
         $emptyStateCounts = $this->emptyAeStateCounts();
         $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
-        $liveLinkTabs = ['matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'];
+        $liveLinkTabs = ['matched', 'mismatch', 'zero'];
         $liveService = app(Ebay3LiveListingsService::class);
         if ($clearCache) {
             $liveService->clearCache();
@@ -238,62 +239,59 @@ class Ebay3SyncController extends Controller
             $counts['linked_zero_inv'] = $counts['zero'];
         }
 
-        $matchedActive = $matchedQty;
-        $matchedInactive = [];
-        $matchedNormToSku = [];
-        foreach ($matchedQty as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $matchedNormToSku[$n] = (string) $sku;
-            }
+        $liveRows = $liveService->peekCached();
+        if (! is_array($liveRows) || $liveRows === []) {
+            $liveRows = $liveService->all(false);
         }
-        $matchedStateIndex = $this->aeStateIndexFromCache(
-            $liveService,
-            static fn (string $norm): bool => isset($matchedNormToSku[$norm]),
-            count($matchedNormToSku),
-            $matchedNormToSku
+        $overlay = MarketplacePortalStatusTabs::overlayQtyAndPortal(
+            $counts,
+            $matchedQty,
+            $mismatchQty,
+            $zeroQty,
+            $liveRows
         );
-        if ($matchedStateIndex['ready']) {
-            $matchedActive = $catalog->filterSkusByNormalizedAllowList(
-                $matchedQty,
-                $matchedStateIndex['skusByState']['active'] ?? []
-            );
-            $matchedInactive = $catalog->excludeSkusByNormalizedList($matchedQty, $matchedActive);
-            $counts['matched'] = count($matchedActive);
-            $counts['matched_inactive'] = count($matchedInactive);
-            $counts['linked_with_inv'] = $counts['matched'];
-        }
+        $counts = $overlay['counts'];
+        $matchedActive = $overlay['matchedActive'];
+        $matchedInactive = $overlay['matchedInactive'];
+        $mismatchActive = $overlay['mismatchActive'];
+        $mismatchInactive = $overlay['mismatchInactive'];
 
-        $mismatchActive = $mismatchQty;
-        $mismatchInactive = [];
-        $mismatchNormToSku = [];
-        foreach ($mismatchQty as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $mismatchNormToSku[$n] = (string) $sku;
+        $portalTabs = ['matched_inactive', 'mismatch_inactive'];
+        if (in_array($linkTab, $portalTabs, true)) {
+            if ($counts[$linkTab] === 0 && ! $forceLive) {
+                WarmEbay3LiveListingsCache::dispatch();
             }
-        }
-        $mismatchStateIndex = $this->aeStateIndexFromCache(
-            $liveService,
-            static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-            count($mismatchNormToSku),
-            $mismatchNormToSku
-        );
-        if ($mismatchStateIndex['ready']) {
-            $mismatchActive = $catalog->filterSkusByNormalizedAllowList(
-                $mismatchQty,
-                $mismatchStateIndex['skusByState']['active'] ?? []
+            $paginator = MarketplacePortalStatusTabs::paginate(
+                $linkTab === 'mismatch_inactive' ? 'active' : 'inactive',
+                $linkTab === 'mismatch_inactive' ? $mismatchInactive : $matchedInactive,
+                $liveRows,
+                $searchSku,
+                $searchName,
+                $page,
+                $perPage,
+                'ebay3_state',
+                'ebay3_title'
             );
-            $mismatchInactive = $catalog->excludeSkusByNormalizedList($mismatchQty, $mismatchActive);
-            $counts['mismatch'] = count($mismatchActive);
-            $counts['mismatch_inactive'] = count($mismatchInactive);
+
+            return view('marketplace.ebay3.products', [
+                'products' => $paginator,
+                'title' => 'eBay 3 — Listings',
+                'searchSku' => $searchSku,
+                'searchName' => $searchName,
+                'linkTab' => $linkTab,
+                'stateTab' => 'all',
+                'counts' => $counts,
+                'stateCounts' => $emptyStateCounts,
+                'stateCacheReady' => is_array($liveService->peekCached()),
+                'apiError' => $apiError,
+                'connected' => $this->apiConfig->isConfigured('ebay3'),
+                'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
+            ]);
         }
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $mismatchActive,
-            'mismatch_inactive' => $mismatchInactive,
             'zero' => $zeroQty,
-            'matched_inactive' => $matchedInactive,
             'matched' => $matchedActive,
             default => [],
         };
@@ -411,6 +409,10 @@ class Ebay3SyncController extends Controller
                 'linked' => $linked,
                 'listing_status' => $linked ? 'linked' : 'unlinked',
                 'ebay3_state' => $state !== '' ? $state : null,
+                'mp_state' => $state !== '' ? $state : null,
+                'inactive_reason' => MarketplacePortalStatusTabs::bucket($state) === 'inactive'
+                    ? MarketplacePortalStatusTabs::inactiveReason(is_array($live) ? $live : (is_array($cached) ? $cached : []), $aeQty)
+                    : null,
             ];
         });
 
@@ -932,57 +934,9 @@ class Ebay3SyncController extends Controller
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $mismatchQty = $classified['mismatch'] ?? [];
 
-        if (in_array($scope, ['mismatch', 'active', 'mismatch_active'], true)) {
-            $mismatchNormToSku = [];
-            foreach ($mismatchQty as $sku) {
-                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($n !== '') {
-                    $mismatchNormToSku[$n] = (string) $sku;
-                }
-            }
-            $idx = $this->aeStateIndexFromCache(
-                $liveService,
-                static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-                count($mismatchNormToSku),
-                $mismatchNormToSku
-            );
-            if ($idx['ready']) {
-                return array_values($catalog->filterSkusByNormalizedAllowList(
-                    $mismatchQty,
-                    $idx['skusByState']['active'] ?? []
-                ));
-            }
-
-            return array_values($mismatchQty);
-        }
-
-        if (in_array($scope, ['mismatch_inactive', 'inactive'], true)) {
-            $mismatchNormToSku = [];
-            foreach ($mismatchQty as $sku) {
-                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($n !== '') {
-                    $mismatchNormToSku[$n] = (string) $sku;
-                }
-            }
-            $idx = $this->aeStateIndexFromCache(
-                $liveService,
-                static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-                count($mismatchNormToSku),
-                $mismatchNormToSku
-            );
-            if ($idx['ready']) {
-                $active = $catalog->filterSkusByNormalizedAllowList(
-                    $mismatchQty,
-                    $idx['skusByState']['active'] ?? []
-                );
-
-                return array_values($catalog->excludeSkusByNormalizedList($mismatchQty, $active));
-            }
-
-            return [];
-        }
-
-        return array_values($mismatchQty);
+        return in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
+            ? []
+            : array_values($mismatchQty);
     }
 
     public function pushOrderToShopify(Request $request): JsonResponse

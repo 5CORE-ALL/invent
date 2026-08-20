@@ -7,9 +7,9 @@
         @include('marketplace._page-heading', ['slug' => 'tiktok2', 'heading' => 'TikTok 2 Listings'])
         <p class="text-muted mb-3">
             Seller Center <strong>Active</strong> counts <strong>products</strong> (a combined listing is 1). This page counts <strong>Shopify SKUs</strong>.
-            Linked here ≈ Active SKU + mismatch + Zero on Shopify (sold-out SKUs are still Active in Seller Center).
-            <strong>Active SKU</strong> = qty matches, or Shopify is higher by at most the higher of 3 units or 3% of Shopify qty.
-            <strong>Active SKU Mismatch</strong> = TikTok qty is higher than Shopify, or the gap is beyond that bar — use <em>Sync Mismatch inventory now</em>.
+            Linked here ≈ Inv SKU Match + Inv SKU Mismatch + Zero on Shopify (sold-out SKUs are still Active in Seller Center).
+            <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs TikTok 2 quantity (same qty, or gap at most max(3 units, 3% of Shopify)).
+            <strong>Active SKU / Inactive SKU</strong> = actual TikTok 2 seller portal status (not inventory match).
             App has {{ $counts['tiktok_products'] ?? 0 }} TikTok products / {{ $counts['tiktok_skus'] ?? 0 }} linked SKUs.
             <em>Refresh live</em> warms the listings cache. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
@@ -34,9 +34,13 @@
                     @elseif(($linkTab ?? '') === 'unlinked')
                         {{ $products->total() }} not on TikTok (in-stock Shopify)
                     @elseif(($linkTab ?? '') === 'matched')
-                        {{ $products->total() }} Active SKU
+                        {{ $products->total() }} Inv SKU Match
                     @elseif(($linkTab ?? '') === 'mismatch')
-                        {{ $products->total() }} Active SKU Mismatch
+                        {{ $products->total() }} Inv SKU Mismatch
+                    @elseif(($linkTab ?? '') === 'mismatch_inactive')
+                        {{ $products->total() }} Active SKU
+                    @elseif(($linkTab ?? '') === 'matched_inactive')
+                        {{ $products->total() }} Inactive SKU
                     @elseif(($linkTab ?? '') === 'zero')
                         {{ $products->total() }} zero on Shopify
                     @else
@@ -52,8 +56,8 @@
                             <i class="ri-delete-bin-line"></i> Clear cache
                         </a>
                     @endif
-                    @if(in_array(($linkTab ?? ''), ['mismatch', 'mismatch_inactive'], true))
-                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="{{ $linkTab }}">
+                    @if(($linkTab ?? '') === 'mismatch')
+                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="mismatch">
                             <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
                         </button>
                     @endif
@@ -101,10 +105,16 @@
                         <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=matched&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Active SKU {{ $counts['matched'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=matched&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Inv SKU Match {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Active SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Inv SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=mismatch_inactive&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch_inactive' ? 'active' : '' }}">Active SKU {{ $counts['mismatch_inactive'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=matched_inactive&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched_inactive' ? 'active' : '' }}">Inactive SKU {{ $counts['matched_inactive'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=zero&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'zero' ? 'active' : '' }}">Zero on Shopify {{ $counts['zero'] ?? 0 }}</a>
@@ -123,6 +133,8 @@
                                 <th>Title (Shopify)</th>
                                 <th>TikTok Product ID</th>
                                 <th>SKU ID</th>
+                                <th>State</th>
+                                <th>Inactive Reason</th>
                                 <th>Shopify Qty</th>
                                 <th>TikTok Qty</th>
                                 <th>Shopify Price</th>
@@ -151,6 +163,16 @@
                                     <td>{{ \Illuminate\Support\Str::limit($p->title ?? '—', 50) }}</td>
                                     <td class="small">{{ $p->product_id ?? '—' }}</td>
                                     <td class="small">{{ $p->sku_id ?? '—' }}</td>
+                                    <td class="small">
+                                        @php $stVal = $p->mp_state ?? $p->tiktok_state ?? $p->temu_state ?? null; @endphp
+                                        @if(!empty($stVal))
+                                            @php $st = strtolower((string)$stVal); @endphp
+                                            <span class="badge {{ $st === 'active' ? 'bg-success-subtle text-success' : ($st === 'inactive' ? 'bg-warning-subtle text-warning' : 'bg-light text-muted') }}">{{ $stVal }}</span>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                    <td class="small">{{ !empty($p->inactive_reason) ? $p->inactive_reason : '—' }}</td>
                                     <td>{{ $p->shopify_quantity !== null ? $p->shopify_quantity : '—' }}</td>
                                     <td>{{ ($p->ae_quantity ?? $p->quantity) !== null ? ($p->ae_quantity ?? $p->quantity) : '—' }}</td>
                                     <td>{{ isset($p->shopify_price) ? number_format((float)$p->shopify_price, 2) : '—' }}</td>
@@ -165,7 +187,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="10" class="text-center text-muted py-4">
+                                    <td colspan="12" class="text-center text-muted py-4">
                                         No rows for this tab.
                                         @if($connected)
                                             Click <strong>Sync TikTok 2 link map</strong> if products are empty, or refresh Shopify.
@@ -288,7 +310,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
     var btn = this;
     var scope = btn.getAttribute('data-scope') || 'mismatch';
-    if (!confirm('Sync Mismatch SKUs from live Shopify → TikTok 2 right now (batched, no queue)?')) {
+    if (!confirm('Sync Inv SKU Mismatch SKUs from live Shopify → TikTok 2 right now (batched, no queue)?')) {
         return;
     }
     btn.disabled = true;
