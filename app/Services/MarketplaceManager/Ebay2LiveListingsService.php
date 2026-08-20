@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class Ebay2LiveListingsService
 {
-    public const CACHE_KEY = 'mm.ebay2.live_listings.v1';
+    public const CACHE_KEY = 'mm.ebay2.live_listings.v3';
 
     public const CACHE_GEN_KEY = 'mm.ebay2.live_listings.gen';
 
@@ -34,6 +34,8 @@ final class Ebay2LiveListingsService
             if ($cached !== null) {
                 return $cached;
             }
+        } else {
+            $this->syncPortalStatusFromEbay();
         }
 
         $gen = 0;
@@ -45,7 +47,7 @@ final class Ebay2LiveListingsService
 
         $rows = $this->fetchFromLocal();
         try {
-            if ((int) Cache::get(self::CACHE_GEN_KEY, 0) === $gen) {
+            if ((int) Cache::get(self::CACHE_GEN_KEY, 0) === $gen && $this->rowsHavePortalStatus($rows)) {
                 Cache::put(self::CACHE_KEY, $rows, self::CACHE_TTL_SECONDS);
             }
         } catch (\Throwable $e) {
@@ -62,8 +64,16 @@ final class Ebay2LiveListingsService
     {
         try {
             $cached = Cache::get(self::CACHE_KEY);
+            if (! is_array($cached) || $cached === []) {
+                return null;
+            }
+            if (! $this->rowsHavePortalStatus($cached)) {
+                Cache::forget(self::CACHE_KEY);
 
-            return is_array($cached) ? $cached : null;
+                return null;
+            }
+
+            return $cached;
         } catch (\Throwable $e) {
             return null;
         }
@@ -115,14 +125,16 @@ final class Ebay2LiveListingsService
             return [];
         }
 
+        $hasStatus = Schema::hasColumn('ebay_2_metrics', 'listing_status');
+        $hasReason = Schema::hasColumn('ebay_2_metrics', 'inactive_reason');
         $out = [];
         Ebay2Metric::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->orderBy('id')
-            ->chunkById(500, function ($chunk) use (&$out) {
+            ->chunkById(500, function ($chunk) use (&$out, $hasStatus, $hasReason) {
                 foreach ($chunk as $row) {
-                    $parsed = $this->mapMetricRow($row);
+                    $parsed = EbayLiveListingMapper::mapMetricRow($row, $hasStatus, $hasReason);
                     if ($parsed !== null) {
                         $out[] = $parsed;
                     }
@@ -133,27 +145,37 @@ final class Ebay2LiveListingsService
     }
 
     /**
-     * @return array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float}|null
+     * @param  array<int, array<string, mixed>>  $rows
      */
-    protected function mapMetricRow(Ebay2Metric $row): ?array
+    protected function rowsHavePortalStatus(array $rows): bool
     {
-        $sku = trim((string) $row->sku);
-        if ($sku === '') {
-            return null;
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (in_array(strtolower((string) ($row['state'] ?? '')), ['active', 'inactive'], true)) {
+                return true;
+            }
         }
 
-        $itemId = trim((string) ($row->item_id ?? ''));
-        $productId = $itemId !== '' ? $itemId : $sku;
-        $inv = $row->ebay_stock !== null ? (int) $row->ebay_stock : null;
-        $isActive = $productId !== $sku || ($inv !== null && $inv > 0);
+        return false;
+    }
 
-        return [
-            'product_id' => $productId,
-            'sku' => $sku,
-            'state' => $isActive ? 'active' : 'inactive',
-            'inventory' => $inv,
-            'title' => $row->ebay_title !== null ? (string) $row->ebay_title : null,
-            'price' => $row->ebay_price !== null ? (float) $row->ebay_price : null,
-        ];
+    protected function syncPortalStatusFromEbay(): void
+    {
+        $lock = Cache::lock('mm.ebay2.portal_status_sync', 400);
+        if (! $lock->get()) {
+            return;
+        }
+        try {
+            $result = app(EbayPortalListingStatusSync::class)->sync(2);
+            if (! ($result['ok'] ?? false)) {
+                Log::warning('Ebay2LiveListingsService: portal status sync failed', $result);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Ebay2LiveListingsService: portal status sync exception', ['error' => $e->getMessage()]);
+        } finally {
+            optional($lock)->release();
+        }
     }
 }

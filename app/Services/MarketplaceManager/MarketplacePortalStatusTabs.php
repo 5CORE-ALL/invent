@@ -20,7 +20,8 @@ final class MarketplacePortalStatusTabs
         $state = str_replace([' ', '-'], '_', $state);
         if (in_array($state, [
             'active', '1', 'true', 'live', 'onselling', 'on_selling',
-            'published', 'enabled', 'buyable', 'out_of_stock', 'sold', 'oos',
+            'published', 'enabled', 'buyable', 'buyable_by_quantity', 'listed',
+            'activate', 'out_of_stock', 'oos',
         ], true)) {
             return 'active';
         }
@@ -28,10 +29,12 @@ final class MarketplacePortalStatusTabs
             'inactive', '0', 'false', 'offline', 'ended', 'draft', 'disabled',
             'delisted', 'deleted', 'unpublished', 'auditing', 'editingrequired',
             'editing_required', 'service_delete', 'pending', 'under_review',
+            'seller_deactivated', 'platform_deactivated', 'freeze', 'failed',
+            'incomplete', 'suppressed', 'blocked', 'unsold',
         ], true)) {
             return 'inactive';
         }
-        if ($state === '' || $state === 'other') {
+        if (in_array($state, ['', 'other', 'missing', 'not_listed'], true)) {
             return 'other';
         }
 

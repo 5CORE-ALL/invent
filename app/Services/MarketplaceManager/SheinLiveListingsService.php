@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class SheinLiveListingsService
 {
-    public const CACHE_KEY = 'mm.shein.live_listings.v1';
+    public const CACHE_KEY = 'mm.shein.live_listings.v2';
 
     public const CACHE_TTL_SECONDS = 7200;
 
@@ -214,9 +214,14 @@ final class SheinLiveListingsService
         $productId = $sheinCode !== '' ? $sheinCode : $sku;
 
         $status = strtolower(trim((string) ($cache?->status ?? '')));
-        $isActive = ! in_array($status, ['inactive', 'disabled', 'delisted', 'out_of_stock', 'deleted'], true);
-        if ($status === '') {
-            $isActive = ($row->shein_stock ?? 0) > 0 || $productId !== $sku;
+        if (in_array($status, ['inactive', 'disabled', 'delisted', 'deleted'], true)) {
+            $isActive = false;
+        } elseif (in_array($status, ['active', 'live', 'onselling', 'on_selling'], true)) {
+            $isActive = true;
+        } elseif ($status === '') {
+            $isActive = null;
+        } else {
+            $isActive = MarketplacePortalStatusTabs::bucket($status) === 'active';
         }
 
         $inv = $row->shein_stock !== null
@@ -229,7 +234,7 @@ final class SheinLiveListingsService
         return [
             'product_id' => $productId,
             'sku' => $sku,
-            'state' => $isActive ? 'active' : 'inactive',
+            'state' => $isActive === null ? 'other' : ($isActive ? 'active' : 'inactive'),
             'inventory' => $inv,
             'title' => $title,
             'price' => $price !== null ? (float) $price : null,

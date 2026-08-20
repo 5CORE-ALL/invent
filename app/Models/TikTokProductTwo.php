@@ -21,6 +21,7 @@ class TikTokProductTwo extends Model
         'affl_views',
         'reviews',
         'rating',
+        'listing_status',
     ];
 
     protected $casts = [

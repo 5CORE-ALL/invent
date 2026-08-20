@@ -13,12 +13,14 @@ use Illuminate\Support\Facades\Schema;
  */
 class TikTokLiveListingsService
 {
-    protected string $cacheKey = 'mm.tiktok.live_listings.v1';
+    protected string $cacheKey = 'mm.tiktok.live_listings.v3';
 
     /** @var class-string<Model> */
     protected string $productModel = TikTokProduct::class;
 
     protected string $table = 'tiktok_products';
+
+    protected string $syncChannel = 'tiktok';
 
     /**
      * @return array<int, array{product_id: string, sku: string, sku_id: ?string, state: string, inventory: int|null, title: ?string, price: ?float}>
@@ -30,10 +32,16 @@ class TikTokLiveListingsService
             if ($cached !== null) {
                 return $cached;
             }
+        } else {
+            $this->syncPortalStatusFromTikTok();
         }
 
         $rows = $this->fetchFromLocal();
-        Cache::put($this->cacheKey, $rows, now()->addMinutes(10));
+        if ($this->rowsHavePortalStatus($rows)) {
+            Cache::put($this->cacheKey, $rows, now()->addMinutes(10));
+        } else {
+            Cache::forget($this->cacheKey);
+        }
 
         return $rows;
     }
@@ -44,14 +52,24 @@ class TikTokLiveListingsService
     public function peekCached(): ?array
     {
         $cached = Cache::get($this->cacheKey);
+        if (! is_array($cached) || $cached === []) {
+            return null;
+        }
+        if (! $this->rowsHavePortalStatus($cached)) {
+            Cache::forget($this->cacheKey);
 
-        return is_array($cached) ? $cached : null;
+            return null;
+        }
+
+        return $cached;
     }
 
     public function clearCache(): void
     {
         try {
             Cache::forget($this->cacheKey);
+            Cache::forget('mm.tiktok.live_listings.v1');
+            Cache::forget('mm.tiktok2.live_listings.v1');
         } catch (\Throwable $e) {
             // ignore
         }
@@ -153,15 +171,61 @@ class TikTokLiveListingsService
             return null;
         }
         $skuId = trim((string) ($row->sku_id ?? ''));
+        $rawStatus = Schema::hasColumn($this->table, 'listing_status')
+            ? strtolower(trim((string) ($row->listing_status ?? '')))
+            : '';
+        $state = in_array($rawStatus, ['active', 'inactive'], true) ? $rawStatus : 'other';
 
         return [
             'product_id' => $productId,
             'sku' => $sku,
             'sku_id' => $skuId !== '' ? $skuId : null,
-            'state' => 'active',
+            'state' => $state,
             'inventory' => $row->stock !== null ? (int) $row->stock : null,
             'title' => null,
             'price' => $row->price !== null ? (float) $row->price : null,
+            'inactive_reason' => $state === 'inactive' ? 'Inactive on TikTok Shop' : null,
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    protected function rowsHavePortalStatus(array $rows): bool
+    {
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (in_array(strtolower((string) ($row['state'] ?? '')), ['active', 'inactive'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function syncPortalStatusFromTikTok(): void
+    {
+        $lock = Cache::lock('mm.'.$this->syncChannel.'.portal_status_sync', 400);
+        if (! $lock->get()) {
+            return;
+        }
+        try {
+            $result = TikTokLinkMapSyncService::for($this->syncChannel)->syncPortalStatuses();
+            if (! ($result['ok'] ?? false)) {
+                \Illuminate\Support\Facades\Log::warning('TikTokLiveListingsService: portal status sync failed', [
+                    'channel' => $this->syncChannel,
+                    'result' => $result,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('TikTokLiveListingsService: portal status sync exception', [
+                'channel' => $this->syncChannel,
+                'error' => $e->getMessage(),
+            ]);
+        } finally {
+            optional($lock)->release();
+        }
     }
 }

@@ -28,6 +28,8 @@ class Ebay3Metric extends Model
         'lmp_link',
         'lmp_data',
         'bullet_points',
+        'listing_status',
+        'inactive_reason',
     ];
 
     protected $casts = [

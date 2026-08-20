@@ -9,11 +9,11 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Live listing helpers for eBay 1 listings UI.
- * Stock/price/title from ebay_metrics; product_id = item_id.
+ * Stock/price/title from ebay_metrics; Active/Inactive from eBay listing_status.
  */
 final class Ebay1LiveListingsService
 {
-    public const CACHE_KEY = 'mm.ebay1.live_listings.v1';
+    public const CACHE_KEY = 'mm.ebay1.live_listings.v3';
 
     public const CACHE_TTL_SECONDS = 7200;
 
@@ -30,9 +30,12 @@ final class Ebay1LiveListingsService
         if ($forceRefresh) {
             try {
                 Cache::forget(self::CACHE_KEY);
+                Cache::forget('mm.ebay1.live_listings.v1');
+                Cache::forget('mm.ebay1.live_listings.v2');
             } catch (\Throwable $e) {
                 // ignore
             }
+            $this->syncPortalStatusFromEbay();
         }
 
         try {
@@ -53,8 +56,16 @@ final class Ebay1LiveListingsService
     {
         try {
             $cached = Cache::get(self::CACHE_KEY);
+            if (! is_array($cached) || $cached === []) {
+                return null;
+            }
+            if (! $this->rowsHavePortalStatus($cached)) {
+                Cache::forget(self::CACHE_KEY);
 
-            return is_array($cached) ? $cached : null;
+                return null;
+            }
+
+            return $cached;
         } catch (\Throwable $e) {
             return null;
         }
@@ -64,6 +75,7 @@ final class Ebay1LiveListingsService
     {
         try {
             Cache::forget(self::CACHE_KEY);
+            Cache::forget('mm.ebay1.live_listings.v1');
         } catch (\Throwable $e) {
             // ignore
         }
@@ -97,6 +109,41 @@ final class Ebay1LiveListingsService
     }
 
     /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    protected function rowsHavePortalStatus(array $rows): bool
+    {
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (in_array(strtolower((string) ($row['state'] ?? '')), ['active', 'inactive'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function syncPortalStatusFromEbay(): void
+    {
+        $lock = Cache::lock('mm.ebay1.portal_status_sync', 400);
+        if (! $lock->get()) {
+            return;
+        }
+        try {
+            $result = app(EbayPortalListingStatusSync::class)->sync(1);
+            if (! ($result['ok'] ?? false)) {
+                Log::warning('Ebay1LiveListingsService: portal status sync failed', $result);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Ebay1LiveListingsService: portal status sync exception', ['error' => $e->getMessage()]);
+        } finally {
+            optional($lock)->release();
+        }
+    }
+
+    /**
      * @return array<int, array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float}>
      */
     protected function fetchFromLocal(): array
@@ -105,14 +152,16 @@ final class Ebay1LiveListingsService
             return [];
         }
 
+        $hasStatus = Schema::hasColumn('ebay_metrics', 'listing_status');
+        $hasReason = Schema::hasColumn('ebay_metrics', 'inactive_reason');
         $out = [];
         EbayMetric::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->orderBy('id')
-            ->chunkById(500, function ($chunk) use (&$out) {
+            ->chunkById(500, function ($chunk) use (&$out, $hasStatus, $hasReason) {
                 foreach ($chunk as $row) {
-                    $parsed = $this->mapMetricRow($row);
+                    $parsed = EbayLiveListingMapper::mapMetricRow($row, $hasStatus, $hasReason);
                     if ($parsed !== null) {
                         $out[] = $parsed;
                     }
@@ -120,30 +169,5 @@ final class Ebay1LiveListingsService
             });
 
         return $out;
-    }
-
-    /**
-     * @return array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float}|null
-     */
-    protected function mapMetricRow(EbayMetric $row): ?array
-    {
-        $sku = trim((string) $row->sku);
-        if ($sku === '') {
-            return null;
-        }
-
-        $itemId = trim((string) ($row->item_id ?? ''));
-        $productId = $itemId !== '' ? $itemId : $sku;
-        $inv = $row->ebay_stock !== null ? (int) $row->ebay_stock : null;
-        $isActive = $productId !== $sku || ($inv !== null && $inv > 0);
-
-        return [
-            'product_id' => $productId,
-            'sku' => $sku,
-            'state' => $isActive ? 'active' : 'inactive',
-            'inventory' => $inv,
-            'title' => $row->ebay_title !== null ? (string) $row->ebay_title : null,
-            'price' => $row->ebay_price !== null ? (float) $row->ebay_price : null,
-        ];
     }
 }

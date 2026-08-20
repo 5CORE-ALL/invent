@@ -161,6 +161,13 @@ class Ebay3SyncController extends Controller
 
         if ($forceLive) {
             WarmEbay3LiveListingsCache::dispatch();
+            @set_time_limit(180);
+            try {
+                $liveService->all(true);
+            } catch (\Throwable $e) {
+                Log::warning('Ebay3 listings live refresh: '.$e->getMessage());
+                $apiError = trim(($apiError ? $apiError.' ' : '').'eBay 3 Active/Inactive refresh is running. Wait for this page to finish loading, then click Refresh live again.');
+            }
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);

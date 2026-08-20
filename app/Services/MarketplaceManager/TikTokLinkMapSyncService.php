@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Schema;
  * Modes:
  * - auto  — picks quick (changed since last sync) or full (rebuild) automatically
  * - quick — only products with update_time since last sync
- * - full  — entire ACTIVATE catalog
+ * - full  — entire Seller Center catalog (live + inactive)
  */
 class TikTokLinkMapSyncService
 {
@@ -176,6 +176,7 @@ class TikTokLinkMapSyncService
         if (! Schema::hasTable($this->table())) {
             return $this->fail($this->table().' table missing. Run migrations.');
         }
+        $this->ensureListingStatusColumn();
 
         $page = max(1, $page);
         $pageSize = max(1, min(100, $pageSize));
@@ -250,7 +251,7 @@ class TikTokLinkMapSyncService
 
         try {
             @set_time_limit(90);
-            $response = $api->getProducts($pageSize, $pageToken, 'ACTIVATE', null, $filters);
+            $response = $api->getProducts($pageSize, $pageToken, 'ALL', null, $filters);
         } catch (\Throwable $e) {
             Log::error('TikTok link map page fetch failed', [
                 'channel' => $this->channel,
@@ -561,12 +562,95 @@ class TikTokLinkMapSyncService
     }
 
     /**
+     * Pull live + deactivated catalogs so MM Active/Inactive match Seller Center.
+     *
+     * @return array{ok: bool, upserted: int, error?: string}
+     */
+    public function syncPortalStatuses(): array
+    {
+        $this->ensureListingStatusColumn();
+        $api = $this->api();
+        if (! $api->isAuthenticated()) {
+            $access = (string) config('services.'.$this->channel.'.access_token', '');
+            $refresh = (string) config('services.'.$this->channel.'.refresh_token', '');
+            if ($access !== '') {
+                $api->setTokens($access, $refresh !== '' ? $refresh : null);
+            }
+        }
+        if (! $api->isAuthenticated()) {
+            return ['ok' => false, 'upserted' => 0, 'error' => $this->label().' is not connected'];
+        }
+
+        $upserted = $this->paginateStatusCatalog($api, 'ALL', 120);
+        foreach (['SELLER_DEACTIVATED', 'PLATFORM_DEACTIVATED', 'FREEZE'] as $status) {
+            $upserted += $this->paginateStatusCatalog($api, $status, 40);
+        }
+
+        return ['ok' => true, 'upserted' => $upserted];
+    }
+
+    protected function paginateStatusCatalog($api, string $status, int $maxPages): int
+    {
+        $upserted = 0;
+        $pageToken = '';
+        for ($page = 1; $page <= $maxPages; $page++) {
+            try {
+                @set_time_limit(90);
+                $response = $api->getProducts(100, $pageToken, $status);
+            } catch (\Throwable $e) {
+                Log::warning('TikTok portal status page failed', [
+                    'channel' => $this->channel,
+                    'status' => $status,
+                    'page' => $page,
+                    'error' => $e->getMessage(),
+                ]);
+                break;
+            }
+            if (! is_array($response) || (isset($response['code']) && (int) $response['code'] !== 0)) {
+                Log::warning('TikTok portal status API error', [
+                    'channel' => $this->channel,
+                    'status' => $status,
+                    'code' => $response['code'] ?? null,
+                    'message' => $response['message'] ?? null,
+                ]);
+                break;
+            }
+            $products = $this->extractProducts($response);
+            if ($products === []) {
+                break;
+            }
+            $upserted += $this->upsertProducts($products, $status === 'ALL' ? null : $status);
+            $pageToken = $this->extractNextPageToken($response);
+            if ($pageToken === '') {
+                break;
+            }
+        }
+
+        return $upserted;
+    }
+
+    public function ensureListingStatusColumn(): void
+    {
+        $table = $this->table();
+        if (! Schema::hasTable($table)) {
+            return;
+        }
+        if (! Schema::hasColumn($table, 'listing_status')) {
+            Schema::table($table, function ($blueprint) {
+                $blueprint->string('listing_status', 32)->nullable()->index();
+            });
+        }
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $products
      */
-    protected function upsertProducts(array $products): int
+    protected function upsertProducts(array $products, ?string $statusFallback = null): int
     {
+        $this->ensureListingStatusColumn();
         $model = $this->productModel();
         $hasSkuIdCol = Schema::hasColumn($this->table(), 'sku_id');
+        $hasStatusCol = Schema::hasColumn($this->table(), 'listing_status');
         $upserted = 0;
 
         foreach ($products as $product) {
@@ -577,6 +661,7 @@ class TikTokLinkMapSyncService
             if (! $productId) {
                 continue;
             }
+            $listingStatus = $this->normalizeTikTokPortalStatus($product, $statusFallback);
 
             foreach ($this->expandProductSkuRows($product) as $row) {
                 $normalizedSku = strtoupper(trim((string) $row['sku']));
@@ -594,6 +679,9 @@ class TikTokLinkMapSyncService
                 if ($hasSkuIdCol && ! empty($row['sku_id'])) {
                     $update['sku_id'] = (string) $row['sku_id'];
                 }
+                if ($hasStatusCol && $listingStatus !== '') {
+                    $update['listing_status'] = $listingStatus;
+                }
 
                 /** @var TikTokProduct|TikTokProductTwo|null $existing */
                 $existing = $model::query()->where('sku', $normalizedSku)->first();
@@ -601,7 +689,8 @@ class TikTokLinkMapSyncService
                     $same = (string) $existing->product_id === (string) $update['product_id']
                         && (float) $existing->price === (float) $update['price']
                         && (! array_key_exists('stock', $update) || (int) $existing->stock === (int) $update['stock'])
-                        && (! array_key_exists('sku_id', $update) || (string) ($existing->sku_id ?? '') === (string) $update['sku_id']);
+                        && (! array_key_exists('sku_id', $update) || (string) ($existing->sku_id ?? '') === (string) $update['sku_id'])
+                        && (! array_key_exists('listing_status', $update) || strtolower((string) ($existing->listing_status ?? '')) === strtolower((string) $update['listing_status']));
                     if ($same) {
                         continue;
                     }
@@ -615,6 +704,27 @@ class TikTokLinkMapSyncService
         }
 
         return $upserted;
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     */
+    protected function normalizeTikTokPortalStatus(array $product, ?string $fallback = null): string
+    {
+        $raw = strtoupper(trim((string) (
+            $product['status']
+            ?? $product['product_status']
+            ?? $fallback
+            ?? ''
+        )));
+        if ($raw === '' || $raw === 'ALL') {
+            return '';
+        }
+        if (in_array($raw, ['ACTIVATE', 'ACTIVE', 'LIVE'], true)) {
+            return 'active';
+        }
+
+        return 'inactive';
     }
 
     /**

@@ -86,6 +86,15 @@ class TikTokListingsPageBuilder
 
         if ($forceLive) {
             $this->dispatchWarmJob();
+            @set_time_limit(180);
+            try {
+                $liveService->all(true);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('TikTok listings live refresh: '.$e->getMessage(), [
+                    'channel' => $this->channel,
+                ]);
+                $apiError = trim(($apiError ? $apiError.' ' : '').$label.' Active/Inactive refresh is running. Wait for this page to finish loading, then click Refresh live again.');
+            }
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);

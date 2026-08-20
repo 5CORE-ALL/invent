@@ -83,10 +83,16 @@ final class AmazonListingStatusHelper
             ?? ''
         )));
         if ($state === '') {
+            return '';
+        }
+        if (in_array($state, ['active', 'buyable', 'buyable_by_quantity', 'listed', '1', 'true', 'live'], true)) {
             return 'active';
         }
-        if (in_array($state, ['active', 'inactive', '1', '0', 'true', 'false'], true)) {
-            return in_array($state, ['inactive', '0', 'false'], true) ? 'inactive' : 'active';
+        if (in_array($state, ['inactive', '0', 'false', 'incomplete', 'suppressed', 'blocked'], true)) {
+            return 'inactive';
+        }
+        if (in_array($state, ['not_listed', 'missing'], true)) {
+            return '';
         }
 
         return $state;

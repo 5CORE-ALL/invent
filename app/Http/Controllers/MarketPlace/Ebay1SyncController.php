@@ -161,6 +161,13 @@ class Ebay1SyncController extends Controller
 
         if ($forceLive) {
             WarmEbay1LiveListingsCache::dispatch();
+            @set_time_limit(180);
+            try {
+                $liveService->all(true);
+            } catch (\Throwable $e) {
+                Log::warning('Ebay1 listings live refresh: '.$e->getMessage());
+                $apiError = trim(($apiError ? $apiError.' ' : '').'eBay Active/Inactive refresh is running. Wait for this page to finish loading, then click Refresh live again.');
+            }
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);

@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class FaireLiveListingsService
 {
-    public const CACHE_KEY = 'mm.faire.live_listings.v1';
+    public const CACHE_KEY = 'mm.faire.live_listings.v2';
 
     public const CACHE_TTL_SECONDS = 7200;
 
@@ -119,7 +119,7 @@ final class FaireLiveListingsService
                     $out[] = [
                         'product_id' => trim((string) ($row->product_id ?: $sku)),
                         'sku' => $sku,
-                        'state' => ($inv === 0) ? 'inactive' : 'active',
+                        'state' => 'active',
                         'inventory' => $inv,
                         'title' => $row->product_name,
                         'price' => $row->price !== null ? (float) $row->price : null,
