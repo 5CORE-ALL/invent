@@ -2642,7 +2642,7 @@
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
                         <strong>Delete Selected Tasks</strong>
-                        <small class="d-block text-muted">{{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'You can delete any selected task' : 'You can only delete tasks you created' }}</small>
+                        <small class="d-block text-muted">{{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'You can delete any selected task' : 'You can only delete tasks you created' }}{{ empty($canDeleteCorrectiveTasks) ? '. CA tasks can only be deleted by president@5core.com' : '' }}</small>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-assign-assignee-btn">
                         <i class="mdi mdi-account-plus text-success me-2"></i>
@@ -3111,6 +3111,7 @@
             var bulkActionType = '';
             var isAdmin = {{ $isAdmin ? 'true' : 'false' }};
             var canDeleteAnyTask = {{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'true' : 'false' }};
+            var canDeleteCorrectiveTasks = {{ !empty($canDeleteCorrectiveTasks) ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = {!! json_encode(Auth::user()->email) !!};
             var suppressAssignFilterApply = false;
@@ -3141,6 +3142,22 @@
                 }
                 return false;
             }
+
+            function taskIsCorrectiveAction(rowData) {
+                if (!rowData) return false;
+                var v = rowData.is_corrective_action;
+                return v === true || v === 1 || v === '1';
+            }
+
+            function userCanDeleteTaskRow(rowData) {
+                if (!rowData) return false;
+                var assignorId = rowData.assignor_id != null ? parseInt(rowData.assignor_id, 10) : NaN;
+                var baseCan = canDeleteAnyTask || (!isNaN(assignorId) && assignorId === currentUserId);
+                if (!baseCan) return false;
+                if (taskIsCorrectiveAction(rowData) && !canDeleteCorrectiveTasks) return false;
+                return true;
+            }
+
             var TASK_INDEX_FILTERS_KEY = 'taskManager.indexFilters.v1';
 
             function persistTaskIndexFilters() {
@@ -4415,7 +4432,8 @@
                             // proof / SOP / reference links to make review easier.
                             var isAssigneeOnly = !(canDeleteAnyTask || assignorId === currentUserId) && currentUserIsAssigneeOnTask(rowData);
                             var canEdit = canDeleteAnyTask || assignorId === currentUserId || isAssigneeOnly;
-                            var canDelete = canDeleteAnyTask || assignorId === currentUserId;
+                            var canDelete = userCanDeleteTaskRow(rowData);
+                            var wouldDeleteWithoutCa = canDeleteAnyTask || assignorId === currentUserId;
                             var canView = isAdmin || assignorId === currentUserId || currentUserIsAssigneeOnTask(rowData);
                             var canReworkQuick = (isAdmin || canDeleteAnyTask || assignorId === currentUserId) && st !== 'Rework' && st !== 'Archived';
                             
@@ -4441,6 +4459,12 @@
                                 buttons += `
                                     <button class="action-btn-icon action-btn-delete delete-task" data-id="${id}" title="Delete (or delete all selected)">
                                         <i class="mdi mdi-delete"></i>
+                                    </button>
+                                `;
+                            } else if (wouldDeleteWithoutCa && taskIsCorrectiveAction(rowData)) {
+                                buttons += `
+                                    <button type="button" class="action-btn-icon action-btn-delete-disabled" disabled title="Corrective action tasks can only be deleted by president@5core.com">
+                                        <i class="mdi mdi-lock-outline"></i>
                                     </button>
                                 `;
                             }
@@ -6759,7 +6783,7 @@
                         $('#tf_image_current').html('<span class="text-muted small" style="font-size:11px;"><i class="mdi mdi-image-off-outline"></i> No image attached.</span>');
                     }
 
-                    if (isOwner) {
+                    if (userCanDeleteTaskRow(rowData)) {
                         $('#tf-delete-btn').data('id', id).attr('data-id', id);
                         $('#task-form-delete-wrap').show();
                     } else {
@@ -6829,8 +6853,14 @@
 
             // Delete from within the panel (owners/admins only — button is hidden otherwise).
             $('#tf-delete-btn').on('click', function() {
-                if (!confirm('Delete this task? This action cannot be undone.')) return;
                 var taskId = $(this).data('id');
+                var rowData = null;
+                try { rowData = table.getRow(taskId) ? table.getRow(taskId).getData() : null; } catch (e) { rowData = null; }
+                if (rowData && !userCanDeleteTaskRow(rowData)) {
+                    alert('Corrective action tasks can only be deleted by president@5core.com.');
+                    return;
+                }
+                if (!confirm('Delete this task? This action cannot be undone.')) return;
                 var $btn = $(this);
                 $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Deleting...');
                 $.ajax({
@@ -6868,6 +6898,12 @@
                 e.stopPropagation();
 
                 var taskId = String($(this).data('id'));
+                var rowData = null;
+                try { rowData = table.getRow(taskId) ? table.getRow(taskId).getData() : null; } catch (e) { rowData = null; }
+                if (rowData && !userCanDeleteTaskRow(rowData) && !(selectedTasks.length > 1)) {
+                    alert('Corrective action tasks can only be deleted by president@5core.com.');
+                    return;
+                }
                 var selectedIdSet = new Set((selectedTasks || []).map(function(sid) { return String(sid); }));
                 var deleteMany = selectedTasks.length > 1 && selectedIdSet.has(taskId);
 

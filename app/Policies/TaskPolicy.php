@@ -46,12 +46,31 @@ class TaskPolicy
         'jasmine',
     ];
 
+    /** Only this email may delete a task whose CA (corrective action) column is set. */
+    private const CORRECTIVE_ACTION_DELETE_EMAIL = 'president@5core.com';
+
     /** Cleanup Missed Daily, Today Deleted, and related revert/archive tools. */
     private const TASK_MAINTENANCE_TOOL_EMAILS = [
         'president@5core.com',
         'presiden@5core.com',
         'software5@5core.com',
     ];
+
+    public static function userCanDeleteCorrectiveTasks(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $email = strtolower(trim((string) ($user->email ?? '')));
+
+        return $email !== '' && $email === self::CORRECTIVE_ACTION_DELETE_EMAIL;
+    }
+
+    public static function taskIsCorrectiveAction(Task $task): bool
+    {
+        return (bool) ($task->is_corrective_action ?? false);
+    }
 
     public static function userCanAccessTaskMaintenanceTools(?User $user): bool
     {
@@ -213,6 +232,10 @@ class TaskPolicy
      */
     public function delete(User $user, Task $task): bool
     {
+        if (self::taskIsCorrectiveAction($task) && ! self::userCanDeleteCorrectiveTasks($user)) {
+            return false;
+        }
+
         // Special permission: listed emails can delete any task
         if (self::userHasSpecialTaskPermission($user)) {
             return true;

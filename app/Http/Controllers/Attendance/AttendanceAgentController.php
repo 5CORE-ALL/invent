@@ -7,6 +7,7 @@ use App\Models\AttendanceDevice;
 use App\Models\AttendanceScreenshot;
 use App\Models\User;
 use App\Services\Attendance\AttendanceDeviceService;
+use App\Services\Attendance\AttendanceLiveWatchService;
 use App\Services\Attendance\AttendanceScreenshotService;
 use App\Services\Attendance\AttendanceService;
 use App\Support\AttendanceAccess;
@@ -27,6 +28,7 @@ class AttendanceAgentController extends Controller
         private readonly AttendanceService $attendanceService,
         private readonly AttendanceDeviceService $deviceService,
         private readonly AttendanceScreenshotService $screenshotService,
+        private readonly AttendanceLiveWatchService $liveWatchService,
     ) {}
 
     public function login(Request $request): JsonResponse
@@ -281,7 +283,10 @@ class AttendanceAgentController extends Controller
 
     public function config(Request $request): JsonResponse
     {
-        return response()->json(['ok' => true, 'config' => $this->agentConfig()]);
+        return response()->json($this->withLiveWatch([
+            'ok' => true,
+            'config' => $this->agentConfig(),
+        ], $request->user()));
     }
 
     public function status(Request $request): JsonResponse
@@ -296,7 +301,7 @@ class AttendanceAgentController extends Controller
 
         $installedVersion = $request->input('agent_version') ?: $device?->agent_version;
 
-        return response()->json([
+        return response()->json($this->withLiveWatch([
             'ok' => true,
             'has_session' => (bool) $session,
             'session' => $session ? [
@@ -313,7 +318,7 @@ class AttendanceAgentController extends Controller
             'agent_update' => $this->attendanceService->agentUpdatePayload(
                 is_string($installedVersion) ? $installedVersion : null
             ),
-        ]);
+        ], $user));
     }
 
     public function clockIn(Request $request): JsonResponse
@@ -434,7 +439,45 @@ class AttendanceAgentController extends Controller
             'agent_version' => $validated['agent_version'] ?? $device?->agent_version,
         ]));
 
-        return response()->json($result, ($result['ok'] ?? false) ? 200 : 422);
+        return response()->json(
+            $this->withLiveWatch($result, $request->user()),
+            ($result['ok'] ?? false) ? 200 : 422
+        );
+    }
+
+    public function liveCommand(Request $request): JsonResponse
+    {
+        return response()->json($this->withLiveWatch([
+            'ok' => true,
+            'config' => $this->agentConfig(),
+        ], $request->user()));
+    }
+
+    public function liveFrame(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $maxKb = max(512, (int) config('attendance.screenshot_max_kb', 5120));
+
+        $request->validate([
+            'frame' => 'required|image|max:'.$maxKb,
+            'window_title' => 'nullable|string|max:500',
+            'app_name' => 'nullable|string|max:200',
+        ]);
+
+        $accepted = $this->liveWatchService->storeFrame(
+            $user,
+            $request->file('frame'),
+            [
+                'window_title' => $request->input('window_title'),
+                'app_name' => $request->input('app_name'),
+            ]
+        );
+
+        return response()->json([
+            'ok' => true,
+            'accepted' => $accepted,
+            'live_watch' => $this->liveWatchService->commandForUser($user),
+        ]);
     }
 
     public function screenshot(Request $request): JsonResponse
@@ -520,10 +563,24 @@ class AttendanceAgentController extends Controller
             'idle_prompt_seconds' => (int) config('attendance.idle_prompt_seconds', 31536000),
             'idle_prompt_timeout_seconds' => (int) config('attendance.idle_prompt_timeout_seconds', 60),
             'screenshots_enabled' => (bool) config('attendance.screenshots_enabled', true),
+            'live_watch_enabled' => (bool) config('attendance.live_watch_enabled', true),
+            'live_fps' => max(1, (int) config('attendance.live_fps', 2)),
+            'live_quality' => max(30, min(80, (int) config('attendance.live_quality', 55))),
             'agent_version' => (string) config('attendance.agent_version', '1.0.0'),
             'download_page_url' => $base.'/attendance/agent',
             'download_url' => $base.'/attendance/agent/download',
             'update_message' => 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed. Your login stays saved.',
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function withLiveWatch(array $payload, User $user): array
+    {
+        $payload['live_watch'] = $this->liveWatchService->commandForUser($user);
+
+        return $payload;
     }
 }

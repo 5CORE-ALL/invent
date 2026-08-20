@@ -238,12 +238,23 @@
                         </form>
 
                         @if($canEditAll)
+                            @php
+                                $isCorrectiveTask = (bool) ($task->is_corrective_action ?? false);
+                                $canShowDelete = ! $isCorrectiveTask || ! empty($canDeleteCorrectiveTasks);
+                            @endphp
                             <div class="row mt-2">
                                 <div class="col-12">
-                                    <button type="button" id="delete-task-btn" class="btn btn-sm btn-outline-danger w-100"
-                                            data-id="{{ $task->id }}">
-                                        <i class="mdi mdi-delete me-1"></i> Delete Task
-                                    </button>
+                                    @if($canShowDelete)
+                                        <button type="button" id="delete-task-btn" class="btn btn-sm btn-outline-danger w-100"
+                                                data-id="{{ $task->id }}">
+                                            <i class="mdi mdi-delete me-1"></i> Delete Task
+                                        </button>
+                                    @else
+                                        <button type="button" class="btn btn-sm btn-outline-secondary w-100" disabled
+                                                title="Corrective action tasks can only be deleted by president@5core.com">
+                                            <i class="mdi mdi-lock-outline me-1"></i> Delete locked (CA)
+                                        </button>
+                                    @endif
                                 </div>
                             </div>
                         @endif

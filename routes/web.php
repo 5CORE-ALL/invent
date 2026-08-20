@@ -295,6 +295,7 @@ use App\Http\Controllers\ResourcesController;
 use App\Http\Controllers\Payroll\PayrollController;
 use App\Http\Controllers\Attendance\AttendanceAgentController;
 use App\Http\Controllers\Attendance\AttendanceController;
+use App\Http\Controllers\Attendance\AttendanceLiveController;
 use App\Http\Controllers\Attendance\AttendanceMonitorController;
 use App\Http\Controllers\Attendance\AttendancePayrollController;
 use App\Http\Controllers\Attendance\AttendanceSummaryController;
@@ -6712,6 +6713,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/automated/{id}/sop-page', [\App\Http\Controllers\AutomatedTaskSopPageController::class, 'createFromFile'])->name('tasks.automatedSopPage.create');
     Route::post('/tasks/automated/{id}/sop-page/ensure', [\App\Http\Controllers\AutomatedTaskSopPageController::class, 'ensure'])->name('tasks.automatedSopPage.ensure');
     Route::put('/tasks/automated/{id}/sop-page', [\App\Http\Controllers\AutomatedTaskSopPageController::class, 'update'])->name('tasks.automatedSopPage.update');
+    Route::post('/tasks/automated/{id}/sop-page/ai-revise', [\App\Http\Controllers\AutomatedTaskSopPageController::class, 'reviseWithAi'])->name('tasks.automatedSopPage.revise');
     Route::delete('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedDestroy'])->name('tasks.automatedDestroy');
     Route::post('/tasks/automated/expire-daily', [\App\Http\Controllers\TaskController::class, 'expireDailyAutomatedTasks'])->name('tasks.expireDailyAutomated');
 
@@ -6980,6 +6982,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/summary', [AttendanceSummaryController::class, 'index'])->name('summary');
         Route::get('/summary/data', [AttendanceSummaryController::class, 'data'])->name('summary.data');
         Route::get('/summary/export', [AttendanceSummaryController::class, 'export'])->name('summary.export');
+        Route::get('/live/session/{liveSession}/frame', [AttendanceLiveController::class, 'frame'])->name('live.frame');
+        Route::post('/live/session/{liveSession}/ping', [AttendanceLiveController::class, 'ping'])->name('live.ping');
+        Route::post('/live/session/{liveSession}/stop', [AttendanceLiveController::class, 'stop'])->name('live.stop');
+        Route::post('/live/session/{liveSession}/recording', [AttendanceLiveController::class, 'storeRecording'])->name('live.recording');
+        Route::get('/live/session/{liveSession}/recording', [AttendanceLiveController::class, 'showRecording'])->name('live.recording.show');
+        Route::get('/live/{user}', [AttendanceLiveController::class, 'show'])->name('live.show');
+        Route::post('/live/{user}/start', [AttendanceLiveController::class, 'start'])->name('live.start');
         Route::get('/payroll', [AttendancePayrollController::class, 'index'])->name('payroll.index');
         Route::get('/payroll/export', [AttendancePayrollController::class, 'export'])->name('payroll.export');
         Route::post('/payroll/lines/{user}', [AttendancePayrollController::class, 'saveLine'])->name('payroll.lines');

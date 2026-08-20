@@ -275,6 +275,7 @@ class TaskController extends Controller
 
         // Special permission: Jasmine, Ritu mam, Joy sir can delete/modify any task
         $canDeleteAnyTask = TaskPolicy::userHasSpecialTaskPermission($user);
+        $canDeleteCorrectiveTasks = TaskPolicy::userCanDeleteCorrectiveTasks($user);
         $canShowTaskMaintenanceButtons = TaskPolicy::userCanAccessTaskMaintenanceTools($user);
 
         // AVG SCORE: always the logged-in user's performance average (not task "selected user" filter)
@@ -301,6 +302,7 @@ class TaskController extends Controller
             'isAdmin',
             'users',
             'canDeleteAnyTask',
+            'canDeleteCorrectiveTasks',
             'canShowTaskMaintenanceButtons',
             'tatChartData',
             'missedChartData',
@@ -1743,7 +1745,9 @@ class TaskController extends Controller
             $task->assignee_id = $assigneeUser ? $assigneeUser->id : null;
         }
         
-        return view('tasks.edit', compact('task', 'users', 'canEditAll'));
+        $canDeleteCorrectiveTasks = TaskPolicy::userCanDeleteCorrectiveTasks(Auth::user());
+
+        return view('tasks.edit', compact('task', 'users', 'canEditAll', 'canDeleteCorrectiveTasks'));
     }
 
     public function update(Request $request, $id)
@@ -1901,6 +1905,15 @@ class TaskController extends Controller
     public function destroy($id)
     {
         $task = Task::findOrFail($id);
+        $user = Auth::user();
+
+        // Gate::before lets super-admins through authorize(); CA rows stay president-only.
+        if (TaskPolicy::taskIsCorrectiveAction($task) && ! TaskPolicy::userCanDeleteCorrectiveTasks($user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Corrective action tasks can only be deleted by president@5core.com.',
+            ], 403);
+        }
 
         // Check if user can delete this task
         $this->authorize('delete', $task);
@@ -1918,14 +1931,26 @@ class TaskController extends Controller
         $this->saveDeletedTask($task);
         $task->delete();
 
+        $skippedCaSubtasks = 0;
+        $deletedSubtasks = 0;
         foreach ($subtasks as $subtask) {
+            if (TaskPolicy::taskIsCorrectiveAction($subtask) && ! TaskPolicy::userCanDeleteCorrectiveTasks($user)) {
+                $skippedCaSubtasks++;
+                continue;
+            }
             $this->saveDeletedTask($subtask);
             $subtask->delete();
+            $deletedSubtasks++;
         }
 
-        $message = $subtasks->isEmpty()
-            ? 'Task deleted successfully!'
-            : 'Task and ' . $subtasks->count() . ' subtask(s) deleted successfully!';
+        if ($deletedSubtasks === 0) {
+            $message = 'Task deleted successfully!';
+        } else {
+            $message = 'Task and ' . $deletedSubtasks . ' subtask(s) deleted successfully!';
+        }
+        if ($skippedCaSubtasks > 0) {
+            $message .= ' '.$skippedCaSubtasks.' corrective action subtask(s) were left — only president@5core.com can delete those.';
+        }
 
         return response()->json(['success' => true, 'message' => $message]);
     }
@@ -2427,13 +2452,26 @@ class TaskController extends Controller
                                 ->get();
                         }
 
+                        $skippedCa = 0;
+                        if (! TaskPolicy::userCanDeleteCorrectiveTasks($user)) {
+                            $beforeCaFilter = $tasksToDelete->count();
+                            $tasksToDelete = $tasksToDelete
+                                ->reject(fn ($task) => TaskPolicy::taskIsCorrectiveAction($task))
+                                ->values();
+                            $skippedCa = $beforeCaFilter - $tasksToDelete->count();
+                        }
+
                         $deletedCount = $tasksToDelete->count();
                         $requestedCount = count($taskIds);
 
                         if ($deletedCount === 0) {
+                            $message = $skippedCa > 0
+                                ? 'Corrective action tasks can only be deleted by president@5core.com.'
+                                : 'You can only delete tasks you created. None of the selected tasks belong to you.';
+
                             return response()->json([
                                 'success' => false,
-                                'message' => 'You can only delete tasks you created. None of the selected tasks belong to you.'
+                                'message' => $message,
                             ], 403);
                         }
 
@@ -2476,7 +2514,17 @@ class TaskController extends Controller
                         $message = "$deletedCount task(s) deleted successfully!";
                         if ($deletedCount < $requestedCount) {
                             $skipped = $requestedCount - $deletedCount;
-                            $message .= " ($skipped task(s) skipped - you can only delete tasks you created)";
+                            $skipReasons = [];
+                            $otherSkipped = $skipped - $skippedCa;
+                            if ($otherSkipped > 0) {
+                                $skipReasons[] = $otherSkipped.' task(s) skipped — you can only delete tasks you created';
+                            }
+                            if ($skippedCa > 0) {
+                                $skipReasons[] = $skippedCa.' corrective action task(s) skipped — only president@5core.com can delete those';
+                            }
+                            if ($skipReasons !== []) {
+                                $message .= ' ('.implode('; ', $skipReasons).')';
+                            }
                         }
                         if ($archiveFailed > 0) {
                             $message .= " (Archive failed for {$archiveFailed} task(s).)";

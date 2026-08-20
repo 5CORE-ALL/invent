@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.3.4';
+const AGENT_VERSION = '1.4.0';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
 let lastUpdatePayload = null;
@@ -64,6 +64,10 @@ let screenshotTimer = null;
 let windowPollTimer = null;
 let idleCheckTimer = null;
 let uiTickTimer = null;
+let liveWatchTimer = null;
+let liveStreaming = false;
+let liveStreamBusy = false;
+let liveFrameDelayMs = 450;
 let lastLive = { title: '', process: '', app: '' };
 let lastKnownWindow = { title: '', process: '' };
 let lastSessionStats = { active_seconds: 0, idle_seconds: 0, break_seconds: 0 };
@@ -122,6 +126,9 @@ let config = {
     idle_prompt_seconds: 31536000,
     idle_prompt_timeout_seconds: 60,
     screenshots_enabled: true,
+    live_watch_enabled: true,
+    live_fps: 2,
+    live_quality: 55,
     agent_version: AGENT_VERSION,
     download_page_url: '',
     download_url: '',
@@ -251,6 +258,93 @@ async function captureScreenshot() {
     }
 
     return nativeImage.createFromBitmap(canvas, { width: outW, height: outH }).toJPEG(75);
+}
+
+async function captureLiveFrame() {
+    const displays = screen.getAllDisplays();
+    const primary = screen.getPrimaryDisplay() || displays[0];
+    if (!primary) return null;
+
+    const quality = Math.max(30, Math.min(80, Number(config.live_quality) || 55));
+    const maxW = 1280;
+    const maxH = 720;
+    const scale = Math.min(1, maxW / primary.size.width, maxH / primary.size.height);
+    const thumbW = Math.max(320, Math.round(primary.size.width * scale));
+    const thumbH = Math.max(180, Math.round(primary.size.height * scale));
+
+    const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: thumbW, height: thumbH },
+    });
+    const source = sources.find((s) => s.display_id === String(primary.id)) || sources[0];
+    if (!source?.thumbnail || source.thumbnail.isEmpty()) return null;
+
+    return source.thumbnail.toJPEG(quality);
+}
+
+function applyLiveWatch(liveWatch) {
+    if (config.live_watch_enabled === false) {
+        liveStreaming = false;
+        return;
+    }
+    if (!liveWatch) return;
+    const fps = Math.max(1, Math.min(5, Number(liveWatch.fps || config.live_fps) || 2));
+    liveFrameDelayMs = Math.round(1000 / fps);
+    if (liveWatch.quality) {
+        config.live_quality = liveWatch.quality;
+    }
+    const requested = !!liveWatch.requested;
+    if (requested && !liveStreaming) {
+        liveStreaming = true;
+        sendLiveFrame().catch(() => {});
+    } else if (!requested) {
+        liveStreaming = false;
+    }
+}
+
+async function pollLiveCommand() {
+    if (!store.get('token')) return;
+    try {
+        const { data } = await jsonApi(8000).get('/live-command');
+        if (data?.config) config = { ...config, ...data.config };
+        applyLiveWatch(data?.live_watch);
+    } catch (_) {
+        // keep last state; next poll retries
+    }
+}
+
+async function sendLiveFrame() {
+    if (!liveStreaming || liveStreamBusy || !store.get('token')) return;
+    liveStreamBusy = true;
+    try {
+        const buf = await captureLiveFrame();
+        if (buf) {
+            const form = new FormData();
+            form.append('frame', buf, { filename: 'live.jpg', contentType: 'image/jpeg' });
+            form.append('window_title', lastLive.title || '');
+            form.append('app_name', lastLive.process || '');
+            const { data } = await uploadApi(20000).post('/live-frame', form, { headers: form.getHeaders() });
+            applyLiveWatch(data?.live_watch);
+        }
+    } catch (e) {
+        console.error('live frame failed', e.message);
+    } finally {
+        liveStreamBusy = false;
+        if (liveStreaming) {
+            setTimeout(() => { sendLiveFrame().catch(() => {}); }, liveFrameDelayMs);
+        }
+    }
+}
+
+function startLiveWatchPoll() {
+    if (liveWatchTimer) return;
+    liveWatchTimer = setInterval(() => { pollLiveCommand().catch(() => {}); }, 2000);
+    pollLiveCommand().catch(() => {});
+}
+
+function stopLiveWatchPoll() {
+    if (liveWatchTimer) { clearInterval(liveWatchTimer); liveWatchTimer = null; }
+    liveStreaming = false;
 }
 
 function blitBitmap(dst, dstW, dstH, src, srcW, srcH, dx, dy, targetW, targetH) {
@@ -573,6 +667,7 @@ async function sendHeartbeat(force = false) {
             });
 
             mergeServerStats(data);
+            applyLiveWatch(data.live_watch);
             if (data.agent_update) {
                 applyAgentUpdateInfo(data.agent_update);
             }
@@ -693,6 +788,8 @@ async function fetchSessionState() {
             resetLocalStats(session, null);
         }
         if (data.config) config = { ...config, ...data.config };
+        applyLiveWatch(data.live_watch);
+        startLiveWatchPoll();
         if (session?.status === 'active') {
             startTracking();
         } else {
@@ -787,6 +884,7 @@ function buildTrayMenu() {
             click: async () => {
                 store.delete('token');
                 store.delete('user');
+                stopLiveWatchPoll();
                 stopTracking();
                 showWindow();
                 updateTray();
@@ -964,6 +1062,7 @@ function applyLoginSuccess(data) {
     enableAutoLaunch();
     updateTray();
     updateTrayTooltip('Signed in — clock in to start');
+    startLiveWatchPoll();
     showWindow();
     fetchSessionState().catch(() => {});
     checkForUpdate({ forceShow: true }).catch(() => {});
@@ -1091,6 +1190,7 @@ ipcMain.handle('googleLogin', async () => {
 ipcMain.handle('signOut', async () => {
     store.delete('token');
     store.delete('user');
+    stopLiveWatchPoll();
     stopTracking();
     updateTray();
     return { ok: true };
@@ -1230,6 +1330,7 @@ app.whenReady().then(async () => {
     });
 
     if (store.get('token')) {
+        startLiveWatchPoll();
         await fetchSessionState().catch(() => {});
         pushTodayToRenderer();
         pushStatsToUi();
@@ -1242,5 +1343,5 @@ app.whenReady().then(async () => {
     }
 });
 
-app.on('before-quit', () => { app.isQuitting = true; stopTracking(); });
+app.on('before-quit', () => { app.isQuitting = true; stopLiveWatchPoll(); stopTracking(); });
 app.on('window-all-closed', (e) => e.preventDefault());

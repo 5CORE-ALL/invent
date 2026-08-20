@@ -55,6 +55,14 @@
     .es-live-status.working { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.18); }
     .es-live-status.idle { background: #eab308; box-shadow: 0 0 0 3px rgba(234,179,8,.2); }
     .es-live-status.absent { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.18); }
+    .es-live-btn {
+        appearance: none; border: 0; background: transparent; padding: 8px;
+        cursor: pointer; border-radius: 999px; line-height: 0;
+    }
+    .es-live-btn:hover .es-live-status { transform: scale(1.2); }
+    .es-live-btn:hover .es-live-status.working { box-shadow: 0 0 0 5px rgba(34,197,94,.28); }
+    .es-live-btn:hover .es-live-status.idle { box-shadow: 0 0 0 5px rgba(234,179,8,.3); }
+    .es-live-btn:hover .es-live-status.absent { box-shadow: 0 0 0 5px rgba(239,68,68,.28); }
     .es-shot-col { text-align: center; }
     .es-shot-thumb {
         display: inline-block; width: 72px; height: 44px; border-radius: 6px;
@@ -273,7 +281,12 @@
                                     <a href="{{ $row['timeline_url'] }}" class="es-timeline-link">Timeline</a>
                                 </td>
                                 <td class="es-live-col">
-                                    <span class="es-live-status {{ $row['live_status'] ?? 'absent' }}" title="{{ $row['live_label'] ?? 'Absent' }}"></span>
+                                    <button type="button" class="es-live-btn"
+                                        data-live-url="{{ $row['live_url'] }}"
+                                        data-name="{{ $row['name'] }}"
+                                        title="Watch live screen and record — {{ $row['live_label'] ?? 'Absent' }}">
+                                        <span class="es-live-status {{ $row['live_status'] ?? 'absent' }}"></span>
+                                    </button>
                                 </td>
                                 <td class="es-shot-col">
                                     @if(!empty($row['last_image_thumb']))
@@ -469,7 +482,7 @@
                     <div class="es-name">${row.name}</div>
                     <a href="${row.timeline_url}" class="es-timeline-link">Timeline</a>
                 </td>
-                <td class="es-live-col"><span class="es-live-status ${row.live_status || 'absent'}" title="${row.live_label || 'Absent'}"></span></td>
+                <td class="es-live-col"><button type="button" class="es-live-btn" data-live-url="${escapeAttr(row.live_url || '')}" data-name="${escapeAttr(row.name || '')}" title="Watch live screen and record — ${escapeAttr(row.live_label || 'Absent')}"><span class="es-live-status ${row.live_status || 'absent'}"></span></button></td>
                 <td class="es-shot-col">${lastImageCell(row)}</td>
                 <td>
                     <div class="es-span">${row.activity_is_live ? '<span class="es-live-dot me-1"></span>' : ''}${row.activity_span}</div>
@@ -518,6 +531,25 @@
         if (this.checked) {
             refreshTimer = setInterval(refreshData, 60000);
         }
+    });
+
+    function openLiveWatch(url, name) {
+        if (!url) return;
+        const w = 1100;
+        const h = 740;
+        const left = Math.max(0, Math.round((window.screen.width - w) / 2));
+        const top = Math.max(0, Math.round((window.screen.height - h) / 2));
+        const features = 'popup=yes,width=' + w + ',height=' + h + ',left=' + left + ',top=' + top + ',resizable=yes,scrollbars=no';
+        const popup = window.open(url, 'live-watch-' + encodeURIComponent(name || 'employee'), features);
+        if (!popup) {
+            window.open(url, '_blank');
+        }
+    }
+
+    document.getElementById('summaryBody')?.addEventListener('click', function(e) {
+        const btn = e.target.closest('.es-live-btn');
+        if (!btn) return;
+        openLiveWatch(btn.dataset.liveUrl, btn.dataset.name || 'Employee');
     });
 })();
 </script>

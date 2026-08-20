@@ -384,10 +384,17 @@
                 </div>
                 @endif
                 <div class="da-feature">
+                    <div class="da-feature-icon blue"><i class="ri-record-circle-line"></i></div>
+                    <div>
+                        <div class="da-feature-title">Live screen (when asked)</div>
+                        <p class="da-feature-desc">If a manager opens Live from Team Monitoring, your screen streams and is recorded only while their watch window is open.</p>
+                    </div>
+                </div>
+                <div class="da-feature">
                     <div class="da-feature-icon slate"><i class="ri-shield-check-line"></i></div>
                     <div>
                         <div class="da-feature-title">Only while clocked in</div>
-                        <p class="da-feature-desc">Nothing is tracked before Clock In or after Clock Out.</p>
+                        <p class="da-feature-desc">Hours, apps, and screenshots are tracked only while clocked in. Live view runs only when a manager opens the watch window.</p>
                     </div>
                 </div>
             </div>

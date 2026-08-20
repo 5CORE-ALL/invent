@@ -35,10 +35,13 @@ class AutomatedTaskSopPageController extends Controller
             ]);
         }
 
+        $user = Auth::user();
+
         return view('tasks.sop-page', [
             'task' => $task,
             'page' => $page,
-            'canEdit' => $this->isAssignor(Auth::user(), $task),
+            'canEdit' => $this->isAssignor($user, $task),
+            'canUseAiBox' => $this->canUseAiBox($user, $task),
         ]);
     }
 
@@ -164,6 +167,55 @@ class AutomatedTaskSopPageController extends Controller
             ->with('success', 'SOP page saved.');
     }
 
+    public function reviseWithAi(Request $request, int $id)
+    {
+        $task = DB::table('automate_tasks')->where('id', $id)->first();
+        if (! $task) {
+            return response()->json(['message' => 'Automated task not found.'], 404);
+        }
+
+        $user = Auth::user();
+        if (! $this->canUseAiBox($user, $task)) {
+            return response()->json(['message' => 'Only the assignor, president@5core.com, or a Director can use this box.'], 403);
+        }
+
+        $page = AutomateTaskSopPage::query()->where('automate_task_id', $id)->first();
+        if (! $page) {
+            return response()->json(['message' => 'SOP page has not been created yet.'], 404);
+        }
+
+        $validated = $request->validate([
+            'instruction' => 'required|string|min:3|max:4000',
+        ]);
+
+        @set_time_limit(180);
+        try {
+            $revised = AutomatedTaskSopPageAi::revise(
+                $task,
+                (string) $page->body,
+                $validated['instruction'],
+                (string) ($page->title ?? '')
+            );
+        } catch (\Throwable $e) {
+            \Log::error('SOP page AI revise failed', ['id' => $id, 'msg' => $e->getMessage()]);
+
+            return response()->json([
+                'message' => 'Could not update the SOP page: '.$e->getMessage(),
+            ], 500);
+        }
+
+        $page->title = $revised['title'];
+        $page->body = $revised['html'];
+        $page->updated_by = $user?->id;
+        $page->save();
+
+        return response()->json([
+            'message' => 'SOP page updated.',
+            'title' => $page->title,
+            'body' => $page->body,
+        ]);
+    }
+
     private function buildPage(object $task, ?User $user, bool $overwrite): AutomateTaskSopPage
     {
         $id = (int) $task->id;
@@ -217,5 +269,35 @@ class AutomatedTaskSopPageController extends Controller
         $email = strtolower(trim((string) ($user->email ?? '')));
 
         return $assignor !== '' && $email !== '' && $assignor === $email;
+    }
+
+    private function isPresident(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return strtolower(trim((string) ($user->email ?? ''))) === 'president@5core.com';
+    }
+
+    private function isDirector(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        $org = strtolower(trim((string) ($user->org_level ?? '')));
+        if ($org === 'director') {
+            return true;
+        }
+
+        return strtolower(trim((string) ($user->role ?? ''))) === 'director';
+    }
+
+    private function canUseAiBox(?User $user, object $task): bool
+    {
+        return $this->isAssignor($user, $task)
+            || $this->isPresident($user)
+            || $this->isDirector($user);
     }
 }

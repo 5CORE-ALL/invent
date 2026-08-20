@@ -156,6 +156,7 @@ class AttendanceSummaryService
                 'has_worked' => $worked > 0 || $manualSeconds > 0,
                 'detail_url' => route('attendance.employee', $employee).'?period=custom&from='.$from.'&to='.$to,
                 'timeline_url' => route('attendance.employee', $employee).'?period=custom&from='.$from.'&to='.$to,
+                'live_url' => route('attendance.live.show', $employee),
             ];
         }
 

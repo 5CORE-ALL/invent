@@ -341,9 +341,119 @@ class AutomatedTaskSopPageAi
     }
 
     /**
+     * Apply an assignor/president/director instruction (add, edit, delete) to an existing SOP page.
+     *
+     * @return array{title: string, html: string}
+     */
+    public static function revise(object $task, string $currentHtml, string $instruction, string $currentTitle = ''): array
+    {
+        $instruction = trim($instruction);
+        if ($instruction === '') {
+            throw new \InvalidArgumentException('Enter an instruction for the AI.');
+        }
+
+        $parts = self::splitPageParts($currentHtml);
+        $working = trim($parts['body']) !== '' ? $parts['body'] : $currentHtml;
+        if (mb_strlen($working) > 24000) {
+            $working = mb_substr($working, 0, 24000)."\n<!-- truncated -->";
+        }
+
+        $system = 'You revise an internal Standard Operating Procedure HTML page for an e-commerce operations team. '
+            .'Apply the user instruction exactly: add, edit, delete, rewrite, reorder, or clarify content. '
+            .'Return the FULL updated SOP body HTML after the change — not a patch and not a comment about the change. '
+            .'Keep existing structure and wording that the instruction does not mention. '
+            .'html may use h2, h3, p, ol, ul, li, table, thead, tbody, tr, th, td, strong, em, a, br, figure, img, figcaption. '
+            .'No script, iframe, style, or forms. Do not invent passwords, account IDs, or fake URLs. '
+            .'Return ONLY valid JSON: {"title":"string","html":"string"}.';
+
+        $userMsg = "Task title: ".trim((string) ($task->title ?? 'SOP'))."\n"
+            .'Current page title: '.($currentTitle !== '' ? $currentTitle : trim((string) ($task->title ?? 'SOP')))."\n"
+            .'Group: '.trim((string) ($task->group ?? ''))."\n\n"
+            ."Instruction (do this to the page):\n".$instruction."\n\n"
+            ."Current SOP HTML:\n".$working;
+
+        $ai = self::callAiJson($system, $userMsg, 120, 0.2, 4096);
+        if ($ai['text'] === null) {
+            throw new \RuntimeException($ai['error'] ?? 'AI did not return a revision.');
+        }
+
+        $decoded = json_decode($ai['text'], true);
+        if (! is_array($decoded)) {
+            throw new \RuntimeException('AI returned an invalid revision.');
+        }
+
+        $title = trim((string) ($decoded['title'] ?? ''));
+        $html = trim((string) ($decoded['html'] ?? $decoded['body'] ?? ''));
+        if ($html === '') {
+            throw new \RuntimeException('AI returned an empty page.');
+        }
+
+        $html = AutomatedTaskSopPageBuilder::sanitizeHtml($html);
+        $lowerInstruction = strtolower($instruction);
+        $removeVisuals = (bool) preg_match('/\b(remove|delete|drop)\b.{0,40}\b(image|reel|walkthrough|visual|picture|photo)\b/i', $lowerInstruction);
+        $removeSource = (bool) preg_match('/\b(remove|delete|drop)\b.{0,40}\b(source|original file|sheet data|document data)\b/i', $lowerInstruction);
+
+        if ($parts['reel'] !== '' && ! $removeVisuals && ! str_contains($html, 'sop-ai-reel')) {
+            $html = $parts['reel'].$html;
+        }
+        if ($parts['source'] !== '' && ! $removeSource && ! str_contains($html, 'sop-source-data')) {
+            $html .= $parts['source'];
+        }
+
+        return [
+            'title' => $title !== '' ? mb_substr($title, 0, 255) : ($currentTitle !== '' ? $currentTitle : 'SOP'),
+            'html' => $html,
+        ];
+    }
+
+    /**
+     * @return array{reel: string, source: string, body: string}
+     */
+    private static function splitPageParts(string $html): array
+    {
+        if (trim($html) === '') {
+            return ['reel' => '', 'source' => '', 'body' => ''];
+        }
+
+        libxml_use_internal_errors(true);
+        $dom = new \DOMDocument();
+        $dom->loadHTML(
+            '<meta http-equiv="Content-Type" content="text/html; charset=utf-8"><div id="__sop_root">'.$html.'</div>',
+            LIBXML_HTML_NODEFDTD
+        );
+        libxml_clear_errors();
+
+        $root = $dom->getElementById('__sop_root');
+        if (! $root) {
+            return ['reel' => '', 'source' => '', 'body' => $html];
+        }
+
+        $xpath = new \DOMXPath($dom);
+        $reel = '';
+        $source = '';
+        $reelNode = $xpath->query('.//*[contains(concat(" ", normalize-space(@class), " "), " sop-ai-reel ")]', $root)->item(0);
+        if ($reelNode instanceof \DOMNode) {
+            $reel = $dom->saveHTML($reelNode) ?: '';
+            $reelNode->parentNode?->removeChild($reelNode);
+        }
+        $sourceNode = $xpath->query('.//*[contains(concat(" ", normalize-space(@class), " "), " sop-source-data ")]', $root)->item(0);
+        if ($sourceNode instanceof \DOMNode) {
+            $source = $dom->saveHTML($sourceNode) ?: '';
+            $sourceNode->parentNode?->removeChild($sourceNode);
+        }
+
+        $body = '';
+        foreach (iterator_to_array($root->childNodes) as $child) {
+            $body .= $dom->saveHTML($child) ?: '';
+        }
+
+        return ['reel' => $reel, 'source' => $source, 'body' => $body];
+    }
+
+    /**
      * @return array{text: string|null, error: string|null, provider: string|null}
      */
-    private static function callAiJson(string $system, string $userMsg, int $timeoutSeconds = 90, float $temperature = 0.35): array
+    private static function callAiJson(string $system, string $userMsg, int $timeoutSeconds = 90, float $temperature = 0.35, int $maxTokens = 3500): array
     {
         $stripFences = static function (string $t): string {
             $t = trim($t);
@@ -362,7 +472,7 @@ class AutomatedTaskSopPageAi
                     ->post('https://api.openai.com/v1/chat/completions', [
                         'model' => (string) config('services.openai.title_master_stack_model', 'gpt-4o-mini'),
                         'temperature' => $temperature,
-                        'max_tokens' => 3500,
+                        'max_tokens' => $maxTokens,
                         'response_format' => ['type' => 'json_object'],
                         'messages' => [
                             ['role' => 'system', 'content' => $system],
@@ -404,7 +514,7 @@ class AutomatedTaskSopPageAi
                 ->timeout($timeoutSeconds)
                 ->post('https://api.anthropic.com/v1/messages', [
                     'model' => (string) config('services.anthropic.model', 'claude-haiku-4-5-20251001'),
-                    'max_tokens' => 4096,
+                    'max_tokens' => max(1024, $maxTokens),
                     'temperature' => $temperature,
                     'system' => $system."\n\nIMPORTANT: Return ONLY a single valid JSON object. No prose, no markdown fences.",
                     'messages' => [
