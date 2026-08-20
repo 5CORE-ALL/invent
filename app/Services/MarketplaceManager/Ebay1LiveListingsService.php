@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class Ebay1LiveListingsService
 {
-    public const CACHE_KEY = 'mm.ebay1.live_listings.v2';
+    public const CACHE_KEY = 'mm.ebay1.live_listings.v3';
 
     public const CACHE_TTL_SECONDS = 7200;
 
@@ -31,6 +31,7 @@ final class Ebay1LiveListingsService
             try {
                 Cache::forget(self::CACHE_KEY);
                 Cache::forget('mm.ebay1.live_listings.v1');
+                Cache::forget('mm.ebay1.live_listings.v2');
             } catch (\Throwable $e) {
                 // ignore
             }

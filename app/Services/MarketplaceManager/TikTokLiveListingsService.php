@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class TikTokLiveListingsService
 {
-    protected string $cacheKey = 'mm.tiktok.live_listings.v2';
+    protected string $cacheKey = 'mm.tiktok.live_listings.v3';
 
     /** @var class-string<Model> */
     protected string $productModel = TikTokProduct::class;

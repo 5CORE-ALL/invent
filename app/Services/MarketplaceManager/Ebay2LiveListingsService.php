@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class Ebay2LiveListingsService
 {
-    public const CACHE_KEY = 'mm.ebay2.live_listings.v2';
+    public const CACHE_KEY = 'mm.ebay2.live_listings.v3';
 
     public const CACHE_GEN_KEY = 'mm.ebay2.live_listings.gen';
 

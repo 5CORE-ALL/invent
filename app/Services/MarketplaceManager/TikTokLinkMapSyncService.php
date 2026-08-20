@@ -581,38 +581,52 @@ class TikTokLinkMapSyncService
             return ['ok' => false, 'upserted' => 0, 'error' => $this->label().' is not connected'];
         }
 
-        $upserted = 0;
-        foreach (['ACTIVATE', 'SELLER_DEACTIVATED', 'PLATFORM_DEACTIVATED', 'FREEZE'] as $status) {
-            $pageToken = '';
-            for ($page = 1; $page <= 80; $page++) {
-                try {
-                    @set_time_limit(90);
-                    $response = $api->getProducts(100, $pageToken, $status);
-                } catch (\Throwable $e) {
-                    Log::warning('TikTok portal status page failed', [
-                        'channel' => $this->channel,
-                        'status' => $status,
-                        'page' => $page,
-                        'error' => $e->getMessage(),
-                    ]);
-                    break;
-                }
-                if (! is_array($response) || (isset($response['code']) && (int) $response['code'] !== 0)) {
-                    break;
-                }
-                $products = $this->extractProducts($response);
-                if ($products === []) {
-                    break;
-                }
-                $upserted += $this->upsertProducts($products, $status);
-                $pageToken = $this->extractNextPageToken($response);
-                if ($pageToken === '') {
-                    break;
-                }
-            }
+        $upserted = $this->paginateStatusCatalog($api, 'ALL', 120);
+        foreach (['SELLER_DEACTIVATED', 'PLATFORM_DEACTIVATED', 'FREEZE'] as $status) {
+            $upserted += $this->paginateStatusCatalog($api, $status, 40);
         }
 
         return ['ok' => true, 'upserted' => $upserted];
+    }
+
+    protected function paginateStatusCatalog($api, string $status, int $maxPages): int
+    {
+        $upserted = 0;
+        $pageToken = '';
+        for ($page = 1; $page <= $maxPages; $page++) {
+            try {
+                @set_time_limit(90);
+                $response = $api->getProducts(100, $pageToken, $status);
+            } catch (\Throwable $e) {
+                Log::warning('TikTok portal status page failed', [
+                    'channel' => $this->channel,
+                    'status' => $status,
+                    'page' => $page,
+                    'error' => $e->getMessage(),
+                ]);
+                break;
+            }
+            if (! is_array($response) || (isset($response['code']) && (int) $response['code'] !== 0)) {
+                Log::warning('TikTok portal status API error', [
+                    'channel' => $this->channel,
+                    'status' => $status,
+                    'code' => $response['code'] ?? null,
+                    'message' => $response['message'] ?? null,
+                ]);
+                break;
+            }
+            $products = $this->extractProducts($response);
+            if ($products === []) {
+                break;
+            }
+            $upserted += $this->upsertProducts($products, $status === 'ALL' ? null : $status);
+            $pageToken = $this->extractNextPageToken($response);
+            if ($pageToken === '') {
+                break;
+            }
+        }
+
+        return $upserted;
     }
 
     public function ensureListingStatusColumn(): void

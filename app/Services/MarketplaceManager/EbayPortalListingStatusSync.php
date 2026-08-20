@@ -29,33 +29,33 @@ class EbayPortalListingStatusSync
 
         $this->ensureListingStatusColumn($store);
 
-        $allListings = [];
-        foreach (['Active' => 'ACTIVE', 'Unsold' => 'INACTIVE', 'Sold' => 'INACTIVE'] as $listType => $status) {
-            foreach ($this->fetchListingsByStatus($token, $listType) as $item) {
-                $sku = trim((string) ($item['sku'] ?? ''));
-                if ($sku === '' || stripos($sku, 'PARENT') !== false) {
-                    continue;
-                }
-                if (isset($allListings[$sku])) {
-                    continue;
-                }
-                $allListings[$sku] = [
-                    'status' => $status,
-                    'title' => $item['title'] ?? null,
-                    'item_id' => $item['item_id'] ?? null,
-                    'ebay_link' => $item['ebay_link'] ?? null,
-                    'reason' => $listType === 'Sold' ? 'Sold / ended' : ($listType === 'Unsold' ? 'Unsold / ended' : null),
-                ];
-            }
-        }
-
         $model = $this->modelClass($store);
         $table = $this->table($store);
         if (! Schema::hasTable($table)) {
             return ['ok' => false, 'active' => 0, 'inactive' => 0, 'missing' => 0, 'error' => $table.' missing'];
         }
 
-        if ($store === 1) {
+        // Seller Hub Inactive = Unsold / not relisted (last 60 days). Do not use Sold.
+        $unsold = $this->fetchListingsByStatus($token, 'Unsold');
+        $active = $this->fetchListingsByStatus($token, 'Active');
+        $allListings = [];
+        foreach ($unsold['items'] as $item) {
+            $this->rememberListing($allListings, $item, 'INACTIVE', 'Unsold / ended');
+        }
+        foreach ($active['items'] as $item) {
+            $this->rememberListing($allListings, $item, 'ACTIVE', null);
+        }
+
+        Log::info('EbayPortalListingStatusSync: fetched', [
+            'store' => $store,
+            'unsold_api' => $unsold['total'],
+            'unsold_skus' => $unsold['sku_count'],
+            'active_api' => $active['total'],
+            'active_skus' => $active['sku_count'],
+        ]);
+
+        $unsoldExtracted = $unsold['ok'] && ($unsold['total'] === 0 || $unsold['sku_count'] > 0);
+        if ($store === 1 && $unsoldExtracted && $active['ok']) {
             $existing = $model::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
@@ -64,10 +64,11 @@ class EbayPortalListingStatusSync
                 ->unique();
             foreach ($existing as $sku) {
                 $sku = trim((string) $sku);
-                if ($sku === '' || isset($allListings[$sku])) {
+                if ($sku === '' || $this->listingHasSku($allListings, $sku)) {
                     continue;
                 }
-                $allListings[$sku] = [
+                $allListings[strtoupper($sku)] = [
+                    'sku' => $sku,
                     'status' => 'MISSING',
                     'title' => null,
                     'item_id' => null,
@@ -106,7 +107,11 @@ class EbayPortalListingStatusSync
         }
 
         foreach (array_chunk($allListings, 200, true) as $chunk) {
-            foreach ($chunk as $sku => $data) {
+            foreach ($chunk as $key => $data) {
+                $sku = trim((string) ($data['sku'] ?? $key));
+                if ($sku === '') {
+                    continue;
+                }
                 $payload = [
                     'listing_status' => $data['status'],
                 ];
@@ -125,7 +130,9 @@ class EbayPortalListingStatusSync
                     $payload['item_id'] = $data['item_id'];
                 }
 
-                $existing = $model::query()->where('sku', $sku)->first();
+                $existing = $model::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                    ->first();
                 if ($existing) {
                     $existing->fill($payload);
                     $existing->save();
@@ -223,56 +230,55 @@ class EbayPortalListingStatusSync
     }
 
     /**
-     * @return list<array{sku: string, title: ?string, item_id: ?string, ebay_link: ?string}>
+     * @param  array<string, array{sku: string, status: string, title: ?string, item_id: ?string, ebay_link: ?string, reason: ?string}>  $allListings
+     * @param  array{sku: string, title: ?string, item_id: ?string, ebay_link: ?string}  $item
+     */
+    protected function rememberListing(array &$allListings, array $item, string $status, ?string $reason): void
+    {
+        $sku = trim((string) ($item['sku'] ?? ''));
+        if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+            return;
+        }
+        $key = strtoupper($sku);
+        if (isset($allListings[$key])) {
+            return;
+        }
+        $allListings[$key] = [
+            'sku' => $sku,
+            'status' => $status,
+            'title' => $item['title'] ?? null,
+            'item_id' => $item['item_id'] ?? null,
+            'ebay_link' => $item['ebay_link'] ?? null,
+            'reason' => $reason,
+        ];
+    }
+
+    /**
+     * @param  array<string, array{sku: string}>  $allListings
+     */
+    protected function listingHasSku(array $allListings, string $sku): bool
+    {
+        return isset($allListings[strtoupper(trim($sku))]);
+    }
+
+    /**
+     * @return array{ok: bool, items: list<array{sku: string, title: ?string, item_id: ?string, ebay_link: ?string}>, total: int, sku_count: int}
      */
     protected function fetchListingsByStatus(string $accessToken, string $listType): array
     {
         $allItems = [];
         $pageNumber = 1;
         $totalPages = 1;
+        $totalEntries = 0;
+        $ok = false;
 
         do {
             try {
-                $xmlBody = '<?xml version="1.0" encoding="utf-8"?>
-                    <GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">';
-                if ($listType === 'Active') {
-                    $xmlBody .= '<ActiveList>
-                            <Include>true</Include>
-                            <Pagination>
-                                <EntriesPerPage>200</EntriesPerPage>
-                                <PageNumber>'.$pageNumber.'</PageNumber>
-                            </Pagination>
-                        </ActiveList>
-                        <OutputSelector>ActiveList.ItemArray.Item.ItemID</OutputSelector>
-                        <OutputSelector>ActiveList.ItemArray.Item.SKU</OutputSelector>
-                        <OutputSelector>ActiveList.ItemArray.Item.Title</OutputSelector>
-                        <OutputSelector>ActiveList.PaginationResult</OutputSelector>';
-                } elseif ($listType === 'Unsold') {
-                    $xmlBody .= '<UnsoldList>
-                            <Include>true</Include>
-                            <Pagination>
-                                <EntriesPerPage>200</EntriesPerPage>
-                                <PageNumber>'.$pageNumber.'</PageNumber>
-                            </Pagination>
-                        </UnsoldList>
-                        <OutputSelector>UnsoldList.ItemArray.Item.ItemID</OutputSelector>
-                        <OutputSelector>UnsoldList.ItemArray.Item.SKU</OutputSelector>
-                        <OutputSelector>UnsoldList.ItemArray.Item.Title</OutputSelector>
-                        <OutputSelector>UnsoldList.PaginationResult</OutputSelector>';
-                } else {
-                    $xmlBody .= '<SoldList>
-                            <Include>true</Include>
-                            <Pagination>
-                                <EntriesPerPage>200</EntriesPerPage>
-                                <PageNumber>'.$pageNumber.'</PageNumber>
-                            </Pagination>
-                        </SoldList>
-                        <OutputSelector>SoldList.ItemArray.Item.ItemID</OutputSelector>
-                        <OutputSelector>SoldList.ItemArray.Item.SKU</OutputSelector>
-                        <OutputSelector>SoldList.ItemArray.Item.Title</OutputSelector>
-                        <OutputSelector>SoldList.PaginationResult</OutputSelector>';
-                }
-                $xmlBody .= '</GetMyeBaySellingRequest>';
+                $listXml = $this->myEbayListXml($listType, $pageNumber);
+                $xmlBody = '<?xml version="1.0" encoding="utf-8"?>'
+                    .'<GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+                    .$listXml
+                    .'</GetMyeBaySellingRequest>';
 
                 $response = Http::timeout(60)
                     ->withHeaders([
@@ -285,45 +291,51 @@ class EbayPortalListingStatusSync
                     ->post('https://api.ebay.com/ws/api.dll');
 
                 if (! $response->successful()) {
+                    Log::warning('EbayPortalListingStatusSync: HTTP failed', [
+                        'type' => $listType,
+                        'status' => $response->status(),
+                    ]);
                     break;
                 }
 
                 $xml = simplexml_load_string($response->body());
-                if ($xml === false || isset($xml->Errors)) {
-                    Log::warning('EbayPortalListingStatusSync: API error', [
+                if ($xml === false) {
+                    break;
+                }
+                $ack = strtoupper(trim((string) ($xml->Ack ?? '')));
+                if ($ack === 'FAILURE') {
+                    Log::warning('EbayPortalListingStatusSync: API failure', [
                         'type' => $listType,
-                        'message' => isset($xml->Errors) ? (string) $xml->Errors->LongMessage : 'parse',
+                        'message' => (string) ($xml->Errors->LongMessage ?? $xml->Errors->ShortMessage ?? 'failure'),
                     ]);
                     break;
                 }
+                $ok = true;
 
                 $listNode = null;
                 if ($listType === 'Active' && isset($xml->ActiveList)) {
                     $listNode = $xml->ActiveList;
                 } elseif ($listType === 'Unsold' && isset($xml->UnsoldList)) {
                     $listNode = $xml->UnsoldList;
-                } elseif ($listType === 'Sold' && isset($xml->SoldList)) {
-                    $listNode = $xml->SoldList;
                 }
 
                 if ($pageNumber === 1 && $listNode && isset($listNode->PaginationResult->TotalNumberOfPages)) {
                     $totalPages = max(1, (int) $listNode->PaginationResult->TotalNumberOfPages);
+                    $totalEntries = (int) ($listNode->PaginationResult->TotalNumberOfEntries ?? 0);
                 }
 
                 if ($listNode && isset($listNode->ItemArray->Item)) {
                     foreach ($listNode->ItemArray->Item as $item) {
-                        $sku = trim((string) ($item->SKU ?? ''));
-                        $itemId = trim((string) ($item->ItemID ?? ''));
-                        $title = preg_replace('/[^\x20-\x7E]/', '', trim((string) ($item->Title ?? '')));
-                        if ($sku === '') {
-                            continue;
+                        foreach ($this->skusFromSellingItem($item) as $sku) {
+                            $itemId = trim((string) ($item->ItemID ?? ''));
+                            $title = preg_replace('/[^\x20-\x7E]/', '', trim((string) ($item->Title ?? '')));
+                            $allItems[] = [
+                                'sku' => $sku,
+                                'title' => $title !== '' ? $title : null,
+                                'item_id' => $itemId !== '' ? $itemId : null,
+                                'ebay_link' => $itemId !== '' ? 'https://www.ebay.com/itm/'.$itemId : null,
+                            ];
                         }
-                        $allItems[] = [
-                            'sku' => $sku,
-                            'title' => $title !== '' ? $title : null,
-                            'item_id' => $itemId !== '' ? $itemId : null,
-                            'ebay_link' => $itemId !== '' ? 'https://www.ebay.com/itm/'.$itemId : null,
-                        ];
                     }
                 }
 
@@ -337,6 +349,59 @@ class EbayPortalListingStatusSync
             }
         } while ($pageNumber <= $totalPages);
 
-        return $allItems;
+        return [
+            'ok' => $ok,
+            'items' => $allItems,
+            'total' => $totalEntries,
+            'sku_count' => count($allItems),
+        ];
+    }
+
+    protected function myEbayListXml(string $listType, int $pageNumber): string
+    {
+        $page = (int) $pageNumber;
+        $prefix = $listType === 'Unsold' ? 'UnsoldList' : 'ActiveList';
+        $duration = $listType === 'Unsold'
+            ? '<DurationInDays>60</DurationInDays>'
+            : '';
+
+        return '<'.$prefix.'>'
+            .'<Include>true</Include>'
+            .$duration
+            .'<Pagination><EntriesPerPage>200</EntriesPerPage><PageNumber>'.$page.'</PageNumber></Pagination>'
+            .'</'.$prefix.'>'
+            .'<OutputSelector>'.$prefix.'.ItemArray.Item.ItemID</OutputSelector>'
+            .'<OutputSelector>'.$prefix.'.ItemArray.Item.SKU</OutputSelector>'
+            .'<OutputSelector>'.$prefix.'.ItemArray.Item.Title</OutputSelector>'
+            .'<OutputSelector>'.$prefix.'.ItemArray.Item.Variations</OutputSelector>'
+            .'<OutputSelector>'.$prefix.'.PaginationResult</OutputSelector>';
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function skusFromSellingItem(\SimpleXMLElement $item): array
+    {
+        $skus = [];
+        $itemSku = trim((string) ($item->SKU ?? ''));
+        if ($itemSku !== '' && stripos($itemSku, 'PARENT') === false) {
+            $skus[] = $itemSku;
+        }
+        if (isset($item->Variations->Variation)) {
+            foreach ($item->Variations->Variation as $variation) {
+                $sku = trim((string) ($variation->SKU ?? ''));
+                if ($sku !== '' && stripos($sku, 'PARENT') === false) {
+                    $skus[] = $sku;
+                }
+            }
+        }
+        if ($skus === []) {
+            $itemId = trim((string) ($item->ItemID ?? ''));
+            if ($itemId !== '') {
+                $skus[] = $itemId;
+            }
+        }
+
+        return array_values(array_unique($skus));
     }
 }

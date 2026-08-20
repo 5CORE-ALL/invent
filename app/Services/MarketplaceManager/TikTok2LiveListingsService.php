@@ -9,7 +9,7 @@ use App\Models\TikTokProductTwo;
  */
 class TikTok2LiveListingsService extends TikTokLiveListingsService
 {
-    protected string $cacheKey = 'mm.tiktok2.live_listings.v2';
+    protected string $cacheKey = 'mm.tiktok2.live_listings.v3';
 
     protected string $productModel = TikTokProductTwo::class;
 
