@@ -16,6 +16,7 @@ use App\Services\ReverbAuthService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
+use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
 use App\Services\MarketplaceManager\ReverbDetailFormatter;
 use App\Services\MarketplaceManager\ReverbInventorySyncService;
 use App\Services\MarketplaceManager\ReverbLinkMapSyncService;
@@ -284,69 +285,63 @@ class ReverbSyncController extends Controller
             $counts['linked_zero_inv'] = $counts['zero'];
         }
 
-        // Qty-matched split: marketplace-active vs inactive (ended/draft/other/unknown).
-        $matchedActive = $matchedQty;
-        $matchedInactive = [];
-        $matchedNormToSku = [];
-        foreach ($matchedQty as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $matchedNormToSku[$n] = (string) $sku;
-            }
+        $liveRows = $liveService->peekCached();
+        if (! is_array($liveRows) || $liveRows === []) {
+            $liveRows = $liveService->all(false);
         }
-        $matchedStateIndex = $this->reverbStateIndexFromCache(
-            $liveService,
-            static fn (string $norm): bool => isset($matchedNormToSku[$norm]),
-            count($matchedNormToSku),
-            $matchedNormToSku
+        $overlay = MarketplacePortalStatusTabs::overlayQtyAndPortal(
+            $counts,
+            $matchedQty,
+            $mismatchQty,
+            $zeroQty,
+            $liveRows
         );
-        if ($matchedStateIndex['ready']) {
-            $activeMpSkus = array_values(array_unique(array_merge(
-                $matchedStateIndex['skusByState']['live'] ?? [],
-                $matchedStateIndex['skusByState']['out_of_stock'] ?? [],
-                $matchedStateIndex['skusByState']['sold'] ?? []
-            )));
-            $matchedActive = $catalog->filterSkusByNormalizedAllowList($matchedQty, $activeMpSkus);
-            $matchedInactive = $catalog->excludeSkusByNormalizedList($matchedQty, $matchedActive);
-            $counts['matched'] = count($matchedActive);
-            $counts['matched_inactive'] = count($matchedInactive);
-            $counts['linked_with_inv'] = $counts['matched'];
-        }
+        $counts = $overlay['counts'];
+        $matchedActive = $overlay['matchedActive'];
+        $matchedInactive = $overlay['matchedInactive'];
+        $mismatchActive = $overlay['mismatchActive'];
+        $mismatchInactive = $overlay['mismatchInactive'];
 
-        // Qty-mismatch split: same active vs inactive rules as matched.
-        $mismatchActive = $mismatchQty;
-        $mismatchInactive = [];
-        $mismatchNormToSku = [];
-        foreach ($mismatchQty as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $mismatchNormToSku[$n] = (string) $sku;
+        $portalTabs = ['matched_inactive', 'mismatch_inactive'];
+        if (in_array($linkTab, $portalTabs, true)) {
+            if ($counts[$linkTab] === 0 && ! $forceLive) {
+                WarmReverbLiveListingsCache::dispatch();
             }
-        }
-        $mismatchStateIndex = $this->reverbStateIndexFromCache(
-            $liveService,
-            static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-            count($mismatchNormToSku),
-            $mismatchNormToSku
-        );
-        if ($mismatchStateIndex['ready']) {
-            $activeMismatchMpSkus = array_values(array_unique(array_merge(
-                $mismatchStateIndex['skusByState']['live'] ?? [],
-                $mismatchStateIndex['skusByState']['out_of_stock'] ?? [],
-                $mismatchStateIndex['skusByState']['sold'] ?? []
-            )));
-            $mismatchActive = $catalog->filterSkusByNormalizedAllowList($mismatchQty, $activeMismatchMpSkus);
-            $mismatchInactive = $catalog->excludeSkusByNormalizedList($mismatchQty, $mismatchActive);
-            $counts['mismatch'] = count($mismatchActive);
-            $counts['mismatch_inactive'] = count($mismatchInactive);
+            $paginator = MarketplacePortalStatusTabs::paginate(
+                $linkTab === 'mismatch_inactive' ? 'active' : 'inactive',
+                $linkTab === 'mismatch_inactive' ? $mismatchInactive : $matchedInactive,
+                $liveRows,
+                $searchSku,
+                $searchName,
+                $page,
+                $perPage,
+                'reverb_state',
+                'reverb_title'
+            );
+
+            return view('marketplace.reverb.products', [
+                'products' => $paginator,
+                'title' => 'Reverb — Listings',
+                'searchSku' => $searchSku,
+                'searchName' => $searchName,
+                'linkTab' => $linkTab,
+                'stateTab' => 'all',
+                'counts' => $counts,
+                'stateCounts' => $emptyStateCounts,
+                'stateCacheReady' => is_array($liveService->peekCached()),
+                'apiError' => $apiError,
+                'connected' => $this->apiConfig->isConfigured('reverb'),
+                'liveMode' => true,
+                'liveQueued' => $liveQueued,
+                'shopifyCatalogReady' => $catalog->hasAnyActive(),
+                'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
+            ]);
         }
 
         if ($liveMode) {
             $tabLinked = match ($linkTab) {
                 'mismatch' => $mismatchActive,
-                'mismatch_inactive' => $mismatchInactive,
                 'zero' => $zeroQty,
-                'matched_inactive' => $matchedInactive,
                 default => $matchedActive,
             };
 
@@ -1570,37 +1565,9 @@ class ReverbSyncController extends Controller
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $mismatchQty = $classified['mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        if (in_array($scope, ['mismatch', 'active', 'mismatch_active'], true)
-            || in_array($scope, ['mismatch_inactive', 'inactive'], true)) {
-            $mismatchNormToSku = [];
-            foreach ($mismatchQty as $sku) {
-                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($n !== '') {
-                    $mismatchNormToSku[$n] = (string) $sku;
-                }
-            }
-            $idx = $this->reverbStateIndexFromCache(
-                $liveService,
-                static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-                count($mismatchNormToSku),
-                $mismatchNormToSku
-            );
-            if ($idx['ready']) {
-                $activeMpSkus = array_values(array_unique(array_merge(
-                    $idx['skusByState']['live'] ?? [],
-                    $idx['skusByState']['out_of_stock'] ?? [],
-                    $idx['skusByState']['sold'] ?? []
-                )));
-                $active = $catalog->filterSkusByNormalizedAllowList($mismatchQty, $activeMpSkus);
-                $mismatch = in_array($scope, ['mismatch_inactive', 'inactive'], true)
-                    ? $catalog->excludeSkusByNormalizedList($mismatchQty, $active)
-                    : $active;
-            } else {
-                $mismatch = in_array($scope, ['mismatch_inactive', 'inactive'], true) ? [] : $mismatchQty;
-            }
-        } else {
-            $mismatch = $mismatchQty;
-        }
+        $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
+            ? []
+            : $mismatchQty;
 
         $requested = $request->input('skus');
         if (is_array($requested) && $requested !== []) {

@@ -17,6 +17,8 @@ class TemuMetric extends Model
         'goods_id',
         'base_price',
         'quantity',
+        'listing_status',
+        'inactive_reason',
         'recommended_base_price',
         'product_impressions_l30',
         'product_clicks_l30',

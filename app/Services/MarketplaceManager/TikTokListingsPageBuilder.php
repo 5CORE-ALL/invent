@@ -55,7 +55,8 @@ class TikTokListingsPageBuilder
         $forceLive = $request->boolean('refresh_live');
         $clearCache = $request->boolean('clear_cache');
         $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0, 'tiktok_products' => 0, 'tiktok_skus' => 0];
-        $liveLinkTabs = ['matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'];
+        $liveLinkTabs = ['matched', 'mismatch', 'zero'];
+        $portalTabs = ['matched_inactive', 'mismatch_inactive'];
         $liveService = $this->liveService();
         $label = $this->label();
         $slug = $this->channel;
@@ -114,21 +115,60 @@ class TikTokListingsPageBuilder
         $counts['tiktok_products'] = $this->tiktokProductCount();
         $counts['tiktok_skus'] = count($linkedSkus);
 
-        // TikTok products table has no publish-state column — treat all as active.
-        $matchedActive = $matchedQty;
-        $matchedInactive = [];
-        $mismatchActive = $mismatchQty;
-        $mismatchInactive = [];
-        $counts['matched'] = count($matchedActive);
-        $counts['matched_inactive'] = 0;
-        $counts['mismatch'] = count($mismatchActive);
-        $counts['mismatch_inactive'] = 0;
+        $liveRows = $liveService->peekCached();
+        if (! is_array($liveRows) || $liveRows === []) {
+            $liveRows = $liveService->all(false);
+        }
+        $overlay = MarketplacePortalStatusTabs::overlayQtyAndPortal(
+            $counts,
+            $matchedQty,
+            $mismatchQty,
+            $zeroQty,
+            $liveRows
+        );
+        $counts = $overlay['counts'];
+        $matchedActive = $overlay['matchedActive'];
+        $matchedInactive = $overlay['matchedInactive'];
+        $mismatchActive = $overlay['mismatchActive'];
+        $mismatchInactive = $overlay['mismatchInactive'];
+        $counts['tiktok_products'] = $this->tiktokProductCount();
+        $counts['tiktok_skus'] = count($linkedSkus);
+
+        if (in_array($linkTab, $portalTabs, true)) {
+            if ($counts[$linkTab] === 0 && ! $forceLive) {
+                $this->dispatchWarmJob();
+            }
+            $paginator = MarketplacePortalStatusTabs::paginate(
+                $linkTab === 'mismatch_inactive' ? 'active' : 'inactive',
+                $linkTab === 'mismatch_inactive' ? $mismatchInactive : $matchedInactive,
+                $liveRows,
+                $searchSku,
+                $searchName,
+                $page,
+                $perPage,
+                'tiktok_state',
+                'tiktok_title'
+            );
+
+            return view('marketplace.'.$slug.'.products', [
+                'products' => $paginator,
+                'title' => $label.' — Listings',
+                'searchSku' => $searchSku,
+                'searchName' => $searchName,
+                'linkTab' => $linkTab,
+                'stateTab' => 'all',
+                'counts' => $counts,
+                'stateCounts' => ['all' => 0, 'active' => 0, 'inactive' => 0, 'other' => 0],
+                'stateCacheReady' => is_array($liveService->peekCached()),
+                'apiError' => $apiError,
+                'connected' => $this->isConnected(),
+                'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
+            ]);
+        }
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $mismatchActive,
-            'mismatch_inactive' => $mismatchInactive,
             'zero' => $zeroQty,
-            'matched_inactive' => $matchedInactive,
             'matched' => $matchedActive,
             default => [],
         };
@@ -287,7 +327,11 @@ class TikTokListingsPageBuilder
             $this->stockMapForSkus($verified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
-        $mismatch = $classified['mismatch'] ?? [];
+        $mismatchQty = $classified['mismatch'] ?? [];
+        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
+        $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
+            ? []
+            : $mismatchQty;
 
         $offset = max(0, (int) $request->input('offset', 0));
         $limit = max(1, min(40, (int) $request->input('limit', 25)));

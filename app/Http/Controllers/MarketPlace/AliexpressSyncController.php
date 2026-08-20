@@ -20,6 +20,7 @@ use App\Services\MarketplaceManager\AliexpressOrderPushService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
 use App\Services\MarketplaceManager\AliexpressTrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
@@ -164,7 +165,7 @@ class AliexpressSyncController extends Controller
         $clearCache = $request->boolean('clear_cache');
         $emptyStateCounts = $this->emptyAeStateCounts();
         $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
-        $liveLinkTabs = ['matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'];
+        $liveLinkTabs = ['matched', 'mismatch', 'zero'];
         $liveService = app(AliexpressLiveListingsService::class);
         if ($clearCache) {
             $liveService->clearCache();
@@ -268,62 +269,59 @@ class AliexpressSyncController extends Controller
             $counts['linked_zero_inv'] = $counts['zero'];
         }
 
-        $matchedActive = $matchedQty;
-        $matchedInactive = [];
-        $matchedNormToSku = [];
-        foreach ($matchedQty as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $matchedNormToSku[$n] = (string) $sku;
-            }
+        $liveRows = $liveService->peekCached();
+        if (! is_array($liveRows) || $liveRows === []) {
+            $liveRows = $liveService->all(false);
         }
-        $matchedStateIndex = $this->aeStateIndexFromCache(
-            $liveService,
-            static fn (string $norm): bool => isset($matchedNormToSku[$norm]),
-            count($matchedNormToSku),
-            $matchedNormToSku
+        $overlay = MarketplacePortalStatusTabs::overlayQtyAndPortal(
+            $counts,
+            $matchedQty,
+            $mismatchQty,
+            $zeroQty,
+            $liveRows
         );
-        if ($matchedStateIndex['ready']) {
-            $matchedActive = $catalog->filterSkusByNormalizedAllowList(
-                $matchedQty,
-                $matchedStateIndex['skusByState']['onselling'] ?? []
-            );
-            $matchedInactive = $catalog->excludeSkusByNormalizedList($matchedQty, $matchedActive);
-            $counts['matched'] = count($matchedActive);
-            $counts['matched_inactive'] = count($matchedInactive);
-            $counts['linked_with_inv'] = $counts['matched'];
-        }
+        $counts = $overlay['counts'];
+        $matchedActive = $overlay['matchedActive'];
+        $matchedInactive = $overlay['matchedInactive'];
+        $mismatchActive = $overlay['mismatchActive'];
+        $mismatchInactive = $overlay['mismatchInactive'];
 
-        $mismatchActive = $mismatchQty;
-        $mismatchInactive = [];
-        $mismatchNormToSku = [];
-        foreach ($mismatchQty as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $mismatchNormToSku[$n] = (string) $sku;
+        $portalTabs = ['matched_inactive', 'mismatch_inactive'];
+        if (in_array($linkTab, $portalTabs, true)) {
+            if ($counts[$linkTab] === 0 && ! $forceLive) {
+                WarmAliexpressLiveListingsCache::dispatch();
             }
-        }
-        $mismatchStateIndex = $this->aeStateIndexFromCache(
-            $liveService,
-            static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-            count($mismatchNormToSku),
-            $mismatchNormToSku
-        );
-        if ($mismatchStateIndex['ready']) {
-            $mismatchActive = $catalog->filterSkusByNormalizedAllowList(
-                $mismatchQty,
-                $mismatchStateIndex['skusByState']['onselling'] ?? []
+            $paginator = MarketplacePortalStatusTabs::paginate(
+                $linkTab === 'mismatch_inactive' ? 'active' : 'inactive',
+                $linkTab === 'mismatch_inactive' ? $mismatchInactive : $matchedInactive,
+                $liveRows,
+                $searchSku,
+                $searchName,
+                $page,
+                $perPage,
+                'aliexpress_state',
+                'aliexpress_title'
             );
-            $mismatchInactive = $catalog->excludeSkusByNormalizedList($mismatchQty, $mismatchActive);
-            $counts['mismatch'] = count($mismatchActive);
-            $counts['mismatch_inactive'] = count($mismatchInactive);
+
+            return view('marketplace.aliexpress.products', [
+                'products' => $paginator,
+                'title' => 'AliExpress — Listings',
+                'searchSku' => $searchSku,
+                'searchName' => $searchName,
+                'linkTab' => $linkTab,
+                'stateTab' => 'all',
+                'counts' => $counts,
+                'stateCounts' => $emptyStateCounts,
+                'stateCacheReady' => is_array($liveService->peekCached()),
+                'apiError' => $apiError,
+                'connected' => $this->apiConfig->isConfigured('aliexpress'),
+                'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
+            ]);
         }
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $mismatchActive,
-            'mismatch_inactive' => $mismatchInactive,
             'zero' => $zeroQty,
-            'matched_inactive' => $matchedInactive,
             'matched' => $matchedActive,
             default => [],
         };
@@ -441,6 +439,10 @@ class AliexpressSyncController extends Controller
                 'linked' => $linked,
                 'listing_status' => $linked ? 'linked' : 'unlinked',
                 'aliexpress_state' => $state !== '' ? $state : null,
+                'mp_state' => $state !== '' ? $state : null,
+                'inactive_reason' => MarketplacePortalStatusTabs::bucket($state) === 'inactive'
+                    ? MarketplacePortalStatusTabs::inactiveReason(is_array($live) ? $live : (is_array($cached) ? $cached : []), $aeQty)
+                    : null,
             ];
         });
 
@@ -841,54 +843,9 @@ class AliexpressSyncController extends Controller
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $mismatchQty = $classified['mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        if (in_array($scope, ['mismatch', 'active', 'mismatch_active'], true)) {
-            $mismatchNormToSku = [];
-            foreach ($mismatchQty as $sku) {
-                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($n !== '') {
-                    $mismatchNormToSku[$n] = (string) $sku;
-                }
-            }
-            $idx = $this->aeStateIndexFromCache(
-                $liveService,
-                static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-                count($mismatchNormToSku),
-                $mismatchNormToSku
-            );
-            if ($idx['ready']) {
-                $mismatch = $catalog->filterSkusByNormalizedAllowList(
-                    $mismatchQty,
-                    $idx['skusByState']['onselling'] ?? []
-                );
-            } else {
-                $mismatch = $mismatchQty;
-            }
-        } elseif (in_array($scope, ['mismatch_inactive', 'inactive'], true)) {
-            $mismatchNormToSku = [];
-            foreach ($mismatchQty as $sku) {
-                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($n !== '') {
-                    $mismatchNormToSku[$n] = (string) $sku;
-                }
-            }
-            $idx = $this->aeStateIndexFromCache(
-                $liveService,
-                static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-                count($mismatchNormToSku),
-                $mismatchNormToSku
-            );
-            if ($idx['ready']) {
-                $active = $catalog->filterSkusByNormalizedAllowList(
-                    $mismatchQty,
-                    $idx['skusByState']['onselling'] ?? []
-                );
-                $mismatch = $catalog->excludeSkusByNormalizedList($mismatchQty, $active);
-            } else {
-                $mismatch = [];
-            }
-        } else {
-            $mismatch = $mismatchQty;
-        }
+        $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
+            ? []
+            : $mismatchQty;
 
         $offset = max(0, (int) $request->input('offset', 0));
         $limit = max(1, min(40, (int) $request->input('limit', 25)));

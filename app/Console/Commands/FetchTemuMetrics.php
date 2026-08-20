@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class FetchTemuMetrics extends Command
 {
@@ -626,14 +627,16 @@ class FetchTemuMetrics extends Command
         $this->info('Fetching SKUs from Temu...');
 
         try {
+            $totalProcessed = 0;
+
+            foreach (['INACTIVE', 'ACTIVE'] as $skuSearchType) {
             $pageToken = null;
             $pageCount = 0;
-            $totalProcessed = 0;
 
             do {
                 $requestBody = [
                     "type" => "temu.local.sku.list.retrieve",                
-                    "skuSearchType" => "ACTIVE",
+                    "skuSearchType" => $skuSearchType,
                     "pageSize" => 100,
                 ];
 
@@ -717,6 +720,9 @@ class FetchTemuMetrics extends Command
                     if ($stock !== null && is_numeric($stock)) {
                         $payload['quantity'] = (int) $stock;
                     }
+                    if (Schema::hasColumn('temu_metrics', 'listing_status')) {
+                        $payload['listing_status'] = strtolower($skuSearchType) === 'active' ? 'active' : 'inactive';
+                    }
 
                     TemuMetric::updateOrCreate(
                         ['sku' => (string) $outSkuSn],
@@ -733,6 +739,7 @@ class FetchTemuMetrics extends Command
                 usleep(300000); // 0.3 sec delay
 
             } while ($pageToken);
+            }
 
             $this->info("✅ SKUs Synced: {$totalProcessed} total");
             Log::info('Completed fetchSkus successfully', ['total' => $totalProcessed]);

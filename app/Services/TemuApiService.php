@@ -1493,6 +1493,73 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Pull ACTIVE then INACTIVE SKUs and store listing_status on temu_metrics.
+     */
+    public function syncSkuListingStatuses(): int
+    {
+        if (! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'listing_status')) {
+            return 0;
+        }
+        $updated = 0;
+        foreach (['INACTIVE' => 'inactive', 'ACTIVE' => 'active'] as $searchType => $status) {
+            $pageToken = null;
+            $pages = 0;
+            do {
+                $requestBody = [
+                    'type' => 'temu.local.sku.list.retrieve',
+                    'skuSearchType' => $searchType,
+                    'pageSize' => 100,
+                ];
+                if ($pageToken) {
+                    $requestBody['pageToken'] = $pageToken;
+                }
+                try {
+                    $request = Http::withHeaders(['Content-Type' => 'application/json']);
+                    if (config('filesystems.default') === 'local') {
+                        $request = $request->withoutVerifying();
+                    }
+                    $data = $request->timeout(45)->post(
+                        rtrim((string) config('services.temu.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/'),
+                        $this->generateSignValue($requestBody)
+                    )->json() ?? [];
+                } catch (\Throwable $e) {
+                    Log::warning('Temu SKU status retrieve failed', ['type' => $searchType, 'error' => $e->getMessage()]);
+                    break;
+                }
+                if (! ($data['success'] ?? false)) {
+                    Log::info('Temu SKU status retrieve skipped', ['type' => $searchType, 'error' => $data['errorMsg'] ?? '']);
+                    break;
+                }
+                $items = $data['result']['skuList'] ?? [];
+                if (! is_array($items) || $items === []) {
+                    break;
+                }
+                foreach ($items as $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+                    $sku = trim((string) ($item['outSkuSn'] ?? $item['skuSn'] ?? $item['sku'] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $payload = ['listing_status' => $status];
+                    $skuId = isset($item['skuId']) ? (string) $item['skuId'] : '';
+                    if ($skuId !== '') {
+                        $payload['sku_id'] = $skuId;
+                    }
+                    TemuMetric::updateOrCreate(['sku' => $sku], $payload);
+                    $updated++;
+                }
+                $pageToken = $data['result']['pagination']['nextToken'] ?? null;
+                $pages++;
+                usleep(200000);
+            } while ($pageToken && $pages < 500);
+        }
+
+        return $updated;
+    }
+
+    /**
      * Resolve seller SKU to Temu skuId (internal SKU ID) for update APIs that require "at least one SKU".
      * Checks TemuPricing/TemuMetric first; if not found, calls temu.local.sku.list.retrieve.
      *

@@ -43,7 +43,7 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
-     * Same number as the listings "Active SKU Mismatch" tab.
+     * Same number as the listings Inv SKU Mismatch tab.
      */
     public function activeMismatchCount(string $mmChannel, bool $fetchLiveIfCold = true): int
     {
@@ -60,42 +60,11 @@ final class MarketplaceListingQtyMatchService
             return [];
         }
 
-        $liveRows = app(MarketplaceMismatchInventoryPass::class)->liveRowsForStateSplit($mmChannel, $fetchLiveIfCold);
-        if ($liveRows === []) {
-            // Cold live cache: do not fan out to every marketplace API (504s /map-issues).
-            return $fetchLiveIfCold ? [] : $mismatch;
-        }
-
-        $activeNorms = [];
-        foreach ($liveRows as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $sku = trim((string) ($row['sku'] ?? ''));
-            if ($sku === '') {
-                continue;
-            }
-            $state = strtolower(trim((string) ($row['state'] ?? '')));
-            $inv = $row['inventory'] ?? null;
-            $isActive = in_array($state, ['active', '1', 'true', 'onselling', 'on_selling'], true)
-                || ($state === '' && $inv !== 0 && $inv !== '0' && $inv !== null);
-            if (in_array($state, ['inactive', '0', 'false', 'offline', 'ended'], true) || $inv === 0 || $inv === '0') {
-                $isActive = false;
-            }
-            if (! $isActive) {
-                continue;
-            }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm !== '') {
-                $activeNorms[$norm] = true;
-            }
-        }
-
         $out = [];
         $seen = [];
         foreach ($mismatch as $sku) {
             $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($norm === '' || isset($seen[$norm]) || ! isset($activeNorms[$norm])) {
+            if ($norm === '' || isset($seen[$norm])) {
                 continue;
             }
             $seen[$norm] = true;
@@ -123,7 +92,7 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
-     * Inactive SKU tab only (matched qty, inactive state). Excludes Inactive SKU Mismatch and pending.
+     * Inactive SKU tab = seller-portal inactive listings (not qty-matched Shopify SKUs).
      *
      * @return list<string>
      */
@@ -144,71 +113,37 @@ final class MarketplaceListingQtyMatchService
      */
     public function inactiveListingRows(string $mmChannel, bool $fetchLiveIfCold = true): array
     {
-        if ($mmChannel === 'temu2') {
-            return $this->temu2PortalInactiveRows($fetchLiveIfCold);
-        }
-
-        $classified = $this->classify($mmChannel);
-        $candidates = array_values(array_unique($classified['matched'] ?? []));
-        if ($candidates === []) {
-            return [];
-        }
-
-        $index = $this->liveInactiveIndex($mmChannel, $fetchLiveIfCold);
-        if ($index['inactive'] === []) {
-            return [];
-        }
-
-        $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($candidates);
-        $mp = $this->localStockMap($mmChannel, $candidates);
-
-        $out = [];
-        $seen = [];
-        foreach ($candidates as $sku) {
-            $sku = (string) $sku;
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm === '' || isset($seen[$norm])) {
-                continue;
-            }
-            if (isset($index['pending'][$norm]) || ! isset($index['inactive'][$norm])) {
-                continue;
-            }
-            $seen[$norm] = true;
-            $inv = (int) (MarketplaceListingStockResolver::qtyFromMap($shopify, $sku) ?? 0);
-            $channelInv = (int) (MarketplaceListingStockResolver::qtyFromMap($mp, $sku) ?? 0);
-            $out[] = [
-                'sku' => $sku,
-                'channel_sku' => $sku,
-                'inv' => $inv,
-                'channel_inv' => $channelInv,
-                'diff' => abs($inv - $channelInv),
-                'status' => 'Inactive',
-                'state' => (string) ($index['state'][$norm] ?? 'inactive'),
-            ];
-        }
-
-        return $out;
+        return $this->portalInactiveRows($mmChannel, $fetchLiveIfCold);
     }
 
     /**
-     * Temu 2 Inactive SKU = actual Seller Center inactive listings (not qty-matched Shopify SKUs).
+     * Inactive SKU = seller-portal inactive listings from live cache (not qty-matched Shopify SKUs).
      *
      * @return list<array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float, status: string, state: string}>
      */
-    protected function temu2PortalInactiveRows(bool $fetchLiveIfCold): array
+    protected function portalInactiveRows(string $mmChannel, bool $fetchLiveIfCold): array
     {
-        $live = app(Temu2LiveListingsService::class);
-        $cached = $live->peekCached();
-        if ((! is_array($cached) || $cached === []) && $fetchLiveIfCold) {
-            $cached = $live->all(false);
+        $pass = app(MarketplaceMismatchInventoryPass::class);
+        if ($mmChannel === 'temu2') {
+            $live = app(Temu2LiveListingsService::class);
+            $cached = $live->peekCached();
+            if ((! is_array($cached) || $cached === []) && $fetchLiveIfCold) {
+                $cached = $live->all(false);
+            }
+            $liveRows = is_array($cached) ? $cached : [];
+        } else {
+            $liveRows = $fetchLiveIfCold
+                ? $pass->liveRowsForStateSplit($mmChannel, true)
+                : $pass->localRowsForStateSplit($mmChannel, false);
         }
-        if (! is_array($cached) || $cached === []) {
+        if ($liveRows === []) {
             return [];
         }
 
         $skus = [];
+        $states = [];
         $seen = [];
-        foreach ($cached as $row) {
+        foreach ($liveRows as $row) {
             if (! is_array($row)) {
                 continue;
             }
@@ -221,15 +156,16 @@ final class MarketplaceListingQtyMatchService
                 continue;
             }
             $state = strtolower(trim((string) ($row['state'] ?? '')));
-            if ($state !== 'inactive') {
+            if (MarketplacePortalStatusTabs::bucket($state) !== 'inactive') {
                 continue;
             }
             $seen[$norm] = true;
             $skus[] = $sku;
+            $states[$sku] = $state !== '' ? $state : 'inactive';
         }
 
         $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
-        $mp = $this->localStockMap('temu2', $skus);
+        $mp = $this->localStockMap($mmChannel, $skus);
         $out = [];
         foreach ($skus as $sku) {
             $inv = (int) (MarketplaceListingStockResolver::qtyFromMap($shopify, $sku) ?? 0);
@@ -241,7 +177,7 @@ final class MarketplaceListingQtyMatchService
                 'channel_inv' => $channelInv,
                 'diff' => abs($inv - $channelInv),
                 'status' => 'Inactive',
-                'state' => 'inactive',
+                'state' => $states[$sku] ?? 'inactive',
             ];
         }
 
