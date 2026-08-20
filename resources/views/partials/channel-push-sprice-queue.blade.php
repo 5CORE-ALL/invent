@@ -103,11 +103,17 @@
                 $('#ch-promo-push-sprice-pct').text(pct + '%');
                 $('#ch-promo-push-sprice-bar').css('width', pct + '%');
                 $('#ch-promo-push-sprice-cancel').toggle(!!active);
-                let msg = opts.msg || '';
-                if (!msg && total) {
-                    msg = done + '/' + total + ' · ' + ok + ' ok' + (fail ? (' · ' + fail + ' failed') : '');
+                let msg;
+                if (active) {
+                    msg = total ? (done + ' / ' + total) : 'Starting…';
+                } else if (finished) {
+                    msg = (opts.msg && String(opts.msg).trim())
+                        ? String(opts.msg)
+                        : (done + ' / ' + total + ' · ' + ok + ' ok' + (fail ? (' · ' + fail + ' failed') : ''));
+                } else {
+                    msg = opts.msg || 'Ready';
                 }
-                $('#ch-promo-push-sprice-msg').text(msg || 'Ready');
+                $('#ch-promo-push-sprice-msg').text(msg);
                 if (finished) {
                     clearTimeout(setChannelPushSpriceProgress._hideTimer);
                     setChannelPushSpriceProgress._hideTimer = setTimeout(function() {
@@ -171,7 +177,7 @@
                         fail: Number(resp.fail_count) || 0,
                         pct: Number(resp.pct) || 0,
                         title: active ? 'S PRC queue' : ((Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'S PRC failed' : 'S PRC pushed'),
-                        msg: resp.message || '',
+                        msg: active ? '' : (resp.message || ''),
                     });
                     if (!active) {
                         stopChannelPushSpricePoll();
@@ -199,9 +205,8 @@
                     total: items.length,
                     ok: 0,
                     fail: 0,
-                    pct: 5,
+                    pct: 0,
                     title: 'S PRC queue',
-                    msg: 'Queuing ' + items.length + ' SKU(s)…',
                 });
                 return $.ajax({
                     url: CH_PUSH_SPRICE_URL,
@@ -220,7 +225,6 @@
                             fail: Number(resp.fail_count) || 0,
                             pct: Number(resp.pct) || 0,
                             title: 'S PRC queue',
-                            msg: resp.message || '',
                         });
                     }
                 }).fail(function(xhr) {
@@ -268,9 +272,8 @@
                         total: n,
                         ok: 0,
                         fail: 0,
-                        pct: 3,
+                        pct: 0,
                         title: 'S PRC queue',
-                        msg: n + ' SKU(s) — background (page close OK)',
                     });
                 }
                 clearTimeout(chPushSpriceTimer);
@@ -335,9 +338,6 @@
                 if (!jobs.length) return;
                 const persistThenQueue = function() {
                     enqueueChannelPushSprice(jobs, { silent: !!opts.silent });
-                    if (!opts.silent) {
-                        chPushSpriceToast('success', 'S PRC queued for ' + jobs.length + ' SKU(s) — page close OK');
-                    }
                 };
                 if (!saves.length) {
                     persistThenQueue();
