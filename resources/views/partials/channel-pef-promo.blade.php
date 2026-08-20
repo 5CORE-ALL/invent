@@ -2321,6 +2321,22 @@
             { key: '90-100', label: '90–100%', prmt: 1 },
             { key: 'gt-100', label: '> 100%', prmt: 0 },
         ];
+        const CH_PEF_DIL_PRMT_DEFAULTS_EBAY = (function() {
+            const rules = [
+                { key: 'eq-0', label: '0–0%', prmt: 12 },
+                { key: '0.1-2', label: '0.1–2%', prmt: 11 },
+            ];
+            let prmt = 10;
+            for (let max = 4; max <= 26; max += 2) {
+                const min = max - 2;
+                rules.push({ key: min + '-' + max, label: min + '–' + max + '%', prmt: Math.max(0, prmt) });
+                prmt -= 1;
+            }
+            return rules;
+        })();
+        const CH_PEF_USES_EBAY_FINE_DIL = CHANNEL_PROMO_CHANNEL === 'ebay1'
+            || CHANNEL_PROMO_CHANNEL === 'ebay2'
+            || CHANNEL_PROMO_CHANNEL === 'ebay3';
         const CH_PEF_DIL_PRMT_DEFAULTS_ZERO_SOLD = [
             { key: '0-sold-red', label: '0 Sold · Red (<25%)', prmt: 10 },
             { key: '0-sold-green', label: '0 Sold · Green (25–50%)', prmt: 8 },
@@ -2343,7 +2359,7 @@
             || CHANNEL_PROMO_CHANNEL === 'bestbuy';
         const CH_PEF_DIL_PRMT_DEFAULTS = CH_PEF_USES_REVERB_SLABS
             ? CH_PEF_DIL_PRMT_DEFAULTS_REVERB
-            : CH_PEF_DIL_PRMT_DEFAULTS_FULL;
+            : (CH_PEF_USES_EBAY_FINE_DIL ? CH_PEF_DIL_PRMT_DEFAULTS_EBAY : CH_PEF_DIL_PRMT_DEFAULTS_FULL);
         const CH_PEF_CVR_CPN_DEFAULTS_ALL = [
             { key: 'eq-0', label: '0%', cpn: 10 },
             { key: '0.01-1', label: '0.01–1%', cpn: 9 },
@@ -3157,6 +3173,22 @@
                 if (CHANNEL_PROMO_CHANNEL === 'reverb' && n < 0.1) return 'lt-0.1';
                 return '0-20';
             }
+            if (CH_PEF_USES_EBAY_FINE_DIL) {
+                if (!isFinite(n) || n <= 0) return 'eq-0';
+                if (n <= 2) return '0.1-2';
+                if (n <= 4) return '2-4';
+                if (n <= 6) return '4-6';
+                if (n <= 8) return '6-8';
+                if (n <= 10) return '8-10';
+                if (n <= 12) return '10-12';
+                if (n <= 14) return '12-14';
+                if (n <= 16) return '14-16';
+                if (n <= 18) return '16-18';
+                if (n <= 20) return '18-20';
+                if (n <= 22) return '20-22';
+                if (n <= 24) return '22-24';
+                return '24-26';
+            }
             if (!isFinite(n) || n < 0) return '0-10';
             if (n > 100) return 'gt-100';
             if (n >= 90) return '90-100';
@@ -3551,9 +3583,11 @@
                 renderChPromoZeroSoldPrmtModalTable();
                 const defaultMsg = CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES
                     ? 'Using first-time defaults. Apply to save & apply.'
-                    : (CHANNEL_PROMO_CHANNEL === 'reverb'
-                        ? 'Using first-time defaults (0.1–20). Apply to save & apply.'
-                        : 'Using first-time defaults (0–10). Apply to save & apply.');
+                    : (CH_PEF_USES_EBAY_FINE_DIL
+                        ? 'Using first-time defaults (0–0, 0.1–2, … 24–26). Apply to save & apply.'
+                        : (CHANNEL_PROMO_CHANNEL === 'reverb'
+                            ? 'Using first-time defaults (0.1–20). Apply to save & apply.'
+                            : 'Using first-time defaults (0–10). Apply to save & apply.'));
                 $('#ch-promo-dil-prmt-status').text(res && res.is_default
                     ? defaultMsg
                     : 'Loaded saved Dil vs PRMT rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.');
@@ -6569,7 +6603,8 @@
                 if (chPromoIsEbayChannel()) {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
-                        help.innerHTML = 'Map Dil% slabs to PRMT%. On eBay, Dil is <strong>listing-wise</strong> '
+                        help.innerHTML = 'Map Dil% slabs to PRMT% (<strong>0–0</strong>, <strong>0.1–2</strong>, '
+                            + '<strong>2–4</strong> … <strong>24–26</strong>). On eBay, Dil is <strong>listing-wise</strong> '
                             + '(Σ OV L30 ÷ Σ INV by variation item id). <strong>Apply</strong> writes <strong>PRMT %</strong> '
                             + 'only on selected or visible SKUs with <strong>eBay sale (E L30) &gt; 0</strong> '
                             + '— parent rows and 0-sale SKUs are not changed. '

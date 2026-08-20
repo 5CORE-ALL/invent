@@ -1325,6 +1325,10 @@ class ChannelPromoPricingController extends Controller
             ];
         }
 
+        if (in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true)) {
+            return $this->defaultEbayDilPrmtRules();
+        }
+
         return [
             ['key' => '0-10', 'label' => '0–10%', 'prmt' => 10],
             ['key' => '10-20', 'label' => '10–20%', 'prmt' => 9],
@@ -1338,6 +1342,31 @@ class ChannelPromoPricingController extends Controller
             ['key' => '90-100', 'label' => '90–100%', 'prmt' => 1],
             ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
         ];
+    }
+
+    /**
+     * eBay 1 / 2 / 3 Dil vs PRMT: 0–0, 0.1–2, then 2-point slabs through 24–26.
+     *
+     * @return list<array{key:string,label:string,prmt:float|int}>
+     */
+    private function defaultEbayDilPrmtRules(): array
+    {
+        $rules = [
+            ['key' => 'eq-0', 'label' => '0–0%', 'prmt' => 12],
+            ['key' => '0.1-2', 'label' => '0.1–2%', 'prmt' => 11],
+        ];
+        $prmt = 10;
+        for ($max = 4; $max <= 26; $max += 2) {
+            $min = $max - 2;
+            $rules[] = [
+                'key' => $min.'-'.$max,
+                'label' => $min.'–'.$max.'%',
+                'prmt' => max(0, $prmt),
+            ];
+            $prmt--;
+        }
+
+        return $rules;
     }
 
     /**
@@ -1473,8 +1502,12 @@ class ChannelPromoPricingController extends Controller
         }
 
         $rules = [];
+        $matched = 0;
         foreach ($defaults as $def) {
             $k = $def['key'];
+            if (isset($byKey[$k])) {
+                $matched++;
+            }
             $raw = $byKey[$k][$valueKey] ?? null;
             // CVR disc historically accepted cpn as alias
             if ($valueKey === 'disc' && $raw === null) {
@@ -1492,7 +1525,7 @@ class ChannelPromoPricingController extends Controller
 
         return response()->json([
             'success' => true,
-            'is_default' => false,
+            'is_default' => $matched === 0,
             'rules' => $rules,
         ]);
     }
