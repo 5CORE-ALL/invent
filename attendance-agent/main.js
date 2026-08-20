@@ -297,6 +297,7 @@ function applyLiveWatch(liveWatch) {
     if (requested && !liveStreaming) {
         liveStreaming = true;
         sendLiveFrame().catch(() => {});
+        sendScreenshot().catch(() => {});
     } else if (!requested) {
         liveStreaming = false;
     }

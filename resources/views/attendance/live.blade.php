@@ -36,6 +36,13 @@
             position: absolute; inset: 0; display: flex; flex-direction: column;
             align-items: center; justify-content: center; text-align: center; padding: 2rem; gap: .5rem;
         }
+        .lv-wait.has-image {
+            inset: auto 0 0 0; background: linear-gradient(transparent, rgba(2,6,23,.82));
+            padding: .7rem 1rem 1rem; justify-content: flex-end;
+        }
+        .lv-wait.has-image .lv-spin { display: none; }
+        .lv-wait.has-image h2 { font-size: .85rem; }
+        .lv-wait.has-image p { font-size: .72rem; }
         .lv-wait h2 { margin: 0; font-size: 1.05rem; }
         .lv-wait p { margin: 0; color: #94a3b8; font-size: .85rem; max-width: 28rem; line-height: 1.45; }
         .lv-spin {
@@ -59,12 +66,12 @@
         </div>
     </div>
     <div class="lv-stage">
-        <div class="lv-wait" id="liveWait">
+        <div class="lv-wait {{ !empty($poster_url) ? 'has-image' : '' }}" id="liveWait">
             <div class="lv-spin"></div>
-            <h2 id="waitTitle">Starting live view</h2>
-            <p id="waitText">Asking the desktop agent to share this screen. Recording starts as soon as video appears and stops when you close this window.</p>
+            <h2 id="waitTitle">{{ !empty($poster_url) ? 'Opening latest screen' : 'Starting live view' }}</h2>
+            <p id="waitText">{{ !empty($poster_url) ? 'Showing the last captured screen. Live frames replace this as soon as the desktop agent streams.' : 'Asking the desktop agent to share this screen. Recording starts as soon as video appears and stops when you close this window.' }}</p>
         </div>
-        <img id="liveFrame" alt="Live employee screen">
+        <img id="liveFrame" alt="Live employee screen" @if(!empty($poster_url)) class="is-on" src="{{ $poster_url }}" @endif>
     </div>
     <div class="lv-foot">Live view and recording run only while this window is open. Close the window to stop.</div>
 
@@ -102,6 +109,7 @@
             waitTitle.textContent = title;
             waitText.textContent = text;
             wait.style.display = show ? 'flex' : 'none';
+            wait.classList.toggle('has-image', img.classList.contains('is-on'));
         }
 
         function formatClock(ms) {
@@ -168,32 +176,53 @@
         async function pullFrame() {
             if (!urls || shuttingDown) return;
             try {
-                const r = await fetch(urls.frame, { headers: headers(false), cache: 'no-store' });
+                const r = await fetch(urls.frame, {
+                    headers: headers(false),
+                    cache: 'no-store',
+                    credentials: 'same-origin',
+                });
                 if (r.status === 204) {
-                    if (!firstFrameAt && Date.now() - startedAt > 20000) {
+                    if (!img.classList.contains('is-on') && Date.now() - startedAt > 8000) {
                         setWait(
                             'Waiting for desktop agent',
-                            'No live signal yet. The employee needs 5Core Attendance v1.4+ signed in. Recording will start when the screen appears.',
+                            'No screen yet. The employee must be signed into 5Core Attendance. Last screenshots appear here as soon as they upload.',
                             true
                         );
                     }
                     return;
                 }
-                if (!r.ok) return;
+                if (!r.ok) {
+                    if (!img.classList.contains('is-on') && Date.now() - startedAt > 8000) {
+                        setWait('Cannot load screen', 'Refresh this page and try again.', true);
+                    }
+                    return;
+                }
+                const type = (r.headers.get('Content-Type') || '').toLowerCase();
+                if (type && type.indexOf('image/') !== 0) return;
                 const blob = await r.blob();
                 if (!blob.size) return;
                 if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
                 lastObjectUrl = URL.createObjectURL(blob);
                 img.onload = function () {
                     img.classList.add('is-on');
-                    setWait('', '', false);
+                    const source = (r.headers.get('X-Live-Source') || '').toLowerCase();
+                    if (source === 'live') {
+                        setWait('', '', false);
+                    } else {
+                        setWait(
+                            'Last captured screen',
+                            'Live stream will replace this when the desktop agent is online.',
+                            true
+                        );
+                    }
                     drawFrame();
                 };
                 img.src = lastObjectUrl;
                 firstFrameAt = firstFrameAt || Date.now();
                 const title = r.headers.get('X-Live-Window-Title') || '';
                 const app = r.headers.get('X-Live-App-Name') || '';
-                metaEl.textContent = [app, title].filter(Boolean).join(' — ') || 'Live screen';
+                const source = (r.headers.get('X-Live-Source') || '').toLowerCase();
+                metaEl.textContent = [source === 'live' ? 'Live' : 'Last screenshot', app, title].filter(Boolean).join(' — ');
             } catch (_) {}
         }
 
@@ -247,7 +276,7 @@
         }
 
         async function start() {
-            const r = await fetch(startUrl, { method: 'POST', headers: headers(true) });
+            const r = await fetch(startUrl, { method: 'POST', headers: headers(true), credentials: 'same-origin' });
             if (!r.ok) {
                 setWait('Cannot start live view', 'You may not have access, or live watch is disabled.', true);
                 return;

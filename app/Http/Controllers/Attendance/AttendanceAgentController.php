@@ -509,11 +509,15 @@ class AttendanceAgentController extends Controller
             ]
         );
 
-        return response()->json([
+        if ($this->liveWatchService->isWatchRequested($user->id)) {
+            $this->liveWatchService->seedStillFrame($user, true);
+        }
+
+        return response()->json($this->withLiveWatch([
             'ok' => true,
             'screenshot_id' => $shot->id,
             'captured_at' => $shot->captured_at->toIso8601String(),
-        ]);
+        ], $user));
     }
 
     public function showScreenshot(Request $request, AttendanceScreenshot $screenshot)
@@ -551,13 +555,18 @@ class AttendanceAgentController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function agentConfig(): array
+    private function agentConfig(?User $user = null): array
     {
         $base = rtrim((string) config('app.url'), '/');
+        $user ??= request()->user();
+        $interval = (int) config('attendance.screenshot_interval_seconds', 120);
+        if ($user && $this->liveWatchService->isWatchRequested($user->id)) {
+            $interval = 3;
+        }
 
         return [
             'heartbeat_interval_seconds' => (int) config('attendance.heartbeat_interval_seconds', 15),
-            'screenshot_interval_seconds' => (int) config('attendance.screenshot_interval_seconds', 120),
+            'screenshot_interval_seconds' => $interval,
             'idle_threshold_seconds' => (int) config('attendance.idle_threshold_seconds', 30),
             // Legacy v1.2.x popup threshold — keep high so old installs stop prompting.
             'idle_prompt_seconds' => (int) config('attendance.idle_prompt_seconds', 31536000),

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Attendance;
 
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceLiveSession;
+use App\Models\AttendanceScreenshot;
 use App\Models\User;
 use App\Services\Attendance\AttendanceLiveWatchService;
 use App\Services\Attendance\AttendanceService;
@@ -69,10 +70,16 @@ class AttendanceLiveController extends Controller
         abort_unless(AttendanceAccess::canMonitor() && AttendanceAccess::canViewUser($user->id), 403);
         abort_unless((bool) config('attendance.live_watch_enabled', true), 404);
 
+        $poster = AttendanceScreenshot::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('id')
+            ->first();
+
         return view('attendance.live', [
             'title' => 'Live — '.$user->name,
             'employee' => $user,
-            'start_url' => route('attendance.live.start', $user),
+            'start_url' => '/attendance/live/'.$user->id.'/start',
+            'poster_url' => $poster?->imageUrl(),
         ]);
     }
 
@@ -112,6 +119,8 @@ class AttendanceLiveController extends Controller
             'X-Live-Window-Title' => $headerSafe($meta['window_title'] ?? $liveSession->window_title ?? ''),
             'X-Live-App-Name' => $headerSafe($meta['app_name'] ?? $liveSession->app_name ?? ''),
             'X-Live-Captured-At' => $headerSafe($meta['at'] ?? ''),
+            'X-Live-Source' => $headerSafe($latest['source'] ?? 'live'),
+            'Access-Control-Expose-Headers' => 'X-Live-Source, X-Live-Window-Title, X-Live-App-Name, X-Live-Captured-At',
         ]);
     }
 
@@ -198,10 +207,10 @@ class AttendanceLiveController extends Controller
                 'email' => $employee->email,
             ],
             'urls' => [
-                'frame' => route('attendance.live.frame', $session),
-                'ping' => route('attendance.live.ping', $session),
-                'stop' => route('attendance.live.stop', $session),
-                'recording' => route('attendance.live.recording', $session),
+                'frame' => '/attendance/live/session/'.$session->id.'/frame',
+                'ping' => '/attendance/live/session/'.$session->id.'/ping',
+                'stop' => '/attendance/live/session/'.$session->id.'/stop',
+                'recording' => '/attendance/live/session/'.$session->id.'/recording',
             ],
         ];
     }

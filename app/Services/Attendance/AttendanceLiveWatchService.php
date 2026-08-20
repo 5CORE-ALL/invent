@@ -3,6 +3,7 @@
 namespace App\Services\Attendance;
 
 use App\Models\AttendanceLiveSession;
+use App\Models\AttendanceScreenshot;
 use App\Models\AttendanceSession;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
@@ -39,6 +40,7 @@ class AttendanceLiveWatchService
 
         Cache::put('attendance:live:source:'.$session->id, $source, 86400);
         $this->touchWatch($employee->id);
+        $this->seedStillFrame($employee);
 
         return $session;
     }
@@ -103,6 +105,7 @@ class AttendanceLiveWatchService
             'at' => now()->toIso8601String(),
             'window_title' => $title,
             'app_name' => $app,
+            'source' => 'live',
         ], 30);
 
         $open = AttendanceLiveSession::query()
@@ -121,16 +124,83 @@ class AttendanceLiveWatchService
     }
 
     /**
-     * @return array{bytes: string|null, meta: array<string, mixed>}
+     * @return array{bytes: string|null, meta: array<string, mixed>, source: string|null}
      */
     public function latestFrame(AttendanceLiveSession $session): array
     {
         $bytes = Cache::get($this->frameKey($session->user_id));
         $meta = Cache::get($this->frameMetaKey($session->user_id), []);
+        if (is_string($bytes) && $bytes !== '') {
+            return [
+                'bytes' => $bytes,
+                'meta' => is_array($meta) ? $meta : [],
+                'source' => (string) (($meta['source'] ?? null) ?: 'live'),
+            ];
+        }
+
+        $still = $this->latestScreenshot($session->user_id);
+        if ($still['bytes']) {
+            Cache::put($this->frameKey($session->user_id), $still['bytes'], 30);
+            Cache::put($this->frameMetaKey($session->user_id), $still['meta'], 30);
+
+            return $still;
+        }
+
+        return ['bytes' => null, 'meta' => [], 'source' => null];
+    }
+
+    public function seedStillFrame(User $employee, bool $force = false): void
+    {
+        $meta = Cache::get($this->frameMetaKey($employee->id), []);
+        if (($meta['source'] ?? '') === 'live') {
+            return;
+        }
+        if (! $force && Cache::get($this->frameKey($employee->id))) {
+            return;
+        }
+
+        $still = $this->latestScreenshot($employee->id);
+        if (! $still['bytes']) {
+            return;
+        }
+
+        Cache::put($this->frameKey($employee->id), $still['bytes'], 30);
+        Cache::put($this->frameMetaKey($employee->id), $still['meta'], 30);
+    }
+
+    /**
+     * @return array{bytes: string|null, meta: array<string, mixed>, source: string|null}
+     */
+    public function latestScreenshot(int $userId): array
+    {
+        $shot = AttendanceScreenshot::query()
+            ->where('user_id', $userId)
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $shot?->storage_path) {
+            return ['bytes' => null, 'meta' => [], 'source' => null];
+        }
+
+        $disk = Storage::disk((string) config('attendance.screenshot_disk', 'attendance'));
+        if (! $disk->exists($shot->storage_path)) {
+            return ['bytes' => null, 'meta' => [], 'source' => null];
+        }
+
+        $bytes = $disk->get($shot->storage_path);
+        if (! is_string($bytes) || $bytes === '') {
+            return ['bytes' => null, 'meta' => [], 'source' => null];
+        }
 
         return [
-            'bytes' => is_string($bytes) && $bytes !== '' ? $bytes : null,
-            'meta' => is_array($meta) ? $meta : [],
+            'bytes' => $bytes,
+            'meta' => [
+                'at' => $shot->captured_at?->toIso8601String(),
+                'window_title' => $shot->window_title,
+                'app_name' => $shot->app_name,
+                'source' => 'screenshot',
+            ],
+            'source' => 'screenshot',
         ];
     }
 
