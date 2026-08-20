@@ -35,10 +35,161 @@ class MiraklMcmOfferStatusSync
         $apiKey = trim((string) config('services.'.$configKey.'.mcm_api_key', ''));
         $baseUrl = rtrim((string) config('services.'.$configKey.'.mcm_base_url', ''), '/');
         if ($apiKey !== '' && $baseUrl !== '') {
+            $export = $this->syncFromMcmExport($channel, $table, $configKey, $apiKey, $baseUrl);
+            if (($export['ok'] ?? false) && (int) ($export['inactive'] ?? 0) > 0) {
+                return $export;
+            }
+
             return $this->syncFromMcm($channel, $table, $configKey, $apiKey, $baseUrl, $timeBudgetSeconds);
         }
 
         return $this->syncFromConnect($channel, $table, $connectCode, $timeBudgetSeconds);
+    }
+
+    /**
+     * OF51 includes inactive offers. OF21 full mode often returns active-only.
+     *
+     * @return array{ok: bool, done: bool, active: int, inactive: int, error?: string}
+     */
+    protected function syncFromMcmExport(
+        string $channel,
+        string $table,
+        string $configKey,
+        string $apiKey,
+        string $baseUrl
+    ): array {
+        $params = ['include_inactive_offers' => 'true'];
+        $shopId = config('services.'.$configKey.'.shop_id');
+        if ($shopId !== null && $shopId !== '') {
+            $params['shop_id'] = (int) $shopId;
+        }
+
+        try {
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => $apiKey,
+                    'Accept' => 'text/csv, application/json, */*',
+                ])
+                ->timeout(90)
+                ->get($baseUrl.'/api/offers/export', $params);
+
+            if (! $response->successful()) {
+                Log::warning('MiraklMcmOfferStatusSync: OF51 failed', [
+                    'channel' => $channel,
+                    'status' => $response->status(),
+                ]);
+
+                return ['ok' => false, 'done' => false, 'active' => 0, 'inactive' => 0, 'error' => 'OF51 HTTP '.$response->status()];
+            }
+
+            $body = (string) $response->body();
+            if ($body === '' || str_starts_with(ltrim($body), '{') || str_starts_with(ltrim($body), '[')) {
+                return ['ok' => false, 'done' => false, 'active' => 0, 'inactive' => 0, 'error' => 'OF51 was not CSV'];
+            }
+
+            $counts = $this->persistFromOffersCsv($table, $body);
+            Log::info('MiraklMcmOfferStatusSync: OF51 stored', [
+                'channel' => $channel,
+                'active' => $counts['active'],
+                'inactive' => $counts['inactive'],
+            ]);
+
+            return [
+                'ok' => true,
+                'done' => true,
+                'active' => $counts['active'],
+                'inactive' => $counts['inactive'],
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('MiraklMcmOfferStatusSync: OF51 exception', [
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['ok' => false, 'done' => false, 'active' => 0, 'inactive' => 0, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @return array{active: int, inactive: int}
+     */
+    protected function persistFromOffersCsv(string $table, string $csv): array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $csv) ?: [];
+        $headerLine = array_shift($lines);
+        if (! is_string($headerLine) || trim($headerLine) === '') {
+            return ['active' => 0, 'inactive' => 0];
+        }
+        $delimiter = substr_count($headerLine, ';') > substr_count($headerLine, ',') ? ';' : ',';
+        $headers = array_map(static function ($h) {
+            return strtolower(str_replace([' ', '_'], '-', trim((string) $h)));
+        }, str_getcsv($headerLine, $delimiter));
+
+        $skuIdx = $this->csvColumnIndex($headers, ['shop-sku', 'shopsku', 'sku', 'offer-sku']);
+        $activeIdx = $this->csvColumnIndex($headers, ['active', 'activated']);
+        if ($skuIdx === null || $activeIdx === null) {
+            Log::warning('MiraklMcmOfferStatusSync: OF51 missing shop-sku/active columns', [
+                'headers' => $headers,
+            ]);
+
+            return ['active' => 0, 'inactive' => 0];
+        }
+
+        $active = 0;
+        $inactive = 0;
+        foreach ($lines as $line) {
+            if (! is_string($line) || trim($line) === '') {
+                continue;
+            }
+            $cols = str_getcsv($line, $delimiter);
+            $sku = trim((string) ($cols[$skuIdx] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $status = $this->csvActiveToStatus((string) ($cols[$activeIdx] ?? ''));
+            if ($status === null) {
+                continue;
+            }
+            $this->persistStatus($table, $sku, $status);
+            if ($status === 'inactive') {
+                $inactive++;
+            } else {
+                $active++;
+            }
+        }
+
+        return ['active' => $active, 'inactive' => $inactive];
+    }
+
+    /**
+     * @param  list<string>  $headers
+     * @param  list<string>  $aliases
+     */
+    protected function csvColumnIndex(array $headers, array $aliases): ?int
+    {
+        foreach ($headers as $i => $header) {
+            if (in_array($header, $aliases, true)) {
+                return (int) $i;
+            }
+        }
+
+        return null;
+    }
+
+    protected function csvActiveToStatus(string $raw): ?string
+    {
+        $s = strtolower(trim($raw));
+        if ($s === '') {
+            return null;
+        }
+        if (in_array($s, ['true', '1', 'yes', 'active', 'y'], true)) {
+            return 'active';
+        }
+        if (in_array($s, ['false', '0', 'no', 'inactive', 'n'], true)) {
+            return 'inactive';
+        }
+
+        return null;
     }
 
     /**
@@ -73,6 +224,7 @@ class MiraklMcmOfferStatusSync
                 $params = [
                     'max' => $max,
                     'offset' => $offset,
+                    'include_inactive_offers' => 'true',
                 ];
                 if ($shopId !== null && $shopId !== '') {
                     $params['shop_id'] = (int) $shopId;
@@ -233,7 +385,13 @@ class MiraklMcmOfferStatusSync
                         ]);
                     }
 
-                    return ['ok' => true, 'done' => true, 'active' => $active, 'inactive' => $inactive];
+                    return [
+                        'ok' => $sawStatusField,
+                        'done' => $sawStatusField,
+                        'active' => $active,
+                        'inactive' => $inactive,
+                        'error' => $sawStatusField ? null : 'Connect products had no offer status fields',
+                    ];
                 }
             } while (true);
         } catch (\Throwable $e) {

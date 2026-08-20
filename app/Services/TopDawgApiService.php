@@ -57,9 +57,9 @@ class TopDawgApiService
      *
      * @param  array<string, mixed>  $item
      */
-    public static function listingStateFromItem(array $item): ?string
+    public static function listingStateFromItem(array $item, int $depth = 0): ?string
     {
-        foreach (['status', 'product_status', 'listing_status', 'listing_state', 'state'] as $key) {
+        foreach (['status', 'product_status', 'product_status_type', 'listing_status', 'listing_state', 'state', 'approval_status'] as $key) {
             if (! array_key_exists($key, $item) || $item[$key] === null || $item[$key] === '') {
                 continue;
             }
@@ -94,6 +94,9 @@ class TopDawgApiService
                 return 'inactive';
             }
         }
+        if ($depth < 1 && isset($item['product']) && is_array($item['product'])) {
+            return self::listingStateFromItem($item['product'], $depth + 1);
+        }
 
         return null;
     }
@@ -104,9 +107,10 @@ class TopDawgApiService
      * Loops through all pages and merges results.
      *
      * @param  callable|null  $onPage  Optional callback(page, lastPage, totalSoFar) for progress logging
+     * @param  array<string, mixed>  $filters
      * @return array{data: array, total: int}
      */
-    public function fetchProducts(?string $updatedSince = null, ?callable $onPage = null): array
+    public function fetchProducts(?string $updatedSince = null, ?callable $onPage = null, array $filters = []): array
     {
         $this->assertConfigured();
 
@@ -115,7 +119,7 @@ class TopDawgApiService
         $perPage = 1000;
 
         do {
-            $body = ['per_page' => $perPage, 'page' => $page];
+            $body = array_merge(['per_page' => $perPage, 'page' => $page], $filters);
             if ($updatedSince) {
                 $body['updated_since'] = $updatedSince;
             }
@@ -151,8 +155,10 @@ class TopDawgApiService
                 $onPage($currentPage, $lastPage, count($all));
             }
 
+            $maxPages = isset($filters['status']) ? 2 : 10000;
+
             // Stop when we've reached the last page or got no items
-            if ($currentPage >= $lastPage || count($items) === 0) {
+            if ($currentPage >= $lastPage || count($items) === 0 || $currentPage >= $maxPages) {
                 break;
             }
             $page = $currentPage + 1;
