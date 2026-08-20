@@ -122,16 +122,10 @@ class Ebay2CampaignAdsController extends Controller
         return $rules;
     }
 
-    /** True when stored slabs are not yet the 0–100 / 101–200 / … / >1000 set. */
+    /** Only seed defaults when nothing is stored. Never overwrite a saved rule. */
     private function sbidSlabsNeedViewStepMigrate(array $rules): bool
     {
-        if ($rules === [] || count($rules) < 11) {
-            return true;
-        }
-        $first = $rules[0] ?? [];
-
-        return (float) ($first['l7_views_min'] ?? -1) !== 0.0
-            || (float) ($first['l7_views_max'] ?? -1) !== 100.0;
+        return $rules === [];
     }
 
     private function numOrNull($v): ?float

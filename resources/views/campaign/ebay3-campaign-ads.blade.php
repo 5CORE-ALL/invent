@@ -830,6 +830,20 @@ document.getElementById('sbidRuleModal').addEventListener('show.bs.modal', funct
 });
 
 document.getElementById('sbid-slab-rule-save-btn').addEventListener('click', function() {
+    const tbody = document.getElementById('sbid-slab-rules-body');
+    if (tbody) {
+        tbody.querySelectorAll('tr[data-idx]').forEach(function(tr) {
+            const idx = parseInt(tr.getAttribute('data-idx'), 10);
+            if (!currentSbidSlabs[idx]) return;
+            tr.querySelectorAll('input[data-field]').forEach(function(el) {
+                if (el.dataset.field === 'label') {
+                    currentSbidSlabs[idx].label = el.value || '';
+                    return;
+                }
+                currentSbidSlabs[idx][el.dataset.field] = (el.value === '' ? null : parseFloat(el.value));
+            });
+        });
+    }
     const errEl = document.getElementById('sbid-slab-rule-err');
     errEl.classList.add('d-none');
     const btn = this;

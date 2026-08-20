@@ -511,6 +511,10 @@
                     <div class="small text-muted mt-2" id="ch-promo-dil-prmt-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-primary" id="ch-promo-dil-prmt-save-btn"
+                        title="Save Dil→PRMT slab values only (does not write SKU PRMT%).">
+                        <i class="fas fa-save me-1"></i>Save Rule
+                    </button>
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-dil-prmt-apply-btn"
                         title="Save Dil→PRMT rules, then apply PRMT% — selected rows if checked, otherwise all visible. On eBay, only SKUs with E L30 &gt; 0.">
                         Apply
@@ -3608,8 +3612,13 @@
             return $.ajax({
                 url: CH_PROMO_RULES_BASE + '/dil-prmt',
                 method: 'POST',
-                headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
-                data: { rules: rules, _token: chPromoCsrf() },
+                headers: {
+                    'X-CSRF-TOKEN': chPromoCsrf(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                contentType: 'application/json',
+                data: JSON.stringify({ rules: rules, _token: chPromoCsrf() }),
             }).then(function(res) {
                 if (res && Array.isArray(res.rules)) {
                     chPromoDilPrmtRules = res.rules.map(function(r) { return Object.assign({}, r); });
@@ -4042,46 +4051,70 @@
             }
         }
 
+        async function saveChPromoDilPrmtRulesOnly() {
+            const $btn = $('#ch-promo-dil-prmt-save-btn');
+            const html = $btn.length ? $btn.html() : '';
+            if ($btn.length) $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
+            try {
+                await saveChPromoDilPrmtRules();
+                chPromoToast('success', 'Dil vs PRMT rules saved');
+                chPromoSyncEbayPrmtColumnFromSlabs();
+            } catch (xhr) {
+                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+            } finally {
+                if ($btn.length) $btn.prop('disabled', false).html(html || '<i class="fas fa-save me-1"></i>Save Rule');
+            }
+        }
         async function saveAndApplyChPromoDilPrmt() {
-            let targets = [];
+            const $btn = $('#ch-promo-dil-prmt-apply-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+            try {
+                await saveChPromoDilPrmtRules();
+            } catch (xhr) {
+                $btn.prop('disabled', false).html(html);
+                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                return;
+            }
+
+            let targets = collectChPromoSelectedRows();
             let label = 'selected';
-            targets = collectChPromoSelectedRows();
             if (!targets.length) {
                 targets = collectChPromoVisibleRows();
                 label = 'all visible';
-                if (!targets.length) {
-                    chPromoToast('error', 'No SKUs to apply');
-                    return;
-                }
             }
             if (chPromoIsEbayChannel()) {
                 targets = targets.filter(function(t) {
                     const d = (t.d || (t.row && t.row.getData())) || {};
                     return chPromoEbayListingSaleQty(d) > 0;
                 });
-                if (!targets.length) {
-                    chPromoToast('error', 'No rows with eBay sale (E L30) > 0 to apply');
-                    return;
-                }
+            }
+            if (!targets.length) {
+                $btn.prop('disabled', false).html(html);
+                chPromoToast(
+                    'success',
+                    chPromoIsEbayChannel()
+                        ? 'Rules saved. No rows with eBay sale (E L30) > 0 to apply.'
+                        : 'Rules saved. No SKUs to apply.'
+                );
+                chPromoSyncEbayPrmtColumnFromSlabs();
+                return;
             }
             if (label === 'all visible') {
                 if (!confirm(
-                    'No rows selected — save rules and apply Dil→PRMT % to '
+                    'No rows selected — apply Dil→PRMT % to '
                     + targets.length + ' visible SKU(s)'
                     + (chPromoIsEbayChannel() ? ' with eBay sale (E L30) > 0' : '')
                     + '?'
                 )) {
+                    $btn.prop('disabled', false).html(html);
                     return;
                 }
             }
-            const $btn = $('#ch-promo-dil-prmt-apply-btn');
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
             try {
-                await saveChPromoDilPrmtRules();
                 await applyChPromoDilPrmtToTargets(targets, label);
             } catch (xhr) {
-                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                chPromoToast('error', 'Apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
             } finally {
                 $btn.prop('disabled', false).html(html);
             }
@@ -6678,6 +6711,7 @@
                 });
             });
 
+            $('#ch-promo-dil-prmt-save-btn').off('click.chpromo').on('click.chpromo', saveChPromoDilPrmtRulesOnly);
             $('#ch-promo-dil-prmt-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoDilPrmt);
 
             if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {

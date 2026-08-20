@@ -953,7 +953,20 @@ function autoPushEbay2Sbid() {
     });
 }
 
+function syncEbay2SbidRulesFromDom() {
+    const tbody = document.getElementById('sbid-slab-rules-body');
+    if (!tbody) return;
+    tbody.querySelectorAll('tr[data-idx]').forEach(function(tr) {
+        const idx = parseInt(tr.getAttribute('data-idx'), 10);
+        if (!currentSbidSlabs[idx]) return;
+        tr.querySelectorAll('input[data-field]').forEach(function(el) {
+            currentSbidSlabs[idx][el.dataset.field] = (el.value === '' ? null : parseFloat(el.value));
+        });
+    });
+}
+
 function saveEbay2SbidRules(thenPush) {
+    syncEbay2SbidRulesFromDom();
     const errEl = document.getElementById('sbid-slab-rule-err');
     if (errEl) errEl.classList.add('d-none');
     const btn = document.getElementById('sbid-slab-rule-save-btn');
