@@ -808,6 +808,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/orders/{order}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullOrder'])->name('marketplace.orders.pull')->whereNumber('order');
         Route::post('/orders/{order}/accept', [\App\Http\Controllers\MarketplaceController::class, 'acceptOrder'])->name('marketplace.orders.accept')->whereNumber('order');
         Route::post('/orders/{order}/push-tracking', [\App\Http\Controllers\MarketplaceController::class, 'pushTracking'])->name('marketplace.orders.push-tracking')->whereNumber('order');
+        Route::post('/orders/{order}/fetch-tracking', [\App\Http\Controllers\MarketplaceController::class, 'fetchTracking'])->name('marketplace.orders.fetch-tracking')->whereNumber('order');
+        Route::post('/orders/{order}/fetch-veeqo-tracking', [\App\Http\Controllers\MarketplaceController::class, 'fetchTracking'])->name('marketplace.orders.fetch-veeqo-tracking')->whereNumber('order');
         Route::get('/settings', [\App\Http\Controllers\MarketplaceController::class, 'settings'])->name('marketplace.settings');
         Route::post('/settings', [\App\Http\Controllers\MarketplaceController::class, 'saveSettings'])->name('marketplace.settings.save');
         Route::post('/orders/push', [\App\Http\Controllers\MarketplaceController::class, 'pushOrderToShopify'])->name('marketplace.orders.push');

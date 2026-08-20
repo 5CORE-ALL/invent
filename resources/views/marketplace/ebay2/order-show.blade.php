@@ -54,6 +54,7 @@
                         <i class="ri-download-cloud-line"></i> Pull from eBay 2
                     </button>
                     @if(!empty($shopify['shopify_order_id']))
+                        @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'ebay2'])
                         <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-ebay2" data-id="{{ $line->id }}" title="Read Shopify fulfillment tracking and mark shipped on eBay 2">
                             <i class="ri-truck-line"></i> Push tracking to eBay 2
                         </button>
@@ -66,7 +67,7 @@
 
         <div class="alert alert-info py-2 small mb-3">
             <strong>Pull from eBay 2</strong> refreshes shipping/buyer details and, if this order is already on Shopify, updates the Shopify address.
-            After you buy/download a shipping label in Shopify, use <strong>Push tracking to eBay 2</strong> so eBay 2 is marked shipped with that tracking number.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to eBay 2</strong> so eBay 2 is marked shipped with that tracking number.@include('marketplace._fetch-tracking-hint')
         </div>
 
         @if($aeLiveError ?? null)

@@ -11,13 +11,14 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * After a shipping label is bought in Shopify / ShipStation / any connected software,
+ * After a shipping label is bought in Shopify / ShipStation / Veeqo / 4Seller (GOFO) / any connected software,
  * read the Shopify fulfillment tracking number and confirmShipment on Amazon.
  */
 class AmazonTrackingSyncService
 {
     public function __construct(
         protected AmazonSpOrdersClient $ordersClient,
+        protected VeeqoShopifyFulfillmentService $veeqoFulfillment,
     ) {}
 
     /**
@@ -69,10 +70,23 @@ class AmazonTrackingSyncService
 
         $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
         if (empty($shopifyFulfillment['tracking'])) {
+            $veeqo = $this->veeqoFulfillment->fulfillMarketplaceOrder('amazon', (int) $order->id);
+            if (! empty($veeqo['success']) && ! empty($veeqo['tracking'])) {
+                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
+                if (empty($shopifyFulfillment['tracking'])) {
+                    $shopifyFulfillment = [
+                        'tracking' => $veeqo['tracking'],
+                        'carrier' => $veeqo['carrier'] ?? null,
+                        'tracking_url' => null,
+                    ];
+                }
+            }
+        }
+        if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,
                 'skipped' => true,
-                'message' => 'No tracking number on Shopify yet. Buy a shipping label in Shopify, ShipStation, or any connected shipping software first.',
+                'message' => 'No tracking number on Shopify yet. Buy the label in Veeqo, 4Seller, Shopify, or ShipStation first.',
                 'shopify_tracking' => null,
                 'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
             ];

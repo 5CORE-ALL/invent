@@ -54,6 +54,7 @@
                         <i class="ri-download-cloud-line"></i> Pull from Doba
                     </button>
                     @if(!empty($shopify['shopify_order_id']))
+                        @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'doba'])
                         <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-doba" data-id="{{ $line->id }}" title="Read Shopify fulfillment tracking and mark shipped on Doba">
                             <i class="ri-truck-line"></i> Push tracking to Doba
                         </button>
@@ -66,7 +67,7 @@
 
         <div class="alert alert-info py-2 small mb-3">
             Order details are pulled from Doba and sent to Shopify when you push this order.
-            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Doba</strong> so the tracking number is declared on Doba too.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Doba</strong> so the tracking number is declared on Doba too.@include('marketplace._fetch-tracking-hint')
         </div>
 
         @if($aeLiveError ?? null)

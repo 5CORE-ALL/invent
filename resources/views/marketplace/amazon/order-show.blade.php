@@ -75,7 +75,8 @@
                         <i class="ri-download-cloud-line"></i> Pull address from Amazon
                     </button>
                     @if($order->shopify_order_id)
-                        <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-amazon" data-id="{{ $order->id }}" title="Read Shopify fulfillment tracking and confirm shipment on Amazon">
+                        @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'amazon', 'fetchTrackingOrderId' => $order->id, 'fetchTrackingShopifyId' => $order->shopify_order_id])
+                        <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-amazon" data-id="{{ $order->id }}" title="If Shopify has no tracking, fetch it from Veeqo or GOFO (4Seller) first, then confirm shipment on Amazon">
                             <i class="ri-truck-line"></i> Push tracking to Amazon
                         </button>
                     @endif
@@ -209,7 +210,7 @@
             <div class="card-body small text-muted">
                 FBM orders on/after {{ \App\Models\AmazonOrder::SHOPIFY_IMPORT_CUTOFF_DATE }} PT auto-push to Shopify when fetched.
                 Existing Shopify orders (previous sync app) are linked, never duplicated. FBA is never created.
-                After a shipping label is bought in Shopify / ShipStation / any connected software, tracking is confirmed on Amazon.
+                After a shipping label is bought in Veeqo, 4Seller (GOFO), Shopify, or ShipStation, tracking is written to Shopify and confirmed on Amazon.
             </div>
         </div>
 
@@ -423,7 +424,7 @@ document.getElementById('btn-push-tracking-amazon')?.addEventListener('click', f
     var btn = this;
     var id = btn.getAttribute('data-id');
     if (!id) return;
-    if (!confirm('Read the Shopify tracking number for this order (from any shipping software that wrote it to Shopify) and confirm shipment on Amazon?')) return;
+    if (!confirm('If Shopify has no tracking yet, fetch it from Veeqo or GOFO (4Seller) and fulfill Shopify, then confirm shipment on Amazon?')) return;
     var original = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="ri-loader-4-line"></i> Pushing…';

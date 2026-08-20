@@ -54,13 +54,16 @@
                         <i class="ri-download-cloud-line"></i> Pull from Alibaba
                     </button>
                 @endif
+                @if(!empty($shopify['shopify_order_id']))
+                    @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'alibaba'])
+                @endif
             </div>
         </div>
 
         @include('marketplace.alibaba._nav', ['active' => 'orders'])
 
         <div class="alert alert-info py-2 small mb-3">
-            <strong>Read-only view.</strong> Shipping, buyer, payment, and fund details are pulled from Alibaba and sent to Shopify when you push this order.
+            <strong>Read-only view.</strong> Shipping, buyer, payment, and fund details are pulled from Alibaba and sent to Shopify when you push this order.@include('marketplace._fetch-tracking-hint')
         </div>
 
         @if($aeLiveError ?? null)

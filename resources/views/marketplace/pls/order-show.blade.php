@@ -4,8 +4,22 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.orders', 'pls') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Shopify PLS Orders</a>
-        @include('marketplace._page-heading', ['slug' => 'pls', 'heading' => 'Order '.($line->order_name ?: $line->order_number), 'mb' => 'mb-3'])
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mt-2 mb-1">
+            <div>
+                @include('marketplace._page-heading', ['slug' => 'pls', 'heading' => 'Order '.($line->order_name ?: $line->order_number), 'mb' => 'mb-0', 'mt' => ''])
+            </div>
+            <div class="d-flex gap-2">
+                @include('marketplace._fetch-tracking-button', [
+                    'fetchTrackingMarketplace' => 'pls',
+                    'fetchTrackingOrderId' => $line->id,
+                    'fetchTrackingShopifyId' => $line->shopify_order_id,
+                ])
+            </div>
+        </div>
         @include('marketplace.pls._nav', ['active' => 'orders'])
+        <div class="alert alert-info py-2 small mb-3">
+            This is a Shopify ProLightSounds order.@include('marketplace._fetch-tracking-hint')
+        </div>
 
         <div class="card mb-3">
             <div class="card-body">

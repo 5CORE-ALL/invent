@@ -54,6 +54,7 @@
                         <i class="ri-download-cloud-line"></i> Pull from Temu 2
                     </button>
                     @if(!empty($shopify['shopify_order_id']))
+                        @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'temu2'])
                         <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-temu" data-id="{{ $line->id }}" title="Read Shopify fulfillment tracking and mark shipped on Temu 2">
                             <i class="ri-truck-line"></i> Push tracking to Temu 2
                         </button>
@@ -66,7 +67,7 @@
 
         <div class="alert alert-info py-2 small mb-3">
             Order details are pulled from Temu 2 and sent to Shopify when you push this order.
-            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Temu 2</strong> so the tracking number is declared on Temu 2 too.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Temu 2</strong> so the tracking number is declared on Temu 2 too.@include('marketplace._fetch-tracking-hint')
         </div>
 
         @if($aeLiveError ?? null)
