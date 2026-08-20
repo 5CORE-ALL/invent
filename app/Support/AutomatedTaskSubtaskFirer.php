@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Task;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\AutomatedTaskChecklistIds;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -99,6 +100,8 @@ class AutomatedTaskSubtaskFirer
                     'created_at' => $now,
                     'updated_at' => $now,
                 ];
+
+                $taskData = AutomatedTaskChecklistIds::mergeIntoTaskInsert($taskData, (int) $child->id);
 
                 $taskId = DB::table('tasks')->insertGetId($taskData);
                 $created++;

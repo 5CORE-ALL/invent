@@ -265,6 +265,17 @@
         #tasks-table .tabulator-header .tabulator-col.tasks-col-link-icon,
         #tasks-table .tabulator-row .tabulator-cell.tasks-col-link-icon {
             padding: 6px 2px !important;
+            overflow: visible !important;
+        }
+        #tasks-table .tabulator-row .tabulator-cell.tasks-col-link-icon .at-sop-open,
+        #tasks-table .tabulator-row .tabulator-cell.tasks-col-link-icon .at-sop-open img {
+            display: inline-block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        #tasks-table .tabulator-row .tabulator-cell.tasks-col-link-icon .at-sop-open img {
+            width: 28px !important;
+            height: 28px !important;
         }
         #tasks-table .tabulator-header .tabulator-col.tasks-col-etcmin-compact,
         #tasks-table .tabulator-row .tabulator-cell.tasks-col-etcmin-compact {
@@ -738,6 +749,20 @@
     #checklistHistoryModal.show .modal-dialog {
         transform: none;
     }
+    #checklistFormModal .checklist-header-icon {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(0,0,0,.15);
+    }
+    #checklistFormModal .checklist-header-icon i {
+        font-size: 1.15rem;
+        line-height: 1;
+        color: #222;
+    }
     @media (max-width: 768px) {
         #checklistFormModal .modal-dialog,
         #checklistHistoryModal .modal-dialog {
@@ -1167,6 +1192,13 @@
                     <i class="mdi mdi-magnify me-2"></i><span id="checklist-modal-title">Checklist Questionnaire</span>
                 </h5>
                 <div class="d-flex align-items-center gap-2 ms-auto">
+                    <button type="button" class="btn btn-sm btn-light checklist-header-icon" id="checklist-download-template" title="Download template" aria-label="Download template">
+                        <i class="mdi mdi-download"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-light checklist-header-icon d-none" id="checklist-upload-template" title="Upload template data" aria-label="Upload template data">
+                        <i class="mdi mdi-upload"></i>
+                    </button>
+                    <input type="file" id="checklist-upload-file" class="d-none" accept=".csv,.txt,text/csv">
                     <a href="#" id="checklist-sop-link" class="d-none" target="_blank" rel="noopener noreferrer" title="Open SOP" aria-label="Open SOP"
                        style="display:inline-flex;align-items:center;justify-content:center;line-height:1;text-decoration:none;">
                         <img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP" style="width:28px;height:28px;display:block;">
@@ -1180,7 +1212,11 @@
                     <div>
                         <div class="small text-muted">Automated Task</div>
                         <div class="fw-semibold" id="checklist-task-title">—</div>
-                        <div class="small text-muted">Form ID: <span id="checklist-form-id">—</span></div>
+                        <div class="small text-muted">CL ID: <span id="checklist-form-id">—</span>
+                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline d-none" id="checklist-copy-cl-id" title="Copy CL ID">
+                                <i class="mdi mdi-content-copy"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="btn-group btn-group-sm" role="group" id="checklist-mode-toggle" style="display:none;">
                         <button type="button" class="btn btn-outline-dark active" id="checklist-mode-fill">Fill</button>
@@ -1230,6 +1266,45 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SOP upload / link modal -->
+<div class="modal fade" id="sopUploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">
+                <h5 class="modal-title mb-0"><i class="mdi mdi-file-upload-outline me-2"></i>SOP</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sop-upload-task-id" value="">
+                <div class="mb-2">
+                    <div class="small text-muted">Automated Task</div>
+                    <div class="fw-semibold" id="sop-upload-task-title">—</div>
+                </div>
+                <div id="sop-upload-error" class="alert alert-danger d-none"></div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold" for="sop-upload-file">Upload file</label>
+                    <input type="file" class="form-control" id="sop-upload-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv">
+                    <div class="form-text">PDF, Office, image, or text — max 20 MB. Uploading a file replaces the SOP link.</div>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label fw-semibold" for="sop-upload-link">SOP link</label>
+                    <input type="text" class="form-control" id="sop-upload-link" placeholder="https://… or existing uploaded file">
+                    <div class="form-text">Filled automatically when this task already has an SOP link.</div>
+                    <div class="mt-2 d-none" id="sop-upload-current-wrap">
+                        <a href="#" id="sop-upload-current-link" target="_blank" rel="noopener noreferrer">Open current SOP</a>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="sop-upload-save-btn">
+                    <i class="mdi mdi-content-save-outline me-1"></i>Save SOP
+                </button>
             </div>
         </div>
     </div>
@@ -1386,9 +1461,22 @@
             function formatChecklistClIcon(rowData) {
                 var hasForm = !!rowData.has_checklist_form;
                 var color = hasForm ? '#c4a000' : '#dc3545';
-                var title = hasForm ? 'Open checklist form' : 'No checklist form attached — click to open';
+                var clId = rowData.cl_id ? String(rowData.cl_id) : '';
+                var title = hasForm
+                    ? ('Open checklist form' + (clId ? ' (' + clId + ')' : ''))
+                    : 'No checklist form attached — click to open';
                 return '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-cl-open" data-id="' + checklistEsc(rowData.id) + '" title="' + title + '" aria-label="Open checklist" style="line-height:1;">' +
                     '<i class="mdi mdi-magnify" style="font-size:22px;color:' + color + ';"></i></button>';
+            }
+
+            function setChecklistFormIdDisplay(clId) {
+                var value = clId || '';
+                $('#checklist-form-id').text(value || '—');
+                if (value) {
+                    $('#checklist-copy-cl-id').removeClass('d-none').data('cl-id', value);
+                } else {
+                    $('#checklist-copy-cl-id').addClass('d-none').data('cl-id', '');
+                }
             }
 
             function formatChecklistReportIcon(rowData) {
@@ -1508,7 +1596,7 @@
             async function openChecklistModal(automateTaskId) {
                 $('#checklist-automate-task-id').val(automateTaskId);
                 $('#checklist-task-title').text('Loading…');
-                $('#checklist-form-id').text('—');
+                setChecklistFormIdDisplay('');
                 $('#checklist-questions-fill').empty();
                 $('#checklist-questions-edit').empty();
                 $('#checklist-sop-link').addClass('d-none').attr('href', '#');
@@ -1525,7 +1613,7 @@
                     $('#checklist-task-title').text(data.task_title || ('Task #' + automateTaskId));
                     var form = data.form;
                     checklistCurrentQuestions = (form && form.questions) ? form.questions.slice() : [];
-                    $('#checklist-form-id').text(form && form.id ? form.id : '—');
+                    setChecklistFormIdDisplay(form && (form.cl_id || form.id) ? (form.cl_id || ('CL-' + form.id)) : '');
                     $('#checklist-form-title').val(form && form.title ? form.title : ((data.task_title || '') + ' Checklist'));
 
                     var sop = String(data.sop_link || '').trim();
@@ -1539,9 +1627,11 @@
                     if (checklistCanManageRuntime) {
                         $('#checklist-mode-toggle').show();
                         $('#checklist-empty-manage-hint').removeClass('d-none');
+                        $('#checklist-upload-template').removeClass('d-none');
                     } else {
                         $('#checklist-mode-toggle').hide();
                         $('#checklist-empty-manage-hint').addClass('d-none');
+                        $('#checklist-upload-template').addClass('d-none');
                     }
 
                     if (!form && checklistCanManageRuntime) {
@@ -1688,19 +1778,55 @@
                 return '<span style="color:#adb5bd;" title="' + escAttr(v) + '">-</span>';
             }
 
-            /** SOP link column: custom SOP icon for http(s) (full URL in title); "-" if empty or not a URL. */
+            function isOpenableSopLink(v) {
+                v = String(v || '').trim();
+                if (!v) return false;
+                return /^https?:\/\//i.test(v) || /^\/(uploads|storage)\//i.test(v);
+            }
+
+            /** SOP column: + when empty (opens upload modal); SOP icon when a link exists (still opens the same modal with the link filled). */
             function formatSopLinkSlot(rowData, getRawFn) {
-                var v = String(getRawFn(rowData) || '').trim();
-                if (!v) return '<span style="color:#adb5bd;">-</span>';
+                var v = String(getRawFn(rowData) || rowData.link3 || rowData.training_link || '').trim();
                 var escAttr = function(t) {
                     return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
                 };
-                if (/^https?:\/\//i.test(v)) {
-                    return '<a href="' + escAttr(v) + '" target="_blank" rel="noopener noreferrer" title="' + escAttr(v) + '" ' +
-                        'style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:1;" aria-label="Open SOP link">' +
-                        '<img src="{{ asset("assets/images/task-sop-icon.png") }}" alt="SOP" style="width:36px;height:36px;display:inline-block;" /></a>';
+                var openBtn = function(inner, title) {
+                    return '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-sop-open" data-id="' + escAttr(rowData.id) + '" data-title="' + escAttr(rowData.title || '') + '" data-sop="' + escAttr(v) + '" title="' + escAttr(title) + '" aria-label="' + escAttr(title) + '" style="line-height:1;display:inline-flex;align-items:center;justify-content:center;">' + inner + '</button>';
+                };
+                if (isOpenableSopLink(v) || rowData.has_sop_link) {
+                    return openBtn(
+                        '<img src="{{ asset("assets/images/task-sop-icon.png") }}" alt="SOP" width="28" height="28" style="width:28px;height:28px;display:inline-block;vertical-align:middle;">',
+                        v ? 'Update SOP' : 'SOP'
+                    );
                 }
-                return '<span style="color:#adb5bd;" title="' + escAttr(v) + '">-</span>';
+                return openBtn(
+                    '<i class="mdi mdi-plus-circle" style="font-size:22px;color:#0d6efd;"></i>',
+                    'Add SOP'
+                );
+            }
+
+            function formatSopPageButtons(rowData) {
+                var escAttr = function(t) {
+                    return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                };
+                var pageUrl = rowData.sop_page_url || '';
+                var hasSop = !!(rowData.has_sop_link || isOpenableSopLink(rowData.link3 || rowData.training_link));
+                var canView = !!(pageUrl && (hasSop || rowData.has_sop_page));
+                var createTitle = hasSop
+                    ? (rowData.has_sop_page ? 'Rebuild SOP page from the SOP link' : 'Create SOP page from the SOP link')
+                    : 'Add an SOP link, then create the page';
+                var html = '<span class="d-inline-flex align-items-center justify-content-center gap-1">';
+                html += '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-sop-page-create" data-id="' + escAttr(rowData.id) + '" data-title="' + escAttr(rowData.title || '') + '" data-sop="' + escAttr(rowData.link3 || rowData.training_link || '') + '" data-has-sop="' + (hasSop ? '1' : '0') + '" title="' + createTitle + '" aria-label="Create" style="line-height:1;">' +
+                    '<i class="mdi mdi-plus-box" style="font-size:22px;color:#198754;"></i></button>';
+                if (canView) {
+                    html += '<a href="' + escAttr(pageUrl) + '" class="at-sop-page-view" title="View SOP page" aria-label="View" style="line-height:1;text-decoration:none;">' +
+                        '<i class="mdi mdi-eye" style="font-size:22px;color:#0d6efd;"></i></a>';
+                } else {
+                    html += '<span title="Add an SOP link first" aria-label="View" style="line-height:1;opacity:.35;">' +
+                        '<i class="mdi mdi-eye" style="font-size:22px;color:#6c757d;"></i></span>';
+                }
+                html += '</span>';
+                return html;
             }
 
             /** Video link column: custom video icon for http(s) (full URL in title); "-" if empty or not a URL. */
@@ -2009,19 +2135,36 @@
                     linkCol("L1", "link1", function(d) { return d.link1 || d.l1; }, 38);
                     linkCol("L2", "link2", function(d) { return d.link2 || d.l2; }, 38);
                     
-                    // SOP - Custom icon
+                    // SOP - Custom icon (header + cell use the same SOP graphic)
                     cols.push({
                         title: "SOP",
                         field: "link3",
-                        width: 48,
-                        minWidth: 40,
+                        width: 56,
+                        minWidth: 52,
                         widthGrow: 0,
                         cssClass: "tasks-col-link-icon",
                         headerClass: "tasks-col-link-icon",
                         hozAlign: "center",
-                        headerTooltip: "Training",
+                        headerTooltip: "Standard Operating Procedure",
+                        titleFormatter: function() {
+                            return '<img src="{{ asset("assets/images/task-sop-icon.png") }}" alt="SOP" title="SOP" width="22" height="22" style="width:22px;height:22px;display:inline-block;vertical-align:middle;">';
+                        },
                         formatter: function(cell) {
                             return formatSopLinkSlot(cell.getRow().getData(), function(d) { return d.link3 || d.training_link; });
+                        }
+                    });
+                    cols.push({
+                        title: "Page",
+                        field: "has_sop_page",
+                        width: 72,
+                        minWidth: 64,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-link-icon",
+                        headerClass: "tasks-col-link-icon",
+                        hozAlign: "center",
+                        headerTooltip: "SOP web page",
+                        formatter: function(cell) {
+                            return formatSopPageButtons(cell.getRow().getData());
                         }
                     });
                     
@@ -2040,6 +2183,23 @@
                         }
                     });
                     
+                    cols.push({
+                        title: "CL ID",
+                        field: "cl_id",
+                        width: 72,
+                        minWidth: 64,
+                        widthGrow: 0,
+                        hozAlign: "center",
+                        headerTooltip: "Checklist ID",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            var esc = checklistEsc(value);
+                            return '<button type="button" class="btn btn-link p-0 border-0 at-cl-copy" data-cl-id="' + esc + '" title="Copy ' + esc + '" style="font-weight:700;font-size:11px;color:#198754;text-decoration:none;">' + esc + '</button>';
+                        }
+                    });
                     cols.push({
                         title: "CL",
                         field: "has_checklist_form",
@@ -3251,6 +3411,157 @@
                 });
             }
 
+            function copyClId(value) {
+                value = String(value || '').trim();
+                if (!value || value === '—') return;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(value);
+                }
+            }
+
+            $(document).on('click', '#checklist-copy-cl-id', function(e) {
+                e.preventDefault();
+                copyClId($(this).data('cl-id') || $('#checklist-form-id').text());
+            });
+
+            $(document).on('click', '.at-cl-copy', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                copyClId($(this).data('cl-id'));
+            });
+
+            function openSopUploadModal(taskId, taskTitle, existingLink) {
+                $('#sop-upload-task-id').val(taskId || '');
+                $('#sop-upload-task-title').text(taskTitle || ('Task #' + taskId));
+                $('#sop-upload-error').addClass('d-none').text('');
+                $('#sop-upload-file').val('');
+                var link = String(existingLink || '').trim();
+                $('#sop-upload-link').val(link);
+                if (isOpenableSopLink(link)) {
+                    $('#sop-upload-current-link').attr('href', link);
+                    $('#sop-upload-current-wrap').removeClass('d-none');
+                } else {
+                    $('#sop-upload-current-link').attr('href', '#');
+                    $('#sop-upload-current-wrap').addClass('d-none');
+                }
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('sopUploadModal')).show();
+            }
+
+            $(document).on('click', '.at-sop-open', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var $btn = $(this);
+                openSopUploadModal($btn.attr('data-id'), $btn.attr('data-title'), $btn.attr('data-sop'));
+            });
+
+            $('#sop-upload-save-btn').on('click', async function() {
+                var taskId = $('#sop-upload-task-id').val();
+                if (!taskId) return;
+                var file = document.getElementById('sop-upload-file').files[0];
+                var link = String($('#sop-upload-link').val() || '').trim();
+                if (!file && !link) {
+                    $('#sop-upload-error').removeClass('d-none').text('Upload a file or enter an SOP link.');
+                    return;
+                }
+                var $btn = $(this).prop('disabled', true);
+                $('#sop-upload-error').addClass('d-none').text('');
+                var fd = new FormData();
+                fd.append('sop_link', link);
+                if (file) {
+                    fd.append('file', file);
+                }
+                try {
+                    var res = await fetch("{{ url('/tasks/automated') }}/" + taskId + "/sop", {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': checklistCsrf,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin',
+                        body: fd
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    if (!res.ok) {
+                        $('#sop-upload-error').removeClass('d-none').text(data.message || 'Failed to save SOP');
+                        $btn.prop('disabled', false);
+                        return;
+                    }
+                    if (table) {
+                        var row = table.getRow(parseInt(taskId, 10));
+                        if (row) {
+                            row.update({ link3: data.sop_link || link, training_link: data.sop_link || link });
+                        } else {
+                            table.replaceData();
+                        }
+                    }
+                    bootstrap.Modal.getInstance(document.getElementById('sopUploadModal'))?.hide();
+                    if (table) {
+                        var row = table.getRow(parseInt($('#sop-upload-task-id').val(), 10));
+                        if (row) {
+                            var d = row.getData();
+                            var isAssignor = String(d.assignor || '').toLowerCase() === String(currentUserEmail || '').toLowerCase();
+                            row.update({
+                                is_sop_assignor: isAssignor,
+                                has_sop_link: true,
+                                sop_page_url: d.sop_page_url || ("{{ url('/tasks/automated') }}/" + taskId + "/sop-page"),
+                                can_create_sop_page: true
+                            });
+                        }
+                    }
+                } catch (err) {
+                    $('#sop-upload-error').removeClass('d-none').text('Failed to save SOP');
+                } finally {
+                    $btn.prop('disabled', false);
+                }
+            });
+
+            $(document).on('click', '.at-sop-page-create', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var $btn = $(this);
+                var taskId = $btn.attr('data-id');
+                if (!taskId) return;
+                if ($btn.attr('data-has-sop') !== '1') {
+                    openSopUploadModal(taskId, $btn.attr('data-title'), $btn.attr('data-sop'));
+                    return;
+                }
+                $btn.prop('disabled', true);
+                $btn.attr('title', 'Writing SOP page with AI…');
+                try {
+                    var res = await fetch("{{ url('/tasks/automated') }}/" + taskId + "/sop-page", {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': checklistCsrf,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin'
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    if (!res.ok) {
+                        alert(data.message || 'Failed to create SOP page');
+                        return;
+                    }
+                    if (table) {
+                        var row = table.getRow(parseInt(taskId, 10));
+                        if (row) {
+                            row.update({
+                                has_sop_page: true,
+                                has_sop_link: true,
+                                can_create_sop_page: true,
+                                sop_page_url: data.sop_page_url || ("{{ url('/tasks/automated') }}/" + taskId + "/sop-page")
+                            });
+                        }
+                    }
+                    window.location = data.sop_page_url || ("{{ url('/tasks/automated') }}/" + taskId + "/sop-page");
+                } catch (err) {
+                    alert('Failed to create SOP page');
+                } finally {
+                    $btn.prop('disabled', false);
+                }
+            });
+
             $(document).on('click', '.at-cl-open', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -3261,6 +3572,53 @@
                 e.preventDefault();
                 e.stopPropagation();
                 openChecklistHistory($(this).data('id'));
+            });
+
+            $('#checklist-download-template').on('click', function() {
+                var automateTaskId = $('#checklist-automate-task-id').val();
+                if (!automateTaskId) return;
+                window.location = "{{ url('/tasks/automated') }}/" + automateTaskId + "/checklist/template";
+            });
+
+            $('#checklist-upload-template').on('click', function() {
+                if (!checklistCanManageRuntime) return;
+                $('#checklist-upload-file').trigger('click');
+            });
+
+            $('#checklist-upload-file').on('change', async function() {
+                var file = this.files && this.files[0];
+                this.value = '';
+                if (!file) return;
+                var automateTaskId = $('#checklist-automate-task-id').val();
+                if (!automateTaskId) return;
+                var fd = new FormData();
+                fd.append('file', file);
+                try {
+                    var res = await fetch("{{ url('/tasks/automated') }}/" + automateTaskId + "/checklist/template", {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': checklistCsrf,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin',
+                        body: fd
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    if (!res.ok) {
+                        alert(data.message || 'Failed to upload template');
+                        return;
+                    }
+                    checklistCurrentQuestions = Array.isArray(data.questions) ? data.questions : [];
+                    if (data.title) {
+                        $('#checklist-form-title').val(data.title);
+                    }
+                    setChecklistMode('edit');
+                    renderChecklistEdit(checklistCurrentQuestions);
+                    alert(data.message || 'Template loaded. Click Save form to keep it.');
+                } catch (err) {
+                    alert('Failed to upload template');
+                }
             });
 
             $('#checklist-mode-fill').on('click', function() { setChecklistMode('fill'); });
@@ -3350,11 +3708,18 @@
                         return;
                     }
                     checklistCurrentQuestions = (data.form && data.form.questions) ? data.form.questions.slice() : questions;
-                    $('#checklist-form-id').text(data.form && data.form.id ? data.form.id : '—');
+                    var savedClId = data.form && (data.form.cl_id || data.form.id)
+                        ? (data.form.cl_id || ('CL-' + data.form.id))
+                        : '';
+                    setChecklistFormIdDisplay(savedClId);
                     if (table) {
                         var row = table.getRow(parseInt(automateTaskId, 10));
                         if (row) {
-                            row.update({ has_checklist_form: true, checklist_form_id: data.form.id });
+                            row.update({
+                                has_checklist_form: true,
+                                checklist_form_id: data.form && data.form.id ? data.form.id : null,
+                                cl_id: savedClId
+                            });
                         } else {
                             table.replaceData();
                         }

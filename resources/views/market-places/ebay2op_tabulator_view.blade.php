@@ -4736,11 +4736,7 @@
             });
 
             table.on('dataLoaded', function() {
-                if (typeof scanAndQueueChannelPushSprice === 'function' && !window._chPushSpricePageChecked) {
-                    setTimeout(function() {
-                        scanAndQueueChannelPushSprice(table, { silent: true });
-                    }, 120);
-                }
+                window._chPushSpricePageChecked = true;
                 updateCalcValues();
                 updateSummary();
                 // Refresh checkboxes to reflect selectedSkus set (matching Amazon approach)

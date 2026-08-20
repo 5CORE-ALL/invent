@@ -2805,9 +2805,6 @@
                             <a href="{{ route('resources-master.section', 'training_resources') }}" class="{{ request()->is('resources-master/section/training_resources') ? 'active' : '' }}">Training Resources</a>
                         </li>
                         <li>
-                            <a href="{{ route('resources-master.section', 'checklist_forms') }}" class="{{ request()->is('resources-master/section/checklist_forms') ? 'active' : '' }}">Checklist Forms</a>
-                        </li>
-                        <li>
                             <a href="{{ route('resources-master.section', 'media_gallery') }}" class="{{ request()->is('resources-master/section/media_gallery') ? 'active' : '' }}">Media Gallery</a>
                         </li>
                         <li>

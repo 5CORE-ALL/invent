@@ -12,7 +12,6 @@ return [
     'categories' => [
         'rr_files' => 'R&R Files',
         'training_resources' => 'Training Resources',
-        'checklist_forms' => 'Checklist Forms',
         'media_gallery' => 'Media Gallery',
         'links_videos' => 'Links / Videos',
     ],

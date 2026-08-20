@@ -12,25 +12,8 @@
         .ebay2-toolbar-row {
             row-gap: 4px;
         }
-        /* Compact every interactive control in the toolbar so more fits per row,
-           but keep enough padding for the native select arrow + full label text. */
-        .ebay2-toolbar-row > .form-select,
-        .ebay2-toolbar-row .form-select.pricing-filter-item,
-        .ebay2-toolbar-row > .btn,
-        .ebay2-toolbar-row > .dropdown > .btn,
-        .ebay2-toolbar-row > .manual-dropdown-container > .btn {
-            padding: 3px 10px;
-            font-size: 0.8125rem;
-            line-height: 1.3;
-            min-height: 30px;
-        }
-        /* Selects need a touch more right-side room so the native ▼ arrow doesn't overlap the label. */
-        .ebay2-toolbar-row .form-select {
-            padding-right: 24px;
-            background-position: right 6px center;
-        }
         .ebay2-toolbar-row .dropdown-menu {
-            font-size: 0.8125rem;
+            font-size: 0.75rem;
         }
 
         /* Column visibility — 4 groups (Basics / Pricing / Advertisement / Others) */
@@ -357,9 +340,9 @@
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
 
-        /* Compact toolbar + badges — same density as Amazon */
+        /* Compact toolbar + badges — same density as /ebay-tabulator-view */
         .ebay2-toolbar-row {
-            gap: 6px 8px !important;
+            gap: 4px 6px !important;
             align-items: center !important;
         }
         .ebay2-toolbar-row .form-select,
@@ -367,35 +350,36 @@
         .ebay2-toolbar-row .btn,
         .ebay2-toolbar-row .btn-sm,
         .ebay2-toolbar-row .dropdown > .btn {
-            height: 28px !important;
-            min-height: 28px !important;
+            height: 26px !important;
+            min-height: 26px !important;
             font-size: 0.75rem !important;
-            padding: 0.15rem 0.4rem !important;
+            padding: 0 0.4rem !important;
             line-height: 1.2 !important;
             box-sizing: border-box !important;
         }
         .ebay2-toolbar-row .form-select {
             width: auto !important;
-            max-width: 130px;
-            padding-right: 1.35rem !important;
-            background-position: right 0.35rem center !important;
+            max-width: 120px;
+            padding-right: 1.15rem !important;
+            padding-left: 0.35rem !important;
+            background-position: right 0.28rem center !important;
         }
         .ebay2-toolbar-row .pricing-filter-item.border,
         .ebay2-toolbar-row .d-inline-flex.border {
-            height: 28px !important;
-            min-height: 28px !important;
+            height: 26px !important;
+            min-height: 26px !important;
             padding: 0 4px !important;
-            gap: 4px !important;
+            gap: 3px !important;
             align-items: center !important;
         }
         .ebay2-toolbar-row .pricing-filter-item .form-label,
         .ebay2-toolbar-row .d-inline-flex .form-label {
-            font-size: 0.75rem !important;
+            font-size: 0.72rem !important;
             margin-bottom: 0 !important;
         }
         .ebay2-toolbar-row #target-roi-input,
         .ebay2-toolbar-row #target-gpft-input {
-            width: 48px !important;
+            width: 52px !important;
             height: 24px !important;
             min-height: 24px !important;
             font-size: 0.75rem !important;
@@ -403,17 +387,25 @@
         }
         #summary-stats {
             order: -1;
-            padding: 0.5rem 0.7rem !important;
+            padding: 0.28rem 0.45rem !important;
             margin-top: 0 !important;
-            margin-bottom: 0.5rem !important;
+            margin-bottom: 0.28rem !important;
         }
-        #summary-stats .d-flex { gap: 8px !important; }
+        #summary-stats .d-flex {
+            gap: 4px !important;
+            flex-wrap: wrap !important;
+            align-items: center;
+        }
         #summary-stats .badge {
-            font-size: 1rem !important;
-            padding: 0.5rem !important;
+            flex: 0 0 auto;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem !important;
+            padding: 0.18rem 0.4rem !important;
             font-weight: 700 !important;
-            line-height: 1.5 !important;
-            border-radius: 0.375rem !important;
+            line-height: 1.25 !important;
+            border-radius: 0.28rem !important;
             white-space: nowrap;
         }
         .ebay2-toolbar-row .ms-2 { margin-left: 0 !important; }
@@ -456,8 +448,8 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-2 d-flex flex-column">
-                <div class="d-flex align-items-center flex-wrap gap-2 ebay2-toolbar-row">
+            <div class="card-body py-1 d-flex flex-column">
+                <div class="d-flex align-items-center flex-wrap ebay2-toolbar-row">
                     <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 140px; display: inline-block;">
                     <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 140px; display: inline-block;">
 
@@ -680,6 +672,14 @@
                               style="color: white; font-weight: bold;"
                               title="CVR = (S Qty / Σ Views) × 100. Numerator is the orders-API L30 units (same value the S Qty badge shows). Denominator is the sum of 'views' across rows with E Stock > 0.">CVR: 0%</span>
                         <span class="badge bg-info" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge fs-6 p-2" id="ebay2-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="ebay2-red-triangle-badge"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Red triangle: S PRC &gt; LMP. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
                         <span class="badge bg-primary d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
                         
@@ -704,7 +704,7 @@
                     </div>
                 </div>
                 <div id="ebay2-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column; min-height: 0;">
-                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 8px; background: #fff; border-bottom: 1px solid #e5e7eb;">
                         <span id="custom-pagination-counter"
                             style="font-size: 13px; color: #555; white-space: nowrap;"></span>
                     </div>
@@ -1532,6 +1532,8 @@
         // Badge filter state variables
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
+        let blueTriangleFilterActive = false;
+        let redTriangleFilterActive = false;
 
         function rowEbay2StockQty(data) {
             return parseFloat(data['E Stock'] || 0) || 0;
@@ -1543,6 +1545,36 @@
             if (sku.includes('PARENT')) return true;
             const p = data.Parent;
             return !!(p && String(p).toUpperCase().startsWith('PARENT'));
+        }
+        function ebay2RowSpriceForAlert(data) {
+            let sprice = parseFloat(data && data.SPRICE) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function' && !isEbay2TabulatorParentRow(data)) {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function ebay2HasBlueTriangle(data) {
+            if (isEbay2TabulatorParentRow(data)) return false;
+            const sprice = ebay2RowSpriceForAlert(data);
+            const price = parseFloat(data['eBay Price']) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function ebay2HasRedTriangle(data) {
+            if (isEbay2TabulatorParentRow(data)) return false;
+            const sprice = ebay2RowSpriceForAlert(data);
+            const lmp = parseFloat(data.lmp_price) || 0;
+            return sprice > 0 && lmp > 0 && sprice > lmp;
+        }
+        function syncEbay2TriangleBadgeState() {
+            $('#ebay2-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+            $('#ebay2-red-triangle-badge').css({
+                outline: redTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: redTriangleFilterActive ? '2px' : ''
+            });
         }
         function ebay2NormalizeParentKey(val) {
             return String(val || '').trim().replace(/^PARENT\s+/i, '').trim();
@@ -1662,10 +1694,6 @@
                 if (typeof applyChannelSpriceFromStdChange === 'function') {
                     applyChannelSpriceFromStdChange(r, { persist: true, skip_push: false });
                 }
-                try {
-                    const cell = r.getCell('push_std_prc');
-                    if (cell) cell.reformat();
-                } catch (e) { /* ignore */ }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
@@ -2695,6 +2723,16 @@
                 zeroSoldFilterActive = false;
                 applyFilters();
             });
+            $('#ebay2-blue-triangle-badge').on('click', function() {
+                blueTriangleFilterActive = !blueTriangleFilterActive;
+                if (blueTriangleFilterActive) redTriangleFilterActive = false;
+                applyFilters();
+            });
+            $('#ebay2-red-triangle-badge').on('click', function() {
+                redTriangleFilterActive = !redTriangleFilterActive;
+                if (redTriangleFilterActive) blueTriangleFilterActive = false;
+                applyFilters();
+            });
 
             function clearSpriceForSelected() {
                 if (selectedSkus.size === 0) {
@@ -3404,23 +3442,26 @@
                         field: "E Dil%",
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by variation) — same value Dil vs PRMT uses.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const INV = parseFloat(rowData.INV) || 0;
-                            const OVL30 = parseFloat(rowData['L30']) || 0;
-                            
-                            if (INV === 0) return '<span style="color: #a00211; font-weight: 600;">0%</span>'; // red for 0%
-                            
-                            const dil = (OVL30 / INV) * 100;
+                            const dil = (typeof chPromoListingDil === 'function')
+                                ? chPromoListingDil(rowData)
+                                : (function() {
+                                    const INV = parseFloat(rowData.INV) || 0;
+                                    const OVL30 = parseFloat(rowData['L30']) || 0;
+                                    return INV === 0 ? 0 : (OVL30 / INV) * 100;
+                                })();
+
+                            if (!(dil > 0)) return '<span style="color: #a00211; font-weight: 600;">0%</span>';
+
                             let color = '';
-                            
-                            // Color logic from inc/dec page - getDilColor
-                            if (dil < 16.66) color = '#a00211'; // red
-                            else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
-                            else if (dil >= 25 && dil < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50 and above)
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                            if (dil < 16.66) color = '#a00211';
+                            else if (dil >= 16.66 && dil < 25) color = '#ffc107';
+                            else if (dil >= 25 && dil < 50) color = '#28a745';
+                            else color = '#e83e8c';
+
+                            return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Dil vs PRMT">${Math.round(dil)}%</span>`;
                         },
                         width: 50
                     },
@@ -3668,8 +3709,6 @@
                         }
                     },
 
-                    ...(typeof channelPromoPushStdPrcColumn === 'function' ? [channelPromoPushStdPrcColumn()] : []),
-                   
                     {
                         title: "Price",
                         field: "eBay Price",
@@ -3911,15 +3950,17 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editor: "input",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + CPN%)/100). Blue triangle = S PRC ≠ Price. Red triangle / red text = S PRC > LMP.",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
                             let sprice = isNaN(spriceNum) ? 0 : spriceNum;
-                            if (!(sprice > 0) && typeof chPromoSpriceFromStdTPromo === 'function'
-                                && !rowData.is_parent_summary
-                                && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
+                            const isParent = rowData.is_parent_summary
+                                || rowData.is_parent_row
+                                || (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT'));
+                            if (typeof chPromoSpriceFromStdTPromo === 'function' && !isParent) {
                                 const calc = chPromoSpriceFromStdTPromo(rowData);
                                 if (calc > 0) sprice = calc;
                             }
@@ -3927,29 +3968,32 @@
                                 return '';
                             }
 
-                            const formattedValue = '$' + sprice.toFixed(2);
+                            const formattedValue = '$' + Number(sprice).toFixed(2);
                             const lmp = parseFloat(rowData.lmp_price) || 0;
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                             const differsFromPrice = ebayPrice > 0
                                 && Math.round(sprice * 100) !== Math.round(ebayPrice * 100);
+                            const overLmp = lmp > 0 && sprice > lmp;
                             const blueTri = differsFromPrice
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                    + sprice.toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
+                                    + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
                                 : '';
-                            if (lmp > 0 && sprice > lmp) {
-                                return '<span style="color:#dc3545;font-weight:600;white-space:nowrap;" title="S PRC $'
-                                    + sprice.toFixed(2) + ' &gt; LMP $' + lmp.toFixed(2) + '">'
-                                    + formattedValue
-                                    + ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;color:#dc3545;"></i></span>'
-                                    + blueTri;
-                            }
-                            if (hasCustomSprice === false) {
-                                return '<span style="color: #0d6efd; font-weight: 500; white-space:nowrap;">' + formattedValue + '</span>' + blueTri;
+                            const redTri = overLmp
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + Number(sprice).toFixed(2) + ' &gt; LMP $' + lmp.toFixed(2) + '"></i>'
+                                : '';
+
+                            let priceHtml = formattedValue;
+                            if (overLmp) {
+                                priceHtml = '<span style="color:#dc3545;font-weight:600;">' + formattedValue + '</span>';
+                            } else if (hasCustomSprice === false) {
+                                priceHtml = '<span style="color:#0d6efd;font-weight:500;">' + formattedValue + '</span>';
                             }
 
-                            return '<span style="white-space:nowrap;">' + formattedValue + blueTri + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
+                                + priceHtml + blueTri + redTri + '</span>';
                         },
-                        width: 80
+                        width: 92
                     },
 
                     {
@@ -4566,14 +4610,26 @@
                     });
                 }
 
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return ebay2HasBlueTriangle(data);
+                    });
+                }
+                if (redTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return ebay2HasRedTriangle(data);
+                    });
+                }
+
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const INV = parseFloat(data['INV'] || 0);
-                        const OVL30 = parseFloat(data['L30'] || 0);
-                        
-                        // DIL slabs match /ebay-tabulator-view: red <25, green 25-50, pink 50+
-                        // (INV=0 → dil 0 → falls into red, same as eBay 1).
-                        const dil = INV === 0 ? 0 : (OVL30 / INV) * 100;
+                        const dil = (typeof chPromoListingDil === 'function')
+                            ? chPromoListingDil(data)
+                            : (function() {
+                                const INV = parseFloat(data['INV'] || 0);
+                                const OVL30 = parseFloat(data['L30'] || 0);
+                                return INV === 0 ? 0 : (OVL30 / INV) * 100;
+                            })();
 
                         if (dilFilter === 'red') return dil < 25;
                         if (dilFilter === 'green') return dil >= 25 && dil < 50;
@@ -4753,6 +4809,21 @@
                 $('#avg-l7-views-badge').text('L7: ' + avgL7Views.toFixed(1));
                 $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
 
+                let blueTriangleCount = 0;
+                let redTriangleCount = 0;
+                const triangleRows = (allTableData && allTableData.length) ? allTableData : table.getData();
+                triangleRows.forEach(function(row) {
+                    if (ebay2HasBlueTriangle(row)) blueTriangleCount++;
+                    if (ebay2HasRedTriangle(row)) redTriangleCount++;
+                });
+                $('#ebay2-blue-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+                );
+                $('#ebay2-red-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
+                );
+                syncEbay2TriangleBadgeState();
+
                 // Repaint L7 View + S BID colours when the avg changes.
                 if (table && Math.abs(prevAvgL7Views - avgL7Views) > 0.0001) {
                     table.redraw(false);
@@ -4784,8 +4855,8 @@
                 }
 
                 if (
-                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|push_std_prc|prmt_pct|push_prmt|cpn_pct|push_cpn|dsc|appr|push_prc)$/i.test(f) ||
-                    /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|prmt|cpn|t\s*promo|dsc|appr|push\s*prc|push\s*std\s*prc|push\s*prmt)\b/i.test(tl) ||
+                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|dsc|appr|push_prc)$/i.test(f) ||
+                    /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|prmt|cpn|t\s*promo|dsc|appr|push\s*prc)\b/i.test(tl) ||
                     /^\+$/i.test(t)
                 ) {
                     return 'pricing';
@@ -4955,12 +5026,8 @@
             });
 
             table.on('dataLoaded', function() {
-                if (typeof autopopulateEbaySpriceFromStdPrmtCpn === 'function' && !window._chPushSpricePageChecked) {
-                    window._chPushSpricePageChecked = true;
-                    setTimeout(function() {
-                        autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
-                    }, 80);
-                }
+                window._chPushSpricePageChecked = true;
+                if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
                 updateCalcValues();
                 updateSummary();
                 // Refresh checkboxes to reflect selectedSkus set (matching Amazon approach)

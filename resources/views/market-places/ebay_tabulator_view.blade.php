@@ -7,27 +7,74 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
-        /* Toolbar + badges — same rules as /amazon-tabulator-view */
+        /* Compact filter bar + badges */
+        #ebay-filter-bar {
+            gap: 4px 6px !important;
+            align-items: center !important;
+        }
+        #ebay-filter-bar .form-select,
+        #ebay-filter-bar .form-control,
+        #ebay-filter-bar .btn,
+        #ebay-filter-bar .btn-sm {
+            min-height: 26px !important;
+            height: 26px !important;
+            font-size: 0.75rem !important;
+            line-height: 1.2 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
         #ebay-filter-bar .form-select {
             width: auto !important;
-            max-width: 130px;
-            padding-right: 1.35rem !important;
-            padding-left: 0.5rem !important;
-            background-position: right 0.35rem center !important;
+            max-width: 120px;
+            padding-left: 0.35rem !important;
+            padding-right: 1.15rem !important;
+            background-position: right 0.28rem center !important;
         }
-        #ebay-filter-bar { gap: 8px 10px !important; }
-        #ebay-filter-bar #sprice-filter { width: 90px !important; }
+        #ebay-filter-bar .form-control {
+            padding-left: 0.4rem !important;
+            padding-right: 0.4rem !important;
+        }
+        #ebay-filter-bar .btn-sm {
+            padding-left: 0.4rem !important;
+            padding-right: 0.4rem !important;
+        }
+        #ebay-filter-bar #sprice-filter { width: 78px !important; }
+        #ebay-filter-bar #parent-search,
+        #ebay-filter-bar #sku-search {
+            width: 140px !important;
+        }
+        #ebay-filter-bar #target-roi-input,
+        #ebay-filter-bar #target-gpft-input,
+        #ebay-filter-bar #target-price-input {
+            width: 52px !important;
+        }
+        #ebay-filter-bar #target-roi-controls,
+        #ebay-filter-bar #target-gpft-controls,
+        #ebay-filter-bar #target-price-controls {
+            margin-left: 0 !important;
+            padding: 0 4px !important;
+            gap: 3px !important;
+            min-height: 26px;
+            height: 26px;
+        }
+        #ebay-filter-bar #target-roi-controls .form-label,
+        #ebay-filter-bar #target-gpft-controls .form-label,
+        #ebay-filter-bar #target-price-controls .form-label {
+            font-size: 0.72rem !important;
+            line-height: 1 !important;
+        }
         #summary-stats {
             order: -1;
-            padding: 0.5rem 0.7rem !important;
+            padding: 0.28rem 0.45rem !important;
             margin-top: 0 !important;
-            margin-bottom: 0.5rem !important;
+            margin-bottom: 0.28rem !important;
         }
         #summary-stats .d-flex {
             width: 100%;
-            gap: 6px !important;
-            flex-wrap: nowrap !important;
-            overflow: hidden;
+            gap: 4px !important;
+            flex-wrap: wrap !important;
+            overflow: visible;
+            align-items: center;
         }
 
         /* Sku Link LMP (mirrors /amazon-tabulator-view) */
@@ -270,8 +317,8 @@
         .time-navigation-group button {
             padding: 0;
             border-radius: 50% !important;
-            width: 40px;
-            height: 40px;
+            width: 28px;
+            height: 28px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -479,19 +526,17 @@
             background-color: #0d6efd;
         }
 
-        /* Summary badges — one row, stretch to fill the bar */
         #summary-stats .badge {
-            flex: 1 1 0;
+            flex: 0 0 auto;
             display: inline-flex !important;
             align-items: center;
             justify-content: center;
-            font-size: var(--summary-badge-fs, 0.88rem) !important;
-            padding: 0.38rem 0.45rem !important;
+            font-size: 0.75rem !important;
+            padding: 0.18rem 0.4rem !important;
             font-weight: 700 !important;
-            line-height: 1.3 !important;
-            border-radius: 0.35rem !important;
+            line-height: 1.25 !important;
+            border-radius: 0.28rem !important;
             white-space: nowrap;
-            min-width: 0;
         }
 
         /* Image column hover preview (same pattern as forecast.analysis) */
@@ -502,9 +547,9 @@
         }
 
         #summary-stats .summary-trend-dot {
-            width: 8px !important;
-            height: 8px !important;
-            margin-left: 4px !important;
+            width: 6px !important;
+            height: 6px !important;
+            margin-left: 3px !important;
             flex-shrink: 0;
         }
 
@@ -598,8 +643,8 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-2 d-flex flex-column">
-                <div class="d-flex align-items-center flex-wrap gap-2" id="ebay-filter-bar">
+            <div class="card-body py-1 d-flex flex-column">
+                <div class="d-flex align-items-center flex-wrap" id="ebay-filter-bar">
                     <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 180px; display: inline-block;">
                     <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px; display: inline-block;">
 
@@ -820,7 +865,7 @@
 
                 <!-- Summary Stats (layout matches Ebay 2 Analytics summary row) -->
                 <div id="summary-stats" class="bg-light rounded">
-                    <div class="d-flex flex-nowrap gap-2" role="group" aria-label="Summary metrics">
+                    <div class="d-flex flex-wrap gap-2" role="group" aria-label="Summary metrics">
                         <!-- Filtered rows count -->
                         <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
                             style="color: white; font-weight: bold;"
@@ -919,7 +964,7 @@
                 </div>
                 <div id="ebay-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <!-- View / Parent / SKU + search + row counter (toolbar matches ebay2-tabulator-view) -->
-                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 8px; background: #fff; border-bottom: 1px solid #e5e7eb;">
                         <div class="d-flex align-items-center gap-1">
                             <label for="view-type-filter" class="form-label mb-0 text-nowrap small"
                                 style="font-size: 13px;">View:</label>
@@ -4072,22 +4117,25 @@
                         field: "E Dil%",
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by variation) — same value Dil vs PRMT uses.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const INV = parseFloat(rowData.INV) || 0;
-                            const OVL30 = parseFloat(rowData['L30']) || 0;
+                            const dil = (typeof chPromoListingDil === 'function')
+                                ? chPromoListingDil(rowData)
+                                : (function() {
+                                    const INV = parseFloat(rowData.INV) || 0;
+                                    const OVL30 = parseFloat(rowData['L30']) || 0;
+                                    return INV === 0 ? 0 : (OVL30 / INV) * 100;
+                                })();
 
-                            if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
+                            if (!(dil > 0)) return '<span style="color: #6c757d;">0%</span>';
 
-                            const dil = (OVL30 / INV) * 100;
                             let color = '';
+                            if (dil < 25) color = '#a00211';
+                            else if (dil >= 25 && dil < 50) color = '#28a745';
+                            else color = '#e83e8c';
 
-                            // Color logic from inc/dec page - getDilColor
-                            if (dil < 25) color = '#a00211'; // red (absorbs former yellow band)
-                            else if (dil >= 25 && dil < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50 and above)
-
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                            return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Dil vs PRMT">${Math.round(dil)}%</span>`;
                         },
                         width: 50
                     },
@@ -5542,9 +5590,13 @@
                 // DIL filter
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const inv = parseFloat(data['INV']) || 0;
-                        const l30 = parseFloat(data['L30']) || 0;
-                        const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                        const dil = (typeof chPromoListingDil === 'function')
+                            ? chPromoListingDil(data)
+                            : (function() {
+                                const inv = parseFloat(data['INV']) || 0;
+                                const l30 = parseFloat(data['L30']) || 0;
+                                return inv === 0 ? 0 : (l30 / inv) * 100;
+                            })();
 
                         if (dilFilter === 'red') return dil < 25;
                         if (dilFilter === 'green') return dil >= 25 && dil < 50;
@@ -5823,24 +5875,10 @@
                 fitSummaryBadges();
             }
 
-            /*
-             * Keep all summary badges on ONE row (left → right). Shrink the shared badge
-             * font-size only if the row would otherwise overflow, down to a readable minimum.
-             */
             function fitSummaryBadges() {
                 const row = document.querySelector('#summary-stats .d-flex');
                 if (!row) return;
-                // Match filter control font (0.875rem); only shrink for width overflow — height stays fixed via CSS
-                const MAX_FS = 0.88;
-                const MIN_FS = 0.68;
-                let fs = MAX_FS;
-                row.style.setProperty('--summary-badge-fs', fs + 'rem');
-                let guard = 0;
-                while (row.scrollWidth > row.clientWidth && fs > MIN_FS && guard < 40) {
-                    fs = Math.max(MIN_FS, fs - 0.02);
-                    row.style.setProperty('--summary-badge-fs', fs + 'rem');
-                    guard++;
-                }
+                row.style.removeProperty('--summary-badge-fs');
             }
 
             let _fitBadgesTimer = null;
@@ -6179,12 +6217,8 @@
             });
 
             table.on('dataLoaded', function() {
-                if (typeof autopopulateEbaySpriceFromStdPrmtCpn === 'function' && !window._chPushSpricePageChecked) {
-                    window._chPushSpricePageChecked = true;
-                    setTimeout(function() {
-                        autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
-                    }, 80);
-                }
+                window._chPushSpricePageChecked = true;
+                if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
                 // Build the unique parent list for Play/Next/Previous navigation.
                 var allRows = table.getData('all') || [];
                 var parents = [];

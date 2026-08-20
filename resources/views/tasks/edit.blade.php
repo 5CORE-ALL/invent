@@ -98,6 +98,18 @@
                                            {!! $lockedAttr !!} title="{{ $lockedTitle }}">
                                 </div>
                             </div>
+                            <div class="row">
+                                <div class="col-12 mb-2">
+                                    <label class="form-label fw-bold" style="font-size: 12px;">Corrective Action</label>
+                                    <label for="is_corrective_action" class="d-flex align-items-center gap-2 mb-0 border rounded px-2" style="min-height: 31px; cursor: pointer;">
+                                        <input type="checkbox" class="form-check-input m-0" id="is_corrective_action" name="is_corrective_action" value="1"
+                                               {{ old('is_corrective_action', $task->is_corrective_action) ? 'checked' : '' }}
+                                               {!! $lockedAttr !!}>
+                                        <img src="{{ asset('assets/images/task-ca-icon.png') }}" alt="Corrective Action" style="width: 24px; height: 24px; object-fit: contain;">
+                                        <span style="font-size: 12px;">CA</span>
+                                    </label>
+                                </div>
+                            </div>
 
                             <!-- Toggle Button for Additional Fields -->
                             <div class="row">

@@ -448,6 +448,11 @@
                 flex: 1.3 1 72px;
                 min-width: 64px;
             }
+            .task-toolbar-wrap .toolbar-field-ca {
+                flex: 0 0 58px;
+                min-width: 52px;
+                max-width: 68px;
+            }
             .task-toolbar-wrap .toolbar-field-group,
             .task-toolbar-wrap .toolbar-field-task {
                 flex: 1 1 58px;
@@ -989,6 +994,27 @@
         .stats-row .stat-card-red-missed  { background: #dc3545 !important; }
         .stats-row .stat-card-orange      { background: #fd7e14 !important; }
         .stats-row .stat-card-purple      { background: #6610f2 !important; }
+        .stats-row .stat-card-ca          { background: #ffffff !important; border: 1px solid #dc3545; }
+        .stats-row .stat-card-ca .stat-label,
+        .stats-row .stat-card-ca .stat-value {
+            color: #b71c1c !important;
+        }
+        .stat-card-ca {
+            border-left-color: #dc3545;
+            cursor: pointer;
+        }
+        .stat-card-ca .stat-icon {
+            background: transparent;
+        }
+        .stat-card-ca .stat-icon.stat-icon-img {
+            width: 42px;
+            height: 42px;
+            min-width: 42px;
+            min-height: 42px;
+            padding: 0;
+            border-radius: 50%;
+            overflow: hidden;
+        }
 
         /* Lighter fills read better with dark text (mirrors the forecast badges). */
         .stats-row .stat-card-cyan,
@@ -1689,6 +1715,19 @@
                 </div>
             </div>
 
+            <!-- Corrective Action -->
+            <div class="col">
+                <div class="stat-card stat-card-ca" id="stat-ca-card" data-metric="ca" data-value="{{ $stats['ca'] ?? 0 }}" title="Corrective Action count — click to filter">
+                    <div class="stat-icon stat-icon-img">
+                        <img src="{{ asset('assets/images/task-ca-icon.png') }}" alt="Corrective Action" class="stat-icon-image">
+                    </div>
+                    <div class="stat-content text-center">
+                        <div class="stat-label">CA</div>
+                        <div class="stat-value">{{ $stats['ca'] ?? 0 }}</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Overdue Tasks -->
             <div class="col">
                 <div class="stat-card stat-card-red task-stat-trigger" data-metric="overdue" data-value="{{ $stats['overdue'] }}" title="Click to view history">
@@ -1931,6 +1970,13 @@
                             <div class="row g-2 mb-2 py-2 px-2 filter-section filter-section-eq align-items-center task-toolbar-filters">
                             <div class="col-12 mb-2 toolbar-field toolbar-field-search">
                                 <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
+                            </div>
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-ca">
+                                <select id="filter-ca" class="form-select form-select-sm" title="Corrective Action">
+                                    <option value="">CA</option>
+                                    <option value="1">Yes</option>
+                                    <option value="0">No</option>
+                                </select>
                             </div>
                             <div class="col-12 mb-2 toolbar-field toolbar-field-group">
                                 <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Group" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
@@ -2177,6 +2223,42 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-success" id="confirm-done-btn">
                     <i class="mdi mdi-check me-1"></i>Submit &amp; mark Done
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Fired-task checklist (same form as the automated template) -->
+<div class="modal fade" id="firedChecklistModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #c4a000 0%, #e0c040 100%); color: #222;">
+                <h5 class="modal-title mb-0">
+                    <i class="mdi mdi-magnify me-2"></i>Checklist Questionnaire
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="fired-checklist-automate-task-id" value="">
+                <div class="mb-3">
+                    <div class="small text-muted">Task</div>
+                    <div class="fw-semibold" id="fired-checklist-task-title">—</div>
+                    <div class="small text-muted">CL ID: <span id="fired-checklist-cl-id">—</span>
+                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline d-none" id="fired-checklist-copy-cl-id" title="Copy CL ID">
+                            <i class="mdi mdi-content-copy"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="fired-checklist-loading" class="text-muted small mb-3 d-none"><i class="mdi mdi-loading mdi-spin me-1"></i>Loading…</div>
+                <div id="fired-checklist-error" class="alert alert-danger d-none mb-3"></div>
+                <div id="fired-checklist-questions" class="vstack gap-3"></div>
+                <div id="fired-checklist-empty" class="alert alert-warning d-none mb-0">No checklist form is attached yet.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="fired-checklist-submit-btn" disabled>
+                    <i class="mdi mdi-send me-1"></i>Submit
                 </button>
             </div>
         </div>
@@ -2905,6 +2987,14 @@
                 <label for="tf_etc_minutes" class="form-label fw-bold" style="font-size: 12px;">ETC (Min) <span class="text-danger">*</span></label>
                 <input type="number" class="form-control form-control-sm tf-lockable" id="tf_etc_minutes" name="etc_minutes" placeholder="10" min="1">
             </div>
+            <div class="mb-2">
+                <label class="form-label fw-bold" style="font-size: 12px;">Corrective Action</label>
+                <label for="tf_is_corrective_action" class="d-flex align-items-center gap-2 mb-0 border rounded px-2 tf-lockable" style="min-height: 31px; cursor: pointer;">
+                    <input type="checkbox" class="form-check-input m-0 tf-lockable" id="tf_is_corrective_action" name="is_corrective_action" value="1">
+                    <img src="{{ asset('assets/images/task-ca-icon.png') }}" alt="Corrective Action" style="width: 24px; height: 24px; object-fit: contain;">
+                    <span style="font-size: 12px;">CA</span>
+                </label>
+            </div>
 
             <div class="mb-2">
                 <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="tf-toggle-more" style="font-size: 11px;">
@@ -3057,6 +3147,7 @@
                 try {
                     localStorage.setItem(TASK_INDEX_FILTERS_KEY, JSON.stringify({
                         search: $('#filter-search').val() || '',
+                        ca: $('#filter-ca').val() || '',
                         group: $('#filter-group').val() || '',
                         task: $('#filter-task').val() || '',
                         assignor: $('#filter-assignor').val() || '',
@@ -3075,6 +3166,7 @@
                     var s = JSON.parse(raw);
                     if (!s || typeof s !== 'object') return;
                     $('#filter-search').val(s.search || '');
+                    $('#filter-ca').val(s.ca || '');
                     $('#filter-group').val(s.group || '');
                     $('#filter-task').val(s.task || '');
                     $('#filter-status').val(s.status || '');
@@ -3621,6 +3713,23 @@
                 return activeRows.slice(start, Math.min(start + size, activeRows.length));
             }
 
+            function formatTaskClSlot(rowData) {
+                var hasForm = !!(rowData.has_checklist_form && rowData.automate_task_id);
+                if (!hasForm && rowData.automate_task_id && /^CL-\d+$/i.test(String(rowData.cl_id || rowData.link7 || ''))) {
+                    hasForm = true;
+                }
+                var escAttr = function(t) {
+                    return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                };
+                if (hasForm) {
+                    var clId = rowData.cl_id ? String(rowData.cl_id) : '';
+                    var title = 'Open checklist form' + (clId ? ' (' + clId + ')' : '');
+                    return '<button type="button" class="btn btn-link p-0 border-0 shadow-none task-cl-open" data-automate-task-id="' + escAttr(rowData.automate_task_id) + '" data-task-title="' + escAttr(rowData.title || '') + '" data-cl-id="' + escAttr(clId) + '" title="' + escAttr(title) + '" aria-label="Open checklist" style="line-height:1;">' +
+                        '<i class="mdi mdi-magnify" style="font-size:22px;color:#c4a000;"></i></button>';
+                }
+                return formatNamedLinkSlot(rowData, function(d) { return d.link7 || d.checklist_link; });
+            }
+
             /** Named link column: custom icon for http(s) (full URL in title); "-" if empty or not a URL. */
             function formatNamedLinkSlot(rowData, getRawFn) {
                 var v = String(getRawFn(rowData) || '').trim();
@@ -3856,8 +3965,25 @@
                         sorter: "number"
                     });
                     
-                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, L1, L2, SOP, Video, Form, Report, CL, PL, STATUS, DONE NOTE, P (Priority), IMAGE, ACTION
+                    // Column Order: CA, GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, L1, L2, SOP, Video, Form, Report, CL, PL, STATUS, DONE NOTE, P (Priority), IMAGE, ACTION
                     // Note: "Report" (link6) = form report link; "DONE NOTE" = completion report submitted via Mark Done modal (read-only).
+
+                    cols.push({
+                        title: "CA",
+                        field: "is_corrective_action",
+                        width: 44,
+                        minWidth: 40,
+                        widthGrow: 0,
+                        hozAlign: "center",
+                        headerTooltip: "Corrective Action",
+                        formatter: function(cell) {
+                            var v = cell.getValue();
+                            if (v === true || v === 1 || v === '1') {
+                                return '<img src="{{ asset("assets/images/task-ca-icon.png") }}" alt="Corrective Action" title="Corrective Action" style="width:28px;height:28px;object-fit:contain;display:inline-block;">';
+                            }
+                            return '<span style="color:#adb5bd;">-</span>';
+                        }
+                    });
                     
                     // GROUP
                     cols.push({
@@ -4095,11 +4221,22 @@
                         }
                     });
                     
-                    linkCol("CL", "link7", function(d) { return d.link7 || d.checklist_link; }, 38, {
+                    cols.push({
+                        title: "CL",
+                        field: "link7",
+                        width: 38,
+                        minWidth: 34,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-link-icon",
+                        headerClass: "tasks-col-link-icon",
+                        hozAlign: "center",
+                        headerTooltip: "Checklist",
                         titleFormatter: function() {
                             return '<span title="Checklist" style="font-weight:700;font-size:10.8px;color:#495057;">CL</span>';
                         },
-                        headerTooltip: "Checklist"
+                        formatter: function(cell) {
+                            return formatTaskClSlot(cell.getRow().getData());
+                        }
                     });
                     linkCol("Report", "link6", function(d) { return d.link6 || d.form_report_link; }, 50, { minWidth: 44, headerTooltip: "Form report" });
                     
@@ -4333,7 +4470,10 @@
                     atc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
                     done_etc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
                     done_atc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
-                    pending_etc: filteredData.filter(t => !['Done', 'Archived'].includes(t.status)).reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0)
+                    pending_etc: filteredData.filter(t => !['Done', 'Archived'].includes(t.status)).reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
+                    ca: filteredData.filter(function(t) {
+                        return t.is_corrective_action === true || t.is_corrective_action === 1 || t.is_corrective_action === '1';
+                    }).length
                 };
                 
                 // Overdue calculation:
@@ -4441,6 +4581,10 @@
                         case 'PENDING':
                             valueEl.text(stats.pending);
                             $(this).attr('data-value', stats.pending);
+                            break;
+                        case 'CA':
+                            valueEl.text(stats.ca);
+                            $(this).attr('data-value', stats.ca);
                             break;
                         case 'OVERDUE':
                             valueEl.text(stats.overdue);
@@ -4565,6 +4709,16 @@
                 var filters = [];
                 var focusActive = !!(taskManagerSessionUserFocus && String(taskManagerSessionUserFocus).trim());
                 
+                // CA filter
+                var caValue = $('#filter-ca').val();
+                if (caValue === '1' || caValue === '0') {
+                    var wantCa = caValue === '1';
+                    filters.push(function (data) {
+                        var marked = data.is_corrective_action === true || data.is_corrective_action === 1 || data.is_corrective_action === '1';
+                        return wantCa ? marked : !marked;
+                    });
+                }
+
                 // Group filter
                 var groupValue = $('#filter-group').val();
                 if (groupValue) {
@@ -4784,6 +4938,7 @@
             });
             $('#filter-status, #filter-task-type').on('change', applyFilters);
             $('#filter-priority').on('change', applyFilters);
+            $('#filter-ca').on('change', applyFilters);
 
             // Reload table from server only; keep filter inputs and reapply Tabulator filters
             $('#tasks-refresh-table-btn, #tasks-refresh-table-btn-mobile').on('click', function () {
@@ -6003,6 +6158,225 @@
                 });
             });
 
+            var firedChecklistQuestions = [];
+
+            function setFiredChecklistClId(clId) {
+                var value = String(clId || '').trim();
+                $('#fired-checklist-cl-id').text(value || '—');
+                if (value) {
+                    $('#fired-checklist-copy-cl-id').removeClass('d-none').data('cl-id', value);
+                } else {
+                    $('#fired-checklist-copy-cl-id').addClass('d-none').data('cl-id', '');
+                }
+            }
+
+            function renderFiredChecklistQuestions(questions) {
+                var $box = $('#fired-checklist-questions');
+                $box.empty();
+                firedChecklistQuestions = questions || [];
+                if (!firedChecklistQuestions.length) {
+                    $('#fired-checklist-empty').removeClass('d-none');
+                    $('#fired-checklist-submit-btn').prop('disabled', true);
+                    return;
+                }
+                $('#fired-checklist-empty').addClass('d-none');
+                $('#fired-checklist-submit-btn').prop('disabled', false);
+                firedChecklistQuestions.forEach(function(q, idx) {
+                    var req = q.required ? ' <span class="text-danger">*</span>' : '';
+                    var qid = doneEsc(q.id);
+                    var html = '<div class="border rounded p-2 bg-light fired-cl-item" data-qid="' + qid + '" data-type="' + doneEsc(q.type) + '">';
+                    html += '<div class="fw-semibold mb-2">' + (idx + 1) + '. ' + doneEsc(q.label) + req + '</div>';
+                    if (q.type === 'checkbox') {
+                        html += '<div class="d-flex gap-3 mb-2">' +
+                            '<div class="form-check"><input class="form-check-input fired-cl-yn" type="radio" name="fired_cl_yn_' + qid + '" id="fired_cl_yes_' + qid + '" value="yes" data-qid="' + qid + '">' +
+                            '<label class="form-check-label" for="fired_cl_yes_' + qid + '">Yes</label></div>' +
+                            '<div class="form-check"><input class="form-check-input fired-cl-yn" type="radio" name="fired_cl_yn_' + qid + '" id="fired_cl_no_' + qid + '" value="no" data-qid="' + qid + '">' +
+                            '<label class="form-check-label" for="fired_cl_no_' + qid + '">No</label></div>' +
+                            '</div>';
+                        html += '<div class="fired-cl-no-fields d-none border-top pt-2 mt-1" data-qid="' + qid + '">' +
+                            '<div class="small text-muted mb-2">If No — fill at least one of the fields below <span class="text-danger">*</span></div>' +
+                            '<div class="mb-2">' +
+                            '<div class="d-flex justify-content-between align-items-center mb-1">' +
+                            '<label class="form-label small fw-semibold mb-0">Action</label>' +
+                            '<button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 fired-cl-add-action" data-qid="' + qid + '" title="Add another action">+</button>' +
+                            '</div>' +
+                            '<div class="fired-cl-actions-list vstack gap-2" data-qid="' + qid + '">' +
+                            '<div class="input-group input-group-sm fired-cl-action-row">' +
+                            '<input type="text" class="form-control fired-cl-action" data-qid="' + qid + '" placeholder="Action">' +
+                            '</div></div></div>' +
+                            '<div class="mb-0"><label class="form-label small fw-semibold mb-1">Corrective action</label>' +
+                            '<input type="text" class="form-control form-control-sm fired-cl-corrective" data-qid="' + qid + '" placeholder="Corrective action"></div>' +
+                            '</div>';
+                    } else {
+                        html += '<input type="text" class="form-control form-control-sm fired-cl-text" data-qid="' + qid + '" placeholder="Enter answer">';
+                    }
+                    html += '</div>';
+                    $box.append(html);
+                });
+            }
+
+            function collectFiredChecklistAnswers() {
+                var answers = {};
+                var missing = null;
+                firedChecklistQuestions.forEach(function(q) {
+                    if (q.type === 'checkbox') {
+                        var yn = $('input.fired-cl-yn[name="fired_cl_yn_' + q.id + '"]:checked').val();
+                        if (!yn) {
+                            if (!missing) missing = 'Select Yes or No for: ' + q.label;
+                            return;
+                        }
+                        var isYes = yn === 'yes';
+                        var actions = [];
+                        $('.fired-cl-action[data-qid="' + q.id + '"]').each(function() {
+                            var v = ($(this).val() || '').trim();
+                            if (v) actions.push(v);
+                        });
+                        var corrective = ($('.fired-cl-corrective[data-qid="' + q.id + '"]').val() || '').trim();
+                        if (!isYes && !actions.length && !corrective) {
+                            if (!missing) missing = 'For "' + q.label + '", enter Action or Corrective action (minimum one)';
+                            return;
+                        }
+                        answers[q.id] = {
+                            answer: isYes,
+                            actions: isYes ? [] : actions,
+                            action: isYes ? '' : (actions[0] || ''),
+                            corrective_action: isYes ? '' : corrective
+                        };
+                    } else {
+                        var val = ($('.fired-cl-text[data-qid="' + q.id + '"]').val() || '').trim();
+                        if (q.required && !val && !missing) missing = 'Please complete required field: ' + q.label;
+                        answers[q.id] = val;
+                    }
+                });
+                return { answers: answers, missing: missing };
+            }
+
+            async function openFiredChecklistModal(automateTaskId, taskTitle, clIdHint) {
+                if (!automateTaskId) return;
+                $('#viewTaskModal').modal('hide');
+                $('#fired-checklist-automate-task-id').val(automateTaskId);
+                $('#fired-checklist-task-title').text(taskTitle || ('Task #' + automateTaskId));
+                setFiredChecklistClId(clIdHint || '');
+                $('#fired-checklist-questions').empty();
+                $('#fired-checklist-empty').addClass('d-none');
+                $('#fired-checklist-error').addClass('d-none').text('');
+                $('#fired-checklist-loading').removeClass('d-none');
+                $('#fired-checklist-submit-btn').prop('disabled', true);
+                $('#firedChecklistModal').modal('show');
+                try {
+                    var res = await fetch('/tasks/automated/' + automateTaskId + '/checklist', {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin'
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    $('#fired-checklist-loading').addClass('d-none');
+                    if (!res.ok) {
+                        $('#fired-checklist-error').removeClass('d-none').text(data.message || 'Failed to load checklist');
+                        return;
+                    }
+                    if (data.task_title) {
+                        $('#fired-checklist-task-title').text(data.task_title);
+                    }
+                    var form = data.form;
+                    var clId = form && (form.cl_id || form.id) ? (form.cl_id || ('CL-' + form.id)) : (clIdHint || '');
+                    setFiredChecklistClId(clId);
+                    renderFiredChecklistQuestions((form && form.questions) ? form.questions.slice() : []);
+                } catch (err) {
+                    $('#fired-checklist-loading').addClass('d-none');
+                    $('#fired-checklist-error').removeClass('d-none').text('Failed to load checklist');
+                }
+            }
+
+            function checklistViewCell(data, linkCellFn) {
+                var canOpen = !!(data.automate_task_id && (data.has_checklist_form || data.cl_id || /^CL-\d+$/i.test(String(data.link7 || data.checklist_link || ''))));
+                if (canOpen) {
+                    var cl = data.cl_id ? String(data.cl_id) : '';
+                    return '<button type="button" class="btn btn-link p-0 task-cl-open" data-automate-task-id="' + String(data.automate_task_id).replace(/"/g, '&quot;') + '" data-task-title="' + String(data.title || '').replace(/"/g, '&quot;') + '" data-cl-id="' + cl.replace(/"/g, '&quot;') + '" style="color:#c4a000;font-weight:600;">' +
+                        '<i class="mdi mdi-magnify"></i> Open checklist' + (cl ? ' (' + cl + ')' : '') + '</button>';
+                }
+                var raw = String(data.checklist_link || data.link7 || '').trim();
+                if (/^CL-\d+$/i.test(raw)) {
+                    return '<span style="font-weight:600;color:#198754;">' + raw + '</span>';
+                }
+                return linkCellFn(raw);
+            }
+
+            $(document).on('click', '.task-cl-open', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openFiredChecklistModal($(this).data('automate-task-id'), $(this).data('task-title'), $(this).data('cl-id'));
+            });
+
+            $(document).on('click', '#fired-checklist-copy-cl-id', function(e) {
+                e.preventDefault();
+                var value = String($(this).data('cl-id') || $('#fired-checklist-cl-id').text() || '').trim();
+                if (!value || value === '—') return;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(value);
+                }
+            });
+
+            $(document).on('change', '.fired-cl-yn', function() {
+                var qid = $(this).data('qid');
+                var $fields = $('.fired-cl-no-fields[data-qid="' + qid + '"]');
+                if ($(this).val() === 'no') {
+                    $fields.removeClass('d-none');
+                } else {
+                    $fields.addClass('d-none');
+                }
+            });
+
+            $(document).on('click', '.fired-cl-add-action', function() {
+                var qid = $(this).data('qid');
+                var $list = $('.fired-cl-actions-list[data-qid="' + qid + '"]');
+                $list.append(
+                    '<div class="input-group input-group-sm fired-cl-action-row">' +
+                    '<input type="text" class="form-control fired-cl-action" data-qid="' + qid + '" placeholder="Action">' +
+                    '<button type="button" class="btn btn-outline-secondary fired-cl-remove-action" title="Remove">&times;</button>' +
+                    '</div>'
+                );
+            });
+
+            $(document).on('click', '.fired-cl-remove-action', function() {
+                $(this).closest('.fired-cl-action-row').remove();
+            });
+
+            $('#fired-checklist-submit-btn').on('click', async function() {
+                var automateTaskId = $('#fired-checklist-automate-task-id').val();
+                if (!automateTaskId) return;
+                var collected = collectFiredChecklistAnswers();
+                if (collected.missing) {
+                    $('#fired-checklist-error').removeClass('d-none').text(collected.missing);
+                    return;
+                }
+                var $btn = $(this).prop('disabled', true);
+                $('#fired-checklist-error').addClass('d-none').text('');
+                try {
+                    var res = await fetch('/tasks/automated/' + automateTaskId + '/checklist/submit', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ answers: collected.answers })
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    if (!res.ok) {
+                        $('#fired-checklist-error').removeClass('d-none').text(data.message || 'Failed to submit checklist');
+                        $btn.prop('disabled', false);
+                        return;
+                    }
+                    $('#firedChecklistModal').modal('hide');
+                    alert(data.message || 'Checklist submitted.');
+                } catch (err) {
+                    $('#fired-checklist-error').removeClass('d-none').text('Failed to submit checklist');
+                    $btn.prop('disabled', false);
+                }
+            });
+
             // View Task - use row data from table first (has link1-9), else fetch from API
             $(document).on('click', '.view-task', function() {
                 var taskId = $(this).data('id');
@@ -6048,7 +6422,7 @@
                         '<tr><th style="color: #6c757d; font-weight: 600;">Training Link:</th><td>' + linkCell(training) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Video Link:</th><td>' + linkCell(video) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
-                        '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + linkCell(checklist) + '</td></tr>' +
+                        '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + checklistViewCell(data, function(url) { return linkCell(url); }) + '</td></tr>' +
                         (data.image
                             ? '<tr><th style="color: #6c757d; font-weight: 600; vertical-align: top;">Image:</th><td>' +
                               '<a href="/uploads/tasks/' + escapeHtml(data.image) + '" target="_blank" rel="noopener" title="Open full-size image in a new tab">' +
@@ -6105,7 +6479,7 @@
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Training Link:</th><td>' + linkCell(training) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Video Link:</th><td>' + linkCell(video) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
-                                '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + linkCell(checklist) + '</td></tr>' +
+                                '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + checklistViewCell(response, function(url) { return linkCell(url); }) + '</td></tr>' +
                                 (response.image
                                     ? '<tr><th style="color: #6c757d; font-weight: 600; vertical-align: top;">Image:</th><td>' +
                                       '<a href="/uploads/tasks/' + escapeHtml(response.image) + '" target="_blank" rel="noopener" title="Open full-size image in a new tab">' +
@@ -6338,6 +6712,7 @@
                     tfSetVal('tf_title', '');
                     $('#tf_assignee_id').val('').trigger('change');
                     tfSetVal('tf_etc_minutes', 10);
+                    $('#tf_is_corrective_action').prop('checked', false);
                     $('#tf_priority').val('normal');
                     if ($('#tf_assignor_id').is('select')) {
                         $('#tf_assignor_id').val(String(currentUserId)).trigger('change');
@@ -6361,6 +6736,7 @@
                     tfSetVal('tf_title', rowData.title);
                     $('#tf_assignee_id').val(rowData.assignee_id ? String(rowData.assignee_id) : '').trigger('change');
                     tfSetVal('tf_etc_minutes', rowData.eta_time || rowData.etc_minutes || 10);
+                    $('#tf_is_corrective_action').prop('checked', !!(rowData.is_corrective_action === true || rowData.is_corrective_action === 1 || rowData.is_corrective_action === '1'));
                     $('#tf_priority').val(rowData.priority || 'normal');
                     if ($('#tf_assignor_id').is('select')) {
                         $('#tf_assignor_id').val(rowData.assignor_id ? String(rowData.assignor_id) : '').trigger('change');
@@ -6780,7 +7156,7 @@
                         $('#done-checklist-pane').removeClass('d-none');
                         $('#done-report-pane').addClass('d-none');
                         $('#done-checklist-form-meta').text(
-                            'Form ID: ' + (data.form.id || '—') +
+                            'CL ID: ' + (data.form.cl_id || (data.form.id ? ('CL-' + data.form.id) : '—')) +
                             (data.form.title ? ' · ' + data.form.title : '') +
                             (data.automate_task_id ? ' · Automated task #' + data.automate_task_id : '')
                         );
@@ -7176,6 +7552,11 @@
                 // Run cleanup on next tick so Bootstrap finishes its own teardown first.
                 setTimeout(forceCleanupModalBackdrop, 50);
             });
+        });
+
+        $(document).on('click', '.stat-card-ca', function () {
+            var current = $('#filter-ca').val();
+            $('#filter-ca').val(current === '1' ? '' : '1').trigger('change');
         });
 
         // Stat card click handlers

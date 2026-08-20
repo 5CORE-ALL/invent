@@ -25,6 +25,7 @@ use App\Models\UserScoreHistory;
 use App\Models\DeletedTask;
 use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\AutomatedTaskChecklistIds;
 use App\Support\Badges\BadgeDataCatalog;
 use App\Support\OpenAiRequest;
 use App\Support\TaskBusinessTime;
@@ -80,6 +81,9 @@ class TaskController extends Controller
             'done' => (clone $tasksQuery)->where('status', 'Done')->count(),
             'done_etc' => (clone $tasksQuery)->where('status', 'Done')->sum('eta_time') ?? 0,
             'done_atc' => (clone $tasksQuery)->where('status', 'Done')->sum('etc_done') ?? 0,
+            'ca' => Schema::hasColumn('tasks', 'is_corrective_action')
+                ? (clone $tasksQuery)->where('is_corrective_action', 1)->count()
+                : 0,
         ];
 
         // 30-day ETC/ATC badges from deleted_tasks only (by deleted_at)
@@ -1258,6 +1262,33 @@ class TaskController extends Controller
             $task->tid_business_date = TaskBusinessTime::businessDateFromStart($task->start_date);
         });
 
+        $formByAuto = collect();
+        $autoIds = $tasks->pluck('automate_task_id')->filter()->unique()->values();
+        if ($autoIds->isNotEmpty() && Schema::hasTable('automate_task_checklist_forms')) {
+            $formSelect = ['id', 'automate_task_id'];
+            if (Schema::hasColumn('automate_task_checklist_forms', 'cl_id')) {
+                $formSelect[] = 'cl_id';
+            }
+            $formByAuto = \DB::table('automate_task_checklist_forms')
+                ->whereIn('automate_task_id', $autoIds)
+                ->get($formSelect)
+                ->keyBy('automate_task_id');
+        }
+
+        $tasks->each(function ($task) use ($formByAuto) {
+            $form = $formByAuto->get($task->automate_task_id);
+            $task->has_checklist_form = (bool) $form;
+            $fromTask = trim((string) ($task->cl_id ?? ''));
+            if ($form) {
+                $task->checklist_form_id = $form->id;
+                $fromForm = trim((string) ($form->cl_id ?? ''));
+                $task->cl_id = $fromForm !== '' ? $fromForm : AutomatedTaskChecklistIds::format((int) $form->id);
+            } else {
+                $task->checklist_form_id = null;
+                $task->cl_id = $fromTask !== '' ? $fromTask : null;
+            }
+        });
+
         // Return raw DB attributes (not casted UTC ISO datetimes) so date filters/display
         // align with local task dates in the blade.
         $responseRows = $tasks->map(function ($task) {
@@ -1283,6 +1314,9 @@ class TaskController extends Controller
                 'auto_delete_past',
                 'auto_delete_tooltip',
                 'tid_business_date',
+                'has_checklist_form',
+                'checklist_form_id',
+                'cl_id',
             ] as $field) {
                 if (isset($task->{$field})) {
                     $row[$field] = $task->{$field};
@@ -1335,6 +1369,7 @@ class TaskController extends Controller
             'pl' => 'nullable|string',
             'process' => 'nullable|string',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', // 10MB max
+            'is_corrective_action' => 'nullable|boolean',
         ]);
 
         // Map to old table field names
@@ -1437,6 +1472,10 @@ class TaskController extends Controller
             'delete_feedback' => '',
         ];
 
+        if (Schema::hasColumn('tasks', 'is_corrective_action')) {
+            $taskData['is_corrective_action'] = $request->boolean('is_corrective_action') ? 1 : 0;
+        }
+
         $task = Task::create($taskData);
 
         $flash = 'success';
@@ -1522,6 +1561,11 @@ class TaskController extends Controller
             $taskData['process'] = $task->getAttribute('link9') ?: $task->getAttribute('process') ?: '';
             $taskData['report'] = $task->getAttribute('report') ?: '';
             $taskData['reference_link'] = $task->getAttribute('reference_link') ?: '';
+
+            $clMeta = AutomatedTaskChecklistIds::metaForAutomateTask((int) $task->automate_task_id);
+            $taskData['has_checklist_form'] = (bool) $clMeta;
+            $taskData['checklist_form_id'] = $clMeta['form_id'] ?? null;
+            $taskData['cl_id'] = $clMeta['cl_id'] ?? ($task->cl_id ?? null);
 
             return response()->json($taskData);
         } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
@@ -1724,6 +1768,7 @@ class TaskController extends Controller
                 'assignee_id' => 'nullable|exists:users,id',
                 'split_tasks' => 'nullable|boolean',
                 'flag_raise' => 'nullable|boolean',
+                'is_corrective_action' => 'nullable|boolean',
                 'etc_minutes' => 'nullable|integer',
                 'tid' => 'nullable|date',
                 'l1' => 'nullable|string',
@@ -1807,6 +1852,10 @@ class TaskController extends Controller
                 'link9' => $validated['process'] ?? '',
                 'image' => $imageName,
             ];
+
+            if (Schema::hasColumn('tasks', 'is_corrective_action')) {
+                $updateData['is_corrective_action'] = $request->boolean('is_corrective_action') ? 1 : 0;
+            }
 
             $assigneeEmailForNotify = $assigneeEmail;
         } else {
@@ -1905,6 +1954,7 @@ class TaskController extends Controller
             'has_checklist' => $hasChecklist,
             'form' => $hasChecklist ? [
                 'id' => $form->id,
+                'cl_id' => AutomatedTaskChecklistIds::ensureOnForm($form),
                 'title' => $form->title,
                 'questions' => $questions,
             ] : null,
@@ -2839,11 +2889,19 @@ class TaskController extends Controller
 
         $formMeta = collect();
         $submissionCounts = collect();
+        $sopPageIds = collect();
         if (\Schema::hasTable('automate_task_checklist_forms')) {
+            $formSelect = ['id', 'automate_task_id'];
+            if (\Schema::hasColumn('automate_task_checklist_forms', 'cl_id')) {
+                $formSelect[] = 'cl_id';
+            }
             $formMeta = \DB::table('automate_task_checklist_forms')
-                ->select('id', 'automate_task_id')
+                ->select($formSelect)
                 ->get()
                 ->keyBy('automate_task_id');
+        }
+        if (\Schema::hasTable('automate_task_sop_pages')) {
+            $sopPageIds = \DB::table('automate_task_sop_pages')->pluck('automate_task_id');
         }
         if (\Schema::hasTable('automate_task_checklist_submissions')) {
             $submissionCounts = \DB::table('automate_task_checklist_submissions')
@@ -2854,7 +2912,9 @@ class TaskController extends Controller
 
         // Map emails to names and avatar URLs
         $defaultAvatar = asset('images/users/avatar-2.jpg');
-        $tasks->each(function($task) use ($defaultAvatar, $formMeta, $submissionCounts) {
+        $sopPageSet = $sopPageIds->map(fn ($v) => (int) $v)->flip();
+        $currentEmail = strtolower(trim((string) ($user->email ?? '')));
+        $tasks->each(function($task) use ($defaultAvatar, $formMeta, $submissionCounts, $sopPageSet, $currentEmail) {
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
@@ -2878,9 +2938,23 @@ class TaskController extends Controller
             }
 
             $form = $formMeta->get($task->id);
-            $task->checklist_form_id = $form->id ?? null;
             $task->has_checklist_form = (bool) $form;
+            if ($form) {
+                $task->checklist_form_id = $form->id;
+                $storedCl = trim((string) ($form->cl_id ?? ''));
+                $task->cl_id = $storedCl !== '' ? $storedCl : AutomatedTaskChecklistIds::format((int) $form->id);
+            } else {
+                $task->checklist_form_id = null;
+                $task->cl_id = null;
+            }
             $task->checklist_submission_count = (int) ($submissionCounts[$task->id] ?? 0);
+            $task->has_sop_page = $sopPageSet->has((int) $task->id);
+            $assignorEmail = strtolower(trim((string) ($task->assignor ?? '')));
+            $hasSopFile = trim((string) ($task->link3 ?? '')) !== '';
+            $task->has_sop_link = $hasSopFile;
+            $task->sop_page_url = ($hasSopFile || $task->has_sop_page) ? url('/tasks/automated/'.$task->id.'/sop-page') : null;
+            $task->is_sop_assignor = $assignorEmail !== '' && $assignorEmail === $currentEmail;
+            $task->can_create_sop_page = $hasSopFile;
         });
 
         return response()->json($tasks);
@@ -3289,6 +3363,55 @@ class TaskController extends Controller
         \DB::table('tasks')->where('automate_task_id', $id)->update($tasksUpdate);
 
         return redirect()->route('tasks.automated')->with('success', 'Automated task updated! New schedule will take effect immediately.');
+    }
+
+    public function updateAutomatedSop(Request $request, $id): JsonResponse
+    {
+        $existing = \DB::table('automate_tasks')->where('id', $id)->first();
+        if (! $existing) {
+            return response()->json(['message' => 'Automated task not found.'], 404);
+        }
+
+        $validated = $request->validate([
+            'sop_link' => 'nullable|string|max:2048',
+            'file' => 'nullable|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,png,jpg,jpeg,gif,webp,txt,csv',
+        ]);
+
+        $link = trim((string) ($validated['sop_link'] ?? ''));
+
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+            $dir = public_path('uploads/tasks/sop');
+            if (! is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
+            $safeName = preg_replace('/[^A-Za-z0-9._-]/', '_', (string) $file->getClientOriginalName());
+            $filename = $id.'_'.time().'_'.$safeName;
+            $file->move($dir, $filename);
+            $link = asset('uploads/tasks/sop/'.$filename);
+        }
+
+        if ($link === '') {
+            return response()->json(['message' => 'Upload a file or enter an SOP link.'], 422);
+        }
+
+        $now = now();
+        \DB::table('automate_tasks')->where('id', $id)->update([
+            'link3' => $link,
+            'updated_at' => $now,
+        ]);
+        \DB::table('tasks')
+            ->where('automate_task_id', $id)
+            ->whereNull('deleted_at')
+            ->update([
+                'link3' => $link,
+                'updated_at' => $now,
+            ]);
+
+        return response()->json([
+            'message' => 'SOP saved.',
+            'sop_link' => $link,
+        ]);
     }
 
     public function automatedDestroy($id)

@@ -26,9 +26,25 @@ class ChannelPushSpriceRunner
         return new self($channel);
     }
 
+    public static function livePushAllowed(): bool
+    {
+        if (! app()->environment('local')) {
+            return true;
+        }
+
+        return filter_var(env('CHANNEL_PUSH_SPRICE_ALLOW_LOCAL', false), FILTER_VALIDATE_BOOLEAN);
+    }
+
     public static function spawnWorker(string $channel): bool
     {
         $channel = strtolower(trim($channel)) ?: 'ebay1';
+        if (! self::livePushAllowed()) {
+            Log::warning('Channel S PRC worker spawn skipped — live push disabled in local', [
+                'channel' => $channel,
+            ]);
+
+            return false;
+        }
         try {
             if (self::lockHeld($channel)) {
                 return true;
@@ -85,6 +101,17 @@ class ChannelPushSpriceRunner
     public function run(): int
     {
         @set_time_limit(0);
+
+        if (! self::livePushAllowed()) {
+            ChannelPushSpriceJobStore::for($this->channel)->forceStop(
+                'Blocked: local does not push live eBay prices. Set CHANNEL_PUSH_SPRICE_ALLOW_LOCAL=true to override.'
+            );
+            Log::warning('S PRC runner blocked in local environment', [
+                'channel' => $this->channel,
+            ]);
+
+            return 0;
+        }
 
         $store = ChannelPushSpriceJobStore::for($this->channel);
         $logger = Log::build([

@@ -2597,14 +2597,46 @@
             const price = chPromoPrice(d);
             return price > 0 ? chPromoRound2(price) : 0;
         }
+        let chPromoListingDilCache = null;
+        let chPromoListingDilSrc = null;
+        function chPromoInvalidateListingDilCache() {
+            chPromoListingDilCache = null;
+            chPromoListingDilSrc = null;
+        }
+        function chPromoSkuDil(d) {
+            const inv = chPromoInv(d);
+            if (inv <= 0) return 0;
+            const ovl30 = Number(d && (d.L30 != null ? d.L30 : d['L30'])) || 0;
+            return (ovl30 / inv) * 100;
+        }
+        function chPromoListingDilMap() {
+            const src = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                ? allTableData
+                : null;
+            if (chPromoListingDilCache && chPromoListingDilSrc === src) return chPromoListingDilCache;
+            const dataset = chPromoPromoDataset();
+            const keyOf = chPromoVariationKeyFn(dataset);
+            chPromoListingDilSrc = src;
+            chPromoListingDilCache = {
+                keyOf: keyOf,
+                byKey: chPromoParentDilByKey(dataset, keyOf),
+            };
+            return chPromoListingDilCache;
+        }
+        /** Listing Dil = Σ OV L30 ÷ Σ INV by variation item id (same as Dil vs PRMT Apply). */
+        function chPromoListingDil(d) {
+            if (!d) return 0;
+            const cache = chPromoListingDilMap();
+            const k = cache.keyOf(d);
+            const agg = k ? cache.byKey[k] : null;
+            if (agg) return agg.inv > 0 ? agg.dil : 0;
+            return chPromoSkuDil(d);
+        }
         function chPromoDil(d) {
             const inv = chPromoInv(d);
-            // eBay Dil column = (OV L30 / INV) × 100 — must match for Dil vs PRMT slabs
-            // (backend E Dil% is eBay L30/INV ratio, not the % shown in the Dil column)
+            // eBay Dil vs PRMT uses listing Dil so the Dil column and Apply slab match
             if (String(CHANNEL_PROMO_CHANNEL).indexOf('ebay') === 0) {
-                if (inv <= 0) return 0;
-                const ovl30 = Number(d['L30'] != null ? d['L30'] : d.L30) || 0;
-                return (ovl30 / inv) * 100;
+                return chPromoListingDil(d);
             }
             // Temu Dil column = (OV L30 / INV) × 100 — already stored as dil_percent
             if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
@@ -4210,6 +4242,7 @@
                 }
             }
             if (ebayParentDil) {
+                chPromoInvalidateListingDilCache();
                 const dataset = chPromoPromoDataset();
                 const keyOf = chPromoVariationKeyFn(dataset);
                 const parentDil = chPromoParentDilByKey(dataset, keyOf);
@@ -5556,24 +5589,9 @@
         }
 
         function bindEbaySpriceAutofill() {
-            if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
-            let tries = 0;
-            function attach() {
-                if (typeof table !== 'undefined' && table && typeof table.on === 'function') {
-                    if (table._chPromoEbaySpriceAuto) return;
-                    table._chPromoEbaySpriceAuto = true;
-                    table.on('dataLoaded', function() {
-                        if (window._chPushSpricePageChecked) return;
-                        window._chPushSpricePageChecked = true;
-                        setTimeout(function() {
-                            autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
-                        }, 80);
-                    });
-                    return;
-                }
-                if (++tries < 50) setTimeout(attach, 200);
-            }
-            attach();
+            // Do not auto-persist or push S PRC on page load. Refresh was
+            // overwriting live eBay listing prices with stale calculated S PRC.
+            window._chPushSpricePageChecked = true;
         }
 
         function fillSpriceFromTPromo() {
@@ -6197,7 +6215,7 @@
                             + sign + pct + '%</span>';
                     },
                 }] : []),
-                ...(CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay2op' || CHANNEL_PROMO_CHANNEL === 'ebay3'
+                ...(CHANNEL_PROMO_CHANNEL === 'ebay2op'
                     ? [channelPromoPushPrmtColumn()]
                     : []),
                 ...(CHANNEL_PROMO_HIDE_CVR_CPN ? [] : [{
@@ -6235,7 +6253,7 @@
                         applyChPromoFromCell(cell, 'cpn');
                     },
                 }]),
-                ...(!CHANNEL_PROMO_HIDE_CVR_CPN && (CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay2op' || CHANNEL_PROMO_CHANNEL === 'ebay3')
+                ...(!CHANNEL_PROMO_HIDE_CVR_CPN && CHANNEL_PROMO_CHANNEL === 'ebay2op'
                     ? [channelPromoPushCpnColumn()]
                     : []),
                 ...(CHANNEL_PROMO_CHANNEL === 'temu' ? [{
@@ -6839,6 +6857,8 @@
         window.computeChannelPushPrcPlan = computeChannelPushPrcPlan;
         window.chPromoPrmtForRow = chPromoPrmtForRow;
         window.chPromoDilColorBand = chPromoDilColorBand;
+        window.chPromoListingDil = chPromoListingDil;
+        window.chPromoInvalidateListingDilCache = chPromoInvalidateListingDilCache;
         window.saveAndApplyChPromoZeroSoldAmazon = saveAndApplyChPromoZeroSoldAmazon;
         window.initChannelPromoPricingUi = initChannelPromoPricingUi;
         if (document.readyState === 'loading') {

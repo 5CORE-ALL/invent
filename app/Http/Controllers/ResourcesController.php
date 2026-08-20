@@ -15,7 +15,7 @@ class ResourcesController extends Controller
 {
     public const TAG_OPTIONS = ['SOP', 'CL', 'Form', 'Video', 'L1', 'L2'];
 
-    public const RESOURCE_OPTIONS = ['R&R Files', 'Training Resources', 'Checklist Forms', 'Media Gallery', 'Links / Videos', 'Overview'];
+    public const RESOURCE_OPTIONS = ['R&R Files', 'Training Resources', 'Media Gallery', 'Links / Videos', 'Overview'];
 
     public function index(Request $request)
     {

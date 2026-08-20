@@ -265,10 +265,11 @@
             outline-offset: 2px;
         }
 
-        /* Badges above the filter controls + compact filter dropdowns (matches eBay 1 & 2) */
-        .card-body.py-2 {
-            padding-top: 0.35rem !important;
-            padding-bottom: 0.35rem !important;
+        /* Compact badges + filters — same density as /ebay-tabulator-view */
+        .card-body.py-2,
+        .card-body.py-1 {
+            padding-top: 0.25rem !important;
+            padding-bottom: 0.25rem !important;
         }
         #ebay3-filter-bar {
             gap: 4px 6px !important;
@@ -279,56 +280,63 @@
         #ebay3-filter-bar .btn,
         #ebay3-filter-bar .btn-sm,
         #ebay3-filter-bar .dropdown > .btn {
-            height: 28px !important;
-            min-height: 28px !important;
+            height: 26px !important;
+            min-height: 26px !important;
             font-size: 0.75rem !important;
-            padding: 0.15rem 0.4rem !important;
+            padding: 0 0.4rem !important;
             line-height: 1.2 !important;
             box-sizing: border-box !important;
         }
         #ebay3-filter-bar .form-select {
             width: auto !important;
-            max-width: 130px;
-            padding-right: 1.35rem !important;
-            padding-left: 0.4rem !important;
-            background-position: right 0.35rem center !important;
+            max-width: 120px;
+            padding-right: 1.15rem !important;
+            padding-left: 0.35rem !important;
+            background-position: right 0.28rem center !important;
         }
         #ebay3-filter-bar .pricing-filter-item.border,
         #ebay3-filter-bar .d-inline-flex.border {
-            height: 28px !important;
-            min-height: 28px !important;
+            height: 26px !important;
+            min-height: 26px !important;
             padding: 0 4px !important;
-            gap: 4px !important;
+            gap: 3px !important;
             align-items: center !important;
         }
         #ebay3-filter-bar .pricing-filter-item .form-label,
         #ebay3-filter-bar .d-inline-flex .form-label {
-            font-size: 0.75rem !important;
+            font-size: 0.72rem !important;
             margin-bottom: 0 !important;
         }
         #ebay3-filter-bar #target-roi-input,
         #ebay3-filter-bar #target-gpft-input {
-            width: 48px !important;
+            width: 52px !important;
             height: 24px !important;
             min-height: 24px !important;
             font-size: 0.75rem !important;
             padding: 0.1rem 0.25rem !important;
         }
 
-        /* Summary badges — same height as Amazon (fs-6 + p-2) */
         #summary-stats {
             order: -1;
-            padding: 0.5rem 0.7rem !important;
+            padding: 0.28rem 0.45rem !important;
             margin-top: 0 !important;
-            margin-bottom: 0.5rem !important;
+            margin-bottom: 0.28rem !important;
         }
-        #summary-stats .d-flex { gap: 8px !important; }
+        #summary-stats .d-flex {
+            gap: 4px !important;
+            flex-wrap: wrap !important;
+            align-items: center;
+        }
         #summary-stats .badge {
-            font-size: 1rem !important;
-            padding: 0.5rem !important;
+            flex: 0 0 auto;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem !important;
+            padding: 0.18rem 0.4rem !important;
             font-weight: 700 !important;
-            line-height: 1.5 !important;
-            border-radius: 0.375rem !important;
+            line-height: 1.25 !important;
+            border-radius: 0.28rem !important;
             white-space: nowrap;
         }
         #ebay3-filter-bar .ms-2 { margin-left: 0 !important; }
@@ -425,7 +433,7 @@
             max-width: 100%;
         }
 
-        @include('partials.channel-pef-promo-std', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
     </style>
 @endsection
 
@@ -442,7 +450,7 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-2 d-flex flex-column">
+            <div class="card-body py-1 d-flex flex-column">
                 <!-- Summary Stats — compact Amazon row (badges first) -->
                 <div id="summary-stats" class="bg-light rounded">
                     <div class="d-flex flex-wrap gap-2">
@@ -463,7 +471,7 @@
                         <span class="badge bg-primary d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
                     </div>
                 </div>
-                <div class="d-flex align-items-center flex-wrap gap-2" id="ebay3-filter-bar">
+                <div class="d-flex align-items-center flex-wrap" id="ebay3-filter-bar">
                     <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 140px; display: inline-block;">
                     <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 140px; display: inline-block;">
 
@@ -595,22 +603,7 @@
                         <i class="fas fa-file-export"></i>
                     </button>
 
-                    {{-- Push Std Prc progress only — no Dil vs PRMT / CVR vs CPN --}}
-                    <div id="ch-promo-push-prc-progress" aria-live="polite" title="Push progress">
-                        <div class="ch-promo-push-prc-progress-head">
-                            <i class="fas fa-spinner fa-spin" id="ch-promo-push-prc-progress-spin"></i>
-                            <span id="ch-promo-push-prc-progress-title">Pushing</span>
-                            <span id="ch-promo-push-prc-progress-pct">0%</span>
-                        </div>
-                        <div class="ch-promo-push-prc-progress-meta">
-                            <span id="ch-promo-push-prc-progress-msg">Ready</span>
-                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" id="ch-promo-push-prc-cancel-btn"
-                                style="display:none;font-size:11px;line-height:1.2;" title="Cancel remaining Push Std">
-                                Cancel
-                            </button>
-                        </div>
-                        <div class="ch-promo-push-prc-bar"><span id="ch-promo-push-prc-progress-bar"></span></div>
-                    </div>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay3'])
 
                     {{-- Sbid (Views) — same as /ebay-tabulator-view + /ebay3/campaign-ads --}}
                     <button type="button" class="btn btn-sm pricing-filter-item"
@@ -951,6 +944,7 @@
     </div>
 
 
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay3'])
 @endsection
 
 @section('script-bottom')
@@ -958,7 +952,7 @@
     /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
     const TABULATOR_COLUMN_CHANNEL = 'ebay3_tabulator';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
-    @include('partials.channel-pef-promo-std', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
     const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
     const KW_SPENT = {{ $kwSpent ?? 0 }};
     const PMT_SPENT = {{ $pmtSpent ?? 0 }};
@@ -1465,10 +1459,6 @@
                 || (target && rowKey === target);
             if (!inGroup) return;
             r.update({ STANDARD_PRICE: std });
-            try {
-                const cell = r.getCell('push_std_prc');
-                if (cell) cell.reformat();
-            } catch (e) { /* ignore */ }
             if (rowKey === target) primaryRow = r;
         });
         return primaryRow;
@@ -1517,6 +1507,7 @@
                     data: {
                         sku: sku,
                         sprice: sprice,
+                        skip_push: 1,
                         _token: '{{ csrf_token() }}'
                     },
                     success: function(response) {
@@ -2709,22 +2700,26 @@
                     field: "E Dil%",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by variation) — same value Dil vs PRMT uses.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const INV = parseFloat(rowData.INV) || 0;
-                        const OVL30 = parseFloat(rowData['L30']) || 0;
-                        
-                        if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
-                        
-                        const dil = (OVL30 / INV) * 100;
+                        const dil = (typeof chPromoListingDil === 'function')
+                            ? chPromoListingDil(rowData)
+                            : (function() {
+                                const INV = parseFloat(rowData.INV) || 0;
+                                const OVL30 = parseFloat(rowData['L30']) || 0;
+                                return INV === 0 ? 0 : (OVL30 / INV) * 100;
+                            })();
+
+                        if (!(dil > 0)) return '<span style="color: #6c757d;">0%</span>';
+
                         let color = '';
-                        
                         if (dil < 16.66) color = '#a00211';
                         else if (dil >= 16.66 && dil < 25) color = '#ffc107';
                         else if (dil >= 25 && dil < 50) color = '#28a745';
                         else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+
+                        return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Dil vs PRMT">${Math.round(dil)}%</span>`;
                     },
                     width: 50
                 },
@@ -2973,7 +2968,6 @@
                             dot + ('$' + std.toFixed(2)) + '</span>';
                     }
                 },
-                ...(typeof channelPromoPushStdPrcColumn === 'function' ? [channelPromoPushStdPrcColumn()] : []),
                 {
                     title: "Price",
                     field: "eBay Price",
@@ -3119,6 +3113,7 @@
                     },
                     width: 50
                 },
+                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
                     title: "S PRC",
                     field: "SPRICE",
@@ -3856,10 +3851,13 @@
                     const sku = data['(Child) sku'] || '';
                     if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
 
-                    const inv = parseFloat(data.INV) || 0;
-                    const l30 = parseFloat(data['L30']) || 0;
-                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                    // DIL slabs match eBay 1/2: red <25, green 25-50, pink 50+
+                    const dil = (typeof chPromoListingDil === 'function')
+                        ? chPromoListingDil(data)
+                        : (function() {
+                            const inv = parseFloat(data.INV) || 0;
+                            const l30 = parseFloat(data['L30']) || 0;
+                            return inv === 0 ? 0 : (l30 / inv) * 100;
+                        })();
                     if (dilFilter === 'red') return dil < 25;
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
                     if (dilFilter === 'pink') return dil >= 50;
@@ -4229,7 +4227,7 @@
             }
 
             if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|push_std_prc)$/i.test(f) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|dsc|appr|push_prc)$/i.test(f) ||
                 /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
                 /^\+$/i.test(t)
             ) {
@@ -4412,11 +4410,8 @@
                     }
                 } catch (e) { /* ignore */ }
             }
-            if (typeof scanAndQueueChannelPushSprice === 'function' && !window._chPushSpricePageChecked) {
-                setTimeout(function() {
-                    scanAndQueueChannelPushSprice(table, { silent: true });
-                }, 120);
-            }
+            window._chPushSpricePageChecked = true;
+            if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
             updateCalcValues();
             updateSummary();
             requestAnimationFrame(function() {

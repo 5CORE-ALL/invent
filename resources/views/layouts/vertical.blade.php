@@ -151,6 +151,15 @@
                 <input type="number" class="form-control" id="quick_etc_minutes" name="etc_minutes" placeholder="10" value="10" style="font-size: 15px; padding: 5px 9px; height: 39px;">
             </div>
 
+            <div style="margin-bottom: 9px;">
+                <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Corrective Action</label>
+                <label for="quick_is_corrective_action" class="d-flex align-items-center gap-2 mb-0 border rounded px-2" style="height: 39px; cursor: pointer;">
+                    <input type="checkbox" class="form-check-input m-0" id="quick_is_corrective_action" name="is_corrective_action" value="1" style="width: 18px; height: 18px;">
+                    <img src="{{ asset('assets/images/task-ca-icon.png') }}" alt="Corrective Action" style="width: 28px; height: 28px; object-fit: contain;">
+                    <span style="font-size: 14px;">CA</span>
+                </label>
+            </div>
+
             <!-- Hidden Fields with Defaults -->
             <input type="hidden" name="priority" value="normal">
             <input type="hidden" name="assignor_id" value="{{ Auth::id() }}">

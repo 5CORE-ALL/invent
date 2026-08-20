@@ -31,6 +31,15 @@ class ChannelPushSpriceDailyEnqueue
     public function enqueueChannel(string $channel): array
     {
         $channel = strtolower(trim($channel));
+        if (! ChannelPushSpriceRunner::livePushAllowed()) {
+            return [
+                'channel' => $channel,
+                'queued' => 0,
+                'total' => 0,
+                'spawned' => false,
+                'message' => 'Skipped — live S PRC push is disabled on local',
+            ];
+        }
         if (! in_array($channel, self::CHANNELS, true)) {
             return [
                 'channel' => $channel,

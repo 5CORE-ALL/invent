@@ -46,6 +46,7 @@ class Task extends Model
         'link9',
         'image',
         'automate_task_id',
+        'cl_id',
         'task_type',
         'schedule_type',
         'schedule_time',
@@ -58,6 +59,7 @@ class Task extends Model
         'order',
         'workspace',
         'is_data_from',
+        'is_corrective_action',
     ];
 
     protected $casts = [
@@ -69,6 +71,7 @@ class Task extends Model
         'is_missed_track' => 'boolean',
         'is_automate_task' => 'boolean',
         'split_tasks' => 'boolean',
+        'is_corrective_action' => 'boolean',
         'parent_task_id' => 'integer',
         'subtask_order' => 'integer',
     ];

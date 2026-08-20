@@ -182,6 +182,13 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel for S PRC queue'], 422);
         }
 
+        if (! ChannelPushSpriceRunner::livePushAllowed()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Live eBay S PRC push is disabled on local (it was overwriting listings with stale prices). Set CHANNEL_PUSH_SPRICE_ALLOW_LOCAL=true in .env only if you intend to push.',
+            ], 403);
+        }
+
         $items = $request->input('items', []);
         if (! is_array($items) || $items === []) {
             return response()->json(['success' => false, 'message' => 'No items to push'], 400);
@@ -258,6 +265,12 @@ class ChannelPromoPricingController extends Controller
         $state = $store->load();
 
         if ($store->isActive($state) && $store->isStale($state, 180) && ! ChannelPushSpriceRunner::lockHeld($channel)) {
+            if (! ChannelPushSpriceRunner::livePushAllowed()) {
+                $store->forceStop('Blocked: local does not resume stale S PRC pushes.');
+                $state = $store->load();
+
+                return response()->json($store->toApiResponse($state));
+            }
             $this->releaseUniqueSpriceJobLock($channel);
             $kicked = ChannelPushSpriceRunner::spawnWorker($channel);
             $store->update(function (array $s) use ($kicked) {

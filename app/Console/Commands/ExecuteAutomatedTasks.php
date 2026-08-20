@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Task;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\AutomatedTaskChecklistIds;
 use App\Support\AutomatedTaskSubtaskFirer;
 use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
@@ -168,6 +169,8 @@ class ExecuteAutomatedTasks extends Command
                     'created_at' => $now,
                     'updated_at' => $now,
                 ];
+
+                $taskData = AutomatedTaskChecklistIds::mergeIntoTaskInsert($taskData, (int) $task->id);
 
                 $taskId = DB::table('tasks')->insertGetId($taskData);
                 $taskInstance = Task::find($taskId);

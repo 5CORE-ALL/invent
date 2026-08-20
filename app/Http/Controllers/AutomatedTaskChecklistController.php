@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AutomateTaskChecklistForm;
 use App\Models\AutomateTaskChecklistSubmission;
 use App\Models\User;
+use App\Support\AutomatedTaskChecklistIds;
 use App\Support\SuperAdminAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -62,13 +63,7 @@ class AutomatedTaskChecklistController extends Controller
             'task_title' => $task->title ?? '',
             'sop_link' => $sopLink !== '' ? $sopLink : null,
             'can_manage' => self::canManageChecklist($user),
-            'form' => $form ? [
-                'id' => $form->id,
-                'automate_task_id' => $form->automate_task_id,
-                'title' => $form->title,
-                'questions' => $form->questions ?? [],
-                'updated_at' => optional($form->updated_at)->toDateTimeString(),
-            ] : null,
+            'form' => $form ? AutomatedTaskChecklistIds::formPayload($form) : null,
             'submission_count' => $form
                 ? AutomateTaskChecklistSubmission::query()->where('form_id', $form->id)->count()
                 : 0,
@@ -117,14 +112,12 @@ class AutomatedTaskChecklistController extends Controller
         $form->updated_by = $user->id;
         $form->save();
 
+        $clId = AutomatedTaskChecklistIds::ensureOnForm($form);
+        AutomatedTaskChecklistIds::applyToTemplateAndFiredTasks((int) $automateTaskId, $clId);
+
         return response()->json([
             'message' => 'Checklist form saved.',
-            'form' => [
-                'id' => $form->id,
-                'automate_task_id' => $form->automate_task_id,
-                'title' => $form->title,
-                'questions' => $form->questions ?? [],
-            ],
+            'form' => AutomatedTaskChecklistIds::formPayload($form->fresh() ?: $form),
         ]);
     }
 
@@ -224,9 +217,132 @@ class AutomatedTaskChecklistController extends Controller
         return response()->json([
             'message' => 'Checklist submitted.',
             'submission_id' => $submission->id,
+            'cl_id' => AutomatedTaskChecklistIds::ensureOnForm($form),
             'submission_count' => AutomateTaskChecklistSubmission::query()
                 ->where('form_id', $form->id)
                 ->count(),
+        ]);
+    }
+
+    public function downloadTemplate(int $automateTaskId)
+    {
+        $task = DB::table('automate_tasks')->where('id', $automateTaskId)->first();
+        if (! $task) {
+            return response()->json(['message' => 'Automated task not found.'], 404);
+        }
+
+        $form = AutomateTaskChecklistForm::query()
+            ->where('automate_task_id', $automateTaskId)
+            ->first();
+
+        $questions = is_array($form?->questions) ? $form->questions : [];
+        if ($questions === []) {
+            $questions = [
+                ['type' => 'checkbox', 'label' => 'Example yes/no question', 'required' => false],
+                ['type' => 'text', 'label' => 'Example text question', 'required' => false],
+            ];
+        }
+
+        $safeTitle = Str::slug((string) ($form?->title ?? $task->title ?? 'checklist'), '-');
+        $filename = 'checklist-template-'.($safeTitle !== '' ? $safeTitle : $automateTaskId).'.csv';
+
+        return response()->streamDownload(function () use ($questions) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, ['type', 'label', 'required']);
+            foreach ($questions as $q) {
+                $type = strtolower((string) ($q['type'] ?? 'text'));
+                if ($type !== 'checkbox' && $type !== 'text') {
+                    $type = 'text';
+                }
+                fputcsv($out, [
+                    $type,
+                    (string) ($q['label'] ?? ''),
+                    ! empty($q['required']) ? '1' : '0',
+                ]);
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function uploadTemplate(Request $request, int $automateTaskId)
+    {
+        $user = Auth::user();
+        if (! self::canManageChecklist($user)) {
+            return response()->json(['message' => 'Only Senior and Director roles can upload checklist templates.'], 403);
+        }
+
+        $task = DB::table('automate_tasks')->where('id', $automateTaskId)->first();
+        if (! $task) {
+            return response()->json(['message' => 'Automated task not found.'], 404);
+        }
+
+        $request->validate([
+            'file' => 'required|file|max:2048',
+        ]);
+
+        $ext = strtolower((string) $request->file('file')->getClientOriginalExtension());
+        if (! in_array($ext, ['csv', 'txt'], true)) {
+            return response()->json(['message' => 'Upload a CSV template (type,label,required).'], 422);
+        }
+
+        $path = $request->file('file')->getRealPath();
+        $fh = fopen($path, 'r');
+        if (! $fh) {
+            return response()->json(['message' => 'Could not read the uploaded file.'], 422);
+        }
+
+        $header = fgetcsv($fh);
+        if (! $header) {
+            fclose($fh);
+
+            return response()->json(['message' => 'The template file is empty.'], 422);
+        }
+
+        $header = array_map(fn ($h) => Str::slug(trim((string) $h), '_'), $header);
+        $typeIdx = array_search('type', $header, true);
+        $labelIdx = array_search('label', $header, true);
+        $reqIdx = array_search('required', $header, true);
+
+        if ($labelIdx === false) {
+            fclose($fh);
+
+            return response()->json(['message' => 'Template must include a label column. Use type,label,required.'], 422);
+        }
+
+        $questions = [];
+        while (($row = fgetcsv($fh)) !== false) {
+            if (! is_array($row) || count(array_filter($row, fn ($v) => trim((string) $v) !== '')) === 0) {
+                continue;
+            }
+            $label = trim((string) ($row[$labelIdx] ?? ''));
+            if ($label === '') {
+                continue;
+            }
+            $typeRaw = strtolower(trim((string) ($typeIdx !== false ? ($row[$typeIdx] ?? 'text') : 'text')));
+            $type = in_array($typeRaw, ['checkbox', 'yes/no', 'yesno', 'yn', 'boolean'], true) ? 'checkbox' : 'text';
+            $reqRaw = $reqIdx !== false ? strtolower(trim((string) ($row[$reqIdx] ?? ''))) : '';
+            $required = in_array($reqRaw, ['1', 'true', 'yes', 'y', 'required'], true);
+
+            $questions[] = [
+                'id' => 'q_'.Str::lower(Str::random(10)),
+                'type' => $type,
+                'label' => $label,
+                'required' => $required,
+            ];
+        }
+        fclose($fh);
+
+        if ($questions === []) {
+            return response()->json(['message' => 'No questions found in the template. Add rows with a label.'], 422);
+        }
+
+        return response()->json([
+            'message' => 'Template loaded. Click Save form to keep it.',
+            'title' => $task->title ? ($task->title.' Checklist') : 'Checklist Form',
+            'questions' => $questions,
         ]);
     }
 
@@ -275,12 +391,25 @@ class AutomatedTaskChecklistController extends Controller
 
         return response()->json([
             'automate_task_id' => $automateTaskId,
-            'form' => [
-                'id' => $form->id,
-                'title' => $form->title,
-                'questions' => $form->questions ?? [],
-            ],
+            'form' => AutomatedTaskChecklistIds::formPayload($form),
             'submissions' => $rows,
+        ]);
+    }
+
+    public function showByClId(string $clId)
+    {
+        $form = AutomatedTaskChecklistIds::findFormByClId($clId);
+        if (! $form) {
+            return response()->json(['message' => 'Checklist not found.'], 404);
+        }
+
+        $task = DB::table('automate_tasks')->where('id', $form->automate_task_id)->first();
+
+        return response()->json([
+            'cl_id' => AutomatedTaskChecklistIds::ensureOnForm($form),
+            'automate_task_id' => (int) $form->automate_task_id,
+            'task_title' => $task->title ?? '',
+            'form' => AutomatedTaskChecklistIds::formPayload($form),
         ]);
     }
 }

@@ -6706,12 +6706,23 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/automated/store', [\App\Http\Controllers\TaskController::class, 'automatedStore'])->name('tasks.automatedStore');
     Route::get('/tasks/automated/{id}/edit', [\App\Http\Controllers\TaskController::class, 'automatedEdit'])->name('tasks.automatedEdit');
     Route::put('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedUpdate'])->name('tasks.automatedUpdate');
+    Route::post('/tasks/automated/{id}/sop', [\App\Http\Controllers\TaskController::class, 'updateAutomatedSop'])->name('tasks.automatedSop.update');
+    Route::get('/tasks/automated/{id}/sop-page', [\App\Http\Controllers\AutomatedTaskSopPageController::class, 'show'])->name('tasks.automatedSopPage.show');
+    Route::get('/tasks/automated/{id}/sop-page/edit', [\App\Http\Controllers\AutomatedTaskSopPageController::class, 'edit'])->name('tasks.automatedSopPage.edit');
+    Route::post('/tasks/automated/{id}/sop-page', [\App\Http\Controllers\AutomatedTaskSopPageController::class, 'createFromFile'])->name('tasks.automatedSopPage.create');
+    Route::post('/tasks/automated/{id}/sop-page/ensure', [\App\Http\Controllers\AutomatedTaskSopPageController::class, 'ensure'])->name('tasks.automatedSopPage.ensure');
+    Route::put('/tasks/automated/{id}/sop-page', [\App\Http\Controllers\AutomatedTaskSopPageController::class, 'update'])->name('tasks.automatedSopPage.update');
     Route::delete('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedDestroy'])->name('tasks.automatedDestroy');
     Route::post('/tasks/automated/expire-daily', [\App\Http\Controllers\TaskController::class, 'expireDailyAutomatedTasks'])->name('tasks.expireDailyAutomated');
 
+    Route::get('/tasks/checklist/cl/{clId}', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'showByClId'])
+        ->where('clId', 'CL-[0-9]+')
+        ->name('tasks.checklist.byClId');
     Route::get('/tasks/automated/{automateTaskId}/checklist', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'show'])->name('tasks.automatedChecklist.show');
     Route::post('/tasks/automated/{automateTaskId}/checklist', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'save'])->name('tasks.automatedChecklist.save');
     Route::post('/tasks/automated/{automateTaskId}/checklist/submit', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'submit'])->name('tasks.automatedChecklist.submit');
+    Route::get('/tasks/automated/{automateTaskId}/checklist/template', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'downloadTemplate'])->name('tasks.automatedChecklist.template.download');
+    Route::post('/tasks/automated/{automateTaskId}/checklist/template', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'uploadTemplate'])->name('tasks.automatedChecklist.template.upload');
     Route::get('/tasks/automated/{automateTaskId}/checklist/history', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'history'])->name('tasks.automatedChecklist.history');
     Route::get('/tasks/automated/{id}/subtasks', [\App\Http\Controllers\TaskController::class, 'automatedSubtasks'])->name('tasks.automatedSubtasks');
     Route::post('/tasks/automated/{id}/subtasks', [\App\Http\Controllers\TaskController::class, 'storeAutomatedSubtask'])->name('tasks.automatedSubtasks.store');
@@ -6805,11 +6816,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/import/csv', [ResourcesMasterController::class, 'importCsv'])->name('import.csv');
         Route::post('/import/zip', [ResourcesMasterController::class, 'importZip'])->name('import.zip');
         Route::post('/store', [ResourcesMasterController::class, 'store'])->name('store');
+        Route::post('/tags', [ResourcesMasterController::class, 'storeTag'])->name('tags.store');
+        Route::delete('/tags', [ResourcesMasterController::class, 'destroyTag'])->name('tags.destroy');
         Route::put('/item/{resource}', [ResourcesMasterController::class, 'update'])->name('update');
         Route::delete('/item/{resource}', [ResourcesMasterController::class, 'destroy'])->name('destroy');
         Route::post('/restore/{id}', [ResourcesMasterController::class, 'restore'])->whereNumber('id')->name('restore');
         Route::delete('/force/{id}', [ResourcesMasterController::class, 'forceDestroy'])->whereNumber('id')->name('force-destroy');
         Route::get('/item/{resource}/download', [ResourcesMasterController::class, 'download'])->name('download');
+        Route::get('/item/{resource}/preview', [ResourcesMasterController::class, 'preview'])->name('preview');
         Route::get('/item/{resource}/thumbnail', [ResourcesMasterController::class, 'thumbnail'])->name('thumbnail');
         Route::post('/item/{resource}/view', [ResourcesMasterController::class, 'logView'])->name('view-log');
         Route::post('/item/{resource}/watch', [ResourcesMasterController::class, 'watch'])->name('watch');

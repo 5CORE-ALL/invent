@@ -146,17 +146,15 @@ class ResourcesMasterController extends Controller
             'department_ids.*' => 'integer|exists:resource_departments,id',
             'tag_ids' => 'nullable|array',
             'tag_ids.*' => 'integer|exists:resource_tags,id',
+            'tag_names' => 'nullable|array',
+            'tag_names.*' => 'string|max:128',
             'checklist_schema' => 'nullable|array',
             'allow_completed_upload' => 'boolean',
             'file' => 'nullable|file',
             'thumbnail' => 'nullable|image|max:5120',
         ]);
 
-        $validator->after(function ($v) use ($request, $category) {
-            // Checklist forms can be created with title only (no file/link).
-            if ($category === 'checklist_forms') {
-                return;
-            }
+        $validator->after(function ($v) use ($request) {
             if (! $request->hasFile('file') && ! $request->filled('external_link')) {
                 $v->errors()->add('file', 'Upload a file or provide an external link.');
             }
@@ -165,7 +163,7 @@ class ResourcesMasterController extends Controller
         $validator->validate();
 
         $path = null;
-        $fileType = $category === 'checklist_forms' ? 'checklist' : 'link';
+        $fileType = 'link';
         $mime = null;
         $size = null;
         $original = null;
@@ -210,7 +208,7 @@ class ResourcesMasterController extends Controller
             ]);
 
             $r->departments()->sync($request->input('department_ids', []));
-            $r->tags()->sync($request->input('tag_ids', []));
+            $r->tags()->sync($this->resolveTagIds($request));
 
             ResourceAuditLog::create([
                 'resource_id' => $r->id,
@@ -233,6 +231,13 @@ class ResourcesMasterController extends Controller
     {
         Gate::authorize('update', $resource);
 
+        $request->merge([
+            'department_ids' => array_values(array_filter(
+                (array) $request->input('department_ids', []),
+                fn ($v) => is_numeric($v) && (int) $v > 0
+            )),
+        ]);
+
         $validator = Validator::make($request->all(), [
             'title' => 'sometimes|required|string|max:500',
             'description' => 'nullable|string|max:20000',
@@ -244,6 +249,8 @@ class ResourcesMasterController extends Controller
             'department_ids.*' => 'integer|exists:resource_departments,id',
             'tag_ids' => 'nullable|array',
             'tag_ids.*' => 'integer|exists:resource_tags,id',
+            'tag_names' => 'nullable|array',
+            'tag_names.*' => 'string|max:128',
             'checklist_schema' => 'nullable|array',
             'allow_completed_upload' => 'boolean',
             'file' => 'nullable|file',
@@ -279,9 +286,7 @@ class ResourcesMasterController extends Controller
         if ($request->has('department_ids')) {
             $resource->departments()->sync($request->input('department_ids', []));
         }
-        if ($request->has('tag_ids')) {
-            $resource->tags()->sync($request->input('tag_ids', []));
-        }
+        $resource->tags()->sync($this->resolveTagIds($request));
 
         ResourceAuditLog::create([
             'resource_id' => $resource->id,
@@ -402,6 +407,51 @@ class ResourcesMasterController extends Controller
         $name = $resource->original_filename ?: basename($resource->file_path);
 
         return $disk->download($resource->file_path, $name);
+    }
+
+    public function preview(Request $request, ResourceMaster $resource)
+    {
+        Gate::authorize('view', $resource);
+
+        if ($resource->isLinkOnly() && $resource->external_link) {
+            ResourceAccessLog::create([
+                'resource_id' => $resource->id,
+                'user_id' => $request->user()->id,
+                'action' => 'view',
+                'ip_address' => $request->ip(),
+                'created_at' => now(),
+            ]);
+
+            return redirect()->away($resource->external_link);
+        }
+
+        if (! $resource->file_path) {
+            abort(404);
+        }
+
+        $disk = Storage::disk($this->storage->disk());
+        if (! $disk->exists($resource->file_path)) {
+            abort(404);
+        }
+
+        ResourceAccessLog::create([
+            'resource_id' => $resource->id,
+            'user_id' => $request->user()->id,
+            'action' => 'view',
+            'ip_address' => $request->ip(),
+            'created_at' => now(),
+        ]);
+
+        $name = $resource->original_filename ?: basename($resource->file_path);
+        $mime = $resource->mime_type ?: ($disk->mimeType($resource->file_path) ?: 'application/octet-stream');
+        if (in_array(strtolower((string) $resource->file_type), ['spreadsheet', 'doc'], true)
+            && str_ends_with(strtolower($name), '.csv')) {
+            $mime = 'text/plain; charset=UTF-8';
+        }
+
+        return $disk->response($resource->file_path, $name, [
+            'Content-Type' => $mime,
+        ], 'inline');
     }
 
     public function bulkUpload(Request $request)
@@ -598,6 +648,129 @@ class ResourcesMasterController extends Controller
         ]);
 
         return response()->json(['success' => true, 'watch_count' => $resource->fresh()->watch_count]);
+    }
+
+    public function storeTag(Request $request)
+    {
+        Gate::authorize('resources-master.manage');
+
+        $data = $request->validate([
+            'tag_name' => 'required|string|max:128',
+            'department_id' => 'nullable|integer|exists:resource_departments,id',
+        ]);
+
+        $tag = $this->resolveOrCreateTag(
+            $data['tag_name'],
+            isset($data['department_id']) ? (int) $data['department_id'] : null
+        );
+
+        return response()->json(['success' => true, 'tag' => $tag]);
+    }
+
+    public function destroyTag(Request $request)
+    {
+        Gate::authorize('resources-master.manage');
+
+        $data = $request->validate([
+            'tag_id' => 'nullable|integer|exists:resource_tags,id',
+            'tag_name' => 'nullable|string|max:128',
+        ]);
+
+        $query = ResourceTag::query();
+        if (! empty($data['tag_id'])) {
+            $query->whereKey((int) $data['tag_id']);
+        } elseif (! empty($data['tag_name'])) {
+            $query->whereRaw('LOWER(tag_name) = ?', [mb_strtolower(trim($data['tag_name']))]);
+        } else {
+            return response()->json(['message' => 'Enter a tag to delete.'], 422);
+        }
+
+        $tags = $query->get();
+        if ($tags->isEmpty()) {
+            return response()->json(['message' => 'Tag not found.'], 404);
+        }
+
+        $ids = $tags->pluck('id')->all();
+        ResourceTag::query()->whereIn('id', $ids)->delete();
+        Cache::forget('resource_tags.all');
+
+        return response()->json(['success' => true, 'deleted_ids' => $ids]);
+    }
+
+    /**
+     * @return list<int>
+     */
+    protected function resolveTagIds(Request $request): array
+    {
+        $ids = [];
+        foreach ((array) $request->input('tag_ids', []) as $id) {
+            if (is_numeric($id) && (int) $id > 0) {
+                $ids[] = (int) $id;
+            }
+        }
+
+        $deptId = null;
+        $deptIds = array_values(array_filter((array) $request->input('department_ids', []), fn ($v) => is_numeric($v) && (int) $v > 0));
+        if (count($deptIds) === 1) {
+            $deptId = (int) $deptIds[0];
+        }
+
+        foreach ((array) $request->input('tag_names', []) as $name) {
+            $name = trim((string) $name);
+            if ($name === '') {
+                continue;
+            }
+            $ids[] = $this->resolveOrCreateTag($name, $deptId)->id;
+        }
+
+        $ids = array_values(array_unique($ids));
+        if ($ids !== []) {
+            Cache::forget('resource_tags.all');
+        }
+
+        return $ids;
+    }
+
+    protected function resolveOrCreateTag(string $name, ?int $departmentId = null): ResourceTag
+    {
+        $name = trim($name);
+        $existing = ResourceTag::query()
+            ->whereRaw('LOWER(tag_name) = ?', [mb_strtolower($name)])
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        $base = Str::slug($name);
+        if ($base === '') {
+            $base = 'tag';
+        }
+
+        $slug = $base;
+        $n = 2;
+        while (
+            ResourceTag::query()
+                ->where('slug', $slug)
+                ->where(function ($q) use ($departmentId) {
+                    $departmentId
+                        ? $q->where('department_id', $departmentId)
+                        : $q->whereNull('department_id');
+                })
+                ->exists()
+        ) {
+            $slug = $base.'-'.$n++;
+        }
+
+        $tag = ResourceTag::create([
+            'slug' => $slug,
+            'tag_name' => $name,
+            'department_id' => $departmentId,
+        ]);
+
+        Cache::forget('resource_tags.all');
+
+        return $tag;
     }
 
     public function thumbnail(Request $request, ResourceMaster $resource)
