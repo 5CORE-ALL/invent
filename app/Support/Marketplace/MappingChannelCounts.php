@@ -27,9 +27,9 @@ class MappingChannelCounts
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
 
-    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v5';
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v6';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v5';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v6';
 
     /**
      * Channels shown on /map-issues.
@@ -142,6 +142,8 @@ class MappingChannelCounts
             Cache::forget(self::API_STATUS_CACHE_KEY);
             Cache::forget(self::INACTIVE_TOTAL_CACHE_KEY);
             Cache::forget(self::INACTIVE_MASTER_ROWS_CACHE_KEY);
+            Cache::forget('inactive_listings_total_v5');
+            Cache::forget('inactive_listings_master_rows_v5');
         } catch (\Throwable $e) {
             // ignore
         }
@@ -316,7 +318,8 @@ class MappingChannelCounts
         }
 
         try {
-            Cache::put(self::INACTIVE_MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(10));
+            $ttl = MarketplacePortalInactiveCount::$portalSyncIncomplete ? 1 : 10;
+            Cache::put(self::INACTIVE_MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes($ttl));
             self::storeInactiveTotal((int) collect($rows)->sum('inactive_listings'));
         } catch (\Throwable $e) {
             // ignore

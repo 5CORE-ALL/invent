@@ -118,10 +118,11 @@ final class FaireLiveListingsService
                         continue;
                     }
                     $inv = $row->inventory !== null ? (int) $row->inventory : null;
+                    $state = strtolower(trim((string) ($row->listing_status ?? '')));
                     $out[] = [
                         'product_id' => trim((string) ($row->product_id ?: $sku)),
                         'sku' => $sku,
-                        'state' => 'active',
+                        'state' => $state !== '' ? $state : 'other',
                         'inventory' => $inv,
                         'title' => $row->product_name,
                         'price' => $row->price !== null ? (float) $row->price : null,

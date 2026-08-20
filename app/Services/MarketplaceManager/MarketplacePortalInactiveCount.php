@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use App\Models\TopDawgProduct;
+use App\Services\TopDawgApiService;
 
 /**
  * Inactive SKU counts from each marketplace's own status columns / listing JSON
@@ -15,6 +17,10 @@ final class MarketplacePortalInactiveCount
 {
     /** @var array<string, list<string>> */
     private static array $skuMemo = [];
+
+    private static ?float $syncDeadline = null;
+
+    public static bool $portalSyncIncomplete = false;
 
     /**
      * @return list<string>
@@ -52,10 +58,7 @@ final class MarketplacePortalInactiveCount
                 self::liveCacheInactiveSkus(ReverbLiveListingsService::CACHE_KEY)
             ),
             'shein' => self::fromPortalAndJson('shein_metrics', 'status', ['shein_listing_statuses']),
-            'topdawg' => self::mergeUnique(
-                self::columnSkus('topdawg_products', 'listing_state', 'sku'),
-                self::liveCacheInactiveSkus('mm.topdawg.live_listings.v1')
-            ),
+            'topdawg' => self::topdawgSkus(),
             'newegg' => self::mergeUnique(
                 self::neweggSkus(),
                 self::jsonLiveInactiveSkus('newegg_b2c_listing_statuses')
@@ -64,10 +67,10 @@ final class MarketplacePortalInactiveCount
                 self::plsSkus(),
                 self::jsonLiveInactiveSkus('pls_listing_statuses')
             ),
-            'macy' => self::jsonLiveInactiveSkus('macys_listing_statuses'),
+            'macy' => self::macySkus(),
             'wayfair' => self::jsonLiveInactiveSkus('wayfair_listing_statuses'),
-            'bestbuy' => self::jsonLiveInactiveSkus('bestbuy_usa_listing_statuses'),
-            'faire' => self::jsonLiveInactiveSkus('faire_listing_statuses'),
+            'bestbuy' => self::bestbuySkus(),
+            'faire' => self::faireSkus(),
             'aliexpress' => self::aliexpressSkus(),
             default => [],
         };
@@ -121,8 +124,14 @@ final class MarketplacePortalInactiveCount
         if (! in_array($store, [2, 3], true)) {
             return;
         }
-        $doneKey = 'mm.ebay'.$store.'.portal_inactive_synced';
+        $table = $store === 3 ? 'ebay_3_metrics' : 'ebay_2_metrics';
+        $doneKey = 'mm.ebay'.$store.'.portal_inactive_synced_v2';
         try {
+            if (self::columnHasAnyInactive($table, 'listing_status')) {
+                Cache::put($doneKey, 1, now()->addHours(6));
+
+                return;
+            }
             if (Cache::get($doneKey)) {
                 return;
             }
@@ -130,15 +139,26 @@ final class MarketplacePortalInactiveCount
             // continue
         }
 
+        $budget = self::remainingSyncSeconds();
+        if ($budget < 20) {
+            self::$portalSyncIncomplete = true;
+
+            return;
+        }
+
         $lock = Cache::lock('mm.ebay'.$store.'.portal_inactive_sync', 400);
         if (! $lock->get()) {
+            self::$portalSyncIncomplete = true;
+
             return;
         }
         try {
-            @set_time_limit(180);
+            @set_time_limit(min(180, $budget + 20));
             $result = app(EbayPortalListingStatusSync::class)->sync($store);
-            if ($result['ok'] ?? false) {
+            if ($result['unsold_ok'] ?? false) {
                 Cache::put($doneKey, 1, now()->addHours(6));
+            } else {
+                self::$portalSyncIncomplete = true;
             }
             Log::info('MarketplacePortalInactiveCount: eBay portal sync', [
                 'store' => $store,
@@ -152,6 +172,272 @@ final class MarketplacePortalInactiveCount
         } finally {
             optional($lock)->release();
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function macySkus(): array
+    {
+        self::ensureMiraklPortalSynced('macy');
+
+        return self::fromPortalAndJson('macy_products', 'listing_status', ['macys_listing_statuses']);
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function bestbuySkus(): array
+    {
+        self::ensureMiraklPortalSynced('bestbuy');
+
+        return self::fromPortalAndJson('bestbuy_usa_products', 'listing_status', ['bestbuy_usa_listing_statuses']);
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function faireSkus(): array
+    {
+        self::ensureFairePortalSynced();
+
+        return self::fromPortalAndJson('faire_metric', 'listing_status', ['faire_listing_statuses']);
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function topdawgSkus(): array
+    {
+        self::ensureTopDawgPortalSynced();
+
+        return self::mergeUnique(
+            self::columnSkus('topdawg_products', 'listing_state', 'sku'),
+            self::liveCacheInactiveSkus('mm.topdawg.live_listings.v1')
+        );
+    }
+
+    protected static function ensureMiraklPortalSynced(string $channel): void
+    {
+        $table = $channel === 'bestbuy' ? 'bestbuy_usa_products' : 'macy_products';
+        $doneKey = 'mm.'.$channel.'.portal_inactive_synced_v1';
+        try {
+            if (self::columnHasAnyInactive($table, 'listing_status')) {
+                Cache::put($doneKey, 1, now()->addHours(6));
+
+                return;
+            }
+            if (Cache::get($doneKey)) {
+                return;
+            }
+        } catch (\Throwable $e) {
+            // continue
+        }
+
+        $budget = min(90, self::remainingSyncSeconds());
+        if ($budget < 15) {
+            self::$portalSyncIncomplete = true;
+
+            return;
+        }
+
+        $lock = Cache::lock('mm.'.$channel.'.portal_inactive_sync', 400);
+        if (! $lock->get()) {
+            self::$portalSyncIncomplete = true;
+
+            return;
+        }
+        try {
+            @set_time_limit($budget + 20);
+            $result = app(MiraklMcmOfferStatusSync::class)->sync($channel, $budget);
+            if (($result['done'] ?? false) && ($result['ok'] ?? false)) {
+                Cache::put($doneKey, 1, now()->addHours(6));
+            } else {
+                self::$portalSyncIncomplete = true;
+            }
+            Log::info('MarketplacePortalInactiveCount: Mirakl portal sync', [
+                'channel' => $channel,
+                'result' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('MarketplacePortalInactiveCount: Mirakl portal sync failed', [
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+        } finally {
+            optional($lock)->release();
+        }
+    }
+
+    protected static function ensureFairePortalSynced(): void
+    {
+        $doneKey = 'mm.faire.portal_inactive_synced_v1';
+        try {
+            if (self::columnHasAnyInactive('faire_metric', 'listing_status')) {
+                Cache::put($doneKey, 1, now()->addHours(6));
+
+                return;
+            }
+            if (Cache::get($doneKey)) {
+                return;
+            }
+        } catch (\Throwable $e) {
+            // continue
+        }
+
+        $budget = min(90, self::remainingSyncSeconds());
+        if ($budget < 15) {
+            self::$portalSyncIncomplete = true;
+
+            return;
+        }
+
+        $lock = Cache::lock('mm.faire.portal_inactive_sync', 400);
+        if (! $lock->get()) {
+            self::$portalSyncIncomplete = true;
+
+            return;
+        }
+        try {
+            @set_time_limit($budget + 20);
+            $result = app(FaireLinkMapSyncService::class)->syncListingStatuses($budget);
+            if (($result['done'] ?? false) && ($result['ok'] ?? false)) {
+                Cache::put($doneKey, 1, now()->addHours(6));
+            } else {
+                self::$portalSyncIncomplete = true;
+            }
+            Log::info('MarketplacePortalInactiveCount: Faire portal sync', [
+                'result' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('MarketplacePortalInactiveCount: Faire portal sync failed', [
+                'error' => $e->getMessage(),
+            ]);
+        } finally {
+            optional($lock)->release();
+        }
+    }
+
+    protected static function ensureTopDawgPortalSynced(): void
+    {
+        $doneKey = 'mm.topdawg.portal_inactive_synced_v1';
+        try {
+            if (self::columnHasAnyInactive('topdawg_products', 'listing_state')) {
+                Cache::put($doneKey, 1, now()->addHours(6));
+
+                return;
+            }
+            if (Cache::get($doneKey)) {
+                return;
+            }
+        } catch (\Throwable $e) {
+            // continue
+        }
+
+        $budget = min(90, self::remainingSyncSeconds());
+        if ($budget < 15) {
+            self::$portalSyncIncomplete = true;
+
+            return;
+        }
+
+        $lock = Cache::lock('mm.topdawg.portal_inactive_sync', 400);
+        if (! $lock->get()) {
+            self::$portalSyncIncomplete = true;
+
+            return;
+        }
+        try {
+            @set_time_limit($budget + 20);
+            $api = app(TopDawgApiService::class);
+            if (! $api->isConfigured()) {
+                self::$portalSyncIncomplete = true;
+
+                return;
+            }
+            $result = $api->fetchProducts(null);
+            $items = is_array($result['data'] ?? null) ? $result['data'] : [];
+            $loggedKeys = false;
+            $inactive = 0;
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                if (! $loggedKeys) {
+                    $loggedKeys = true;
+                    Log::info('MarketplacePortalInactiveCount: TopDawg product keys', [
+                        'keys' => array_keys($item),
+                    ]);
+                }
+                $sku = trim((string) ($item['product_code'] ?? $item['sku'] ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                $state = TopDawgApiService::listingStateFromItem($item);
+                if ($state === null) {
+                    continue;
+                }
+                TopDawgProduct::query()->updateOrCreate(
+                    ['sku' => $sku],
+                    ['listing_state' => $state]
+                );
+                if (MarketplacePortalStatusTabs::bucket($state) === 'inactive') {
+                    $inactive++;
+                }
+            }
+            Cache::put($doneKey, 1, now()->addHours(6));
+            Log::info('MarketplacePortalInactiveCount: TopDawg portal sync', [
+                'products' => count($items),
+                'inactive' => $inactive,
+            ]);
+        } catch (\Throwable $e) {
+            self::$portalSyncIncomplete = true;
+            Log::warning('MarketplacePortalInactiveCount: TopDawg portal sync failed', [
+                'error' => $e->getMessage(),
+            ]);
+        } finally {
+            optional($lock)->release();
+        }
+    }
+
+    protected static function remainingSyncSeconds(): int
+    {
+        if (self::$syncDeadline === null) {
+            self::$syncDeadline = microtime(true) + 280;
+        }
+
+        return max(0, (int) floor(self::$syncDeadline - microtime(true)));
+    }
+
+    protected static function columnHasAnyInactive(string $table, string $column, string $skuCol = 'sku'): bool
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $column) || ! Schema::hasColumn($table, $skuCol)) {
+            return false;
+        }
+        $found = false;
+        DB::table($table)
+            ->whereNotNull($skuCol)
+            ->where($skuCol, '!=', '')
+            ->whereNotNull($column)
+            ->where($column, '!=', '')
+            ->select([$skuCol, $column])
+            ->orderBy($skuCol)
+            ->chunk(1000, function ($rows) use (&$found, $skuCol, $column) {
+                foreach ($rows as $row) {
+                    $raw = strtolower(trim((string) ($row->{$column} ?? '')));
+                    $raw = str_replace([' ', '-'], '_', $raw);
+                    if ($raw === '' || in_array($raw, ['missing', 'not_listed'], true)) {
+                        continue;
+                    }
+                    if (MarketplacePortalStatusTabs::bucket($raw) === 'inactive') {
+                        $found = true;
+
+                        return false;
+                    }
+                }
+            });
+
+        return $found;
     }
 
     /**

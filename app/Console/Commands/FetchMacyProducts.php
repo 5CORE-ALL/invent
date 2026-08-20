@@ -7,6 +7,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\MacyProduct;
 use App\Models\PurchasingPowerProduct;
 use Carbon\Carbon;
@@ -551,6 +552,8 @@ class FetchMacyProducts extends Command
                 return;
             }
 
+            $hasListingStatus = Schema::hasColumn($tableName, 'listing_status');
+
             // Process in smaller batches
             $batchSize = 25;
             $productBatches = array_chunk($products, $batchSize);
@@ -567,8 +570,9 @@ class FetchMacyProducts extends Command
                              $product['price']['amount'] ?? 
                              $product['prices'][0]['amount'] ?? 
                              $product['offer_price']['amount'] ?? null;
+                    $listingStatus = $hasListingStatus ? $this->listingStatusFromConnectProduct($product) : null;
                     
-                    if ($price === null) continue;
+                    if ($price === null && $listingStatus === null) continue;
 
                     // Calculate total stock from all warehouses
                     $stock = 0;
@@ -587,6 +591,7 @@ class FetchMacyProducts extends Command
                         'price' => $price,
                         'stock' => $stock,
                         'm_l30' => $l30,
+                        'listing_status' => $listingStatus,
                     ];
                 }
 
@@ -598,18 +603,35 @@ class FetchMacyProducts extends Command
                         $bindings = [];
                         
                         foreach ($updates as $update) {
-                            $values[] = "(?, ?, ?, ?, ?, ?)";
-                            $bindings[] = $update['sku'];
-                            $bindings[] = $update['price'];
-                            $bindings[] = $update['stock'];
-                            $bindings[] = $update['m_l30'];
-                            $bindings[] = $now;
-                            $bindings[] = $now;
+                            if ($hasListingStatus) {
+                                $values[] = "(?, ?, ?, ?, ?, ?, ?)";
+                                $bindings[] = $update['sku'];
+                                $bindings[] = $update['price'];
+                                $bindings[] = $update['stock'];
+                                $bindings[] = $update['m_l30'];
+                                $bindings[] = $update['listing_status'];
+                                $bindings[] = $now;
+                                $bindings[] = $now;
+                            } else {
+                                $values[] = "(?, ?, ?, ?, ?, ?)";
+                                $bindings[] = $update['sku'];
+                                $bindings[] = $update['price'];
+                                $bindings[] = $update['stock'];
+                                $bindings[] = $update['m_l30'];
+                                $bindings[] = $now;
+                                $bindings[] = $now;
+                            }
                         }
                         
-                        $sql = "INSERT INTO {$tableName} (sku, price, stock, m_l30, created_at, updated_at) VALUES " 
-                             . implode(', ', $values)
-                             . " ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), m_l30 = VALUES(m_l30), updated_at = VALUES(updated_at)";
+                        if ($hasListingStatus) {
+                            $sql = "INSERT INTO {$tableName} (sku, price, stock, m_l30, listing_status, created_at, updated_at) VALUES "
+                                 . implode(', ', $values)
+                                 . " ON DUPLICATE KEY UPDATE price = COALESCE(VALUES(price), price), stock = VALUES(stock), m_l30 = VALUES(m_l30), listing_status = COALESCE(VALUES(listing_status), listing_status), updated_at = VALUES(updated_at)";
+                        } else {
+                            $sql = "INSERT INTO {$tableName} (sku, price, stock, m_l30, created_at, updated_at) VALUES "
+                                 . implode(', ', $values)
+                                 . " ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), m_l30 = VALUES(m_l30), updated_at = VALUES(updated_at)";
+                        }
                         
                         DB::statement($sql, $bindings);
                         $totalProcessed += count($updates);
@@ -632,6 +654,61 @@ class FetchMacyProducts extends Command
         } while ($pageToken);
 
         $this->info("{$channelName} products stored successfully. Total: {$totalProcessed}");
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     */
+    private function listingStatusFromConnectProduct(array $product): ?string
+    {
+        if (array_key_exists('active', $product) && ! is_array($product['active'])) {
+            $raw = $product['active'];
+            if (is_bool($raw)) {
+                return $raw ? 'active' : 'inactive';
+            }
+            if (is_numeric($raw)) {
+                return ((int) $raw) === 1 ? 'active' : 'inactive';
+            }
+        }
+        foreach (['status', 'offer_status', 'product_status', 'state'] as $key) {
+            if (! array_key_exists($key, $product) || is_array($product[$key])) {
+                continue;
+            }
+            $raw = strtolower(trim((string) $product[$key]));
+            if ($raw === '') {
+                continue;
+            }
+            if (in_array($raw, ['active', 'live', 'published', 'enabled', '1', 'true'], true)) {
+                return 'active';
+            }
+            if (in_array($raw, ['inactive', 'offline', 'disabled', 'unpublished', 'draft', '0', 'false'], true)) {
+                return 'inactive';
+            }
+        }
+        $offers = $product['offers'] ?? null;
+        if (! is_array($offers)) {
+            return null;
+        }
+        $anyActive = false;
+        $anyInactive = false;
+        foreach ($offers as $offer) {
+            if (! is_array($offer) || ! array_key_exists('active', $offer) || is_array($offer['active'])) {
+                continue;
+            }
+            if (filter_var($offer['active'], FILTER_VALIDATE_BOOLEAN)) {
+                $anyActive = true;
+            } else {
+                $anyInactive = true;
+            }
+        }
+        if ($anyInactive && ! $anyActive) {
+            return 'inactive';
+        }
+        if ($anyActive) {
+            return 'active';
+        }
+
+        return null;
     }
 
     private function getAccessToken()

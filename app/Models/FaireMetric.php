@@ -25,6 +25,7 @@ class FaireMetric extends Model
         'order_dates',
         'last_order_date',
         'bullet_points',
+        'listing_status',
     ];
 
     protected $casts = [

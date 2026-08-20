@@ -128,10 +128,12 @@ class BestBuyLiveListingsService
             return null;
         }
 
+        $state = strtolower(trim((string) ($row->listing_status ?? '')));
+
         return [
             'product_id' => $sku,
             'sku' => $sku,
-            'state' => 'active',
+            'state' => $state !== '' ? $state : 'other',
             'inventory' => $row->stock !== null ? (int) $row->stock : null,
             'title' => $sku,
             'price' => $row->price !== null ? (float) $row->price : null,
