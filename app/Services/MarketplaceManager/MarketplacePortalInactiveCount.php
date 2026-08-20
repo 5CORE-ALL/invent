@@ -2,7 +2,9 @@
 
 namespace App\Services\MarketplaceManager;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -32,20 +34,8 @@ final class MarketplacePortalInactiveCount
                 'sku',
                 ['missing', 'not_listed', 'sold']
             ),
-            'ebay2' => self::fromPortalAndJson(
-                'ebay_2_metrics',
-                'listing_status',
-                ['ebay_two_listing_statuses'],
-                'sku',
-                ['missing', 'not_listed', 'sold']
-            ),
-            'ebay3' => self::fromPortalAndJson(
-                'ebay_3_metrics',
-                'listing_status',
-                ['ebay_three_listing_statuses'],
-                'sku',
-                ['missing', 'not_listed', 'sold']
-            ),
+            'ebay2' => self::ebaySkus(2),
+            'ebay3' => self::ebaySkus(3),
             'temu' => self::fromPortalAndJson('temu_metrics', 'listing_status', ['temu_listing_statuses']),
             'temu2' => self::fromPortalAndJson('temu2_metrics', 'listing_status', ['temu2_listing_statuses']),
             'tiktok' => self::mergeUnique(
@@ -57,9 +47,15 @@ final class MarketplacePortalInactiveCount
                 self::jsonLiveInactiveSkus('tiktok_two_shop_listing_statuses')
             ),
             'amazon' => self::fromPortalAndJson('amazon_datsheets', 'listing_status', ['amazon_listing_statuses']),
-            'reverb' => self::fromPortalAndJson('reverb_products', 'listing_state', ['reverb_listing_statuses']),
+            'reverb' => self::mergeUnique(
+                self::fromPortalAndJson('reverb_products', 'listing_state', ['reverb_listing_statuses']),
+                self::liveCacheInactiveSkus(ReverbLiveListingsService::CACHE_KEY)
+            ),
             'shein' => self::fromPortalAndJson('shein_metrics', 'status', ['shein_listing_statuses']),
-            'topdawg' => self::columnSkus('topdawg_products', 'listing_state', 'sku'),
+            'topdawg' => self::mergeUnique(
+                self::columnSkus('topdawg_products', 'listing_state', 'sku'),
+                self::liveCacheInactiveSkus('mm.topdawg.live_listings.v1')
+            ),
             'newegg' => self::mergeUnique(
                 self::neweggSkus(),
                 self::jsonLiveInactiveSkus('newegg_b2c_listing_statuses')
@@ -72,7 +68,7 @@ final class MarketplacePortalInactiveCount
             'wayfair' => self::jsonLiveInactiveSkus('wayfair_listing_statuses'),
             'bestbuy' => self::jsonLiveInactiveSkus('bestbuy_usa_listing_statuses'),
             'faire' => self::jsonLiveInactiveSkus('faire_listing_statuses'),
-            'aliexpress' => self::fromPortalAndJson('aliexpress_metric', 'status', ['aliexpress_listing_statuses']),
+            'aliexpress' => self::aliexpressSkus(),
             default => [],
         };
 
@@ -82,6 +78,145 @@ final class MarketplacePortalInactiveCount
     public static function count(string $mmChannel): int
     {
         return count(self::skus($mmChannel));
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function ebaySkus(int $store): array
+    {
+        self::ensureEbayPortalSynced($store);
+
+        return match ($store) {
+            2 => self::fromPortalAndJson(
+                'ebay_2_metrics',
+                'listing_status',
+                ['ebay_two_listing_statuses'],
+                'sku',
+                ['missing', 'not_listed', 'sold']
+            ),
+            3 => self::fromPortalAndJson(
+                'ebay_3_metrics',
+                'listing_status',
+                ['ebay_three_listing_statuses'],
+                'sku',
+                ['missing', 'not_listed', 'sold']
+            ),
+            default => self::fromPortalAndJson(
+                'ebay_metrics',
+                'listing_status',
+                ['ebay_listing_statuses', 'ebay_variation_listing_statuses'],
+                'sku',
+                ['missing', 'not_listed', 'sold']
+            ),
+        };
+    }
+
+    /**
+     * eBay 1 was filled by Refresh live. Pull Unsold for eBay 2/3 the same way
+     * the first time Inactive Listings needs a count.
+     */
+    protected static function ensureEbayPortalSynced(int $store): void
+    {
+        if (! in_array($store, [2, 3], true)) {
+            return;
+        }
+        $doneKey = 'mm.ebay'.$store.'.portal_inactive_synced';
+        try {
+            if (Cache::get($doneKey)) {
+                return;
+            }
+        } catch (\Throwable $e) {
+            // continue
+        }
+
+        $lock = Cache::lock('mm.ebay'.$store.'.portal_inactive_sync', 400);
+        if (! $lock->get()) {
+            return;
+        }
+        try {
+            @set_time_limit(180);
+            $result = app(EbayPortalListingStatusSync::class)->sync($store);
+            if ($result['ok'] ?? false) {
+                Cache::put($doneKey, 1, now()->addHours(6));
+            }
+            Log::info('MarketplacePortalInactiveCount: eBay portal sync', [
+                'store' => $store,
+                'result' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('MarketplacePortalInactiveCount: eBay portal sync failed', [
+                'store' => $store,
+                'error' => $e->getMessage(),
+            ]);
+        } finally {
+            optional($lock)->release();
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function aliexpressSkus(): array
+    {
+        self::persistAliexpressFromLiveCache();
+
+        return self::mergeUnique(
+            self::fromPortalAndJson('aliexpress_metric', 'listing_status', ['aliexpress_listing_statuses']),
+            self::fromPortalAndJson('aliexpress_metric', 'status', []),
+            self::liveCacheInactiveSkus(AliexpressLiveListingsService::CACHE_KEY)
+        );
+    }
+
+    protected static function persistAliexpressFromLiveCache(): void
+    {
+        try {
+            $cached = Cache::get(AliexpressLiveListingsService::CACHE_KEY);
+        } catch (\Throwable $e) {
+            return;
+        }
+        if (! is_array($cached) || $cached === []) {
+            return;
+        }
+        AliexpressLiveListingsService::persistListingStatuses($cached);
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function liveCacheInactiveSkus(string $cacheKey): array
+    {
+        try {
+            $cached = Cache::get($cacheKey);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        if (! is_array($cached) || $cached === []) {
+            return [];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($cached as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $key = strtoupper($sku);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            if (MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? '')) !== 'inactive') {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $sku;
+        }
+
+        return $out;
     }
 
     /**
@@ -286,13 +421,7 @@ final class MarketplacePortalInactiveCount
                 if (! is_array($value)) {
                     continue;
                 }
-                $raw = (string) (
-                    $value['live_inactive']
-                    ?? $value['listing_status']
-                    ?? $value['status']
-                    ?? $value['state']
-                    ?? ''
-                );
+                $raw = self::jsonStatusRaw($value);
                 if (MarketplacePortalStatusTabs::bucket($raw) !== 'inactive') {
                     continue;
                 }
@@ -302,6 +431,32 @@ final class MarketplacePortalInactiveCount
         });
 
         return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $value
+     */
+    protected static function jsonStatusRaw(array $value): string
+    {
+        $map = [];
+        foreach ($value as $key => $item) {
+            if (is_array($item) || is_object($item)) {
+                continue;
+            }
+            $norm = strtolower(str_replace([' ', '-', '/'], '_', (string) $key));
+            $map[$norm] = $item;
+        }
+        foreach (['live_inactive', 'listing_status', 'status', 'state'] as $key) {
+            if (! array_key_exists($key, $map)) {
+                continue;
+            }
+            $raw = trim((string) $map[$key]);
+            if ($raw !== '') {
+                return $raw;
+            }
+        }
+
+        return '';
     }
 
     /**

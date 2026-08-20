@@ -33,7 +33,7 @@ class TopDawgLiveListingsService
         $rows = $this->fetchFromLocal();
         Cache::put(self::CACHE_KEY, $rows, now()->addHours(6));
 
-        return $rows;
+        return MarketplacePortalInactiveCount::applyToLiveRows('topdawg', $rows);
     }
 
     /**
@@ -43,7 +43,7 @@ class TopDawgLiveListingsService
     {
         $cached = Cache::get(self::CACHE_KEY);
 
-        return is_array($cached) ? $cached : null;
+        return is_array($cached) ? MarketplacePortalInactiveCount::applyToLiveRows('topdawg', $cached) : null;
     }
 
     /**
@@ -138,10 +138,12 @@ class TopDawgLiveListingsService
             $productId = $sku;
         }
 
+        $state = strtolower(trim((string) ($row->listing_state ?? '')));
+
         return [
             'product_id' => $productId,
             'sku' => $sku,
-            'state' => strtolower(trim((string) ($row->listing_state ?? 'active'))) ?: 'active',
+            'state' => $state !== '' ? $state : 'other',
             'inventory' => $row->remaining_inventory !== null ? (int) $row->remaining_inventory : null,
             'title' => $row->product_title !== null ? (string) $row->product_title : null,
             'price' => $row->price !== null ? (float) $row->price : null,

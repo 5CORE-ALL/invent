@@ -27,9 +27,9 @@ class MappingChannelCounts
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
 
-    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v4';
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v5';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v4';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v5';
 
     /**
      * Channels shown on /map-issues.
