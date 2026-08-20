@@ -2358,6 +2358,9 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                if (typeof applyChannelSpriceFromStdChange === 'function') {
+                    applyChannelSpriceFromStdChange(r, { persist: true, skip_push: true });
+                }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
@@ -4363,13 +4366,18 @@
                         field: "eBay Price",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Price vs yesterday PT when a snapshot exists; otherwise vs last recorded day. Green = up, red = down, gray = same. Click price or dot for chart.",
+                        headerTooltip: "Price vs yesterday PT when a snapshot exists; otherwise vs last recorded day. Green = up, red = down, gray = same. Red triangle = Price > LMP. Click price or dot for chart.",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             const rowData = cell.getRow().getData();
                             const lmpPrice = parseFloat(rowData['lmp_price'] || 0);
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const overLmp = lmpPrice > 0 && value > lmpPrice;
+                            const redTri = overLmp
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Price $'
+                                    + value.toFixed(2) + ' &gt; LMP $' + lmpPrice.toFixed(2) + '"></i>'
+                                : '';
                             const yesterday = parseFloat(rowData.price_yesterday);
                             const hasYesterday = isFinite(yesterday) && yesterday > 0;
                             const yDate = String(rowData.price_yesterday_date || '');
@@ -4407,13 +4415,13 @@
                             }
 
                             const priceFormatted = '$' + value.toFixed(2);
-                            const priceColor = (lmpPrice > 0 && value > lmpPrice) ? '#dc3545' : 'inherit';
-                            const priceWeight = (lmpPrice > 0 && value > lmpPrice) ? '600' : 'normal';
+                            const priceColor = overLmp ? '#dc3545' : 'inherit';
+                            const priceWeight = overLmp ? '600' : 'normal';
                             if (sku && !isParent) {
-                                return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}</span>${dotBtn}</span>`;
+                                return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}${redTri}</span>${dotBtn}</span>`;
                             }
-                            if (lmpPrice > 0 && value > lmpPrice) {
-                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>`;
+                            if (overLmp) {
+                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}${redTri}</span>`;
                             }
                             return priceFormatted;
                         },
@@ -4651,7 +4659,7 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + CPN%)/100). Read-only. Dot = vs last recorded S PRC (green up, red down, gray same). Click the dot for Rolling L30.",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + CPN%)/100). Read-only. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP. Dot = vs last recorded S PRC. Click the dot for Rolling L30.",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -4705,6 +4713,14 @@
                                 ? `<button type="button" class="btn btn-sm p-0 view-sku-chart ch-pef-hist-dot align-middle" data-sku="${sku}" data-metric="sprice" title="${dotTip} — click for S PRC chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>`
                                 : '';
 
+                            const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+                            const differsFromPrice = ebayPrice > 0
+                                && Math.round(sprice * 100) !== Math.round(ebayPrice * 100);
+                            const blueTri = differsFromPrice
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
+                                : '';
+
                             let priceHtml = formattedValue;
                             if (lmp > 0 && sprice > lmp) {
                                 priceHtml = `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>`;
@@ -4712,7 +4728,7 @@
                                 priceHtml = `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
                             }
 
-                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${priceHtml}${dotBtn}</span>`;
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${priceHtml}${blueTri}${dotBtn}</span>`;
                         },
                         cellClick: function(e) {
                             const el = e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot');
@@ -5132,6 +5148,10 @@
                     if (!sku || !isFinite(std) || std <= 0) {
                         row.update({ STANDARD_PRICE: null });
                         return;
+                    }
+                    row.update({ STANDARD_PRICE: std });
+                    if (typeof applyChannelSpriceFromStdChange === 'function') {
+                        applyChannelSpriceFromStdChange(row, { persist: false });
                     }
                     $.ajax({
                         url: '/save-amazon-sprice',

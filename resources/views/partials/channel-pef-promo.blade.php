@@ -4404,7 +4404,7 @@
                             jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: false });
                         }
                     } else if (ebay1) {
-                        const newPrice = chPromoInv(d) === 0 ? 0 : chPromoSpriceFromStdPrmtCpnWith(d, { cpn: 0 });
+                        const newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { cpn: 0 });
                         const patch = { cpn_pct: String(cpn), _cpn_pct_applied: 0 };
                         if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
                         item.row.update(patch);
@@ -4417,7 +4417,7 @@
                     continue;
                 }
                 if (ebay1) {
-                    const newPrice = chPromoInv(d) === 0 ? 0 : chPromoSpriceFromStdPrmtCpnWith(d, { cpn: cpn });
+                    const newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { cpn: cpn });
                     const patch = { cpn_pct: String(cpn), _cpn_pct_applied: cpn };
                     if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
                     item.row.update(patch);
@@ -4623,7 +4623,7 @@
                         const recalc = chPromoReverbSpriceFromStdBothPrmt(d, { prmt: 0 });
                         if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
                     } else if ((kind === 'prmt' || kind === 'cpn') && chPromoEbayStdMinusPrmtCpnEnabled()) {
-                        const recalc = chPromoInv(d) === 0 ? 0 : chPromoSpriceFromStdPrmtCpnWith(
+                        const recalc = chPromoSpriceFromStdPrmtCpnWith(
                             d,
                             kind === 'prmt' ? { prmt: 0 } : { cpn: 0 }
                         );
@@ -4651,7 +4651,7 @@
                 let newPrice;
                 if (chPromoEbayStdMinusPrmtCpnEnabled() && (kind === 'prmt' || kind === 'cpn')) {
                     base = chPromoStdBase(d);
-                    newPrice = chPromoInv(d) === 0 ? 0 : chPromoSpriceFromStdPrmtCpnWith(
+                    newPrice = chPromoSpriceFromStdPrmtCpnWith(
                         d,
                         kind === 'prmt' ? { prmt: promo.value } : { cpn: promo.value }
                     );
@@ -5421,14 +5421,38 @@
                 || CHANNEL_PROMO_CHANNEL === 'ebay3';
         }
 
-        /** S PRC = Std × (1 − (PRMT% + CPN%)/100). T Promo = PRMT% + CPN%. Skip INV = 0. */
+        /** S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. */
         function chPromoSpriceFromStdTPromo(d) {
-            if (chPromoInv(d) === 0) return 0;
             const std = chPromoStdBase(d);
             if (!(std > 0)) return 0;
             const t = Math.min(99.99, Math.max(0, chPromoTPromoPct(d)));
             const price = t > 0 ? chPromoRound2(std * (1 - t / 100)) : chPromoRound2(std);
             return price >= 0.01 ? price : 0;
+        }
+
+        /** Recalc S PRC from current Std / PRMT% / cvr%. Used when Std Prc changes. */
+        function applyChannelSpriceFromStdChange(row, opts) {
+            opts = opts || {};
+            if (!chPromoEbayStdMinusPrmtCpnEnabled() || !row) return null;
+            const d = row.getData();
+            if (!chPromoIsChildRow(d)) return null;
+            const fill = chPromoSpriceFromStdTPromo(d);
+            const sku = chPromoSku(d);
+            if (!sku || !(fill > 0)) return null;
+            const current = chPromoRound2(chPromoGetSprice(d));
+            const hadValue = current > 0;
+            if (hadValue && current === fill && opts.persist === false) return null;
+            row.update(chPromoSpricePatch(fill));
+            try { row.reformat(); } catch (e) { /* ignore */ }
+            if (opts.persist === false) return { sku: sku, price: fill, row: row };
+            if (hadValue && current === fill) return { sku: sku, price: fill, row: row };
+            const extra = { skip_push: opts.skip_push !== false };
+            saveChannelSprice(sku, fill, true, extra).done(function(saveRes) {
+                chPromoApplySpriceSavePatch(row, fill, saveRes);
+            }).fail(function() {
+                chPromoApplySpriceSavePatch(row, fill, null);
+            });
+            return { sku: sku, price: fill, row: row };
         }
 
         function chPromoSpriceFromStdPrmtCpnWith(d, override) {
@@ -5446,7 +5470,7 @@
         }
 
         let chPromoEbaySpriceAutoBusy = false;
-        /** Fill empty S PRC cells: Std × (1 − (PRMT% + CPN%)/100). Skips INV = 0. */
+        /** Fill empty S PRC cells: Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. */
         function autopopulateEbaySpriceFromStdPrmtCpn(opts) {
             opts = opts || {};
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
@@ -6775,6 +6799,7 @@
         window.hideChannelPushCpnColumn = hideChannelPushCpnColumn;
         window.chPromoTemuSpriceFromStdPrmtCpn = chPromoTemuSpriceFromStdPrmtCpn;
         window.chPromoSpriceFromStdTPromo = chPromoSpriceFromStdTPromo;
+        window.applyChannelSpriceFromStdChange = applyChannelSpriceFromStdChange;
         window.chPromoSpriceFromStdPrmtCpnWith = chPromoSpriceFromStdPrmtCpnWith;
         window.chPromoEbayStdMinusPrmtCpnEnabled = chPromoEbayStdMinusPrmtCpnEnabled;
         window.autopopulateEbaySpriceFromStdPrmtCpn = autopopulateEbaySpriceFromStdPrmtCpn;

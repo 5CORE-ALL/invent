@@ -2978,14 +2978,25 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
+                        const rowData = cell.getRow().getData();
+                        const lmpPrice = parseFloat(rowData['lmp_price'] || 0);
+                        const overLmp = lmpPrice > 0 && value > lmpPrice;
+                        const redTri = overLmp
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Price $'
+                                + value.toFixed(2) + ' &gt; LMP $' + lmpPrice.toFixed(2) + '"></i>'
+                            : '';
                         
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
+                        if (overLmp) {
+                            return '<span style="color:#dc3545;font-weight:600;white-space:nowrap;">$'
+                                + value.toFixed(2) + redTri + '</span>';
+                        }
                         
                         return `$${value.toFixed(2)}`;
                     },
-                    width: 70
+                    width: 80
                 },
                 {
                     title: "GROI%",
@@ -3125,10 +3136,24 @@
 
                         if (!(sprice > 0)) return '';
                         const formattedValue = `$${Number(sprice).toFixed(2)}`;
-                        if (hasCustomSprice === false) {
-                            return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
+                        const lmp = parseFloat(rowData.lmp_price) || 0;
+                        const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+                        const differsFromPrice = ebayPrice > 0
+                            && Math.round(sprice * 100) !== Math.round(ebayPrice * 100);
+                        const blueTri = differsFromPrice
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
+                            : '';
+                        if (lmp > 0 && sprice > lmp) {
+                            return '<span style="color:#dc3545;font-weight:600;white-space:nowrap;">'
+                                + formattedValue
+                                + ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;color:#dc3545;" title="S PRC &gt; LMP"></i></span>'
+                                + blueTri;
                         }
-                        return formattedValue;
+                        if (hasCustomSprice === false) {
+                            return `<span style="color: #0d6efd; font-weight: 500; white-space:nowrap;">${formattedValue}</span>` + blueTri;
+                        }
+                        return '<span style="white-space:nowrap;">' + formattedValue + blueTri + '</span>';
                     },
                     width: 80
                 },

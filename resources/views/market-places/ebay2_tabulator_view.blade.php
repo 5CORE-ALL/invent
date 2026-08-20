@@ -1659,6 +1659,9 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                if (typeof applyChannelSpriceFromStdChange === 'function') {
+                    applyChannelSpriceFromStdChange(r, { persist: true, skip_push: true });
+                }
                 try {
                     const cell = r.getCell('push_std_prc');
                     if (cell) cell.reformat();
@@ -3669,13 +3672,18 @@
                         field: "eBay Price",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Price vs yesterday (PT): green = up, red = down, gray = same / no yesterday. Click price or dot for chart.",
+                        headerTooltip: "Price vs yesterday (PT): green = up, red = down, gray = same / no yesterday. Red triangle = Price > LMP. Click price or dot for chart.",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             const rowData = cell.getRow().getData();
                             const lmpPrice = parseFloat(rowData['lmp_price'] || 0);
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const overLmp = lmpPrice > 0 && value > lmpPrice;
+                            const redTri = overLmp
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Price $'
+                                    + value.toFixed(2) + ' &gt; LMP $' + lmpPrice.toFixed(2) + '"></i>'
+                                : '';
                             const yesterday = parseFloat(rowData.price_yesterday);
                             const hasYesterday = isFinite(yesterday) && yesterday > 0;
 
@@ -3705,13 +3713,13 @@
                             }
 
                             const priceFormatted = '$' + value.toFixed(2);
-                            const priceColor = (lmpPrice > 0 && value > lmpPrice) ? '#dc3545' : 'inherit';
-                            const priceWeight = (lmpPrice > 0 && value > lmpPrice) ? '600' : 'normal';
+                            const priceColor = overLmp ? '#dc3545' : 'inherit';
+                            const priceWeight = overLmp ? '600' : 'normal';
                             if (sku && !isParent) {
-                                return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}</span>${dotBtn}</span>`;
+                                return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}${redTri}</span>${dotBtn}</span>`;
                             }
-                            if (lmpPrice > 0 && value > lmpPrice) {
-                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>`;
+                            if (overLmp) {
+                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}${redTri}</span>`;
                             }
                             return priceFormatted;
                         },
@@ -3918,17 +3926,25 @@
 
                             const formattedValue = '$' + sprice.toFixed(2);
                             const lmp = parseFloat(rowData.lmp_price) || 0;
+                            const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+                            const differsFromPrice = ebayPrice > 0
+                                && Math.round(sprice * 100) !== Math.round(ebayPrice * 100);
+                            const blueTri = differsFromPrice
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + sprice.toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
+                                : '';
                             if (lmp > 0 && sprice > lmp) {
                                 return '<span style="color:#dc3545;font-weight:600;white-space:nowrap;" title="S PRC $'
                                     + sprice.toFixed(2) + ' &gt; LMP $' + lmp.toFixed(2) + '">'
                                     + formattedValue
-                                    + ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;"></i></span>';
+                                    + ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;color:#dc3545;"></i></span>'
+                                    + blueTri;
                             }
                             if (hasCustomSprice === false) {
-                                return '<span style="color: #0d6efd; font-weight: 500;">' + formattedValue + '</span>';
+                                return '<span style="color: #0d6efd; font-weight: 500; white-space:nowrap;">' + formattedValue + '</span>' + blueTri;
                             }
 
-                            return formattedValue;
+                            return '<span style="white-space:nowrap;">' + formattedValue + blueTri + '</span>';
                         },
                         width: 80
                     },
@@ -4247,6 +4263,10 @@
                     if (!sku || !isFinite(std) || std <= 0) {
                         row.update({ STANDARD_PRICE: null });
                         return;
+                    }
+                    row.update({ STANDARD_PRICE: std });
+                    if (typeof applyChannelSpriceFromStdChange === 'function') {
+                        applyChannelSpriceFromStdChange(row, { persist: false });
                     }
                     $.ajax({
                         url: '/save-amazon-sprice',
