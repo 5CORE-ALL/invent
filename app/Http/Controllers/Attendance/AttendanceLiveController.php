@@ -7,6 +7,8 @@ use App\Models\AttendanceLiveSession;
 use App\Models\User;
 use App\Services\Attendance\AttendanceLiveWatchService;
 use App\Services\Attendance\AttendanceService;
+use App\Services\Attendance\AttendanceSummaryService;
+use App\Services\Attendance\AttendanceTimelineService;
 use App\Support\AttendanceAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,8 +19,49 @@ class AttendanceLiveController extends Controller
     public function __construct(
         private readonly AttendanceLiveWatchService $liveWatchService,
         private readonly AttendanceService $attendanceService,
+        private readonly AttendanceSummaryService $summaryService,
     ) {
         $this->middleware('auth');
+    }
+
+    public function teamWall(Request $request)
+    {
+        abort_unless(AttendanceAccess::canMonitor(), 403);
+        abort_unless((bool) config('attendance.live_watch_enabled', true), 404);
+
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
+        $team = $request->input('team', 'all');
+        $viewableIds = AttendanceAccess::viewableUserIds();
+        $all = $this->attendanceService->monitorableEmployees($viewableIds);
+        $teams = $all->pluck('designation')->filter()->unique()->sort()->values();
+        $employees = $team === 'all'
+            ? $all
+            : $all->filter(fn (User $u) => (string) $u->designation === $team)->values();
+
+        $today = now()->timezone($timezone)->toDateString();
+        $summary = $this->summaryService->teamSummary($employees, $today, $today, $timezone);
+
+        $tiles = collect($summary['rows'])->map(fn (array $row) => [
+            'user_id' => (int) $row['user_id'],
+            'name' => $row['name'],
+            'email' => $row['email'],
+            'live_status' => $row['live_status'] ?? 'absent',
+            'live_label' => $row['live_label'] ?? 'Absent',
+            'poster' => $row['last_image_thumb'] ?? null,
+            'start_url' => route('attendance.live.start', $row['user_id']),
+        ])->values();
+
+        return view('attendance.team-video', [
+            'title' => 'Team Monitor Video',
+            'team' => $team,
+            'timezone' => $timezone,
+            'teams' => $teams,
+            'tiles' => $tiles,
+            'summary_url' => route('attendance.summary', array_filter([
+                'team' => $team,
+                'timezone' => $timezone,
+            ])),
+        ]);
     }
 
     public function show(User $user)
@@ -38,10 +81,13 @@ class AttendanceLiveController extends Controller
         abort_unless(AttendanceAccess::canMonitor() && AttendanceAccess::canViewUser($user->id), 403);
         abort_unless((bool) config('attendance.live_watch_enabled', true), 404);
 
+        $source = (string) $request->input('source', 'watch');
+
         $session = $this->liveWatchService->start(
             $user,
             $request->user(),
-            $this->attendanceService->activeSession($user)
+            $this->attendanceService->activeSession($user),
+            $source
         );
 
         return response()->json($this->sessionPayload($session, $user));

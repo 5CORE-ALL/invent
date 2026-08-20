@@ -2983,8 +2983,13 @@
                             <a href="{{ route('permissions.view') }}" class="{{ request()->routeIs('permissions.view') ? 'active' : '' }}">View Permissions</a>
                         </li>
                         <li>
-                            <a href="{{ route('attendance.summary') }}" class="{{ request()->routeIs('attendance.summary*') || request()->routeIs('attendance.monitor*') || request()->routeIs('attendance.employee') ? 'active' : '' }}">
+                            <a href="{{ route('attendance.summary') }}" class="{{ request()->routeIs('attendance.summary*') || request()->routeIs('attendance.monitor*') || request()->routeIs('attendance.employee') || request()->routeIs('attendance.live.team') ? 'active' : '' }}">
                                 <i class="ri-group-line me-2"></i>Team Monitoring
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('attendance.live.team') }}" class="{{ request()->routeIs('attendance.live.team') ? 'active' : '' }}">
+                                <i class="ri-vidicon-line me-2"></i>Team Monitor Video
                             </a>
                         </li>
                         <li>

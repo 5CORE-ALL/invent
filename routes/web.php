@@ -6982,6 +6982,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/summary', [AttendanceSummaryController::class, 'index'])->name('summary');
         Route::get('/summary/data', [AttendanceSummaryController::class, 'data'])->name('summary.data');
         Route::get('/summary/export', [AttendanceSummaryController::class, 'export'])->name('summary.export');
+        Route::get('/team-video', [AttendanceLiveController::class, 'teamWall'])->name('live.team');
         Route::get('/live/session/{liveSession}/frame', [AttendanceLiveController::class, 'frame'])->name('live.frame');
         Route::post('/live/session/{liveSession}/ping', [AttendanceLiveController::class, 'ping'])->name('live.ping');
         Route::post('/live/session/{liveSession}/stop', [AttendanceLiveController::class, 'stop'])->name('live.stop');

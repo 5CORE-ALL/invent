@@ -24,8 +24,10 @@ class AttendanceLiveWatchService
         ];
     }
 
-    public function start(User $employee, User $viewer, ?AttendanceSession $attendanceSession = null): AttendanceLiveSession
+    public function start(User $employee, User $viewer, ?AttendanceSession $attendanceSession = null, string $source = 'watch'): AttendanceLiveSession
     {
+        $source = in_array($source, ['watch', 'wall'], true) ? $source : 'watch';
+
         $session = AttendanceLiveSession::create([
             'user_id' => $employee->id,
             'viewer_user_id' => $viewer->id,
@@ -35,6 +37,7 @@ class AttendanceLiveWatchService
             'last_viewer_ping_at' => now(),
         ]);
 
+        Cache::put('attendance:live:source:'.$session->id, $source, 86400);
         $this->touchWatch($employee->id);
 
         return $session;
@@ -234,6 +237,10 @@ class AttendanceLiveWatchService
 
     private function persistRecordingFrame(AttendanceLiveSession $session, string $bytes): void
     {
+        if (Cache::get('attendance:live:source:'.$session->id) === 'wall') {
+            return;
+        }
+
         $tickKey = 'attendance:live:rec-tick:'.$session->id;
         if (Cache::has($tickKey)) {
             return;

@@ -132,6 +132,10 @@
                         <p class="text-muted small mb-0">View aggregated work hours, activity levels, and time breakdown for your team.</p>
                     </div>
                     <div class="es-header-actions">
+                        <a href="{{ route('attendance.live.team', ['team' => $team, 'timezone' => $timezone]) }}"
+                           class="btn btn-sm btn-danger">
+                            <i class="ri-vidicon-line me-1"></i> Team Monitor Video
+                        </a>
                         <a href="{{ route('attendance.monitor', ['date' => $to, 'team' => $team, 'timezone' => $timezone, 'day_reset' => $day_reset]) }}"
                            class="btn btn-sm btn-outline-primary">
                             <i class="ri-time-line me-1"></i> Team Timeline
