@@ -3511,19 +3511,38 @@
             return isFinite(n) && n >= 0 ? n : 0;
         }
 
+        function cascadeChPromoDilPrmtFromFirst() {
+            const $rows = $('#ch-promo-dil-prmt-tbody tr');
+            if (!$rows.length) return;
+            const firstVal = parseFloat($rows.eq(0).find('.ch-promo-dil-prmt-input').val());
+            if (!isFinite(firstVal)) return;
+            $rows.each(function(i) {
+                const prmt = Math.max(0, firstVal - i);
+                const $inp = $(this).find('.ch-promo-dil-prmt-input');
+                if (i > 0) $inp.val(prmt);
+                const key = String($(this).attr('data-key') || '');
+                const rule = chPromoDilPrmtRules.find(function(r) { return r.key === key; });
+                if (rule) rule.prmt = prmt;
+            });
+        }
         function renderChPromoDilPrmtModalTable() {
             const $tb = $('#ch-promo-dil-prmt-tbody').empty();
+            let visibleIdx = 0;
             chPromoDilPrmtRules.forEach(function(r, idx) {
                 if (chPromoIsZeroSoldRuleKey(r.key)) return;
                 const prmt = isFinite(Number(r.prmt)) ? Number(r.prmt) : 0;
+                const first = visibleIdx === 0;
                 $tb.append(
                     '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
                     + '<td>' + String(r.label || r.key) + '</td>'
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-input" '
-                    + 'min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '">'
+                    + 'min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '"'
+                    + (first ? ' title="Changing this sets following slabs to −1 each, minimum 0"' : '')
+                    + '>'
                     + '</td></tr>'
                 );
+                visibleIdx++;
             });
         }
         function renderChPromoZeroSoldPrmtModalTable() {
@@ -6713,6 +6732,12 @@
 
             $('#ch-promo-dil-prmt-save-btn').off('click.chpromo').on('click.chpromo', saveChPromoDilPrmtRulesOnly);
             $('#ch-promo-dil-prmt-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoDilPrmt);
+            $(document).off('input.chPromoDilCascade change.chPromoDilCascade', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input')
+                .on('input.chPromoDilCascade change.chPromoDilCascade', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input', function() {
+                    const first = $('#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input').get(0);
+                    if (this !== first) return;
+                    cascadeChPromoDilPrmtFromFirst();
+                });
 
             if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
                 $('#ch-promo-zero-sold-rules-btn').off('click.chpromo').on('click.chpromo', function(e) {
