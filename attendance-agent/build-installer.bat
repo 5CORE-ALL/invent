@@ -20,5 +20,5 @@ echo Done! Installer is in the dist folder:
 dir /b dist\*.exe
 echo.
 echo Give employees: dist\5Core-Attendance-Setup.exe
-echo (Run over the existing install — no uninstall needed)
+echo Run it over the existing install. Do not uninstall first.
 pause

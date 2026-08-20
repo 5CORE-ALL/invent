@@ -4,7 +4,9 @@
 @endphp
         (function(global) {
             const CH_PUSH_SPRICE_CHANNEL = @json($channelPushSpriceChannel);
+            const CH_PUSH_SPRICE_LIVE = @json(\App\Services\Support\ChannelPushSpriceRunner::livePushAllowed());
             const CH_PUSH_SPRICE_URL = '/channel-push-sprice/' + encodeURIComponent(CH_PUSH_SPRICE_CHANNEL);
+            global._chPushSpriceLiveAllowed = CH_PUSH_SPRICE_LIVE;
             const CH_PUSH_SPRICE_SAVE = ({
                 ebay1: '/ebay-one/save-sprice',
                 ebay2: '/save-ebay2-sprice',
@@ -368,4 +370,15 @@
             global.scanAndQueueChannelPushSprice = scanAndQueueChannelPushSprice;
             global.startChannelPushSpricePoll = startChannelPushSpricePoll;
             global._chPushSpriceChannel = CH_PUSH_SPRICE_CHANNEL;
+
+            if (CH_PUSH_SPRICE_LIVE) {
+                $.ajax({
+                    url: CH_PUSH_SPRICE_URL + '/status',
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    timeout: 15000,
+                }).done(function(resp) {
+                    if (resp && resp.active) startChannelPushSpricePoll();
+                });
+            }
         })(window);

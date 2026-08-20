@@ -194,7 +194,7 @@
                     if (!firstFrameAt && Date.now() - startedAt > 8000) {
                         setWait(
                             'Desktop app is not streaming yet',
-                            'Ask the employee to restart 5Core Attendance while this window stays open, or install v1.4.1 from /attendance/agent. Old apps cannot send live video until they restart or update.',
+                            'Ask the employee to restart 5Core Attendance while this window stays open, or install v1.4.2 from /attendance/agent. Old apps cannot send live video until they restart or update.',
                             true
                         );
                     }

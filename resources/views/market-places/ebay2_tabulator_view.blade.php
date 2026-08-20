@@ -5026,7 +5026,6 @@
             });
 
             table.on('dataLoaded', function() {
-                window._chPushSpricePageChecked = true;
                 if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
                 updateCalcValues();
                 updateSummary();

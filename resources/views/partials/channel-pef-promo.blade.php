@@ -442,8 +442,12 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2" id="ch-promo-cvr-cpn-help">
-                        @if(in_array($channelPromoChannel, ['ebay2', 'ebay2op', 'ebay3'], true))
+                        @if(in_array($channelPromoChannel, ['ebay2op', 'ebay3'], true))
                             Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
+                            <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
+                            (database only — no eBay coupon).
+                        @elseif($channelPromoChannel === 'ebay2')
+                            Map CVR% slabs to <strong>CPN %</strong>.
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
                             (database only — no eBay coupon).
                         @else
@@ -2347,8 +2351,7 @@
             { key: '6.5-7', label: '6.5–7%', cpn: 1 },
             { key: 'gt-7', label: '> 7%', cpn: 0 },
         ];
-        const CH_PEF_CVR_CPN_SKIP_ZERO = CHANNEL_PROMO_CHANNEL === 'ebay2'
-            || CHANNEL_PROMO_CHANNEL === 'ebay2op'
+        const CH_PEF_CVR_CPN_SKIP_ZERO = CHANNEL_PROMO_CHANNEL === 'ebay2op'
             || CHANNEL_PROMO_CHANNEL === 'ebay3';
         const CH_PEF_CVR_CPN_DEFAULTS = CH_PEF_CVR_CPN_SKIP_ZERO
             ? CH_PEF_CVR_CPN_DEFAULTS_ALL.filter(function(r) { return r.key !== 'eq-0'; })
@@ -5589,9 +5592,29 @@
         }
 
         function bindEbaySpriceAutofill() {
-            // Do not auto-persist or push S PRC on page load. Refresh was
-            // overwriting live eBay listing prices with stale calculated S PRC.
-            window._chPushSpricePageChecked = true;
+            if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
+            if (typeof table === 'undefined' || !table || !table.on) {
+                setTimeout(bindEbaySpriceAutofill, 400);
+                return;
+            }
+            if (table._chPromoSpriceAutofillBound) return;
+            table._chPromoSpriceAutofillBound = true;
+            function runPageLoadSpriceQueue() {
+                if (window._chPushSpricePageChecked) return;
+                window._chPushSpricePageChecked = true;
+                // Local stays off so refresh cannot overwrite live listings.
+                // Production queues S PRC and the worker pulls GetItem after push.
+                if (window._chPushSpriceLiveAllowed === false) return;
+                setTimeout(function() {
+                    autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
+                }, 80);
+            }
+            table.on('dataLoaded', runPageLoadSpriceQueue);
+            try {
+                if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
+                    runPageLoadSpriceQueue();
+                }
+            } catch (e) { /* wait for dataLoaded */ }
         }
 
         function fillSpriceFromTPromo() {

@@ -14,14 +14,30 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.4.1';
+const AGENT_VERSION = '1.4.2';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
 let lastUpdatePayload = null;
 
+function argvWantsQuit(argv) {
+    return (argv || []).some((arg) => arg === '--quit' || arg === '--quit-for-update');
+}
+
+function requestAppQuit(options) {
+    app.isQuitting = true;
+    if (options && options.disableAutoLaunch) {
+        try {
+            app.setLoginItemSettings({ openAtLogin: false, name: '5Core Attendance' });
+        } catch (_) { /* ignore */ }
+    }
+    app.quit();
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
+} else if (argvWantsQuit(process.argv)) {
+    requestAppQuit({ disableAutoLaunch: true });
 }
 
 const MACHINE_ID = store.get('machineId') || `${os.hostname()}-${os.userInfo().username}`.slice(0, 120);
@@ -1007,11 +1023,21 @@ function createWindow() {
         },
     });
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+    let lastCloseAttempt = 0;
     win.on('close', (e) => {
-        if (!app.isQuitting) {
-            e.preventDefault();
-            win.hide();
+        if (app.isQuitting) {
+            return;
         }
+        // NSIS / Task Manager send WM_CLOSE. Hiding to tray makes the
+        // installer think the app never died and loop "cannot be closed".
+        const now = Date.now();
+        if (now - lastCloseAttempt < 4000) {
+            requestAppQuit();
+            return;
+        }
+        lastCloseAttempt = now;
+        e.preventDefault();
+        win.hide();
     });
 }
 
@@ -1318,12 +1344,20 @@ ipcMain.handle('getAgentVersion', () => ({
     latest: config.agent_version || AGENT_VERSION,
 }));
 
-app.on('second-instance', () => {
+app.on('second-instance', (_event, argv) => {
+        if (argvWantsQuit(argv)) {
+        requestAppQuit({ disableAutoLaunch: true });
+        return;
+    }
     showWindow();
     checkForUpdate({ forceShow: true }).catch(() => {});
 });
 
 app.whenReady().then(async () => {
+        if (app.isQuitting || argvWantsQuit(process.argv)) {
+        requestAppQuit({ disableAutoLaunch: true });
+        return;
+    }
     enableAutoLaunch();
     createTray();
     createWindow();
@@ -1356,4 +1390,9 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => { app.isQuitting = true; stopLiveWatchPoll(); stopTracking(); });
-app.on('window-all-closed', (e) => e.preventDefault());
+app.on('session-end', () => { app.isQuitting = true; });
+app.on('window-all-closed', (e) => {
+    if (!app.isQuitting) {
+        e.preventDefault();
+    }
+});

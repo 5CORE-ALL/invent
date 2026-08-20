@@ -4410,7 +4410,6 @@
                     }
                 } catch (e) { /* ignore */ }
             }
-            window._chPushSpricePageChecked = true;
             if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
             updateCalcValues();
             updateSummary();

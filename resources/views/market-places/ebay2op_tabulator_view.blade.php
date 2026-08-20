@@ -4736,7 +4736,6 @@
             });
 
             table.on('dataLoaded', function() {
-                window._chPushSpricePageChecked = true;
                 updateCalcValues();
                 updateSummary();
                 // Refresh checkboxes to reflect selectedSkus set (matching Amazon approach)

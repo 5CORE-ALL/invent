@@ -6217,7 +6217,6 @@
             });
 
             table.on('dataLoaded', function() {
-                window._chPushSpricePageChecked = true;
                 if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
                 // Build the unique parent list for Play/Next/Previous navigation.
                 var allRows = table.getData('all') || [];

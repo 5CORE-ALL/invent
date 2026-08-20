@@ -28,6 +28,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
 use App\Services\ChannelPromoPricingService;
+use App\Services\PefEbayPricePullService;
 use App\Services\Ebay1PromotionService;
 use App\Services\EbayPushService;
 use App\Services\LmpSkuGroupService;
@@ -1578,16 +1579,23 @@ class EbayThreeController extends Controller
             );
 
             if (isset($result['success']) && $result['success']) {
-                // Keep local metric price in sync so /pricing-master-cvr + tabulator show the new price.
-                $ebayMetric->ebay_price = $priceFloat;
+                $live = $this->ebay3PullLivePrice($sku, $priceFloat);
+                $ebayMetric->ebay_price = $live;
                 $ebayMetric->save();
                 $this->saveSpriceStatus($sku, 'pushed');
-                Log::info('[EbayThreeController] eBay3 price push successful via microservice', [
+                Log::info('[EbayThreeController] eBay3 price push successful and live price pulled', [
                     'sku'     => $sku,
                     'price'   => $priceFloat,
+                    'ebay_price' => $live,
                     'item_id' => $ebayMetric->item_id,
                 ]);
-                return response()->json(['success' => true, 'message' => 'Price updated successfully']);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Price updated successfully',
+                    'new_price' => $live,
+                    'price' => $live,
+                    'ebay_price' => $live,
+                ]);
             }
 
             // Failure path — normalize errors (same as eBay1)
@@ -1683,6 +1691,28 @@ class EbayThreeController extends Controller
             ]);
             return response()->json(['errors' => [['code' => 'Exception', 'message' => 'An error occurred: ' . $e->getMessage()]]], 500);
         }
+    }
+
+    private function ebay3PullLivePrice(string $sku, float $fallback): float
+    {
+        try {
+            $pulled = app(PefEbayPricePullService::class)->pullOne($sku, 'ebay3');
+            $live = isset($pulled['price']) ? (float) $pulled['price'] : 0;
+            if (! empty($pulled['success']) && $live > 0) {
+                return round($live, 2);
+            }
+            Log::warning('[EbayThreeController] GetItem after S PRC push failed', [
+                'sku' => $sku,
+                'message' => $pulled['message'] ?? 'pull failed',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[EbayThreeController] GetItem after S PRC push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return round($fallback, 2);
     }
 
     private function saveSpriceStatus($sku, $status)
