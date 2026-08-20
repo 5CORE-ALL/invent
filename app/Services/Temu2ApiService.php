@@ -492,7 +492,10 @@ class Temu2ApiService extends TemuApiService
      */
     public function syncSkuListingStatuses(): int
     {
+        app(\App\Services\MarketplaceManager\Temu2LiveListingsService::class)->ensureListingStatusColumns();
         if (! Schema::hasTable('temu2_metrics') || ! Schema::hasColumn('temu2_metrics', 'listing_status')) {
+            Log::warning('Temu2 SKU status sync skipped: listing_status column missing');
+
             return 0;
         }
 

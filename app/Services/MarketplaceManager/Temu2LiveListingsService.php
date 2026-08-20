@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\Temu2Metric;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
@@ -11,16 +12,30 @@ use Illuminate\Support\Facades\Schema;
  */
 class Temu2LiveListingsService
 {
-    private const CACHE_KEY = 'mm.temu2.live_listings.v3';
+    private const CACHE_KEY = 'mm.temu2.live_listings.v4';
 
     public function clearCache(): void
     {
         Cache::forget(self::CACHE_KEY);
     }
 
-    /**
-     * @return array<int, array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float}>
-     */
+    public function ensureListingStatusColumns(): void
+    {
+        if (! Schema::hasTable('temu2_metrics')) {
+            return;
+        }
+        if (! Schema::hasColumn('temu2_metrics', 'listing_status')) {
+            Schema::table('temu2_metrics', function (Blueprint $table) {
+                $table->string('listing_status', 32)->nullable()->index()->after('quantity');
+            });
+        }
+        if (! Schema::hasColumn('temu2_metrics', 'inactive_reason')) {
+            Schema::table('temu2_metrics', function (Blueprint $table) {
+                $table->string('inactive_reason', 191)->nullable()->after('listing_status');
+            });
+        }
+    }
+
     public function all(bool $forceRefresh = false): array
     {
         if (! $forceRefresh) {
@@ -30,20 +45,48 @@ class Temu2LiveListingsService
             }
         }
 
+        $this->ensureListingStatusColumns();
+
         if ($forceRefresh) {
-            try {
-                app(\App\Services\Temu2ApiService::class)->syncSkuListingStatuses();
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('Temu2LiveListingsService: status sync failed', [
-                    'error' => $e->getMessage(),
-                ]);
+            $lock = Cache::lock('mm.temu2.sku_status_sync', 400);
+            if ($lock->get()) {
+                try {
+                    app(\App\Services\Temu2ApiService::class)->syncSkuListingStatuses();
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Temu2LiveListingsService: status sync failed', [
+                        'error' => $e->getMessage(),
+                    ]);
+                } finally {
+                    optional($lock)->release();
+                }
             }
         }
 
         $rows = $this->fetchFromLocal();
-        Cache::put(self::CACHE_KEY, $rows, now()->addHours(6));
+        if ($this->rowsHavePortalStatus($rows)) {
+            Cache::put(self::CACHE_KEY, $rows, now()->addHours(6));
+        } else {
+            Cache::forget(self::CACHE_KEY);
+        }
 
         return $rows;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    protected function rowsHavePortalStatus(array $rows): bool
+    {
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (in_array(strtolower((string) ($row['state'] ?? '')), ['active', 'inactive'], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -52,8 +95,16 @@ class Temu2LiveListingsService
     public function peekCached(): ?array
     {
         $cached = Cache::get(self::CACHE_KEY);
+        if (! is_array($cached) || $cached === []) {
+            return null;
+        }
+        if (! $this->rowsHavePortalStatus($cached)) {
+            Cache::forget(self::CACHE_KEY);
 
-        return is_array($cached) ? $cached : null;
+            return null;
+        }
+
+        return $cached;
     }
 
     /**

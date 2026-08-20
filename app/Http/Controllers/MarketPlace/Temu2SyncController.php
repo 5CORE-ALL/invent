@@ -350,20 +350,67 @@ class Temu2SyncController extends Controller
     }
 
     /**
-     * Temu Seller Center Active / Inactive SKU lists from the live listings cache.
+     * Temu Seller Center Active / Inactive SKU lists from DB (fallback: live cache).
      *
      * @return array{active: list<string>, inactive: list<string>}
      */
     protected function temuPortalStatusSkuLists(Temu2LiveListingsService $liveService): array
     {
+        $fromCache = $this->portalStatusListsFromRows($liveService->peekCached() ?? []);
+        if ($fromCache['active'] !== [] || $fromCache['inactive'] !== []) {
+            return $fromCache;
+        }
+
+        $liveService->ensureListingStatusColumns();
+        if (! Schema::hasTable('temu2_metrics') || ! Schema::hasColumn('temu2_metrics', 'listing_status')) {
+            return ['active' => [], 'inactive' => []];
+        }
+
         $active = [];
         $inactive = [];
         $seen = [];
-        $cached = $liveService->peekCached();
-        if (! is_array($cached) || $cached === []) {
-            $cached = $liveService->all(false);
+        Temu2Metric::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereIn('listing_status', ['active', 'inactive'])
+            ->orderBy('id')
+            ->select(['id', 'sku', 'listing_status'])
+            ->chunkById(500, function ($rows) use (&$active, &$inactive, &$seen) {
+                foreach ($rows as $row) {
+                    $sku = trim((string) $row->sku);
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $norm = strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku);
+                    if ($norm === '' || isset($seen[$norm])) {
+                        continue;
+                    }
+                    $seen[$norm] = true;
+                    if (strtolower((string) $row->listing_status) === 'inactive') {
+                        $inactive[] = $sku;
+                    } else {
+                        $active[] = $sku;
+                    }
+                }
+            });
+
+        if ($active === [] && $inactive === []) {
+            return $this->portalStatusListsFromRows($liveService->all(false));
         }
-        foreach ($cached as $row) {
+
+        return ['active' => $active, 'inactive' => $inactive];
+    }
+
+    /**
+     * @param  array<int, mixed>  $rows
+     * @return array{active: list<string>, inactive: list<string>}
+     */
+    protected function portalStatusListsFromRows(array $rows): array
+    {
+        $active = [];
+        $inactive = [];
+        $seen = [];
+        foreach ($rows as $row) {
             if (! is_array($row)) {
                 continue;
             }
@@ -561,6 +608,13 @@ class Temu2SyncController extends Controller
 
         if ($forceLive) {
             WarmTemu2LiveListingsCache::dispatch();
+            @set_time_limit(180);
+            try {
+                $liveService->all(true);
+            } catch (\Throwable $e) {
+                $apiError = trim(($apiError ? $apiError.' ' : '').'Temu Active/Inactive refresh is running in the background.');
+                \Illuminate\Support\Facades\Log::warning('Temu2 listings live refresh: '.$e->getMessage());
+            }
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
@@ -577,6 +631,12 @@ class Temu2SyncController extends Controller
         $mismatchInactive = $tabs['mismatchInactive'];
         if ($tabs['apiError']) {
             $apiError = trim(($apiError ? $apiError.' ' : '').$tabs['apiError']);
+        }
+        if ($forceLive
+            && (int) ($counts['matched_inactive'] ?? 0) === 0
+            && (int) ($counts['mismatch_inactive'] ?? 0) === 0
+        ) {
+            $apiError = trim(($apiError ? $apiError.' ' : '').'Temu returned no Active/Inactive statuses. Click Refresh live again and wait for the page to finish loading (this server IP must be on Temu’s whitelist).');
         }
 
         if (in_array($linkTab, $portalTabs, true)) {
