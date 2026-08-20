@@ -889,6 +889,14 @@
                             data-metric="total_views" data-live-value="0"
                             style="color: black; font-weight: bold; cursor: pointer;"
                             title="Views. Click dot for rolling history.">Views: 0<span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span></span>
+                        <span class="badge fs-6 p-2" id="ebay1-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="ebay1-red-triangle-badge"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Red triangle: Price &gt; LMP. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                     </div>
                 </div>
             </div>
@@ -2237,6 +2245,8 @@
         // Badge filter state variables
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
+        let blueTriangleFilterActive = false;
+        let redTriangleFilterActive = false;
 
         /** Parent / summary rows are not selectable. */
         function ebayIsParentRowData(d) {
@@ -3162,6 +3172,51 @@
             $('#more-sold-count-badge').on('click', function() {
                 moreSoldFilterActive = !moreSoldFilterActive;
                 zeroSoldFilterActive = false;
+                applyFilters();
+            });
+
+            function ebay1IsAlertParentRow(data) {
+                return !!(data && (data.is_parent_summary
+                    || (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))));
+            }
+            function ebay1RowSpriceForAlert(data) {
+                let sprice = parseFloat(data && data.SPRICE) || 0;
+                if (typeof chPromoSpriceFromStdTPromo === 'function' && !ebay1IsAlertParentRow(data)) {
+                    const calc = chPromoSpriceFromStdTPromo(data);
+                    if (calc > 0) sprice = calc;
+                }
+                return sprice;
+            }
+            function ebay1HasBlueTriangle(data) {
+                if (ebay1IsAlertParentRow(data)) return false;
+                const sprice = ebay1RowSpriceForAlert(data);
+                const price = parseFloat(data['eBay Price']) || 0;
+                return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+            }
+            function ebay1HasRedTriangle(data) {
+                if (ebay1IsAlertParentRow(data)) return false;
+                const price = parseFloat(data['eBay Price']) || 0;
+                const lmp = parseFloat(data.lmp_price) || 0;
+                return price > 0 && lmp > 0 && price > lmp;
+            }
+            function syncEbay1TriangleBadgeState() {
+                $('#ebay1-blue-triangle-badge').css({
+                    outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                    outlineOffset: blueTriangleFilterActive ? '2px' : ''
+                });
+                $('#ebay1-red-triangle-badge').css({
+                    outline: redTriangleFilterActive ? '3px solid #ffc107' : '',
+                    outlineOffset: redTriangleFilterActive ? '2px' : ''
+                });
+            }
+            $('#ebay1-blue-triangle-badge').on('click', function() {
+                blueTriangleFilterActive = !blueTriangleFilterActive;
+                if (blueTriangleFilterActive) redTriangleFilterActive = false;
+                applyFilters();
+            });
+            $('#ebay1-red-triangle-badge').on('click', function() {
+                redTriangleFilterActive = !redTriangleFilterActive;
+                if (redTriangleFilterActive) blueTriangleFilterActive = false;
                 applyFilters();
             });
             // Clear SPRICE button handler (in selection container)
@@ -5512,6 +5567,17 @@
                         return ebayL30 > 0 && estock > 0;
                     });
                 }
+
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return ebay1HasBlueTriangle(data);
+                    });
+                }
+                if (redTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return ebay1HasRedTriangle(data);
+                    });
+                }
                 // Play / Pause: show only current parent group (child SKUs + parent summary row, like product-master photo)
                 if (isProductNavigationActive && productUniqueParents.length > 0 && currentProductParentIndex >=
                     0) {
@@ -5729,6 +5795,21 @@
 
                 setSummaryBadge($('#zero-sold-count-badge'), '0 Sold: ' + zeroSoldCount.toLocaleString(), zeroSoldCount);
                 setSummaryBadge($('#more-sold-count-badge'), '> 0 Sold: ' + moreSoldCount.toLocaleString(), moreSoldCount);
+
+                let blueTriangleCount = 0;
+                let redTriangleCount = 0;
+                allData.forEach(function(row) {
+                    if (ebay1HasBlueTriangle(row)) blueTriangleCount++;
+                    if (ebay1HasRedTriangle(row)) redTriangleCount++;
+                });
+                $('#ebay1-blue-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+                );
+                $('#ebay1-red-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
+                );
+                syncEbay1TriangleBadgeState();
+
                 syncEbay1SummaryTrendDots();
                 fitSummaryBadges();
             }
