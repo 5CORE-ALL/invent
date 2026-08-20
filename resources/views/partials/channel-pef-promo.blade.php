@@ -2094,8 +2094,12 @@
         }
         /** PRMT% + CPN% (T Promo). */
         function chPromoTPromoPct(d) {
-            const prmt = Math.max(0, Number(d && (d.prmt_pct != null && d.prmt_pct !== ''
+            let prmt = Math.max(0, Number(d && (d.prmt_pct != null && d.prmt_pct !== ''
                 ? d.prmt_pct : d._prmt_pct_applied)) || 0);
+            if (chPromoIsEbayChannel()) {
+                const slab = chPromoEbaySlabPrmt(d);
+                if (slab != null) prmt = slab;
+            }
             const cpn = Math.max(0, Number(d && (d.cpn_pct != null && d.cpn_pct !== ''
                 ? d.cpn_pct : d._cpn_pct_applied)) || 0);
             return chPromoRound2(prmt + cpn);
@@ -3151,6 +3155,34 @@
         function chPromoPrmtForDil(dil) {
             return chPromoPrmtForRuleKey(chPromoDilSlabKey(dil));
         }
+        /** PRMT% the Dil vs PRMT slabs produce for this row (listing Dil on eBay). */
+        function chPromoEbaySlabPrmt(d) {
+            if (!d || d.is_parent_summary) return null;
+            if (!chPromoIsChildRow(d)) return null;
+            if (chPromoInv(d) === 0) return 0;
+            return chPromoPrmtForDil(chPromoDil(d));
+        }
+        function chPromoSyncEbayPrmtColumnFromSlabs() {
+            if (!chPromoIsEbayChannel()) return;
+            if (typeof table === 'undefined' || !table) return;
+            chPromoInvalidateListingDilCache();
+            const blocked = typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                chPromoEachTableRow(function(row, d) {
+                    if (!chPromoIsChildRow(d)) return;
+                    const prmt = chPromoEbaySlabPrmt(d);
+                    if (prmt == null) return;
+                    const current = Number(d.prmt_pct != null && d.prmt_pct !== ''
+                        ? d.prmt_pct : d._prmt_pct_applied);
+                    if (isFinite(current) && current === prmt) return;
+                    row.update({ prmt_pct: String(prmt), _prmt_pct_applied: prmt });
+                });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            try { table.redraw(true); } catch (e) { /* ignore */ }
+        }
         function chPromoDilColorBand(dil) {
             const n = Number(dil);
             if (!isFinite(n) || n < 25) return 'red';
@@ -3504,11 +3536,13 @@
                 $('#ch-promo-zero-sold-prmt-status').text(res && res.is_default
                     ? 'Using first-time defaults (0 Sold Red / Green / Pink). Apply to save & apply.'
                     : 'Loaded saved 0 Sold Dil color rules.');
+                chPromoSyncEbayPrmtColumnFromSlabs();
             } catch (e) {
                 renderChPromoDilPrmtModalTable();
                 renderChPromoZeroSoldPrmtModalTable();
                 $('#ch-promo-dil-prmt-status').text('Could not load saved rules — showing defaults.');
                 $('#ch-promo-zero-sold-prmt-status').text('Could not load saved rules — showing defaults.');
+                chPromoSyncEbayPrmtColumnFromSlabs();
             }
         }
         function saveChPromoDilPrmtRules() {
@@ -5609,9 +5643,13 @@
                     autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
                 }, 80);
             }
-            table.on('dataLoaded', runPageLoadSpriceQueue);
+            table.on('dataLoaded', function() {
+                chPromoSyncEbayPrmtColumnFromSlabs();
+                runPageLoadSpriceQueue();
+            });
             try {
                 if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
+                    chPromoSyncEbayPrmtColumnFromSlabs();
                     runPageLoadSpriceQueue();
                 }
             } catch (e) { /* wait for dataLoaded */ }
@@ -6123,14 +6161,26 @@
                         return chPromoIsChildRow(cell.getRow().getData());
                     },
                     editor: 'input',
-                    headerTooltip: '% less on S PRC. Also filled by Dil vs PRMT. Dot = PDT daily history.',
+                    headerTooltip: '% less on S PRC. eBay: listing Dil slab from Dil vs PRMT (same as the modal). Dot = PDT daily history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent_summary) return '';
                         const sku = chPromoSku(d);
-                        const val = cell.getValue();
+                        let val = cell.getValue();
+                        let tip = '';
+                        if (chPromoIsEbayChannel()) {
+                            const slab = chPromoEbaySlabPrmt(d);
+                            if (slab != null) {
+                                val = slab;
+                                const dil = chPromoDil(d);
+                                const key = chPromoDilSlabKey(dil);
+                                tip = 'Listing Dil ' + (isFinite(dil) ? (Math.round(dil * 10) / 10) : 0)
+                                    + '% → ' + key + ' slab → PRMT ' + slab;
+                            }
+                        }
                         const dot = chPromoHistoryDotHtml(sku, 'prmt', val);
-                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:3px;">'
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:3px;"'
+                            + (tip ? (' title="' + chPromoEscAttr(tip) + '"') : '') + '>'
                             + dot + fmtChPromoCell(val, '%') + '</span>';
                     },
                     cellClick: function(e) {
@@ -6879,6 +6929,8 @@
         window.chPromoRefreshPushStdPrcCell = chPromoRefreshPushStdPrcCell;
         window.computeChannelPushPrcPlan = computeChannelPushPrcPlan;
         window.chPromoPrmtForRow = chPromoPrmtForRow;
+        window.chPromoEbaySlabPrmt = chPromoEbaySlabPrmt;
+        window.chPromoSyncEbayPrmtColumnFromSlabs = chPromoSyncEbayPrmtColumnFromSlabs;
         window.chPromoDilColorBand = chPromoDilColorBand;
         window.chPromoListingDil = chPromoListingDil;
         window.chPromoInvalidateListingDilCache = chPromoInvalidateListingDilCache;
