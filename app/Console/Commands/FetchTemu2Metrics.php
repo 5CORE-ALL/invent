@@ -635,14 +635,16 @@ class FetchTemu2Metrics extends Command
         $this->info('Fetching SKUs from Temu 2...');
 
         try {
+            $totalProcessed = 0;
+
+            foreach (['INACTIVE', 'ACTIVE'] as $skuSearchType) {
             $pageToken = null;
             $pageCount = 0;
-            $totalProcessed = 0;
 
             do {
                 $requestBody = [
                     "type" => "temu.local.sku.list.retrieve",                
-                    "skuSearchType" => "ACTIVE",
+                    "skuSearchType" => $skuSearchType,
                     "pageSize" => 100,
                 ];
 
@@ -726,6 +728,9 @@ class FetchTemu2Metrics extends Command
                     if ($stock !== null && is_numeric($stock)) {
                         $payload['quantity'] = (int) $stock;
                     }
+                    if (Schema::hasColumn('temu2_metrics', 'listing_status')) {
+                        $payload['listing_status'] = strtolower($skuSearchType) === 'active' ? 'active' : 'inactive';
+                    }
 
                     Temu2Metric::updateOrCreate(
                         ['sku' => (string) $outSkuSn],
@@ -743,6 +748,14 @@ class FetchTemu2Metrics extends Command
                 usleep(300000); // 0.3 sec delay
 
             } while ($pageToken);
+            }
+
+            try {
+                $statusCount = app(Temu2ApiService::class)->syncSkuListingStatuses();
+                $this->info("SKU listing statuses updated: {$statusCount}");
+            } catch (\Throwable $e) {
+                $this->warn('SKU listing status overlay failed: '.$e->getMessage());
+            }
 
             $this->info("✅ SKUs Synced: {$totalProcessed} total");
             Log::info('Completed fetchSkus successfully', ['total' => $totalProcessed]);

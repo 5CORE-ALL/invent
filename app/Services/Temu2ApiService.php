@@ -487,6 +487,271 @@ class Temu2ApiService extends TemuApiService
         return $updated;
     }
 
+    /**
+     * Pull on-sale (2) and not-on-sale (3) SKUs from Temu and store listing_status + inactive_reason.
+     */
+    public function syncSkuListingStatuses(): int
+    {
+        app(\App\Services\MarketplaceManager\Temu2LiveListingsService::class)->ensureListingStatusColumns();
+        if (! Schema::hasTable('temu2_metrics') || ! Schema::hasColumn('temu2_metrics', 'listing_status')) {
+            Log::warning('Temu2 SKU status sync skipped: listing_status column missing');
+
+            return 0;
+        }
+
+        $updated = 0;
+        foreach ([3 => 'inactive', 2 => 'active'] as $searchType => $status) {
+            $updated += $this->upsertSkuListQueryStatus((int) $searchType, $status);
+        }
+        foreach (['INACTIVE' => 'inactive', 'ACTIVE' => 'active'] as $searchType => $status) {
+            $updated += $this->upsertSkuRetrieveStatus((string) $searchType, $status);
+        }
+
+        return $updated;
+    }
+
+    protected function upsertSkuListQueryStatus(int $skuSearchType, string $listingStatus): int
+    {
+        $pageNumber = 1;
+        $pageSize = 100;
+        $totalPages = null;
+        $updated = 0;
+        $url = $this->openApiRouterUrl();
+
+        do {
+            $requestBody = [
+                'type' => 'bg.local.goods.sku.list.query',
+                'pageSize' => $pageSize,
+                'pageNumber' => $pageNumber,
+                'skuSearchType' => $skuSearchType,
+            ];
+            $signedRequest = $this->generateSignValue($requestBody);
+            $request = Http::withHeaders(['Content-Type' => 'application/json']);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            try {
+                $response = $request->timeout(45)->post($url, $signedRequest);
+            } catch (\Throwable $e) {
+                Log::warning('Temu2 SKU status sync HTTP exception', [
+                    'skuSearchType' => $skuSearchType,
+                    'page' => $pageNumber,
+                    'error' => $e->getMessage(),
+                ]);
+                break;
+            }
+            $data = $response->json() ?? [];
+            if (! ($data['success'] ?? false)) {
+                Log::info('Temu2 SKU status list.query skipped', [
+                    'skuSearchType' => $skuSearchType,
+                    'error' => $data['errorMsg'] ?? $response->status(),
+                ]);
+                break;
+            }
+            $result = $data['result'] ?? [];
+            $items = $result['skuList'] ?? [];
+            if (! is_array($items) || $items === []) {
+                break;
+            }
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $updated += $this->persistTemu2SkuListingRow($item, $listingStatus) ? 1 : 0;
+            }
+            if ($totalPages === null) {
+                $total = (int) ($result['total'] ?? 0);
+                $totalPages = $total > 0 ? (int) ceil($total / $pageSize) : $pageNumber;
+            }
+            $pageNumber++;
+            usleep(200000);
+        } while ($pageNumber <= ($totalPages ?? 1) && $pageNumber <= 1000);
+
+        return $updated;
+    }
+
+    protected function upsertSkuRetrieveStatus(string $skuSearchType, string $listingStatus): int
+    {
+        $pageToken = null;
+        $updated = 0;
+        $pages = 0;
+        do {
+            $requestBody = [
+                'type' => 'temu.local.sku.list.retrieve',
+                'skuSearchType' => $skuSearchType,
+                'pageSize' => 100,
+            ];
+            if ($pageToken) {
+                $requestBody['pageToken'] = $pageToken;
+            }
+            $data = $this->postTemuRequest($requestBody);
+            if (! ($data['success'] ?? false)) {
+                Log::info('Temu2 SKU status retrieve skipped', [
+                    'skuSearchType' => $skuSearchType,
+                    'error' => $data['errorMsg'] ?? '',
+                ]);
+                break;
+            }
+            $items = $data['result']['skuList'] ?? [];
+            if (! is_array($items) || $items === []) {
+                break;
+            }
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $updated += $this->persistTemu2SkuListingRow($item, $listingStatus) ? 1 : 0;
+            }
+            $pageToken = $data['result']['pagination']['nextToken'] ?? null;
+            $pages++;
+            usleep(200000);
+        } while ($pageToken && $pages < 500);
+
+        return $updated;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function persistTemu2SkuListingRow(array $item, string $listingStatus): bool
+    {
+        $sku = trim((string) ($item['outSkuSn'] ?? $item['skuSn'] ?? $item['sku'] ?? ''));
+        $skuId = isset($item['skuId']) ? (string) $item['skuId'] : '';
+        if ($sku === '' && $skuId === '') {
+            return false;
+        }
+        $stock = null;
+        foreach (['stock', 'quantity', 'skuStockQuantity', 'virtualStock'] as $k) {
+            if (isset($item[$k]) && is_numeric($item[$k])) {
+                $stock = (int) $item[$k];
+                break;
+            }
+        }
+        $payload = [
+            'listing_status' => $listingStatus,
+        ];
+        if ($skuId !== '') {
+            $payload['sku_id'] = $skuId;
+        }
+        $goodsId = $item['goodsId'] ?? null;
+        if ($goodsId !== null && $goodsId !== '') {
+            $payload['goods_id'] = (string) $goodsId;
+        }
+        $title = trim((string) ($item['goodsName'] ?? $item['skuName'] ?? ''));
+        if ($title !== '' && Schema::hasColumn('temu2_metrics', 'goods_summary')) {
+            $payload['goods_summary'] = $title;
+        }
+        if ($stock !== null) {
+            $payload['quantity'] = $stock;
+        }
+        if (Schema::hasColumn('temu2_metrics', 'inactive_reason')) {
+            $payload['inactive_reason'] = $listingStatus === 'inactive'
+                ? $this->temuSkuInactiveReason($item, $stock)
+                : null;
+        }
+
+        if ($sku !== '') {
+            Temu2Metric::updateOrCreate(['sku' => $sku], $payload);
+
+            return true;
+        }
+        $row = Temu2Metric::query()->where('sku_id', $skuId)->first();
+        if ($row) {
+            $row->fill($payload);
+            $row->save();
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function temuSkuInactiveReason(array $item, ?int $stock): ?string
+    {
+        $named = [
+            $item['skuStatusDesc'] ?? null,
+            $item['statusDesc'] ?? null,
+            $item['subStatusName'] ?? null,
+            $item['skuSubStatusName'] ?? null,
+            $item['skuStatusName'] ?? null,
+            $item['skuStatusChangeReason'] ?? null,
+            $item['inactiveReason'] ?? null,
+            $item['statusReason'] ?? null,
+            $item['skuOffReason'] ?? null,
+            $item['subStatusDesc'] ?? null,
+        ];
+        foreach ($named as $raw) {
+            $text = $this->humanizeTemuInactiveReason($raw);
+            if ($text !== null) {
+                return $text;
+            }
+        }
+
+        $hay = strtolower($this->flattenTemuSkuScalars($item));
+        if (str_contains($hay, 'out of stock') || str_contains($hay, 'outofstock') || str_contains($hay, 'sold out')) {
+            return 'Out of stock';
+        }
+        if (str_contains($hay, 'review block') || str_contains($hay, 'blocked reason') || str_contains($hay, 'review_blocked') || str_contains($hay, 'qualification')) {
+            return 'Review blocked reason';
+        }
+
+        $sub = (int) ($item['subStatus4VO'] ?? $item['skuSubStatus'] ?? $item['subStatus'] ?? 0);
+        if ($sub === 1 || ($stock !== null && $stock <= 0)) {
+            return 'Out of stock';
+        }
+        if (in_array($sub, [2, 3, 6, 12], true)) {
+            return 'Review blocked reason';
+        }
+
+        return $stock !== null && $stock <= 0 ? 'Out of stock' : null;
+    }
+
+    protected function humanizeTemuInactiveReason(mixed $raw): ?string
+    {
+        if (is_array($raw)) {
+            $raw = $raw['name'] ?? $raw['desc'] ?? $raw['message'] ?? $raw['value'] ?? null;
+        }
+        $text = trim((string) $raw);
+        if ($text === '' || is_numeric($text)) {
+            return null;
+        }
+        $lower = strtolower($text);
+        if (str_contains($lower, 'out of stock') || $lower === 'oos') {
+            return 'Out of stock';
+        }
+        if (str_contains($lower, 'review') && str_contains($lower, 'block')) {
+            return 'Review blocked reason';
+        }
+
+        return mb_substr($text, 0, 180);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function flattenTemuSkuScalars(array $item): string
+    {
+        $out = [];
+        $walk = static function ($value) use (&$walk, &$out): void {
+            if (is_array($value)) {
+                foreach ($value as $v) {
+                    $walk($v);
+                }
+
+                return;
+            }
+            if (is_scalar($value) && (string) $value !== '') {
+                $out[] = (string) $value;
+            }
+        };
+        $walk($item);
+
+        return implode(' ', $out);
+    }
+
     protected function fetchCurrentTemuGoodsDesc(string $goodsId, string $sku = ''): string
     {
         try {

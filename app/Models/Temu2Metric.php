@@ -18,6 +18,8 @@ class Temu2Metric extends Model
         'goods_id',
         'base_price',
         'quantity',
+        'listing_status',
+        'inactive_reason',
         'quantity_purchased_l30',
         'quantity_purchased_l60',
         'recommended_base_price',

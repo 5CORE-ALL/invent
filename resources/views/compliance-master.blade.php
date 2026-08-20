@@ -187,6 +187,37 @@
 
         .cm-compliance-filters-toolbar {
             flex-shrink: 0;
+            overflow: hidden;
+            padding: 4px 0 2px;
+        }
+
+        .cm-filter-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: flex-end;
+            width: max-content;
+            min-width: 100%;
+        }
+
+        .cm-filter-cell {
+            flex: 0 0 auto;
+            box-sizing: border-box;
+            padding: 0 2px;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .cm-filter-cell.cm-filter-cell--status {
+            overflow: visible;
+        }
+
+        .cm-filter-cell .form-label {
+            display: block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 10px;
+            line-height: 1.2;
         }
 
         .cm-toolbar-search-strip .form-control-sm {
@@ -197,9 +228,13 @@
 
         .cm-compliance-filters-toolbar .form-control-sm,
         .cm-compliance-filters-toolbar .form-select-sm {
-            font-size: 11px;
-            padding-top: 0.2rem;
-            padding-bottom: 0.2rem;
+            font-size: 10px;
+            padding-top: 0.15rem;
+            padding-bottom: 0.15rem;
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
+            width: 100%;
+            min-width: 0;
         }
 
         .cm-compliance-filters-toolbar .cm-field-filter {
@@ -210,12 +245,6 @@
         .cm-compliance-filters-toolbar .cm-field-filter.cm-filter-req {
             background-color: #dc3545 !important;
             border-color: #dc3545 !important;
-            color: #fff !important;
-        }
-
-        .cm-compliance-filters-toolbar .cm-field-filter.cm-filter-req-ok {
-            background-color: #198754 !important;
-            border-color: #198754 !important;
             color: #fff !important;
         }
 
@@ -234,12 +263,6 @@
         .cm-compliance-filters-toolbar .cm-field-filter option.cm-opt-req,
         .cm-compliance-filters-toolbar .cm-field-filter option[value="req"] {
             background-color: #dc3545 !important;
-            color: #fff !important;
-        }
-
-        .cm-compliance-filters-toolbar .cm-field-filter option.cm-opt-req-ok,
-        .cm-compliance-filters-toolbar .cm-field-filter option[value="req-ok"] {
-            background-color: #198754 !important;
             color: #fff !important;
         }
 
@@ -273,10 +296,12 @@
             color: #1e293b;
             background: #fff;
             border: 1px solid #cbd5e1;
-            padding: 3px 6px;
+            padding: 3px 4px;
             border-radius: 5px;
             gap: 4px;
-            font-size: 11px;
+            font-size: 10px;
+            width: 100%;
+            justify-content: space-between;
         }
 
         .cm-compliance-filters-toolbar .cm-status-filter-wrap--toolbar .cm-status-filter-trigger:hover {
@@ -1181,17 +1206,19 @@
                                 <button class="btn btn-outline-secondary btn-sm" type="button" id="clearSearch">Clear</button>
                             </div>
                         </div>
-                        <div id="cm-compliance-filters-toolbar" class="cm-compliance-filters-toolbar px-2 py-1 bg-white border-bottom">
-                            <div class="d-flex flex-wrap align-items-end gap-1 gap-md-2">
-                                <div class="flex-grow-1" style="min-width: 9rem; max-width: 14rem;">
+                        <div id="cm-compliance-filters-toolbar" class="cm-compliance-filters-toolbar bg-white border-bottom">
+                            <div id="cm-filter-row" class="cm-filter-row">
+                                <div class="cm-filter-cell" data-col="image_path"></div>
+                                <div class="cm-filter-cell" data-col="Parent">
                                     <label class="form-label small mb-0 text-secondary" for="parentSearch">Parent <span id="parentCount" class="text-danger fw-bold">(0)</span></label>
-                                    <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Search Parent" autocomplete="off">
+                                    <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Parent" autocomplete="off">
                                 </div>
-                                <div class="flex-grow-1" style="min-width: 9rem; max-width: 14rem;">
+                                <div class="cm-filter-cell" data-col="SKU">
                                     <label class="form-label small mb-0 text-secondary" for="skuSearch">SKU <span id="skuCount" class="text-danger fw-bold">(0)</span></label>
-                                    <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="Search SKU" autocomplete="off">
+                                    <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="SKU" autocomplete="off">
                                 </div>
-                                <div style="min-width: 10rem; max-width: 14rem;">
+                                <div class="cm-filter-cell" data-col="_cb"></div>
+                                <div class="cm-filter-cell cm-filter-cell--status" data-col="status">
                                     <span class="form-label small mb-0 text-secondary d-block">Status</span>
                                     <div class="cm-status-filter-wrap cm-status-filter-wrap--toolbar mt-0">
                                         <button type="button" class="cm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox" id="cmStatusFilterTrigger">
@@ -1231,17 +1258,18 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="cm-filter-cell" data-col="shopify_inv"></div>
                                 @foreach ($__cmFields as $fkey => $flabel)
-                                    <div style="min-width: 6.5rem; max-width: 9rem;">
+                                    <div class="cm-filter-cell" data-col="{{ $fkey }}">
                                         <label class="form-label small mb-0 text-secondary" for="{{ $__cmFilterIds[$fkey] }}">{{ $flabel }} <span id="{{ $fkey }}MissingCount" class="text-danger fw-bold">(0)</span></label>
                                         <select id="{{ $__cmFilterIds[$fkey] }}" class="form-select form-select-sm cm-field-filter" data-field="{{ $fkey }}">
                                             <option value="all">All Data</option>
                                             <option value="req" class="cm-opt-req">REQ</option>
-                                            <option value="req-ok" class="cm-opt-req-ok">REQ</option>
                                             <option value="na" class="cm-opt-na">N/A</option>
                                         </select>
                                     </div>
                                 @endforeach
+                                <div class="cm-filter-cell" data-col="_actions"></div>
                             </div>
                         </div>
                         <div id="compliance-tabulator" class="cm-tabulator-host" aria-label="Compliance data grid"></div>
@@ -1528,7 +1556,6 @@
                 document.querySelectorAll('#cm-compliance-filters-toolbar .cm-field-filter').forEach(function(sel) {
                     sel.classList.remove('cm-filter-req', 'cm-filter-req-ok', 'cm-filter-na');
                     if (sel.value === 'req') sel.classList.add('cm-filter-req');
-                    else if (sel.value === 'req-ok') sel.classList.add('cm-filter-req-ok');
                     else if (sel.value === 'na') sel.classList.add('cm-filter-na');
                 });
             }
@@ -2513,6 +2540,47 @@
                 return cols;
             }
 
+            function syncComplianceFilterRowToColumns() {
+                if (!complianceTable) return;
+                const row = document.getElementById('cm-filter-row');
+                if (!row) return;
+                const cols = complianceTable.getColumns();
+                cols.forEach(function(col) {
+                    const field = col.getField();
+                    if (!field) return;
+                    const cell = row.querySelector('.cm-filter-cell[data-col="' + field + '"]');
+                    if (!cell) return;
+                    const el = col.getElement();
+                    const w = el ? el.getBoundingClientRect().width : col.getWidth();
+                    if (!w) return;
+                    cell.style.width = w + 'px';
+                    cell.style.minWidth = w + 'px';
+                    cell.style.maxWidth = w + 'px';
+                });
+            }
+
+            let complianceFilterScrollBound = false;
+            function bindComplianceFilterScroll() {
+                const holder = document.querySelector('#compliance-tabulator .tabulator-tableholder');
+                const header = document.querySelector('#compliance-tabulator .tabulator-header');
+                const row = document.getElementById('cm-filter-row');
+                if (!holder || !row) return;
+                const apply = function() {
+                    const x = holder.scrollLeft || (header ? header.scrollLeft : 0);
+                    row.style.transform = 'translateX(' + (-x) + 'px)';
+                };
+                if (!complianceFilterScrollBound) {
+                    complianceFilterScrollBound = true;
+                    holder.addEventListener('scroll', apply);
+                    if (header) header.addEventListener('scroll', apply);
+                    window.addEventListener('resize', function() {
+                        syncComplianceFilterRowToColumns();
+                        apply();
+                    });
+                }
+                apply();
+            }
+
             function renderTable(data) {
                 const d = Array.isArray(data) ? data : [];
                 if (typeof Tabulator === 'undefined') {
@@ -2541,12 +2609,24 @@
                         },
                         tableBuilt: function() {
                             refreshCmStatusFilterUI();
+                            requestAnimationFrame(function() {
+                                syncComplianceFilterRowToColumns();
+                                bindComplianceFilterScroll();
+                            });
+                        },
+                        renderComplete: function() {
+                            syncComplianceFilterRowToColumns();
+                            bindComplianceFilterScroll();
+                        },
+                        columnResized: function() {
+                            syncComplianceFilterRowToColumns();
                         }
                     });
                     syncComplianceSelectAllCheckbox();
                 } else {
                     complianceTable.replaceData(d).then(function() {
                         syncComplianceSelectAllCheckbox();
+                        syncComplianceFilterRowToColumns();
                     });
                 }
             }
@@ -2767,17 +2847,21 @@
                     if (isMissingComplianceFieldForItem(item, 'graph')) graphMissingCount++;
                 });
                 
-                document.getElementById('parentCount').textContent = `(${parentSet.size})`;
-                document.getElementById('skuCount').textContent = `(${skuCount})`;
-                document.getElementById('batteryMissingCount').textContent = `(${batteryMissingCount})`;
-                document.getElementById('wirelessMissingCount').textContent = `(${wirelessMissingCount})`;
-                document.getElementById('electricMissingCount').textContent = `(${electricMissingCount})`;
-                document.getElementById('gccMissingCount').textContent = `(${gccMissingCount})`;
-                document.getElementById('rohsMissingCount').textContent = `(${rohsMissingCount})`;
-                document.getElementById('blanketMissingCount').textContent = `(${blanketMissingCount})`;
-                document.getElementById('bluetoothMissingCount').textContent = `(${bluetoothMissingCount})`;
-                document.getElementById('logoMissingCount').textContent = `(${logoMissingCount})`;
-                document.getElementById('graphMissingCount').textContent = `(${graphMissingCount})`;
+                const setText = function(id, text) {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = text;
+                };
+                setText('parentCount', `(${parentSet.size})`);
+                setText('skuCount', `(${skuCount})`);
+                setText('batteryMissingCount', `(${batteryMissingCount})`);
+                setText('wirelessMissingCount', `(${wirelessMissingCount})`);
+                setText('electricMissingCount', `(${electricMissingCount})`);
+                setText('gccMissingCount', `(${gccMissingCount})`);
+                setText('rohsMissingCount', `(${rohsMissingCount})`);
+                setText('blanketMissingCount', `(${blanketMissingCount})`);
+                setText('bluetoothMissingCount', `(${bluetoothMissingCount})`);
+                setText('logoMissingCount', `(${logoMissingCount})`);
+                setText('graphMissingCount', `(${graphMissingCount})`);
 
                 const sp = (id, val) => {
                     const el = document.getElementById(id);
