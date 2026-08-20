@@ -40,6 +40,12 @@ class TikTokShopService
     /** @var array<string, array<string, mixed>> */
     protected array $productDetailCache = [];
 
+    /** @var array<string, array<string, mixed>> */
+    protected array $inventorySearchCache = [];
+
+    /** API version that last succeeded for inventory update (LIVE listings need 2025xx). */
+    protected ?int $workingInventoryApiVersion = null;
+
     public function __construct()
     {
         $cfg = config('services.'.$this->configKey, []);
@@ -833,7 +839,7 @@ class TikTokShopService
         $out = [];
         $seen = [];
 
-        foreach (['inventory', 'warehouses', 'stock_infos', 'inventory_list'] as $key) {
+        foreach (['inventory', 'warehouse_inventory', 'warehouses', 'stock_infos', 'inventory_list'] as $key) {
             $inventory = $skuNode[$key] ?? null;
             if (! is_array($inventory)) {
                 continue;
@@ -1819,41 +1825,141 @@ class TikTokShopService
     }
 
     /**
+     * 202309 Get/Update Product rejects LIVE listings. Newer product API versions allow them.
+     *
+     * @return list<int>
+     */
+    protected function inventoryApiVersions(): array
+    {
+        $versions = [202509, 202507, 202502, 202309];
+        if ($this->workingInventoryApiVersion !== null) {
+            array_unshift($versions, $this->workingInventoryApiVersion);
+        }
+
+        return array_values(array_unique($versions));
+    }
+
+    protected function isProductStatusRestrictionError(string $message): bool
+    {
+        $message = strtolower($message);
+
+        return str_contains($message, 'operation not allowed')
+            || str_contains($message, 'must be in one of these statuses')
+            || (str_contains($message, 'seller_deactivated') && str_contains($message, 'activate'));
+    }
+
+    protected function shouldRetryInventoryApiVersion(string $message): bool
+    {
+        if ($this->isProductStatusRestrictionError($message)) {
+            return true;
+        }
+
+        $message = strtolower($message);
+
+        return str_contains($message, 'does not exist')
+            || str_contains($message, 'not found')
+            || str_contains($message, 'invalid version')
+            || str_contains($message, 'unsupported version')
+            || str_contains($message, 'api is not available');
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array{warehouse_id?: string, quantity: int, available_stock: int}
+     */
+    protected function inventoryPushRow(array $row, ?int $quantity = null): array
+    {
+        $qty = max(0, $quantity ?? (int) ($row['quantity'] ?? $row['available_stock'] ?? 0));
+        $out = [
+            'quantity' => $qty,
+            'available_stock' => $qty,
+        ];
+        $wid = trim((string) ($row['warehouse_id'] ?? ''));
+        if ($wid !== '') {
+            $out['warehouse_id'] = $wid;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array{warehouse_id?: string, quantity?: int, available_stock?: int}>  $inventoryRows
+     * @return array{success: bool, message: string}
+     */
+    protected function postInventoryUpdate(string $productId, string $skuId, array $inventoryRows): array
+    {
+        $rows = [];
+        foreach ($inventoryRows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $rows[] = $this->inventoryPushRow($row);
+        }
+        if ($rows === []) {
+            return ['success' => false, 'message' => 'No TikTok warehouse rows to update.'];
+        }
+
+        $skuNode = [
+            'id' => $skuId,
+            'sku_id' => $skuId,
+            'inventory' => $rows,
+        ];
+        $params = ['skus' => [$skuNode]];
+        $lastMessage = 'TikTok inventory update failed.';
+
+        foreach ($this->inventoryApiVersions() as $version) {
+            try {
+                $response = $this->client->Product->useVersion($version)->updateInventory($productId, $params);
+                $this->lastResponse = $response;
+            } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                $lastMessage = $e->getMessage();
+                $this->rememberIpAllowList($lastMessage);
+                if ($this->ipAllowListBlocked) {
+                    return ['success' => false, 'message' => $lastMessage];
+                }
+                if ($this->shouldRetryInventoryApiVersion($lastMessage)) {
+                    Log::info('TikTok inventory update version failed', [
+                        'product_id' => $productId,
+                        'sku_id' => $skuId,
+                        'version' => $version,
+                        'error' => $lastMessage,
+                    ]);
+                    continue;
+                }
+
+                return ['success' => false, 'message' => $lastMessage];
+            }
+
+            if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
+                $lastMessage = (string) ($response['message'] ?? $lastMessage);
+                if ($this->shouldRetryInventoryApiVersion($lastMessage)) {
+                    continue;
+                }
+
+                return ['success' => false, 'message' => $lastMessage];
+            }
+
+            $this->workingInventoryApiVersion = $version;
+
+            return ['success' => true, 'message' => 'Inventory updated.'];
+        }
+
+        return ['success' => false, 'message' => $lastMessage !== '' ? $lastMessage : 'TikTok inventory update failed.'];
+    }
+
+    /**
      * @return array{success: bool, message: string}
      */
     protected function sendProductInventoryUpdate(string $productId, string $skuId, int $quantity, ?string $warehouseId): array
     {
-        $inventoryRow = ['quantity' => max(0, $quantity)];
-        if ($warehouseId !== null && $warehouseId !== '') {
-            $inventoryRow['warehouse_id'] = $warehouseId;
-        }
+        $row = $this->inventoryPushRow(
+            ['warehouse_id' => (string) ($warehouseId ?? '')],
+            max(0, $quantity)
+        );
 
-        $params = [
-            'skus' => [
-                [
-                    'id' => $skuId,
-                    'inventory' => [$inventoryRow],
-                ],
-            ],
-        ];
-
-        try {
-            $response = $this->client->Product->updateInventory($productId, $params);
-            $this->lastResponse = $response;
-        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
-
-        if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
-            return [
-                'success' => false,
-                'message' => (string) ($response['message'] ?? 'TikTok inventory update failed.'),
-            ];
-        }
-
-        return ['success' => true, 'message' => 'Inventory updated.'];
+        return $this->postInventoryUpdate($productId, $skuId, [$row]);
     }
 
     /**
@@ -1866,32 +1972,7 @@ class TikTokShopService
             return ['success' => false, 'message' => 'No TikTok warehouse rows to update.'];
         }
 
-        $params = [
-            'skus' => [
-                [
-                    'id' => $skuId,
-                    'inventory' => $inventoryRows,
-                ],
-            ],
-        ];
-
-        try {
-            $response = $this->client->Product->updateInventory($productId, $params);
-            $this->lastResponse = $response;
-        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
-
-        if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
-            return [
-                'success' => false,
-                'message' => (string) ($response['message'] ?? 'TikTok inventory update failed.'),
-            ];
-        }
-
-        return ['success' => true, 'message' => 'Inventory updated.'];
+        return $this->postInventoryUpdate($productId, $skuId, $inventoryRows);
     }
 
     /**
@@ -1936,6 +2017,11 @@ class TikTokShopService
      */
     protected function skuWarehouseInventoryRows(string $productId, string $skuId): array
     {
+        $fromSearch = $this->skuWarehouseRowsFromInventorySearch($productId, $skuId);
+        if ($fromSearch !== []) {
+            return $fromSearch;
+        }
+
         try {
             $data = $this->fetchProductData($productId);
             $skus = is_array($data['skus'] ?? null) ? $data['skus'] : [];
@@ -1962,6 +2048,139 @@ class TikTokShopService
     }
 
     /**
+     * Inventory Search works on LIVE listings; Get Product 202309 does not.
+     *
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    protected function skuWarehouseRowsFromInventorySearch(string $productId, string $skuId): array
+    {
+        try {
+            $data = $this->fetchInventorySearchData($productId, $skuId);
+
+            return $this->extractWarehouseRowsFromInventorySearch($data, $productId, $skuId);
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->rememberIpAllowList($e->getMessage());
+            Log::info('TikTok inventorySearch for warehouse rows failed', [
+                'product_id' => $productId,
+                'sku_id' => $skuId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function fetchInventorySearchData(string $productId, string $skuId): array
+    {
+        if ($productId !== '' && array_key_exists($productId, $this->inventorySearchCache)) {
+            $cached = $this->inventorySearchCache[$productId];
+            if ($skuId === '' || $this->extractWarehouseRowsFromInventorySearch($cached, $productId, $skuId) !== []) {
+                return $cached;
+            }
+        }
+
+        $skuCacheKey = $skuId !== '' ? 'sku:'.$skuId : '';
+        if ($skuCacheKey !== '' && array_key_exists($skuCacheKey, $this->inventorySearchCache)) {
+            return $this->inventorySearchCache[$skuCacheKey];
+        }
+
+        $attempts = [];
+        if ($productId !== '') {
+            $attempts[] = ['body' => ['product_ids' => [$productId]], 'cache' => $productId];
+            $attempts[] = ['body' => ['product_id_list' => [$productId]], 'cache' => $productId];
+        }
+        if ($skuId !== '') {
+            $attempts[] = ['body' => ['sku_ids' => [$skuId]], 'cache' => $skuCacheKey];
+        }
+
+        $data = [];
+        foreach ($attempts as $attempt) {
+            try {
+                $response = $this->client->Product->inventorySearch($attempt['body']);
+            } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                $this->rememberIpAllowList($e->getMessage());
+                continue;
+            }
+
+            $payload = is_array($response) ? ($response['data'] ?? $response) : [];
+            if (! is_array($payload)) {
+                $payload = [];
+            }
+            $cacheKey = (string) ($attempt['cache'] ?? '');
+            if ($cacheKey !== '' && $payload !== []) {
+                $this->inventorySearchCache[$cacheKey] = $payload;
+            }
+            if ($this->extractWarehouseRowsFromInventorySearch($payload, $productId, $skuId) !== []) {
+                return $payload;
+            }
+            if ($data === [] && $payload !== []) {
+                $data = $payload;
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<array{warehouse_id: string, quantity: int}>
+     */
+    protected function extractWarehouseRowsFromInventorySearch(array $data, string $productId, string $skuId): array
+    {
+        $items = $data['inventory']
+            ?? $data['inventories']
+            ?? $data['products']
+            ?? $data['skus']
+            ?? null;
+        if (! is_array($items) || $items === []) {
+            $items = array_is_list($data) ? $data : [$data];
+        }
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $itemProductId = trim((string) ($item['product_id'] ?? $item['id'] ?? ''));
+            $skus = $item['skus'] ?? $item['sku_list'] ?? null;
+            if (! is_array($skus) || $skus === []) {
+                $skus = [$item];
+            }
+
+            foreach ($skus as $sku) {
+                if (! is_array($sku)) {
+                    continue;
+                }
+                $rowSkuId = trim((string) ($sku['id'] ?? $sku['sku_id'] ?? ''));
+                if ($skuId !== '' && $rowSkuId !== $skuId) {
+                    continue;
+                }
+                if ($productId !== '' && $itemProductId !== '' && $itemProductId !== $productId) {
+                    continue;
+                }
+
+                $warehouseSource = $sku;
+                if (is_array($sku['warehouse_inventory'] ?? null)) {
+                    $warehouseSource = ['inventory' => $sku['warehouse_inventory']];
+                }
+                $rows = self::skuNodeWarehouseRows($warehouseSource);
+                if ($rows !== []) {
+                    return $rows;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function fetchProductData(string $productId): array
@@ -1970,18 +2189,41 @@ class TikTokShopService
             return $this->productDetailCache[$productId];
         }
 
-        $response = $this->client->Product->getProduct($productId);
-        $data = is_array($response) ? ($response['data'] ?? $response) : [];
-        if (! is_array($data)) {
-            $data = [];
-        }
-        if (! isset($data['skus']) && is_array($data['data'] ?? null)) {
-            $data = $data['data'];
+        $lastError = null;
+        foreach ($this->inventoryApiVersions() as $version) {
+            try {
+                $response = $this->client->Product->useVersion($version)->getProduct($productId);
+            } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                $lastError = $e;
+                if ($this->isProductStatusRestrictionError($e->getMessage())) {
+                    continue;
+                }
+                throw $e;
+            }
+
+            $data = is_array($response) ? ($response['data'] ?? $response) : [];
+            if (! is_array($data)) {
+                $data = [];
+            }
+            if (! isset($data['skus']) && is_array($data['data'] ?? null)) {
+                $data = $data['data'];
+            }
+
+            $this->productDetailCache[$productId] = $data;
+            $this->workingInventoryApiVersion = $version;
+
+            return $data;
         }
 
-        $this->productDetailCache[$productId] = $data;
+        if ($lastError !== null) {
+            throw $lastError;
+        }
 
-        return $data;
+        $this->productDetailCache[$productId] = [];
+
+        return [];
     }
 
     protected function warehouseIdFromProductSku(string $productId, string $skuId): ?string
