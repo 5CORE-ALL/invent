@@ -856,11 +856,6 @@
                         <i class="fas fa-sliders-h me-1"></i>View VS SBID
                     </button>
 
-                    <button id="clear-sprice-selected-btn" type="button"
-                        class="btn btn-sm btn-danger pricing-filter-item"
-                        title="Clear SPRICE for selected SKUs (turn on Price % to select)">
-                        <i class="fa fa-trash"></i> Clear SPRICE
-                    </button>
                 </div>
 
                 <!-- Summary Stats (layout matches Ebay 2 Analytics summary row) -->
@@ -3264,13 +3259,6 @@
                 if (redTriangleFilterActive) blueTriangleFilterActive = false;
                 applyFilters();
             });
-            // Clear SPRICE button handler (in selection container)
-            $('#clear-sprice-selected-btn').on('click', function() {
-                if (confirm('Are you sure you want to clear SPRICE for selected SKUs?')) {
-                    clearSpriceForSelected();
-                }
-            });
-
             // SKU chart days filter (Rolling Lx · PT — same pattern as all-marketplace-master)
             $('#sku-chart-days-filter').on('change', function() {
                 const days = $(this).val();
@@ -3568,72 +3556,6 @@
                             });
                     }
                 });
-            }
-
-            // Clear SPRICE for selected SKUs (same method as Amazon: batch POST to clear endpoint, then update table)
-            function clearSpriceForSelected() {
-                if (selectedSkus.size === 0) {
-                    showToast('Please select SKUs first', 'error');
-                    return;
-                }
-
-                if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
-                    return;
-                }
-
-                let clearedCount = 0;
-                const updates = [];
-
-                table.getRows().forEach(row => {
-                    const rowData = row.getData();
-                    const sku = rowData['(Child) sku'];
-                    if (!sku || !selectedSkus.has(sku)) return;
-                    if (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) return;
-
-                    row.update({
-                        SPRICE: 0,
-                        SGPFT: 0,
-                        SPFT: 0,
-                        SGROI: 0,
-                        SROI: 0,
-                        SPRICE_STATUS: null,
-                        has_custom_sprice: false
-                    });
-                    updates.push({
-                        sku: sku,
-                        sprice: 0
-                    });
-                    clearedCount++;
-                });
-
-                if (updates.length > 0) {
-                    $.ajax({
-                        url: '/ebay-clear-sprice',
-                        method: 'POST',
-                        contentType: 'application/json',
-                        dataType: 'json',
-                        headers: {
-                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
-                            'Accept': 'application/json'
-                        },
-                        data: JSON.stringify({
-                            updates: updates
-                        }),
-                        success: function(response) {
-                            showToast(response.message || `SPRICE cleared for ${clearedCount} SKU(s)`,
-                                'success');
-                        },
-                        error: function(xhr) {
-                            console.error('Failed to clear SPRICE:', xhr.status, xhr.responseJSON || xhr
-                                .responseText);
-                            var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON
-                                .error : 'Failed to clear SPRICE data';
-                            showToast(msg, 'error');
-                        }
-                    });
-                } else {
-                    showToast('warning', 'No SPRICE values to clear for selected SKUs');
-                }
             }
 
             // Build parent list from table (same logic as dropdown in dataLoaded) - call when needed so Play always has list

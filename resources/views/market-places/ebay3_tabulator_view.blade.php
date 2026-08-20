@@ -593,12 +593,6 @@
                         <i class="fas fa-exchange-alt"></i> Prc Mode
                     </button>
 
-                    <button id="clear-sprice-btn" type="button"
-                        class="btn btn-sm btn-danger pricing-filter-item"
-                        title="Clear SPRICE for selected SKUs (turn on Price % to select)">
-                        <i class="fa fa-trash"></i> Clear SPRICE
-                    </button>
-
                     <button type="button" id="export-section-btn" class="btn btn-sm btn-success pricing-filter-item" title="Export current section (visible columns & filtered data)">
                         <i class="fas fa-file-export"></i>
                     </button>
@@ -1966,62 +1960,6 @@
                     });
             });
         }
-
-        // Clear SPRICE for selected SKUs (use getRows() so tree child rows are included)
-        function clearSpriceForSelected() {
-            if (selectedSkus.size === 0) {
-                showToast('Please select SKUs first', 'error');
-                return;
-            }
-
-            if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
-                return;
-            }
-
-            let clearedCount = 0;
-            const allRows = table.getRows();
-
-            allRows.forEach(function(tableRow) {
-                const rowData = tableRow.getData();
-                const sku = rowData['(Child) sku'] || '';
-                if (!sku || sku.toUpperCase().includes('PARENT')) return;
-                if (!selectedSkus.has(sku)) return;
-
-                tableRow.update({
-                    SPRICE: 0,
-                    SPRICE_STATUS: 'processing'
-                });
-
-                saveSpriceWithRetry(sku, 0, tableRow)
-                    .then(function(response) {
-                        clearedCount++;
-                        if (clearedCount === selectedSkus.size) {
-                            showToast('SPRICE cleared for ' + clearedCount + ' SKU(s)', 'success');
-                            // Refetch from server so table shows cleared state without page refresh
-                            table.replaceData('/ebay3-data-json?_=' + Date.now()).then(function() {
-                                if (typeof allTableData !== 'undefined') {
-                                    allTableData = table.getData('all');
-                                }
-                                applyFilters();
-                            }).catch(function(err) {
-                                console.error('Reload after clear failed:', err);
-                            });
-                        }
-                    })
-                    .catch(function(error) {
-                        console.error('Failed to clear SPRICE for', sku);
-                    });
-            });
-        }
-
-        // Clear SPRICE for selected SKUs only
-        $('#clear-sprice-btn').on('click', function() {
-            if (selectedSkus.size === 0) {
-                showToast('Please select SKUs first', 'error');
-                return;
-            }
-            clearSpriceForSelected();
-        });
 
         /*
          * Target ROI% / Target GPFT% bulk apply (eBay3, margin = row.percentage or EbayThree table)

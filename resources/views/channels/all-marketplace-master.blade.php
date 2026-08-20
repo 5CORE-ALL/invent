@@ -4763,11 +4763,6 @@
                                             const arrow = diff < 0 ? '▼' : diff > 0 ? '▲' : '▬';
                                             parts.push('vs Yesterday: ' + arrow + ' ' + fmtVal(Math.abs(diff)));
                                         }
-                                        if (idx >= 7) {
-                                            const diff7 = context.raw - values[idx - 7];
-                                            const arrow7 = diff7 < 0 ? '▼' : diff7 > 0 ? '▲' : '▬';
-                                            parts.push('vs 7d Ago: ' + arrow7 + ' ' + fmtVal(Math.abs(diff7)));
-                                        }
                                         return parts;
                                     }
                                 }

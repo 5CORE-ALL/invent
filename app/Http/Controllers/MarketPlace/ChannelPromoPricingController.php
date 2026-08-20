@@ -1416,8 +1416,8 @@ class ChannelPromoPricingController extends Controller
 
     /**
      * Same slabs as PEF_CVR_CPN_DEFAULTS / pefDefaultCvrCpnRules.
-     * eBay 2 Open Box / eBay 3 omit the 0% slab (Apply is only for SKUs with eBay sale > 0).
-     * eBay 2 includes the same 0% → 10 CPN% slab as eBay 1.
+     * eBay 2 Open Box omits the 0% slab (Apply is only for SKUs with eBay sale > 0).
+     * eBay 2 / eBay 3 include the same 0% → 10 CPN% slab as eBay 1.
      *
      * @return list<array{key:string,label:string,cpn:float|int}>
      */
@@ -1436,7 +1436,7 @@ class ChannelPromoPricingController extends Controller
             ['key' => '6.5-7', 'label' => '6.5–7%', 'cpn' => 1],
             ['key' => 'gt-7', 'label' => '> 7%', 'cpn' => 0],
         ];
-        if (in_array($channel, ['ebay2op', 'ebay3'], true)) {
+        if (in_array($channel, ['ebay2op'], true)) {
             return array_values(array_filter($rules, static fn (array $r) => ($r['key'] ?? '') !== 'eq-0'));
         }
 

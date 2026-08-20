@@ -576,12 +576,6 @@
                         <i class="fas fa-exchange-alt"></i> Prc Mode
                     </button>
 
-                    <button id="clear-sprice-selected-btn" type="button"
-                        class="btn btn-sm btn-danger pricing-filter-item"
-                        title="Clear SPRICE for selected SKUs (turn on Price % to select)">
-                        <i class="fa fa-trash"></i> Clear SPRICE
-                    </button>
-
                     <button type="button" class="btn btn-sm btn-success pricing-filter-item" data-bs-toggle="modal" data-bs-target="#exportModal" title="Export">
                         <i class="fa fa-file-excel"></i>
                     </button>
@@ -2559,13 +2553,6 @@
                 }
             });
 
-            // Clear SPRICE button handler
-            $('#clear-sprice-selected-btn').on('click', function() {
-                if (confirm('Are you sure you want to clear SPRICE for selected SKUs?')) {
-                    clearSpriceForSelected();
-                }
-            });
-
             /*
              * Target ROI% / Target GPFT% bulk apply (eBay2, margin = row.percentage or EbayTwo table)
              * -----------------------------------------------------------------------------
@@ -2733,36 +2720,6 @@
                 if (redTriangleFilterActive) blueTriangleFilterActive = false;
                 applyFilters();
             });
-
-            function clearSpriceForSelected() {
-                if (selectedSkus.size === 0) {
-                    showToast('Please select SKUs first', 'error');
-                    return;
-                }
-
-                let clearedCount = 0;
-
-                selectedSkus.forEach(sku => {
-                    const rows = table.searchRows("(Child) sku", "=", sku);
-                    
-                    if (rows.length > 0) {
-                        const row = rows[0];
-                        row.update({
-                            SPRICE: 0,
-                            SGPFT: 0,
-                            SPFT: 0,
-                            SROI: 0
-                        });
-                        
-                        row.reformat();
-                        saveSpriceWithRetry(sku, 0, row);
-                        clearedCount++;
-                    }
-                });
-
-                showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
-            }
-
 
             // Chart days filter
             $('#chart-days-filter').on('change', function() {

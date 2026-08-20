@@ -11,7 +11,7 @@
     $channelPromoHideCvrCpn = !empty($channelPromoHideCvrCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoShowZeroSoldDilRule = in_array($channelPromoChannel, ['ebay2', 'ebay2op', 'ebay3'], true);
+    $channelPromoShowZeroSoldDilRule = in_array($channelPromoChannel, ['ebay2op'], true);
 @endphp
 
 @if($channelPromoPart === 'css' || $channelPromoPart === 'all')
@@ -388,6 +388,7 @@
                     @endunless
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3']))
+                    @unless(in_array($channelPromoChannel, ['ebay2', 'ebay3'], true))
                     <div class="btn-group" role="group">
                     <button type="button" class="btn btn-sm" id="ch-promo-sprice-vs-tpromo-btn"
                         title="Autofill S PRC = Std × (1 − T Promo/100). T Promo = PRMT% + CPN%. Selected SKUs if checked; otherwise all visible. Skips INV = 0. No marketplace push. S PRC &gt; LMP shows a red triangle.">
@@ -398,6 +399,7 @@
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                     </div>
+                    @endunless
                     @if($channelPromoShowZeroSoldDilRule)
                     <button type="button" class="btn btn-sm" id="ch-promo-zero-sold-vs-dil-btn"
                         title="0 Sold vs Dil: map Dil% slabs to Target ROI%, then set S PRC so GROI equals that target. Only SKUs with E L30 = 0. Selected if checked; otherwise all visible. No marketplace push.">
@@ -442,11 +444,11 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2" id="ch-promo-cvr-cpn-help">
-                        @if(in_array($channelPromoChannel, ['ebay2op', 'ebay3'], true))
+                        @if($channelPromoChannel === 'ebay2op')
                             Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
                             (database only — no eBay coupon).
-                        @elseif($channelPromoChannel === 'ebay2')
+                        @elseif(in_array($channelPromoChannel, ['ebay2', 'ebay3'], true))
                             Map CVR% slabs to <strong>CPN %</strong>.
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
                             (database only — no eBay coupon).
@@ -2355,8 +2357,7 @@
             { key: '6.5-7', label: '6.5–7%', cpn: 1 },
             { key: 'gt-7', label: '> 7%', cpn: 0 },
         ];
-        const CH_PEF_CVR_CPN_SKIP_ZERO = CHANNEL_PROMO_CHANNEL === 'ebay2op'
-            || CHANNEL_PROMO_CHANNEL === 'ebay3';
+        const CH_PEF_CVR_CPN_SKIP_ZERO = CHANNEL_PROMO_CHANNEL === 'ebay2op';
         const CH_PEF_CVR_CPN_DEFAULTS = CH_PEF_CVR_CPN_SKIP_ZERO
             ? CH_PEF_CVR_CPN_DEFAULTS_ALL.filter(function(r) { return r.key !== 'eq-0'; })
             : CH_PEF_CVR_CPN_DEFAULTS_ALL;
@@ -5679,6 +5680,7 @@
         }
 
         function fillSpriceFromTPromo() {
+            if (CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay3') return;
             if (typeof table === 'undefined' || !table) {
                 chPromoToast('error', 'Load data first');
                 return;
@@ -5795,6 +5797,7 @@
         }
 
         function clearSpriceFromTPromo() {
+            if (CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay3') return;
             if (typeof table === 'undefined' || !table) {
                 chPromoToast('error', 'Load data first');
                 return;
@@ -6884,14 +6887,16 @@
                 e.preventDefault();
                 clearAndAutopopulateChannelSprice();
             });
-            $('#ch-promo-sprice-vs-tpromo-btn').off('click.chpromo').on('click.chpromo', function(e) {
-                e.preventDefault();
-                fillSpriceFromTPromo();
-            });
-            $('#ch-promo-sprice-vs-tpromo-del-btn').off('click.chpromo').on('click.chpromo', function(e) {
-                e.preventDefault();
-                clearSpriceFromTPromo();
-            });
+            if (CHANNEL_PROMO_CHANNEL !== 'ebay2' && CHANNEL_PROMO_CHANNEL !== 'ebay3') {
+                $('#ch-promo-sprice-vs-tpromo-btn').off('click.chpromo').on('click.chpromo', function(e) {
+                    e.preventDefault();
+                    fillSpriceFromTPromo();
+                });
+                $('#ch-promo-sprice-vs-tpromo-del-btn').off('click.chpromo').on('click.chpromo', function(e) {
+                    e.preventDefault();
+                    clearSpriceFromTPromo();
+                });
+            }
             $('#ch-promo-end-sales-btn').off('click.chpromo').on('click.chpromo', function(e) {
                 e.preventDefault();
                 endAllChannelSales();
