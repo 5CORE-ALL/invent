@@ -4776,10 +4776,23 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/temu/ads/badge-snapshot', 'saveBadgeSnapshot')->name('temu.ads.badge-snapshot');
     });
 
-    // Temu 2 Ads — raw temu2_campaign_reports (upload + Tabulator, no matching)
+    // Temu 2 Ads (API) — same features as /temu/ads, using TEMU2_* credentials
     Route::controller(Temu2AdsController::class)->group(function () {
         Route::get('/temu2/ads', 'index')->name('temu2.ads');
         Route::get('/temu2/ads/data', 'getTemu2AdsData')->name('temu2.ads.data');
+        Route::post('/temu2/ads/refresh', 'refresh')->name('temu2.ads.refresh');
+        Route::post('/temu2/ads/create', 'createAd')->name('temu2.ads.create');
+        Route::post('/temu2/ads/create-bulk', 'createAdsBulk')->name('temu2.ads.create-bulk');
+        Route::post('/temu2/ads/push-roas', 'pushRoasRule')->name('temu2.ads.push-roas');
+        Route::post('/temu2/ads/predict-roas', 'predictRoas')->name('temu2.ads.predict-roas');
+        Route::post('/temu2/ads/refresh-status', 'refreshStatus')->name('temu2.ads.refresh-status');
+        Route::get('/temu2/ads/color-rules', 'getColorRules')->name('temu2.ads.color-rules');
+        Route::post('/temu2/ads/color-rules', 'saveColorRules')->name('temu2.ads.color-rules.save');
+        Route::post('/temu2/ads/auto-pause', 'autoPause')->name('temu2.ads.auto-pause');
+        Route::post('/temu2/ads/auto-pause-cron', 'toggleAutoPauseCron')->name('temu2.ads.auto-pause-cron');
+        Route::post('/temu2/ads/toggle', 'toggleAd')->name('temu2.ads.toggle');
+        Route::get('/temu2/ads/badge-history', 'badgeHistory')->name('temu2.ads.badge-history');
+        Route::post('/temu2/ads/badge-snapshot', 'saveBadgeSnapshot')->name('temu2.ads.badge-snapshot');
         Route::post('/temu2/ads/upload-campaign-report', 'uploadCampaignReport')->name('temu2.ads.upload.campaign');
     });
     Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);

@@ -360,6 +360,28 @@
         autoPauseCron: true,
     };
 
+    function applyStoragePrefix(prefix) {
+        prefix = String(prefix || 'temu_ads');
+        CLICKS_STORAGE_KEY = prefix + '_l7_clicks_red_below';
+        ROAS_STORAGE_KEY = prefix + '_target_roas_bidding';
+        SLABS_STORAGE_KEY = prefix + '_pause_run_slabs';
+        INV_ZERO_STORAGE_KEY = prefix + '_pause_run_inv_zero';
+        ROAS_RULE_STORAGE_KEY = prefix + '_roas_rule_slabs';
+    }
+
+    function reloadRulesFromStorage() {
+        rules.l7ClicksRedBelow = toInt(global.localStorage && localStorage.getItem(CLICKS_STORAGE_KEY), DEFAULT_BELOW);
+        rules.targetRoasBidding = toRoas(global.localStorage && localStorage.getItem(ROAS_STORAGE_KEY), DEFAULT_TARGET_ROAS);
+        rules.pauseRunSlabs = loadLocalSlabs();
+        rules.pauseRunInvZero = loadInvZeroPause();
+        rules.roasRuleSlabs = loadLocalRoasRuleSlabs();
+    }
+
+    function configureChannel(prefix) {
+        applyStoragePrefix(prefix);
+        reloadRulesFromStorage();
+    }
+
     function persistLocal() {
         try {
             localStorage.setItem(CLICKS_STORAGE_KEY, String(rules.l7ClicksRedBelow));
@@ -912,6 +934,7 @@
         ruleSummaryText: ruleSummaryText,
         onChange: onChange,
         loadFromServer: loadFromServer,
+        configureChannel: configureChannel,
         setUrls: function (getUrl, saveUrl, pauseUrl, toggleUrl, cronUrl, pushRoasUrl) {
             rules.getUrl = getUrl;
             rules.saveUrl = saveUrl;

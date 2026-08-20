@@ -2126,6 +2126,10 @@ class Kernel extends ConsoleKernel
         // After L7 reports: pause Active ads that match L7 clicks / Stop ROAS.
         // Toggle from Ad rules modal (temu_ads_auto_pause_cron). Command also no-ops when paused.
         $retryFiveTimesUntil('temu:auto-pause-ads', 'temu-ads-auto-pause', '16:10');
+        $retryFiveTimesUntil('temu2:fetch-ads-data --period=L30', 'temu2-ads-data-sync-l30', '16:15');
+        $retryFiveTimesUntil('temu2:fetch-ads-data --period=L60', 'temu2-ads-data-sync-l60', '16:25');
+        $retryFiveTimesUntil('temu2:fetch-ads-api-reports --period=L7', 'temu2-ads-api-reports-l7', '16:30');
+        $retryFiveTimesUntil('temu2:auto-pause-ads', 'temu2-ads-auto-pause', '16:40');
         // Recommended supply prices → temu_metrics.recommended_base_price (10=low traffic, 20=restricted)
         $retryFiveTimesUntil('temu:fetch-recommended-prices --both', 'temu-recommended-prices', '16:05');
 
