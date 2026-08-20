@@ -13,7 +13,8 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Fetch Veeqo / GOFO (4Seller labels) / marketplace tracking onto unfulfilled Shopify copies.
+ * Fetch Veeqo / GOFO (4Seller labels) / marketplace tracking onto unfulfilled
+ * Shopify copies for every Marketplace Manager channel.
  */
 class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
 {
@@ -26,7 +27,7 @@ class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
     public int $uniqueFor = 840;
 
     public function __construct(
-        public int $limit = 200,
+        public int $limit = 250,
     ) {
         $this->onQueue(MarketplaceManagerRegistry::queueFor('amazon'));
     }

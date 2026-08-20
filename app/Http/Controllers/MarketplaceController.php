@@ -394,15 +394,14 @@ class MarketplaceController extends Controller
 
     public function fetchTrackingNow(string $marketplace): JsonResponse
     {
-        FetchMarketplaceShopifyTrackingJob::dispatch(200);
+        FetchMarketplaceShopifyTrackingJob::dispatch(250);
 
-        $limit = strtolower($marketplace) === 'amazon' ? 8 : 6;
-        $result = app(VeeqoShopifyFulfillmentService::class)->syncPendingUnfulfilled($limit);
+        $result = app(VeeqoShopifyFulfillmentService::class)->syncPendingUnfulfilled(40);
 
         return response()->json([
             'success' => true,
             'message' => ($result['message'] ?? 'Tracking fetch started.')
-                .' A background job will keep checking old and new orders every 10 minutes.',
+                .' Checking every marketplace automatically every 10 minutes (Veeqo, GOFO, then Shopify fulfill, no customer email).',
             'checked' => $result['checked'] ?? 0,
             'fulfilled' => $result['fulfilled'] ?? 0,
         ]);

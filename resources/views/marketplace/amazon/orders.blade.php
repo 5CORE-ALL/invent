@@ -72,9 +72,6 @@
                         <option value="30">Last 30 days</option>
                         <option value="from:{{ now('America/Los_Angeles')->subDays(35)->toDateString() }}">Last 35 days</option>
                     </select>
-                    <button type="button" class="btn btn-sm btn-outline-warning" id="btn-fetch-tracking-now">
-                        <i class="ri-truck-line"></i> Fetch tracking now
-                    </button>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-fetch-orders">
                         <i class="ri-download-cloud-line"></i> Fetch from Amz
                     </button>
@@ -300,30 +297,6 @@ document.querySelectorAll('.btn-mark-imported').forEach(function (btn) {
         })
         .catch(function () { alert('Request failed.'); })
         .finally(function () { btn.disabled = false; }.bind(this));
-    });
-});
-document.getElementById('btn-fetch-tracking-now')?.addEventListener('click', function () {
-    var btn = this;
-    if (!confirm('Fetch tracking from Veeqo and GOFO (4Seller) for unfulfilled Shopify copies, including older Amazon orders?\n\nThe Shopify customer will not be emailed.')) return;
-    var original = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="ri-loader-4-line"></i> Fetching…';
-    fetch('{{ url('marketplace/amazon/orders/fetch-tracking-now') }}', {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-            'Accept': 'application/json',
-        },
-    })
-    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
-    .then(function (res) {
-        alert((res.data && res.data.message) || (res.ok ? 'Queued' : 'Failed'));
-        if (res.data && res.data.success) location.reload();
-    })
-    .catch(function () { alert('Request failed.'); })
-    .finally(function () {
-        btn.disabled = false;
-        btn.innerHTML = original;
     });
 });
 </script>
