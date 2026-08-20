@@ -60,7 +60,7 @@ class PlsLiveListingsService
             Cache::put(self::CACHE_KEY, $rows, now()->addHours(6));
         }
 
-        return $rows;
+        return MarketplacePortalInactiveCount::applyToLiveRows('pls', $rows);
     }
 
     /**
@@ -70,7 +70,7 @@ class PlsLiveListingsService
     {
         $cached = Cache::get(self::CACHE_KEY);
 
-        return is_array($cached) ? $cached : null;
+        return is_array($cached) ? MarketplacePortalInactiveCount::applyToLiveRows('pls', $cached) : null;
     }
 
     /**

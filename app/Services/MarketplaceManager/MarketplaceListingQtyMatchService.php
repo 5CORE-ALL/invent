@@ -136,9 +136,10 @@ final class MarketplaceListingQtyMatchService
                 ? $pass->liveRowsForStateSplit($mmChannel, true)
                 : $pass->localRowsForStateSplit($mmChannel, false);
         }
-        if ($liveRows === []) {
-            return [];
+        if (! is_array($liveRows)) {
+            $liveRows = [];
         }
+        $liveRows = MarketplacePortalInactiveCount::applyToLiveRows($mmChannel, $liveRows);
 
         $skus = [];
         $states = [];
@@ -162,6 +163,23 @@ final class MarketplaceListingQtyMatchService
             $seen[$norm] = true;
             $skus[] = $sku;
             $states[$sku] = $state !== '' ? $state : 'inactive';
+        }
+
+        foreach (MarketplacePortalInactiveCount::skus($mmChannel) as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku) ?: strtoupper($sku);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $skus[] = $sku;
+            $states[$sku] = 'inactive';
+        }
+        if ($skus === []) {
+            return [];
         }
 
         $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);

@@ -54,7 +54,7 @@ final class Ebay2LiveListingsService
             // ignore
         }
 
-        return $rows;
+        return MarketplacePortalInactiveCount::applyToLiveRows('ebay2', $rows);
     }
 
     /**
@@ -73,7 +73,7 @@ final class Ebay2LiveListingsService
                 return null;
             }
 
-            return $cached;
+            return MarketplacePortalInactiveCount::applyToLiveRows('ebay2', $cached);
         } catch (\Throwable $e) {
             return null;
         }

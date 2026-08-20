@@ -39,13 +39,15 @@ final class Ebay1LiveListingsService
         }
 
         try {
-            return Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
+            $rows = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
                 return $this->fetchFromLocal();
             });
+
+            return MarketplacePortalInactiveCount::applyToLiveRows('ebay1', is_array($rows) ? $rows : []);
         } catch (\Throwable $e) {
             Log::warning('Ebay1LiveListingsService: cache unavailable', ['error' => $e->getMessage()]);
 
-            return $this->fetchFromLocal();
+            return MarketplacePortalInactiveCount::applyToLiveRows('ebay1', $this->fetchFromLocal());
         }
     }
 
@@ -65,7 +67,7 @@ final class Ebay1LiveListingsService
                 return null;
             }
 
-            return $cached;
+            return MarketplacePortalInactiveCount::applyToLiveRows('ebay1', $cached);
         } catch (\Throwable $e) {
             return null;
         }

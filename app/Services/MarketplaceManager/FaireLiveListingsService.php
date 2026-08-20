@@ -35,13 +35,15 @@ final class FaireLiveListingsService
         }
 
         try {
-            return Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
+            $rows = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
                 return $this->fetchFromLocal();
             });
+
+            return MarketplacePortalInactiveCount::applyToLiveRows('faire', is_array($rows) ? $rows : []);
         } catch (\Throwable $e) {
             Log::warning('FaireLiveListingsService: cache unavailable', ['error' => $e->getMessage()]);
 
-            return $this->fetchFromLocal();
+            return MarketplacePortalInactiveCount::applyToLiveRows('faire', $this->fetchFromLocal());
         }
     }
 
@@ -53,7 +55,7 @@ final class FaireLiveListingsService
         try {
             $cached = Cache::get(self::CACHE_KEY);
 
-            return is_array($cached) ? $cached : null;
+            return is_array($cached) ? MarketplacePortalInactiveCount::applyToLiveRows('faire', $cached) : null;
         } catch (\Throwable $e) {
             return null;
         }

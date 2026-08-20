@@ -38,15 +38,17 @@ final class ReverbLiveListingsService
         }
 
         try {
-            return Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
+            $rows = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
                 return $this->fetchFromApi();
             });
+
+            return MarketplacePortalInactiveCount::applyToLiveRows('reverb', is_array($rows) ? $rows : []);
         } catch (\Throwable $e) {
             Log::warning('ReverbLiveListingsService: cache unavailable, fetching uncached', [
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->fetchFromApi();
+            return MarketplacePortalInactiveCount::applyToLiveRows('reverb', $this->fetchFromApi());
         }
     }
 
@@ -58,7 +60,7 @@ final class ReverbLiveListingsService
         try {
             $cached = Cache::get(self::CACHE_KEY);
 
-            return is_array($cached) ? $cached : null;
+            return is_array($cached) ? MarketplacePortalInactiveCount::applyToLiveRows('reverb', $cached) : null;
         } catch (\Throwable $e) {
             return null;
         }
