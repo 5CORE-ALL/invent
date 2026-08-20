@@ -21,7 +21,8 @@ final class MarketplacePortalStatusTabs
         if (in_array($state, [
             'active', '1', 'true', 'live', 'onselling', 'on_selling',
             'published', 'enabled', 'buyable', 'buyable_by_quantity', 'listed',
-            'activate', 'out_of_stock', 'oos',
+            'activate', 'out_of_stock', 'oos', 'approved', 'available', 'visible',
+            'for_sale',
         ], true)) {
             return 'active';
         }
@@ -31,6 +32,7 @@ final class MarketplacePortalStatusTabs
             'editing_required', 'service_delete', 'pending', 'under_review',
             'seller_deactivated', 'platform_deactivated', 'freeze', 'failed',
             'incomplete', 'suppressed', 'blocked', 'unsold', 'archived',
+            'retired', 'rejected', 'suspended', 'hidden',
         ], true)) {
             return 'inactive';
         }

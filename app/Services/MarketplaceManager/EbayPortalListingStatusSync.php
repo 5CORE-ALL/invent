@@ -5,6 +5,7 @@ namespace App\Services\MarketplaceManager;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
+use App\Services\Ebay2ApiService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -17,14 +18,14 @@ use Illuminate\Support\Facades\Schema;
 class EbayPortalListingStatusSync
 {
     /**
-     * @return array{ok: bool, active: int, inactive: int, missing: int, error?: string}
+     * @return array{ok: bool, unsold_ok: bool, active: int, inactive: int, missing: int, error?: string}
      */
     public function sync(int $store): array
     {
         $store = in_array($store, [1, 2, 3], true) ? $store : 1;
         $token = $this->accessToken($store);
         if (! $token) {
-            return ['ok' => false, 'active' => 0, 'inactive' => 0, 'missing' => 0, 'error' => 'No eBay access token'];
+            return ['ok' => false, 'unsold_ok' => false, 'active' => 0, 'inactive' => 0, 'missing' => 0, 'error' => 'No eBay access token'];
         }
 
         $this->ensureListingStatusColumn($store);
@@ -32,11 +33,21 @@ class EbayPortalListingStatusSync
         $model = $this->modelClass($store);
         $table = $this->table($store);
         if (! Schema::hasTable($table)) {
-            return ['ok' => false, 'active' => 0, 'inactive' => 0, 'missing' => 0, 'error' => $table.' missing'];
+            return ['ok' => false, 'unsold_ok' => false, 'active' => 0, 'inactive' => 0, 'missing' => 0, 'error' => $table.' missing'];
         }
 
         // Seller Hub Inactive = Unsold / not relisted (last 60 days). Do not use Sold.
         $unsold = $this->fetchListingsByStatus($token, 'Unsold');
+        if (! $unsold['ok']) {
+            return [
+                'ok' => false,
+                'unsold_ok' => false,
+                'active' => 0,
+                'inactive' => 0,
+                'missing' => 0,
+                'error' => 'Unsold list fetch failed',
+            ];
+        }
         $active = $this->fetchListingsByStatus($token, 'Active');
         $allListings = [];
         foreach ($unsold['items'] as $item) {
@@ -85,6 +96,7 @@ class EbayPortalListingStatusSync
 
         return [
             'ok' => true,
+            'unsold_ok' => true,
             'active' => (int) ($counts['ACTIVE'] ?? 0),
             'inactive' => (int) ($counts['INACTIVE'] ?? 0),
             'missing' => (int) ($counts['MISSING'] ?? 0),
@@ -108,40 +120,52 @@ class EbayPortalListingStatusSync
 
         foreach (array_chunk($allListings, 200, true) as $chunk) {
             foreach ($chunk as $key => $data) {
-                $sku = trim((string) ($data['sku'] ?? $key));
-                if ($sku === '') {
-                    continue;
-                }
-                $payload = [
-                    'listing_status' => $data['status'],
-                ];
-                if ($hasReason) {
-                    $payload['inactive_reason'] = $data['status'] === 'INACTIVE'
-                        ? ($data['reason'] ?: 'Inactive on eBay')
-                        : null;
-                }
-                if ($hasTitle && ! empty($data['title'])) {
-                    $payload['ebay_title'] = $data['title'];
-                }
-                if ($hasLink && ! empty($data['ebay_link'])) {
-                    $payload['ebay_link'] = $data['ebay_link'];
-                }
-                if ($hasItemId && ! empty($data['item_id'])) {
-                    $payload['item_id'] = $data['item_id'];
-                }
+                try {
+                    $sku = trim((string) ($data['sku'] ?? $key));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $payload = [
+                        'listing_status' => $data['status'],
+                    ];
+                    if ($hasReason) {
+                        $payload['inactive_reason'] = $data['status'] === 'INACTIVE'
+                            ? ($data['reason'] ?: 'Inactive on eBay')
+                            : null;
+                    }
+                    if ($hasTitle && ! empty($data['title'])) {
+                        $payload['ebay_title'] = $data['title'];
+                    }
+                    if ($hasLink && ! empty($data['ebay_link'])) {
+                        $payload['ebay_link'] = $data['ebay_link'];
+                    }
+                    if ($hasItemId && ! empty($data['item_id'])) {
+                        $payload['item_id'] = $data['item_id'];
+                    }
 
-                $existing = $model::query()
-                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
-                    ->first();
-                if ($existing) {
-                    $existing->fill($payload);
-                    $existing->save();
-                    continue;
+                    $existing = $model::query()
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                        ->first();
+                    if ($existing) {
+                        $existing->fill($payload);
+                        $existing->save();
+                        continue;
+                    }
+                    if (($data['status'] ?? '') === 'MISSING') {
+                        continue;
+                    }
+                    $create = array_merge(['sku' => $sku], $payload);
+                    if ($hasItemId && empty($create['item_id'])) {
+                        $create['item_id'] = $data['item_id'] ?? ('UNSOLD-'.$sku);
+                    }
+                    $model::query()->create($create);
+                } catch (\Throwable $e) {
+                    Log::warning('EbayPortalListingStatusSync: persist failed', [
+                        'sku' => $data['sku'] ?? $key ?? '',
+                        'table' => $table,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
-                if (($data['status'] ?? '') === 'MISSING') {
-                    continue;
-                }
-                $model::query()->create(array_merge(['sku' => $sku], $payload));
             }
         }
     }
@@ -187,8 +211,21 @@ class EbayPortalListingStatusSync
 
     protected function accessToken(int $store): ?string
     {
+        if ($store === 2) {
+            try {
+                $token = app(Ebay2ApiService::class)->generateBearerToken();
+
+                return is_string($token) && $token !== '' ? $token : null;
+            } catch (\Throwable $e) {
+                Log::warning('EbayPortalListingStatusSync: eBay 2 token failed', [
+                    'error' => $e->getMessage(),
+                ]);
+
+                return null;
+            }
+        }
+
         $key = match ($store) {
-            2 => 'ebay2',
             3 => 'ebay3',
             default => 'ebay',
         };

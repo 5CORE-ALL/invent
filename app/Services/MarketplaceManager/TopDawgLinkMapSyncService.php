@@ -176,7 +176,7 @@ class TopDawgLinkMapSyncService
                 'topdawg_listing_id' => $listingId !== '' ? $listingId : $sku,
                 'tdid' => $item['tdid'] ?? null,
                 'product_title' => $item['product_name'] ?? $item['product_title'] ?? $item['title'] ?? null,
-                'listing_state' => isset($item['status']) ? strtolower((string) $item['status']) : 'active',
+                'listing_state' => TopDawgApiService::listingStateFromItem($item),
                 'price' => $item['cost'] ?? $item['price'] ?? null,
                 'msrp' => $item['msrp'] ?? null,
             ];

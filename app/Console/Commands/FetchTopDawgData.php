@@ -75,7 +75,7 @@ class FetchTopDawgData extends Command
                 'topdawg_listing_id' => $item['id'] ?? $item['tdid'] ?? null,
                 'tdid' => $item['tdid'] ?? null,
                 'image_src' => $this->extractFirstImage($item['picture_url'] ?? null),
-                'listing_state' => isset($item['status']) ? strtolower((string) $item['status']) : 'active',
+                'listing_state' => TopDawgApiService::listingStateFromItem($item),
                 'product_title' => $item['product_name'] ?? $item['product_title'] ?? $item['title'] ?? null,
                 'r_l30' => $rL30[$sku] ?? 0,
                 'r_l60' => $rL60[$sku] ?? 0,

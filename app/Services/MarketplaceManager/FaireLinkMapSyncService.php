@@ -37,6 +37,7 @@ class FaireLinkMapSyncService
         if (! Schema::hasTable('faire_metric')) {
             return $this->fail('faire_metric table missing.');
         }
+        $this->ensureListingStatusColumn();
 
         if (! $this->faireApi->isConfigured()) {
             return $this->fail('Faire API credentials missing.');
@@ -198,6 +199,10 @@ class FaireLinkMapSyncService
                 'product_id' => $productId !== '' ? $productId : $sku,
                 'product_name' => $name !== '' ? $name : null,
             ];
+            $listingStatus = $this->listingStatusFromProduct($product);
+            if ($listingStatus !== null && Schema::hasColumn('faire_metric', 'listing_status')) {
+                $payload['listing_status'] = $listingStatus;
+            }
             if ($price !== null) {
                 $payload['price'] = $price;
             }
@@ -214,6 +219,156 @@ class FaireLinkMapSyncService
         }
 
         return $count;
+    }
+
+    /**
+     * Persist Faire portal lifecycle_state onto faire_metric.listing_status.
+     *
+     * @return array{ok: bool, done: bool, upserted: int, inactive: int, error?: string}
+     */
+    public function syncListingStatuses(int $timeBudgetSeconds = 90): array
+    {
+        if (! Schema::hasTable('faire_metric')) {
+            return ['ok' => false, 'done' => false, 'upserted' => 0, 'inactive' => 0, 'error' => 'faire_metric missing'];
+        }
+        if (! $this->faireApi->isConfigured()) {
+            return ['ok' => false, 'done' => false, 'upserted' => 0, 'inactive' => 0, 'error' => 'Faire API credentials missing'];
+        }
+        $this->ensureListingStatusColumn();
+        if (! Schema::hasColumn('faire_metric', 'listing_status')) {
+            return ['ok' => false, 'done' => false, 'upserted' => 0, 'inactive' => 0, 'error' => 'listing_status missing'];
+        }
+
+        $pageKey = 'mm.faire.portal_status_page_v1';
+        $page = max(1, (int) Cache::get($pageKey, 1));
+        $deadline = microtime(true) + max(15, $timeBudgetSeconds);
+        $upserted = 0;
+        $inactive = 0;
+        $pageSize = 250;
+
+        try {
+            do {
+                if (microtime(true) >= $deadline) {
+                    Cache::put($pageKey, $page, now()->addHours(6));
+
+                    return ['ok' => true, 'done' => false, 'upserted' => $upserted, 'inactive' => $inactive];
+                }
+
+                $res = $this->faireApi->getProducts([
+                    'limit' => $pageSize,
+                    'page' => $page,
+                ]);
+                if (empty($res['ok']) || ! is_array($res['json'] ?? null)) {
+                    return [
+                        'ok' => false,
+                        'done' => false,
+                        'upserted' => $upserted,
+                        'inactive' => $inactive,
+                        'error' => $res['error'] ?? 'Faire products fetch failed',
+                    ];
+                }
+                $json = $res['json'];
+                $products = $json['products'] ?? $json['data'] ?? [];
+                if (! is_array($products)) {
+                    $products = [];
+                }
+
+                foreach ($products as $product) {
+                    if (! is_array($product)) {
+                        continue;
+                    }
+                    $status = $this->listingStatusFromProduct($product);
+                    if ($status === null) {
+                        continue;
+                    }
+                    $productId = trim((string) ($product['id'] ?? ''));
+                    $name = trim((string) ($product['name'] ?? $product['title'] ?? ''));
+                    $variants = $product['variants'] ?? $product['product_variants'] ?? [];
+                    if (! is_array($variants) || $variants === []) {
+                        $sku = trim((string) ($product['sku'] ?? ''));
+                        $variants = $sku !== '' ? [['sku' => $sku]] : [];
+                    }
+                    foreach ($variants as $variant) {
+                        if (! is_array($variant)) {
+                            continue;
+                        }
+                        $sku = trim((string) ($variant['sku'] ?? ''));
+                        if ($sku === '') {
+                            continue;
+                        }
+                        FaireMetric::updateOrCreate(
+                            ['sku' => $sku],
+                            array_filter([
+                                'listing_status' => $status,
+                                'product_id' => $productId !== '' ? $productId : null,
+                                'product_name' => $name !== '' ? $name : null,
+                            ], static fn ($v) => $v !== null)
+                        );
+                        $upserted++;
+                        if ($status === 'inactive') {
+                            $inactive++;
+                        }
+                    }
+                }
+
+                if (count($products) < $pageSize) {
+                    Cache::forget($pageKey);
+                    $this->clearListingCaches();
+
+                    return ['ok' => true, 'done' => true, 'upserted' => $upserted, 'inactive' => $inactive];
+                }
+                $page++;
+            } while (true);
+        } catch (\Throwable $e) {
+            Log::warning('FaireLinkMapSyncService: listing status sync failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'ok' => false,
+                'done' => false,
+                'upserted' => $upserted,
+                'inactive' => $inactive,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     */
+    protected function listingStatusFromProduct(array $product): ?string
+    {
+        $raw = $product['lifecycle_state'] ?? $product['lifecycleState'] ?? $product['state'] ?? '';
+        $s = strtolower(str_replace([' ', '-'], '_', trim((string) $raw)));
+        if ($s === '') {
+            return null;
+        }
+        if (in_array($s, ['published', 'live', 'active', 'for_sale'], true)) {
+            return 'active';
+        }
+        if (in_array($s, ['draft', 'unpublished', 'retired', 'deleted', 'archived', 'inactive'], true)) {
+            return 'inactive';
+        }
+        $bucket = MarketplacePortalStatusTabs::bucket($s);
+
+        return $bucket === 'other' ? null : $bucket;
+    }
+
+    protected function ensureListingStatusColumn(): void
+    {
+        if (! Schema::hasTable('faire_metric') || Schema::hasColumn('faire_metric', 'listing_status')) {
+            return;
+        }
+        try {
+            Schema::table('faire_metric', function ($blueprint) {
+                $blueprint->string('listing_status', 32)->nullable()->index();
+            });
+        } catch (\Throwable $e) {
+            Log::warning('FaireLinkMapSyncService: could not add listing_status', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

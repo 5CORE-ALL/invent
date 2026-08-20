@@ -589,10 +589,10 @@ return [
     |--------------------------------------------------------------------------
     */
     'ebay2' => [
-        'app_id' => env('EBAY2_APP_ID'),
-        'cert_id' => env('EBAY2_CERT_ID'),
-        'dev_id' => env('EBAY2_DEV_ID'),
-        'refresh_token' => env('EBAY2_REFRESH_TOKEN'),
+        'app_id' => env('EBAY2_APP_ID', env('EBAY_2_APP_ID')),
+        'cert_id' => env('EBAY2_CERT_ID', env('EBAY_2_CERT_ID')),
+        'dev_id' => env('EBAY2_DEV_ID', env('EBAY_2_DEV_ID')),
+        'refresh_token' => env('EBAY2_REFRESH_TOKEN', env('EBAY_2_REFRESH_TOKEN')),
     ],
 
     /*

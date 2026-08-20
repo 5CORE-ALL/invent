@@ -52,6 +52,53 @@ class TopDawgApiService
     }
 
     /**
+     * Seller-portal listing state from a SupplierProduct/list row.
+     * Missing status is null (not "active") so Inactive is never invented.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    public static function listingStateFromItem(array $item): ?string
+    {
+        foreach (['status', 'product_status', 'listing_status', 'listing_state', 'state'] as $key) {
+            if (! array_key_exists($key, $item) || $item[$key] === null || $item[$key] === '') {
+                continue;
+            }
+            $raw = $item[$key];
+            if (is_bool($raw)) {
+                return $raw ? 'active' : 'inactive';
+            }
+            if (is_array($raw)) {
+                continue;
+            }
+            $s = strtolower(trim((string) $raw));
+            if ($s !== '') {
+                return $s;
+            }
+        }
+        foreach (['is_active', 'active', 'enabled', 'is_enabled'] as $key) {
+            if (! array_key_exists($key, $item) || is_array($item[$key])) {
+                continue;
+            }
+            $raw = $item[$key];
+            if (is_bool($raw)) {
+                return $raw ? 'active' : 'inactive';
+            }
+            if (is_numeric($raw)) {
+                return ((int) $raw) === 1 ? 'active' : 'inactive';
+            }
+            $s = strtolower(trim((string) $raw));
+            if (in_array($s, ['true', '1', 'yes', 'active', 'enabled'], true)) {
+                return 'active';
+            }
+            if (in_array($s, ['false', '0', 'no', 'inactive', 'disabled'], true)) {
+                return 'inactive';
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Fetch all products with pagination.
      * POST /SupplierProduct/list with per_page, page.
      * Loops through all pages and merges results.
