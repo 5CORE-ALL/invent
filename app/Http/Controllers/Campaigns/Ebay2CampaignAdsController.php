@@ -6,12 +6,10 @@ use App\Http\Controllers\Campaigns\Concerns\ProvidesEbayCampaignAdsBadgeSummary;
 use App\Http\Controllers\Controller;
 use App\Models\Ebay2Metric;
 use App\Models\ProductMaster;
-use App\Services\CronMonitor\ManualActionService;
 use App\Services\EbayChannelMetricsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Artisan;
 
 /**
  * eBay 2 mirror of {@see EbayCampaignAdsController}
@@ -22,7 +20,7 @@ use Illuminate\Support\Facades\Artisan;
  *                    and `ebay2_dil` (DIL colour bands) in `ebay_sbid_rules`
  *                    (`ebay2` SCVR bands kept only for legacy getRule/saveRule;
  *                     `ebay2_sbid_views` kept for /ebay2-tabulator-view)
- *   - Token / push:  Ebay2ApiService + `ebay2:update-suggestedbid`
+ *   - Token / push:  Ebay2ApiService (Autopush on slab / 0-sold ES Bid change)
  *   - Tabulator is Parents Only: parent-row L7 Views / EL30 drive S Bid; push
  *     applies that family bid to every listing under the parent.
  */
@@ -746,29 +744,6 @@ class Ebay2CampaignAdsController extends Controller
             }
         }
         return $map;
-    }
-
-    public function pushSbid(ManualActionService $manual)
-    {
-        try {
-            // Clear stuck lock + running cron markers so the UI button can always start a push.
-            $manual->unlock('ebay2:update-suggestedbid');
-
-            $exitCode = Artisan::call('ebay2:update-suggestedbid');
-            $output = Artisan::output();
-
-            if ($exitCode !== 0) {
-                return response()->json([
-                    'success' => false,
-                    'error' => trim($output) ?: 'Push failed.',
-                    'output' => $output,
-                ], 500);
-            }
-
-            return response()->json(['success' => true, 'output' => $output]);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
-        }
     }
 
     /** Default SCVR bands — kept for legacy getRule/saveRule. */

@@ -6185,7 +6185,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/ebay/campaign-ads/rule', 'saveRule')->name('ebay.campaign.ads.rule.save');
         Route::get('/ebay/campaign-ads/dil-rule', 'getDilRule')->name('ebay.campaign.ads.dil.rule');
         Route::post('/ebay/campaign-ads/dil-rule', 'saveDilRule')->name('ebay.campaign.ads.dil.rule.save');
-        Route::post('/ebay/campaign-ads/push-sbid', 'pushSbid')->name('ebay.campaign.ads.push.sbid');
         Route::post('/ebay/campaign-ads/push-sbid-slabs', 'pushSbidSlabsBySku')->name('ebay.campaign.ads.push.sbid.slabs');
         Route::post('/ebay/campaign-ads/push-selected', 'pushSelected')->name('ebay.campaign.ads.push.selected');
         Route::get('/ebay/campaign-ads/campaigns', 'getCampaignList')->name('ebay.campaign.ads.campaigns');
@@ -6204,7 +6203,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/ebay2/campaign-ads/sbid-views-rule', 'saveSbidViewsRule')->name('ebay2.campaign.ads.sbid.views.rule.save');
         Route::get('/ebay2/campaign-ads/sbid-slab-rule', 'getSbidSlabRule')->name('ebay2.campaign.ads.sbid.slab.rule');
         Route::post('/ebay2/campaign-ads/sbid-slab-rule', 'saveSbidSlabRule')->name('ebay2.campaign.ads.sbid.slab.rule.save');
-        Route::post('/ebay2/campaign-ads/push-sbid', 'pushSbid')->name('ebay2.campaign.ads.push.sbid');
         Route::post('/ebay2/campaign-ads/push-sbid-slabs', 'pushSbidSlabsBySku')->name('ebay2.campaign.ads.push.sbid.slabs');
         Route::post('/ebay2/campaign-ads/push-selected', 'pushSelected')->name('ebay2.campaign.ads.push.selected');
         Route::get('/ebay2/campaign-ads/campaigns', 'getCampaignList')->name('ebay2.campaign.ads.campaigns');

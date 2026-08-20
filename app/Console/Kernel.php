@@ -84,7 +84,6 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\AutoUpdateAmazonFbaUnderKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaOverPtBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaUnderPtBids::class,
-        \App\Console\Commands\UpdateEbaySuggestedBid::class,
         \App\Console\Commands\UpdateStockMappingDaily::class,
         AmazonSpCampaignReports::class,
         AmazonSbCampaignReports::class,
@@ -744,22 +743,6 @@ class Kernel extends ConsoleKernel
             ->dailyAt('21:06')
             ->timezone('Asia/Kolkata')
             ->name('ebay3-utilized-bids')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('ebay:update-suggestedbid')
-            ->dailyAt('21:20')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay-suggestedbid')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('ebay2:update-suggestedbid')
-            ->dailyAt('21:23')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay2-suggestedbid')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);

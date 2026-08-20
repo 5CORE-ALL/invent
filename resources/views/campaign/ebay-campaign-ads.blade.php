@@ -24,9 +24,7 @@
             <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#dilRuleModal">
                 <i class="fas fa-tint me-1"></i>Dil Rule
             </button>
-            <button class="btn btn-sm btn-warning text-dark" id="push-sbid-btn" title="Run ebay:update-suggestedbid now">
-                <i class="fas fa-cloud-upload-alt me-1"></i>Push SBID
-            </button>
+            {{-- Push SBID cron removed — S Bid Autopush runs when a slab or 0-sold value changes. --}}
             <button class="btn btn-sm btn-outline-secondary" onclick="table.download('csv','ebay_campaign_ads.csv')">
                 <i class="fas fa-download me-1"></i>CSV
             </button>
@@ -124,7 +122,7 @@
 </div>
 
 {{-- Sbid Rule Modal — slab builder (CVR / Dil / Esold / Views L30 → S Bid).
-     Shared with /ebay-tabulator-view and the cron (ebay_sbid_rules.key = ebay1_sbid_slabs). --}}
+     Shared with /ebay-tabulator-view (ebay_sbid_rules.key = ebay1_sbid_slabs). Autopush on slab change. --}}
 <div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
     <style>
         #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
@@ -175,7 +173,7 @@
                     <i class="fas fa-info-circle me-1"></i>
                     Rules are evaluated <strong>top to bottom</strong> — the first rule where all filled ranges
                     match a row sets that row's <strong>S Bid</strong>. Leave a Min/Max blank to ignore it.
-                    Shared with <code>/ebay-tabulator-view</code> and applied by <strong>ebay:update-suggestedbid</strong>.
+                    Shared with <code>/ebay-tabulator-view</code>. Autopush runs when a slab or 0-sold value changes.
                 </div>
                 <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
             </div>
@@ -184,8 +182,8 @@
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-success" id="sbid-slab-apply-btn"
-                            title="Push each visible row's computed S Bid to its eBay campaign">
-                        <i class="fas fa-bolt me-1"></i>Push to Ebay
+                            title="Autopush is on. Changing a slab saves the rule and pushes the new S Bid to eBay.">
+                        <i class="fas fa-bolt me-1"></i>Autopush
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" id="sbid-slab-rule-save-btn">
                         <i class="fas fa-save me-1"></i>Save Rule
@@ -729,7 +727,6 @@ function resolveBandBid(band, ctx) {
 }
 
 // ── SBID Rule (editor removed; the S Bid column still uses this rule) ──
-const pushSbidUrl = '/ebay/campaign-ads/push-sbid';
 let currentRule = @json($sbidRule ?? ['bands' => []]);
 // Normalize bands (ensure scvr_min/scvr_max) so the S Bid column resolves correctly.
 if (currentRule && typeof currentRule === 'object') {
@@ -765,32 +762,6 @@ function normalizeSbidBands(bands) {
     });
     return arr;
 }
-
-// Push SBID button
-document.getElementById('push-sbid-btn').addEventListener('click', function() {
-    if (!confirm('Run ebay:update-suggestedbid now?\nThis will push bids to eBay for all campaign listings.')) return;
-    const btn = this;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing…';
-
-    $.ajax({
-        url: pushSbidUrl,
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-        timeout: 300000,
-        success: function(resp) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-check me-1"></i>Done!';
-            alert('✅ Push complete!\n\n' + (resp.output || '').substring(0, 500));
-            setTimeout(() => btn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Push SBID', 3000);
-        },
-        error: function(xhr) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Push SBID';
-            alert('Error: ' + (xhr.responseJSON?.error || xhr.responseText));
-        }
-    });
-});
 
 // ── Dilution Rule ───────────────────────────────────
 // DIL = (L30 sold / Inventory) × 100. Bands evaluated top-to-bottom, first DIL ≤ max wins.
@@ -854,7 +825,7 @@ function esBidResult(esBidRaw) {
 }
 
 // S Bid is driven by the Sbid Rule slabs (CVR / Dil / Esold / Views L30 → S Bid),
-// shared with /ebay-tabulator-view and the ebay:update-suggestedbid cron.
+// shared with /ebay-tabulator-view. Autopush runs when a slab changes.
 let currentSbidSlabs = [];
 
 function sbidSlabInRange(val, min, max) {
@@ -984,17 +955,20 @@ function sbidSlabUpdate(el) {
         cascadeSbidFromFirstRow(currentSbidSlabs);
         renderSbidSlabRules(currentSbidSlabs);
         if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+        scheduleEbay1SbidAutopush();
         return;
     }
     if (field === 'l7_views_min' || field === 'l7_views_max') {
         renderSbidSlabRules(currentSbidSlabs);
         if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
     }
+    scheduleEbay1SbidAutopush();
 }
 
 function sbidSlabRemove(idx) {
     currentSbidSlabs.splice(idx, 1);
     renderSbidSlabRules(currentSbidSlabs);
+    scheduleEbay1SbidAutopush();
 }
 
 document.getElementById('sbid-slab-add-rule-btn').addEventListener('click', function() {
@@ -1004,19 +978,80 @@ document.getElementById('sbid-slab-add-rule-btn').addEventListener('click', func
     });
     cascadeSbidFromFirstRow(currentSbidSlabs);
     renderSbidSlabRules(currentSbidSlabs);
+    scheduleEbay1SbidAutopush();
 });
 
 document.getElementById('sbidRuleModal').addEventListener('show.bs.modal', function() {
     renderSbidSlabRules(currentSbidSlabs);
 });
 
-document.getElementById('sbid-slab-rule-save-btn').addEventListener('click', function() {
+let ebay1SbidAutopushTimer = null;
+let ebay1SbidAutopushBusy = false;
+
+function setEbay1AutopushLabel(html) {
+    const btn = document.getElementById('sbid-slab-apply-btn');
+    if (btn) btn.innerHTML = html;
+}
+
+function collectEbay1AutopushSkus() {
+    const skus = [];
+    if (typeof table === 'undefined' || !table) return skus;
+    table.getRows('active').forEach(function(r) {
+        const rd = r.getData();
+        const sku = rd.resolved_sku;
+        if (!sku) return;
+        const res = getCombinedSbid(rd);
+        if (res && !res.skip && res.bid > 0) skus.push(sku);
+    });
+    return skus;
+}
+
+function autoPushEbay1Sbid() {
+    const statusEl = document.getElementById('sbid-slab-rule-status');
     const errEl = document.getElementById('sbid-slab-rule-err');
-    errEl.classList.add('d-none');
-    const btn = this;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+    if (errEl) errEl.classList.add('d-none');
+    if (!currentSbidSlabs.length) return;
+    const skus = collectEbay1AutopushSkus();
+    if (!skus.length) {
+        if (statusEl) statusEl.textContent = 'Autopush: no listings match a slab.';
+        return;
+    }
+    if (ebay1SbidAutopushBusy) return;
+    ebay1SbidAutopushBusy = true;
+    setEbay1AutopushLabel('<i class="fas fa-spinner fa-spin me-1"></i>Pushing…');
+    if (statusEl) statusEl.textContent = 'Autopush: ' + skus.length + ' listing(s)…';
+    $.ajax({
+        url: sbidSlabApplyUrl,
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+        contentType: 'application/json',
+        data: JSON.stringify({ skus: skus }),
+        success: function(resp) {
+            ebay1SbidAutopushBusy = false;
+            setEbay1AutopushLabel('<i class="fas fa-bolt me-1"></i>Autopush');
+            const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
+            if (statusEl) statusEl.textContent = 'Autopush: ' + s + ' pushed · ' + f + ' failed · ' + sk + ' skipped';
+        },
+        error: function(xhr) {
+            ebay1SbidAutopushBusy = false;
+            setEbay1AutopushLabel('<i class="fas fa-bolt me-1"></i>Autopush');
+            if (errEl) {
+                errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
+                errEl.classList.remove('d-none');
+            }
+        }
+    });
+}
+
+function saveEbay1SbidRules(thenPush) {
+    const errEl = document.getElementById('sbid-slab-rule-err');
+    if (errEl) errEl.classList.add('d-none');
+    const btn = document.getElementById('sbid-slab-rule-save-btn');
     const csrf = $('meta[name="csrf-token"]').attr('content') || '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+    }
     $.ajax({
         url: sbidSlabSaveUrl,
         method: 'POST',
@@ -1028,77 +1063,37 @@ document.getElementById('sbid-slab-rule-save-btn').addEventListener('click', fun
         contentType: 'application/json',
         data: JSON.stringify({ rules: currentSbidSlabs || [], _token: csrf }),
         success: function(resp) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+                setTimeout(function() { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);
+            }
             if (resp.rule && Array.isArray(resp.rule.rules)) currentSbidSlabs = resp.rule.rules;
             if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
-            setTimeout(() => { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);
+            if (thenPush) autoPushEbay1Sbid();
         },
         error: function(xhr) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
-            errEl.textContent = 'Error: ' + ((xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || xhr.responseText);
-            errEl.classList.remove('d-none');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
+            }
+            if (errEl) {
+                errEl.textContent = 'Error: ' + ((xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || xhr.responseText);
+                errEl.classList.remove('d-none');
+            }
         }
     });
-});
+}
 
-document.getElementById('sbid-slab-apply-btn').addEventListener('click', function() {
-    const btn = this;
-    const statusEl = document.getElementById('sbid-slab-rule-status');
-    const errEl = document.getElementById('sbid-slab-rule-err');
-    errEl.classList.add('d-none');
+function scheduleEbay1SbidAutopush() {
+    clearTimeout(ebay1SbidAutopushTimer);
+    ebay1SbidAutopushTimer = setTimeout(function() {
+        saveEbay1SbidRules(true);
+    }, 800);
+}
 
-    if (!currentSbidSlabs.length) {
-        errEl.textContent = 'Add at least one rule before applying.';
-        errEl.classList.remove('d-none');
-        return;
-    }
-    if (typeof table === 'undefined' || !table) {
-        errEl.textContent = 'Table not ready yet.';
-        errEl.classList.remove('d-none');
-        return;
-    }
-
-    const skus = [];
-    table.getRows('active').forEach(function(r) {
-        const rd = r.getData();
-        const sku = rd.resolved_sku;
-        if (!sku) return;
-        const res = getCombinedSbid(rd);
-        if (res && !res.skip && res.bid > 0) skus.push(sku);
-    });
-
-    if (!skus.length) {
-        errEl.textContent = 'No visible rows match a slab with a valid S Bid.';
-        errEl.classList.remove('d-none');
-        return;
-    }
-    if (!confirm(`Push S Bid to eBay for ${skus.length} visible listing(s)?`)) return;
-
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
-    if (statusEl) statusEl.textContent = `Pushing ${skus.length}…`;
-
-    $.ajax({
-        url: sbidSlabApplyUrl,
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-        contentType: 'application/json',
-        data: JSON.stringify({ skus: skus }),
-        success: function(resp) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
-            const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
-            if (statusEl) statusEl.textContent = `Pushed: ${s} · Failed: ${f} · Skipped: ${sk}`;
-        },
-        error: function(xhr) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
-            errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
-            errEl.classList.remove('d-none');
-        }
-    });
+document.getElementById('sbid-slab-rule-save-btn').addEventListener('click', function() {
+    saveEbay1SbidRules(true);
 });
 
 function renderDilBands(bands) {

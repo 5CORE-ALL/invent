@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Cache;
  * and inserts every listing into ebay_campaign_ads (inventory_db).
  *
  * NO product_master matching — just raw insert of all ad listings.
- * Runs daily at 20:30 IST; ebay:update-suggestedbid follows at 21:20 IST.
+ * Runs daily at 20:30 IST. eBay 1 S Bid Autopush runs when a slab or 0-sold value changes.
  */
 class SyncEbayCampaignListings extends Command
 {

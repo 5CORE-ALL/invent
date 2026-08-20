@@ -584,7 +584,7 @@
                     <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item"
                             data-bs-toggle="modal" data-bs-target="#sbidRuleModal"
                             title="eBay 2 Sbid Rule — For L7 Views that set the S Bid (Parents Only)">
-                        <i class="fas fa-sliders-h me-1"></i>Sbid Rule
+                        <i class="fas fa-sliders-h me-1"></i>Sbid Rule <span id="sbid-rule-btn-count"></span>
                     </button>
 
                     {{-- Sbid (Views) — same as /ebay2/campaign-ads --}}
@@ -675,7 +675,6 @@
                             title="Red triangle: S PRC &gt; LMP. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
-                        <span class="badge bg-primary d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
                         
                     </div>
                 </div>
@@ -1000,8 +999,8 @@
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                         <button type="button" class="btn btn-sm btn-success" id="sbid-slab-apply-btn"
-                                title="Push each visible row's computed S Bid to its eBay 2 campaign">
-                            <i class="fas fa-bolt me-1"></i>Push to Ebay
+                                title="Autopush is on. Changing a slab or the 0-sold (ES Bid) value saves the rule and pushes the new S Bid to eBay.">
+                            <i class="fas fa-bolt me-1"></i>Autopush
                         </button>
                         <button type="button" class="btn btn-sm btn-primary" id="sbid-slab-rule-save-btn">
                             <i class="fas fa-save me-1"></i>Save Rule
@@ -1026,7 +1025,7 @@
                     <p class="text-muted small mb-3">
                         The <strong>S BID</strong> column adjusts each row's current <strong>C BID</strong> once per day based on
                         its <strong>L7 View</strong> colour (green = keep C Bid), then clamps the result between the Min and Max caps.
-                        Same rule as <code>/ebay2/campaign-ads</code> and <code>ebay2:update-suggestedbid</code>.
+                        Same rule as <code>/ebay2/campaign-ads</code>. S Bid Autopush runs when a slab or 0-sold (ES Bid) value changes.
                     </p>
 
                     <div class="row g-3 mb-3">
@@ -1534,8 +1533,8 @@
         }
         function isEbay2TabulatorParentRow(data) {
             if (!data) return false;
-            if (data.is_parent_summary === true || data.is_parent_row === true) return true;
-            const sku = String(data['(Child) sku'] || '').toUpperCase();
+            if (data.is_parent_summary || data.is_parent_row) return true;
+            const sku = String(data['(Child) sku'] || data.sku || '').toUpperCase();
             if (sku.includes('PARENT')) return true;
             const p = data.Parent;
             return !!(p && String(p).toUpperCase().startsWith('PARENT'));
@@ -2075,30 +2074,60 @@
                                    onchange="window.sbidSlabUpdate(this)" placeholder="—"${locked}${maxTitle}></td>`;
                 }
 
-                function getSbidSlabParentRows() {
+                function ebay2RowEl30(d) {
+                    if (!d) return 0;
+                    return parseFloat(d['eBay L30'] != null ? d['eBay L30'] : (d.ebay_l30 != null ? d.ebay_l30 : d.EL30)) || 0;
+                }
+                function ebay2RowL7(d) {
+                    if (!d) return 0;
+                    return parseFloat(d.l7_views != null ? d.l7_views : d['L7 Views']) || 0;
+                }
+                function getAllEbay2CountRows() {
+                    try {
+                        if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) {
+                            return allTableData;
+                        }
+                    } catch (e) { /* allTableData may still be in TDZ during first paint */ }
                     if (typeof table === 'undefined' || !table) return [];
                     try {
-                        const rows = table.getData('active') || table.getData() || [];
-                        return rows.filter(function(d) {
-                            return typeof isEbay2TabulatorParentRow === 'function'
-                                ? isEbay2TabulatorParentRow(d)
-                                : !!(d && (d.is_parent_row || d.is_parent_summary));
-                        });
+                        const fromRows = (typeof table.getRows === 'function')
+                            ? (table.getRows('active') || []).map(function(r) {
+                                return (r && typeof r.getData === 'function') ? r.getData() : r;
+                            })
+                            : [];
+                        if (fromRows.length) return fromRows;
+                        return table.getData('active') || table.getData() || [];
                     } catch (e) {
                         return [];
                     }
                 }
+                function isEbay2CountParent(d) {
+                    return typeof isEbay2TabulatorParentRow === 'function'
+                        ? isEbay2TabulatorParentRow(d)
+                        : !!(d && (d.is_parent_row || d.is_parent_summary));
+                }
+                function getSbidSlabCountRows() {
+                    const all = getAllEbay2CountRows();
+                    const parents = all.filter(isEbay2CountParent);
+                    const skus = all.filter(function(d) { return !isEbay2CountParent(d); });
+                    const parentsWithSold = parents.filter(function(d) { return ebay2RowEl30(d) > 0; });
+                    // Parents Only when family EL30 is present; otherwise listing SKUs
+                    // (parent aggregates can be 0 while child L7 / EL30 are not).
+                    if (parentsWithSold.length) return parents;
+                    if (skus.length) return skus;
+                    return parents.length ? parents : all;
+                }
 
-                function countRowsBySlab(rules) {
+                function tallySbidSlabRows(rules, rowList) {
                     const counts = rules.map(function() { return 0; });
                     let esCount = 0;
-                    getSbidSlabParentRows().forEach(function(d) {
-                        const el30 = parseFloat(d['eBay L30']) || 0;
+                    (rowList || []).forEach(function(d) {
+                        const el30 = ebay2RowEl30(d);
                         if (el30 <= 0) {
                             esCount++;
                             return;
                         }
-                        const l7 = parseFloat(d.l7_views) || 0;
+                        const l7 = ebay2RowL7(d);
                         for (let i = 0; i < rules.length; i++) {
                             const r = rules[i];
                             if (sbidSlabInRange(l7, r.l7_views_min, r.l7_views_max)) {
@@ -2107,9 +2136,29 @@
                             }
                         }
                     });
+                    return { counts: counts, esCount: esCount };
+                }
+
+                function countRowsBySlab(rules) {
+                    let result = tallySbidSlabRows(rules, getSbidSlabCountRows());
+                    let slabTotal = result.counts.reduce(function(a, b) { return a + b; }, 0);
+                    if (slabTotal === 0) {
+                        const skus = getAllEbay2CountRows().filter(function(d) {
+                            return !isEbay2CountParent(d);
+                        });
+                        if (skus.length) {
+                            result = tallySbidSlabRows(rules, skus);
+                            slabTotal = result.counts.reduce(function(a, b) { return a + b; }, 0);
+                        }
+                    }
                     const esCountEl = document.getElementById('sbid-es-bid-count');
-                    if (esCountEl) esCountEl.textContent = esCount ? '(' + esCount + ' SKUs)' : '';
-                    return counts;
+                    if (esCountEl) esCountEl.textContent = result.esCount ? '(' + result.esCount + ' SKUs)' : '';
+                    const btnCount = document.getElementById('sbid-rule-btn-count');
+                    if (btnCount) {
+                        const shown = slabTotal + (result.esCount || 0);
+                        btnCount.textContent = shown ? '(' + shown.toLocaleString() + ')' : '';
+                    }
+                    return result.counts;
                 }
 
                 function renderSbidSlabRules(rules) {
@@ -2175,18 +2224,21 @@
                         cascadeSbidFromFirstRow(currentSbidSlabRules);
                         renderSbidSlabRules(currentSbidSlabRules);
                         if (table) table.redraw(true);
+                        scheduleEbay2SbidAutopush();
                         return;
                     }
                     if (field === 'l7_views_min' || field === 'l7_views_max') {
                         renderSbidSlabRules(currentSbidSlabRules);
                     }
                     if (table) table.redraw(true);
+                    scheduleEbay2SbidAutopush();
                 };
 
                 window.sbidSlabRemove = function(idx) {
                     currentSbidSlabRules.splice(idx, 1);
                     renderSbidSlabRules(currentSbidSlabRules);
                     if (table) table.redraw(true);
+                    scheduleEbay2SbidAutopush();
                 };
 
                 $(document).on('click', '#sbid-slab-add-rule-btn', function() {
@@ -2195,6 +2247,7 @@
                     });
                     cascadeSbidFromFirstRow(currentSbidSlabRules);
                     renderSbidSlabRules(currentSbidSlabRules);
+                    scheduleEbay2SbidAutopush();
                 });
 
                 function loadSbidSlabRules() {
@@ -2216,27 +2269,88 @@
                     });
                 }
 
-                $(document).on('input change', '#sbid-es-bid-input', function() {
-                    currentSbidEsBid = readEsBidInput();
-                    if (table) table.redraw(true);
-                });
+                let ebay2SbidAutopushTimer = null;
+                let ebay2SbidAutopushBusy = false;
 
-                const sbidModalEl = document.getElementById('sbidRuleModal');
-                if (sbidModalEl) {
-                    sbidModalEl.addEventListener('show.bs.modal', function() {
-                        writeEsBidInput(currentSbidEsBid);
-                        renderSbidSlabRules(currentSbidSlabRules);
+                function setEbay2AutopushLabel(html) {
+                    const btn = document.getElementById('sbid-slab-apply-btn');
+                    if (btn) btn.innerHTML = html;
+                }
+
+                function collectEbay2AutopushSkus() {
+                    const skus = [];
+                    getSbidSlabCountRows().forEach(function(rd) {
+                        const sku = rd['(Child) sku'] || rd.sku;
+                        if (!sku) return;
+                        const res = getCombinedSbid(rd);
+                        if (res && !res.skip && res.bid > 0) skus.push(sku);
+                    });
+                    return skus;
+                }
+
+                function autoPushEbay2Sbid() {
+                    const statusEl = document.getElementById('sbid-slab-rule-status');
+                    const errEl = document.getElementById('sbid-slab-rule-err');
+                    if (errEl) errEl.classList.add('d-none');
+                    if (!currentSbidSlabRules.length) return;
+                    const skus = collectEbay2AutopushSkus();
+                    if (!skus.length) {
+                        if (statusEl) statusEl.textContent = 'Autopush: no listings match a slab or 0-sold ES Bid.';
+                        return;
+                    }
+                    if (ebay2SbidAutopushBusy) return;
+                    ebay2SbidAutopushBusy = true;
+                    setEbay2AutopushLabel('<i class="fas fa-spinner fa-spin me-1"></i>Pushing…');
+                    if (statusEl) statusEl.textContent = 'Autopush: ' + skus.length + ' listing(s)…';
+                    $.ajax({
+                        url: applyUrl,
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        contentType: 'application/json',
+                        data: JSON.stringify({ skus: skus }),
+                        success: function(resp) {
+                            ebay2SbidAutopushBusy = false;
+                            setEbay2AutopushLabel('<i class="fas fa-bolt me-1"></i>Autopush');
+                            const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
+                            if (statusEl) statusEl.textContent = 'Autopush: ' + s + ' pushed · ' + f + ' failed · ' + sk + ' skipped';
+                            if (typeof showToast === 'function') {
+                                if (f === 0) showToast('Autopush: S Bid sent for ' + s + ' listing(s)', 'success');
+                                else showToast('Autopush: ' + s + ' pushed, ' + f + ' failed', 'error');
+                            }
+                        },
+                        error: function(xhr) {
+                            ebay2SbidAutopushBusy = false;
+                            setEbay2AutopushLabel('<i class="fas fa-bolt me-1"></i>Autopush');
+                            const msg = (xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText || 'Autopush failed';
+                            if (errEl) {
+                                errEl.textContent = msg;
+                                errEl.classList.remove('d-none');
+                            }
+                        }
                     });
                 }
 
-                $('#sbid-slab-rule-save-btn').on('click', function() {
-                    const errEl = document.getElementById('sbid-slab-rule-err');
-                    errEl.classList.add('d-none');
-                    const btn = this;
-                    btn.disabled = true;
-                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+                function applySavedEbay2SbidRule(resp) {
+                    if (resp && resp.rule && Array.isArray(resp.rule.rules)) currentSbidSlabRules = resp.rule.rules;
+                    if (resp && resp.rule && resp.rule.es_bid != null) {
+                        currentSbidEsBid = parseFloat(resp.rule.es_bid);
+                        if (!isFinite(currentSbidEsBid) || currentSbidEsBid <= 0) currentSbidEsBid = null;
+                    } else {
+                        currentSbidEsBid = readEsBidInput();
+                    }
+                    writeEsBidInput(currentSbidEsBid);
+                    if (table) table.redraw(true);
+                }
 
+                function saveEbay2SbidRules(thenPush) {
+                    const errEl = document.getElementById('sbid-slab-rule-err');
+                    if (errEl) errEl.classList.add('d-none');
+                    const btn = document.getElementById('sbid-slab-rule-save-btn');
                     const csrf = $('meta[name="csrf-token"]').attr('content') || '';
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+                    }
                     $.ajax({
                         url: saveUrl,
                         method: 'POST',
@@ -2259,94 +2373,59 @@
                             _token: csrf
                         }),
                         success: function(resp) {
-                            btn.disabled = false;
-                            btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
-                            if (resp.rule && Array.isArray(resp.rule.rules)) currentSbidSlabRules = resp.rule.rules;
-                            if (resp.rule && resp.rule.es_bid != null) {
-                                currentSbidEsBid = parseFloat(resp.rule.es_bid);
-                                if (!isFinite(currentSbidEsBid) || currentSbidEsBid <= 0) currentSbidEsBid = null;
-                            } else {
-                                currentSbidEsBid = readEsBidInput();
+                            if (btn) {
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+                                setTimeout(function() { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);
                             }
-                            writeEsBidInput(currentSbidEsBid);
-                            if (table) table.redraw(true);
-                            if (typeof showToast === 'function') showToast('Sbid Rule saved', 'success');
-                            setTimeout(() => { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);
+                            applySavedEbay2SbidRule(resp);
+                            if (thenPush) autoPushEbay2Sbid();
                         },
                         error: function(xhr) {
-                            btn.disabled = false;
-                            btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
+                            if (btn) {
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
+                            }
                             const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
                                 || xhr.responseText
                                 || ('HTTP ' + xhr.status);
-                            errEl.textContent = 'Error: ' + msg;
-                            errEl.classList.remove('d-none');
+                            if (errEl) {
+                                errEl.textContent = 'Error: ' + msg;
+                                errEl.classList.remove('d-none');
+                            }
                         }
                     });
+                }
+
+                function scheduleEbay2SbidAutopush() {
+                    clearTimeout(ebay2SbidAutopushTimer);
+                    ebay2SbidAutopushTimer = setTimeout(function() {
+                        saveEbay2SbidRules(true);
+                    }, 800);
+                }
+
+                $(document).on('input change', '#sbid-es-bid-input', function() {
+                    currentSbidEsBid = readEsBidInput();
+                    if (table) table.redraw(true);
+                    scheduleEbay2SbidAutopush();
                 });
 
-                $('#sbid-slab-apply-btn').on('click', function() {
-                    const btn = this;
-                    const statusEl = document.getElementById('sbid-slab-rule-status');
-                    const errEl = document.getElementById('sbid-slab-rule-err');
-                    errEl.classList.add('d-none');
-
-                    if (!currentSbidSlabRules.length) {
-                        errEl.textContent = 'Add at least one rule before applying.';
-                        errEl.classList.remove('d-none');
-                        return;
-                    }
-                    if (typeof table === 'undefined' || !table) {
-                        errEl.textContent = 'Table not ready yet.';
-                        errEl.classList.remove('d-none');
-                        return;
-                    }
-
-                    const skus = [];
-                    table.getRows('active').forEach(function(r) {
-                        const rd = r.getData();
-                        const sku = rd['(Child) sku'];
-                        if (!sku) return;
-                        if (typeof isEbay2TabulatorParentRow === 'function' && !isEbay2TabulatorParentRow(rd)) return;
-                        const res = getCombinedSbid(rd);
-                        if (res && !res.skip && res.bid > 0) skus.push(sku);
+                const sbidModalEl = document.getElementById('sbidRuleModal');
+                if (sbidModalEl) {
+                    sbidModalEl.addEventListener('show.bs.modal', function() {
+                        writeEsBidInput(currentSbidEsBid);
+                        renderSbidSlabRules(currentSbidSlabRules);
                     });
+                }
 
-                    if (!skus.length) {
-                        errEl.textContent = 'No visible parent rows match a slab with a valid S Bid.';
-                        errEl.classList.remove('d-none');
-                        return;
+                $('#sbid-slab-rule-save-btn').on('click', function() {
+                    saveEbay2SbidRules(true);
+                });
+
+                $(document).on('ebay2-tabulator-data-loaded', function() {
+                    if (currentSbidSlabRules && currentSbidSlabRules.length) {
+                        renderSbidSlabRules(currentSbidSlabRules);
                     }
-
-                    if (!confirm(`Push S Bid to eBay for ${skus.length} visible parent(s)?`)) return;
-
-                    btn.disabled = true;
-                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
-                    if (statusEl) statusEl.textContent = `Pushing ${skus.length} parent(s)…`;
-
-                    $.ajax({
-                        url: applyUrl,
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                        contentType: 'application/json',
-                        data: JSON.stringify({ skus: skus }),
-                        success: function(resp) {
-                            btn.disabled = false;
-                            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
-                            const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
-                            if (statusEl) statusEl.textContent = `Pushed: ${s} · Failed: ${f} · Skipped: ${sk}`;
-                            if (typeof showToast === 'function') {
-                                if (f === 0) showToast(`S Bid pushed to eBay for ${s} listing(s)`, 'success');
-                                else showToast(`Pushed ${s}, ${f} failed, ${sk} skipped`, 'error');
-                            }
-                        },
-                        error: function(xhr) {
-                            btn.disabled = false;
-                            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
-                            errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
-                            errEl.classList.remove('d-none');
-                        }
-                    });
                 });
 
                 loadSbidSlabRules();
@@ -4683,7 +4762,6 @@
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
                 let totalLpAmt = 0;
-                let totalFbaInv = 0;
                 let totalFbaL30 = 0;
                 let zeroSoldCount = 0;
                 let moreSoldCount = 0;
@@ -4696,7 +4774,6 @@
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * ebayL30;
-                        totalFbaInv += estock;
                         totalFbaL30 += ebayL30;
 
                         // Count sold
@@ -4764,7 +4841,6 @@
                 $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#avg-l7-views-badge').text('L7: ' + avgL7Views.toFixed(1));
-                $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
 
                 let blueTriangleCount = 0;
                 let redTriangleCount = 0;
@@ -4986,6 +5062,7 @@
                 if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
                 updateCalcValues();
                 updateSummary();
+                $(document).trigger('ebay2-tabulator-data-loaded');
                 // Refresh checkboxes to reflect selectedSkus set (matching Amazon approach)
                 setTimeout(function() {
                     $('.sku-select-checkbox').each(function() {

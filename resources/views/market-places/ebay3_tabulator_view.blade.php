@@ -467,6 +467,14 @@
                         <span class="badge bg-warning ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Prc: $0.00</span>
                         <span class="badge bg-danger ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="CVR = (real-orders L30 units sold / Σ Views) × 100. Numerator is the orders-API L30 units (same source /ebay3/daily-sales uses), denominator is Σ views across rows with E Stock > 0. Click for trend.">CVR: 0%</span>
                         <span class="badge bg-info ebay3-badge-chart ebay3-hover-chart" id="total-views-badge" data-metric="total_views" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Views: 0</span>
+                        <span class="badge fs-6 p-2" id="ebay3-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="ebay3-red-triangle-badge"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Red triangle: Price &gt; LMP. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
                         <span class="badge bg-primary d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
                     </div>
@@ -1051,6 +1059,8 @@
     // Badge filter state variables
     let zeroSoldFilterActive = false;
     let moreSoldFilterActive = false;
+    let blueTriangleFilterActive = false;
+    let redTriangleFilterActive = false;
 
     /** Daily snapshot badge chart (amazon_channel_summary_data, channel=ebay3) */
     const ebay3BadgeMetricLabels = {
@@ -2165,6 +2175,59 @@
             return skuRows;
         }
 
+        function ebay3IsAlertParentRow(data) {
+            if (!data) return true;
+            if (data.is_parent_summary || data.is_parent_row || data.is_parent) return true;
+            return String(data['(Child) sku'] || '').toUpperCase().includes('PARENT');
+        }
+        function ebay3RowSpriceForAlert(data) {
+            let sprice = parseFloat(data && data.SPRICE) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function' && !ebay3IsAlertParentRow(data)) {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function ebay3HasBlueTriangle(data) {
+            if (ebay3IsAlertParentRow(data)) return false;
+            const sprice = ebay3RowSpriceForAlert(data);
+            const price = parseFloat(data['eBay Price']) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function ebay3HasRedTriangle(data) {
+            if (ebay3IsAlertParentRow(data)) return false;
+            const price = parseFloat(data['eBay Price']) || 0;
+            const lmp = parseFloat(data.lmp_price) || 0;
+            return price > 0 && lmp > 0 && price > lmp;
+        }
+        function syncEbay3TriangleBadgeState() {
+            $('#ebay3-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+            $('#ebay3-red-triangle-badge').css({
+                outline: redTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: redTriangleFilterActive ? '2px' : ''
+            });
+        }
+        function ebay3TriangleParentKeys(pred) {
+            const keys = {};
+            (ebay3GetBackendSkuRows() || []).forEach(function(d) {
+                if (!pred(d)) return;
+                const p = String(d.Parent || '').replace(/^PARENT\s+/i, '').trim().toUpperCase();
+                if (p) keys[p] = true;
+            });
+            return keys;
+        }
+        function ebay3TriangleFilterMatch(data, pred, parentKeys) {
+            if (ebay3IsAlertParentRow(data)) {
+                const key = String(data.Parent || String(data['(Child) sku'] || '').replace(/^PARENT\s+/i, ''))
+                    .replace(/^PARENT\s+/i, '').trim().toUpperCase();
+                return !!(key && parentKeys && parentKeys[key]);
+            }
+            return pred(data);
+        }
+
         /** Rows to show in Play: INV>0, not NR/REQ=NR; parent row only if INV>0 and not NR. */
         function ebay3BuildPlayDisplayData(parentRow) {
             if (!parentRow) return [];
@@ -2304,6 +2367,19 @@
             zeroSoldFilterActive = false;
             applyFilters();
             updateBadgeStyles();
+        });
+
+        $('#ebay3-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) redTriangleFilterActive = false;
+            applyFilters();
+            syncEbay3TriangleBadgeState();
+        });
+        $('#ebay3-red-triangle-badge').on('click', function() {
+            redTriangleFilterActive = !redTriangleFilterActive;
+            if (redTriangleFilterActive) blueTriangleFilterActive = false;
+            applyFilters();
+            syncEbay3TriangleBadgeState();
         });
 
         function updateBadgeStyles() {
@@ -3828,6 +3904,19 @@
                 });
             }
 
+            if (blueTriangleFilterActive) {
+                const blueParents = ebay3TriangleParentKeys(ebay3HasBlueTriangle);
+                table.addFilter(function(data) {
+                    return ebay3TriangleFilterMatch(data, ebay3HasBlueTriangle, blueParents);
+                });
+            }
+            if (redTriangleFilterActive) {
+                const redParents = ebay3TriangleParentKeys(ebay3HasRedTriangle);
+                table.addFilter(function(data) {
+                    return ebay3TriangleFilterMatch(data, ebay3HasRedTriangle, redParents);
+                });
+            }
+
             // Variation column state: default red; green = user-marked in this browser
             if (variationFilter === 'red') {
                 table.addFilter(function(data) {
@@ -4131,6 +4220,21 @@
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+
+            let blueTriangleCount = 0;
+            let redTriangleCount = 0;
+            data.forEach(function(row) {
+                if (ebay3HasBlueTriangle(row)) blueTriangleCount++;
+                if (ebay3HasRedTriangle(row)) redTriangleCount++;
+            });
+            $('#ebay3-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            $('#ebay3-red-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
+            );
+            syncEbay3TriangleBadgeState();
+
             $('#avg-l7-views-badge').text('L7: ' + avgL7Views.toFixed(1));
             $('#total-inv-badge').text('E Stock: ' + Math.round(totalEStockSum).toLocaleString());
 

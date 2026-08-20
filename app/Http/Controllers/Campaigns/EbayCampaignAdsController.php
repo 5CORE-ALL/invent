@@ -4,12 +4,10 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Campaigns\Concerns\ProvidesEbayCampaignAdsBadgeSummary;
 use App\Http\Controllers\Controller;
-use App\Services\CronMonitor\ManualActionService;
 use App\Services\EbayChannelMetricsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Artisan;
 
 class EbayCampaignAdsController extends Controller
 {
@@ -711,29 +709,6 @@ class EbayCampaignAdsController extends Controller
             || str_contains($m, 'is invalid')
             || str_contains($m, 'invalid or has ended')
             || str_contains($m, 'no longer active');
-    }
-
-    public function pushSbid(ManualActionService $manual)
-    {
-        try {
-            // Clear stuck lock + running cron markers so the UI button can always start a push.
-            $manual->unlock('ebay:update-suggestedbid');
-
-            $exitCode = Artisan::call('ebay:update-suggestedbid');
-            $output = Artisan::output();
-
-            if ($exitCode !== 0) {
-                return response()->json([
-                    'success' => false,
-                    'error' => trim($output) ?: 'Push failed.',
-                    'output' => $output,
-                ], 500);
-            }
-
-            return response()->json(['success' => true, 'output' => $output]);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
-        }
     }
 
     /** Parsed ebay1 SBID rule with defaults for missing keys. */
