@@ -25,6 +25,7 @@ class InactiveListingsController extends Controller
     public function masterData(Request $request)
     {
         try {
+            @set_time_limit(400);
             $data = collect(MappingChannelCounts::inactiveMasterRows(true))->values();
             $total = (int) $data->sum('inactive_listings');
             MappingChannelCounts::storeInactiveTotal($total);

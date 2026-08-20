@@ -45,15 +45,23 @@ final class AliexpressLiveListingsService
         }
 
         try {
-            return Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
-                return $this->fetchFromApi();
+            $rows = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
+                $fetched = $this->fetchFromApi();
+                self::persistListingStatuses($fetched);
+
+                return $fetched;
             });
+
+            return MarketplacePortalInactiveCount::applyToLiveRows('aliexpress', is_array($rows) ? $rows : []);
         } catch (\Throwable $e) {
             Log::warning('AliexpressLiveListingsService: cache unavailable, fetching uncached', [
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->fetchFromApi();
+            $fetched = $this->fetchFromApi();
+            self::persistListingStatuses($fetched);
+
+            return MarketplacePortalInactiveCount::applyToLiveRows('aliexpress', $fetched);
         }
     }
 
@@ -65,7 +73,7 @@ final class AliexpressLiveListingsService
         try {
             $cached = Cache::get(self::CACHE_KEY);
 
-            return is_array($cached) ? $cached : null;
+            return is_array($cached) ? MarketplacePortalInactiveCount::applyToLiveRows('aliexpress', $cached) : null;
         } catch (\Throwable $e) {
             return null;
         }
@@ -225,6 +233,66 @@ final class AliexpressLiveListingsService
         }
 
         return $out;
+    }
+
+    /**
+     * Store AliExpress product_status_type on aliexpress_metric so Inactive Listings
+     * can count offline/auditing without re-hitting the catalog API.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    public static function persistListingStatuses(array $rows): void
+    {
+        if ($rows === [] || ! Schema::hasTable('aliexpress_metric')) {
+            return;
+        }
+        if (! Schema::hasColumn('aliexpress_metric', 'listing_status')) {
+            try {
+                Schema::table('aliexpress_metric', function ($table) {
+                    $table->string('listing_status', 64)->nullable()->index();
+                });
+            } catch (\Throwable $e) {
+                Log::warning('AliexpressLiveListingsService: could not add listing_status', [
+                    'error' => $e->getMessage(),
+                ]);
+
+                return;
+            }
+        }
+
+        $bySku = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $state = strtolower(trim((string) ($row['state'] ?? '')));
+            if ($sku === '' || $state === '') {
+                continue;
+            }
+            $bySku[strtoupper($sku)] = [
+                'sku' => $sku,
+                'state' => $state,
+            ];
+        }
+        if ($bySku === []) {
+            return;
+        }
+
+        foreach (array_chunk($bySku, 200, true) as $chunk) {
+            foreach ($chunk as $data) {
+                try {
+                    AliexpressMetric::query()
+                        ->where(function ($q) use ($data) {
+                            $q->where('sku', $data['sku'])
+                                ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($data['sku'])]);
+                        })
+                        ->update(['listing_status' => $data['state']]);
+                } catch (\Throwable $e) {
+                    // continue
+                }
+            }
+        }
     }
 
     /**
