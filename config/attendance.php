@@ -77,7 +77,7 @@ return [
     /*
     | Desktop agent
     */
-    'agent_version' => '1.4.0',
+    'agent_version' => '1.4.1',
     'agent_installer_path' => env('ATTENDANCE_AGENT_INSTALLER_PATH'),
     'agent_download_filename' => env('ATTENDANCE_AGENT_DOWNLOAD_FILENAME', '5Core-Attendance-Setup.exe'),
     'screenshots_enabled' => env('ATTENDANCE_SCREENSHOTS_ENABLED', true),
@@ -88,7 +88,7 @@ return [
     'screenshot_disk' => 'attendance',
     'require_desktop_agent' => env('ATTENDANCE_REQUIRE_DESKTOP_AGENT', true),
     'live_watch_enabled' => env('ATTENDANCE_LIVE_WATCH_ENABLED', true),
-    'live_fps' => (int) env('ATTENDANCE_LIVE_FPS', 2),
+    'live_fps' => (int) env('ATTENDANCE_LIVE_FPS', 5),
     'live_quality' => (int) env('ATTENDANCE_LIVE_QUALITY', 55),
     'live_viewer_timeout_seconds' => (int) env('ATTENDANCE_LIVE_VIEWER_TIMEOUT', 20),
     'live_recording_max_kb' => (int) env('ATTENDANCE_LIVE_RECORDING_MAX_KB', 204800),

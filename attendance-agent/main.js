@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.4.0';
+const AGENT_VERSION = '1.4.1';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
 let lastUpdatePayload = null;
@@ -67,7 +67,7 @@ let uiTickTimer = null;
 let liveWatchTimer = null;
 let liveStreaming = false;
 let liveStreamBusy = false;
-let liveFrameDelayMs = 450;
+let liveFrameDelayMs = 200;
 let lastLive = { title: '', process: '', app: '' };
 let lastKnownWindow = { title: '', process: '' };
 let lastSessionStats = { active_seconds: 0, idle_seconds: 0, break_seconds: 0 };
@@ -127,7 +127,7 @@ let config = {
     idle_prompt_timeout_seconds: 60,
     screenshots_enabled: true,
     live_watch_enabled: true,
-    live_fps: 2,
+    live_fps: 5,
     live_quality: 55,
     agent_version: AGENT_VERSION,
     download_page_url: '',
@@ -288,7 +288,7 @@ function applyLiveWatch(liveWatch) {
         return;
     }
     if (!liveWatch) return;
-    const fps = Math.max(1, Math.min(5, Number(liveWatch.fps || config.live_fps) || 2));
+    const fps = Math.max(1, Math.min(8, Number(liveWatch.fps || config.live_fps) || 5));
     liveFrameDelayMs = Math.round(1000 / fps);
     if (liveWatch.quality) {
         config.live_quality = liveWatch.quality;
@@ -298,6 +298,10 @@ function applyLiveWatch(liveWatch) {
         liveStreaming = true;
         sendLiveFrame().catch(() => {});
         sendScreenshot().catch(() => {});
+        restartScreenshotTimer(1000);
+    } else if (!requested && liveStreaming) {
+        liveStreaming = false;
+        restartScreenshotTimer();
     } else if (!requested) {
         liveStreaming = false;
     }
@@ -337,9 +341,16 @@ async function sendLiveFrame() {
     }
 }
 
+function restartScreenshotTimer(ms) {
+    if (screenshotTimer) { clearInterval(screenshotTimer); screenshotTimer = null; }
+    if (!lastSessionMeta || lastSessionMeta.status !== 'active') return;
+    const interval = ms || Math.max(1000, (Number(config.screenshot_interval_seconds) || 120) * 1000);
+    screenshotTimer = setInterval(() => { sendScreenshot().catch(() => {}); }, interval);
+}
+
 function startLiveWatchPoll() {
     if (liveWatchTimer) return;
-    liveWatchTimer = setInterval(() => { pollLiveCommand().catch(() => {}); }, 2000);
+    liveWatchTimer = setInterval(() => { pollLiveCommand().catch(() => {}); }, 1000);
     pollLiveCommand().catch(() => {});
 }
 
@@ -668,6 +679,7 @@ async function sendHeartbeat(force = false) {
             });
 
             mergeServerStats(data);
+            if (data.config) config = { ...config, ...data.config };
             applyLiveWatch(data.live_watch);
             if (data.agent_update) {
                 applyAgentUpdateInfo(data.agent_update);
@@ -756,17 +768,16 @@ function startTracking() {
     refreshConfig().catch(() => {});
 
     const hb = (config.heartbeat_interval_seconds || 15) * 1000;
-    const ss = (config.screenshot_interval_seconds || 120) * 1000;
 
     pollActiveWindow().catch(() => {});
     windowPollTimer = setInterval(() => { pollActiveWindow().catch(() => {}); }, 3000);
     heartbeatTimer = setInterval(() => { sendHeartbeat().catch(() => {}); }, hb);
-    screenshotTimer = setInterval(() => { sendScreenshot().catch(() => {}); }, ss);
+    restartScreenshotTimer(liveStreaming ? 1000 : undefined);
     idleCheckTimer = setInterval(checkIdleState, 2000);
     uiTickTimer = setInterval(tickLocalStats, 1000);
 
     setTimeout(() => { sendHeartbeat(true).catch(() => {}); }, 1500);
-    setTimeout(() => { sendScreenshot().catch(() => {}); }, 5000);
+    setTimeout(() => { sendScreenshot().catch(() => {}); }, 800);
 
     updateTrayTooltip('Tracking active');
 }

@@ -439,6 +439,8 @@ class AttendanceAgentController extends Controller
             'agent_version' => $validated['agent_version'] ?? $device?->agent_version,
         ]));
 
+        $result['config'] = $this->agentConfig($request->user());
+
         return response()->json(
             $this->withLiveWatch($result, $request->user()),
             ($result['ok'] ?? false) ? 200 : 422
@@ -459,14 +461,20 @@ class AttendanceAgentController extends Controller
         $maxKb = max(512, (int) config('attendance.screenshot_max_kb', 5120));
 
         $request->validate([
-            'frame' => 'required|image|max:'.$maxKb,
+            'frame' => 'nullable|file|max:'.$maxKb,
+            'screenshot' => 'nullable|file|max:'.$maxKb,
             'window_title' => 'nullable|string|max:500',
             'app_name' => 'nullable|string|max:200',
         ]);
 
+        $file = $request->file('frame') ?: $request->file('screenshot');
+        if (! $file) {
+            return response()->json(['ok' => false, 'message' => 'frame required'], 422);
+        }
+
         $accepted = $this->liveWatchService->storeFrame(
             $user,
-            $request->file('frame'),
+            $file,
             [
                 'window_title' => $request->input('window_title'),
                 'app_name' => $request->input('app_name'),
@@ -491,16 +499,36 @@ class AttendanceAgentController extends Controller
         }
 
         $request->validate([
-            'screenshot' => 'required|image|max:'.((int) config('attendance.screenshot_max_kb', 5120)),
+            'screenshot' => 'required|file|max:'.((int) config('attendance.screenshot_max_kb', 5120)),
             'window_title' => 'nullable|string|max:500',
             'app_name' => 'nullable|string|max:200',
             'idle_seconds' => 'nullable|integer|min:0',
         ]);
 
+        $file = $request->file('screenshot');
+        if ($this->liveWatchService->isWatchRequested($user->id)) {
+            $this->liveWatchService->storeFrame($user, $file, [
+                'window_title' => $request->input('window_title'),
+                'app_name' => $request->input('app_name'),
+            ]);
+
+            $recent = \App\Models\AttendanceScreenshot::query()
+                ->where('user_id', $user->id)
+                ->where('captured_at', '>=', now()->subSeconds(90))
+                ->exists();
+            if ($recent) {
+                return response()->json($this->withLiveWatch([
+                    'ok' => true,
+                    'live' => true,
+                    'captured_at' => now()->toIso8601String(),
+                ], $user));
+            }
+        }
+
         $shot = $this->screenshotService->store(
             $user,
             $session,
-            $request->file('screenshot'),
+            $file,
             $device,
             [
                 'window_title' => $request->input('window_title'),
@@ -508,10 +536,6 @@ class AttendanceAgentController extends Controller
                 'idle_seconds' => $request->input('idle_seconds', 0),
             ]
         );
-
-        if ($this->liveWatchService->isWatchRequested($user->id)) {
-            $this->liveWatchService->seedStillFrame($user, true);
-        }
 
         return response()->json($this->withLiveWatch([
             'ok' => true,
@@ -561,7 +585,7 @@ class AttendanceAgentController extends Controller
         $user ??= request()->user();
         $interval = (int) config('attendance.screenshot_interval_seconds', 120);
         if ($user && $this->liveWatchService->isWatchRequested($user->id)) {
-            $interval = 3;
+            $interval = 1;
         }
 
         return [
@@ -573,7 +597,7 @@ class AttendanceAgentController extends Controller
             'idle_prompt_timeout_seconds' => (int) config('attendance.idle_prompt_timeout_seconds', 60),
             'screenshots_enabled' => (bool) config('attendance.screenshots_enabled', true),
             'live_watch_enabled' => (bool) config('attendance.live_watch_enabled', true),
-            'live_fps' => max(1, (int) config('attendance.live_fps', 2)),
+            'live_fps' => max(1, (int) config('attendance.live_fps', 5)),
             'live_quality' => max(30, min(80, (int) config('attendance.live_quality', 55))),
             'agent_version' => (string) config('attendance.agent_version', '1.0.0'),
             'download_page_url' => $base.'/attendance/agent',

@@ -20,7 +20,7 @@ class AttendanceLiveWatchService
 
         return [
             'requested' => $requested,
-            'fps' => max(1, (int) config('attendance.live_fps', 2)),
+            'fps' => max(1, (int) config('attendance.live_fps', 5)),
             'quality' => max(30, min(80, (int) config('attendance.live_quality', 55))),
         ];
     }
@@ -40,7 +40,6 @@ class AttendanceLiveWatchService
 
         Cache::put('attendance:live:source:'.$session->id, $source, 86400);
         $this->touchWatch($employee->id);
-        $this->seedStillFrame($employee);
 
         return $session;
     }
@@ -130,23 +129,23 @@ class AttendanceLiveWatchService
     {
         $bytes = Cache::get($this->frameKey($session->user_id));
         $meta = Cache::get($this->frameMetaKey($session->user_id), []);
-        if (is_string($bytes) && $bytes !== '') {
-            return [
-                'bytes' => $bytes,
-                'meta' => is_array($meta) ? $meta : [],
-                'source' => (string) (($meta['source'] ?? null) ?: 'live'),
-            ];
+        if (! is_string($bytes) || $bytes === '') {
+            return ['bytes' => null, 'meta' => [], 'source' => null];
         }
 
-        $still = $this->latestScreenshot($session->user_id);
-        if ($still['bytes']) {
-            Cache::put($this->frameKey($session->user_id), $still['bytes'], 30);
-            Cache::put($this->frameMetaKey($session->user_id), $still['meta'], 30);
-
-            return $still;
+        $meta = is_array($meta) ? $meta : [];
+        $source = (string) ($meta['source'] ?? 'live');
+        $captured = isset($meta['at']) ? \Carbon\Carbon::parse($meta['at']) : null;
+        $age = $captured ? $captured->diffInSeconds(now()) : 0;
+        if ($source !== 'live' && $age > 6) {
+            return ['bytes' => null, 'meta' => [], 'source' => null];
         }
 
-        return ['bytes' => null, 'meta' => [], 'source' => null];
+        return [
+            'bytes' => $bytes,
+            'meta' => $meta,
+            'source' => 'live',
+        ];
     }
 
     public function seedStillFrame(User $employee, bool $force = false): void

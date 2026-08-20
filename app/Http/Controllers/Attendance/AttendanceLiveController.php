@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Attendance;
 
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceLiveSession;
-use App\Models\AttendanceScreenshot;
 use App\Models\User;
 use App\Services\Attendance\AttendanceLiveWatchService;
 use App\Services\Attendance\AttendanceService;
@@ -70,16 +69,10 @@ class AttendanceLiveController extends Controller
         abort_unless(AttendanceAccess::canMonitor() && AttendanceAccess::canViewUser($user->id), 403);
         abort_unless((bool) config('attendance.live_watch_enabled', true), 404);
 
-        $poster = AttendanceScreenshot::query()
-            ->where('user_id', $user->id)
-            ->orderByDesc('id')
-            ->first();
-
         return view('attendance.live', [
             'title' => 'Live — '.$user->name,
             'employee' => $user,
             'start_url' => '/attendance/live/'.$user->id.'/start',
-            'poster_url' => $poster?->imageUrl(),
         ]);
     }
 
