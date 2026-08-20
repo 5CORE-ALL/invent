@@ -2369,7 +2369,7 @@
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
                 if (typeof applyChannelSpriceFromStdChange === 'function') {
-                    applyChannelSpriceFromStdChange(r, { persist: true, skip_push: true });
+                    applyChannelSpriceFromStdChange(r, { persist: true, skip_push: false });
                 }
                 if (rowKey === target) primaryRow = r;
             });

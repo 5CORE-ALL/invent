@@ -5445,8 +5445,12 @@
             row.update(chPromoSpricePatch(fill));
             try { row.reformat(); } catch (e) { /* ignore */ }
             if (opts.persist === false) return { sku: sku, price: fill, row: row };
-            if (hadValue && current === fill) return { sku: sku, price: fill, row: row };
-            const extra = { skip_push: opts.skip_push !== false };
+            const live = chPromoRound2(Number(d['eBay Price']) || 0);
+            const alreadyLive = live > 0 && chPromoNearlyEqual(fill, live);
+            if (hadValue && current === fill && alreadyLive) return { sku: sku, price: fill, row: row };
+            const extra = {
+                skip_push: opts.skip_push === true || alreadyLive,
+            };
             saveChannelSprice(sku, fill, true, extra).done(function(saveRes) {
                 chPromoApplySpriceSavePatch(row, fill, saveRes);
             }).fail(function() {
@@ -5488,12 +5492,15 @@
                     const fill = chPromoSpriceFromStdTPromo(d);
                     if (!(fill > 0)) return;
                     const current = chPromoGetSprice(d);
-                    if (current > 0 && !overwrite) return;
-                    if (current > 0 && chPromoNearlyEqual(current, fill)) return;
+                    const live = chPromoRound2(Number(d['eBay Price']) || 0);
+                    const needsFill = !(current > 0) || (overwrite && !chPromoNearlyEqual(current, fill));
+                    const needsPush = CHANNEL_PROMO_CHANNEL === 'ebay1'
+                        && !chPromoNearlyEqual(fill, live);
+                    if (!needsFill && !needsPush) return;
                     const sku = chPromoSku(d);
                     if (!sku) return;
                     row.update(chPromoSpricePatch(fill));
-                    jobs.push({ row: row, sku: sku, price: fill });
+                    jobs.push({ row: row, sku: sku, price: fill, skip_push: !needsPush });
                 });
             } finally {
                 if (blocked) table.restoreRedraw();
@@ -5505,10 +5512,16 @@
                 return;
             }
             chPromoEbaySpriceAutoBusy = true;
-            const conc = (CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8;
+            const pushCount = jobs.filter(function(j) { return !j.skip_push; }).length;
+            const conc = pushCount ? 3 : ((CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8);
+            if (pushCount && silent) {
+                chPromoToast('success', 'Pushing S PRC to eBay for ' + pushCount + ' SKU(s)…');
+            }
             chPromoMapLimit(jobs, conc, async function(job) {
                 try {
-                    const saveRes = await Promise.resolve(saveChannelSprice(job.sku, job.price, true, { skip_push: true }));
+                    const saveRes = await Promise.resolve(saveChannelSprice(job.sku, job.price, true, {
+                        skip_push: !!job.skip_push,
+                    }));
                     chPromoApplySpriceSavePatch(job.row, job.price, saveRes);
                 } catch (e) {
                     chPromoApplySpriceSavePatch(job.row, job.price, null);
@@ -5517,7 +5530,11 @@
                 chPromoEbaySpriceAutoBusy = false;
                 if (!silent) {
                     chPromoToast('success', 'S PRC = Std − PRMT% − CPN% → ' + jobs.length + ' SKU(s)');
+                } else if (pushCount) {
+                    chPromoToast('success', 'S PRC push finished for ' + pushCount + ' SKU(s)');
                 }
+                try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
+                if (typeof updateSummary === 'function') updateSummary();
             }).catch(function() {
                 chPromoEbaySpriceAutoBusy = false;
             });
