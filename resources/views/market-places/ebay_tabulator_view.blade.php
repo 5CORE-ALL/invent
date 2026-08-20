@@ -3302,6 +3302,11 @@
             function ebay1SpriceSaveToast(sku, response) {
                 const live = response && response.ebay_price != null ? parseFloat(response.ebay_price) : NaN;
                 const liveTxt = (isFinite(live) && live > 0) ? ('$' + live.toFixed(2)) : '';
+                if (response && (response.price_push_status === 'skipped' || response.SPRICE_STATUS === 'saved' || response.SPRICE_STATUS === 'queued')) {
+                    showToast('success', 'S PRC saved — eBay push queued (page close OK)'
+                        + (sku ? (' for ' + sku) : ''));
+                    return;
+                }
                 if (response && response.price_push_success) {
                     showToast('success', 'S PRC pushed to eBay'
                         + (liveTxt ? ('. Price is now ' + liveTxt) : '')
@@ -3334,7 +3339,8 @@
                         },
                         data: {
                             sku: sku,
-                            sprice: sprice
+                            sprice: sprice,
+                            skip_push: 1
                         },
                         success: function(response) {
                             // Re-find row by SKU so we update the current row (avoids blank S PRC if table redrew)
@@ -3346,6 +3352,9 @@
                                 });
                             }
                             applyEbay1SpriceSaveLive(targetRow, response, sprice);
+                            if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
+                                enqueueChannelPushSpriceAfterSave(sku, sprice, targetRow);
+                            }
                             resolve(response);
                         },
                         error: function(xhr) {
@@ -6170,7 +6179,8 @@
             });
 
             table.on('dataLoaded', function() {
-                if (typeof autopopulateEbaySpriceFromStdPrmtCpn === 'function') {
+                if (typeof autopopulateEbaySpriceFromStdPrmtCpn === 'function' && !window._chPushSpricePageChecked) {
+                    window._chPushSpricePageChecked = true;
                     setTimeout(function() {
                         autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
                     }, 80);

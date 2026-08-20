@@ -2446,6 +2446,9 @@
         const CH_PROMO_PUSH_QUEUE_CHANNELS = ['ebay1', 'ebay2', 'ebay2op', 'ebay3'];
         const chPromoPushQueueEnabled = CH_PROMO_PUSH_QUEUE_CHANNELS.indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
         const CH_PROMO_PUSH_QUEUE_URL = '/channel-push-prc/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
+        @if(in_array($channelPromoChannel ?? '', ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
+        @include('partials.channel-push-sprice-queue', ['channelPushSpriceChannel' => $channelPromoChannel])
+        @endif
         const CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
         const chPromoPushPrmtQueueEnabled = CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS.indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
         const CH_PROMO_PUSH_PRMT_QUEUE_URL = '/channel-push-prmt/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
@@ -2837,14 +2840,19 @@
             } else {
                 data = { sku: sku, sprice: val, _token: chPromoCsrf() };
             }
-            if (extra.skip_push) data.skip_push = 1;
+            const queueEnabled = chPromoEbayStdMinusPrmtCpnEnabled()
+                && typeof enqueueChannelPushSpriceAfterSave === 'function';
+            if (queueEnabled || extra.skip_push) data.skip_push = 1;
             return $.ajax({
                 url: chPromoCfg.saveSpriceUrl,
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
                 data: data,
             }).done(function() {
-                if (!silent) chPromoToast('success', 'S PRC updated');
+                if (queueEnabled && extra.queue_push === true) {
+                    enqueueChannelPushSpriceAfterSave(sku, val, extra.row || null);
+                }
+                if (!silent) chPromoToast('success', extra.queue_push ? 'S PRC saved — eBay push queued' : 'S PRC updated');
             }).fail(function() {
                 if (!silent) chPromoToast('error', 'Failed to save S PRC');
             });
@@ -3726,7 +3734,9 @@
             const url = chPromoCfg.saveSpriceBatchUrl;
             if (!url || !updates.length) return Promise.resolve(null);
             const data = { updates: updates, _token: chPromoCsrf() };
-            if (extra.skip_push) data.skip_push = 1;
+            const queueEnabled = chPromoEbayStdMinusPrmtCpnEnabled()
+                && typeof enqueueChannelPushSprice === 'function';
+            if (queueEnabled || extra.skip_push) data.skip_push = 1;
             return $.ajax({
                 url: url,
                 method: 'POST',
@@ -5450,6 +5460,8 @@
             if (hadValue && current === fill && alreadyLive) return { sku: sku, price: fill, row: row };
             const extra = {
                 skip_push: opts.skip_push === true || alreadyLive,
+                queue_push: opts.skip_push !== true && !alreadyLive,
+                row: row,
             };
             saveChannelSprice(sku, fill, true, extra).done(function(saveRes) {
                 chPromoApplySpriceSavePatch(row, fill, saveRes);
@@ -5494,7 +5506,8 @@
                     const current = chPromoGetSprice(d);
                     const live = chPromoRound2(Number(d['eBay Price']) || 0);
                     const needsFill = !(current > 0) || (overwrite && !chPromoNearlyEqual(current, fill));
-                    const needsPush = CHANNEL_PROMO_CHANNEL === 'ebay1'
+                    const needsPush = chPromoEbayStdMinusPrmtCpnEnabled()
+                        && live > 0
                         && !chPromoNearlyEqual(fill, live);
                     if (!needsFill && !needsPush) return;
                     const sku = chPromoSku(d);
@@ -5515,12 +5528,14 @@
             const pushCount = jobs.filter(function(j) { return !j.skip_push; }).length;
             const conc = pushCount ? 3 : ((CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8);
             if (pushCount && silent) {
-                chPromoToast('success', 'Pushing S PRC to eBay for ' + pushCount + ' SKU(s)…');
+                chPromoToast('success', 'S PRC queued for eBay: ' + pushCount + ' SKU(s) — page close OK');
             }
             chPromoMapLimit(jobs, conc, async function(job) {
                 try {
                     const saveRes = await Promise.resolve(saveChannelSprice(job.sku, job.price, true, {
-                        skip_push: !!job.skip_push,
+                        skip_push: true,
+                        queue_push: !job.skip_push,
+                        row: job.row,
                     }));
                     chPromoApplySpriceSavePatch(job.row, job.price, saveRes);
                 } catch (e) {
@@ -5531,7 +5546,7 @@
                 if (!silent) {
                     chPromoToast('success', 'S PRC = Std − PRMT% − CPN% → ' + jobs.length + ' SKU(s)');
                 } else if (pushCount) {
-                    chPromoToast('success', 'S PRC push finished for ' + pushCount + ' SKU(s)');
+                    chPromoToast('success', 'S PRC queued for ' + pushCount + ' SKU(s) — page close OK');
                 }
                 try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
                 if (typeof updateSummary === 'function') updateSummary();
@@ -5548,18 +5563,12 @@
                     if (table._chPromoEbaySpriceAuto) return;
                     table._chPromoEbaySpriceAuto = true;
                     table.on('dataLoaded', function() {
+                        if (window._chPushSpricePageChecked) return;
+                        window._chPushSpricePageChecked = true;
                         setTimeout(function() {
                             autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
                         }, 80);
                     });
-                    try {
-                        const n = (typeof table.getDataCount === 'function') ? table.getDataCount() : 0;
-                        if (n > 0) {
-                            setTimeout(function() {
-                                autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
-                            }, 80);
-                        }
-                    } catch (e) { /* ignore */ }
                     return;
                 }
                 if (++tries < 50) setTimeout(attach, 200);

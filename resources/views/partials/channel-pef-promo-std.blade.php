@@ -123,6 +123,7 @@
 
 @if($channelPromoPart === 'script' || $channelPromoPart === 'all')
         const CHANNEL_PROMO_CHANNEL = @json($channelPromoChannel ?? 'ebay2');
+        @include('partials.channel-push-sprice-queue', ['channelPushSpriceChannel' => $channelPromoChannel ?? 'ebay2'])
         const chPromoCfg = {
             label: @json($channelPromoStdActive['label']),
             saveSpriceUrl: @json($channelPromoStdActive['saveSpriceUrl']),

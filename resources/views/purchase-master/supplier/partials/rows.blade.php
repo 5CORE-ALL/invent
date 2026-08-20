@@ -14,7 +14,7 @@
     <td>
         <div class="dropdown d-inline-block">
             @if(!empty(array_filter($categoryIds)))
-            <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <button class="btn btn-sm btn-light dropdown-toggle py-0 px-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                 {{ count(array_filter($categoryIds)) }}
             </button>
             <ul class="dropdown-menu">
@@ -63,7 +63,7 @@
     </td>
 
 
-    <td>{{ $supplier->name ?? '-' }}</td>
+    <td class="supplier-name-col" title="{{ $supplier->name ?? '' }}">{{ $supplier->name ?? '-' }}</td>
     @php
         $approvalRaw = $supplier->approval_status ?? '';
         $approvalEffective = in_array($approvalRaw, ['green', 'yellow'], true) ? $approvalRaw : 'red';
@@ -325,7 +325,7 @@
 
     <!-- Edit Supplier Modal -->
     <div class="modal fade" id="editSupplierModal{{ $supplier->id }}" tabindex="-1" aria-labelledby="editSupplierModal{{ $supplier->id }}Label" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable shadow-none">
+        <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
             <div class="modal-content border-0 shadow-lg">
                 <form method="POST" action="{{ route('supplier.create') }}" class="needs-validation" novalidate id="editSupplierForm{{ $supplier->id }}">
                     <input type="hidden" name="supplier_id" value="{{ $supplier->id }}">
@@ -340,11 +340,11 @@
 
                     <!-- Modal Body -->
                     <div class="modal-body py-3">
-                        <div class="container-fluid">
+                        <div class="container-fluid px-0">
                             <div class="row g-3">
 
                                 <!-- Type -->
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">Type <span class="text-danger">*</span></label>
                                     @php $types = ['Supplier', 'Forwarders', 'Photographer']; @endphp
                                     <select name="type" class="form-select" required>
@@ -360,7 +360,7 @@
                                     $selected = collect(explode(',', $supplier->category_id ?? ''))->filter()->map(fn($id) => (int) trim($id))->filter()->toArray();
                                 @endphp
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
                                     <select name="category_id[]" class="form-select select2" data-placeholder="Select Category" multiple required id="categorySelect{{ $supplier->id }}">
                                         @foreach($categories as $category)
@@ -371,40 +371,40 @@
                                     </select>
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">Supplier Name *</label>
                                     <input type="text" name="name" class="form-control" placeholder="Supplier Name" value="{{ $supplier->name }}" required>
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">Company Name</label>
                                     <input type="text" name="company" class="form-control" placeholder="Company Name" value="{{ $supplier->company }}">
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">Alias</label>
                                     <input type="text" name="alias" class="form-control" placeholder="Alias" value="{{ $supplier->alias }}">
                                 </div>
 
-                                <div class="col-md-6">
-                                    <div class="row">
-                                        <div class="col-md-4">
-                                            <label class="form-label fw-semibold">Country Code</label>
+                                <div class="col-md-4">
+                                    <div class="row g-1">
+                                        <div class="col-4">
+                                            <label class="form-label fw-semibold">Code</label>
                                             <input type="text" name="country_code" class="form-control" placeholder="+86" value="{{ $supplier->country_code }}">
                                         </div>
-                                        <div class="col-md-8">
+                                        <div class="col-8">
                                             <label class="form-label fw-semibold">Phone</label>
                                             <input type="text" name="phone" class="form-control" placeholder="Phone Number" value="{{ $supplier->phone }}">
                                         </div>
                                     </div>
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">City</label>
                                     <input type="text" name="city" class="form-control" placeholder="City" value="{{ $supplier->city }}">
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">Zone</label>
                                     <select name="zone" class="form-select">
                                         <option value="">Select Zone</option>
@@ -414,7 +414,7 @@
                                     </select>
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">Approved</label>
                                     <div class="d-flex align-items-center gap-2 approval-form-dots flex-wrap">
                                         <label class="mb-0 cursor-pointer small text-muted border rounded px-2 py-1" title="Not set">
@@ -435,32 +435,32 @@
                                     </div>
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">Email Address</label>
                                     <input type="email" name="email" class="form-control" placeholder="Email Address" value="{{ $supplier->email }}">
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">WhatsApp Number</label>
                                     <input type="text" name="whatsapp" class="form-control" placeholder="WhatsApp Number" value="{{ $supplier->whatsapp }}">
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">WeChat ID</label>
                                     <input type="text" name="wechat" class="form-control" placeholder="WeChat ID" value="{{ $supplier->wechat }}">
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">Alibaba Profile</label>
                                     <input type="text" name="alibaba" class="form-control" placeholder="Alibaba Profile" value="{{ $supplier->alibaba }}">
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">1688</label>
                                     <input type="text" name="link_1688" class="form-control" placeholder="1688 Profile / URL" value="{{ $supplier->link_1688 }}">
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">QQ</label>
                                     <input type="text" name="qq" class="form-control" placeholder="QQ ID" value="{{ $supplier->qq }}">
                                 </div>
@@ -488,8 +488,8 @@
                             </div>
                         </div>
                         <!-- Submit Button -->
-                        <div class="d-flex justify-content-end mt-3">
-                            <button type="submit" class="btn btn-primary">
+                        <div class="d-flex justify-content-end mt-2">
+                            <button type="submit" class="btn btn-primary btn-sm">
                                 <i class="mdi mdi-content-save"></i> Save Supplier
                             </button>
                         </div>
@@ -501,7 +501,7 @@
 
     <!-- View Supplier Modal -->
     <div class="modal fade" id="viewSupplierModal{{ $supplier->id }}" tabindex="-1" aria-labelledby="viewSupplierModal{{ $supplier->id }}Label" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable shadow-none">
+        <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
             <div class="modal-content border-0 shadow-lg">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title fw-bold d-flex align-items-center m-0" id="viewSupplierModal{{ $supplier->id }}Label">
@@ -510,212 +510,229 @@
                     <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-3">
-                    <div class="container-fluid">
-                        <div class="row g-3">
-                            <div class="col-md-4 text-center mb-3">
-                                <div class="rounded-circle mx-auto mb-2 shadow" style="width: 80px; height: 80px; background: #e3f0ff; display: flex; align-items: center; justify-content: center;">
-                                    <i class="mdi mdi-account-circle text-primary" style="font-size: 3.5rem;"></i>
-                                </div>
-                                <h5 class="mb-0 fw-bold text-dark">{{ $supplier->name ?? '-' }}</h5>
-                                <span class="badge bg-primary">{{ $supplier->type ?? '-' }}</span>
-                            </div>
-                            <div class="col-md-8">
-                                <div class="row g-2">
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">Category:</span>
+                    @php
+                        $viewCategoryIds = explode(',', $supplier->category_id ?? '');
+                        $viewCategoryCount = count(array_filter($viewCategoryIds));
+                        $viewParents = array_values(array_filter(explode(',', $supplier->parent ?? '')));
+                        $viewBankPairs = $supplier->parsedBankDetailPairs();
+                        $viewWaNumber = preg_replace('/\D/', '', (string) ($supplier->whatsapp ?? ''));
+                        if (!empty($supplier->country_code) && strlen($viewWaNumber) < 10) {
+                            $viewWaNumber = preg_replace('/\D/', '', $supplier->country_code) . $viewWaNumber;
+                        } elseif (!empty($supplier->country_code) && !empty($supplier->phone)) {
+                            $phoneDigits = preg_replace('/\D/', '', $supplier->phone);
+                            if ($viewWaNumber === $phoneDigits) {
+                                $viewWaNumber = preg_replace('/\D/', '', $supplier->country_code) . $viewWaNumber;
+                            }
+                        }
+                    @endphp
+                    <div class="supplier-view-hero">
+                        <div class="rounded-circle shadow supplier-view-avatar" style="width: 48px; height: 48px; background: #e3f0ff; display: flex; align-items: center; justify-content: center;">
+                            <i class="mdi mdi-account-circle text-primary"></i>
+                        </div>
+                        <div>
+                            <h5 class="mb-0 fw-bold text-dark">{{ $supplier->name ?? '-' }}</h5>
+                            <span class="badge bg-primary">{{ $supplier->type ?? '-' }}</span>
+                        </div>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">Category</div>
+                                <div class="sv-value">
+                                    @if($viewCategoryCount > 0)
                                         <div class="dropdown">
-                                            @php
-                                                $categoryIds = explode(',', $supplier->category_id ?? '');
-                                                $count = count(array_filter($categoryIds));
-                                            @endphp
-                                            
-                                            @if($count > 0)
-                                                <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                                    {{ $count }}
-                                                </button>
-                                                <ul class="dropdown-menu">
-                                                    @foreach($categories as $category)
-                                                        @if(in_array($category->id, $categoryIds))
-                                                            <li><span class="dropdown-item">{{ $category->name }}</span></li>
-                                                        @endif
-                                                    @endforeach
-                                                </ul>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
+                                            <button class="btn btn-sm btn-light dropdown-toggle py-0 px-2" type="button" data-bs-toggle="dropdown">
+                                                {{ $viewCategoryCount }}
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                @foreach($categories as $category)
+                                                    @if(in_array($category->id, $viewCategoryIds))
+                                                        <li><span class="dropdown-item">{{ $category->name }}</span></li>
+                                                    @endif
+                                                @endforeach
+                                            </ul>
                                         </div>
-                                    </div>
-
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">Company:</span>
-                                        <div>{{ $supplier->company ?? '-' }}</div>
-                                    </div>
-
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">Alias:</span>
-                                        <div>{{ $supplier->alias ?? '-' }}</div>
-                                    </div>
-
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">P:</span>
-                                        <div class="dropdown d-block w-100">
-                                            @php
-                                                $parentList = explode(',', $supplier->parent ?? '');
-                                                $parentList = array_filter($parentList);
-                                                $parentCount = count($parentList);
-                                            @endphp
-
-                                            @if($parentCount > 0)
-                                                <button class="btn btn-sm btn-light dropdown-toggle w-75" type="button" data-bs-toggle="dropdown">
-                                                    P ({{ $parentCount }})
-                                                </button>
-                                                <ul class="dropdown-menu">
-                                                    @foreach($parentList as $p)
-                                                        <li><span class="dropdown-item">{{ $p }}</span></li>
-                                                    @endforeach
-                                                </ul>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </div>
-                                    </div>
-
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">Phone:</span>
-                                        <div>
-                                            @if(!empty($supplier->phone))
-                                                <a href="tel:{{ $supplier->country_code }}{{ $supplier->phone }}" class="text-decoration-none text-dark">
-                                                    <i class="mdi mdi-phone text-success"></i> {{ $supplier->country_code }} {{ $supplier->phone }}
-                                                </a>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">City:</span>
-                                        <div>{{ $supplier->city ?? '-' }}</div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">Zone:</span>
-                                        <div>
-                                            @if(!empty($supplier->zone))
-                                                <span class="badge bg-info">{{ $supplier->zone }}</span>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">Email:</span>
-                                        <div>
-                                            @if(!empty($supplier->email))
-                                                <a href="mailto:{{ $supplier->email }}" class="text-decoration-none text-primary">
-                                                    <i class="mdi mdi-email-outline"></i> {{ $supplier->email }}
-                                                </a>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">WhatsApp:</span>
-                                        <div>
-                                            @if(!empty($supplier->whatsapp))
-                                                @php
-                                                    // Remove all non-digit characters from WhatsApp number
-                                                    $waNumber = preg_replace('/\D/', '', $supplier->whatsapp);
-                                                    
-                                                    // If number doesn't start with a country code, prepend it
-                                                    if (!empty($supplier->country_code) && strlen($waNumber) < 10) {
-                                                        $countryCode = preg_replace('/\D/', '', $supplier->country_code);
-                                                        $waNumber = $countryCode . $waNumber;
-                                                    } elseif (!empty($supplier->country_code) && !empty($supplier->phone)) {
-                                                        // Check if WhatsApp number is same as phone number (might be missing country code)
-                                                        $phoneDigits = preg_replace('/\D/', '', $supplier->phone);
-                                                        if ($waNumber === $phoneDigits) {
-                                                            $countryCode = preg_replace('/\D/', '', $supplier->country_code);
-                                                            $waNumber = $countryCode . $waNumber;
-                                                        }
-                                                    }
-                                                @endphp
-                                                <a href="https://wa.me/{{ $waNumber }}" target="_blank" class="text-success text-decoration-none">
-                                                    <i class="mdi mdi-whatsapp"></i> {{ $supplier->whatsapp }}
-                                                </a>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">WeChat:</span>
-                                        <div>
-                                            @if(!empty($supplier->wechat))
-                                                <span class="text-success"><i class="mdi mdi-wechat"></i> {{ $supplier->wechat }}</span>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">Alibaba:</span>
-                                        <div>
-                                            @if(!empty($supplier->alibaba))
-                                                <a href="{{ $supplier->alibaba }}" target="_blank" class="text-warning text-decoration-none">
-                                                    <i class="mdi mdi-shopping"></i> Profile
-                                                </a>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">1688:</span>
-                                        <div>
-                                            @if(!empty($supplier->link_1688))
-                                                <a href="{{ $supplier->link_1688 }}" target="_blank" class="text-decoration-none" style="color:#e65100;">
-                                                    Profile
-                                                </a>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">QQ:</span>
-                                        <div>{{ $supplier->qq ?? '-' }}</div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <span class="fw-semibold text-muted">Others:</span>
-                                        <div>{{ $supplier->others ?? '-' }}</div>
-                                    </div>
-                                    <div class="col-sm-12">
-                                        <span class="fw-semibold text-muted">Address:</span>
-                                        <div>{{ $supplier->address ?? '-' }}</div>
-                                    </div>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
                                 </div>
-                            </div>
-                            <div class="col-md-12 mt-3 d-flex align-items-center">
-                                <span class="fw-semibold text-muted me-2" style="white-space: nowrap;">
-                                    Bank Details:
-                                </span>
-
-                                @if(!empty($supplier->bank_details))
-                                    <div class="border rounded p-2 bg-light shadow-sm text-dark flex-grow-1" style="background: #f8fafc; font-size: 0.95rem; line-height: 1.4;">
-                                        @php
-                                            $lines = preg_split("/\r\n|\n|\r/", trim($supplier->bank_details));
-                                        @endphp
-                                        @foreach($lines as $line)
-                                            <div class="mb-1">{{ $line }}</div>
-                                        @endforeach
-                                    </div>
-                                @else
-                                    <div class="border rounded p-2 bg-light shadow-sm text-muted flex-grow-1 d-flex align-items-center" style="min-height: 48px;">
-                                        <i class="mdi mdi-bank text-primary me-1"></i> -
-                                    </div>
-                                @endif
                             </div>
                         </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">Company</div>
+                                <div class="sv-value">{{ $supplier->company ?: '—' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">Alias</div>
+                                <div class="sv-value">{{ $supplier->alias ?: '—' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">Parents</div>
+                                <div class="sv-value">
+                                    @if(count($viewParents) > 0)
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-light dropdown-toggle py-0 px-2" type="button" data-bs-toggle="dropdown">
+                                                P ({{ count($viewParents) }})
+                                            </button>
+                                            <ul class="dropdown-menu" style="max-height: 200px; overflow-y: auto;">
+                                                @foreach($viewParents as $p)
+                                                    <li><span class="dropdown-item">{{ trim($p) }}</span></li>
+                                                @endforeach
+                                            </ul>
+                                        </div>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">Phone</div>
+                                <div class="sv-value">
+                                    @if(!empty($supplier->phone))
+                                        <a href="tel:{{ $supplier->country_code }}{{ $supplier->phone }}" class="text-decoration-none text-dark">
+                                            <i class="mdi mdi-phone text-success"></i> {{ $supplier->country_code }} {{ $supplier->phone }}
+                                        </a>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">City</div>
+                                <div class="sv-value">{{ $supplier->city ?: '—' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">Zone</div>
+                                <div class="sv-value">
+                                    @if(!empty($supplier->zone))
+                                        <span class="badge bg-info">{{ $supplier->zone }}</span>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">Email</div>
+                                <div class="sv-value">
+                                    @if(!empty($supplier->email))
+                                        <a href="mailto:{{ $supplier->email }}" class="text-decoration-none text-primary">
+                                            <i class="mdi mdi-email-outline"></i> {{ $supplier->email }}
+                                        </a>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">WhatsApp</div>
+                                <div class="sv-value">
+                                    @if(!empty($supplier->whatsapp))
+                                        <a href="https://wa.me/{{ $viewWaNumber }}" target="_blank" class="text-success text-decoration-none">
+                                            <i class="mdi mdi-whatsapp"></i> {{ $supplier->whatsapp }}
+                                        </a>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">WeChat</div>
+                                <div class="sv-value">
+                                    @if(!empty($supplier->wechat))
+                                        <span class="text-success"><i class="mdi mdi-wechat"></i> {{ $supplier->wechat }}</span>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">Alibaba</div>
+                                <div class="sv-value">
+                                    @if(!empty($supplier->alibaba))
+                                        <a href="{{ $supplier->alibaba }}" target="_blank" class="text-warning text-decoration-none">
+                                            <i class="mdi mdi-shopping"></i> Profile
+                                        </a>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">1688</div>
+                                <div class="sv-value">
+                                    @if(!empty($supplier->link_1688))
+                                        <a href="{{ $supplier->link_1688 }}" target="_blank" class="text-decoration-none" style="color:#e65100;">
+                                            Profile
+                                        </a>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">QQ</div>
+                                <div class="sv-value">{{ $supplier->qq ?: '—' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="sv-field">
+                                <div class="sv-label">Others</div>
+                                <div class="sv-value">{{ $supplier->others ?: '—' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="sv-field">
+                                <div class="sv-label">Address</div>
+                                <div class="sv-value">{{ $supplier->address ?: '—' }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="supplier-view-bank">
+                        <div class="sv-bank-title"><i class="mdi mdi-bank me-1"></i>Bank Details</div>
+                        @if(count($viewBankPairs) > 0)
+                            <div class="row g-2">
+                                @foreach($viewBankPairs as $bankPair)
+                                    @php
+                                        $bankLabel = strtolower($bankPair['label']);
+                                        $bankCol = in_array($bankLabel, ['bank address', 'address'], true) ? 'col-12' : 'col-md-6';
+                                    @endphp
+                                    <div class="{{ $bankCol }}">
+                                        <div class="sv-field">
+                                            @if($bankPair['label'] !== '')
+                                                <div class="sv-label">{{ $bankPair['label'] }}</div>
+                                            @endif
+                                            <div class="sv-value">{{ $bankPair['value'] }}</div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @else
+                            <div class="sv-field text-muted"><i class="mdi mdi-bank-off me-1"></i>No bank details on file</div>
+                        @endif
                     </div>
                 </div>
             </div>

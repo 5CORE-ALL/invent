@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\RunChannelPushCpnJob;
 use App\Jobs\RunChannelPushPrcJob;
 use App\Jobs\RunChannelPushPrmtJob;
+use App\Jobs\RunChannelPushSpriceJob;
 use App\Models\AmazonDataView;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\EbayDataView;
@@ -20,6 +21,8 @@ use App\Services\Ebay1PromotionService;
 use App\Services\Support\ChannelPushCpnJobStore;
 use App\Services\Support\ChannelPushPrcJobStore;
 use App\Services\Support\ChannelPushPrmtJobStore;
+use App\Services\Support\ChannelPushSpriceJobStore;
+use App\Services\Support\ChannelPushSpriceRunner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -165,6 +168,126 @@ class ChannelPromoPricingController extends Controller
         return response()->json(array_merge($store->toApiResponse($job), [
             'success' => true,
             'message' => 'Push Prc cancelled.',
+        ]));
+    }
+
+    /**
+     * Queue S PRC → live listing price (background). Survives page close.
+     * ebay1 / ebay2 / ebay2op / ebay3. Does not create sale or coupon.
+     */
+    public function queuePushSprice(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::PUSH_QUEUE_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel for S PRC queue'], 422);
+        }
+
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'No items to push'], 400);
+        }
+
+        $tasks = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $tasks[] = [
+                'sku' => $item['sku'] ?? null,
+                'price' => $item['price'] ?? $item['sprice'] ?? $item['sale'] ?? null,
+            ];
+        }
+
+        $store = ChannelPushSpriceJobStore::for($channel);
+        $result = $store->createOrAppend($tasks);
+        $state = $result['state'];
+        $mode = $result['mode'];
+        if ((int) ($state['total'] ?? 0) === 0) {
+            return response()->json(['success' => false, 'message' => 'No valid S PRC items (need SKU + price > 0)'], 400);
+        }
+
+        $this->releaseUniqueSpriceJobLock($channel);
+        $spawned = ChannelPushSpriceRunner::spawnWorker($channel);
+        if (! $spawned) {
+            try {
+                RunChannelPushSpriceJob::dispatch($channel);
+                Log::warning('Channel S PRC sync spawn failed — fell back to queue dispatch', ['channel' => $channel]);
+            } catch (\Throwable $e) {
+                Log::error('Channel S PRC queue dispatch also failed', [
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $store->update(function (array $s) use ($spawned, $mode) {
+            $s['worker_spawned_at'] = now()->toDateTimeString();
+            if ($mode === 'append') {
+                $s['last_message'] = $spawned
+                    ? ('Appended — S PRC worker continuing ('.$s['total'].' total)…')
+                    : ('Appended — waiting for S PRC worker ('.$s['total'].' total)');
+            } else {
+                $s['last_message'] = $spawned
+                    ? ('S PRC worker started — pushing '.$s['total'].' SKU(s)…')
+                    : ('Queued — waiting for worker (run: php artisan channel:push-sprice-run '.$s['channel'].' --sync)');
+            }
+
+            return $s;
+        });
+
+        $api = $store->toApiResponse($store->load());
+
+        return response()->json(array_merge($api, [
+            'success' => true,
+            'mode' => $mode,
+            'worker_spawned' => $spawned,
+            'message' => $mode === 'append'
+                ? ('Added to running S PRC queue ('.$api['total'].' total). Page close is OK.')
+                : ('S PRC push started in background ('.$api['total'].' SKU(s)). Page close is OK.'),
+        ]));
+    }
+
+    public function pushSpriceJobStatus(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::PUSH_QUEUE_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $store = ChannelPushSpriceJobStore::for($channel);
+        $state = $store->load();
+
+        if ($store->isActive($state) && $store->isStale($state, 180) && ! ChannelPushSpriceRunner::lockHeld($channel)) {
+            $this->releaseUniqueSpriceJobLock($channel);
+            $kicked = ChannelPushSpriceRunner::spawnWorker($channel);
+            $store->update(function (array $s) use ($kicked) {
+                $s['last_message'] = $kicked
+                    ? 'S PRC worker re-started after stall — continuing…'
+                    : 'S PRC push stalled — could not start worker. Cancel and retry, or run: php artisan channel:push-sprice-run --sync';
+                $s['worker_spawned_at'] = now()->toDateTimeString();
+
+                return $s;
+            });
+            $state = $store->load();
+        }
+
+        return response()->json($store->toApiResponse($state));
+    }
+
+    public function cancelPushSprice(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::PUSH_QUEUE_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $store = ChannelPushSpriceJobStore::for($channel);
+        $job = $store->forceStop('Cancelled by user.');
+        $this->releaseUniqueSpriceJobLock($channel);
+
+        return response()->json(array_merge($store->toApiResponse($job), [
+            'success' => true,
+            'message' => 'S PRC push cancelled.',
         ]));
     }
 
@@ -757,6 +880,73 @@ class ChannelPromoPricingController extends Controller
         try {
             \Illuminate\Support\Facades\Cache::lock(
                 'laravel_unique_job:'.RunChannelPushPrmtJob::class.':'.$channel.'-push-prmt'
+            )->forceRelease();
+        } catch (\Throwable) {
+            // ignore
+        }
+    }
+
+    private function spawnPushSpriceWorker(string $channel): bool
+    {
+        try {
+            if ($this->spriceRunnerLockHeld($channel)) {
+                return true;
+            }
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/'.$channel.'-push-sprice.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' channel:push-sprice-run '.escapeshellarg($channel).' --sync', 'r'));
+
+                return true;
+            }
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' channel:push-sprice-run '.escapeshellarg($channel)
+                .' --sync >> '.escapeshellarg($log).' 2>&1 &';
+            // pclose(popen) returns immediately; exec() can wait for the worker on macOS/XAMPP.
+            pclose(popen($cmd, 'r'));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Channel S PRC worker spawn failed', [
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    private function spriceRunnerLockHeld(string $channel): bool
+    {
+        $lockPath = storage_path('app/'.$channel.'-push-sprice/runner.lock');
+        if (! is_file($lockPath)) {
+            return false;
+        }
+        $h = @fopen($lockPath, 'c+');
+        if (! $h) {
+            return false;
+        }
+        $got = flock($h, LOCK_EX | LOCK_NB);
+        if ($got) {
+            flock($h, LOCK_UN);
+        }
+        fclose($h);
+
+        return ! $got;
+    }
+
+    private function releaseUniqueSpriceJobLock(string $channel): void
+    {
+        try {
+            \Illuminate\Support\Facades\Cache::lock(
+                'laravel_unique_job:'.RunChannelPushSpriceJob::class.':'.$channel.'-push-sprice'
             )->forceRelease();
         } catch (\Throwable) {
             // ignore

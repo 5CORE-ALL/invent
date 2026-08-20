@@ -1,0 +1,371 @@
+{{-- Background S PRC → live eBay listing price. Survives page close. --}}
+@php
+    $channelPushSpriceChannel = $channelPushSpriceChannel ?? ($channelPromoChannel ?? 'ebay1');
+@endphp
+        (function(global) {
+            const CH_PUSH_SPRICE_CHANNEL = @json($channelPushSpriceChannel);
+            const CH_PUSH_SPRICE_URL = '/channel-push-sprice/' + encodeURIComponent(CH_PUSH_SPRICE_CHANNEL);
+            const CH_PUSH_SPRICE_SAVE = ({
+                ebay1: '/ebay-one/save-sprice',
+                ebay2: '/save-ebay2-sprice',
+                ebay2op: '/save-ebay2-sprice',
+                ebay3: '/ebay3/save-sprice',
+            })[CH_PUSH_SPRICE_CHANNEL] || '';
+            const CH_PUSH_SPRICE_CHUNK = 200;
+            let chPushSpriceBuf = {};
+            let chPushSpriceTimer = null;
+            let chPushSpricePollTimer = null;
+            let chPushSpriceLastToastKey = '';
+            let chPushSpriceFlushing = false;
+
+            function chPushSpriceCsrf() {
+                return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            }
+            function chPushSpriceRound2(n) {
+                return Math.round((Number(n) || 0) * 100) / 100;
+            }
+            function chPushSpriceNearlyEqual(a, b) {
+                return Math.abs(Number(a) - Number(b)) < 0.005;
+            }
+            function chPushSpriceToast(type, msg) {
+                if (typeof showToast === 'function') {
+                    try { showToast(type, msg); } catch (e) { showToast(msg, type); }
+                } else if (typeof chPromoToast === 'function') {
+                    chPromoToast(type, msg);
+                } else {
+                    console.log(type, msg);
+                }
+            }
+            function chPushSpriceEnsureBox() {
+                if (document.getElementById('ch-promo-push-sprice-progress')) return;
+                const style = document.createElement('style');
+                style.textContent = ''
+                    + '#ch-promo-push-sprice-progress{display:none;position:fixed;right:16px;bottom:86px;z-index:10860;'
+                    + 'min-width:300px;max-width:440px;padding:12px 14px;border:1px solid #bfdbfe;border-radius:8px;'
+                    + 'background:#eff6ff;box-shadow:0 10px 28px rgba(15,23,42,.18);font-size:13px}'
+                    + '#ch-promo-push-sprice-progress.active{display:block}'
+                    + '#ch-promo-push-sprice-progress.done{border-color:#86efac;background:#f0fdf4}'
+                    + '#ch-promo-push-sprice-progress .head{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:700;color:#1d4ed8}'
+                    + '#ch-promo-push-sprice-progress.done .head{color:#15803d}'
+                    + '#ch-promo-push-sprice-progress .meta{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;color:#64748b}'
+                    + '#ch-promo-push-sprice-progress .bar{height:10px;border-radius:999px;background:#bfdbfe;overflow:hidden}'
+                    + '#ch-promo-push-sprice-progress .bar>span{display:block;height:100%;width:0;background:#3b82f6;border-radius:999px;transition:width .25s ease}'
+                    + '#ch-promo-push-sprice-progress.done .bar>span{background:#22c55e}'
+                    + '#ch-promo-push-sprice-progress.has-fail.done .bar>span{background:linear-gradient(90deg,#22c55e 70%,#f59e0b 100%)}';
+                document.head.appendChild(style);
+                const box = document.createElement('div');
+                box.id = 'ch-promo-push-sprice-progress';
+                box.setAttribute('aria-live', 'polite');
+                box.innerHTML = ''
+                    + '<div class="head"><i class="fas fa-spinner fa-spin"></i>'
+                    + '<span id="ch-promo-push-sprice-title">S PRC queue</span>'
+                    + '<span id="ch-promo-push-sprice-pct" style="margin-left:auto">0%</span></div>'
+                    + '<div class="meta"><span id="ch-promo-push-sprice-msg">Ready</span>'
+                    + '<button type="button" id="ch-promo-push-sprice-cancel" class="btn btn-sm btn-outline-danger py-0 px-1"'
+                    + ' style="display:none;font-size:11px;line-height:1.2;">Cancel</button></div>'
+                    + '<div class="bar"><span id="ch-promo-push-sprice-bar"></span></div>';
+                document.body.appendChild(box);
+                document.getElementById('ch-promo-push-sprice-cancel').addEventListener('click', function() {
+                    if (!confirm('Cancel remaining S PRC pushes? Already-queued SKUs that finished stay on eBay.')) return;
+                    $.ajax({
+                        url: CH_PUSH_SPRICE_URL + '/cancel',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
+                        data: { _token: chPushSpriceCsrf() },
+                    }).done(function(resp) {
+                        chPushSpriceToast('success', (resp && resp.message) || 'S PRC push cancelled');
+                        pollChannelPushSpriceStatus();
+                    }).fail(function(xhr) {
+                        chPushSpriceToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Cancel failed');
+                    });
+                });
+            }
+            function setChannelPushSpriceProgress(opts) {
+                opts = opts || {};
+                chPushSpriceEnsureBox();
+                const $box = $('#ch-promo-push-sprice-progress');
+                const total = Number(opts.total) || 0;
+                const done = Number(opts.done) || 0;
+                const ok = Number(opts.ok) || 0;
+                const fail = Number(opts.fail) || 0;
+                const active = !!opts.active;
+                const pct = (opts.pct != null)
+                    ? Math.min(100, Number(opts.pct) || 0)
+                    : (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
+                const finished = !active && total > 0 && (done >= total || pct >= 100);
+                if (active || finished) $box.addClass('active');
+                else $box.removeClass('active');
+                $box.toggleClass('done', finished || (!active && pct >= 100));
+                $box.toggleClass('has-fail', fail > 0);
+                $('#ch-promo-push-sprice-title').text(opts.title || (finished ? (fail && !ok ? 'S PRC failed' : 'S PRC pushed') : 'S PRC queue'));
+                $('#ch-promo-push-sprice-pct').text(pct + '%');
+                $('#ch-promo-push-sprice-bar').css('width', pct + '%');
+                $('#ch-promo-push-sprice-cancel').toggle(!!active);
+                let msg = opts.msg || '';
+                if (!msg && total) {
+                    msg = done + '/' + total + ' · ' + ok + ' ok' + (fail ? (' · ' + fail + ' failed') : '');
+                }
+                $('#ch-promo-push-sprice-msg').text(msg || 'Ready');
+                if (finished) {
+                    clearTimeout(setChannelPushSpriceProgress._hideTimer);
+                    setChannelPushSpriceProgress._hideTimer = setTimeout(function() {
+                        if (!$box.hasClass('done')) return;
+                        $box.removeClass('active done has-fail');
+                    }, 10000);
+                }
+            }
+            function applyChannelPushSpriceTasks(tasks) {
+                if (typeof table === 'undefined' || !table || !Array.isArray(tasks)) return;
+                const bySku = {};
+                tasks.forEach(function(t) {
+                    if (t && t.sku) bySku[String(t.sku).toUpperCase()] = t;
+                });
+                (table.getRows('all') || table.getRows() || []).forEach(function walk(row) {
+                    const d = row.getData() || {};
+                    const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim().toUpperCase();
+                    const t = sku ? bySku[sku] : null;
+                    if (t) {
+                        const st = String(t.status || '');
+                        const patch = {};
+                        if (st === 'ok') {
+                            patch.SPRICE_STATUS = 'pushed';
+                            const live = Number(t.ebay_price != null ? t.ebay_price : t.price);
+                            if (live > 0) patch['eBay Price'] = live;
+                        } else if (st === 'failed') {
+                            patch.SPRICE_STATUS = 'error';
+                        } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
+                            patch.SPRICE_STATUS = 'queued';
+                        }
+                        if (Object.keys(patch).length) {
+                            try { row.update(patch); } catch (e) { /* ignore */ }
+                        }
+                    }
+                    if (typeof row.getTreeChildren === 'function') {
+                        (row.getTreeChildren() || []).forEach(walk);
+                    }
+                });
+            }
+            function stopChannelPushSpricePoll() {
+                if (chPushSpricePollTimer) {
+                    clearInterval(chPushSpricePollTimer);
+                    chPushSpricePollTimer = null;
+                }
+            }
+            function pollChannelPushSpriceStatus() {
+                $.ajax({
+                    url: CH_PUSH_SPRICE_URL + '/status',
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    timeout: 20000,
+                }).done(function(resp) {
+                    if (!resp) return;
+                    const active = !!resp.active;
+                    applyChannelPushSpriceTasks(resp.tasks || []);
+                    setChannelPushSpriceProgress({
+                        active: active,
+                        done: Number(resp.done_count) || 0,
+                        total: Number(resp.total) || 0,
+                        ok: Number(resp.ok_count) || 0,
+                        fail: Number(resp.fail_count) || 0,
+                        pct: Number(resp.pct) || 0,
+                        title: active ? 'S PRC queue' : ((Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'S PRC failed' : 'S PRC pushed'),
+                        msg: resp.message || '',
+                    });
+                    if (!active) {
+                        stopChannelPushSpricePoll();
+                        const toastKey = String(resp.job && resp.job.status) + '|' + resp.ok_count + '|' + resp.fail_count + '|' + resp.total;
+                        if (toastKey !== chPushSpriceLastToastKey && (Number(resp.total) || 0) > 0) {
+                            chPushSpriceLastToastKey = toastKey;
+                            chPushSpriceToast(
+                                (Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'error' : 'success',
+                                resp.message || ('S PRC: ' + (resp.ok_count || 0) + ' ok')
+                            );
+                        }
+                    }
+                });
+            }
+            function startChannelPushSpricePoll() {
+                stopChannelPushSpricePoll();
+                chPushSpricePollTimer = setInterval(pollChannelPushSpriceStatus, 1500);
+                pollChannelPushSpriceStatus();
+            }
+            function postChannelPushSpriceItems(items) {
+                if (!items || !items.length) return $.Deferred().resolve(null).promise();
+                setChannelPushSpriceProgress({
+                    active: true,
+                    done: 0,
+                    total: items.length,
+                    ok: 0,
+                    fail: 0,
+                    pct: 5,
+                    title: 'S PRC queue',
+                    msg: 'Queuing ' + items.length + ' SKU(s)…',
+                });
+                return $.ajax({
+                    url: CH_PUSH_SPRICE_URL,
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
+                    data: { _token: chPushSpriceCsrf(), items: items },
+                    timeout: 60000,
+                }).done(function(resp) {
+                    startChannelPushSpricePoll();
+                    if (resp) {
+                        setChannelPushSpriceProgress({
+                            active: !!resp.active,
+                            done: Number(resp.done_count) || 0,
+                            total: Number(resp.total) || items.length,
+                            ok: Number(resp.ok_count) || 0,
+                            fail: Number(resp.fail_count) || 0,
+                            pct: Number(resp.pct) || 0,
+                            title: 'S PRC queue',
+                            msg: resp.message || '',
+                        });
+                    }
+                }).fail(function(xhr) {
+                    chPushSpriceToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Could not queue S PRC');
+                });
+            }
+            function flushChannelPushSprice() {
+                if (chPushSpriceFlushing) {
+                    chPushSpriceTimer = setTimeout(flushChannelPushSprice, 250);
+                    return;
+                }
+                const keys = Object.keys(chPushSpriceBuf);
+                if (!keys.length) return;
+                const items = keys.map(function(k) { return chPushSpriceBuf[k]; });
+                chPushSpriceBuf = {};
+                chPushSpriceFlushing = true;
+                let i = 0;
+                function nextChunk() {
+                    if (i >= items.length) {
+                        chPushSpriceFlushing = false;
+                        return;
+                    }
+                    const chunk = items.slice(i, i + CH_PUSH_SPRICE_CHUNK);
+                    i += chunk.length;
+                    postChannelPushSpriceItems(chunk).always(nextChunk);
+                }
+                nextChunk();
+            }
+            function enqueueChannelPushSprice(items, opts) {
+                opts = opts || {};
+                if (!items || !items.length) return;
+                items.forEach(function(item) {
+                    if (!item) return;
+                    const sku = String(item.sku || '').trim();
+                    const price = chPushSpriceRound2(item.price);
+                    if (!sku || !(price > 0)) return;
+                    chPushSpriceBuf[sku.toUpperCase()] = { sku: sku, price: price };
+                });
+                const n = Object.keys(chPushSpriceBuf).length;
+                if (!n) return;
+                if (!opts.silent) {
+                    setChannelPushSpriceProgress({
+                        active: true,
+                        done: 0,
+                        total: n,
+                        ok: 0,
+                        fail: 0,
+                        pct: 3,
+                        title: 'S PRC queue',
+                        msg: n + ' SKU(s) — background (page close OK)',
+                    });
+                }
+                clearTimeout(chPushSpriceTimer);
+                chPushSpriceTimer = setTimeout(flushChannelPushSprice, opts.immediate ? 0 : 180);
+            }
+            function enqueueChannelPushSpriceAfterSave(sku, price, row) {
+                const p = chPushSpriceRound2(price);
+                if (!sku || !(p > 0)) return;
+                const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
+                const live = chPushSpriceRound2(d['eBay Price']);
+                if (live > 0 && chPushSpriceNearlyEqual(p, live)) return;
+                try {
+                    if (row && typeof row.update === 'function') row.update({ SPRICE_STATUS: 'queued' });
+                } catch (e) { /* ignore */ }
+                enqueueChannelPushSprice([{ sku: sku, price: p }]);
+            }
+            function chPushSpriceIsChild(d) {
+                if (!d || d.is_parent_summary || d.is_parent_row) return false;
+                if (String(d.Parent || '').toUpperCase().startsWith('PARENT')) return false;
+                const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+                return !!sku && sku.toUpperCase().indexOf('PARENT') === -1;
+            }
+            function chPushSpriceWalkRows(tbl, fn) {
+                if (!tbl) return;
+                (tbl.getRows('all') || tbl.getRows() || []).forEach(function walk(row) {
+                    if (!row || typeof row.getData !== 'function') return;
+                    fn(row, row.getData() || {});
+                    if (typeof row.getTreeChildren === 'function') {
+                        (row.getTreeChildren() || []).forEach(walk);
+                    }
+                });
+            }
+            function scanAndQueueChannelPushSprice(tbl, opts) {
+                opts = opts || {};
+                if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
+                if (opts.once !== false && opts.silent) window._chPushSpricePageChecked = true;
+                tbl = tbl || (typeof table !== 'undefined' ? table : null);
+                if (!tbl) return;
+                const persistMissing = opts.persistMissing !== false;
+                const jobs = [];
+                const saves = [];
+                chPushSpriceWalkRows(tbl, function(row, d) {
+                    if (!chPushSpriceIsChild(d)) return;
+                    const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+                    if (!sku) return;
+                    let fill = chPushSpriceRound2(d.SPRICE);
+                    const std = chPushSpriceRound2(d.STANDARD_PRICE != null ? d.STANDARD_PRICE : d.standard_price);
+                    if (!(fill > 0) && typeof chPromoSpriceFromStdTPromo === 'function') {
+                        fill = chPushSpriceRound2(chPromoSpriceFromStdTPromo(d));
+                    }
+                    if (!(fill > 0) && std > 0) fill = std;
+                    if (!(fill > 0)) return;
+                    const live = chPushSpriceRound2(d['eBay Price']);
+                    if (!(live > 0) || chPushSpriceNearlyEqual(fill, live)) return;
+                    const current = chPushSpriceRound2(d.SPRICE);
+                    if (persistMissing && CH_PUSH_SPRICE_SAVE && (!(current > 0) || !chPushSpriceNearlyEqual(current, fill))) {
+                        try { row.update({ SPRICE: fill, SPRICE_STATUS: 'queued' }); } catch (e) { /* ignore */ }
+                        saves.push({ sku: sku, price: fill });
+                    }
+                    jobs.push({ sku: sku, price: fill });
+                });
+                if (!jobs.length) return;
+                const persistThenQueue = function() {
+                    enqueueChannelPushSprice(jobs, { silent: !!opts.silent });
+                    if (!opts.silent) {
+                        chPushSpriceToast('success', 'S PRC queued for ' + jobs.length + ' SKU(s) — page close OK');
+                    }
+                };
+                if (!saves.length) {
+                    persistThenQueue();
+                    return;
+                }
+                let idx = 0;
+                let inflight = 0;
+                const max = 8;
+                function pump() {
+                    while (inflight < max && idx < saves.length) {
+                        const job = saves[idx++];
+                        inflight++;
+                        $.ajax({
+                            url: CH_PUSH_SPRICE_SAVE,
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
+                            data: { sku: job.sku, sprice: job.price, skip_push: 1, _token: chPushSpriceCsrf() },
+                        }).always(function() {
+                            inflight--;
+                            if (idx >= saves.length && inflight === 0) persistThenQueue();
+                            else pump();
+                        });
+                    }
+                }
+                pump();
+            }
+
+            global.enqueueChannelPushSprice = enqueueChannelPushSprice;
+            global.enqueueChannelPushSpriceAfterSave = enqueueChannelPushSpriceAfterSave;
+            global.scanAndQueueChannelPushSprice = scanAndQueueChannelPushSprice;
+            global.startChannelPushSpricePoll = startChannelPushSpricePoll;
+            global._chPushSpriceChannel = CH_PUSH_SPRICE_CHANNEL;
+        })(window);

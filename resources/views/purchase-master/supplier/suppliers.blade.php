@@ -114,12 +114,12 @@
 
         /* Uniform data font size + center headers and cell content */
         #suppliers-table {
-            font-size: 0.875rem;
+            font-size: 0.78rem;
         }
         #suppliers-table thead th,
         #suppliers-table tbody td {
-            font-size: 0.875rem !important;
-            line-height: 1.35;
+            font-size: 0.78rem !important;
+            line-height: 1.15;
             text-align: center !important;
             vertical-align: middle !important;
         }
@@ -138,7 +138,7 @@
         #suppliers-table tbody td .fw-semibold,
         #suppliers-table tbody td span,
         #suppliers-table tbody td a {
-            font-size: 0.875rem !important;
+            font-size: 0.78rem !important;
         }
         #suppliers-table tbody td .rate-btn {
             border: none !important;
@@ -257,6 +257,141 @@
             background-color: transparent !important;
         }
 
+        /* Add / Edit / View / Rating / Bank — larger modal, all fields visible, no inner scroll */
+        #addSupplierModal .modal-dialog,
+        #ratingModal .modal-dialog,
+        #supplierBankModal .modal-dialog,
+        [id^="editSupplierModal"] .modal-dialog,
+        [id^="viewSupplierModal"] .modal-dialog {
+            max-width: min(1400px, 96vw);
+            width: 96vw;
+            margin: 0.75rem auto;
+        }
+        #addSupplierModal .modal-content,
+        #ratingModal .modal-content,
+        #supplierBankModal .modal-content,
+        [id^="editSupplierModal"] .modal-content,
+        [id^="viewSupplierModal"] .modal-content {
+            max-height: calc(100vh - 1.5rem);
+            height: auto;
+            overflow: visible;
+        }
+        #addSupplierModal .modal-header,
+        #ratingModal .modal-header,
+        #supplierBankModal .modal-header,
+        [id^="editSupplierModal"] .modal-header,
+        [id^="viewSupplierModal"] .modal-header {
+            padding: 0.5rem 1rem;
+        }
+        #addSupplierModal .modal-body,
+        #ratingModal .modal-body,
+        #supplierBankModal .modal-body,
+        [id^="editSupplierModal"] .modal-body,
+        [id^="viewSupplierModal"] .modal-body {
+            overflow: visible !important;
+            max-height: none !important;
+            padding: 0.7rem 1rem !important;
+        }
+        #supplierBankAccountsList,
+        #supplierBankHistoryBody {
+            max-height: 26vh;
+            overflow: auto;
+        }
+        #addSupplierModal .form-label,
+        #ratingModal .form-label,
+        [id^="editSupplierModal"] .form-label {
+            margin-bottom: 0.15rem;
+            font-size: 0.78rem;
+        }
+        #addSupplierModal .form-control,
+        #addSupplierModal .form-select,
+        #ratingModal .form-control,
+        #ratingModal .form-select,
+        [id^="editSupplierModal"] .form-control,
+        [id^="editSupplierModal"] .form-select {
+            padding: 0.22rem 0.5rem;
+            font-size: 0.85rem;
+            min-height: 32px;
+        }
+        #addSupplierModal .row.g-3,
+        [id^="editSupplierModal"] .row.g-3,
+        [id^="viewSupplierModal"] .row.g-3,
+        #ratingModal .row.g-3 {
+            --bs-gutter-y: 0.45rem;
+            --bs-gutter-x: 0.7rem;
+        }
+        #addSupplierModal textarea.form-control,
+        [id^="editSupplierModal"] textarea.form-control {
+            min-height: 48px;
+            resize: none;
+        }
+        #addSupplierModal .select2-container .select2-selection--multiple,
+        [id^="editSupplierModal"] .select2-container .select2-selection--multiple {
+            min-height: 32px !important;
+        }
+        #ratingModal .rating-criteria-card {
+            padding: 0.4rem 0.6rem !important;
+        }
+        [id^="viewSupplierModal"] .supplier-view-hero {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        [id^="viewSupplierModal"] .supplier-view-avatar {
+            width: 48px !important;
+            height: 48px !important;
+            flex-shrink: 0;
+        }
+        [id^="viewSupplierModal"] .supplier-view-avatar i {
+            font-size: 1.85rem !important;
+        }
+        [id^="viewSupplierModal"] .sv-field {
+            background: #f8fafc;
+            border: 1px solid #e8eef5;
+            border-radius: 8px;
+            padding: 8px 10px;
+            min-height: 58px;
+            height: 100%;
+        }
+        [id^="viewSupplierModal"] .sv-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #64748b;
+            margin-bottom: 3px;
+        }
+        [id^="viewSupplierModal"] .sv-value {
+            font-size: 0.86rem;
+            font-weight: 600;
+            color: #0f172a;
+            word-break: break-word;
+            line-height: 1.3;
+        }
+        [id^="viewSupplierModal"] .sv-value a {
+            font-weight: 600;
+        }
+        [id^="viewSupplierModal"] .supplier-view-bank {
+            margin-top: 12px;
+            padding: 10px 12px 12px;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+        }
+        [id^="viewSupplierModal"] .sv-bank-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #334155;
+            margin-bottom: 8px;
+        }
+        [id^="viewSupplierModal"] .supplier-view-bank .sv-field {
+            background: #fff;
+            min-height: 52px;
+        }
+
         /* Actions column — no outline/border on soft edit/delete buttons */
         #suppliers-table .btn-soft-primary,
         #suppliers-table .btn-soft-danger {
@@ -274,26 +409,193 @@
         }
 
         /* One-line toolbar: title + badge + filters + actions */
+        .supplier-toolbar {
+            overflow: visible;
+        }
         .supplier-toolbar .select2-container {
             width: 100% !important;
         }
         .supplier-toolbar .select2-container .select2-selection--single {
-            height: 31px !important;
-            min-height: 31px !important;
+            height: 32px !important;
+            min-height: 32px !important;
         }
-        .supplier-toolbar .select2-container--default .select2-selection--single .select2-selection__rendered {
-            line-height: 29px !important;
-            font-size: 0.85rem;
+        .supplier-toolbar .select2-container--default .select2-selection--single .select2-selection__rendered,
+        .supplier-toolbar .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            line-height: 30px !important;
+            font-size: 0.82rem;
+            padding-right: 1.75rem !important;
         }
-        .supplier-toolbar .select2-container--default .select2-selection--single .select2-selection__arrow {
-            height: 29px !important;
+        .supplier-toolbar .select2-container--default .select2-selection--single .select2-selection__arrow,
+        .supplier-toolbar .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+            height: 30px !important;
+        }
+        .select2-container--open {
+            z-index: 3000 !important;
+        }
+        .supplier-filter-dropdown {
+            z-index: 3000 !important;
+            min-width: 280px !important;
+        }
+        .supplier-filter-dropdown .select2-search--dropdown .select2-search__field {
+            padding: 4px 8px;
+        }
+
+        /* Lock the list to one viewport: chrome stays put, table scrolls inside */
+        @media (min-width: 992px) {
+            html:has(.supplier-page-wrap),
+            body:has(.supplier-page-wrap) {
+                height: 100%;
+                overflow: hidden;
+            }
+            body:has(.supplier-page-wrap) .page-title-box {
+                display: none !important;
+            }
+            body:has(.supplier-page-wrap) .content-page {
+                height: calc(100vh - var(--ct-topbar-height, 70px));
+                min-height: 0;
+                overflow: hidden;
+                padding-bottom: var(--ct-footer-height, 60px);
+            }
+            body:has(.supplier-page-wrap) .content-page .content {
+                height: 100%;
+                overflow: hidden;
+            }
+            body:has(.supplier-page-wrap) .content-page .content > .container-fluid {
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                padding-top: 6px;
+                padding-bottom: 0;
+                overflow: hidden;
+            }
+            .supplier-page-wrap {
+                flex: 1 1 auto;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            .supplier-page-wrap > .alert {
+                flex: 0 0 auto;
+                margin-bottom: 6px !important;
+                padding: 0.4rem 0.75rem;
+            }
+            .supplier-page-wrap > .row {
+                flex: 1 1 auto;
+                min-height: 0;
+                margin: 0;
+            }
+            .supplier-page-wrap > .row > [class*="col-"] {
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+            }
+            .supplier-page-card {
+                height: 100%;
+                max-height: calc(100vh - var(--ct-topbar-height, 70px) - var(--ct-footer-height, 60px) - 12px);
+                margin-bottom: 0 !important;
+                display: flex;
+                flex-direction: column;
+            }
+            .supplier-page-card > .card-body {
+                flex: 1 1 auto;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+                padding: 8px 10px 0 !important;
+                overflow: hidden;
+            }
+            .supplier-page-card .supplier-toolbar {
+                flex: 0 0 auto;
+                margin-bottom: 6px !important;
+            }
+            .supplier-page-card .supplier-bulk-banner {
+                flex: 0 0 auto;
+            }
+            .supplier-page-card .table-responsive {
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow: auto !important;
+            }
+            .supplier-page-card .supplier-pagination {
+                flex: 0 0 auto;
+                margin-top: 0 !important;
+                padding: 6px 4px 8px;
+                background: #fff;
+                border-top: 1px solid #e5e7eb;
+                position: relative;
+                z-index: 30;
+            }
+        }
+
+        .supplier-pagination {
+            flex: 0 0 auto;
+            background: #fff;
+            border-top: 1px solid #e5e7eb;
+            padding: 6px 4px 8px;
+            z-index: 30;
+        }
+
+        .supplier-toolbar .card-title {
+            font-size: 1.05rem;
+        }
+        .supplier-toolbar .btn-sm {
+            padding: 0.2rem 0.45rem;
+            font-size: 0.78rem;
+        }
+        .supplier-toolbar .supplier-filter-cat {
+            min-width: 220px;
+            width: 240px;
+            max-width: 280px;
+        }
+        .supplier-toolbar .supplier-filter-type {
+            min-width: 150px;
+            width: 170px;
+            max-width: 190px;
+        }
+        .supplier-toolbar .input-group-sm > .form-control,
+        .supplier-toolbar .input-group-sm > .input-group-text {
+            min-height: 32px;
+            padding-top: 0.2rem;
+            padding-bottom: 0.2rem;
+        }
+
+        #suppliers-table {
+            font-size: 0.78rem;
+        }
+        #suppliers-table thead th,
+        #suppliers-table tbody td {
+            font-size: 0.78rem !important;
+            line-height: 1.15;
+            padding: 0.18rem 0.3rem !important;
+            white-space: nowrap;
+        }
+        #suppliers-table tbody td,
+        #suppliers-table tbody td .btn,
+        #suppliers-table tbody td .badge,
+        #suppliers-table tbody td .fw-bold,
+        #suppliers-table tbody td .fw-semibold,
+        #suppliers-table tbody td span,
+        #suppliers-table tbody td a {
+            font-size: 0.78rem !important;
+        }
+        #suppliers-table tbody td .btn-sm {
+            padding: 0.08rem 0.28rem;
+            line-height: 1.1;
+        }
+        #suppliers-table tbody td .badge {
+            padding: 0.18em 0.4em;
+        }
+        #suppliers-table td.supplier-name-col {
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
     </style>
 @endsection
 
 @section('content')
-@include('layouts.shared.page-title', ['page_title' => 'Suppliers', 'sub_title' => 'Suppliers'])
-
+<div class="supplier-page-wrap">
 @if(Session::has('flash_message'))
 <div class="alert alert-primary bg-primary text-white alert-dismissible fade show" role="alert" style="background-color: #169e28 !important; color: #fff !important;">
     {{ Session::get('flash_message') }}
@@ -302,8 +604,8 @@
 @endif
 
 <div class="row">
-    <div class="col-12">
-        <div class="card shadow-sm">
+    <div class="col-12 h-100">
+        <div class="card shadow-sm supplier-page-card">
             <div class="card-body">
                 <!-- Bulk Import Modal -->
                 <div class="modal fade" id="bulkImportModal" tabindex="-1" aria-labelledby="bulkImportModalLabel" aria-hidden="true">
@@ -346,7 +648,7 @@
 
                 <form method="GET" action="{{ route('supplier.list') }}" id="filter-form">
                     {{-- Title + badge + filters + actions — one line L→R --}}
-                    <div class="supplier-toolbar d-flex flex-nowrap align-items-center gap-2 mb-3">
+                    <div class="supplier-toolbar d-flex flex-nowrap align-items-center gap-2 mb-2">
                         <h4 class="card-title mb-0 text-nowrap flex-shrink-0">Suppliers</h4>
                         <span class="badge bg-primary rounded-pill px-2 py-1 flex-shrink-0" id="supplier-count" style="font-size: 0.85rem; font-weight: 600;">
                             <strong>{{ number_format($filteredCount) }}</strong>
@@ -355,7 +657,7 @@
                             @endif
                         </span>
 
-                        <div class="flex-shrink-0" style="min-width: 140px; max-width: 180px; width: 160px;">
+                        <div class="flex-shrink-0 supplier-filter-cat">
                             <select class="form-select form-select-sm select2" id="category-filter" name="category" data-placeholder="Category" aria-label="Category">
                                 <option value="">All Categories</option>
                                 @foreach($categories as $category)
@@ -364,7 +666,7 @@
                             </select>
                         </div>
 
-                        <div class="flex-shrink-0" style="min-width: 120px; max-width: 150px; width: 140px;">
+                        <div class="flex-shrink-0 supplier-filter-type">
                             @php
                                 $types = ['Supplier','Forwarders', 'Photographer'];
                             @endphp
@@ -411,7 +713,7 @@
                         </div>
                         <p class="mt-3 text-muted fw-semibold">Loading suppliers...</p>
                     </div>
-                    <table class="table table-centered table-hover mb-0" id="suppliers-table">
+                    <table class="table table-sm table-centered table-hover mb-0" id="suppliers-table">
                         <thead class="table-light">
                             <tr>
                                 <th class="text-center supplier-select-col" style="width: 36px;" title="Select rows to bulk-apply edits">
@@ -445,7 +747,11 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="d-flex justify-content-end mt-4">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 supplier-pagination">
+                    <div class="text-muted small mb-0" id="supplier-page-info">
+                        Page {{ $suppliers->currentPage() }} of {{ max(1, $suppliers->lastPage()) }}
+                        · {{ number_format($suppliers->total()) }} suppliers
+                    </div>
                     <div class="pagination-wrapper" id="pagination-wrapper">
                         {{ $suppliers->onEachSide(1)->links('pagination::bootstrap-5') }}
                     </div>
@@ -466,14 +772,16 @@
                         gap: 4px;
                     }
                     .pagination-wrapper .page-item .page-link {
-                        padding: 0.5rem 1rem;
-                        min-width: 40px;
+                        padding: 0.2rem 0.55rem;
+                        min-width: 32px;
                         text-align: center;
                         color: #464646;
                         border: 1px solid #f1f1f1;
                         font-weight: 500;
                         transition: all 0.2s ease;
                         border-radius: 6px;
+                        font-size: 0.8rem;
+                        line-height: 1.2;
                     }
                     .pagination-wrapper .page-item.active .page-link {
                         background: linear-gradient(135deg, #727cf5, #6366f1);
@@ -487,9 +795,8 @@
                         color: #727cf5;
                         border-color: #e9ecef;
                     }
-                    /* Hide the "Showing x to y of z results" text */
-                    .pagination-wrapper p.small,
-                    .pagination-wrapper div.flex.items-center.justify-between {
+                    /* Hide Laravel's default "Showing x to y" line only — keep the page buttons */
+                    .pagination-wrapper > p.small {
                         display: none !important;
                     }
                     @media (max-width: 576px) {
@@ -504,10 +811,11 @@
         </div>
     </div>
 </div>
+</div>
 
 <!-- Supplier Modal -->
 <div class="modal fade" id="addSupplierModal" tabindex="-1" aria-labelledby="supplierModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable shadow-none">
+    <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
         <div class="modal-content border-0 shadow-lg">
             <form method="POST" action="{{ route('supplier.create') }}" class="needs-validation" novalidate id="addSupplierForm">
                 @csrf
@@ -527,9 +835,9 @@
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body py-4">
+                <div class="modal-body py-3">
                     <div class="row g-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">Type <span class="text-danger">*</span></label>
                             @php
                                 $types = ['Supplier','Forwarders', 'Photographer'];
@@ -541,43 +849,43 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
-                            <select name="category_id[]" class="form-select select2" data-placeholder="Select Category" multiple required style="min-height: 42px;">
+                            <select name="category_id[]" class="form-select select2" data-placeholder="Select Category" multiple required>
                                 @foreach($categories as $category)
                                     <option value="{{ $category->id }}">{{ $category->name }}</option>
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">Name <span class="text-danger">*</span></label>
                             <input type="text" name="name" class="form-control" required placeholder="Supplier Name">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">Company</label>
                             <input type="text" name="company" class="form-control" placeholder="Company Name">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">Alias</label>
                             <input type="text" name="alias" class="form-control" placeholder="Alias">
                         </div>
-                        <div class="col-md-6">
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <label class="form-label fw-semibold">Country Code</label>
+                        <div class="col-md-4">
+                            <div class="row g-1">
+                                <div class="col-4">
+                                    <label class="form-label fw-semibold">Code</label>
                                     <input type="text" name="country_code" class="form-control" placeholder="+86">
                                 </div>
-                                <div class="col-md-8">
+                                <div class="col-8">
                                     <label class="form-label fw-semibold">Phone</label>
                                     <input type="text" name="phone" class="form-control" placeholder="Phone Number">
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">City</label>
                             <input type="text" name="city" class="form-control" placeholder="City">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">Zone</label>
                             <select name="zone" class="form-select">
                                 <option value="">Select Zone</option>
@@ -586,7 +894,7 @@
                                 <option value="Tianjin">Tianjin</option>
                             </select>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">Approved</label>
                             <div class="d-flex align-items-center gap-2 approval-form-dots flex-wrap">
                                 <label class="mb-0 cursor-pointer small text-muted border rounded px-2 py-1" title="Not set">
@@ -606,27 +914,27 @@
                                 </label>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">Email</label>
                             <input type="email" name="email" class="form-control" placeholder="Email Address">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">WhatsApp</label>
                             <input type="text" name="whatsapp" class="form-control" placeholder="WhatsApp Number">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">WeChat</label>
                             <input type="text" name="wechat" class="form-control" placeholder="WeChat ID">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">Alibaba</label>
                             <input type="text" name="alibaba" class="form-control" placeholder="Alibaba Profile">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">1688</label>
                             <input type="text" name="link_1688" class="form-control" placeholder="1688 Profile / URL">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">QQ</label>
                             <input type="text" name="qq" class="form-control" placeholder="QQ ID">
                         </div>
@@ -651,8 +959,8 @@
                             <textarea name="bank_details" class="form-control" rows="2" placeholder="Bank Details"></textarea>
                         </div>
                     </div>
-                    <div class="d-flex justify-content-end mt-3">
-                        <button type="submit" class="btn btn-primary">
+                    <div class="d-flex justify-content-end mt-2">
+                        <button type="submit" class="btn btn-primary btn-sm">
                             <i class="mdi mdi-content-save"></i> Save Supplier
                         </button>
                     </div>
@@ -664,7 +972,7 @@
 
 <!-- Rating Modal -->
 <div class="modal fade" id="ratingModal" tabindex="-1" aria-labelledby="ratingModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+    <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
         <div class="modal-content border-0 shadow-lg">
             <form method="POST" action="{{ route('supplier.rating.save') }}" class="needs-validation" novalidate id="rating-modal-form">
                 @csrf
@@ -679,8 +987,8 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
 
-                <div class="modal-body p-4">
-                    <div class="row g-3 mb-4">
+                <div class="modal-body p-3">
+                    <div class="row g-3 mb-2">
                         <!-- Supplier Name -->
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">👤 Supplier</label>
@@ -695,7 +1003,7 @@
                     </div>
 
                     <!-- Rating Table -->
-                    <h5 class="mb-3 fw-semibold">📊 Evaluation Criteria</h5>
+                    <h6 class="mb-2 fw-semibold">📊 Evaluation Criteria</h6>
                     @php
                         $criteria = [
                             ['emoji' => '💎', 'label' => 'Product Quality', 'weight' => 20],
@@ -713,8 +1021,8 @@
 
                     <div class="row g-3">
                         @foreach ($criteria as $i => $item)
-                        <div class="col-md-6">
-                            <div class="p-3 border rounded d-flex justify-content-between align-items-center h-100">
+                        <div class="col-md-4">
+                            <div class="p-2 border rounded d-flex justify-content-between align-items-center h-100 rating-criteria-card">
                                 <div>
                                     <label for="score_{{ $i }}" class="form-label fw-semibold d-block mb-1">
                                         {{ $item['emoji'] }} {{ $item['label'] }}
@@ -732,8 +1040,8 @@
                     </div>
 
                     <!-- Submit Button -->
-                    <div class="d-flex justify-content-end mt-4">
-                        <button class="btn btn-primary" type="submit" id="rating-submit-btn">
+                    <div class="d-flex justify-content-end mt-2">
+                        <button class="btn btn-primary btn-sm" type="submit" id="rating-submit-btn">
                             <i class="mdi mdi-content-save me-1"></i> Submit Rating
                         </button>
                     </div>
@@ -766,7 +1074,7 @@
 
 {{-- Supplier Bank Details modal — multiple accounts; edit gated by email --}}
 <div class="modal fade" id="supplierBankModal" tabindex="-1" aria-labelledby="supplierBankModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title" id="supplierBankModalLabel">
@@ -1590,36 +1898,28 @@
                 console.log('✅ All validations passed - submitting form');
             });
 
-            // Initialize Select2 for category filter with search enabled
-            const categorySelect = $('#category-filter');
-            // Only initialize if not already initialized
-            if (!categorySelect.hasClass('select2-hidden-accessible')) {
-                categorySelect.select2({
-                    theme: "bootstrap-5",
+            function initToolbarFilterSelect2($el, placeholder) {
+                if (!$el.length || $el.hasClass('select2-hidden-accessible')) {
+                    return $el;
+                }
+                return $el.select2({
+                    theme: 'bootstrap-5',
                     width: '100%',
-                    placeholder: categorySelect.data('placeholder') || 'Filter by category',
+                    placeholder: placeholder,
                     allowClear: true,
-                    minimumResultsForSearch: 0, // Always show search box
-                }).on('select2:open', function() {
-                    // Focus on search input when dropdown opens
-                    setTimeout(function() {
-                        $('.select2-search__field').focus();
+                    minimumResultsForSearch: 0,
+                    dropdownParent: $(document.body),
+                    dropdownCssClass: 'supplier-filter-dropdown',
+                }).on('select2:open', function () {
+                    setTimeout(function () {
+                        $('.select2-container--open .select2-search__field').last().trigger('focus');
                     }, 80);
                 });
             }
 
-            // Initialize Select2 for type filter with search enabled
-            const typeSelect = $('#type-filter');
-            // Only initialize if not already initialized
-            if (!typeSelect.hasClass('select2-hidden-accessible')) {
-                typeSelect.select2({
-                    theme: "bootstrap-5",
-                    width: '100%',
-                    placeholder: typeSelect.data('placeholder') || 'Filter by type',
-                    allowClear: true,
-                    minimumResultsForSearch: 0, // Always show search box
-                });
-            }
+            // Initialize Select2 for category / type filters (dropdown on body so it is not clipped)
+            initToolbarFilterSelect2($('#category-filter'), $('#category-filter').data('placeholder') || 'Filter by category');
+            initToolbarFilterSelect2($('#type-filter'), $('#type-filter').data('placeholder') || 'Filter by type');
 
             // Column sorting state (server-side; round-tripped through loadSuppliers).
             // Initialised from the request that rendered this page so deep-links / refreshes work.
@@ -1685,13 +1985,6 @@
                     params.set('direction', currentSort.direction);
                 }
                 if (page > 1) params.set('page', page);
-                
-                // Smooth scroll to table if not on first page or if filters are applied
-                if (page === 1 && (category || type || search)) {
-                    $('html, body').animate({
-                        scrollTop: $('#suppliers-table').offset().top - 150
-                    }, 300, 'swing');
-                }
                 
                 // Show loading indicator with smooth fade
                 $('#loading-indicator').fadeIn(200);
@@ -1918,6 +2211,12 @@
                             
                             // Update pagination with smooth fade-in
                             $('#pagination-wrapper').html(response.pagination).fadeIn(200);
+                            if (response.currentPage && response.lastPage) {
+                                $('#supplier-page-info').text(
+                                    'Page ' + response.currentPage + ' of ' + response.lastPage
+                                    + ' · ' + formatNumber(response.filteredCount) + ' suppliers'
+                                );
+                            }
                             
                             // Update count badge with smooth transition
                             let countHtml = '<strong>' + formatNumber(response.filteredCount) + '</strong>';
@@ -1977,22 +2276,11 @@
                                     categorySelect.val(null);
                                 }
                                 
-                                // Small delay to ensure cleanup is complete before reinitializing
                                 setTimeout(function() {
-                                    // Reinitialize Select2 with the value already set (only if not already initialized)
-                                    if (!categorySelect.hasClass('select2-hidden-accessible')) {
-                                        categorySelect.select2({
-                                            theme: "bootstrap-5",
-                                            width: '100%',
-                                            placeholder: categorySelect.data('placeholder') || 'Filter by category',
-                                            allowClear: true,
-                                            minimumResultsForSearch: 0,
-                                        }).on('select2:open', function() {
-                                            setTimeout(function() {
-                                                $('.select2-search__field').focus();
-                                            }, 80);
-                                        });
-                                    }
+                                    initToolbarFilterSelect2(
+                                        categorySelect,
+                                        categorySelect.data('placeholder') || 'Filter by category'
+                                    );
                                 }, 30);
                                 
                                 // Restore type filter
@@ -2039,18 +2327,11 @@
                                     typeSelect.val(null);
                                 }
                                 
-                                // Small delay to ensure cleanup is complete before reinitializing
                                 setTimeout(function() {
-                                    // Reinitialize Select2 with the value already set (only if not already initialized)
-                                    if (!typeSelect.hasClass('select2-hidden-accessible')) {
-                                        typeSelect.select2({
-                                            theme: "bootstrap-5",
-                                            width: '100%',
-                                            placeholder: typeSelect.data('placeholder') || 'Filter by type',
-                                            allowClear: true,
-                                            minimumResultsForSearch: 0,
-                                        });
-                                    }
+                                    initToolbarFilterSelect2(
+                                        typeSelect,
+                                        typeSelect.data('placeholder') || 'Filter by type'
+                                    );
                                 }, 30);
                                 
                                 // Restore search input value
@@ -2172,10 +2453,6 @@
                     const urlObj = new URL(url);
                     const page = urlObj.searchParams.get('page') || 1;
                     loadSuppliers(page);
-                    // Smooth scroll to top of table
-                    $('html, body').animate({
-                        scrollTop: $('#suppliers-table').offset().top - 100
-                    }, 400, 'swing');
                 }
             });
         });

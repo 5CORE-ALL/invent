@@ -109,6 +109,8 @@ class SupplierController extends Controller
                 'success' => true,
                 'html' => view('purchase-master.supplier.partials.rows', compact('suppliers', 'categories', 'canEditSupplierBank'))->render(),
                 'pagination' => (string) $suppliers->onEachSide(1)->links('pagination::bootstrap-5'),
+                'currentPage' => $suppliers->currentPage(),
+                'lastPage' => max(1, $suppliers->lastPage()),
                 'filteredCount' => $filteredCount,
                 'totalCount' => $totalCount,
                 'sort' => $sortKey,

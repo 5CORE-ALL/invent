@@ -979,6 +979,7 @@
     @section('script-bottom')
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
+        @include('partials.channel-push-sprice-queue', ['channelPushSpriceChannel' => 'ebay2op'])
         const COLUMN_VIS_KEY = "ebay2op_tabulator_column_visibility";
         let skuMetricsChart = null;
         let currentSku = null;
@@ -1722,8 +1723,11 @@
                                     SPFT: response.spft_percent,
                                     SROI: response.sroi_percent,
                                     SGPFT: response.sgpft_percent,
-                                    SPRICE_STATUS: 'saved'
+                                    SPRICE_STATUS: 'queued'
                                 });
+                            }
+                            if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
+                                enqueueChannelPushSpriceAfterSave(sku, sprice, row);
                             }
                             resolve(response);
                         },
@@ -4732,6 +4736,11 @@
             });
 
             table.on('dataLoaded', function() {
+                if (typeof scanAndQueueChannelPushSprice === 'function' && !window._chPushSpricePageChecked) {
+                    setTimeout(function() {
+                        scanAndQueueChannelPushSprice(table, { silent: true });
+                    }, 120);
+                }
                 updateCalcValues();
                 updateSummary();
                 // Refresh checkboxes to reflect selectedSkus set (matching Amazon approach)

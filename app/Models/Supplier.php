@@ -82,4 +82,65 @@ class Supplier extends Model
             ->values();
     }
 
+    /**
+     * Split free-text bank_details into label/value rows for the view modal.
+     *
+     * @return array<int, array{label: string, value: string}>
+     */
+    public function parsedBankDetailPairs(): array
+    {
+        $raw = trim((string) ($this->bank_details ?? ''));
+        if ($raw === '') {
+            return [];
+        }
+
+        $labels = [
+            'SWIFT/BIC Code',
+            'SWIFT/BIC',
+            'BIC Code',
+            'Account Number',
+            'Account No',
+            'Account Name',
+            'Bank Address',
+            'Bank Name',
+            'Country/Region',
+            'Beneficiary',
+            'Country',
+            'Branch',
+            'SWIFT',
+            'IBAN',
+        ];
+        usort($labels, static fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+
+        $pairs = [];
+        foreach (preg_split("/\r\n|\n|\r/", $raw) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+
+            if (preg_match('/^([^:]{2,40})\s*:\s*(.+)$/u', $line, $m)) {
+                $pairs[] = ['label' => trim($m[1]), 'value' => trim($m[2])];
+                continue;
+            }
+
+            $matched = false;
+            foreach ($labels as $label) {
+                if (stripos($line, $label) === 0) {
+                    $value = trim(substr($line, strlen($label)));
+                    $value = ltrim($value, ":\t -");
+                    $pairs[] = ['label' => $label, 'value' => $value !== '' ? $value : '—'];
+                    $matched = true;
+                    break;
+                }
+            }
+
+            if (! $matched) {
+                $pairs[] = ['label' => '', 'value' => $line];
+            }
+        }
+
+        return $pairs;
+    }
+
 }

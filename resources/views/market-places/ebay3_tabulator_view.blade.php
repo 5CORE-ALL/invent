@@ -1546,11 +1546,14 @@
                                     SROI: response.data?.sroi || response.sroi_percent,
                                     SGROI: response.data?.sgroi ?? response.sgroi_percent ?? null,
                                     SGPFT: response.data?.sgpft || response.sgpft_percent,
-                                    SPRICE_STATUS: 'saved',
+                                    SPRICE_STATUS: 'queued',
                                     has_custom_sprice: true
                                 });
                             }
                             targetRow.reformat();
+                        }
+                        if (numSprice > 0 && typeof enqueueChannelPushSpriceAfterSave === 'function') {
+                            enqueueChannelPushSpriceAfterSave(sku, numSprice, targetRow);
                         }
                         resolve(response);
                     },
@@ -3584,7 +3587,7 @@
                 
                 saveSpriceWithRetry(data['(Child) sku'], value, row)
                     .then((response) => {
-                        showToast('SPRICE saved successfully', 'success');
+                        showToast('S PRC saved — eBay 3 push queued (page close OK)', 'success');
                     })
                     .catch((error) => {
                         showToast('Failed to save SPRICE', 'error');
@@ -4408,6 +4411,11 @@
                         }
                     }
                 } catch (e) { /* ignore */ }
+            }
+            if (typeof scanAndQueueChannelPushSprice === 'function' && !window._chPushSpricePageChecked) {
+                setTimeout(function() {
+                    scanAndQueueChannelPushSprice(table, { silent: true });
+                }, 120);
             }
             updateCalcValues();
             updateSummary();

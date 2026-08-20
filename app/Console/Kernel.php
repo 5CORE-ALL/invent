@@ -2480,6 +2480,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // S PRC → live eBay listing price (ebay1 / ebay2 / ebay3). Page not required.
+        $schedule->command('channel:push-sprice-daily')
+            ->dailyAt('17:00')
+            ->timezone('Asia/Kolkata')
+            ->name('channel-push-sprice-daily-ist')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // SOF summary history — always one row per Pacific day (even if metrics unchanged).
         // Primary write at 00:00 PST (stores the day that just ended).
         $schedule->command('sof:snapshot-daily')

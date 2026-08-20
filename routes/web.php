@@ -5351,6 +5351,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-push-prc/{channel}', [ChannelPromoPricingController::class, 'queuePushPrc'])->name('channel.push-prc.queue');
     Route::get('/channel-push-prc/{channel}/status', [ChannelPromoPricingController::class, 'pushPrcJobStatus'])->name('channel.push-prc.status');
     Route::post('/channel-push-prc/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushPrc'])->name('channel.push-prc.cancel');
+    Route::post('/channel-push-sprice/{channel}', [ChannelPromoPricingController::class, 'queuePushSprice'])->name('channel.push-sprice.queue');
+    Route::get('/channel-push-sprice/{channel}/status', [ChannelPromoPricingController::class, 'pushSpriceJobStatus'])->name('channel.push-sprice.status');
+    Route::post('/channel-push-sprice/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushSprice'])->name('channel.push-sprice.cancel');
     Route::post('/channel-push-prmt/{channel}', [ChannelPromoPricingController::class, 'queuePushPrmt'])->name('channel.push-prmt.queue');
     Route::get('/channel-push-prmt/{channel}/status', [ChannelPromoPricingController::class, 'pushPrmtJobStatus'])->name('channel.push-prmt.status');
     Route::post('/channel-push-prmt/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushPrmt'])->name('channel.push-prmt.cancel');
