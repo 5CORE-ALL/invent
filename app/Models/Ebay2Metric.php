@@ -26,6 +26,8 @@ class Ebay2Metric extends Model
         'report_range',
         'ebay_stock',
         'bullet_points',
+        'listing_status',
+        'inactive_reason',
     ];
 
     /** MM alias: product_id ↔ item_id */

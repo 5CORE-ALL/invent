@@ -29,6 +29,7 @@ class EbayMetric extends Model
         'listing_status',
         'ebay_stock',
         'bullet_points',
+        'inactive_reason',
     ];
 
     /** MM alias for item_id (matches ebay2 product_id convention). */

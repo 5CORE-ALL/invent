@@ -20,7 +20,8 @@ class TikTokProduct extends Model
         'ads_views',
         'affl_views',
         'reviews',
-        'rating'
+        'rating',
+        'listing_status',
     ];
 
     protected $casts = [
