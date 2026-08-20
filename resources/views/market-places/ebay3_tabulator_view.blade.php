@@ -3118,14 +3118,15 @@
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
-                    editor: "input",
+                    editable: false,
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + CPN%)/100). Read-only. Blue triangle = S PRC ≠ Price. Red triangle / red text = S PRC > LMP.",
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
                         const hasCustomSprice = rowData.has_custom_sprice;
                         const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
                         let sprice = isNaN(spriceNum) ? 0 : spriceNum;
-                        if (!(sprice > 0) && typeof chPromoSpriceFromStdTPromo === 'function'
+                        if (typeof chPromoSpriceFromStdTPromo === 'function'
                             && !rowData.is_parent_summary
                             && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
                             const calc = chPromoSpriceFromStdTPromo(rowData);

@@ -992,23 +992,16 @@
             return aliases[k] || k;
         }
 
-        // Same walk-back as /channel-metric-dot-trends: compare to the last different
-        // value, not yesterday. Sticky channels (Best Buy L30) stay green/red on a plateau.
+        // Chart dots follow the previous day (tooltip "vs Yesterday"), not a 7-day
+        // or last-different walk-back. ACOS & TAcos % invert (lower is better).
         function metricChartDotColors(values, isInverted) {
             var gray = '#6c757d';
             var green = '#28a745';
             var red = '#dc3545';
-            var eps = 0.0001;
             return values.map(function(v, i) {
                 if (i === 0) return gray;
-                var prev = null;
-                for (var j = i - 1; j >= 0; j--) {
-                    if (Math.abs(values[j] - v) > eps) {
-                        prev = values[j];
-                        break;
-                    }
-                }
-                if (prev === null) return gray;
+                var prev = values[i - 1];
+                if (v === prev) return gray;
                 if (isInverted) return v < prev ? green : red;
                 return v > prev ? green : red;
             });

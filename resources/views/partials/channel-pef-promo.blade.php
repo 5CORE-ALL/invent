@@ -2705,13 +2705,36 @@
                 return sku ? 'sku:' + chPromoSkuKey(sku) : '';
             };
         }
-        function chPromoPromoDataset() {
-            if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) {
-                return allTableData;
-            }
+        function chPromoFlattenPromoRows(rows) {
             const out = [];
-            chPromoEachTableRow(function(row, d) { out.push(d); });
+            const seen = new Set();
+            function walk(d) {
+                if (!d || typeof d !== 'object') return;
+                const sku = chPromoSkuKey(chPromoSku(d));
+                if (sku) {
+                    if (seen.has(sku)) {
+                        const kids = d._children;
+                        if (Array.isArray(kids)) kids.forEach(walk);
+                        return;
+                    }
+                    seen.add(sku);
+                }
+                out.push(d);
+                const kids = d._children;
+                if (Array.isArray(kids)) kids.forEach(walk);
+            }
+            (rows || []).forEach(walk);
             return out;
+        }
+        function chPromoPromoDataset() {
+            let raw;
+            if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) {
+                raw = allTableData;
+            } else {
+                raw = [];
+                chPromoEachTableRow(function(row, d) { raw.push(d); });
+            }
+            return chPromoFlattenPromoRows(raw);
         }
         /** Parent/listing Dil = Σ OV L30 / Σ INV (same formula as the Dil column). */
         function chPromoParentDilByKey(dataset, keyOf) {
