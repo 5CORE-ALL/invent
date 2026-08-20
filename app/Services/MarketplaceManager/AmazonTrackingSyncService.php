@@ -11,13 +11,14 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * After a shipping label is bought in Shopify / ShipStation / any connected software,
+ * After a shipping label is bought in Shopify / ShipStation / Veeqo / 4Seller (GOFO) / any connected software,
  * read the Shopify fulfillment tracking number and confirmShipment on Amazon.
  */
 class AmazonTrackingSyncService
 {
     public function __construct(
         protected AmazonSpOrdersClient $ordersClient,
+        protected VeeqoShopifyFulfillmentService $veeqoFulfillment,
     ) {}
 
     /**
@@ -58,21 +59,39 @@ class AmazonTrackingSyncService
         }
 
         $status = strtoupper(trim((string) ($order->status ?? '')));
+
+        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
+        if (empty($shopifyFulfillment['tracking'])) {
+            $veeqo = $this->veeqoFulfillment->fulfillMarketplaceOrder('amazon', (int) $order->id);
+            if (! empty($veeqo['success']) && ! empty($veeqo['tracking'])) {
+                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
+                if (empty($shopifyFulfillment['tracking'])) {
+                    $shopifyFulfillment = [
+                        'tracking' => $veeqo['tracking'],
+                        'carrier' => $veeqo['carrier'] ?? null,
+                        'tracking_url' => null,
+                    ];
+                }
+            }
+        }
+
         if (in_array($status, ['SHIPPED', 'CANCELED', 'CANCELLED'], true)) {
             return [
                 'success' => true,
                 'skipped' => true,
                 'action' => 'already_shipped',
-                'message' => 'Amazon order is already '.$status.'.',
+                'message' => empty($shopifyFulfillment['tracking'])
+                    ? 'Amazon order is already '.$status.'.'
+                    : 'Shopify tracking '.$shopifyFulfillment['tracking'].' saved. Amazon is already '.$status.'.',
+                'shopify_tracking' => $shopifyFulfillment['tracking'] ?? null,
+                'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
             ];
         }
-
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
         if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,
                 'skipped' => true,
-                'message' => 'No tracking number on Shopify yet. Buy a shipping label in Shopify, ShipStation, or any connected shipping software first.',
+                'message' => 'No tracking number on Shopify yet. Buy the label in Veeqo, 4Seller, Shopify, or ShipStation first.',
                 'shopify_tracking' => null,
                 'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
             ];

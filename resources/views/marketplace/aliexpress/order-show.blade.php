@@ -54,6 +54,7 @@
                         <i class="ri-download-cloud-line"></i> Pull from AliExpress
                     </button>
                     @if(!empty($shopify['shopify_order_id']))
+                        @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'aliexpress'])
                         <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-ae" data-id="{{ $line->id }}" title="Read Shopify fulfillment tracking and declare it on AliExpress">
                             <i class="ri-truck-line"></i> Push tracking to AliExpress
                         </button>
@@ -66,7 +67,7 @@
 
         <div class="alert alert-info py-2 small mb-3">
             Order details are pulled from AliExpress and sent to Shopify when you push this order.
-            After you buy/download a shipping label in Shopify, use <strong>Push tracking to AliExpress</strong> so the tracking number is declared on AliExpress too.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to AliExpress</strong> so the tracking number is declared on AliExpress too.@include('marketplace._fetch-tracking-hint')
         </div>
 
         @if($aeLiveError ?? null)

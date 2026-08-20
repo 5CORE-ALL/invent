@@ -19,4 +19,9 @@
              onerror="this.style.display='none'">
     @endif
     <h4 class="mb-0">{{ $heading }}</h4>
+    @if(str_contains(strtolower($heading), 'orders'))
+        <div class="ms-auto">
+            @include('marketplace._fetch-tracking-now', ['fetchTrackingMarketplace' => $slug])
+        </div>
+    @endif
 </div>

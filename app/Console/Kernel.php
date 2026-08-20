@@ -1389,6 +1389,13 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(4)
             ->appendOutputTo($log);
 
+        $schedule->job(new \App\Jobs\FetchMarketplaceShopifyTrackingJob(250))
+            ->everyTenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('marketplace-fetch-shopify-tracking')
+            ->withoutOverlapping(14)
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\SyncAmazonAddressJob(true, 40))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')

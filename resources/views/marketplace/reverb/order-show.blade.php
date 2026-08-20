@@ -54,6 +54,7 @@
                         <i class="ri-download-cloud-line"></i> Pull from Reverb
                     </button>
                     @if(!empty($shopify['shopify_order_id']))
+                        @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'reverb'])
                         <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-reverb" data-id="{{ $line->id }}" title="Read Shopify fulfillment tracking and mark shipped on Reverb">
                             <i class="ri-truck-line"></i> Push tracking to Reverb
                         </button>
@@ -66,7 +67,7 @@
 
         <div class="alert alert-info py-2 small mb-3">
             Order details are pulled from Reverb and sent to Shopify when you push this order.
-            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Reverb</strong> so Reverb is marked shipped with that tracking number.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Reverb</strong> so Reverb is marked shipped with that tracking number.@include('marketplace._fetch-tracking-hint')
         </div>
 
         @if($aeLiveError ?? null)

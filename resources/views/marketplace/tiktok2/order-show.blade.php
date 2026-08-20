@@ -24,6 +24,9 @@
                 </p>
             </div>
             <div class="d-flex gap-2">
+                @if(!empty($shopify['shopify_order_id']))
+                    @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'tiktok2'])
+                @endif
                 @if($connected && !empty($shopify['shopify_order_id']))
                     <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-tiktok-top" data-id="{{ $line->id }}" title="Read Shopify fulfillment tracking and mark shipped on TikTok 2">
                         <i class="ri-truck-line"></i> Push tracking to TikTok 2
@@ -36,7 +39,7 @@
 
         <div class="alert alert-info py-2 small mb-3">
             Order details are synced from TikTok 2 into this app and imported to Shopify.
-            After you buy/download a shipping label in Shopify, use <strong>Push tracking to TikTok 2</strong> so TikTok is marked shipped with that tracking number.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to TikTok 2</strong> so TikTok is marked shipped with that tracking number.@include('marketplace._fetch-tracking-hint')
         </div>
 
         @include('marketplace.tiktok._order-detail', ['detail' => $detail, 'marketplaceSlug' => 'tiktok2', 'connected' => $connected ?? false, 'line' => $line])

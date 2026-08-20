@@ -54,6 +54,7 @@
                         <i class="ri-download-cloud-line"></i> Pull from Macy's
                     </button>
                     @if(!empty($shopify['shopify_order_id']))
+                        @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'macy'])
                         <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-macy" data-id="{{ $line->id }}" title="Read Shopify fulfillment tracking and mark shipped on Macy's">
                             <i class="ri-truck-line"></i> Push tracking to Macy's
                         </button>
@@ -66,7 +67,7 @@
 
         <div class="alert alert-info py-2 small mb-3">
             Order details are pulled from Macy's and sent to Shopify when you push this order.
-            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Macy's</strong> so the tracking number is declared on Macy's too.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Macy's</strong> so the tracking number is declared on Macy's too.@include('marketplace._fetch-tracking-hint')
         </div>
 
         @if($aeLiveError ?? null)

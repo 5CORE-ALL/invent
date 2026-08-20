@@ -436,6 +436,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | 4Seller ERP (optional — labels bought in 4Seller via GOFO)
+    |--------------------------------------------------------------------------
+    |
+    | 4Seller has no public docs. Labels purchased in 4Seller use GOFO; this
+    | app looks up tracking on the GOFO Open API first. Set a 4Seller token
+    | only if their ERP API is enabled. Leave empty to skip that extra source.
+    |
+    */
+    'fourseller' => [
+        'api_base'     => env('FOURSELLER_API_BASE', 'https://openapi.4seller.com'),
+        'access_token' => env('FOURSELLER_ACCESS_TOKEN', env('FOURSELLER_API_TOKEN', '')),
+        'app_key'      => env('FOURSELLER_APP_KEY', ''),
+        'http_timeout' => (int) env('FOURSELLER_HTTP_TIMEOUT', 20),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Amazon SP-API
     |--------------------------------------------------------------------------
     */

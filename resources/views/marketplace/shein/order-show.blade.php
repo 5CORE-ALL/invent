@@ -63,6 +63,7 @@
                         <i class="ri-download-cloud-line"></i> Pull from Shein
                     </button>
                     @if(!empty($shopify['shopify_order_id']))
+                        @include('marketplace._fetch-tracking-button', ['fetchTrackingMarketplace' => 'shein'])
                         <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-shein" data-id="{{ $line->id }}" title="Read Shopify fulfillment tracking and mark shipped on Shein">
                             <i class="ri-truck-line"></i> Push tracking to Shein
                         </button>
@@ -76,7 +77,7 @@
         <div class="alert alert-info py-2 small mb-3">
             New Shein orders start as <strong>Pending</strong> — use <strong>Accept on Shein</strong> (or enable auto-accept in Settings) before address/shipping steps work.
             Order details are pulled from Shein and sent to Shopify when you push this order.
-            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Shein</strong> so the tracking number is declared on Shein too.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Shein</strong> so the tracking number is declared on Shein too.@include('marketplace._fetch-tracking-hint')
         </div>
 
         @if($aeLiveError ?? null)

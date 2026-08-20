@@ -23,6 +23,8 @@ use App\Http\Controllers\MarketPlace\Temu2SyncController;
 use App\Http\Controllers\MarketPlace\TikTokSyncController;
 use App\Http\Controllers\MarketPlace\TikTok2SyncController;
 use App\Http\Controllers\MarketPlace\PlsSyncController;
+use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
+use App\Jobs\FetchMarketplaceShopifyTrackingJob;
 use App\Services\MarketplaceManager\MarketplaceManagerQueueStatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -134,9 +136,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'macy') {
             return app(MacySyncController::class)->pullProductFromMacy($shopifySku);
+        }
         if ($marketplace === 'doba') {
             return app(DobaSyncController::class)->pullProductFromDoba($shopifySku);
-        }
         }
         if ($marketplace === 'amazon') {
             return app(AmazonSyncController::class)->pullProductFromAmazon($shopifySku);
@@ -198,9 +200,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'macy') {
             return app(MacySyncController::class)->pushProductInventory($shopifySku);
+        }
         if ($marketplace === 'doba') {
             return app(DobaSyncController::class)->pushProductInventory($shopifySku);
-        }
         }
         if ($marketplace === 'amazon') {
             return app(AmazonSyncController::class)->pushProductInventory($shopifySku);
@@ -278,9 +280,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'macy') {
             return app(MacySyncController::class)->pullOrderFromMacy($order);
+        }
         if ($marketplace === 'doba') {
             return app(DobaSyncController::class)->pullOrderFromDoba($order);
-        }
         }
         if ($marketplace === 'amazon') {
             return app(AmazonSyncController::class)->pullOrderFromAmazon($order);
@@ -304,6 +306,13 @@ class MarketplaceController extends Controller
     public function pushTracking(Request $request, string $marketplace, int $order): JsonResponse
     {
         $marketplace = strtolower($marketplace);
+        if ($marketplace !== 'amazon') {
+            try {
+                app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder($marketplace, $order);
+            } catch (\Throwable $e) {
+                // Channel push still runs — Veeqo is only the Shopify fill step.
+            }
+        }
         if ($marketplace === 'aliexpress') {
             return app(AliexpressSyncController::class)->pushTrackingToAliexpress($order);
         }
@@ -339,9 +348,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'macy') {
             return app(MacySyncController::class)->pushTrackingToMacy($order);
+        }
         if ($marketplace === 'doba') {
             return app(DobaSyncController::class)->pushTrackingToDoba($order);
-        }
         }
         if ($marketplace === 'amazon') {
             return app(AmazonSyncController::class)->pushTrackingToAmazon($order);
@@ -366,6 +375,36 @@ class MarketplaceController extends Controller
         }
 
         return response()->json(['success' => false, 'message' => 'Tracking push not supported for this marketplace.'], 404);
+    }
+
+    public function fetchTracking(string $marketplace, int $order): JsonResponse
+    {
+        $result = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder($marketplace, $order);
+
+        return response()->json([
+            'success' => ! empty($result['success']),
+            'skipped' => ! empty($result['skipped']),
+            'action' => $result['action'] ?? null,
+            'message' => $result['message'] ?? 'Tracking fetch finished.',
+            'tracking' => $result['tracking'] ?? null,
+            'carrier' => $result['carrier'] ?? null,
+            'source' => $result['action'] ?? null,
+        ], ! empty($result['success']) || ! empty($result['skipped']) ? 200 : 422);
+    }
+
+    public function fetchTrackingNow(string $marketplace): JsonResponse
+    {
+        FetchMarketplaceShopifyTrackingJob::dispatch(250);
+
+        $result = app(VeeqoShopifyFulfillmentService::class)->syncPendingUnfulfilled(40);
+
+        return response()->json([
+            'success' => true,
+            'message' => ($result['message'] ?? 'Tracking fetch started.')
+                .' Checking every marketplace automatically every 10 minutes (Veeqo, GOFO, then Shopify fulfill, no customer email).',
+            'checked' => $result['checked'] ?? 0,
+            'fulfilled' => $result['fulfilled'] ?? 0,
+        ]);
     }
 
     public function orders(Request $request, string $marketplace): View

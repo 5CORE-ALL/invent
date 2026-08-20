@@ -19,8 +19,8 @@
         <p class="text-muted mb-3">
             <strong>New FBM orders auto-push to Shopify</strong> when they are fetched (same as other marketplaces).
             FBA is never created. Already-synced orders are linked, not duplicated.
-            After a shipping label is bought in Shopify / ShipStation / any connected software,
-            tracking is pushed to Amazon automatically.
+            After a shipping label is bought in Veeqo, 4Seller (GOFO), Shopify, or ShipStation,
+            tracking is written to Shopify and pushed to Amazon automatically.
             Configure in <a href="{{ route('marketplace.settings', 'amazon') }}">Settings</a>.
         </p>
 
@@ -170,6 +170,13 @@
                                     <td onclick="event.stopPropagation();">
                                         <div class="d-flex gap-1 flex-wrap">
                                             <a href="{{ $orderUrl }}" class="btn btn-sm btn-outline-primary">View</a>
+                                            @if(! $isFba && ! empty($o->shopify_order_id) && ! str_starts_with((string) $o->shopify_order_id, 'manual'))
+                                                @include('marketplace._fetch-tracking-button', [
+                                                    'fetchTrackingMarketplace' => 'amazon',
+                                                    'fetchTrackingOrderId' => $o->id,
+                                                    'fetchTrackingShopifyId' => $o->shopify_order_id,
+                                                ])
+                                            @endif
                                             @if(empty($o->shopify_order_id) && ! $isFba)
                                                 @if($canPush)
                                                     <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>

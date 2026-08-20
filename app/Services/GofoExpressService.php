@@ -149,6 +149,139 @@ class GofoExpressService
     }
 
     /**
+     * Look up a 4Seller/GOFO label by marketplace or customer order number.
+     * 4Seller buys GOFO labels using the platform order id as GOFO's orderNo.
+     *
+     * @param  list<string>  $refs
+     * @return array{tracking: string, carrier: string, source: string, gofo_order_no: string}|null
+     */
+    public function findShipment(array $refs): ?array
+    {
+        if (! $this->isConfigured()) {
+            return null;
+        }
+
+        foreach ($this->candidateOrderNos($refs) as $orderNo) {
+            $res = $this->track($orderNo);
+            if (empty($res['ok'])) {
+                continue;
+            }
+
+            $fromTrack = $this->trackingFromPayload($res['data'] ?? null);
+            $fromLabel = null;
+            $label = $this->getLabel($orderNo);
+            if (! empty($label['ok'])) {
+                $fromLabel = $this->trackingFromPayload($label['data'] ?? null);
+            }
+
+            $tracking = $fromLabel['tracking'] ?? $fromTrack['tracking'] ?? null;
+            if ($tracking === null || strlen($tracking) < 8) {
+                continue;
+            }
+            if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $tracking)) {
+                continue;
+            }
+
+            $carrier = (string) ($fromLabel['carrier'] ?? $fromTrack['carrier'] ?? 'GOFO');
+            if ($carrier === '') {
+                $carrier = 'GOFO';
+            }
+
+            return [
+                'tracking' => $tracking,
+                'carrier' => $carrier,
+                'source' => 'gofo',
+                'gofo_order_no' => $orderNo,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $refs
+     * @return list<string>
+     */
+    protected function candidateOrderNos(array $refs): array
+    {
+        $out = [];
+        foreach ($refs as $ref) {
+            $ref = trim((string) $ref);
+            if ($ref === '') {
+                continue;
+            }
+            $variants = [$ref];
+            if (str_starts_with($ref, '#')) {
+                $variants[] = ltrim($ref, '#');
+            }
+            foreach ($variants as $candidate) {
+                $candidate = trim($candidate);
+                if (strlen($candidate) < 6) {
+                    continue;
+                }
+                if (! in_array($candidate, $out, true)) {
+                    $out[] = $candidate;
+                }
+            }
+        }
+
+        return array_slice($out, 0, 6);
+    }
+
+    /**
+     * @return array{tracking: string, carrier: string}|null
+     */
+    protected function trackingFromPayload(mixed $data): ?array
+    {
+        if (! is_array($data)) {
+            return null;
+        }
+
+        $tracking = null;
+        $carrier = '';
+        $walk = static function ($value, $key = '') use (&$walk, &$tracking, &$carrier): void {
+            if (is_array($value)) {
+                foreach ($value as $k => $v) {
+                    $walk($v, (string) $k);
+                }
+
+                return;
+            }
+            $k = strtolower((string) $key);
+            $s = trim((string) $value);
+            if ($s === '') {
+                return;
+            }
+            if ($carrier === '' && preg_match('/carrier|last.?mile.?carrier|logistics.?company/', $k) && ! is_numeric($s)) {
+                $carrier = $s;
+            }
+            if ($tracking !== null) {
+                return;
+            }
+            if (! preg_match('/(last.?mile|tracking|waybill|mail.?no|hawb|server.?hawb|shipper.?hawb|logistics.?no)/', $k)) {
+                return;
+            }
+            if (preg_match('/url|link|status|time|date|id$|context|move/', $k)) {
+                return;
+            }
+            $tn = strtoupper(preg_replace('/\s+/', '', $s) ?? '');
+            if (strlen($tn) >= 8) {
+                $tracking = $tn;
+            }
+        };
+        $walk($data);
+
+        if ($tracking === null) {
+            return null;
+        }
+
+        return [
+            'tracking' => $tracking,
+            'carrier' => $carrier !== '' ? $carrier : 'GOFO',
+        ];
+    }
+
+    /**
      * Map GOFO trajectory codes / English text to normalized shipment statuses.
      */
     public function normalizeTrackStatus(string $operationMove, string $enContext = ''): string
