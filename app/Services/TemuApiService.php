@@ -730,27 +730,181 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     /**
      * Create a Temu search ad for one goods ID.
-     * Budget is sent in cents (Temu money unit). ROAS is the target multiple (e.g. 12 = 12x).
+     * Budget is cents. Target ROAS is the 0.1–12 multiple; Temu stores it as that × 10000.
      *
      * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
      */
     public function createAd(string $goodsId, float $budgetDollars, float $roas): array
     {
         $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
-        $budgetCents = (int) round($budgetDollars * 100);
+        $budgetCents = (int) round(max(1, $budgetDollars) * 100);
+        $roasApi = $this->temuRoasApiValue($roas);
+
+        $eligibility = $this->queryAdCreateEligibility((string) $goodsId);
+        if (($eligibility['ok'] ?? false) && empty($eligibility['eligible'])) {
+            $reason = trim(implode('; ', $eligibility['reasons'] ?? []));
+
+            return [
+                'ok' => false,
+                'result' => $eligibility['result'] ?? null,
+                'error_code' => 'not_eligible',
+                'error_msg' => $this->humanizeCreateAdError($reason !== '' ? $reason : 'This listing is not eligible to create an ad.'),
+                'http_status' => $eligibility['http_status'] ?? null,
+                'request' => ['goodsId' => $goodsIdParam],
+            ];
+        }
 
         $requestBody = [
             'type' => 'temu.searchrec.ad.create',
-            'createAdReqs' => [
-                [
-                    'goodsId' => $goodsIdParam,
-                    'budget' => $budgetCents,
-                    'roas' => $roas,
-                ],
-            ],
+            'createAdReqs' => [[
+                'goodsId' => $goodsIdParam,
+                'budget' => $budgetCents,
+                'roas' => $roasApi,
+                'roasType' => 1,
+            ]],
         ];
 
-        return $this->postAdsRouter($requestBody, (string) $goodsId);
+        $last = $this->normalizeCreateAdResult(
+            $this->postAdsRouter($requestBody, (string) $goodsId),
+            (string) $goodsId
+        );
+        if (! ($last['ok'] ?? false)) {
+            $last['error_msg'] = $this->humanizeCreateAdError((string) ($last['error_msg'] ?? ''));
+        }
+
+        return $last;
+    }
+
+    /**
+     * Whether Temu will allow ad.create for this goods ID.
+     *
+     * @return array{ok: bool, eligible: bool, reasons: array<int, string>, result: mixed, error_msg: ?string, http_status: ?int}
+     */
+    public function queryAdCreateEligibility(string $goodsId): array
+    {
+        $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
+        $response = $this->postAdsRouter([
+            'type' => 'temu.searchrec.ad.goods.create.query',
+            'goodsIdList' => [$goodsIdParam],
+        ], (string) $goodsId);
+
+        $reasons = [];
+        $result = is_array($response['result'] ?? null) ? $response['result'] : [];
+        $list = $result['goodsInfoList'] ?? null;
+        if (is_array($list)) {
+            foreach ($list as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $rowId = isset($row['goodsId']) ? (string) $row['goodsId'] : '';
+                if ($rowId !== '' && $rowId !== (string) $goodsId) {
+                    continue;
+                }
+                $gray = $row['grayReason'] ?? [];
+                if (! is_array($gray)) {
+                    continue;
+                }
+                foreach ($gray as $item) {
+                    $reason = is_array($item)
+                        ? (string) ($item['reason'] ?? $item['msg'] ?? '')
+                        : (string) $item;
+                    $reason = trim($reason);
+                    if ($reason !== '') {
+                        $reasons[] = $reason;
+                    }
+                }
+            }
+        }
+
+        return [
+            'ok' => (bool) ($response['ok'] ?? false),
+            'eligible' => ($response['ok'] ?? false) && $reasons === [],
+            'reasons' => array_values(array_unique($reasons)),
+            'result' => $response['result'] ?? null,
+            'error_msg' => $response['error_msg'] ?? null,
+            'http_status' => $response['http_status'] ?? null,
+        ];
+    }
+
+    /**
+     * Temu stores target ROAS as the 0.1–12 multiple × 10000 (8.00 → 80000).
+     */
+    protected function temuRoasApiValue(float $roas): int
+    {
+        return (int) round($this->temuTargetRoas($roas) * 10000);
+    }
+
+    protected function temuTargetRoas(float $roas): float
+    {
+        $n = round(max(0.1, $roas), 2);
+        if ($n > 1200 && $n <= 120000) {
+            $n = round($n / 10000, 2);
+        } elseif ($n > 12 && $n <= 1200) {
+            $n = round($n / 100, 2);
+        }
+
+        return min(12.0, max(0.1, $n));
+    }
+
+    protected function humanizeCreateAdError(?string $message): string
+    {
+        $message = trim((string) $message);
+        if ($message === '') {
+            return 'Temu did not create this ad';
+        }
+        $lower = strtolower($message);
+        if (str_contains($lower, 'between 0.1 and 12')) {
+            return 'Temu rejected the target ROAS. Use a value from 0.1 to 12.';
+        }
+        if (str_contains($lower, 'misleading') || str_contains($lower, 'ad approval')) {
+            return 'Temu rejected this listing for ads (misleading statements). Fix the title, images, or description in Seller Center, wait for review, then retry.';
+        }
+        if (str_contains($lower, 'pass the review') || str_contains($lower, 'seller center')) {
+            return 'Listing has not passed Temu product review, so an ad cannot be created. Open Seller Center for this goods ID, fix the review, then retry.';
+        }
+
+        return $message;
+    }
+
+    /**
+     * Temu may return HTTP success with per-goods failures in createGoodsFailObjList.
+     *
+     * @param  array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}  $response
+     * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
+     */
+    protected function normalizeCreateAdResult(array $response, string $goodsId): array
+    {
+        if (! ($response['ok'] ?? false)) {
+            return $response;
+        }
+
+        $result = is_array($response['result'] ?? null) ? $response['result'] : [];
+        $failList = $result['createGoodsFailObjList'] ?? null;
+        if (is_array($failList)) {
+            foreach ($failList as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $rowId = isset($row['goodsId']) ? (string) $row['goodsId'] : '';
+                $failed = array_key_exists('success', $row) ? empty($row['success']) : true;
+                if ($failed && ($rowId === '' || $rowId === $goodsId)) {
+                    $response['ok'] = false;
+                    $response['error_msg'] = (string) ($row['reason'] ?? 'Temu did not create this ad');
+                    $response['error_code'] = $response['error_code'] ?? 'create_failed';
+
+                    return $response;
+                }
+            }
+        }
+
+        $failMap = $result['createGoodsFailMap'] ?? null;
+        if (is_array($failMap) && isset($failMap[$goodsId]) && $failMap[$goodsId] !== '') {
+            $response['ok'] = false;
+            $response['error_msg'] = (string) $failMap[$goodsId];
+            $response['error_code'] = $response['error_code'] ?? 'create_failed';
+        }
+
+        return $response;
     }
 
     /**
@@ -816,6 +970,77 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         return $modified;
+    }
+
+    /**
+     * Update target ROAS on an existing Temu search ad (temu.searchrec.ad.modify, status 5).
+     * ROAS is the multiple Temu accepts (0.1–12).
+     *
+     * @return array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}
+     */
+    public function modifyAdRoas(string $goodsId, float $roas): array
+    {
+        $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
+        $roasApi = $this->temuRoasApiValue($roas);
+
+        $attempts = [
+            ['roas' => $roasApi, 'roasType' => 1],
+            ['roas' => $roasApi],
+        ];
+
+        $last = [
+            'ok' => false,
+            'result' => null,
+            'error_code' => null,
+            'error_msg' => 'ROAS update not attempted',
+            'http_status' => null,
+            'request' => [],
+        ];
+
+        foreach ($attempts as $i => $opts) {
+            $dto = [
+                'goodsId' => $goodsIdParam,
+                'roas' => $opts['roas'],
+            ];
+            if (isset($opts['roasType'])) {
+                $dto['roasType'] = $opts['roasType'];
+            }
+
+            $last = $this->postAdsRouter([
+                'type' => 'temu.searchrec.ad.modify',
+                'modifyAdDTO' => $dto,
+                'status' => 5,
+            ], (string) $goodsId, 20);
+
+            if ($last['ok'] ?? false) {
+                $list = is_array($last['result'] ?? null)
+                    ? ($last['result']['modifyGoodsRespList'] ?? null)
+                    : null;
+                if (is_array($list)) {
+                    foreach ($list as $row) {
+                        if (is_array($row) && array_key_exists('success', $row) && ! $row['success']) {
+                            $last['ok'] = false;
+                            $last['error_msg'] = (string) ($row['reason'] ?? 'Temu did not update ROAS');
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if ($last['ok'] ?? false) {
+                return $last;
+            }
+
+            $code = (string) ($last['error_code'] ?? '');
+            $msg = strtolower((string) ($last['error_msg'] ?? ''));
+            $retryable = $code === '230012000'
+                || str_contains($msg, 'bad query params');
+            if (! $retryable || $i === count($attempts) - 1) {
+                return $last;
+            }
+        }
+
+        return $last;
     }
 
     /**
@@ -1043,80 +1268,115 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     protected function postAdsRouter(array $requestBody, string $goodsId, int $timeoutSeconds = 60): array
     {
         $signedRequest = $this->generateSignValue($requestBody);
-        $request = Http::withHeaders([
-            'Content-Type' => 'application/json',
-        ])->timeout(max(5, $timeoutSeconds));
+        $last = [
+            'ok' => false,
+            'result' => null,
+            'error_code' => null,
+            'error_msg' => 'Temu ads request not attempted',
+            'http_status' => null,
+            'request' => $requestBody,
+        ];
 
-        if (config('filesystems.default') === 'local') {
-            $request = $request->withoutVerifying();
-        }
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $request = Http::withHeaders([
+                'Content-Type' => 'application/json',
+            ])->timeout(max(5, $timeoutSeconds))->withoutVerifying();
 
-        try {
-            $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
-            $httpStatus = $response->status();
-            $data = $response->json();
+            try {
+                $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
+                $httpStatus = $response->status();
+                $data = $response->json();
 
-            if ($response->failed() || ! is_array($data)) {
-                Log::error('Temu ads router request failed', [
-                    'type' => $requestBody['type'] ?? null,
-                    'goods_id' => $goodsId,
-                    'status' => $httpStatus,
-                ]);
+                if ($response->failed() || ! is_array($data)) {
+                    Log::error('Temu ads router request failed', [
+                        'type' => $requestBody['type'] ?? null,
+                        'goods_id' => $goodsId,
+                        'status' => $httpStatus,
+                        'attempt' => $attempt,
+                    ]);
+
+                    $last = [
+                        'ok' => false,
+                        'result' => is_array($data) ? ($data['result'] ?? $data) : null,
+                        'error_code' => $httpStatus,
+                        'error_msg' => is_array($data) ? (string) ($data['errorMsg'] ?? 'HTTP '.$httpStatus) : 'HTTP '.$httpStatus,
+                        'http_status' => $httpStatus,
+                        'request' => $requestBody,
+                    ];
+                    if ($attempt < 3 && $this->isTemuSslOrTimeoutError($last['error_msg'])) {
+                        usleep(400000 * $attempt);
+                        continue;
+                    }
+
+                    return $last;
+                }
+
+                if (! ($data['success'] ?? false)) {
+                    $errorCode = $data['errorCode'] ?? null;
+                    $errorMsg = (string) ($data['errorMsg'] ?? 'Unknown error');
+                    Log::error('Temu ads router API error', [
+                        'type' => $requestBody['type'] ?? null,
+                        'goods_id' => $goodsId,
+                        'error' => $errorMsg,
+                        'errorCode' => $errorCode,
+                    ]);
+
+                    return [
+                        'ok' => false,
+                        'result' => $data['result'] ?? null,
+                        'error_code' => $errorCode,
+                        'error_msg' => trim($errorCode !== null ? "{$errorCode}: {$errorMsg}" : $errorMsg),
+                        'http_status' => $httpStatus,
+                        'request' => $requestBody,
+                    ];
+                }
 
                 return [
-                    'ok' => false,
-                    'result' => is_array($data) ? ($data['result'] ?? $data) : null,
-                    'error_code' => $httpStatus,
-                    'error_msg' => is_array($data) ? (string) ($data['errorMsg'] ?? 'HTTP '.$httpStatus) : 'HTTP '.$httpStatus,
+                    'ok' => true,
+                    'result' => $data['result'] ?? $data,
+                    'error_code' => null,
+                    'error_msg' => null,
                     'http_status' => $httpStatus,
                     'request' => $requestBody,
                 ];
-            }
-
-            if (! ($data['success'] ?? false)) {
-                $errorCode = $data['errorCode'] ?? null;
-                $errorMsg = (string) ($data['errorMsg'] ?? 'Unknown error');
-                Log::error('Temu ads router API error', [
+            } catch (\Exception $e) {
+                Log::error('Temu ads router exception', [
                     'type' => $requestBody['type'] ?? null,
                     'goods_id' => $goodsId,
-                    'error' => $errorMsg,
-                    'errorCode' => $errorCode,
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
                 ]);
 
-                return [
+                $last = [
                     'ok' => false,
-                    'result' => $data['result'] ?? null,
-                    'error_code' => $errorCode,
-                    'error_msg' => trim($errorCode !== null ? "{$errorCode}: {$errorMsg}" : $errorMsg),
-                    'http_status' => $httpStatus,
+                    'result' => null,
+                    'error_code' => null,
+                    'error_msg' => $e->getMessage(),
+                    'http_status' => null,
                     'request' => $requestBody,
                 ];
+                if ($attempt < 3 && $this->isTemuSslOrTimeoutError($e->getMessage())) {
+                    usleep(400000 * $attempt);
+                    continue;
+                }
+
+                return $last;
             }
-
-            return [
-                'ok' => true,
-                'result' => $data['result'] ?? $data,
-                'error_code' => null,
-                'error_msg' => null,
-                'http_status' => $httpStatus,
-                'request' => $requestBody,
-            ];
-        } catch (\Exception $e) {
-            Log::error('Temu ads router exception', [
-                'type' => $requestBody['type'] ?? null,
-                'goods_id' => $goodsId,
-                'error' => $e->getMessage(),
-            ]);
-
-            return [
-                'ok' => false,
-                'result' => null,
-                'error_code' => null,
-                'error_msg' => $e->getMessage(),
-                'http_status' => null,
-                'request' => $requestBody,
-            ];
         }
+
+        return $last;
+    }
+
+    protected function isTemuSslOrTimeoutError(?string $message): bool
+    {
+        $msg = strtolower((string) $message);
+
+        return str_contains($msg, 'curl error 28')
+            || str_contains($msg, 'ssl connection timeout')
+            || str_contains($msg, 'ssl certificate')
+            || str_contains($msg, 'operation timed out')
+            || str_contains($msg, 'connection reset')
+            || str_contains($msg, 'connection timed out');
     }
 
     /**

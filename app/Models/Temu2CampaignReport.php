@@ -66,4 +66,21 @@ class Temu2CampaignReport extends Model
         'weekly_roas' => 'decimal:2',
         'target' => 'decimal:2',
     ];
+
+    public function displayAdStatus(): string
+    {
+        $status = trim((string) ($this->status ?? ''));
+        $hasActivity = ((float) ($this->spend ?? 0) > 0)
+            || ((int) ($this->clicks ?? 0) > 0)
+            || ((int) ($this->impressions ?? 0) > 0);
+
+        if ($status === '' || strcasecmp($status, 'Unknown') === 0 || strcasecmp($status, 'Not Created') === 0) {
+            return $hasActivity ? 'Not sync' : 'No ad';
+        }
+        if ($status === 'No ad' && $hasActivity) {
+            return 'Not sync';
+        }
+
+        return $status;
+    }
 }

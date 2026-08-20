@@ -27,7 +27,7 @@ class TemuAdsController extends Controller
     /**
      * Return stored API report rows for Tabulator.
      */
-    public function getTemuAdsData(Request $request)
+    public function getTemuAdsData(Request $request, TemuAdsApiReportService $service)
     {
         $query = TemuAdsApiReport::query()->orderByDesc('fetched_at')->orderByDesc('id');
 
@@ -53,6 +53,24 @@ class TemuAdsController extends Controller
             ->get(['goods_id', 'clicks'])
             ->keyBy(fn (TemuAdsApiReport $r) => (string) $r->goods_id);
 
+        $spendL1ByGoods = [];
+        if (! in_array($period, ['L7', 'L30'], true)) {
+            $spendLookups = TemuAdsApiReport::query()
+                ->whereIn('period', ['L7', 'L30'])
+                ->whereNotNull('raw_response')
+                ->get(['goods_id', 'period', 'raw_response']);
+            foreach ($spendLookups as $rep) {
+                $gidKey = (string) $rep->goods_id;
+                $extracted = $service->lastDaySpendFromResult($rep->rawPayload);
+                if ($extracted === null) {
+                    continue;
+                }
+                if ($rep->period === 'L7' || ! isset($spendL1ByGoods[$gidKey])) {
+                    $spendL1ByGoods[$gidKey] = $extracted;
+                }
+            }
+        }
+
         $skus = $records->pluck('sku')
             ->filter(fn ($s) => $s !== null && trim((string) $s) !== '')
             ->map(fn ($s) => (string) $s)
@@ -62,7 +80,7 @@ class TemuAdsController extends Controller
         $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
         $productMasterByNorm = $this->productMasterByNormalizedSku($skus);
 
-        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $shopifyByNorm, $productMasterByNorm) {
+        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $service) {
             $clicks = (int) ($r->clicks ?? 0);
             $orders = (int) ($r->order_pay_cnt ?? 0);
             $gid = (string) $r->goods_id;
@@ -74,10 +92,18 @@ class TemuAdsController extends Controller
             $clicksL30 = $r->period === 'L30'
                 ? $clicks
                 : (int) (optional($l30Row)->clicks ?? 0);
+            $spendL1 = in_array((string) $r->period, ['L7', 'L30'], true)
+                ? $service->lastDaySpendFromResult($r->rawPayload)
+                : null;
+            if ($spendL1 === null) {
+                $spendL1 = $spendL1ByGoods[$gid] ?? 0;
+            }
 
             $skuKey = ShopifySku::normalizeSkuForShopifyLookup((string) ($r->sku ?? ''));
             $shopify = $skuKey !== '' ? ($shopifyByNorm[$skuKey] ?? null) : null;
             $productMaster = $skuKey !== '' ? ($productMasterByNorm[$skuKey] ?? null) : null;
+            $soldQty = $shopify ? (float) ($shopify->quantity ?? $shopify->shopify_l30 ?? 0) : 0;
+            $unitPrice = $shopify ? (float) ($shopify->price ?? $shopify->b2c_price ?? 0) : 0;
 
             return [
                 'id' => $r->id,
@@ -95,7 +121,9 @@ class TemuAdsController extends Controller
                 'cart_cnt' => $r->cart_cnt,
                 'order_pay_cnt' => $r->order_pay_cnt,
                 'order_pay_amt' => $r->order_pay_amt,
+                'all_sale' => round($soldQty * $unitPrice, 2),
                 'ad_spend' => $r->ad_spend,
+                'spend_l1' => $spendL1,
                 'roas' => $r->roas,
                 'acos' => $r->acos,
                 'ad_status' => $r->displayAdStatus(),
@@ -181,7 +209,7 @@ class TemuAdsController extends Controller
         $request->validate([
             'goods_id' => 'required|string|max:64',
             'budget' => 'required|numeric|min:1|max:10000',
-            'roas' => 'required|numeric|min:0.1|max:1000',
+            'roas' => 'required|numeric|min:0.1|max:12',
         ]);
 
         $goodsId = trim((string) $request->input('goods_id'));
@@ -190,7 +218,9 @@ class TemuAdsController extends Controller
 
         $result = $temuApi->createAd($goodsId, $budget, $roas);
         if ($result['ok']) {
-            TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => 'Active']);
+            $statuses = $temuApi->queryAdStatuses([$goodsId]);
+            $status = $statuses['statuses'][$goodsId] ?? 'Inactive';
+            TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => $status]);
         }
 
         Log::info('TemuAdsController::createAd', [
@@ -219,13 +249,16 @@ class TemuAdsController extends Controller
             'goods_ids' => 'required|array|min:1|max:20',
             'goods_ids.*' => 'string|max:64',
             'budget' => 'required|numeric|min:1|max:10000',
-            'roas' => 'required|numeric|min:0.1|max:1000',
+            'roas' => 'required|numeric|min:0.1|max:12',
+            'roas_by_goods' => 'nullable|array',
+            'roas_by_goods.*' => 'numeric|min:0.1|max:12',
         ]);
 
         @set_time_limit(180);
 
         $budget = (float) $request->input('budget');
         $roas = (float) $request->input('roas');
+        $roasByGoods = $request->input('roas_by_goods', []);
         $ids = [];
         foreach ($request->input('goods_ids', []) as $id) {
             $gid = trim((string) $id);
@@ -240,15 +273,23 @@ class TemuAdsController extends Controller
             if ($i > 0) {
                 usleep(250000);
             }
-            $result = $temuApi->createAd($goodsId, $budget, $roas);
+            $rowRoas = isset($roasByGoods[$goodsId]) ? (float) $roasByGoods[$goodsId] : $roas;
+            $result = $temuApi->createAd($goodsId, $budget, $rowRoas);
             if ($result['ok'] ?? false) {
-                TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => 'Active']);
                 $created[] = $goodsId;
             } else {
                 $failed[] = [
                     'goods_id' => $goodsId,
                     'message' => (string) ($result['error_msg'] ?? 'unknown error'),
                 ];
+            }
+        }
+
+        if ($created !== []) {
+            $statuses = $temuApi->queryAdStatuses($created);
+            foreach ($created as $goodsId) {
+                $status = $statuses['statuses'][$goodsId] ?? 'Inactive';
+                TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => $status]);
             }
         }
 
@@ -272,6 +313,83 @@ class TemuAdsController extends Controller
             'failed' => $failed,
             'budget' => $budget,
             'roas' => $roas,
+        ], $success ? 200 : 422);
+    }
+
+    /**
+     * Push Target ROAS from the ROAS Rule slabs to existing Temu ads (ad.modify status 5).
+     */
+    public function pushRoasRule(Request $request, TemuApiService $temuApi)
+    {
+        $request->validate([
+            'items' => 'required|array|min:1|max:50',
+            'items.*.goods_id' => 'required|string|max:64',
+            'items.*.roas' => 'required|numeric|min:0.1|max:1000',
+            'roas_rule_slabs' => 'nullable|array',
+            'roas_rule_slabs.*.spend_min' => 'nullable|numeric|min:0|max:100000',
+            'roas_rule_slabs.*.spend_max' => 'nullable|numeric|min:0|max:100000',
+            'roas_rule_slabs.*.roas_min' => 'nullable|numeric|min:0|max:1000',
+            'roas_rule_slabs.*.roas_max' => 'nullable|numeric|min:0|max:1000',
+            'roas_rule_slabs.*.target_roas' => 'nullable|numeric|min:-100|max:1000',
+            'roas_rule_slabs.*.style' => 'nullable|in:red,green,pink,yellow',
+        ]);
+
+        if ($request->has('roas_rule_slabs')) {
+            $roasRuleSlabs = $this->normalizeRoasRuleSlabs($request->input('roas_rule_slabs'));
+            ChannelTabulatorColumnSetting::query()->updateOrCreate(
+                ['channel_name' => 'temu_ads_roas_rule_slabs'],
+                ['column_order' => [json_encode($roasRuleSlabs)]]
+            );
+        }
+
+        @set_time_limit(180);
+
+        $updated = [];
+        $failed = [];
+        $seen = [];
+        foreach ($request->input('items', []) as $i => $item) {
+            $goodsId = trim((string) ($item['goods_id'] ?? ''));
+            $roas = round((float) ($item['roas'] ?? 0), 1);
+            if ($goodsId === '' || $roas < 0.1 || isset($seen[$goodsId])) {
+                continue;
+            }
+            $seen[$goodsId] = true;
+            if (count($updated) + count($failed) > 0) {
+                usleep(200000);
+            }
+
+            $result = $temuApi->modifyAdRoas($goodsId, $roas);
+            if ($result['ok'] ?? false) {
+                $updated[] = [
+                    'goods_id' => $goodsId,
+                    'roas' => $roas,
+                ];
+            } else {
+                $failed[] = [
+                    'goods_id' => $goodsId,
+                    'roas' => $roas,
+                    'message' => (string) ($result['error_msg'] ?? 'unknown error'),
+                ];
+            }
+        }
+
+        $ok = count($updated);
+        $fail = count($failed);
+        $total = $ok + $fail;
+        $success = $ok > 0 || $fail === 0;
+
+        Log::info('TemuAdsController::pushRoasRule', [
+            'requested' => $total,
+            'updated' => $ok,
+            'failed' => $fail,
+        ]);
+
+        return response()->json([
+            'success' => $success,
+            'message' => "Pushed ROAS for {$ok}/{$total} ads"
+                .($fail > 0 ? ", failed {$fail}" : ''),
+            'updated' => $updated,
+            'failed' => $failed,
         ], $success ? 200 : 422);
     }
 
@@ -335,6 +453,7 @@ class TemuAdsController extends Controller
             'target_roas_bidding' => $pause->targetRoasBidding(),
             'pause_run_slabs' => $this->pauseRunSlabs(),
             'pause_run_inv_zero' => $this->pauseRunInvZero(),
+            'roas_rule_slabs' => $this->roasRuleSlabs(),
             'auto_pause_cron' => $pause->cronEnabled(),
             'matching_active_ads' => count($pause->matchingAds()),
         ]);
@@ -350,6 +469,13 @@ class TemuAdsController extends Controller
             'pause_run_slabs.*.max' => 'nullable|integer|min:0|max:1000000',
             'pause_run_slabs.*.action' => 'required_with:pause_run_slabs|in:pause,run',
             'pause_run_inv_zero' => 'nullable|boolean',
+            'roas_rule_slabs' => 'nullable|array',
+            'roas_rule_slabs.*.spend_min' => 'nullable|numeric|min:0|max:100000',
+            'roas_rule_slabs.*.spend_max' => 'nullable|numeric|min:0|max:100000',
+            'roas_rule_slabs.*.roas_min' => 'nullable|numeric|min:0|max:1000',
+            'roas_rule_slabs.*.roas_max' => 'nullable|numeric|min:0|max:1000',
+            'roas_rule_slabs.*.target_roas' => 'nullable|numeric|min:-100|max:1000',
+            'roas_rule_slabs.*.style' => 'nullable|in:red,green,pink,yellow',
         ]);
 
         $below = $request->has('l7_clicks_red_below')
@@ -386,12 +512,22 @@ class TemuAdsController extends Controller
             );
         }
 
+        $roasRuleSlabs = $this->roasRuleSlabs();
+        if ($request->has('roas_rule_slabs')) {
+            $roasRuleSlabs = $this->normalizeRoasRuleSlabs($request->input('roas_rule_slabs'));
+            ChannelTabulatorColumnSetting::query()->updateOrCreate(
+                ['channel_name' => 'temu_ads_roas_rule_slabs'],
+                ['column_order' => [json_encode($roasRuleSlabs)]]
+            );
+        }
+
         return response()->json([
             'success' => true,
             'l7_clicks_red_below' => $below,
             'target_roas_bidding' => $targetRoas,
             'pause_run_slabs' => $slabs,
             'pause_run_inv_zero' => $invZero,
+            'roas_rule_slabs' => $roasRuleSlabs,
             'auto_pause_cron' => $pause->cronEnabled(),
             'matching_active_ads' => count($pause->matchingAds()),
         ]);
@@ -457,6 +593,129 @@ class TemuAdsController extends Controller
         usort($out, fn ($a, $b) => $a['min'] <=> $b['min']);
 
         return $out;
+    }
+
+    /**
+     * @return array<int, array{spend_min: float|null, spend_max: float|null, roas_min: float|null, roas_max: float|null, style: string}>
+     */
+    private function defaultRoasRuleSlabs(): array
+    {
+        return [
+            ['spend_min' => 0.0, 'spend_max' => 0.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => -3.0, 'style' => 'red'],
+            ['spend_min' => 0.01, 'spend_max' => 5.99, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 5.0, 'style' => 'yellow'],
+            ['spend_min' => 6.0, 'spend_max' => 9.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 10.0, 'style' => 'green'],
+            ['spend_min' => 9.01, 'spend_max' => null, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 12.0, 'style' => 'pink'],
+        ];
+    }
+
+    /**
+     * @return array<int, array{spend_min: float|null, spend_max: float|null, roas_min: float|null, roas_max: float|null, style: string}>
+     */
+    private function roasRuleSlabs(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'temu_ads_roas_rule_slabs')
+            ->first();
+        $raw = $row && is_array($row->column_order) ? $row->column_order : [];
+
+        return $this->normalizeRoasRuleSlabs($raw) ?: $this->defaultRoasRuleSlabs();
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return array<int, array{spend_min: float|null, spend_max: float|null, roas_min: float|null, roas_max: float|null, style: string}>
+     */
+    private function normalizeRoasRuleSlabs($raw): array
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+        if (count($raw) === 1 && is_string($raw[0] ?? null)) {
+            $decoded = json_decode((string) $raw[0], true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+
+        $money = function ($v): ?float {
+            if ($v === null || $v === '') {
+                return null;
+            }
+            if (! is_numeric($v)) {
+                return null;
+            }
+            $n = round((float) $v, 2);
+
+            return $n < 0 ? null : $n;
+        };
+
+        $out = [];
+        foreach ($raw as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $style = strtolower((string) ($item['style'] ?? 'red'));
+            if (! in_array($style, ['red', 'green', 'pink', 'yellow'], true)) {
+                $style = 'red';
+            }
+            $spendMin = $money($item['spend_min'] ?? $item['min'] ?? null);
+            $spendMax = $money($item['spend_max'] ?? $item['max'] ?? null);
+            $roasMin = $money($item['roas_min'] ?? null);
+            $roasMax = $money($item['roas_max'] ?? null);
+            $targetRoas = null;
+            if (isset($item['target_roas']) && $item['target_roas'] !== '' && is_numeric($item['target_roas'])) {
+                $targetRoas = round((float) $item['target_roas'], 2);
+            }
+            if ($spendMin === null && $spendMax === null && $roasMin === null && $roasMax === null && $targetRoas === null) {
+                continue;
+            }
+            if ($spendMax !== null && $spendMin !== null && $spendMax < $spendMin) {
+                $spendMax = $spendMin;
+            }
+            if ($roasMax !== null && $roasMin !== null && $roasMax < $roasMin) {
+                $roasMax = $roasMin;
+            }
+            $out[] = [
+                'spend_min' => $spendMin,
+                'spend_max' => $spendMax,
+                'roas_min' => $roasMin,
+                'roas_max' => $roasMax,
+                'target_roas' => $targetRoas,
+                'style' => $style,
+            ];
+        }
+
+        return $this->migrateLegacyRoasRuleSlabs($out);
+    }
+
+    /**
+     * @param  array<int, array{spend_min: float|null, spend_max: float|null, roas_min: float|null, roas_max: float|null, target_roas: float|null, style: string}>  $slabs
+     * @return array<int, array{spend_min: float|null, spend_max: float|null, roas_min: float|null, roas_max: float|null, target_roas: float|null, style: string}>
+     */
+    private function migrateLegacyRoasRuleSlabs(array $slabs): array
+    {
+        $first = $slabs[0] ?? null;
+        if (
+            ! $first
+            || round((float) ($first['spend_min'] ?? -1), 2) !== 0.0
+            || round((float) ($first['spend_max'] ?? -1), 2) !== 5.99
+        ) {
+            return $slabs;
+        }
+
+        return array_merge([
+            ['spend_min' => 0.0, 'spend_max' => 0.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => -3.0, 'style' => 'red'],
+            [
+                'spend_min' => 0.01,
+                'spend_max' => 5.99,
+                'roas_min' => $first['roas_min'] ?? null,
+                'roas_max' => $first['roas_max'] ?? null,
+                'target_roas' => 5.0,
+                'style' => 'yellow',
+            ],
+        ], array_slice($slabs, 1));
     }
 
     /**
@@ -567,7 +826,7 @@ class TemuAdsController extends Controller
             $period = 'ALL';
         }
 
-        $allowed = ['rows', 'impressions', 'clicks', 'spend', 'create', 'pause', 'run', 'ctr', 'cvr'];
+        $allowed = ['rows', 'impressions', 'clicks', 'spend', 'y_spend', 'create', 'pause', 'run', 'ctr', 'cvr', 'roas', 'acos', 'tacos'];
         if (! in_array($metric, $allowed, true)) {
             return response()->json([
                 'success' => false,
@@ -615,12 +874,17 @@ class TemuAdsController extends Controller
             'impressions' => 'required|numeric',
             'clicks' => 'required|numeric',
             'spend' => 'required|numeric',
+            'y_spend' => 'nullable|numeric',
             'create' => 'required|numeric',
             'pause' => 'required|numeric',
             'run' => 'required|numeric',
             'ctr' => 'required|numeric',
             'cvr' => 'nullable|numeric',
+            'roas' => 'nullable|numeric',
+            'acos' => 'nullable|numeric',
+            'tacos' => 'nullable|numeric',
             'sold' => 'nullable|numeric',
+            'sales' => 'nullable|numeric',
             'period' => 'nullable|string|max:8',
         ]);
 
@@ -635,12 +899,17 @@ class TemuAdsController extends Controller
                 'impressions' => (float) $validated['impressions'],
                 'clicks' => (float) $validated['clicks'],
                 'spend' => (float) $validated['spend'],
+                'y_spend' => (float) ($validated['y_spend'] ?? 0),
                 'create' => (float) $validated['create'],
                 'pause' => (float) $validated['pause'],
                 'run' => (float) $validated['run'],
                 'ctr' => (float) $validated['ctr'],
                 'cvr' => (float) ($validated['cvr'] ?? 0),
+                'roas' => (float) ($validated['roas'] ?? 0),
+                'acos' => (float) ($validated['acos'] ?? 0),
+                'tacos' => (float) ($validated['tacos'] ?? 0),
                 'sold' => (float) ($validated['sold'] ?? 0),
+                'sales' => (float) ($validated['sales'] ?? 0),
             ]);
         } catch (\Throwable $e) {
             Log::warning('TemuAdsController::saveBadgeSnapshot failed', ['error' => $e->getMessage()]);
@@ -659,18 +928,29 @@ class TemuAdsController extends Controller
         $createN = 0;
         $pauseN = 0;
         $runN = 0;
-        $ctrSum = 0.0;
-        $ctrN = 0;
         $impr = 0.0;
         $clicks = 0.0;
         $spend = 0.0;
+        $ySpend = 0.0;
         $sold = 0.0;
+        $sales = 0.0;
+        $allSales = 0.0;
+        $seenSku = [];
 
         foreach ($rows as $row) {
             $impr += (float) ($row['impressions'] ?? 0);
             $clicks += (float) ($row['clicks'] ?? 0);
             $spend += (float) ($row['ad_spend'] ?? 0);
+            $ySpend += (float) ($row['spend_l1'] ?? 0);
             $sold += (float) ($row['order_pay_cnt'] ?? 0);
+            $sales += (float) ($row['order_pay_amt'] ?? 0);
+            $skuKey = strtoupper(trim((string) ($row['sku'] ?? '')));
+            if ($skuKey === '' || ! isset($seenSku[$skuKey])) {
+                if ($skuKey !== '') {
+                    $seenSku[$skuKey] = true;
+                }
+                $allSales += (float) ($row['all_sale'] ?? 0);
+            }
             if (($row['ad_status'] ?? '') === 'No ad') {
                 $createN++;
             }
@@ -680,10 +960,6 @@ class TemuAdsController extends Controller
             } else {
                 $pauseN++;
             }
-            if ($row['ctr'] !== null && $row['ctr'] !== '' && is_numeric($row['ctr'])) {
-                $ctrSum += (float) $row['ctr'];
-                $ctrN++;
-            }
         }
 
         $this->storeBadgeSnapshot($period, [
@@ -691,12 +967,17 @@ class TemuAdsController extends Controller
             'impressions' => $impr,
             'clicks' => $clicks,
             'spend' => $spend,
+            'y_spend' => $ySpend,
             'create' => (float) $createN,
             'pause' => (float) $pauseN,
             'run' => (float) $runN,
-            'ctr' => $ctrN ? round($ctrSum / $ctrN, 2) : 0.0,
+            'ctr' => $impr > 0 ? round(($clicks / $impr) * 100, 2) : 0.0,
             'sold' => $sold,
+            'sales' => $sales,
             'cvr' => $clicks > 0 ? round(($sold / $clicks) * 100, 2) : 0.0,
+            'roas' => $spend > 0 ? round($sales / $spend, 2) : 0.0,
+            'acos' => $sales > 0 ? round(($spend / $sales) * 100, 2) : ($spend > 0 ? 100.0 : 0.0),
+            'tacos' => $allSales > 0 ? round(($spend / $allSales) * 100, 2) : ($spend > 0 ? 100.0 : 0.0),
         ]);
     }
 

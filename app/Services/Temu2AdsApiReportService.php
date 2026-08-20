@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\TemuAdsApiReport;
-use App\Models\TemuMetric;
+use App\Models\Temu2CampaignReport;
+use App\Models\Temu2Metric;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -11,9 +11,9 @@ use Illuminate\Support\Facades\Log;
  * Fetch temu.searchrec.ad.reports.goods.query and store full raw + Overall summary fields.
  * Uses reportInfo.summary.*.total (Seller Center Overall), not ad-only reportsSummary.*All.
  */
-class TemuAdsApiReportService
+class Temu2AdsApiReportService
 {
-    public function __construct(protected TemuApiService $temuApiService)
+    public function __construct(protected Temu2ApiService $temuApiService)
     {
     }
 
@@ -27,7 +27,7 @@ class TemuAdsApiReportService
     }
 
     /**
-     * Goods IDs to fetch (from temu_metrics), optionally filtered.
+     * Goods IDs to fetch (from temu2_metrics), optionally filtered.
      *
      * @return array<int, string>
      */
@@ -37,7 +37,7 @@ class TemuAdsApiReportService
             return [(string) $specificGoodsId];
         }
 
-        return TemuMetric::whereNotNull('goods_id')
+        return Temu2Metric::whereNotNull('goods_id')
             ->where('goods_id', '!=', '')
             ->pluck('goods_id')
             ->unique()
@@ -47,8 +47,8 @@ class TemuAdsApiReportService
     }
 
     /**
-     * Fetch one goodsId for a period and upsert temu_ads_api_reports.
-     * Also mirrors impressions/clicks onto TemuMetric (existing L30/L60 behavior).
+     * Fetch one goodsId for a period and upsert temu2_campaign_reports.
+     * Also mirrors impressions/clicks onto Temu2Metric (existing L30/L60 behavior).
      *
      * @return array{ok: bool, goods_id: string, period: string, message?: string}
      */
@@ -61,7 +61,7 @@ class TemuAdsApiReportService
         }
 
         $range = $ranges[$period];
-        $sku = TemuMetric::where('goods_id', $goodsId)->value('sku');
+        $sku = Temu2Metric::where('goods_id', $goodsId)->value('sku');
 
         try {
             $result = $this->temuApiService->fetchAdsData(
@@ -71,64 +71,30 @@ class TemuAdsApiReportService
             );
 
             if (! $result) {
-                TemuAdsApiReport::updateOrCreate(
-                    ['goods_id' => $goodsId, 'period' => $period],
-                    [
-                        'sku' => $sku,
-                        'start_ts' => $range['startTs'],
-                        'end_ts' => $range['endTs'],
-                        'raw_response' => null,
-                        'success' => false,
-                        'error_msg' => 'Empty or failed API response',
-                        'fetched_at' => now(),
-                    ]
-                );
-
                 return ['ok' => false, 'goods_id' => $goodsId, 'period' => $period, 'message' => 'Empty API response'];
             }
 
             $metrics = $this->metricsFromApiResult($result);
-            $row = array_merge($metrics, [
-                'sku' => $sku,
-                'start_ts' => $range['startTs'],
-                'end_ts' => $range['endTs'],
-                'raw_response' => json_encode($result, JSON_UNESCAPED_UNICODE),
-                'success' => true,
-                'error_msg' => null,
-                'fetched_at' => now(),
-            ]);
-
+            $row = $this->campaignRowFromApiMetrics($metrics, $sku);
             $statusQuery = $this->temuApiService->queryAdStatuses([$goodsId]);
             if (isset($statusQuery['statuses'][$goodsId])) {
-                $row['ad_status'] = $statusQuery['statuses'][$goodsId];
+                $row['status'] = $statusQuery['statuses'][$goodsId];
             }
 
-            TemuAdsApiReport::updateOrCreate(
-                ['goods_id' => $goodsId, 'period' => $period],
+            Temu2CampaignReport::updateOrCreate(
+                ['goods_id' => $goodsId, 'report_range' => $period],
                 $row
             );
 
-            $this->syncTemuMetricClicks($goodsId, $period, $row);
+            $this->syncTemu2MetricClicks($goodsId, $period, $metrics);
 
             return ['ok' => true, 'goods_id' => $goodsId, 'period' => $period];
         } catch (\Throwable $e) {
-            Log::error('TemuAdsApiReportService::fetchAndStore failed', [
+            Log::error('Temu2AdsApiReportService::fetchAndStore failed', [
                 'goods_id' => $goodsId,
                 'period' => $period,
                 'error' => $e->getMessage(),
             ]);
-
-            TemuAdsApiReport::updateOrCreate(
-                ['goods_id' => $goodsId, 'period' => $period],
-                [
-                    'sku' => $sku,
-                    'start_ts' => $range['startTs'],
-                    'end_ts' => $range['endTs'],
-                    'success' => false,
-                    'error_msg' => substr($e->getMessage(), 0, 500),
-                    'fetched_at' => now(),
-                ]
-            );
 
             return [
                 'ok' => false,
@@ -178,46 +144,7 @@ class TemuAdsApiReportService
      */
     public function reparseStored(?string $period = null, ?string $specificGoodsId = null): array
     {
-        $query = TemuAdsApiReport::query()->whereNotNull('raw_response');
-        if ($period) {
-            $query->where('period', strtoupper($period));
-        }
-        if ($specificGoodsId) {
-            $query->where('goods_id', (string) $specificGoodsId);
-        }
-
-        $ok = 0;
-        $fail = 0;
-        $total = 0;
-
-        foreach ($query->cursor() as $report) {
-            $total++;
-            $raw = json_decode((string) $report->raw_response, true);
-            if (! is_array($raw)) {
-                $fail++;
-                continue;
-            }
-
-            try {
-                $metrics = $this->metricsFromApiResult($raw);
-                $report->fill(array_merge($metrics, [
-                    'success' => true,
-                    'error_msg' => null,
-                ]));
-                $report->save();
-                $this->syncTemuMetricClicks((string) $report->goods_id, (string) $report->period, $metrics);
-                $ok++;
-            } catch (\Throwable $e) {
-                $fail++;
-                Log::error('TemuAdsApiReportService::reparseStored failed', [
-                    'goods_id' => $report->goods_id,
-                    'period' => $report->period,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return ['total' => $total, 'ok' => $ok, 'fail' => $fail];
+        return ['total' => 0, 'ok' => 0, 'fail' => 0];
     }
 
     /**
@@ -229,7 +156,7 @@ class TemuAdsApiReportService
     {
         $goodsIds = $specificGoodsId
             ? [(string) $specificGoodsId]
-            : TemuAdsApiReport::query()
+            : Temu2CampaignReport::query()
                 ->whereNotNull('goods_id')
                 ->where('goods_id', '!=', '')
                 ->distinct()
@@ -252,7 +179,7 @@ class TemuAdsApiReportService
                 $fail++;
                 continue;
             }
-            TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => $status]);
+            Temu2CampaignReport::where('goods_id', $goodsId)->update(['status' => $status]);
             $ok++;
         }
 
@@ -313,6 +240,30 @@ class TemuAdsApiReportService
     }
 
     /**
+     * @param  array{impressions: ?int, clicks: ?int, ctr: float, cart_cnt: ?int, order_pay_cnt: ?int, order_pay_amt: ?float, ad_spend: ?float, roas: float, acos: float}  $metrics
+     * @return array<string, mixed>
+     */
+    private function campaignRowFromApiMetrics(array $metrics, mixed $sku): array
+    {
+        $clicks = (int) ($metrics['clicks'] ?? 0);
+        $orders = (int) ($metrics['order_pay_cnt'] ?? 0);
+
+        return [
+            'sku' => $sku,
+            'spend' => $metrics['ad_spend'] ?? null,
+            'base_price_sales' => $metrics['order_pay_amt'] ?? null,
+            'roas' => $metrics['roas'] ?? null,
+            'acos_ad' => $metrics['acos'] ?? null,
+            'sub_orders' => $metrics['order_pay_cnt'] ?? null,
+            'impressions' => $metrics['impressions'] ?? null,
+            'clicks' => $metrics['clicks'] ?? null,
+            'ctr' => $metrics['ctr'] ?? null,
+            'cvr' => $clicks > 0 ? round($orders / $clicks * 100, 2) : 0,
+            'add_to_cart_number' => $metrics['cart_cnt'] ?? null,
+        ];
+    }
+
+    /**
      * Last calendar day ad spend from reportInfo.reportsItemList (max ts).
      * Daily adSpend.val is in the same units as stored ad_spend.
      */
@@ -341,15 +292,15 @@ class TemuAdsApiReportService
         return $val === null ? null : round((float) $val, 4);
     }
 
-    private function syncTemuMetricClicks(string $goodsId, string $period, array $row): void
+    private function syncTemu2MetricClicks(string $goodsId, string $period, array $row): void
     {
         if ($period === 'L30') {
-            TemuMetric::where('goods_id', $goodsId)->update([
+            Temu2Metric::where('goods_id', $goodsId)->update([
                 'product_impressions_l30' => (int) ($row['impressions'] ?? 0),
                 'product_clicks_l30' => (int) ($row['clicks'] ?? 0),
             ]);
         } elseif ($period === 'L60') {
-            TemuMetric::where('goods_id', $goodsId)->update([
+            Temu2Metric::where('goods_id', $goodsId)->update([
                 'product_impressions_l60' => (int) ($row['impressions'] ?? 0),
                 'product_clicks_l60' => (int) ($row['clicks'] ?? 0),
             ]);
