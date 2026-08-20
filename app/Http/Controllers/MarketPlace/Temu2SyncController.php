@@ -179,7 +179,7 @@ class Temu2SyncController extends Controller
 
     /**
      * Same qty tabs as /marketplace/temu2/products (Shopify live catalog + Temu 2 metrics).
-     * Missing Mapping for Temu 2 = Active SKU Mismatch + Inactive SKU Mismatch.
+     * Missing Mapping for Temu 2 = Inv SKU Mismatch (Shopify vs Temu qty).
      */
     public function listingQtyMismatchCount(): int
     {
@@ -188,7 +188,7 @@ class Temu2SyncController extends Controller
             app(ShopifyLiveVerifiedCatalogService::class)
         );
 
-        return count($tabs['mismatchActive']) + count($tabs['mismatchInactive']);
+        return count($tabs['mismatchQty'] ?? []);
     }
 
     /**
@@ -200,7 +200,7 @@ class Temu2SyncController extends Controller
             app(Temu2LiveListingsService::class),
             app(ShopifyLiveVerifiedCatalogService::class)
         );
-        $skus = array_values(array_unique(array_merge($tabs['mismatchActive'], $tabs['mismatchInactive'])));
+        $skus = array_values(array_unique($tabs['mismatchQty'] ?? []));
         $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
         $mp = $this->temuStockMapForSkus($skus);
         $out = [];
@@ -319,54 +319,20 @@ class Temu2SyncController extends Controller
 
         $matchedActive = $matchedQty;
         $matchedInactive = [];
-        $matchedNormToSku = [];
-        foreach ($matchedQty as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $matchedNormToSku[$n] = (string) $sku;
-            }
-        }
-        $matchedStateIndex = $this->aeStateIndexFromCache(
-            $liveService,
-            static fn (string $norm): bool => isset($matchedNormToSku[$norm]),
-            count($matchedNormToSku),
-            $matchedNormToSku
-        );
-        if ($matchedStateIndex['ready']) {
-            $matchedActive = $catalog->filterSkusByNormalizedAllowList(
-                $matchedQty,
-                $matchedStateIndex['skusByState']['active'] ?? []
-            );
-            $matchedInactive = $catalog->excludeSkusByNormalizedList($matchedQty, $matchedActive);
-            $counts['matched'] = count($matchedActive);
-            $counts['matched_inactive'] = count($matchedInactive);
-            $counts['linked_with_inv'] = $counts['matched'];
-        }
-
         $mismatchActive = $mismatchQty;
         $mismatchInactive = [];
-        $mismatchNormToSku = [];
-        foreach ($mismatchQty as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $mismatchNormToSku[$n] = (string) $sku;
-            }
-        }
-        $mismatchStateIndex = $this->aeStateIndexFromCache(
-            $liveService,
-            static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-            count($mismatchNormToSku),
-            $mismatchNormToSku
-        );
-        if ($mismatchStateIndex['ready']) {
-            $mismatchActive = $catalog->filterSkusByNormalizedAllowList(
-                $mismatchQty,
-                $mismatchStateIndex['skusByState']['active'] ?? []
-            );
-            $mismatchInactive = $catalog->excludeSkusByNormalizedList($mismatchQty, $mismatchActive);
-            $counts['mismatch'] = count($mismatchActive);
-            $counts['mismatch_inactive'] = count($mismatchInactive);
-        }
+        $counts['matched'] = count($matchedQty);
+        $counts['mismatch'] = count($mismatchQty);
+        $counts['matched_inactive'] = 0;
+        $counts['mismatch_inactive'] = 0;
+        $counts['linked'] = $counts['matched'] + $counts['mismatch'] + $counts['zero'];
+        $counts['linked_with_inv'] = $counts['matched'];
+
+        $portal = $this->temuPortalStatusSkuLists($liveService);
+        $matchedInactive = $portal['inactive'];
+        $mismatchInactive = $portal['active'];
+        $counts['matched_inactive'] = count($matchedInactive);
+        $counts['mismatch_inactive'] = count($mismatchInactive);
 
         return [
             'linkedSkus' => $linkedSkus,
@@ -381,6 +347,168 @@ class Temu2SyncController extends Controller
             'counts' => $counts,
             'apiError' => $apiError,
         ];
+    }
+
+    /**
+     * Temu Seller Center Active / Inactive SKU lists from the live listings cache.
+     *
+     * @return array{active: list<string>, inactive: list<string>}
+     */
+    protected function temuPortalStatusSkuLists(Temu2LiveListingsService $liveService): array
+    {
+        $active = [];
+        $inactive = [];
+        $seen = [];
+        $cached = $liveService->peekCached();
+        if (! is_array($cached) || $cached === []) {
+            $cached = $liveService->all(false);
+        }
+        foreach ($cached as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $norm = strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $bucket = $this->aeStateBucket((string) ($row['state'] ?? ''));
+            if ($bucket === 'inactive') {
+                $inactive[] = $sku;
+            } elseif ($bucket === 'active') {
+                $active[] = $sku;
+            }
+        }
+
+        return ['active' => $active, 'inactive' => $inactive];
+    }
+
+    /**
+     * Actual Temu Seller Center Active / Inactive SKUs (not Shopify qty buckets).
+     *
+     * @param  array<string, mixed>  $tabs
+     */
+    protected function paginateTemuPortalStatusListings(
+        string $status,
+        string $searchSku,
+        string $searchName,
+        int $page,
+        int $perPage,
+        Temu2LiveListingsService $liveService,
+        array $tabs
+    ): LengthAwarePaginator {
+        $skus = $status === 'inactive'
+            ? ($tabs['matchedInactive'] ?? [])
+            : ($tabs['mismatchInactive'] ?? []);
+        $searchSkuU = strtoupper($searchSku);
+        $searchNameU = strtoupper($searchName);
+        $cached = $liveService->peekCached();
+        if (! is_array($cached) || $cached === []) {
+            $cached = $liveService->all(false);
+        }
+        $bySku = [];
+        if (is_array($cached)) {
+            foreach ($cached as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $sku = trim((string) ($row['sku'] ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                $bySku[strtoupper($sku)] = $row;
+                $norm = strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku);
+                if ($norm !== '') {
+                    $bySku[$norm] = $row;
+                }
+            }
+        }
+
+        $filtered = [];
+        foreach ($skus as $sku) {
+            $sku = (string) $sku;
+            $row = $bySku[strtoupper($sku)]
+                ?? $bySku[strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku)]
+                ?? [];
+            $title = (string) ($row['title'] ?? $sku);
+            if ($searchSkuU !== '' && ! str_contains(strtoupper($sku), $searchSkuU)) {
+                continue;
+            }
+            if ($searchNameU !== '' && ! str_contains(strtoupper($title.' '.$sku), $searchNameU)) {
+                continue;
+            }
+            $filtered[] = $sku;
+        }
+
+        $total = count($filtered);
+        $slice = array_slice($filtered, ($page - 1) * $perPage, $perPage);
+        $shopifyRows = [];
+        if ($slice !== []) {
+            foreach (ShopifySku::query()->whereIn('sku', $slice)->get() as $row) {
+                $skuKey = strtoupper(trim((string) $row->sku));
+                $shopifyRows[$skuKey] = $row;
+                $norm = strtoupper(ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku) ?: (string) $row->sku);
+                if ($norm !== '' && ! isset($shopifyRows[$norm])) {
+                    $shopifyRows[$norm] = $row;
+                }
+            }
+        }
+        $aeMap = $this->temuMetricMapForSkus($slice);
+        $aeStockMap = $this->temuStockMapForSkus($slice);
+        $liveShopifyQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($slice);
+
+        $items = [];
+        foreach ($slice as $sku) {
+            $cachedRow = $bySku[strtoupper($sku)]
+                ?? $bySku[strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku)]
+                ?? [];
+            $shopify = $shopifyRows[strtoupper($sku)]
+                ?? $shopifyRows[strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku)]
+                ?? null;
+            $metric = $aeMap[$sku] ?? null;
+            $linked = $this->isShopifySkuLinkedOnTemu($metric, $sku);
+            $shopifyQty = $shopify
+                ? MarketplaceListingStockResolver::shopifyQtyFromLiveMapOrRow($liveShopifyQty, $shopify, $sku)
+                : null;
+            $aeQty = MarketplaceListingStockResolver::qtyFromMap($aeStockMap, $sku, $metric?->sku);
+            if (array_key_exists('inventory', $cachedRow) && $cachedRow['inventory'] !== null) {
+                $aeQty = (int) $cachedRow['inventory'];
+            }
+            $state = (string) ($cachedRow['state'] ?? $status);
+            $items[] = (object) [
+                'shopify_sku_id' => $shopify->id ?? null,
+                'product_id' => $cachedRow['product_id'] ?? ($metric->goods_id ?? null),
+                'sku' => $sku,
+                'title' => $shopify
+                    ? (trim(($shopify->goods_summary ?? '').($shopify->variant_title ? ' — '.$shopify->variant_title : '')) ?: $sku)
+                    : ($cachedRow['title'] ?? ($metric->goods_summary ?? $sku)),
+                'temu_title' => $cachedRow['title'] ?? ($metric->goods_summary ?? null),
+                'image_src' => $shopify->image_src ?? null,
+                'price' => $cachedRow['price'] ?? ($metric->base_price ?? null),
+                'shopify_price' => $shopify->b2c_price ?? $shopify->price ?? null,
+                'quantity' => $aeQty,
+                'ae_quantity' => $aeQty,
+                'shopify_quantity' => $shopifyQty,
+                'linked' => $linked || $shopify !== null,
+                'listing_status' => $shopify ? ($linked ? 'linked' : 'unlinked') : 'not_in_shopify',
+                'temu_state' => $state !== '' ? $state : $status,
+                'inactive_reason' => $status === 'inactive'
+                    ? ($cachedRow['inactive_reason'] ?? $metric?->inactive_reason ?? null)
+                    : null,
+            ];
+        }
+
+        return new LengthAwarePaginator(
+            $items,
+            $total,
+            $perPage,
+            $page,
+            ['path' => request()->url(), 'query' => request()->query()]
+        );
     }
 
     public function syncProducts(Request $request): View
@@ -405,7 +533,8 @@ class Temu2SyncController extends Controller
         $clearCache = $request->boolean('clear_cache');
         $emptyStateCounts = $this->emptyAeStateCounts();
         $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
-        $liveLinkTabs = ['matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'];
+        $liveLinkTabs = ['matched', 'mismatch', 'zero'];
+        $portalTabs = ['matched_inactive', 'mismatch_inactive'];
         $liveService = app(Temu2LiveListingsService::class);
         if ($clearCache) {
             $liveService->clearCache();
@@ -448,6 +577,38 @@ class Temu2SyncController extends Controller
         $mismatchInactive = $tabs['mismatchInactive'];
         if ($tabs['apiError']) {
             $apiError = trim(($apiError ? $apiError.' ' : '').$tabs['apiError']);
+        }
+
+        if (in_array($linkTab, $portalTabs, true)) {
+            $status = $linkTab === 'mismatch_inactive' ? 'active' : 'inactive';
+            $cacheReady = is_array($liveService->peekCached());
+            if ($counts[$linkTab] === 0 && ! $forceLive) {
+                WarmTemu2LiveListingsCache::dispatch();
+            }
+            $paginator = $this->paginateTemuPortalStatusListings(
+                $status,
+                $searchSku,
+                $searchName,
+                $page,
+                $perPage,
+                $liveService,
+                $tabs
+            );
+
+            return view('marketplace.temu2.products', [
+                'products' => $paginator,
+                'title' => 'Temu 2 — Listings',
+                'searchSku' => $searchSku,
+                'searchName' => $searchName,
+                'linkTab' => $linkTab,
+                'stateTab' => 'all',
+                'counts' => $counts,
+                'stateCounts' => $emptyStateCounts,
+                'stateCacheReady' => $cacheReady,
+                'apiError' => $apiError,
+                'connected' => $this->apiConfig->isConfigured('temu2'),
+                'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
+            ]);
         }
 
         $linkedVerified = match ($linkTab) {
@@ -494,9 +655,6 @@ class Temu2SyncController extends Controller
         if (in_array($linkTab, $liveLinkTabs, true)) {
             if ($linkedVerified === []) {
                 $query->whereRaw('1 = 0');
-            } elseif ($stateTab !== 'all') {
-                $stateSkus = $stateIndex['skusByState'][$stateTab] ?? [];
-                $catalog->restrictShopifySkuQuery($query, $stateSkus);
             } else {
                 $catalog->restrictShopifySkuQuery($query, $linkedVerified);
             }
@@ -572,6 +730,9 @@ class Temu2SyncController extends Controller
                 'linked' => $linked,
                 'listing_status' => $linked ? 'linked' : 'unlinked',
                 'temu_state' => $state !== '' ? $state : null,
+                'inactive_reason' => $state === 'inactive'
+                    ? ($live['inactive_reason'] ?? $cached['inactive_reason'] ?? $metric?->inactive_reason ?? null)
+                    : null,
             ];
         });
 
@@ -957,54 +1118,10 @@ class Temu2SyncController extends Controller
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $mismatchQty = $classified['mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        if (in_array($scope, ['mismatch', 'active', 'mismatch_active'], true)) {
-            $mismatchNormToSku = [];
-            foreach ($mismatchQty as $sku) {
-                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($n !== '') {
-                    $mismatchNormToSku[$n] = (string) $sku;
-                }
-            }
-            $idx = $this->aeStateIndexFromCache(
-                $liveService,
-                static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-                count($mismatchNormToSku),
-                $mismatchNormToSku
-            );
-            if ($idx['ready']) {
-                $mismatch = $catalog->filterSkusByNormalizedAllowList(
-                    $mismatchQty,
-                    $idx['skusByState']['active'] ?? []
-                );
-            } else {
-                $mismatch = $mismatchQty;
-            }
-        } elseif (in_array($scope, ['mismatch_inactive', 'inactive'], true)) {
-            $mismatchNormToSku = [];
-            foreach ($mismatchQty as $sku) {
-                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($n !== '') {
-                    $mismatchNormToSku[$n] = (string) $sku;
-                }
-            }
-            $idx = $this->aeStateIndexFromCache(
-                $liveService,
-                static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
-                count($mismatchNormToSku),
-                $mismatchNormToSku
-            );
-            if ($idx['ready']) {
-                $active = $catalog->filterSkusByNormalizedAllowList(
-                    $mismatchQty,
-                    $idx['skusByState']['active'] ?? []
-                );
-                $mismatch = $catalog->excludeSkusByNormalizedList($mismatchQty, $active);
-            } else {
-                $mismatch = [];
-            }
-        } else {
-            $mismatch = $mismatchQty;
-        }
+        // Inv SKU Mismatch only — Active SKU / Inactive SKU tabs are Temu Seller Center status, not qty buckets.
+        $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
+            ? []
+            : $mismatchQty;
 
         $offset = max(0, (int) $request->input('offset', 0));
         $limit = max(1, min(40, (int) $request->input('limit', 25)));
@@ -1577,6 +1694,7 @@ class Temu2SyncController extends Controller
                 'inventory' => array_key_exists('inventory', $row) && $row['inventory'] !== null ? (int) $row['inventory'] : null,
                 'title' => isset($row['title']) ? (string) $row['title'] : null,
                 'price' => isset($row['price']) ? (float) $row['price'] : null,
+                'inactive_reason' => isset($row['inactive_reason']) ? (string) $row['inactive_reason'] : null,
             ];
         }
 

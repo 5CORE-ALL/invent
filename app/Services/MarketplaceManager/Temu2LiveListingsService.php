@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class Temu2LiveListingsService
 {
-    private const CACHE_KEY = 'mm.temu2.live_listings.v1';
+    private const CACHE_KEY = 'mm.temu2.live_listings.v3';
 
     public function clearCache(): void
     {
@@ -27,6 +27,16 @@ class Temu2LiveListingsService
             $cached = $this->peekCached();
             if ($cached !== null) {
                 return $cached;
+            }
+        }
+
+        if ($forceRefresh) {
+            try {
+                app(\App\Services\Temu2ApiService::class)->syncSkuListingStatuses();
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Temu2LiveListingsService: status sync failed', [
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -123,7 +133,7 @@ class Temu2LiveListingsService
     }
 
     /**
-     * @return array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float}|null
+     * @return array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float, inactive_reason?: ?string}|null
      */
     protected function mapProduct(Temu2Metric $row): ?array
     {
@@ -133,7 +143,7 @@ class Temu2LiveListingsService
         }
         $productId = trim((string) ($row->goods_id ?? ''));
         if ($productId === '' || $productId === $sku) {
-            return null;
+            $productId = $sku;
         }
 
         $title = trim((string) ($row->goods_summary ?? ''));
@@ -141,13 +151,21 @@ class Temu2LiveListingsService
             $title = $sku;
         }
 
+        $status = strtolower(trim((string) ($row->listing_status ?? '')));
+        if (! in_array($status, ['active', 'inactive'], true)) {
+            $status = 'other';
+        }
+
         return [
             'product_id' => $productId,
             'sku' => $sku,
-            'state' => 'active',
+            'state' => $status,
             'inventory' => $row->quantity !== null ? (int) $row->quantity : null,
             'title' => $title,
             'price' => $row->base_price !== null ? (float) $row->base_price : null,
+            'inactive_reason' => $status === 'inactive'
+                ? (trim((string) ($row->inactive_reason ?? '')) ?: null)
+                : null,
         ];
     }
 }

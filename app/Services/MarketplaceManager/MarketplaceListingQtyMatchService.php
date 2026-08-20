@@ -144,6 +144,10 @@ final class MarketplaceListingQtyMatchService
      */
     public function inactiveListingRows(string $mmChannel, bool $fetchLiveIfCold = true): array
     {
+        if ($mmChannel === 'temu2') {
+            return $this->temu2PortalInactiveRows($fetchLiveIfCold);
+        }
+
         $classified = $this->classify($mmChannel);
         $candidates = array_values(array_unique($classified['matched'] ?? []));
         if ($candidates === []) {
@@ -180,6 +184,64 @@ final class MarketplaceListingQtyMatchService
                 'diff' => abs($inv - $channelInv),
                 'status' => 'Inactive',
                 'state' => (string) ($index['state'][$norm] ?? 'inactive'),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Temu 2 Inactive SKU = actual Seller Center inactive listings (not qty-matched Shopify SKUs).
+     *
+     * @return list<array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float, status: string, state: string}>
+     */
+    protected function temu2PortalInactiveRows(bool $fetchLiveIfCold): array
+    {
+        $live = app(Temu2LiveListingsService::class);
+        $cached = $live->peekCached();
+        if ((! is_array($cached) || $cached === []) && $fetchLiveIfCold) {
+            $cached = $live->all(false);
+        }
+        if (! is_array($cached) || $cached === []) {
+            return [];
+        }
+
+        $skus = [];
+        $seen = [];
+        foreach ($cached as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku) ?: strtoupper($sku);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $state = strtolower(trim((string) ($row['state'] ?? '')));
+            if ($state !== 'inactive') {
+                continue;
+            }
+            $seen[$norm] = true;
+            $skus[] = $sku;
+        }
+
+        $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        $mp = $this->localStockMap('temu2', $skus);
+        $out = [];
+        foreach ($skus as $sku) {
+            $inv = (int) (MarketplaceListingStockResolver::qtyFromMap($shopify, $sku) ?? 0);
+            $channelInv = (int) (MarketplaceListingStockResolver::qtyFromMap($mp, $sku) ?? 0);
+            $out[] = [
+                'sku' => $sku,
+                'channel_sku' => $sku,
+                'inv' => $inv,
+                'channel_inv' => $channelInv,
+                'diff' => abs($inv - $channelInv),
+                'status' => 'Inactive',
+                'state' => 'inactive',
             ];
         }
 
