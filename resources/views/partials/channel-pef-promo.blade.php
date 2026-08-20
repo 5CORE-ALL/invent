@@ -5470,7 +5470,7 @@
         }
 
         let chPromoEbaySpriceAutoBusy = false;
-        /** Fill empty S PRC cells: Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. */
+        /** Fill / correct S PRC: Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. */
         function autopopulateEbaySpriceFromStdPrmtCpn(opts) {
             opts = opts || {};
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
@@ -5478,15 +5478,18 @@
             if (chPromoEbaySpriceAutoBusy) return;
             const persist = opts.persist !== false;
             const silent = opts.silent !== false;
+            const overwrite = opts.overwrite === true || CHANNEL_PROMO_CHANNEL === 'ebay1';
             const jobs = [];
             const blocked = typeof table.blockRedraw === 'function';
             if (blocked) table.blockRedraw();
             try {
                 chPromoEachTableRow(function(row, d) {
                     if (!chPromoIsChildRow(d)) return;
-                    if (chPromoGetSprice(d) > 0) return;
                     const fill = chPromoSpriceFromStdTPromo(d);
                     if (!(fill > 0)) return;
+                    const current = chPromoGetSprice(d);
+                    if (current > 0 && !overwrite) return;
+                    if (current > 0 && chPromoNearlyEqual(current, fill)) return;
                     const sku = chPromoSku(d);
                     if (!sku) return;
                     row.update(chPromoSpricePatch(fill));

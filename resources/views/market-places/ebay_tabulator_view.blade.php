@@ -4668,7 +4668,7 @@
                                 NaN;
                             let sprice = isNaN(spriceNum) ? 0 : spriceNum;
 
-                            if (!(sprice > 0) && typeof chPromoSpriceFromStdTPromo === 'function'
+                            if (typeof chPromoSpriceFromStdTPromo === 'function'
                                 && !rowData.is_parent_summary
                                 && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
                                 const calc = chPromoSpriceFromStdTPromo(rowData);

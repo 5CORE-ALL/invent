@@ -1558,6 +1558,24 @@ class EbayController extends Controller
                     $row['SPRICE_STATUS'] = $savedStatus;
                     $sprice = 0;
                 }
+
+                // S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std.
+                $stdPrcForSprice = (float) ($row['STANDARD_PRICE'] ?? 0);
+                if ($stdPrcForSprice > 0) {
+                    $prmtPct = is_numeric($row['prmt_pct'] ?? null)
+                        ? (float) $row['prmt_pct']
+                        : (float) ($row['_prmt_pct_applied'] ?? 0);
+                    $cpnPct = is_numeric($row['cpn_pct'] ?? null)
+                        ? (float) $row['cpn_pct']
+                        : (float) ($row['_cpn_pct_applied'] ?? 0);
+                    $tPromo = min(99.99, max(0, $prmtPct + $cpnPct));
+                    $formulaSprice = round($tPromo > 0 ? $stdPrcForSprice * (1 - $tPromo / 100) : $stdPrcForSprice, 2);
+                    if ($formulaSprice >= 0.01) {
+                        $row['SPRICE'] = $formulaSprice;
+                        $row['has_custom_sprice'] = true;
+                        $sprice = $formulaSprice;
+                    }
+                }
                 
                 $sgpft = $sprice > 0 ? round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2) : 0;
                 $row['SGPFT'] = $sprice > 0 ? $sgpft : null;
