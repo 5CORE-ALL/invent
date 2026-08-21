@@ -4,15 +4,19 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChannelTabulatorColumnSetting;
+use App\Models\MarketplaceDailyMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
 use App\Services\TemuAdsApiReportService;
 use App\Services\TemuAdsAutoPauseService;
 use App\Services\TemuApiService;
+use App\Services\TemuShopifySalesService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Temu Ads (API) — tabulator view of temu_ads_api_reports (full raw goods ad reports).
@@ -135,8 +139,17 @@ class TemuAdsController extends Controller
             ];
         })->values();
 
+        $tacosPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
+        $channelSales = $this->temuChannelSalesForPeriod($tacosPeriod);
+        $tacosSpend = $tacosPeriod === 'L30' && ! in_array($period, ['L7', 'L30', 'L60'], true)
+            ? round((float) TemuAdsApiReport::query()->where('period', 'L30')->sum('ad_spend'), 2)
+            : $spendSum;
+        $tacos = $channelSales > 0
+            ? round(($tacosSpend / $channelSales) * 100, 2)
+            : ($tacosSpend > 0 ? 100.0 : 0.0);
+
         try {
-            $this->snapshotBadgeMetricsFromRows($rows, $period ?: 'ALL');
+            $this->snapshotBadgeMetricsFromRows($rows, $period ?: 'ALL', $channelSales, $tacos);
         } catch (\Throwable $e) {
             Log::warning('TemuAdsController badge snapshot failed', ['error' => $e->getMessage()]);
         }
@@ -147,6 +160,8 @@ class TemuAdsController extends Controller
             'spend_sum' => $spendSum,
             'impressions_sum' => $imprSum,
             'clicks_sum' => $clickSum,
+            'channel_sales' => $channelSales,
+            'tacos' => $tacos,
         ]);
     }
 
@@ -921,9 +936,45 @@ class TemuAdsController extends Controller
     }
 
     /**
+     * Temu channel sales for TCOS / TAcos% — same Ads% denominator as /temu-decrease
+     * and all-marketplace-master (temu_orders, not Shopify L30 × Shopify price).
+     */
+    private function temuChannelSalesForPeriod(?string $period): float
+    {
+        $days = match (strtoupper((string) ($period ?: 'L30'))) {
+            'L7' => 7,
+            'L60' => 60,
+            default => 30,
+        };
+
+        try {
+            $start = Carbon::now()->subDays($days)->startOfDay();
+            $end = Carbon::now()->endOfDay();
+            $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
+            $sales = (float) ($m['sales'] ?? 0);
+            if ($sales > 0) {
+                return round($sales, 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Temu ads TCOS sales lookup failed', ['error' => $e->getMessage()]);
+        }
+
+        if ($days === 30 && Schema::hasTable('marketplace_daily_metrics')) {
+            $row = MarketplaceDailyMetric::query()
+                ->where('channel', 'Temu')
+                ->latest('date')
+                ->first();
+
+            return round((float) ($row->total_sales ?? 0), 2);
+        }
+
+        return 0.0;
+    }
+
+    /**
      * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows
      */
-    private function snapshotBadgeMetricsFromRows($rows, string $period): void
+    private function snapshotBadgeMetricsFromRows($rows, string $period, float $channelSales = 0.0, ?float $tacos = null): void
     {
         $createN = 0;
         $pauseN = 0;
@@ -934,23 +985,20 @@ class TemuAdsController extends Controller
         $ySpend = 0.0;
         $sold = 0.0;
         $sales = 0.0;
-        $allSales = 0.0;
-        $seenSku = [];
+        $tacosSpend = 0.0;
+        $useL30SpendForTacos = strtoupper($period) === 'ALL';
 
         foreach ($rows as $row) {
             $impr += (float) ($row['impressions'] ?? 0);
             $clicks += (float) ($row['clicks'] ?? 0);
-            $spend += (float) ($row['ad_spend'] ?? 0);
+            $rowSpend = (float) ($row['ad_spend'] ?? 0);
+            $spend += $rowSpend;
+            if (! $useL30SpendForTacos || strtoupper((string) ($row['period'] ?? '')) === 'L30') {
+                $tacosSpend += $rowSpend;
+            }
             $ySpend += (float) ($row['spend_l1'] ?? 0);
             $sold += (float) ($row['order_pay_cnt'] ?? 0);
             $sales += (float) ($row['order_pay_amt'] ?? 0);
-            $skuKey = strtoupper(trim((string) ($row['sku'] ?? '')));
-            if ($skuKey === '' || ! isset($seenSku[$skuKey])) {
-                if ($skuKey !== '') {
-                    $seenSku[$skuKey] = true;
-                }
-                $allSales += (float) ($row['all_sale'] ?? 0);
-            }
             if (($row['ad_status'] ?? '') === 'No ad') {
                 $createN++;
             }
@@ -960,6 +1008,12 @@ class TemuAdsController extends Controller
             } else {
                 $pauseN++;
             }
+        }
+
+        if ($tacos === null) {
+            $tacos = $channelSales > 0
+                ? round(($tacosSpend / $channelSales) * 100, 2)
+                : ($tacosSpend > 0 ? 100.0 : 0.0);
         }
 
         $this->storeBadgeSnapshot($period, [
@@ -977,7 +1031,7 @@ class TemuAdsController extends Controller
             'cvr' => $clicks > 0 ? round(($sold / $clicks) * 100, 2) : 0.0,
             'roas' => $spend > 0 ? round($sales / $spend, 2) : 0.0,
             'acos' => $sales > 0 ? round(($spend / $sales) * 100, 2) : ($spend > 0 ? 100.0 : 0.0),
-            'tacos' => $allSales > 0 ? round(($spend / $allSales) * 100, 2) : ($spend > 0 ? 100.0 : 0.0),
+            'tacos' => $tacos,
         ]);
     }
 

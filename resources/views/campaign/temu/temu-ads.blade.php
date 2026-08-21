@@ -417,7 +417,7 @@
                             <span class="badge fs-6 p-2 temu-ads-chart-badge" id="tacos-sum"
                                 data-metric="tacos" data-label="TAcos%"
                                 style="background-color: #b45309; color: white; font-weight: bold;"
-                                title="TAcos% = total Spend ÷ total all sales (Shopify L30 × price). Click for history">TAcos%: <span class="temu-ads-badge-val">0%</span><span class="temu-ads-history-dot" title="History"></span></span>
+                                title="TCOS / TAcos% = total Spend ÷ Temu channel sales (same Ads% as /temu-decrease and all-marketplace-master). Click for history">TAcos%: <span class="temu-ads-badge-val">0%</span><span class="temu-ads-history-dot" title="History"></span></span>
                             <span class="badge fs-6 p-2 temu-ads-chart-badge" id="ctr-avg"
                                 data-metric="ctr" data-label="CTR"
                                 style="background-color: #0891b2; color: white; font-weight: bold;"
@@ -1019,27 +1019,33 @@
                 return queueCreateGoodsIdsFromRows(createSourceRows()).length;
             }
 
+            let channelSales = 0;
+            let channelTacos = null;
+
             function badgeCounts(rows) {
                 const list = Array.isArray(rows) ? rows : [];
-                let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, allSales = 0, createN = 0, pauseN = 0, runN = 0;
-                const seenSku = {};
+                const periodKey = currentPeriodKey();
+                let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, tacosSpend = 0, createN = 0, pauseN = 0, runN = 0;
                 list.forEach(function (r) {
+                    const rowSpend = parseFloat(r.ad_spend) || 0;
                     impr += parseFloat(r.impressions) || 0;
                     clicks += parseFloat(r.clicks) || 0;
-                    spend += parseFloat(r.ad_spend) || 0;
+                    spend += rowSpend;
+                    if (periodKey !== 'ALL' || String(r.period || '') === 'L30') {
+                        tacosSpend += rowSpend;
+                    }
                     ySpend += parseFloat(r.spend_l1) || 0;
                     sold += parseFloat(r.order_pay_cnt) || 0;
                     sales += parseFloat(r.order_pay_amt) || 0;
-                    const sku = String(r.sku || '').trim().toUpperCase();
-                    if (!sku || !seenSku[sku]) {
-                        if (sku) seenSku[sku] = true;
-                        allSales += parseFloat(r.all_sale) || 0;
-                    }
                     if (canCreateAdRow(r)) createN++;
                     const action = rowPauseRunAction(r);
                     if (action === 'run') runN++;
                     else if (action === 'pause') pauseN++;
                 });
+                const allSales = channelSales > 0 ? channelSales : 0;
+                const tacos = channelTacos != null && isFinite(channelTacos)
+                    ? channelTacos
+                    : (allSales > 0 ? (tacosSpend / allSales) * 100 : (tacosSpend > 0 ? 100 : 0));
                 return {
                     rows: list.length,
                     impressions: impr,
@@ -1056,7 +1062,7 @@
                     cvr: clicks > 0 ? (sold / clicks) * 100 : 0,
                     roas: spend > 0 ? (sales / spend) : 0,
                     acos: sales > 0 ? (spend / sales) * 100 : (spend > 0 ? 100 : 0),
-                    tacos: allSales > 0 ? (spend / allSales) * 100 : (spend > 0 ? 100 : 0),
+                    tacos: tacos,
                 };
             }
 
@@ -1389,7 +1395,13 @@
                 }).join('') : '<tr><td colspan="12" class="text-center text-muted">No running ads in the current view.</td></tr>';
             }
 
-            function setBadges(rows) {
+            function setBadges(rows, response) {
+                if (response && response.channel_sales != null) {
+                    channelSales = parseFloat(response.channel_sales) || 0;
+                }
+                if (response && response.tacos != null && isFinite(parseFloat(response.tacos))) {
+                    channelTacos = parseFloat(response.tacos);
+                }
                 paintMetricBadges(rows);
             }
 
