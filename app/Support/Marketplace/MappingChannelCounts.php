@@ -27,9 +27,9 @@ class MappingChannelCounts
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
 
-    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v6';
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v7';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v6';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v7';
 
     /**
      * Channels shown on /map-issues.
@@ -144,6 +144,8 @@ class MappingChannelCounts
             Cache::forget(self::INACTIVE_MASTER_ROWS_CACHE_KEY);
             Cache::forget('inactive_listings_total_v5');
             Cache::forget('inactive_listings_master_rows_v5');
+            Cache::forget('inactive_listings_total_v6');
+            Cache::forget('inactive_listings_master_rows_v6');
         } catch (\Throwable $e) {
             // ignore
         }
@@ -585,12 +587,25 @@ class MappingChannelCounts
     {
         $counts = [];
         $seenMm = [];
+        $priority = ['macy' => 0, 'bestbuy' => 1, 'topdawg' => 2];
+        $entries = [];
 
         foreach (self::$sources as $slug => $meta) {
             $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
             if ($mm === null) {
                 continue;
             }
+            $entries[] = [
+                'slug' => $slug,
+                'mm' => $mm,
+                'ord' => $priority[$mm] ?? 50,
+            ];
+        }
+        usort($entries, static fn ($a, $b) => $a['ord'] <=> $b['ord']);
+
+        foreach ($entries as $entry) {
+            $slug = $entry['slug'];
+            $mm = $entry['mm'];
             try {
                 if (! array_key_exists($mm, $seenMm)) {
                     $seenMm[$mm] = MarketplacePortalInactiveCount::count($mm);

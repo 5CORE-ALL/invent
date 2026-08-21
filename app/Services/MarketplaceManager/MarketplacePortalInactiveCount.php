@@ -18,6 +18,9 @@ final class MarketplacePortalInactiveCount
     /** @var array<string, list<string>> */
     private static array $skuMemo = [];
 
+    /** @var array<string, list<string>> */
+    private static array $sheetMemo = [];
+
     private static ?float $syncDeadline = null;
 
     public static bool $portalSyncIncomplete = false;
@@ -181,7 +184,10 @@ final class MarketplacePortalInactiveCount
     {
         self::ensureMiraklPortalSynced('macy');
 
-        return self::fromPortalAndJson('macy_products', 'listing_status', ['macys_listing_statuses']);
+        return self::mergeUnique(
+            self::fromPortalAndJson('macy_products', 'listing_status', ['macys_listing_statuses']),
+            self::miraklSheetInactiveSkus('macys_price_data')
+        );
     }
 
     /**
@@ -191,7 +197,10 @@ final class MarketplacePortalInactiveCount
     {
         self::ensureMiraklPortalSynced('bestbuy');
 
-        return self::fromPortalAndJson('bestbuy_usa_products', 'listing_status', ['bestbuy_usa_listing_statuses']);
+        return self::mergeUnique(
+            self::fromPortalAndJson('bestbuy_usa_products', 'listing_status', ['bestbuy_usa_listing_statuses']),
+            self::miraklSheetInactiveSkus('bestbuy_price_data')
+        );
     }
 
     /**
@@ -220,9 +229,10 @@ final class MarketplacePortalInactiveCount
     protected static function ensureMiraklPortalSynced(string $channel): void
     {
         $table = $channel === 'bestbuy' ? 'bestbuy_usa_products' : 'macy_products';
-        $doneKey = 'mm.'.$channel.'.portal_inactive_synced_v1';
+        $doneKey = 'mm.'.$channel.'.portal_inactive_synced_v2';
         try {
-            if (self::columnHasAnyInactive($table, 'listing_status')) {
+            if (self::columnHasAnyInactive($table, 'listing_status')
+                || self::miraklSheetInactiveSkus($channel === 'bestbuy' ? 'bestbuy_price_data' : 'macys_price_data') !== []) {
                 Cache::put($doneKey, 1, now()->addHours(6));
 
                 return;
@@ -250,7 +260,7 @@ final class MarketplacePortalInactiveCount
         try {
             @set_time_limit($budget + 20);
             $result = app(MiraklMcmOfferStatusSync::class)->sync($channel, $budget);
-            if (($result['done'] ?? false) && ($result['ok'] ?? false)) {
+            if (($result['ok'] ?? false) && (int) ($result['inactive'] ?? 0) > 0) {
                 Cache::put($doneKey, 1, now()->addHours(6));
             } else {
                 self::$portalSyncIncomplete = true;
@@ -320,7 +330,7 @@ final class MarketplacePortalInactiveCount
 
     protected static function ensureTopDawgPortalSynced(): void
     {
-        $doneKey = 'mm.topdawg.portal_inactive_synced_v1';
+        $doneKey = 'mm.topdawg.portal_inactive_synced_v2';
         try {
             if (self::columnHasAnyInactive('topdawg_products', 'listing_state')) {
                 Cache::put($doneKey, 1, now()->addHours(6));
@@ -357,6 +367,22 @@ final class MarketplacePortalInactiveCount
             }
             $result = $api->fetchProducts(null);
             $items = is_array($result['data'] ?? null) ? $result['data'] : [];
+            $inactiveProbe = 0;
+            foreach ($items as $probe) {
+                if (is_array($probe) && MarketplacePortalStatusTabs::bucket((string) (TopDawgApiService::listingStateFromItem($probe) ?? '')) === 'inactive') {
+                    $inactiveProbe++;
+                    break;
+                }
+            }
+            if ($inactiveProbe === 0) {
+                foreach (['inactive', 'disabled', 'pending', 'rejected'] as $statusFilter) {
+                    $more = $api->fetchProducts(null, null, ['status' => $statusFilter]);
+                    $extra = is_array($more['data'] ?? null) ? $more['data'] : [];
+                    if ($extra !== []) {
+                        $items = array_merge($items, $extra);
+                    }
+                }
+            }
             $loggedKeys = false;
             $inactive = 0;
             foreach ($items as $item) {
@@ -390,6 +416,10 @@ final class MarketplacePortalInactiveCount
                 'products' => count($items),
                 'inactive' => $inactive,
             ]);
+            if ($inactive === 0) {
+                self::$portalSyncIncomplete = true;
+                Cache::forget($doneKey);
+            }
         } catch (\Throwable $e) {
             self::$portalSyncIncomplete = true;
             Log::warning('MarketplacePortalInactiveCount: TopDawg portal sync failed', [
@@ -438,6 +468,73 @@ final class MarketplacePortalInactiveCount
             });
 
         return $found;
+    }
+
+    /**
+     * MCM offers CSV uploaded on Macys/BestBuy pricing pages.
+     * Activated=false is the seller-portal inactive flag (not qty 0 / unlisted).
+     *
+     * @return list<string>
+     */
+    protected static function miraklSheetInactiveSkus(string $table): array
+    {
+        if (array_key_exists($table, self::$sheetMemo)) {
+            return self::$sheetMemo[$table];
+        }
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
+            self::$sheetMemo[$table] = [];
+
+            return [];
+        }
+        $hasActivated = Schema::hasColumn($table, 'activated');
+        $hasReason = Schema::hasColumn($table, 'inactivity_reason');
+        if (! $hasActivated && ! $hasReason) {
+            self::$sheetMemo[$table] = [];
+
+            return [];
+        }
+
+        $out = [];
+        $seen = [];
+        DB::table($table)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->select(array_values(array_filter([
+                'sku',
+                $hasActivated ? 'activated' : null,
+                $hasReason ? 'inactivity_reason' : null,
+            ])))
+            ->orderBy('sku')
+            ->chunk(1000, function ($rows) use (&$out, &$seen, $hasActivated, $hasReason) {
+                foreach ($rows as $row) {
+                    $sku = trim((string) ($row->sku ?? ''));
+                    $key = strtoupper($sku);
+                    if ($sku === '' || isset($seen[$key])) {
+                        continue;
+                    }
+                    $inactive = false;
+                    if ($hasActivated) {
+                        $raw = $row->activated;
+                        if ($raw === false || $raw === 0 || $raw === '0' || strtolower(trim((string) $raw)) === 'false') {
+                            $inactive = true;
+                        }
+                    } elseif ($hasReason) {
+                        $reason = trim((string) ($row->inactivity_reason ?? ''));
+                        if ($reason !== '') {
+                            $inactive = true;
+                        }
+                    }
+                    if (! $inactive) {
+                        continue;
+                    }
+                    $seen[$key] = true;
+                    $out[] = $sku;
+                }
+            });
+
+        self::$sheetMemo[$table] = $out;
+
+        return $out;
     }
 
     /**
