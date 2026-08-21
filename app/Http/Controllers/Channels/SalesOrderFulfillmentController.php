@@ -59,10 +59,10 @@ class SalesOrderFulfillmentController extends Controller
     public const TOP_BADGE_KEYS = ['gofo', 'veeqo', 'shopify', 'others'];
 
     /** Max orders per HTTP Pull Tracking request (keep under nginx/proxy gateway timeout). */
-    protected const HTTP_PULL_MAX = 6;
+    protected const HTTP_PULL_MAX = 4;
 
     /** Stop HTTP Pull Tracking after this many seconds and return partial results. */
-    protected const HTTP_PULL_DEADLINE_SECONDS = 12.0;
+    protected const HTTP_PULL_DEADLINE_SECONDS = 16.0;
 
     /** @var list<array<string, mixed>>|null */
     protected ?array $cachedLabelCreatedRows = null;
@@ -1981,6 +1981,7 @@ class SalesOrderFulfillmentController extends Controller
             $parts = [];
             $hardFail = false;
             $timedOut = false;
+            $processedKeys = [];
             $parts[] = 'Selected rows: '.count($selected).'.';
 
             $labelCandidates = [];
@@ -1990,6 +1991,7 @@ class SalesOrderFulfillmentController extends Controller
                     continue;
                 }
                 $labelCandidates[] = [
+                    'id' => (string) ($row['id'] ?? ''),
                     'mm_slug' => $slug,
                     'row_id' => (int) ($row['row_id'] ?? 0),
                     'show_id' => (int) ($row['show_id'] ?? $row['row_id'] ?? 0),
@@ -2016,6 +2018,7 @@ class SalesOrderFulfillmentController extends Controller
                     $parts[] = (string) $labelPull['message'];
                 }
                 $rows = array_merge($rows, $labelPull['rows'] ?? []);
+                $processedKeys = array_merge($processedKeys, $labelPull['processed_keys'] ?? []);
                 if (! empty($labelPull['truncated'])) {
                     $timedOut = true;
                 }
@@ -2051,37 +2054,6 @@ class SalesOrderFulfillmentController extends Controller
                 $timedOut = true;
             }
 
-            // Channel APIs (Newegg, Reverb, etc.) only if time remains.
-            if ($pullChannelApi && ($deadline - microtime(true)) >= 4) {
-                $missing = array_map(static function ($row) {
-                    return [
-                        'mm_slug' => $row['mm_slug'] ?? '',
-                        'row_id' => (int) ($row['row_id'] ?? 0),
-                        'show_id' => (int) ($row['show_id'] ?? $row['row_id'] ?? 0),
-                        'order_id' => $row['order_id'] ?? '',
-                        'order_id_api' => $row['order_id_api'] ?? '',
-                        'order_number' => $row['order_number'] ?? '',
-                        'shopify_order_id' => $row['shopify_order_id'] ?? '',
-                        'tracking_number' => '',
-                    ];
-                }, array_values(array_filter($selected, function ($row) {
-                    $slug = strtolower((string) ($row['mm_slug'] ?? ''));
-
-                    return $slug !== '' && ! in_array($slug, ['temu', 'temu2'], true);
-                })));
-
-                if ($missing !== []) {
-                    $fallback = $channelApiFallback->pullForMissingRows($missing, $limit, null);
-                    $checked += (int) ($fallback['checked'] ?? 0);
-                    $updated += (int) ($fallback['updated'] ?? 0);
-                    $withTracking += (int) ($fallback['with_tracking'] ?? 0);
-                    if (($fallback['message'] ?? '') !== '') {
-                        $parts[] = (string) $fallback['message'];
-                    }
-                    $rows = array_merge($rows, $fallback['rows'] ?? []);
-                }
-            }
-
             if ($timedOut) {
                 $parts[] = 'Stopped early to stay under the gateway timeout; remaining orders continue in the next batch.';
             }
@@ -2104,6 +2076,7 @@ class SalesOrderFulfillmentController extends Controller
                 'success' => ! $hardFail,
                 'message' => $message,
                 'truncated' => $timedOut,
+                'processed_keys' => array_values(array_unique($processedKeys)),
                 'summary' => [
                     'checked' => $checked,
                     'with_tracking' => $withTracking,
@@ -2202,7 +2175,7 @@ class SalesOrderFulfillmentController extends Controller
      * Pull tracking from Veeqo / GOFO / 4Seller for SOF rows that still have no number.
      *
      * @param  list<array<string, mixed>>  $candidateRows
-     * @return array{checked: int, updated: int, with_tracking: int, message: string, rows: list<array<string, mixed>>, truncated: bool}
+     * @return array{checked: int, updated: int, with_tracking: int, message: string, rows: list<array<string, mixed>>, truncated: bool, processed_keys: list<string>}
      */
     protected function pullLabelTrackingFromApis(
         array $candidateRows,
@@ -2218,6 +2191,7 @@ class SalesOrderFulfillmentController extends Controller
         $outRows = [];
         $seen = [];
         $truncated = false;
+        $processedKeys = [];
 
         foreach ($candidateRows as $row) {
             if ($checked >= $limit) {
@@ -2256,11 +2230,13 @@ class SalesOrderFulfillmentController extends Controller
                     }
                 }
                 if ($amazonOrder && $amazonOrder->isFba()) {
+                    $processedKeys[] = $this->sofPullRowKey($row);
                     continue;
                 }
             }
 
             $checked++;
+            $processedKeys[] = $this->sofPullRowKey($row);
 
             $refs = [];
             foreach (['order_id', 'order_id_api', 'order_number', 'shopify_order_id'] as $k) {
@@ -2304,6 +2280,9 @@ class SalesOrderFulfillmentController extends Controller
             $withTracking++;
             $updated++;
             $outRows[] = [
+                'id' => (string) ($row['id'] ?? ''),
+                'mm_slug' => $slug,
+                'show_id' => $showId,
                 'order_number' => (string) ($row['order_number'] ?? $row['order_id'] ?? ''),
                 'shopify_order_id' => $row['shopify_order_id'] ?? null,
                 'order_id' => (string) ($row['order_id'] ?? ''),
@@ -2334,7 +2313,26 @@ class SalesOrderFulfillmentController extends Controller
             'message' => $message,
             'rows' => $outRows,
             'truncated' => $truncated,
+            'processed_keys' => array_values(array_unique(array_filter($processedKeys))),
         ];
+    }
+
+    /**
+     * Stable key so the browser can retry only orders this request did not finish.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function sofPullRowKey(array $row): string
+    {
+        $id = trim((string) ($row['id'] ?? ''));
+        if ($id !== '') {
+            return $id;
+        }
+        $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
+        $showId = (int) ($row['show_id'] ?? $row['row_id'] ?? 0);
+        $order = trim((string) ($row['order_id_api'] ?? $row['order_id'] ?? $row['order_number'] ?? ''));
+
+        return $slug.'|'.$showId.'|'.$order;
     }
 
     /**
