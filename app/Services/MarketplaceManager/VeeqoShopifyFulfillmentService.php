@@ -113,56 +113,13 @@ class VeeqoShopifyFulfillmentService
             ];
         }
 
-        $found = null;
-        $source = '';
-        $veeqoChecked = $this->veeqo->isConfigured();
-        $gofoChecked = $this->gofo->isConfigured();
-
-        if ($veeqoChecked) {
-            $veeqo = $this->findVeeqoShipment($refs);
-            if ($veeqo !== null) {
-                $found = $veeqo;
-                $source = 'veeqo';
-            }
-        }
-
-        if ($found === null && $gofoChecked) {
-            $gofoRefs = array_values(array_filter(
-                $refs,
-                static fn ($r) => trim((string) $r) !== $shopifyOrderId
-            ));
-            $gofo = $this->gofo->findShipment($gofoRefs);
-            if ($gofo !== null) {
-                $found = $gofo;
-                $source = 'gofo';
-            }
-        }
-
-        if ($found === null && $this->fourSeller->isConfigured()) {
-            $fs = $this->fourSeller->findShipment($refs);
-            if ($fs !== null) {
-                $found = $fs;
-                $source = '4seller';
-            }
-        }
-
-        if ($found === null) {
-            $localTn = strtoupper(preg_replace('/\s+/', '', (string) ($localTracking['tracking'] ?? '')) ?? '');
-            if (strlen($localTn) >= 8) {
-                $found = [
-                    'tracking' => $localTn,
-                    'carrier' => (string) ($localTracking['carrier'] ?? 'Other'),
-                ];
-                $source = 'marketplace';
-            }
-        }
-
+        $found = $this->lookupLabelTracking($refs, is_array($localTracking) ? $localTracking : null);
         if ($found === null) {
             $checked = [];
-            if ($veeqoChecked) {
+            if ($this->veeqo->isConfigured()) {
                 $checked[] = 'Veeqo';
             }
-            if ($gofoChecked) {
+            if ($this->gofo->isConfigured()) {
                 $checked[] = 'GOFO (4Seller)';
             }
             $checked[] = 'the marketplace order';
@@ -175,6 +132,8 @@ class VeeqoShopifyFulfillmentService
                 'message' => 'No tracking found yet (checked '.$who.'). Buy the label in Veeqo or 4Seller/GOFO, then try again.',
             ];
         }
+
+        $source = (string) ($found['source'] ?? 'marketplace');
 
         $carrier = $this->shopifyCarrierName((string) ($found['carrier'] ?? 'Other'), (string) ($found['tracking'] ?? ''));
         $written = $this->createShopifyFulfillment(
@@ -216,6 +175,70 @@ class VeeqoShopifyFulfillmentService
     public function fulfillShopifyFromVeeqo(string $shopifyOrderId, array $shopifyConfig, array $refs): array
     {
         return $this->fulfillShopifyFromLabels($shopifyOrderId, $shopifyConfig, $refs);
+    }
+
+    /**
+     * Look up a shipping-label tracking number from Veeqo, GOFO, 4Seller, or the local order payload.
+     * Does not write to Shopify.
+     *
+     * @param  list<string>  $refs
+     * @param  array{tracking?: string, carrier?: string}|null  $localTracking
+     * @return array{tracking: string, carrier: string, source: string}|null
+     */
+    public function lookupLabelTracking(array $refs, ?array $localTracking = null): ?array
+    {
+        $clean = [];
+        foreach ($refs as $ref) {
+            $ref = trim((string) $ref);
+            if ($ref === '' || in_array($ref, $clean, true)) {
+                continue;
+            }
+            $clean[] = $ref;
+        }
+
+        if ($this->veeqo->isConfigured()) {
+            $veeqo = $this->findVeeqoShipment($clean);
+            if ($veeqo !== null && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
+                return [
+                    'tracking' => (string) $veeqo['tracking'],
+                    'carrier' => (string) ($veeqo['carrier'] ?? 'Veeqo'),
+                    'source' => 'veeqo',
+                ];
+            }
+        }
+
+        if ($this->gofo->isConfigured()) {
+            $gofo = $this->gofo->findShipment($clean);
+            if ($gofo !== null && trim((string) ($gofo['tracking'] ?? '')) !== '') {
+                return [
+                    'tracking' => (string) $gofo['tracking'],
+                    'carrier' => (string) ($gofo['carrier'] ?? 'GOFO'),
+                    'source' => 'gofo',
+                ];
+            }
+        }
+
+        if ($this->fourSeller->isConfigured()) {
+            $fs = $this->fourSeller->findShipment($clean);
+            if ($fs !== null && trim((string) ($fs['tracking'] ?? '')) !== '') {
+                return [
+                    'tracking' => (string) $fs['tracking'],
+                    'carrier' => (string) ($fs['carrier'] ?? 'GOFO'),
+                    'source' => '4seller',
+                ];
+            }
+        }
+
+        $localTn = strtoupper(preg_replace('/\s+/', '', (string) ($localTracking['tracking'] ?? '')) ?? '');
+        if (strlen($localTn) >= 8) {
+            return [
+                'tracking' => $localTn,
+                'carrier' => (string) ($localTracking['carrier'] ?? 'Other'),
+                'source' => 'marketplace',
+            ];
+        }
+
+        return null;
     }
 
     /**

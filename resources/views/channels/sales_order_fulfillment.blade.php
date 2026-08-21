@@ -298,6 +298,48 @@
         .sof-ch-orders-dot.green:hover {
             box-shadow: 0 0 0 3px rgba(10, 179, 156, 0.35);
         }
+        .sof-tracking-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            max-width: 100%;
+            vertical-align: middle;
+        }
+        .sof-tracking-num {
+            font-size: 10px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            line-height: 1.2;
+            max-width: 108px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #334155;
+        }
+        .sof-tracking-copy {
+            border: none;
+            background: #f1f5f9;
+            color: #475569;
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
+            font-size: 0.7rem;
+        }
+        .sof-tracking-copy:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+        .sof-tracking-copy.copied {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+        }
 
         .sof-order-id-wrap {
             position: relative;
@@ -2382,13 +2424,13 @@
             {
                 title: 'Tracking',
                 field: 'tracking_number',
-                minWidth: 70,
-                width: 78,
+                minWidth: 168,
+                width: 180,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sofStringSorter,
-                headerTooltip: 'Green = tracking number available · Red = missing',
+                headerTooltip: 'Green = tracking number available · Red = missing · Click copy to copy the number',
                 formatter: formatTrackingCell,
             },
             {
@@ -2417,7 +2459,40 @@
         const tip = tipParts.length ? tipParts.join(' · ') : 'No tracking number';
         const color = hasTracking ? 'green' : 'red';
         const label = hasTracking ? 'Tracking available' : 'Tracking missing';
-        return '<span class="sof-ch-orders-dot ' + color + '" title="' + escapeHtml(tip) + '" aria-label="' + escapeHtml(label) + '" style="cursor:default;"></span>';
+
+        const wrap = document.createElement('span');
+        wrap.className = 'sof-tracking-cell';
+
+        const dot = document.createElement('span');
+        dot.className = 'sof-ch-orders-dot ' + color;
+        dot.title = tip;
+        dot.setAttribute('aria-label', label);
+        wrap.appendChild(dot);
+
+        if (!hasTracking) {
+            return wrap;
+        }
+
+        const num = document.createElement('span');
+        num.className = 'sof-tracking-num';
+        num.textContent = tracking;
+        num.title = tracking;
+        wrap.appendChild(num);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'sof-tracking-copy';
+        copyBtn.title = 'Copy tracking number';
+        copyBtn.setAttribute('aria-label', 'Copy tracking number');
+        copyBtn.innerHTML = '<i class="fas fa-copy" aria-hidden="true"></i>';
+        copyBtn.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            copyTextToClipboard(tracking, copyBtn);
+        });
+        wrap.appendChild(copyBtn);
+
+        return wrap;
     }
 
     function carrierBadgeClass(name) {
@@ -4472,6 +4547,8 @@
         const mapped = {
             id: String(r.id || '').trim(),
             mm_slug: String(r.mm_slug || '').trim(),
+            row_id: Number(r.row_id || 0) || 0,
+            show_id: Number(r.show_id || r.row_id || 0) || 0,
             order_id: String(r.order_id || '').trim(),
             order_id_api: String(r.order_id_api || '').trim(),
             order_number: String(r.order_number || '').trim(),
