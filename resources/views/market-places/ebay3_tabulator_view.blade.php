@@ -1464,20 +1464,33 @@
         if (target) appliedSet.add(target);
 
         let primaryRow = null;
-        (table.getRows('all') || table.getRows() || []).forEach(function(r) {
-            const d = r.getData();
-            if (!d || d.is_parent_summary || d.is_parent_row) return;
-            const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
-            if (!rowSku) return;
-            const rowKey = rowSku.toUpperCase();
-            const linked = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus : [];
-            const inGroup = appliedSet.has(rowKey)
-                || linked.some(function(s) { return String(s || '').trim().toUpperCase() === target; })
-                || (target && rowKey === target);
-            if (!inGroup) return;
-            r.update({ STANDARD_PRICE: std });
-            if (rowKey === target) primaryRow = r;
-        });
+        const seen = new Set();
+        function walk(r) {
+            if (!r || seen.has(r)) return;
+            seen.add(r);
+            const d = (typeof r.getData === 'function') ? r.getData() : null;
+            if (d && !d.is_parent_summary && !d.is_parent_row) {
+                const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+                if (rowSku && rowSku.toUpperCase().indexOf('PARENT') === -1) {
+                    const rowKey = rowSku.toUpperCase();
+                    const linked = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus : [];
+                    const inGroup = appliedSet.has(rowKey)
+                        || linked.some(function(s) { return String(s || '').trim().toUpperCase() === target; })
+                        || (target && rowKey === target);
+                    if (inGroup) {
+                        r.update({ STANDARD_PRICE: std });
+                        if (typeof applyChannelSpriceFromStdChange === 'function') {
+                            applyChannelSpriceFromStdChange(r, { persist: true, skip_push: false });
+                        }
+                        if (rowKey === target) primaryRow = r;
+                    }
+                }
+            }
+            if (typeof r.getTreeChildren === 'function') {
+                (r.getTreeChildren() || []).forEach(walk);
+            }
+        }
+        (table.getRows('all') || table.getRows() || []).forEach(walk);
         return primaryRow;
     }
 
@@ -3615,6 +3628,10 @@
                 if (!sku || !isFinite(std) || std <= 0) {
                     row.update({ STANDARD_PRICE: null });
                     return;
+                }
+                row.update({ STANDARD_PRICE: std });
+                if (typeof applyChannelSpriceFromStdChange === 'function') {
+                    applyChannelSpriceFromStdChange(row, { persist: false });
                 }
                 $.ajax({
                     url: '/save-amazon-sprice',

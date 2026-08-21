@@ -246,6 +246,23 @@ class EbayThreeController extends Controller
         return null;
     }
 
+    private function findEbay3MetricBySku(string $sku): ?Ebay3Metric
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $metric = Ebay3Metric::query()->where('sku', $sku)->first();
+        if ($metric) {
+            return $metric;
+        }
+
+        $upper = strtoupper($sku);
+
+        return Ebay3Metric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$upper])->first();
+    }
+
     public function getViewEbay3DataTabulator(Request $request)
     {
         $percentage = MarketplacePercentage::takeHomeDecimal('EbayThree');
@@ -1561,7 +1578,7 @@ class EbayThreeController extends Controller
         $priceFloat = round($priceFloat, 2);
 
         try {
-            $ebayMetric = Ebay3Metric::where('sku', $sku)->first();
+            $ebayMetric = $this->findEbay3MetricBySku($sku);
 
             if (!$ebayMetric || !$ebayMetric->item_id) {
                 $this->saveSpriceStatus($sku, 'error');
@@ -1569,13 +1586,25 @@ class EbayThreeController extends Controller
                 return response()->json(['errors' => [['code' => 'NotFound', 'message' => 'eBay3 listing not found for SKU: ' . $sku]]], 404);
             }
 
+            $current = round((float) ($ebayMetric->ebay_price ?? 0), 2);
+            if ($current > 0 && abs($current - $priceFloat) < 0.005) {
+                $this->saveSpriceStatus($sku, 'pushed');
+                return response()->json([
+                    'success' => true,
+                    'message' => 'eBay 3 already at $'.number_format($priceFloat, 2),
+                    'new_price' => $current,
+                    'price' => $current,
+                    'ebay_price' => $current,
+                ]);
+            }
+
             // Push price DIRECTLY to eBay via the local EbayThreeApiService (no microservice).
-            // Pass the SKU so variation listings update the correct variation's price
-            // (eBay ignores item-level price for multi-variation listings).
+            // Use the metric SKU so variation listings match eBay's case-sensitive SKU.
+            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
             $ebayService = new \App\Services\EbayThreeApiService();
             $result = Ebay1PromotionService::for('ebay3')->withPriceRevisionAllowed(
                 $sku,
-                fn () => $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat, null, $sku)
+                fn () => $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat, null, $apiSku)
             );
 
             if (isset($result['success']) && $result['success']) {
@@ -2519,7 +2548,8 @@ class EbayThreeController extends Controller
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1;
         Log::info('Using percentage', ['percentage' => $percentage]);
 
-        $pm = ProductMaster::where('sku', $sku)->first();
+        $pm = ProductMaster::where('sku', $sku)->first()
+            ?? ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [$sku])->first();
         if (!$pm) {
             Log::error('SKU not found in ProductMaster', ['sku' => $sku]);
             return response()->json(['error' => 'SKU not found in ProductMaster.'], 404);

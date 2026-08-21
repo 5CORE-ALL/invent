@@ -346,20 +346,27 @@
                 enqueueChannelPushSprice([{ sku: sku, price: p }]);
             }
             function chPushSpriceIsChild(d) {
-                if (!d || d.is_parent_summary || d.is_parent_row) return false;
-                if (String(d.Parent || '').toUpperCase().startsWith('PARENT')) return false;
+                if (!d || d.is_parent_summary || d.is_parent_row || d.is_parent) return false;
                 const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
                 return !!sku && sku.toUpperCase().indexOf('PARENT') === -1;
             }
             function chPushSpriceWalkRows(tbl, fn) {
                 if (!tbl) return;
-                (tbl.getRows('all') || tbl.getRows() || []).forEach(function walk(row) {
-                    if (!row || typeof row.getData !== 'function') return;
+                const seen = new Set();
+                function walk(row) {
+                    if (!row || seen.has(row) || typeof row.getData !== 'function') return;
+                    seen.add(row);
                     fn(row, row.getData() || {});
                     if (typeof row.getTreeChildren === 'function') {
                         (row.getTreeChildren() || []).forEach(walk);
                     }
-                });
+                }
+                let rows = [];
+                try { rows = tbl.getRows() || []; } catch (e) { rows = []; }
+                if (!rows.length) {
+                    try { rows = tbl.getRows('active') || []; } catch (e) { rows = []; }
+                }
+                rows.forEach(walk);
             }
             function scanAndQueueChannelPushSprice(tbl, opts) {
                 opts = opts || {};

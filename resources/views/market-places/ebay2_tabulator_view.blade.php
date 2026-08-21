@@ -1681,10 +1681,21 @@
                 'background:' + meta.color + ';flex-shrink:0;" title="' + escAttr(tip) + '"></span>';
         }
 
-        /** Apply STANDARD_PRICE to a SKU row + all Sku Link LMP siblings in the grid */
+        function ebay2FamilyKey(d) {
+            if (!d) return '';
+            const sku = String(d['(Child) sku'] || d.sku || '').trim();
+            if (sku.toUpperCase().indexOf('PARENT') !== -1) {
+                return sku.replace(/^PARENT\s+/i, '').trim().toUpperCase();
+            }
+            return String(d.Parent || '').replace(/^PARENT\s+/i, '').trim().toUpperCase();
+        }
+
+        /** Apply STANDARD_PRICE to a SKU row + LMP siblings (or the whole family if Std was edited on a parent). */
         function applyEbayStandardPriceToLinkedRows(sku, std, appliedSkus) {
             if (typeof table === 'undefined' || !table) return null;
             const target = String(sku || '').trim().toUpperCase();
+            const expandFamily = target.indexOf('PARENT') !== -1;
+            const targetFamily = target.replace(/^PARENT\s+/i, '').trim();
             const appliedSet = new Set(
                 (Array.isArray(appliedSkus) ? appliedSkus : [])
                     .map(function(s) { return String(s || '').trim().toUpperCase(); })
@@ -1693,23 +1704,43 @@
             if (target) appliedSet.add(target);
 
             let primaryRow = null;
-            (table.getRows('all') || table.getRows() || []).forEach(function(r) {
+            const seen = new Set();
+            function walk(r) {
+                if (!r || seen.has(r) || typeof r.getData !== 'function') return;
+                seen.add(r);
                 const d = r.getData();
-                if (!d || d.is_parent_summary || d.is_parent_row) return;
-                const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
-                if (!rowSku) return;
-                const rowKey = rowSku.toUpperCase();
-                const linked = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus : [];
-                const inGroup = appliedSet.has(rowKey)
-                    || linked.some(function(s) { return String(s || '').trim().toUpperCase() === target; })
-                    || (target && rowKey === target);
-                if (!inGroup) return;
-                r.update({ STANDARD_PRICE: std });
-                if (typeof applyChannelSpriceFromStdChange === 'function') {
-                    applyChannelSpriceFromStdChange(r, { persist: true, skip_push: false });
+                if (d) {
+                    const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+                    if (rowSku) {
+                        const rowKey = rowSku.toUpperCase();
+                        const isParent = typeof isEbay2TabulatorParentRow === 'function'
+                            ? isEbay2TabulatorParentRow(d)
+                            : !!(d.is_parent_summary || d.is_parent_row);
+                        const linked = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus : [];
+                        const sameFamily = targetFamily && ebay2FamilyKey(d) === targetFamily;
+                        const inGroup = appliedSet.has(rowKey)
+                            || linked.some(function(s) { return String(s || '').trim().toUpperCase() === target; })
+                            || (target && rowKey === target)
+                            || (expandFamily && !isParent && sameFamily);
+                        if (inGroup) {
+                            r.update({ STANDARD_PRICE: std });
+                            if (!isParent && typeof applyChannelSpriceFromStdChange === 'function') {
+                                applyChannelSpriceFromStdChange(r, { persist: true, skip_push: false });
+                            }
+                            if (rowKey === target) primaryRow = r;
+                        }
+                    }
                 }
-                if (rowKey === target) primaryRow = r;
-            });
+                if (typeof r.getTreeChildren === 'function') {
+                    (r.getTreeChildren() || []).forEach(walk);
+                }
+            }
+            let roots = [];
+            try { roots = table.getRows() || []; } catch (e) { roots = []; }
+            if (!roots.length) {
+                try { roots = table.getRows('active') || []; } catch (e) { roots = []; }
+            }
+            roots.forEach(walk);
             return primaryRow;
         }
 
@@ -2917,11 +2948,12 @@
                     }
                     
                     $.ajax({
-                        url: '/save-sprice-ebay',
+                        url: '/save-ebay2-sprice',
                         method: 'POST',
                         data: {
                             sku: sku,
                             sprice: sprice,
+                            skip_push: 1,
                             _token: '{{ csrf_token() }}'
                         },
                         success: function(response) {
