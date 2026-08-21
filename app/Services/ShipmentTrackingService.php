@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\TrackingCarrierGuesser;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -373,26 +374,7 @@ class ShipmentTrackingService
 
     protected function guessCarrierFromNumber(string $number): ?string
     {
-        $n = strtoupper(preg_replace('/\s+/', '', $number) ?? '');
-        if ($n === '') {
-            return null;
-        }
-        if (str_starts_with($n, '1Z')) {
-            return 'ups';
-        }
-        // Common USPS patterns: 94/93/92/95… (20–22 digits) or international letter+digits
-        if (preg_match('/^(94|93|92|95|96|91)\d{18,22}$/', $n)) {
-            return 'usps';
-        }
-        if (preg_match('/^[A-Z]{2}\d{9}[A-Z]{2}$/', $n)) {
-            return 'usps';
-        }
-        // FedEx door-tag / express-ish: 12 digits, or 15 digits starting with 96
-        if (preg_match('/^\d{12}$/', $n) === 1 || preg_match('/^96\d{13}$/', $n) === 1) {
-            return 'fedex';
-        }
-
-        return null;
+        return TrackingCarrierGuesser::slugFromNumber($number);
     }
 
     // ── USPS ─────────────────────────────────────────────────────────────────

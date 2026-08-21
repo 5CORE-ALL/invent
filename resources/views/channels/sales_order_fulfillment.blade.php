@@ -1790,8 +1790,25 @@
         if (n.includes('dhl')) return 'dhl';
         if (n.includes('amazon') || n.includes('amzl')) return 'amazon';
         if (n.includes('ontrac') || n.includes('on trac')) return 'ontrac';
+        if (n.includes('uniuni')) return 'uniuni';
         if (n.includes('veeqo')) return 'veeqo';
         return 'other';
+    }
+
+    function guessCarrierFromTrackingNumber(tn) {
+        const n = String(tn || '').replace(/\s+/g, '').toUpperCase();
+        if (!n) return '';
+        if (n.indexOf('1Z') === 0) return 'UPS';
+        if (n.indexOf('TBA') === 0) return 'Amazon';
+        if (/^(UN|UU|UNI)[A-Z0-9]{6,}$/.test(n)) return 'UniUni';
+        if (/^GF[A-Z0-9]{6,}$/.test(n)) return 'GOFO';
+        if (/^(JD|GM)\d{10,}$/.test(n) || /^3S[A-Z0-9]{8,}$/.test(n)) return 'DHL';
+        if (/^[CD]\d{14,15}$/.test(n)) return 'OnTrac';
+        if (/^(94|93|92|95|96|91)\d{18,22}$/.test(n)) return 'USPS';
+        if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(n)) return 'USPS';
+        if (/^\d{12}$/.test(n) || /^96\d{13}$/.test(n)) return 'FedEx';
+        if (/^\d{10}$/.test(n)) return 'DHL';
+        return '';
     }
 
     function sofRowMatchesCarrier(data) {
@@ -2413,6 +2430,7 @@
         if (n.includes('amazon') || n.includes('amzl')) return 'sof-carrier-amazon';
         if (n.includes('gofo')) return 'sof-carrier-gofo';
         if (n.includes('ontrac') || n.includes('on trac')) return 'sof-carrier-ontrac';
+        if (n.includes('uniuni')) return 'sof-carrier-other';
         if (n.includes('veeqo')) return 'sof-carrier-veeqo';
         return 'sof-carrier-other';
     }
@@ -2425,7 +2443,15 @@
     }
 
     function formatCarrierCell(cell) {
-        return formatCarrierBadgeHtml(cell.getValue());
+        let v = String(cell.getValue() || '').trim();
+        if (!v) {
+            const row = cell.getRow && cell.getRow() ? cell.getRow().getData() : null;
+            v = guessCarrierFromTrackingNumber(row && row.tracking_number);
+            if (v && row && typeof row === 'object') {
+                row.tracking_company = v;
+            }
+        }
+        return formatCarrierBadgeHtml(v);
     }
 
     function buildPulledTrackingTableHtml(rows) {
@@ -2478,7 +2504,7 @@
             if (!r || typeof r !== 'object') return;
             const tn = String(r.tracking_number || '').trim();
             if (!tn) return;
-            const carrier = String(r.tracking_company || '').trim();
+            const carrier = String(r.tracking_company || '').trim() || guessCarrierFromTrackingNumber(tn);
             const patch = {
                 tracking_number: tn,
                 tracking_company: carrier,

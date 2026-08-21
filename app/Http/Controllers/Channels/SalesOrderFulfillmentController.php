@@ -35,6 +35,7 @@ use App\Services\MarketplaceManager\Temu2OrderTrackingPullService;
 use App\Services\MarketplaceManager\TemuOrderTrackingPullService;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
+use App\Support\TrackingCarrierGuesser;
 use App\Services\VeeqoApiService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -472,6 +473,13 @@ class SalesOrderFulfillmentController extends Controller
                 $n = $this->normalizeOrderFields($slug, $order);
                 $statusRaw = trim((string) ($n['status'] ?? ''));
                 $tracking = $this->extractTrackingNumber($slug, $n['raw_payload'] ?? null);
+                if ($tracking === null || $tracking === '') {
+                    $tracking = isset($n['tracking_number']) ? trim((string) $n['tracking_number']) ?: null : null;
+                }
+                $company = isset($n['tracking_company']) && trim((string) $n['tracking_company']) !== ''
+                    ? trim((string) $n['tracking_company'])
+                    : $this->extractCarrierFromPayload($n['raw_payload'] ?? null);
+                $company = TrackingCarrierGuesser::fill($company, $tracking);
                 $apiOrderId = trim((string) ($n['order_id'] ?? ''));
                 $orderNumber = trim((string) ($n['order_number'] ?? ''));
                 // Prefer human-readable order number (e.g. Faire display_id N8PA3FG3F8)
@@ -491,10 +499,8 @@ class SalesOrderFulfillmentController extends Controller
                     'order_number' => $orderNumber !== '' ? $orderNumber : null,
                     'order_date' => $this->formatOrderDate($n['order_date'] ?? null),
                     'updated_at' => $this->formatOrderDate($n['updated_at'] ?? null),
-                    'tracking_number' => $tracking !== null ? $tracking : ($n['tracking_number'] ?? null),
-                    'tracking_company' => isset($n['tracking_company']) && trim((string) $n['tracking_company']) !== ''
-                        ? trim((string) $n['tracking_company'])
-                        : null,
+                    'tracking_number' => $tracking,
+                    'tracking_company' => $company,
                     'tracking_url' => null,
                     'shipment_status' => null,
                     'shipment_status_detail' => null,
@@ -538,8 +544,9 @@ class SalesOrderFulfillmentController extends Controller
         // Tracking comes from channel APIs / order tables only — never Shopify fulfillments.
         // Temu OpenAPI tracking on temu*_orders is already on the row; Sites sheets only fill gaps.
         $rows = $this->attachTemuSitesTrackingToOrderRows($rows);
+        $rows = $this->attachShipmentStatusToOrderRows($rows);
 
-        return $this->attachShipmentStatusToOrderRows($rows);
+        return $this->fillCarrierFromTrackingNumbers($rows);
     }
 
     /**
@@ -863,6 +870,12 @@ class SalesOrderFulfillmentController extends Controller
 
             $row['shipment_status'] = $match['shipment_status'];
             $row['shipment_status_detail'] = $match['shipment_status_detail'];
+            if (trim((string) ($row['tracking_company'] ?? '')) === '') {
+                $fromStatus = trim((string) ($match['tracking_company'] ?? ''));
+                if ($fromStatus !== '') {
+                    $row['tracking_company'] = $fromStatus;
+                }
+            }
 
             $carrierLabel = $this->carrierShipmentStatusLabel((string) $match['shipment_status']);
             if ($carrierLabel !== null) {
@@ -1233,6 +1246,78 @@ class SalesOrderFulfillmentController extends Controller
         return null;
     }
 
+    /**
+     * Best-effort carrier name from a stored marketplace order payload.
+     */
+    protected function extractCarrierFromPayload(mixed $rawPayload): ?string
+    {
+        if (is_string($rawPayload)) {
+            $decoded = json_decode($rawPayload, true);
+            $rawPayload = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($rawPayload)) {
+            return null;
+        }
+
+        $order = is_array($rawPayload['order'] ?? null) ? $rawPayload['order'] : $rawPayload;
+        if (! is_array($order)) {
+            return null;
+        }
+
+        foreach ([
+            'shipping_carrier', 'carrier', 'carrier_name', 'CarrierName',
+            'ShipService', 'logistics_type', 'shipping_company', 'courier',
+            'tracking_company',
+        ] as $key) {
+            if (! empty($order[$key]) && is_scalar($order[$key])) {
+                $val = trim((string) $order[$key]);
+                if ($val !== '') {
+                    return $val;
+                }
+            }
+        }
+
+        foreach (['shipments', 'PackageInfoList', 'packageInfoList', 'shipment', 'shipping', 'packageInfo'] as $listKey) {
+            $list = $order[$listKey] ?? null;
+            if (! is_array($list) || $list === []) {
+                continue;
+            }
+            $first = array_is_list($list) ? ($list[0] ?? null) : $list;
+            if (! is_array($first)) {
+                continue;
+            }
+            foreach (['carrier', 'carrier_name', 'ShipCarrier', 'logistics_service_name', 'service', 'tracking_company'] as $key) {
+                if (! empty($first[$key]) && is_scalar($first[$key])) {
+                    $val = trim((string) $first[$key]);
+                    if ($val !== '') {
+                        return $val;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Fill empty Carrier cells from the tracking number (UPS 1Z…, USPS 94…, FedEx, etc.).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function fillCarrierFromTrackingNumbers(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $row['tracking_company'] = TrackingCarrierGuesser::fill(
+                isset($row['tracking_company']) ? (string) $row['tracking_company'] : null,
+                isset($row['tracking_number']) ? (string) $row['tracking_number'] : null
+            );
+        }
+        unset($row);
+
+        return $rows;
+    }
+
     protected function orderStatusLabel(string $slug, string $status): string
     {
         $upper = strtoupper($status);
@@ -1563,6 +1648,8 @@ class SalesOrderFulfillmentController extends Controller
                     : ' No orders missing tracking were found for this channel (select rows to re-pull existing).';
             }
 
+            $rows = $this->fillCarrierFromTrackingNumbers($rows);
+
             return response()->json([
                 'success' => ! $hardFail,
                 'message' => $message,
@@ -1616,7 +1703,10 @@ class SalesOrderFulfillmentController extends Controller
                     'order_number' => (string) ($row->parent_order_sn ?: $row->order_sn ?: ''),
                     'shopify_order_id' => null,
                     'tracking_number' => (string) ($row->tracking_number ?? ''),
-                    'tracking_company' => (string) ($row->carrier ?? ''),
+                    'tracking_company' => TrackingCarrierGuesser::fill(
+                        (string) ($row->carrier ?? ''),
+                        (string) ($row->tracking_number ?? '')
+                    ) ?? '',
                     'fulfillment_status' => $label.' API',
                     'shipment_status' => '',
                     'note' => 'Pulled from Temu OpenAPI (not Shopify)',
@@ -2617,6 +2707,7 @@ class SalesOrderFulfillmentController extends Controller
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
                 'raw_payload' => $order->raw_payload ?? null,
                 'tracking_number' => isset($order->tracking_number) ? trim((string) $order->tracking_number) : null,
+                'tracking_company' => isset($order->shipping_company) ? trim((string) $order->shipping_company) ?: null : null,
                 'show_id' => (int) $order->id,
             ],
             'wayfair' => [
@@ -2649,6 +2740,7 @@ class SalesOrderFulfillmentController extends Controller
                 'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
                 'raw_payload' => $order->raw_payload ?? null,
                 'tracking_number' => isset($order->tracking_number) ? trim((string) $order->tracking_number) : null,
+                'tracking_company' => isset($order->carrier_name) ? trim((string) $order->carrier_name) ?: null : null,
                 'show_id' => (int) $order->id,
             ],
             default => [

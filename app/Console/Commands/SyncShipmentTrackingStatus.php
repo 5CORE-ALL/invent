@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\TrackingCarrierGuesser;
 use App\Services\ShipmentTrackingService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -346,6 +347,9 @@ class SyncShipmentTrackingStatus extends Command
                         continue;
                     }
                     $carrier = trim((string) ($r->carrier ?? ''));
+                    if ($carrier === '') {
+                        $carrier = (string) (TrackingCarrierGuesser::labelFromNumber($tn) ?? '');
+                    }
                     $payload[] = [
                         'tracking_number' => $tn,
                         'carrier' => $carrier !== '' ? mb_substr($carrier, 0, 128) : null,
