@@ -18,6 +18,7 @@ use App\Http\Controllers\QcContainerController;
 use App\Http\Controllers\PricingContainerController;
 use App\Http\Controllers\InvVerifyContainerController;
 use App\Http\Controllers\Auth\UserController;
+use App\Http\Controllers\Auth\UserSettingsController;
 use App\Http\Controllers\Kpi\KpiShippingController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
 use App\Http\Controllers\Campaigns\AmazonCPCZeroController;
@@ -6925,6 +6926,37 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/users/{user}/toggle-stay-logged-in', [UserController::class, 'toggleStayLoggedIn'])
         ->middleware('auth')
         ->name('users.toggleStayLoggedIn');
+
+    Route::get('/settings/users', [UserSettingsController::class, 'index'])
+        ->middleware('auth')
+        ->name('user-settings.index');
+    Route::post('/settings/users/bulk', [UserSettingsController::class, 'bulk'])
+        ->middleware('auth')
+        ->name('user-settings.bulk');
+    Route::post('/settings/users/{id}/activate', [UserSettingsController::class, 'activate'])
+        ->middleware('auth')
+        ->whereNumber('id')
+        ->name('user-settings.activate');
+    Route::post('/settings/users/{id}/deactivate', [UserSettingsController::class, 'deactivate'])
+        ->middleware('auth')
+        ->whereNumber('id')
+        ->name('user-settings.deactivate');
+    Route::post('/settings/users/{id}/password', [UserSettingsController::class, 'resetPassword'])
+        ->middleware('auth')
+        ->whereNumber('id')
+        ->name('user-settings.password');
+    Route::post('/settings/users/{id}/kick', [UserSettingsController::class, 'kick'])
+        ->middleware('auth')
+        ->whereNumber('id')
+        ->name('user-settings.kick');
+    Route::put('/settings/users/{id}', [UserSettingsController::class, 'update'])
+        ->middleware('auth')
+        ->whereNumber('id')
+        ->name('user-settings.update');
+    Route::delete('/settings/users/{id}', [UserSettingsController::class, 'destroy'])
+        ->middleware('auth')
+        ->whereNumber('id')
+        ->name('user-settings.destroy');
 
     // Bank details: update only (blank fields are ignored so nothing is ever wiped)
     Route::post('/users/{user}/bank', [UserController::class, 'updateBank'])

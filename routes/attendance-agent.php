@@ -31,7 +31,7 @@ Route::prefix('attendance/desktop-api')->name('attendance.desktop-api.')->group(
     Route::post('/login', [AttendanceAgentController::class, 'login'])->name('login');
     Route::post('/google-login', [AttendanceAgentController::class, 'googleLogin'])->name('google-login');
 
-    Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware(['auth:sanctum', 'user.active'])->group(function () {
         Route::get('/config', [AttendanceAgentController::class, 'config'])->name('config');
         Route::get('/status', [AttendanceAgentController::class, 'status'])->name('status');
         Route::post('/clock-in', [AttendanceAgentController::class, 'clockIn'])->name('clock-in');

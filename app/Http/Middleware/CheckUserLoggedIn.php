@@ -20,6 +20,23 @@ class CheckUserLoggedIn
         if (Auth::check()) {
             $user = Auth::user();
 
+            $rawActive = $user->getAttributes()['is_active'] ?? null;
+            if ($rawActive !== null && (int) $rawActive !== 1) {
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+
+                if ($request->expectsJson() || $request->is('attendance/desktop-api/*')) {
+                    return response()->json([
+                        'ok' => false,
+                        'message' => 'This account is inactive. Contact an administrator.',
+                    ], 403);
+                }
+
+                return redirect()->route('login')
+                    ->withErrors(['email' => 'This account is inactive. Contact an administrator.']);
+            }
+
             // Users marked stay_logged_in keep their session through auto-logout
             if ($user->staysLoggedIn()) {
                 if (isset($user->logined) && (int) $user->logined === 0) {

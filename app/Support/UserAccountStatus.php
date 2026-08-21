@@ -84,6 +84,7 @@ class UserAccountStatus
             $user->is_active = false;
             $user->deactivated_at = now();
             $user->save();
+            UserAccessControl::revoke($user);
 
             return;
         }
@@ -92,6 +93,7 @@ class UserAccountStatus
             $user->is_active = false;
             $user->deactivated_at = now();
             $user->save();
+            UserAccessControl::revoke($user);
             if (! $user->trashed()) {
                 $user->delete();
             }

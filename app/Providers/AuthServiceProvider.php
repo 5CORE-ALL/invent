@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Policies\ResourceMasterPolicy;
 use App\Support\SuperAdminAccess;
 use App\Support\TeamManagementAccess;
+use App\Support\UserSettingsAccess;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 
@@ -69,6 +70,10 @@ class AuthServiceProvider extends ServiceProvider
 
         Gate::define('team.management.edit', function (User $user): bool {
             return TeamManagementAccess::canEdit($user);
+        });
+
+        Gate::define('user.settings.manage', function (User $user): bool {
+            return UserSettingsAccess::canManage($user);
         });
     }
 }
