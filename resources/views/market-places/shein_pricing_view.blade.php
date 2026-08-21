@@ -356,6 +356,8 @@
                             <span class="badge bg-warning fs-6 p-2" id="ae-total-al30-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator Total Quantity">Qty: 0</span>
                             <span class="badge bg-info fs-6 p-2" id="ae-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator PFT%: Σ PFT / Σ Sales (sold product_price)">GPFT: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2" id="ae-avg-roi-badge" style="font-weight:700;color:#fff;" title="Same as /shein-tabulator ROI%: Σ PFT / Σ (LP × qty)">GROI: 0%</span>
+                            <span class="badge bg-info fs-6 p-2" id="ae-total-views-badge" style="font-weight:700;color:#111;" title="Σ Shein API page views (shein_metrics.views). Same total as /all-marketplace-master Shein views.">Views: 0</span>
+                            <span class="badge bg-danger fs-6 p-2" id="ae-avg-cvr-badge" style="font-weight:700;" title="CVR = Σ Sh L30 ÷ Σ Views × 100. Same formula as /all-marketplace-master Shein CVR.">CVR: 0%</span>
                             <span class="badge bg-success fs-6 p-2 d-none" id="ae-total-pft-badge" style="font-weight:700;color:#111;" aria-hidden="true">PFT: $0</span>
                             <span class="badge bg-secondary fs-6 p-2" id="ae-total-sku-badge" style="font-weight:700;">SKU: 0</span>
                             <span class="badge bg-danger fs-6 p-2" id="ae-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter Missing L">M L: 0</span>
@@ -1081,6 +1083,7 @@
             let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
             let dilSum = 0, dilCount = 0;
+            let totalViews = 0, totalAl30Views = 0;
 
             const childCount = rows.filter(r => !r.is_parent).length;
 
@@ -1089,6 +1092,8 @@
                 const al30   = parseFloat(row.al30)   || 0;
                 const inv    = parseFloat(row.inv)    || 0;
                 const ovL30  = parseFloat(row.ov_l30) || 0;
+                totalViews += parseInt(row.views, 10) || 0;
+                totalAl30Views += al30;
                 const isMissingL = sheinRowIsMissingL(row);
 
                 if (al30 === 0) zeroSold++; else moreSold++;
@@ -1135,6 +1140,9 @@
             if ($('#ae-avg-roi-badge').length) {
                 $('#ae-avg-roi-badge').text(hasSalesTotals && Number.isFinite(avgRoi) ? `GROI: ${Math.round(avgRoi)}%` : 'GROI: –');
             }
+            $('#ae-total-views-badge').text('Views: ' + totalViews.toLocaleString());
+            const sheinCvr = totalViews > 0 ? (totalAl30Views / totalViews) * 100 : 0;
+            $('#ae-avg-cvr-badge').text('CVR: ' + Math.round(sheinCvr) + '%');
         }
 
         // ── Sku Link LMP (mirrors /ebay-tabulator-view; shared sku.link.lmp.* routes) ──
@@ -1560,6 +1568,33 @@
                         width: 60,
                         formatter: function(cell) {
                             return `<span style="font-weight:700;">${parseInt(cell.getValue(), 10) || 0}</span>`;
+                        }
+                    },
+                    {
+                        title: "Views",
+                        field: "views",
+                        sorter: "number",
+                        hozAlign: "center",
+                        width: 65,
+                        headerTooltip: "Shein API page views (shein_metrics.views from viewCount / visits / pageViews)",
+                        formatter: function(cell) {
+                            return `<span style="font-weight:700;">${parseInt(cell.getValue(), 10) || 0}</span>`;
+                        }
+                    },
+                    {
+                        title: "CVR",
+                        field: "cvr",
+                        sorter: "number",
+                        hozAlign: "center",
+                        width: 60,
+                        headerTooltip: "Shein CVR = Sh L30 ÷ Views × 100",
+                        formatter: function(cell) {
+                            const cvr = parseFloat(cell.getValue()) || 0;
+                            let color = '#a00211';
+                            if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                            else if (cvr > 7 && cvr <= 13) color = '#28a745';
+                            else if (cvr > 13) color = '#e83e8c';
+                            return `<span style="color:${color};font-weight:600;">${Math.round(cvr)}%</span>`;
                         }
                     },
                     {

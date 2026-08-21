@@ -349,12 +349,15 @@ class FetchAliexpressMetrics extends Command
             }
 
             $views = max(0, (int) ($result['views'] ?? 0));
+            $outputOrder = max(0, (int) ($result['output_order'] ?? 0));
+            // Prefer API outputOrder for CVR; if missing, leave cvr for UI to derive from AL30 later.
+            $cvr = $views > 0 ? round(($outputOrder / $views) * 100, 2) : 0.0;
             $payload = ['views' => $views];
             if ($hasOutputOrder) {
-                $payload['output_order'] = max(0, (int) ($result['output_order'] ?? 0));
+                $payload['output_order'] = $outputOrder;
             }
             if ($hasCvr) {
-                $payload['cvr'] = (float) ($result['cvr'] ?? 0);
+                $payload['cvr'] = (float) ($result['cvr'] ?? $cvr);
             }
             AliexpressMetric::query()
                 ->where('product_id', $productId)

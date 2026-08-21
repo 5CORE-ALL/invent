@@ -889,6 +889,8 @@ return [
         /** Prefer rest (business HMAC-SHA256) for solution APIs */
         'gateway' => env('ALIEXPRESS_GATEWAY', 'rest'),
         'rest_base' => env('ALIEXPRESS_REST_BASE', 'https://api-sg.aliexpress.com/rest'),
+        /** TOP router for AE-数据 APIs (views / CVR) — datetime timestamp + session + hmac-md5 */
+        'top_base' => env('ALIEXPRESS_TOP_BASE', 'https://eco.taobao.com/router/rest'),
         /** hmac (HMAC-MD5) or md5 for rest gateway — see TOP docs */
         'rest_sign_method' => env('ALIEXPRESS_REST_SIGN_METHOD', 'hmac'),
         'connect_timeout' => (int) env('ALIEXPRESS_CONNECT_TIMEOUT', 30),

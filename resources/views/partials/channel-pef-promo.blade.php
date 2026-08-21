@@ -542,7 +542,7 @@
                         <i class="fas fa-save me-1"></i>Save Rule
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-dil-prmt-apply-btn"
-                        title="Save Dil→PRMT rules, then write PRMT% — selected rows if checked, otherwise all visible. On eBay, only SKUs with E L30 &gt; 0. Does not create a sale event.">
+                        title="Save Dil→PRMT rules, then write PRMT% — selected rows if checked, otherwise all visible. On eBay only E L30 &gt; 0; on AliExpress/Shein all visible SKUs (no AL30 filter). Does not create a sale event.">
                         Apply
                     </button>
                 </div>
@@ -2537,18 +2537,37 @@
             if (typeof table !== 'undefined' && table) table.redraw(true);
         }
 
-        async function chPromoMapLimit(items, limit, fn) {
+        async function chPromoMapLimit(items, limit, fn, onProgress) {
             const n = Math.max(1, Number(limit) || 8);
             let i = 0;
+            let done = 0;
+            const total = items.length;
             async function worker() {
                 while (i < items.length) {
                     const idx = i++;
                     await fn(items[idx], idx);
+                    done++;
+                    if (typeof onProgress === 'function') {
+                        onProgress(done, total);
+                    }
                 }
             }
             const workers = [];
-            for (let w = 0; w < Math.min(n, items.length); w++) workers.push(worker());
+            for (let w = 0; w < Math.min(n, items.length || 1); w++) workers.push(worker());
             await Promise.all(workers);
+        }
+
+        function chPromoSetApplyBtnProgress($btn, done, total, label) {
+            if (!$btn || !$btn.length) return;
+            const t = Math.max(0, Number(total) || 0);
+            const d = Math.max(0, Math.min(Number(done) || 0, t || Number(done) || 0));
+            const pct = t > 0 ? Math.round((d / t) * 100) : 0;
+            const text = t > 0
+                ? ((label || 'Applying') + '… ' + d + '/' + t + ' (' + pct + '%)')
+                : ((label || 'Applying') + '…');
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>' + text);
+            const $status = $('#ch-promo-dil-prmt-status');
+            if ($status.length) $status.text(text);
         }
 
         const CH_PEF_DIL_PRMT_DEFAULTS_FULL = [
@@ -2920,6 +2939,16 @@
                 if (isFinite(dil)) return dil;
                 if (inv <= 0) return 0;
                 const ovl30 = Number(d.ovl30 != null ? d.ovl30 : d.L30) || 0;
+                return (ovl30 / inv) * 100;
+            }
+            // AliExpress / Shein / Wayfair: dil_percent is already 0–100 (e.g. 1.5 = 1.5%).
+            // Do NOT ×100 — that maps low Dil into the 24%+ slab and forces PRMT% = 0.
+            if (CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein'
+                || CHANNEL_PROMO_CHANNEL === 'wayfair') {
+                let dil = Number(d.dil_percent != null ? d.dil_percent : d[chPromoCfg.dilField]);
+                if (isFinite(dil)) return dil;
+                if (inv <= 0) return 0;
+                const ovl30 = Number(d.ov_l30 != null ? d.ov_l30 : (d.ovl30 != null ? d.ovl30 : d.L30)) || 0;
                 return (ovl30 / inv) * 100;
             }
             // Shopify Dil column = (OV L30 / INV) × 100 — already stored as DIL%
@@ -3365,7 +3394,7 @@
                 selectedRows.forEach(addSku);
             }
             try {
-                document.querySelectorAll('.sku-select-checkbox:checked').forEach(function(el) {
+                document.querySelectorAll('.sku-select-checkbox:checked, .ae-sku-chk:checked, .shein-sku-chk:checked').forEach(function(el) {
                     addSku(el.getAttribute('data-sku') || (el.dataset && el.dataset.sku) || '');
                 });
             } catch (e) { /* ignore */ }
@@ -3519,7 +3548,12 @@
             return chPromoPrmtForDil(chPromoDil(d));
         }
         function chPromoSyncEbayPrmtColumnFromSlabs() {
-            if (!chPromoIsEbayChannel()) return;
+            // Live-fill PRMT% from Dil slabs (no row selection required).
+            if (!chPromoIsEbayChannel()
+                && CHANNEL_PROMO_CHANNEL !== 'aliexpress'
+                && CHANNEL_PROMO_CHANNEL !== 'shein') {
+                return;
+            }
             if (typeof table === 'undefined' || !table) return;
             chPromoInvalidateListingDilCache();
             const blocked = typeof table.blockRedraw === 'function';
@@ -4437,12 +4471,19 @@
         }
         async function saveAndApplyChPromoDilPrmt() {
             const $btn = $('#ch-promo-dil-prmt-apply-btn');
+            const $menuBtn = $('#ch-promo-dil-vs-prmt-btn');
             const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+            const menuHtml = $menuBtn.length ? $menuBtn.html() : '';
+            chPromoSetApplyBtnProgress($btn, 0, 0, 'Applying');
+            if ($menuBtn.length) {
+                $menuBtn.prop('disabled', true)
+                    .html('<i class="fas fa-spinner fa-spin me-1"></i>Applying…');
+            }
             try {
                 await saveChPromoDilPrmtRules();
             } catch (xhr) {
                 $btn.prop('disabled', false).html(html);
+                if ($menuBtn.length) $menuBtn.prop('disabled', false).html(menuHtml);
                 chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
                 return;
             }
@@ -4461,6 +4502,7 @@
             }
             if (!targets.length) {
                 $btn.prop('disabled', false).html(html);
+                if ($menuBtn.length) $menuBtn.prop('disabled', false).html(menuHtml);
                 chPromoToast(
                     'success',
                     (chPromoSaleGatedApply())
@@ -4479,15 +4521,22 @@
                     + '?'
                 )) {
                     $btn.prop('disabled', false).html(html);
+                    if ($menuBtn.length) $menuBtn.prop('disabled', false).html(menuHtml);
                     return;
                 }
             }
             try {
-                await applyChPromoDilPrmtToTargets(targets, label);
+                chPromoSetApplyBtnProgress($btn, 0, targets.length, 'Applying');
+                if ($menuBtn.length) {
+                    $menuBtn.prop('disabled', true)
+                        .html('<i class="fas fa-spinner fa-spin me-1"></i>Applying…');
+                }
+                await applyChPromoDilPrmtToTargets(targets, label, { $btn: $btn, $menuBtn: $menuBtn });
             } catch (xhr) {
                 chPromoToast('error', 'Apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
             } finally {
                 $btn.prop('disabled', false).html(html);
+                if ($menuBtn.length) $menuBtn.prop('disabled', false).html(menuHtml);
             }
         }
 
@@ -4761,18 +4810,29 @@
                 }
             }
             if (!ebayParentDil && !opts.zeroSoldOnly) {
-                const soldLabel = chPromoSoldFieldLabel();
-                applyTargets = applyTargets.filter(function(item) {
-                    const d = (item.d || (item.row && item.row.getData())) || {};
-                    return chPromoIsChildRow(d) && chPromoHasSaleQty(d);
-                });
+                if (chPromoSaleGatedApply()) {
+                    const soldLabel = chPromoSoldFieldLabel();
+                    applyTargets = applyTargets.filter(function(item) {
+                        const d = (item.d || (item.row && item.row.getData())) || {};
+                        return chPromoIsChildRow(d) && chPromoHasSaleQty(d);
+                    });
+                    if (!applyTargets.length) {
+                        chPromoToast('error', 'No sold rows (' + soldLabel + ' > 0) to apply Dil vs PRMT');
+                        return;
+                    }
+                } else {
+                    applyTargets = applyTargets.filter(function(item) {
+                        const d = (item.d || (item.row && item.row.getData())) || {};
+                        return chPromoIsChildRow(d);
+                    });
+                    if (!applyTargets.length) {
+                        chPromoToast('error', 'No SKUs to apply Dil vs PRMT');
+                        return;
+                    }
+                }
                 prmtForRow = function(d) {
                     return chPromoInv(d) === 0 ? 0 : chPromoPrmtForDil(chPromoDil(d));
                 };
-                if (!applyTargets.length) {
-                    chPromoToast('error', 'No sold rows (' + soldLabel + ' > 0) to apply Dil vs PRMT');
-                    return;
-                }
             }
             if (ebayParentDil) {
                 chPromoInvalidateListingDilCache();
@@ -4808,6 +4868,8 @@
             const jobs = [];
             let skipped = 0;
             let filled = 0;
+            const $progressBtn = opts.$btn || null;
+            const applyTotal = applyTargets.length;
             const blocked = typeof table !== 'undefined' && table && typeof table.blockRedraw === 'function';
             if (blocked) table.blockRedraw();
             try {
@@ -4840,6 +4902,9 @@
                                 price: 0,
                                 skipSprice: true,
                             });
+                        }
+                        if ($progressBtn && (i % 20 === 0 || i === applyTotal - 1)) {
+                            chPromoSetApplyBtnProgress($progressBtn, i + 1, applyTotal, 'Applying');
                         }
                         continue;
                     }
@@ -4889,22 +4954,27 @@
                     else skipped++;
                     const prmtSame = chPromoNearlyEqual(prevPrmt, prmt);
                     const spriceSame = skipSprice || !(newPrice > 0) || chPromoNearlyEqual(prevSprice, newPrice);
-                    if (prmtSame && spriceSame) {
-                        continue;
+                    if (!prmtSame || !spriceSame) {
+                        jobs.push({
+                            row: item.row,
+                            sku: sku,
+                            prmt: prmt,
+                            price: skipSprice ? 0 : newPrice,
+                            skipSprice: skipSprice,
+                        });
                     }
-                    jobs.push({
-                        row: item.row,
-                        sku: sku,
-                        prmt: prmt,
-                        price: skipSprice ? 0 : newPrice,
-                        skipSprice: skipSprice,
-                    });
+                    if ($progressBtn && (i % 20 === 0 || i === applyTotal - 1)) {
+                        chPromoSetApplyBtnProgress($progressBtn, i + 1, applyTotal, 'Applying');
+                    }
                 }
             } finally {
                 if (blocked) table.restoreRedraw();
             }
 
             const conc = (CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8;
+            if ($progressBtn && jobs.length) {
+                chPromoSetApplyBtnProgress($progressBtn, 0, jobs.length, 'Saving');
+            }
             await chPromoMapLimit(jobs, conc, async function(job) {
                 if (!job.sku) return;
                 const extra = opts.zeroSoldOnly
@@ -4917,6 +4987,8 @@
                     }
                     await saveChannelSpriceAndPromo(job.row, job.price, true, extra);
                 } catch (e) { /* keep going */ }
+            }, function(done, total) {
+                if ($progressBtn) chPromoSetApplyBtnProgress($progressBtn, done, total, 'Saving');
             });
 
             chPromoToast(
@@ -5977,7 +6049,11 @@
         function chPromoEbayStdMinusPrmtCpnEnabled() {
             return true;
         }
+        /** Dil→PRMT / CVR→CPN Apply: gate to sold > 0 (eBay E L30, etc.). Off for AE/Shein — all visible SKUs. */
         function chPromoSaleGatedApply() {
+            if (CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein') {
+                return false;
+            }
             return true;
         }
 
@@ -6775,7 +6851,21 @@
                     width: 72,
                     hozAlign: 'center',
                     vertAlign: 'middle',
-                    headerSort: false,
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const valOf = function(row) {
+                            const d = (row && row.getData) ? (row.getData() || {}) : {};
+                            if (chPromoIsEbayChannel()
+                                || CHANNEL_PROMO_CHANNEL === 'aliexpress'
+                                || CHANNEL_PROMO_CHANNEL === 'shein') {
+                                const slab = chPromoEbaySlabPrmt(d);
+                                if (slab != null) return Number(slab) || 0;
+                            }
+                            return Number(d.prmt_pct != null && d.prmt_pct !== ''
+                                ? d.prmt_pct : d._prmt_pct_applied) || 0;
+                        };
+                        return valOf(aRow) - valOf(bRow);
+                    },
                     editable: function(cell) {
                         return chPromoIsChildRow(cell.getRow().getData());
                     },
@@ -6787,13 +6877,15 @@
                         const sku = chPromoSku(d);
                         let val = cell.getValue();
                         let tip = '';
-                        if (chPromoIsEbayChannel()) {
+                        if (chPromoIsEbayChannel()
+                            || CHANNEL_PROMO_CHANNEL === 'aliexpress'
+                            || CHANNEL_PROMO_CHANNEL === 'shein') {
                             const slab = chPromoEbaySlabPrmt(d);
                             if (slab != null) {
                                 val = slab;
                                 const dil = chPromoDil(d);
                                 const key = chPromoDilSlabKey(dil);
-                                tip = 'Listing Dil ' + (isFinite(dil) ? (Math.round(dil * 10) / 10) : 0)
+                                tip = 'Dil ' + (isFinite(dil) ? (Math.round(dil * 10) / 10) : 0)
                                     + '% → ' + key + ' slab → PRMT ' + slab;
                             }
                         }
@@ -6822,7 +6914,8 @@
                     width: 64,
                     hozAlign: 'center',
                     vertAlign: 'middle',
-                    headerSort: false,
+                    headerSort: true,
+                    sorter: 'number',
                     headerTooltip: '0 Sold Dil color PRMT% (' + chPromoSoldFieldLabel() + ' = 0). Red <25%, Green 25–50%, Pink 50%+.',
                     editable: function(cell) {
                         const d = cell.getRow().getData() || {};
@@ -6880,7 +6973,7 @@
                     width: 72,
                     hozAlign: 'center',
                     vertAlign: 'middle',
-                    headerSort: false,
+                    headerSort: true,
                     headerTooltip: '>0 Sold Dil color (' + chPromoSoldFieldLabel()
                         + ' > 0). Red <25% → Amazon Price. Green / Pink → Increase or Decrease from Std.',
                     formatter: function(cell) {
@@ -6916,7 +7009,8 @@
                     width: 70,
                     hozAlign: 'center',
                     vertAlign: 'middle',
-                    headerSort: false,
+                    headerSort: true,
+                    sorter: 'number',
                     editable: function(cell) {
                         return chPromoIsChildRow(cell.getRow().getData());
                     },
@@ -6954,7 +7048,7 @@
                     width: 72,
                     hozAlign: 'center',
                     vertAlign: 'middle',
-                    headerSort: false,
+                    headerSort: true,
                     headerTooltip: CHANNEL_PROMO_CHANNEL === 'temu'
                         ? 'Push CPN — queue this CPN% (bulk from header). Worker saves coupon % and pushes S PRC to Temu.'
                         : 'Push CPN — create the public coded coupon for this CPN% if needed, then add this SKU. If CPN% changed, removes from the old coupon first. Click header to bulk selected (or visible) SKUs.',
@@ -7177,6 +7271,15 @@
                             + '(OV L30 ÷ INV). <strong>Apply</strong> writes <strong>PRMT %</strong> '
                             + 'on each selected or visible SKU — parent rows are not changed. '
                             + 'If INV is 0, PRMT% is <strong>0</strong>.';
+                    }
+                } else if (CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein') {
+                    const help = document.getElementById('ch-promo-dil-prmt-help');
+                    if (help) {
+                        help.innerHTML = 'Map Dil% slabs to PRMT%. Dil is <strong>SKU-wise</strong> '
+                            + '(OV L30 ÷ INV). Changing any slab number fills the <strong>PRMT %</strong> column. '
+                            + '<strong>Apply</strong> saves rules and writes PRMT% on <strong>selected rows</strong> '
+                            + 'if checked, otherwise <strong>all visible SKUs</strong> (no AL30 filter — '
+                            + 'row checkboxes not required). If INV is 0, PRMT% is <strong>0</strong>.';
                     }
                 } else if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
                     const help = document.getElementById('ch-promo-dil-prmt-help');

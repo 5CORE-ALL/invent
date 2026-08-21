@@ -18,6 +18,7 @@ use App\Services\AliExpressApiService;
 use App\Services\ChannelPromoPricingService;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
+use App\Models\ChannelMasterCalculatedData;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -1133,43 +1134,20 @@ class AliexpressController extends Controller
     }
 
     /**
-     * Keep-rate % from Active Channel Master (channel_master.channel_percentage).
-     * If blank on the Active Aliexpress row, copy from marketplace_percentages and persist
-     * so pricing + Active Channel Master stay connected.
+     * Keep-rate % from marketplace_percentages (marketplace = Aliexpress / AliExpress).
      */
     protected function resolveAliexpressMarginPercent(): float
     {
-        $channel = ChannelMaster::query()
-            ->whereRaw('LOWER(TRIM(channel)) = ?', ['aliexpress'])
-            ->orderByRaw("CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'active' THEN 0 ELSE 1 END")
+        $mp = MarketplacePercentage::query()
+            ->where(function ($q) {
+                $q->whereRaw('LOWER(TRIM(marketplace)) = ?', ['aliexpress']);
+            })
             ->orderBy('id')
             ->first();
 
-        $pct = null;
-        if ($channel !== null && $channel->channel_percentage !== null && $channel->channel_percentage !== ''
-            && is_numeric($channel->channel_percentage) && (float) $channel->channel_percentage > 0) {
-            $pct = (float) $channel->channel_percentage;
-        }
-
-        if ($pct === null) {
-            $mp = MarketplacePercentage::query()
-                ->where('marketplace', 'Aliexpress')
-                ->orWhere('marketplace', 'AliExpress')
-                ->first();
-            $pct = ($mp !== null && (float) ($mp->percentage ?? 0) > 0)
-                ? (float) $mp->percentage
-                : 89.0;
-
-            if ($channel !== null) {
-                $channel->channel_percentage = number_format($pct, 2, '.', '');
-                $channel->save();
-            }
-
-            MarketplacePercentage::updateOrCreate(
-                ['marketplace' => 'Aliexpress'],
-                ['percentage' => number_format($pct, 2, '.', '')]
-            );
-        }
+        $pct = ($mp !== null && is_numeric($mp->percentage ?? null) && (float) $mp->percentage > 0)
+            ? (float) $mp->percentage
+            : 89.0;
 
         return $pct;
     }
@@ -1692,7 +1670,19 @@ class AliexpressController extends Controller
                 $buyerLink = $linkVal['buyer_link'] ?? '';
                 $sellerLink = $linkVal['seller_link'] ?? '';
 
-                $row = [
+                    $views = (int) ($viewsBySku[$normalizedSku] ?? 0);
+                    $outputOrder = (int) ($outputOrderBySku[$normalizedSku] ?? 0);
+                    $storedCvr = (float) ($cvrBySku[$normalizedSku] ?? 0);
+                    // API-only: stored CVR, else output_order ÷ views from AliExpress metrics.
+                    if ($views > 0) {
+                        $cvr = $storedCvr > 0
+                            ? $storedCvr
+                            : round(($outputOrder / $views) * 100, 2);
+                    } else {
+                        $cvr = 0.0;
+                    }
+
+                    $row = [
                     'buyer_link'  => $buyerLink,
                     'seller_link' => $sellerLink,
                     'sku'         => trim((string) $displaySku),
@@ -1720,9 +1710,9 @@ class AliexpressController extends Controller
                     '_margin'     => round($margin, 4),
                     'inv'         => $inv,
                     'ov_l30'      => $ovL30,
-                    'views'       => (int) ($viewsBySku[$normalizedSku] ?? 0),
-                    'cvr'         => (float) ($cvrBySku[$normalizedSku] ?? 0),
-                    'output_order' => (int) ($outputOrderBySku[$normalizedSku] ?? 0),
+                    'views'       => $views,
+                    'cvr'         => $cvr,
+                    'output_order' => $outputOrder,
                     'reviews'     => (int) ($reviewsBySku[$normalizedSku] ?? 0),
                     'avg_rating'  => (float) ($avgRatingBySku[$normalizedSku] ?? 0),
                     'ae_product_id' => $productIdBySku[$normalizedSku] ?? null,
@@ -1948,6 +1938,7 @@ class AliexpressController extends Controller
             }
 
             $totalSkuCount = $allChildRows->count();
+            $viewTotals = self::countAliexpressPricingBadgeTotals($allChildRows);
 
             $summaryData = [
                 'total_sku'    => $totalSkuCount,
@@ -1963,6 +1954,8 @@ class AliexpressController extends Controller
                 'nmap_count'   => $nmapCount,
                 'zero_sold'    => $zeroSold,
                 'more_sold'    => $moreSold,
+                'total_views'  => (int) ($viewTotals['total_views'] ?? 0),
+                'cvr'          => (float) ($viewTotals['cvr_pct'] ?? 0),
                 'calculated_at'=> now()->toDateTimeString(),
             ];
 
@@ -1970,6 +1963,16 @@ class AliexpressController extends Controller
                 ['channel' => 'aliexpress', 'snapshot_date' => $today],
                 ['summary_data' => $summaryData, 'notes' => 'Auto-saved daily snapshot']
             );
+
+            if (Schema::hasTable('channel_master_calculated_data')) {
+                $calcUpdate = ['total_views' => (int) ($viewTotals['total_views'] ?? 0)];
+                if (Schema::hasColumn('channel_master_calculated_data', 'listing_cvr')) {
+                    $calcUpdate['listing_cvr'] = (float) ($viewTotals['cvr_pct'] ?? 0);
+                }
+                ChannelMasterCalculatedData::query()
+                    ->where('channel', 'Aliexpress')
+                    ->update($calcUpdate);
+            }
         } catch (\Exception $e) {
             Log::error('AliExpress daily snapshot save failed: ' . $e->getMessage());
         }
@@ -1988,7 +1991,7 @@ class AliexpressController extends Controller
             $validMetrics = [
                 'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
                 'total_al30', 'avg_dil', 'total_cogs', 'missing_count', 'map_count', 'nmap_count',
-                'total_sku', 'zero_sold', 'more_sold',
+                'total_sku', 'zero_sold', 'more_sold', 'total_views', 'cvr',
             ];
             if (!in_array($metric, $validMetrics, true)) {
                 return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
@@ -2468,6 +2471,9 @@ class AliexpressController extends Controller
         $map = 0;
         $miss = 0;
         $nmap = 0;
+        $sumViews = 0;
+        $sumOutputOrder = 0;
+        $seenViewProducts = [];
 
         foreach ($rows as $row) {
             if (is_object($row)) {
@@ -2475,6 +2481,20 @@ class AliexpressController extends Controller
             }
             if (! is_array($row) || ! empty($row['is_parent'])) {
                 continue;
+            }
+
+            $views = (int) ($row['views'] ?? 0);
+            $outputOrder = (int) ($row['output_order'] ?? 0);
+            $pid = trim((string) ($row['ae_product_id'] ?? ''));
+            if ($pid !== '') {
+                if (! isset($seenViewProducts[$pid])) {
+                    $seenViewProducts[$pid] = true;
+                    $sumViews += $views;
+                    $sumOutputOrder += $outputOrder;
+                }
+            } else {
+                $sumViews += $views;
+                $sumOutputOrder += $outputOrder;
             }
 
             $inv = (float) ($row['inv'] ?? 0);
@@ -2502,7 +2522,8 @@ class AliexpressController extends Controller
             'map' => $map,
             'miss' => $miss,
             'nmap' => $nmap,
-            'total_views' => 0,
+            'total_views' => $sumViews,
+            'cvr_pct' => $sumViews > 0 ? round(($sumOutputOrder / $sumViews) * 100, 2) : 0.0,
         ];
     }
 

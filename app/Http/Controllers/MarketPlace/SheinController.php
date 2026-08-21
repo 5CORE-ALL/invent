@@ -10,6 +10,7 @@ use App\Models\ProductMaster;
 use App\Models\SheinDataView;
 use App\Models\SheinDailyData;
 use App\Models\SheinDailyDataL60;
+use App\Models\SheinMetric;
 use App\Models\ShopifySku;
 use App\Services\SheinShopifySalesService;
 use App\Services\SheinApiService;
@@ -17,6 +18,7 @@ use App\Services\LmpSkuGroupService;
 use App\Services\ChannelPromoPricingService;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
+use App\Models\ChannelMasterCalculatedData;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -365,7 +367,7 @@ class SheinController extends Controller
             $validMetrics = [
                 'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
                 'total_al30', 'avg_dil', 'total_cogs', 'missing_count', 'map_count', 'nmap_count',
-                'total_sku', 'zero_sold', 'more_sold',
+                'total_sku', 'zero_sold', 'more_sold', 'total_views', 'cvr',
             ];
             if (!in_array($metric, $validMetrics, true)) {
                 return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
@@ -498,6 +500,21 @@ class SheinController extends Controller
 
             // ── 5. SPRICE from shein_data_views
             $viewMetaBySku = SheinDataView::all()->keyBy(fn($r) => $normalizeSku($r->sku));
+
+            // ── 5a. API page views from shein_metrics (FetchSheinData / shein:sync)
+            $viewsBySku = [];
+            if (Schema::hasTable('shein_metrics') && Schema::hasColumn('shein_metrics', 'views')) {
+                foreach (SheinMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'views']) as $metric) {
+                    $nk = $normalizeSku($metric->sku);
+                    $views = (int) ($metric->views ?? 0);
+                    if ($nk === '') {
+                        continue;
+                    }
+                    if (! isset($viewsBySku[$nk]) || $views >= (int) ($viewsBySku[$nk] ?? 0)) {
+                        $viewsBySku[$nk] = $views;
+                    }
+                }
+            }
 
             // ── 5b. Buyer / Seller links from shein_listing_statuses
             $linksBySku = \App\Models\SheinListingStatus::all()->keyBy(fn($r) => $normalizeSku($r->sku));
@@ -691,6 +708,10 @@ class SheinController extends Controller
                     'special_offer'    => round($spOffer,   2),
                     'calc_price'       => round($calcPrice, 2),
                     'ov_l30'       => $ovL30,
+                    'views'        => (int) ($viewsBySku[$normalizedSku] ?? 0),
+                    'cvr'          => ((int) ($viewsBySku[$normalizedSku] ?? 0)) > 0
+                        ? round(($al30 / (int) $viewsBySku[$normalizedSku]) * 100, 2)
+                        : 0,
                     'dil_percent'  => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
                     'lmp_price'    => $lmpPrice,
                     'lmp_link'     => $lmpLink,
@@ -874,11 +895,29 @@ class SheinController extends Controller
      * Map / Miss / NMap — same rules as shein_pricing_view badges (ebay2-aligned):
      * Map/NMap only when listed + both INV and Shein stock > 0.
      */
+    public static function unwrapSheinPricingRows($payload): array
+    {
+        if (! is_array($payload)) {
+            return [];
+        }
+        if (isset($payload['data']) && is_array($payload['data'])) {
+            return $payload['data'];
+        }
+
+        return array_is_list($payload) ? $payload : [];
+    }
+
     public static function countSheinPricingBadgeTotals(iterable $rows): array
     {
+        if (is_array($rows) && isset($rows['data']) && is_array($rows['data'])) {
+            $rows = $rows['data'];
+        }
+
         $map = 0;
         $miss = 0;
         $nmap = 0;
+        $sumViews = 0;
+        $sumAl30 = 0;
 
         foreach ($rows as $row) {
             if (is_object($row)) {
@@ -887,6 +926,9 @@ class SheinController extends Controller
             if (! is_array($row) || ! empty($row['is_parent'])) {
                 continue;
             }
+
+            $sumViews += (int) ($row['views'] ?? 0);
+            $sumAl30 += (float) ($row['al30'] ?? 0);
 
             $inv = (float) ($row['inv'] ?? 0);
             $nrValue = strtoupper(trim((string) (($row['nr_req'] ?? '') ?: ($row['NR'] ?? ''))));
@@ -922,7 +964,8 @@ class SheinController extends Controller
             'map' => $map,
             'miss' => $miss,
             'nmap' => $nmap,
-            'total_views' => 0,
+            'total_views' => $sumViews,
+            'cvr_pct' => $sumViews > 0 ? round(($sumAl30 / $sumViews) * 100, 2) : 0.0,
         ];
     }
 
@@ -990,6 +1033,8 @@ class SheinController extends Controller
                 'nmap_count' => $nmapCount,
                 'zero_sold' => $zeroSold,
                 'more_sold' => $moreSold,
+                'total_views' => (int) ($badgeTotals['total_views'] ?? 0),
+                'cvr' => (float) ($badgeTotals['cvr_pct'] ?? 0),
                 'calculated_at' => now()->toDateTimeString(),
             ];
 
@@ -997,6 +1042,16 @@ class SheinController extends Controller
                 ['channel' => 'shein', 'snapshot_date' => $today],
                 ['summary_data' => $summaryData, 'notes' => 'Auto-saved Shein pricing snapshot (sales-page Sales/GPFT/GROI)']
             );
+
+            if (Schema::hasTable('channel_master_calculated_data')) {
+                $calcUpdate = ['total_views' => (int) ($badgeTotals['total_views'] ?? 0)];
+                if (Schema::hasColumn('channel_master_calculated_data', 'listing_cvr')) {
+                    $calcUpdate['listing_cvr'] = (float) ($badgeTotals['cvr_pct'] ?? 0);
+                }
+                ChannelMasterCalculatedData::query()
+                    ->where('channel', 'Shein')
+                    ->update($calcUpdate);
+            }
         } catch (\Exception $e) {
             Log::error('Shein daily snapshot save failed: '.$e->getMessage());
         }
@@ -1004,7 +1059,7 @@ class SheinController extends Controller
 
     private function buildSheinParentRow(string $parentName, array $childRows): array
     {
-        $sumInv = $sumOvL30 = $sumSheinStock = $sumAl30 = $sumSales = $sumProfit = 0;
+        $sumInv = $sumOvL30 = $sumSheinStock = $sumAl30 = $sumSales = $sumProfit = $sumViews = 0;
         foreach ($childRows as $r) {
             $sumInv        += (float) ($r['inv']         ?? 0);
             $sumOvL30      += (float) ($r['ov_l30']       ?? 0);
@@ -1012,6 +1067,7 @@ class SheinController extends Controller
             $sumAl30       += (float) ($r['al30']         ?? 0);
             $sumSales      += (float) ($r['sales']        ?? 0);
             $sumProfit     += (float) ($r['al30'] ?? 0) * (float) ($r['profit'] ?? 0);
+            $sumViews      += (int) ($r['views'] ?? 0);
         }
         $key = 'PARENT ' . $parentName;
         return [
@@ -1024,6 +1080,8 @@ class SheinController extends Controller
             'sgpft'       => '-',   'sroi'   => '-',   '_margin'   => '-',
             'inv'         => (int) $sumInv,  'shein_stock' => (int) $sumSheinStock,
             'ov_l30'      => (int) $sumOvL30,
+            'views'       => (int) $sumViews,
+            'cvr'         => $sumViews > 0 ? round(($sumAl30 / $sumViews) * 100, 2) : 0,
             'dil_percent' => $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0,
             'lmp_price'   => null, 'lmp_link' => null, 'lmp_entries' => [],
             'linked_lmp_skus' => [],

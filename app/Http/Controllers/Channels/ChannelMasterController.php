@@ -2231,11 +2231,58 @@ class ChannelMasterController extends Controller
             // EbayTwo views chart was reading a stale ChannelMasterSummary total_views
             // while the column uses this live overlay — keep history + cache in sync.
             $historyKey = strtolower(str_replace([' ', '-', '&', '/'], '', $name));
-            if (in_array($historyKey, ['ebaytwo'], true) && array_key_exists('total_views', $counts)) {
+            if (in_array($historyKey, ['ebaytwo', 'aliexpress', 'shein'], true) && array_key_exists('total_views', $counts)) {
                 $this->syncLiveMapMissViewsToChannelHistory($historyKey, $name, $counts);
             }
         }
         unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Apply API listing views from the latest AliExpress / Shein pricing snapshots
+     * onto the fast-path table so /all-marketplace-master matches analytics badges
+     * without waiting for channel:calculate-data.
+     */
+    private function overlaySnapshotApiViewsOnChannelRows(array $rows): array
+    {
+        $channelToSnapshot = [
+            'Aliexpress' => 'aliexpress',
+            'Shein' => 'shein',
+        ];
+
+        try {
+            $latest = AmazonChannelSummary::query()
+                ->whereIn('channel', array_values($channelToSnapshot))
+                ->orderByDesc('snapshot_date')
+                ->get()
+                ->unique(fn ($r) => strtolower((string) $r->channel))
+                ->keyBy(fn ($r) => strtolower((string) $r->channel));
+
+            foreach ($rows as &$row) {
+                $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+                $snapKey = $channelToSnapshot[$name] ?? null;
+                if ($snapKey === null) {
+                    continue;
+                }
+                $summary = $latest->get($snapKey);
+                if (! $summary) {
+                    continue;
+                }
+                $sd = is_array($summary->summary_data) ? $summary->summary_data : [];
+                if (! array_key_exists('total_views', $sd)) {
+                    continue;
+                }
+                $row['Total Views'] = (int) ($sd['total_views'] ?? 0);
+                if (array_key_exists('cvr', $sd)) {
+                    $row['CVR'] = (float) $sd['cvr'];
+                }
+            }
+            unset($row);
+        } catch (\Throwable $e) {
+            Log::warning('Snapshot API views overlay failed: '.$e->getMessage());
+        }
 
         return $rows;
     }
@@ -2382,8 +2429,8 @@ class ChannelMasterController extends Controller
     {
         try {
             $response = app(SheinController::class)->getSheinPricingData(Request::create('/shein/pricing-data', 'GET'));
-            $rows = json_decode($response->getContent(), true);
-            if (! is_array($rows)) {
+            $rows = SheinController::unwrapSheinPricingRows(json_decode($response->getContent(), true));
+            if (empty($rows)) {
                 return $this->getMapAndMissCounts('shein');
             }
 
@@ -4828,6 +4875,7 @@ class ChannelMasterController extends Controller
             $cachedPayload = \Cache::get($cacheKey);
             if (is_array($cachedPayload) && ($cachedPayload['status'] ?? null) === 200) {
                 $cachedPayload['data'] = $this->overlayLiveTemu1AdsOnChannelRows($cachedPayload['data'] ?? []);
+                $cachedPayload['data'] = $this->overlaySnapshotApiViewsOnChannelRows($cachedPayload['data'] ?? []);
 
                 return response()->json($cachedPayload);
             }
@@ -5016,6 +5064,7 @@ class ChannelMasterController extends Controller
             // missed daily fetch cannot leave yesterday at $0 until the next rebuild.
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             $formattedData = $this->overlayLiveTemu1AdsOnChannelRows($formattedData);
+            $formattedData = $this->overlaySnapshotApiViewsOnChannelRows($formattedData);
             $formattedData = $this->overlayLiveAmazonYSalesOnChannelRows($formattedData);
             $formattedData = $this->overlayLiveEbayYSalesOnChannelRows($formattedData);
             $formattedData = $this->overlayLiveShopifyYSalesOnChannelRows($formattedData);

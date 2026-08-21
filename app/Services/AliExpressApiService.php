@@ -63,6 +63,8 @@ class AliExpressApiService
 
     protected string $restBase;
 
+    protected string $topBase;
+
     protected string $restSignMethod;
 
     protected int $httpConnectTimeout;
@@ -108,6 +110,7 @@ class AliExpressApiService
         $gw = strtolower((string) (config('services.aliexpress.gateway') ?: env('ALIEXPRESS_GATEWAY', 'rest')));
         $this->gateway = in_array($gw, ['sync', 'rest'], true) ? $gw : 'rest';
         $this->restBase = rtrim((string) (config('services.aliexpress.rest_base') ?: env('ALIEXPRESS_REST_BASE', 'https://api-sg.aliexpress.com/rest')), '/');
+        $this->topBase = rtrim((string) (config('services.aliexpress.top_base') ?: env('ALIEXPRESS_TOP_BASE', 'https://eco.taobao.com/router/rest')), '/');
         $rsm = strtolower((string) (config('services.aliexpress.rest_sign_method') ?: env('ALIEXPRESS_REST_SIGN_METHOD', 'hmac')));
         $this->restSignMethod = in_array($rsm, ['hmac', 'md5'], true) ? $rsm : 'hmac';
         $this->httpConnectTimeout = max(5, (int) (config('services.aliexpress.connect_timeout') ?: env('ALIEXPRESS_CONNECT_TIMEOUT', 30)));
@@ -1231,6 +1234,7 @@ class AliExpressApiService
 
     /**
      * Daily page views for one product (last 30 days) — aliexpress.data.redefining.queryproductviewedinfoeverydaybyid.
+     * TOP router params: product_id, start_date, end_date, current_page, page_size.
      */
     public function getProductDailyViews(string $productId, string $startDate, string $endDate, int $page = 1, int $pageSize = 50): array
     {
@@ -1240,21 +1244,21 @@ class AliExpressApiService
                 'product_id' => (string) $productId,
                 'start_date' => $startDate,
                 'end_date' => $endDate,
-                'current_page' => $page,
-                'page_size' => $pageSize,
+                'current_page' => (string) $page,
+                'page_size' => (string) $pageSize,
             ]
         );
     }
 
     /**
      * Product L30 business stats — aliexpress.data.redefining.queryproductbusinessinfobyid.
-     * Includes viewedCount (30-day page views).
+     * Official TOP param is param_string (= product id). Includes viewedCount + outputOrder.
      */
     public function getProductBusinessInfo(string $productId): array
     {
         return $this->callDataRedefining(
             'aliexpress.data.redefining.queryproductbusinessinfobyid',
-            ['product_id' => (string) $productId]
+            ['param_string' => (string) $productId]
         );
     }
 
@@ -1274,19 +1278,24 @@ class AliExpressApiService
         $lastMessage = $biz['message'] ?? null;
 
         if (! empty($biz['success'])) {
-            $parsed = is_array($biz['data'] ?? null) ? $biz['data'] : [];
+            $parsed = $this->normalizeTrafficPayload($biz['data'] ?? []);
             $viewed = $parsed['viewedCount'] ?? $parsed['viewed_count'] ?? $parsed['viewCount'] ?? null;
             $orders = $parsed['outputOrder'] ?? $parsed['output_order'] ?? $parsed['orderCount'] ?? null;
             $outputOrder = max(0, (int) ($orders ?? 0));
             if ($viewed !== null && $viewed !== '') {
                 return $this->trafficResult(max(0, (int) $viewed), $outputOrder, 'business', $lastId);
             }
+            if ($this->trafficPayloadHasMetrics($parsed)) {
+                // Explicit empty business payload (itemList empty) — still try daily.
+                $lastMessage = $lastMessage ?: 'Business info returned no viewedCount.';
+            }
         }
 
-        $end = now()->format('Y-m-d');
-        $start = now()->subDays(29)->format('Y-m-d');
+        $end = now('Asia/Shanghai')->format('Y-m-d');
+        $start = now('Asia/Shanghai')->subDays(29)->format('Y-m-d');
         $page = 1;
         $sum = 0;
+        $gotDailyPayload = false;
 
         while ($page <= 5) {
             $daily = $this->getProductDailyViews($productId, $start, $end, $page, 50);
@@ -1296,8 +1305,9 @@ class AliExpressApiService
                 break;
             }
 
-            $parsed = is_array($daily['data'] ?? null) ? $daily['data'] : [];
+            $parsed = $this->normalizeTrafficPayload($daily['data'] ?? []);
             $items = $parsed['itemList'] ?? $parsed['item_list'] ?? [];
+            $gotDailyPayload = $gotDailyPayload || $this->trafficPayloadHasMetrics($parsed) || is_array($items);
             $pageSum = 0;
             foreach ($this->normalizeList($items) as $item) {
                 $item = $this->normalizeApiRow($item);
@@ -1306,8 +1316,14 @@ class AliExpressApiService
             $sum += $pageSum;
 
             $total = (int) ($parsed['totalItem'] ?? $parsed['total_item'] ?? 0);
-            if ($page * 50 >= $total || $pageSum === 0) {
+            if ($total > 0 && $page * 50 >= $total) {
                 return $this->trafficResult(max(0, $sum), $outputOrder, 'daily', $lastId);
+            }
+            if ($pageSum === 0 && $total === 0) {
+                break;
+            }
+            if ($pageSum === 0) {
+                break;
             }
             $page++;
             usleep(80000);
@@ -1322,7 +1338,9 @@ class AliExpressApiService
             'views' => 0,
             'output_order' => 0,
             'cvr' => 0.0,
-            'message' => $lastMessage ?: 'AliExpress page-view API returned no views.',
+            'message' => $lastMessage ?: ($gotDailyPayload
+                ? 'AliExpress returned 0 page views for this product.'
+                : 'AliExpress page-view API returned no views data (check TOP/AE-数据 permission).'),
             'request_id' => $lastId,
         ];
     }
@@ -1346,28 +1364,234 @@ class AliExpressApiService
     }
 
     /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function normalizeTrafficPayload(array $payload): array
+    {
+        $payload = $this->normalizeApiRow($payload);
+        if (isset($payload['result'])) {
+            $result = $payload['result'];
+            if (is_string($result)) {
+                $decoded = json_decode($result, true);
+                if (is_array($decoded)) {
+                    return $this->normalizeTrafficPayload($decoded);
+                }
+            }
+            if (is_array($result)) {
+                return $this->normalizeTrafficPayload($result);
+            }
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsed
+     */
+    private function trafficPayloadHasMetrics(array $parsed): bool
+    {
+        foreach (['viewedCount', 'viewed_count', 'viewCount', 'outputOrder', 'output_order', 'itemList', 'item_list', 'totalItem', 'total_item', 'success'] as $key) {
+            if (array_key_exists($key, $parsed)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * AE-数据 APIs use classic TOP protocol (eco.taobao.com), not SG /rest HMAC-SHA256.
+     *
      * @return array{success: bool, data?: array, message?: string, request_id?: mixed}
      */
     private function callDataRedefining(string $method, array $params): array
     {
-        // Same /rest HMAC-SHA256 signing as product list / orders.
-        // /sync IOP signing is rejected: "request signature does not conform to platform standards".
-        $raw = $this->callRestGateway($method, $params);
+        // 1) Classic TOP router (datetime + session + hmac) — required by AE-数据 docs.
+        $raw = $this->callTopRouter($method, $params);
+
+        // 2) SG /rest with same business params (some AE apps only work here).
+        if (empty($raw['success'])) {
+            $rest = $this->callRestGateway($method, $params);
+            if (! empty($rest['success'])) {
+                $raw = $rest;
+            } elseif (isset($params['param_string']) && ! isset($params['product_id'])) {
+                // Business-info docs use param_string; some gateways still expect product_id.
+                $alt = $params;
+                $alt['product_id'] = $params['param_string'];
+                unset($alt['param_string']);
+                $rest2 = $this->callRestGateway($method, $alt);
+                if (! empty($rest2['success'])) {
+                    $raw = $rest2;
+                } else {
+                    $raw['message'] = trim(
+                        ($raw['message'] ?? '').
+                        ' | rest: '.($rest['message'] ?? '').
+                        ' | rest+product_id: '.($rest2['message'] ?? '')
+                    );
+                }
+            } else {
+                $raw['message'] = trim(($raw['message'] ?? '').' | rest: '.($rest['message'] ?? ''));
+            }
+        }
+
         if (empty($raw['success'])) {
             return $raw;
         }
 
         $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
-        $resultJson = $payload['result'] ?? null;
-        $parsed = is_string($resultJson)
-            ? json_decode($resultJson, true)
-            : (is_array($resultJson) ? $resultJson : $payload);
+        $parsed = $this->normalizeTrafficPayload($payload);
+
+        // SG /rest often returns {code:0,request_id} with no result — treat as empty failure.
+        if (! $this->trafficPayloadHasMetrics($parsed) && ! isset($payload['result'])) {
+            $keys = array_keys($payload);
+            sort($keys);
+            if (
+                $keys === ['code', 'request_id']
+                || $keys === ['_trace_id_', 'code', 'request_id']
+                || $keys === ['code', 'request_id', '_trace_id_']
+            ) {
+                return [
+                    'success' => false,
+                    'message' => 'AliExpress data API returned empty result (no viewedCount). Check AE-数据 / TOP permission (param_string).',
+                    'request_id' => $raw['request_id'] ?? $payload['request_id'] ?? null,
+                    'data' => $payload,
+                ];
+            }
+        }
 
         return [
             'success' => true,
             'data' => is_array($parsed) ? $parsed : [],
             'request_id' => $raw['request_id'] ?? $payload['request_id'] ?? null,
         ];
+    }
+
+    /**
+     * Classic TOP / Taobao Open Platform router (datetime timestamp, session, hmac-md5).
+     * Required for aliexpress.data.redefining.* (AE-数据).
+     *
+     * @param  array<string, mixed>  $businessParams
+     * @return array<string, mixed>
+     */
+    private function callTopRouter(string $method, array $businessParams = []): array
+    {
+        if ($this->appKey === '' || $this->appSecret === '') {
+            return ['success' => false, 'message' => 'AliExpress app_key / app_secret are missing.'];
+        }
+        if (empty($this->accessToken)) {
+            return [
+                'success' => false,
+                'message' => $this->channelLabel.' OAuth token is missing (set '.$this->tokenEnvKey.').',
+            ];
+        }
+
+        $params = [
+            'method' => $method,
+            'app_key' => $this->appKey,
+            'session' => $this->accessToken,
+            'timestamp' => now('Asia/Shanghai')->format('Y-m-d H:i:s'),
+            'format' => 'json',
+            'v' => '2.0',
+            'sign_method' => $this->restSignMethod === 'md5' ? 'md5' : 'hmac',
+            'partner_id' => $this->partnerId !== '' ? $this->partnerId : 'invent-php',
+        ];
+
+        foreach ($businessParams as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $params[(string) $key] = is_array($value)
+                ? $this->encodeRequestPayload($value)
+                : (string) $value;
+        }
+
+        $params['sign'] = $this->signTopRestParams($params);
+
+        $bases = array_values(array_unique(array_filter([
+            $this->topBase,
+            'https://api-sg.aliexpress.com/rest',
+            'https://api-sg.aliexpress.com/sync',
+            'https://eco.taobao.com/router/rest',
+            'https://gw.api.taobao.com/router/rest',
+        ])));
+
+        $last = null;
+        foreach ($bases as $base) {
+            // Try TOP hmac/md5 first, then also sha256 TOP-style sorted key+value (no /sync prefix)
+            // for AliExpress SG hosts that reject Taobao TOP but accept datetime+session.
+            $signVariants = [
+                ['sign_method' => $this->restSignMethod === 'md5' ? 'md5' : 'hmac', 'style' => 'top'],
+                ['sign_method' => 'sha256', 'style' => 'sha256'],
+            ];
+            foreach ($signVariants as $variant) {
+                $attempt = $params;
+                $attempt['sign_method'] = $variant['sign_method'];
+                unset($attempt['sign']);
+                if ($variant['style'] === 'sha256') {
+                    $attempt['sign'] = $this->signTopSha256($attempt);
+                } else {
+                    $attempt['sign'] = $this->signTopRestParams($attempt);
+                }
+
+                try {
+                    $response = $this->httpClient()
+                        ->asForm()
+                        ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded;charset=utf-8'])
+                        ->post($base, $attempt);
+                } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                    $last = $this->networkErrorResult(
+                        'Could not reach AliExpress TOP router ('.$base.').',
+                        $e
+                    );
+                    continue;
+                }
+
+                $parsed = $this->parseHttpResponse($response, $method, 'top');
+                $last = $parsed;
+
+                if (! empty($parsed['success'])) {
+                    return $parsed;
+                }
+
+                // Keep trying other hosts/sign styles on invalid-key / signature / empty.
+                $msg = strtolower((string) ($parsed['message'] ?? ''));
+                if (
+                    str_contains($msg, 'invalid app')
+                    || $this->isSignatureError($parsed)
+                    || str_contains($msg, 'empty result')
+                ) {
+                    continue;
+                }
+
+                // Non-retryable business error for this host.
+                if (! ($parsed['network_error'] ?? false)) {
+                    // Still try next host; AE-数据 may only work on one gateway.
+                    continue;
+                }
+            }
+        }
+
+        return $last ?? ['success' => false, 'message' => 'AliExpress TOP router call failed.'];
+    }
+
+    /**
+     * TOP-style sorted key+value HMAC-SHA256 (no /sync or method-name prefix).
+     *
+     * @param  array<string, string>  $params
+     */
+    private function signTopSha256(array $params): string
+    {
+        unset($params['sign']);
+        ksort($params);
+        $source = '';
+        foreach ($params as $key => $value) {
+            if ($value !== null && $value !== '') {
+                $source .= (string) $key.(string) $value;
+            }
+        }
+
+        return strtoupper(hash_hmac('sha256', $source, $this->appSecret));
     }
 
     /**
