@@ -805,6 +805,22 @@
         .sof-inv-zero-alert i {
             color: #dc3545;
         }
+        .sof-date-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+        .sof-date-late-alert {
+            color: #dc3545;
+            font-size: 0.72rem;
+            line-height: 1;
+            cursor: help;
+            flex-shrink: 0;
+        }
+        .sof-date-late-alert i {
+            color: #dc3545;
+        }
         .sof-label-badge {
             display: inline-block;
             font-weight: 600;
@@ -1635,7 +1651,7 @@
         sortMode: 'local',
         filterMode: 'local',
         paginationSize: 50,
-        paginationSizeSelector: [25, 50, 100, true],
+        paginationSizeSelector: [25, 50, 100, 500, true],
         movableColumns: false,
         headerSortClickElement: 'header',
     };
@@ -2416,6 +2432,87 @@
         return escapeHtml(v);
     }
 
+    /** Wall-clock Y-m-d H:i:s in `timeZone` → UTC epoch ms. */
+    function sofWallClockToUtcMs(raw, timeZone) {
+        const m = String(raw || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+        if (!m) {
+            const d = new Date(String(raw || '').replace(' ', 'T'));
+            return isNaN(d.getTime()) ? null : d.getTime();
+        }
+        const y = Number(m[1]);
+        const mo = Number(m[2]);
+        const d = Number(m[3]);
+        const h = Number(m[4] || 0);
+        const mi = Number(m[5] || 0);
+        const s = Number(m[6] || 0);
+        const desired = Date.UTC(y, mo - 1, d, h, mi, s);
+        const dtf = new Intl.DateTimeFormat('en-US', {
+            timeZone: timeZone,
+            hourCycle: 'h23',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        });
+        const wallAsUtc = function (instant) {
+            const parts = dtf.formatToParts(new Date(instant));
+            const get = function (type) {
+                const p = parts.find(function (x) { return x.type === type; });
+                return p ? Number(p.value) : 0;
+            };
+            return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+        };
+        let instant = desired;
+        for (let i = 0; i < 3; i++) {
+            instant = desired - (wallAsUtc(instant) - desired);
+        }
+        return instant;
+    }
+
+    /** True when order Date is before yesterday 3:00 PM Eastern (overdue vs 3pm ET cutoff). */
+    function sofOrderDatePastYesterday3pmEt(raw) {
+        if (!raw) return false;
+        const orderMs = sofWallClockToUtcMs(raw, SOF_TZ);
+        if (orderMs == null) return false;
+        let todayEt;
+        try {
+            todayEt = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/New_York',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+            }).format(new Date());
+        } catch (e) {
+            todayEt = new Date().toISOString().slice(0, 10);
+        }
+        const yesterdayEt = sofShiftYmd(todayEt, -1);
+        const cutoffMs = sofWallClockToUtcMs(yesterdayEt + ' 15:00:00', 'America/New_York');
+        if (cutoffMs == null) return false;
+        return orderMs < cutoffMs;
+    }
+
+    function sofFormatOrderDateCell(cell) {
+        const v = cell.getValue();
+        const text = sofFormatDateCell(cell);
+        if (!v || text === '—') return text;
+        const wrap = document.createElement('span');
+        wrap.className = 'sof-date-cell';
+        const label = document.createElement('span');
+        label.textContent = text;
+        wrap.appendChild(label);
+        if (sofOrderDatePastYesterday3pmEt(v)) {
+            const alert = document.createElement('span');
+            alert.className = 'sof-date-late-alert';
+            alert.title = 'Alert: Date is before yesterday 3:00 PM ET';
+            alert.setAttribute('aria-label', 'Older than yesterday 3:00 PM Eastern');
+            alert.innerHTML = '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i>';
+            wrap.appendChild(alert);
+        }
+        return wrap;
+    }
+
     /** Updated + Tracking + Carrier columns inserted after Date on order tabs. */
     function sofTrackingColumns() {
         return [
@@ -2683,6 +2780,7 @@
         }
         sofUpdateTrackingFilterCounts();
         sofUpdateDateFilterHint();
+        sofStripLabeledPendingRows();
         return updated;
     }
 
@@ -2751,7 +2849,8 @@
         } else if (tabBtn) {
             tabBtn.click();
         }
-        ensureFulfilledTable();
+        // Table is created on shown.bs.tab so Tabulator gets a visible height.
+        setTimeout(function () { ensureFulfilledTable(); }, 80);
     }
 
     function switchToScanDoneTab() {
@@ -3208,11 +3307,12 @@
             {
                 title: 'Date',
                 field: 'order_date',
-                minWidth: 110,
+                minWidth: 128,
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sofDateSorter,
-                formatter: sofFormatDateCell,
+                headerTooltip: 'Red triangle = order date is before yesterday 3:00 PM ET',
+                formatter: sofFormatOrderDateCell,
             },
             {
                 title: 'Status',
@@ -3526,6 +3626,10 @@
             if (deliveredEl) deliveredEl.textContent = deliveredTotal.toLocaleString();
             if (allOrderEl) allOrderEl.textContent = allOrderTotal.toLocaleString();
             loadSofHistoryDots();
+            const pendingTabCount = document.getElementById('sof-pending-tab-count');
+            if (pendingTabCount && !pendingTableLoaded) {
+                pendingTabCount.textContent = pendingTotal.toLocaleString();
+            }
             const fulfilledTabCount = document.getElementById('sof-fulfilled-tab-count');
             if (fulfilledTabCount && !fulfilledTableLoaded) {
                 fulfilledTabCount.textContent = fulfilled24h.toLocaleString();
@@ -3554,6 +3658,7 @@
             if (allOrderTabCount && !allOrderTableLoaded) {
                 allOrderTabCount.textContent = allOrderTotal.toLocaleString();
             }
+            sofReconcilePendingLabels();
 
             return allRows;
         },
@@ -3997,6 +4102,7 @@
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(pendingRows);
                 applyPendingFilters();
+                sofAutoFillMissingLabelTracking(pendingRows, 0);
             },
             columns: orderListColumns('sof-pending-badge'),
         }));
@@ -4008,10 +4114,18 @@
     }
 
     function ensureFulfilledTable() {
-        if (fulfilledTable || fulfilledTableLoading) {
-            if (fulfilledTable) {
-                setTimeout(function () { fulfilledTable.redraw(true); }, 50);
-            }
+        const pane = document.getElementById('sof-fulfilled-pane');
+        const paneReady = !pane || pane.classList.contains('show') || pane.classList.contains('active');
+        if (fulfilledTable) {
+            setTimeout(function () {
+                try { fulfilledTable.redraw(true); } catch (e) {}
+                if (!fulfilledTableLoaded) {
+                    try { fulfilledTable.replaceData(); } catch (e2) {}
+                }
+            }, 50);
+            return;
+        }
+        if (fulfilledTableLoading || !paneReady) {
             return;
         }
         fulfilledTableLoading = true;
@@ -4053,9 +4167,19 @@
                 sofUpdateTrackingFilterCounts(fulfilledRows);
                 return fulfilledRows;
             },
+            ajaxError: function () {
+                fulfilledTableLoading = false;
+                fulfilledTableLoaded = false;
+            },
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(fulfilledRows);
                 applyFulfilledFilters();
+                setTimeout(function () {
+                    if (fulfilledTable) {
+                        try { fulfilledTable.redraw(true); } catch (e) {}
+                    }
+                    sofAutoFillMissingLabelTracking(fulfilledRows, 0);
+                }, 50);
             },
             columns: (function () {
                 const cols = orderListColumns('sof-fulfilled-badge');
@@ -4600,6 +4724,125 @@
         }
         return mapped;
     }
+
+    function sofUpdatePendingBadge(n) {
+        n = Math.max(0, Number(n) || 0);
+        const pendingEl = document.getElementById('sof-pending-total');
+        const tabCount = document.getElementById('sof-pending-tab-count');
+        if (pendingEl) pendingEl.textContent = n.toLocaleString();
+        if (tabCount) tabCount.textContent = n.toLocaleString();
+    }
+
+    function sofStripLabeledPendingRows() {
+        if (!Array.isArray(pendingRows)) return;
+        pendingRows = pendingRows.filter(function (r) {
+            return !String(r.tracking_number || '').trim();
+        });
+        sofUpdatePendingBadge(pendingRows.length);
+        if (pendingTable && pendingTableLoaded) {
+            try {
+                pendingTable.replaceData(pendingRows);
+            } catch (e) {
+                try { pendingTable.setData(pendingRows); } catch (e2) {}
+            }
+        }
+    }
+
+    function sofReconcilePendingLabels() {
+        if (window.__sofReconcilePendingStarted) return;
+        window.__sofReconcilePendingStarted = true;
+        const params = typeof sofDateParams === 'function' ? sofDateParams() : {};
+        const qs = new URLSearchParams(params).toString();
+        fetch('{{ route("sales.order.fulfillment.pending.data") }}' + (qs ? ('?' + qs) : ''), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (!pendingTableLoaded) {
+                    pendingRows = sofNormalizeOrderRows((j && j.success && Array.isArray(j.data)) ? j.data : []);
+                    sofUpdatePendingBadge(pendingRows.length);
+                }
+                sofAutoFillMissingLabelTracking(pendingRows, 0);
+            })
+            .catch(function () {
+                window.__sofReconcilePendingStarted = false;
+            });
+    }
+
+    /**
+     * After Label Created rows render, pull Veeqo/GOFO tracking for blank Tracking cells.
+     * Does not block the table. Pending (no label) stays blank.
+     */
+    function sofAutoFillMissingLabelTracking(rows, round) {
+        round = round || 0;
+        if (round >= 4 || window.__sofAutoFillTrackingBusy) return;
+        const missing = [];
+        const seen = {};
+        (Array.isArray(rows) ? rows : []).forEach(function (r) {
+            if (String(r.tracking_number || '').trim()) return;
+            const mapped = sofMapPullTarget(r);
+            if (!mapped) return;
+            const key = mapped.id
+                || (mapped.mm_slug + '|' + (mapped.order_id_api || mapped.order_id || mapped.order_number || mapped.shopify_order_id));
+            if (seen[key]) return;
+            seen[key] = true;
+            missing.push(mapped);
+        });
+        if (!missing.length) return;
+
+        window.__sofAutoFillTrackingBusy = true;
+        const chunk = missing.slice(0, 80);
+        fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                limit: chunk.length,
+                selected: chunk,
+                selected_only: true,
+            }),
+        })
+            .then(function (r) {
+                return r.text().then(function (text) {
+                    let j = null;
+                    try { j = text ? JSON.parse(text) : null; } catch (e) { j = null; }
+                    return { ok: r.ok, json: j };
+                });
+            })
+            .then(function (res) {
+                const j = res.json || {};
+                const pulled = Array.isArray(j.data) ? j.data : [];
+                if (res.ok && j.success !== false) {
+                    sofApplyPulledTrackingToTables(pulled);
+                }
+                const found = pulled.filter(function (row) {
+                    return String(row && row.tracking_number || '').trim() !== '';
+                }).length;
+                window.__sofAutoFillTrackingBusy = false;
+                sofStripLabeledPendingRows();
+                if (found > 0) {
+                    const still = []
+                        .concat(pendingRows || [])
+                        .concat(fulfilledRows || [])
+                        .filter(function (r) { return !String(r.tracking_number || '').trim(); });
+                    sofAutoFillMissingLabelTracking(still, round + 1);
+                }
+            })
+            .catch(function () {
+                window.__sofAutoFillTrackingBusy = false;
+            });
+    }
+
+    // Keep Label Created / Pending tracking in sync while the page is open.
+    setInterval(function () {
+        window.__sofAutoFillTrackingBusy = false;
+        const rows = [].concat(pendingRows || [], fulfilledRows || []);
+        sofAutoFillMissingLabelTracking(rows, 0);
+    }, 15 * 60 * 1000);
 
     function sofSelectedPullTargets() {
         const seen = {};

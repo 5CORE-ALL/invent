@@ -2991,6 +2991,7 @@
             @can('team.management.view')
             @php
                 $teamMgmtActive = request()->routeIs('users.add')
+                    || request()->routeIs('user-settings.*')
                     || (request()->routeIs('payroll.*') && Gate::allows('payroll.manage'));
             @endphp
             <li class="side-nav-item">
@@ -3007,6 +3008,13 @@
                                 <i class="ri-user-add-line me-2"></i>Users
                             </a>
                         </li>
+                        @can('user.settings.manage')
+                        <li>
+                            <a href="{{ route('user-settings.index') }}" class="{{ request()->routeIs('user-settings.*') ? 'active' : '' }}">
+                                <i class="ri-user-settings-line me-2"></i>User Settings
+                            </a>
+                        </li>
+                        @endcan
                         @can('payroll.manage')
                         <li>
                             <a href="{{ route('payroll.index') }}" class="{{ request()->routeIs('payroll.*') ? 'active' : '' }}">
@@ -3024,6 +3032,7 @@
             @php
                 $userMenuActive = request()->routeIs('roles')
                     || request()->routeIs('users.add')
+                    || request()->routeIs('user-settings.*')
                     || request()->routeIs('permissions')
                     || request()->routeIs('permissions.view')
                     || request()->routeIs('attendance.monitor*')
@@ -3047,6 +3056,11 @@
                         <li>
                             <a href="{{ route('users.add') }}" class="{{ request()->routeIs('users.add') ? 'active' : '' }}">Add User</a>
                         </li>
+                        @can('user.settings.manage')
+                        <li>
+                            <a href="{{ route('user-settings.index') }}" class="{{ request()->routeIs('user-settings.*') ? 'active' : '' }}">User Settings</a>
+                        </li>
+                        @endcan
                         <li>
                             <a href="{{ route('permissions') }}" class="text-danger bg-light {{ request()->routeIs('permissions') ? 'active' : '' }}"><i
                                     class="ri-error-warning-line text-danger"></i> Reset Permission</a>

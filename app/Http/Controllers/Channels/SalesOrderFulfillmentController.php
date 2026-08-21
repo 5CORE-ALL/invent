@@ -232,6 +232,9 @@ class SalesOrderFulfillmentController extends Controller
     public function fulfilledData(): JsonResponse
     {
         try {
+            @set_time_limit(90);
+            // Return rows immediately. Live Veeqo/GOFO pulls belong on Pull Tracking —
+            // blocking this endpoint left the tab empty while the badge still showed a count.
             $rows = $this->labelCreatedNoScanRows();
 
             return response()->json([
@@ -493,6 +496,17 @@ class SalesOrderFulfillmentController extends Controller
                 // over internal API ids (e.g. bo_n8pa3fg3f8).
                 $displayOrderId = $orderNumber !== '' ? $orderNumber : $apiOrderId;
                 $showId = (int) ($n['show_id'] ?? $order->id);
+                $hasShippingLabel = ! empty($n['has_shipping_label']);
+                if ($slug === 'wayfair') {
+                    $slip = trim((string) ($order->packing_slip_url ?? ''));
+                    $carrierCode = trim((string) ($order->carrier_code ?? ''));
+                    if ($slip !== '' || $carrierCode !== '') {
+                        $hasShippingLabel = true;
+                    }
+                    if (trim((string) $company) === '' && $carrierCode !== '') {
+                        $company = $carrierCode;
+                    }
+                }
 
                 $rows[] = [
                     'id' => $slug.'-'.$order->id,
@@ -511,6 +525,8 @@ class SalesOrderFulfillmentController extends Controller
                     'tracking_url' => null,
                     'shipment_status' => null,
                     'shipment_status_detail' => null,
+                    'has_shipping_label' => $hasShippingLabel,
+                    'shopify_fulfillment_status' => null,
                     'status' => $statusRaw,
                     'status_label' => $useOriginalStatus
                         ? ($statusRaw !== '' ? $statusRaw : '—')
@@ -754,9 +770,12 @@ class SalesOrderFulfillmentController extends Controller
         $byNumber = [];
         try {
             $q = DB::table('shopify_raw_orders')
-                ->select(['order_id', 'order_number', 'tracking_number', 'tracking_company'])
-                ->whereNotNull('tracking_number')
-                ->where('tracking_number', '!=', '');
+                ->select(['order_id', 'order_number', 'tracking_number', 'tracking_company', 'fulfillment_status'])
+                ->where(function ($outer) {
+                    $outer->where(function ($t) {
+                        $t->whereNotNull('tracking_number')->where('tracking_number', '!=', '');
+                    })->orWhereIn('fulfillment_status', ['fulfilled', 'partial', 'partially_fulfilled']);
+                });
             $q->where(function ($inner) use ($needIds, $needNumbers) {
                 if ($needIds !== []) {
                     $inner->orWhereIn('order_id', array_keys($needIds));
@@ -767,12 +786,14 @@ class SalesOrderFulfillmentController extends Controller
             });
             foreach ($q->get() as $srow) {
                 $tn = trim((string) ($srow->tracking_number ?? ''));
-                if ($tn === '') {
+                $ff = strtolower(trim((string) ($srow->fulfillment_status ?? '')));
+                if ($tn === '' && ! in_array($ff, ['fulfilled', 'partial', 'partially_fulfilled'], true)) {
                     continue;
                 }
                 $payload = [
                     'tracking_number' => $tn,
                     'tracking_company' => trim((string) ($srow->tracking_company ?? '')) ?: null,
+                    'fulfillment_status' => $ff !== '' ? $ff : null,
                 ];
                 $oid = (int) ($srow->order_id ?? 0);
                 if ($oid > 0 && ! isset($byShopifyId[$oid])) {
@@ -819,9 +840,14 @@ class SalesOrderFulfillmentController extends Controller
             if ($hit === null) {
                 continue;
             }
-            $row['tracking_number'] = $hit['tracking_number'];
+            if (trim((string) ($row['tracking_number'] ?? '')) === '' && ($hit['tracking_number'] ?? '') !== '') {
+                $row['tracking_number'] = $hit['tracking_number'];
+            }
             if (trim((string) ($row['tracking_company'] ?? '')) === '' && ! empty($hit['tracking_company'])) {
                 $row['tracking_company'] = $hit['tracking_company'];
+            }
+            if (! empty($hit['fulfillment_status'])) {
+                $row['shopify_fulfillment_status'] = $hit['fulfillment_status'];
             }
         }
         unset($row);
@@ -839,10 +865,14 @@ class SalesOrderFulfillmentController extends Controller
             return [];
         }
         $plain = ltrim($v, '#');
-        $keys = [$v, $plain, '#'.$plain];
-        if ($plain !== '' && ! str_starts_with(strtolower($plain), 'amz')) {
+        $compact = preg_replace('/\s+/', '', $plain) ?? $plain;
+        $keys = [$v, $plain, '#'.$plain, $compact, '#'.$compact];
+        $lower = strtolower($plain);
+        if ($plain !== '' && ! str_starts_with($lower, 'amz')) {
             $keys[] = 'Amz'.$plain;
             $keys[] = '#Amz'.$plain;
+            $keys[] = 'Amz'.$compact;
+            $keys[] = '#Amz'.$compact;
         }
 
         return array_values(array_unique(array_filter($keys, static fn ($k) => $k !== '')));
@@ -1151,15 +1181,38 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * True when the row already has a real carrier tracking number (label created in Veeqo/GOFO).
+     * True when the warehouse already created a label (Veeqo/GOFO tracking, packing slip, or Shopify fulfilled).
      *
      * @param  array<string, mixed>  $row
      */
     protected function rowHasLabelTracking(array $row): bool
     {
-        $tn = trim((string) ($row['tracking_number'] ?? ''));
+        if (! empty($row['has_shipping_label'])) {
+            return true;
+        }
 
-        return $tn !== '' && $this->looksLikeCarrierTrackingNumber($tn);
+        $tn = trim((string) ($row['tracking_number'] ?? ''));
+        if ($tn !== '' && $this->looksLikeCarrierTrackingNumber($tn)) {
+            return true;
+        }
+
+        $ff = strtolower(trim((string) ($row['shopify_fulfillment_status'] ?? '')));
+        if (in_array($ff, ['fulfilled', 'partial', 'partially_fulfilled'], true)) {
+            return true;
+        }
+
+        // Already pushed to Shopify and the Shopify copy is no longer unfulfilled.
+        $import = strtolower(trim((string) ($row['import_status'] ?? '')));
+        if (
+            in_array($import, ['imported', 'success', 'pushed'], true)
+            && trim((string) ($row['shopify_order_id'] ?? '')) !== ''
+            && $ff !== ''
+            && ! in_array($ff, ['unfulfilled', 'null', 'none'], true)
+        ) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -1484,6 +1537,11 @@ class SalesOrderFulfillmentController extends Controller
             'express_no',
             'billNo',
             'shipmentTrackingNumber',
+            'ShipmentTrackingNumber',
+            'TrackingID',
+            'tracking_id',
+            'shipmentTrackingNumber',
+            'shipment_tracking_number',
         ];
 
         foreach ($scalarKeys as $key) {
@@ -1521,7 +1579,7 @@ class SalesOrderFulfillmentController extends Controller
             }
         }
 
-        foreach (['fulfillments', 'fulfillmentList', 'Fulfillments'] as $listKey) {
+        foreach (['fulfillments', 'fulfillmentList', 'Fulfillments', 'shippingFulfillments', 'shipping_fulfillments'] as $listKey) {
             $list = $order[$listKey] ?? null;
             if (! is_array($list)) {
                 continue;
@@ -1530,7 +1588,7 @@ class SalesOrderFulfillmentController extends Controller
                 if (! is_array($item)) {
                     continue;
                 }
-                foreach (['tracking_number', 'trackingNumber', 'TrackingNumber', 'tracking'] as $key) {
+                foreach (['tracking_number', 'trackingNumber', 'TrackingNumber', 'tracking', 'shipmentTrackingNumber'] as $key) {
                     if (! empty($item[$key]) && is_scalar($item[$key])) {
                         $val = trim((string) $item[$key]);
                         if ($val !== '') {
@@ -1558,7 +1616,7 @@ class SalesOrderFulfillmentController extends Controller
                 }
                 foreach ([
                     'TrackingNumber', 'tracking_number', 'tracking', 'tracking_code',
-                    'trackingCode', 'logistics_no', 'shipping_code',
+                    'trackingCode', 'logistics_no', 'shipping_code', 'shipmentTrackingNumber',
                 ] as $key) {
                     if (! empty($pkg[$key]) && is_scalar($pkg[$key])) {
                         $val = trim((string) $pkg[$key]);
@@ -1581,6 +1639,38 @@ class SalesOrderFulfillmentController extends Controller
             ] as $pattern) {
                 if (preg_match($pattern, $href, $m) === 1) {
                     return $m[1];
+                }
+            }
+        }
+
+        return $this->extractTrackingNumberDeep($order);
+    }
+
+    /**
+     * Walk nested marketplace payloads (eBay shippingFulfillments, lineItems, etc.).
+     */
+    protected function extractTrackingNumberDeep(array $node, int $depth = 0): ?string
+    {
+        if ($depth > 6) {
+            return null;
+        }
+
+        foreach ($node as $key => $val) {
+            $k = strtolower((string) $key);
+            if (is_scalar($val) && $val !== '' && (
+                str_contains($k, 'trackingnumber')
+                || $k === 'tracking'
+                || (str_contains($k, 'tracking') && (str_contains($k, 'number') || str_contains($k, 'code') || str_contains($k, 'id')))
+            )) {
+                $s = trim((string) $val);
+                if (strlen($s) >= 8) {
+                    return $s;
+                }
+            }
+            if (is_array($val)) {
+                $found = $this->extractTrackingNumberDeep($val, $depth + 1);
+                if ($found !== null) {
+                    return $found;
                 }
             }
         }
@@ -2110,7 +2200,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Hourly job: Label Created / No Scan rows still missing a tracking number.
+     * Every 15 minutes: Label Created / Pending rows still missing a tracking number.
      * Looks up Veeqo / GOFO / 4Seller and writes the number onto the channel order.
      *
      * @return array{checked: int, updated: int, with_tracking: int, message: string, candidates: int}
@@ -2270,6 +2360,78 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * Fill Label Created rows that still have no tracking (Veeqo / GOFO / Temu / channel API),
+     * persist onto the marketplace order, then reload so Tracking + Carrier show immediately.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function hydrateMissingLabelTrackingOnRows(array $rows, int $limit = 40): array
+    {
+        $missing = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $missing[] = $row;
+        }
+        if ($missing === []) {
+            return $rows;
+        }
+
+        $temuParents = [];
+        $temu2Parents = [];
+        $others = [];
+        foreach ($missing as $row) {
+            $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
+            $parent = trim((string) (
+                $row['order_id_api']
+                ?? $row['order_id']
+                ?? $row['order_number']
+                ?? ''
+            ));
+            if ($slug === 'temu' && $parent !== '') {
+                $temuParents[$parent] = true;
+            } elseif ($slug === 'temu2' && $parent !== '') {
+                $temu2Parents[$parent] = true;
+            } elseif ($slug !== '' && ! in_array($slug, ['temu', 'temu2'], true)) {
+                $others[] = $row;
+            }
+        }
+
+        if ($temuParents !== []) {
+            try {
+                app(TemuOrderTrackingPullService::class)->pullForParents(array_keys($temuParents), true);
+            } catch (\Throwable) {
+            }
+        }
+        if ($temu2Parents !== []) {
+            try {
+                app(Temu2OrderTrackingPullService::class)->pullForParents(array_keys($temu2Parents), true);
+            } catch (\Throwable) {
+            }
+        }
+        if ($others !== []) {
+            try {
+                app(ChannelTrackingApiFallbackService::class)->pullForMissingRows($others, $limit, null);
+            } catch (\Throwable) {
+            }
+            $this->pullLabelTrackingFromApis(
+                $others,
+                $limit,
+                app(VeeqoShopifyFulfillmentService::class)
+            );
+        }
+
+        $this->forgetSofOrderRowCaches();
+
+        return $this->labelCreatedNoScanRows();
+    }
+
+    /**
      * Save pulled tracking onto the channel order payload and the local Shopify order cache.
      *
      * @param  array<string, mixed>  $sofRow
@@ -2426,8 +2588,9 @@ class SalesOrderFulfillmentController extends Controller
             }
 
             $sid = trim((string) ($sofRow['shopify_order_id'] ?? ''));
-            if ($sid !== '' && ctype_digit($sid)) {
-                $affected = DB::table('shopify_raw_orders')->where('order_id', (int) $sid)->update($payload);
+            $numericId = $this->shopifyNumericOrderId($sid);
+            if ($numericId !== null) {
+                $affected = DB::table('shopify_raw_orders')->where('order_id', $numericId)->update($payload);
                 if ($affected > 0) {
                     return;
                 }
@@ -3329,10 +3492,9 @@ class SalesOrderFulfillmentController extends Controller
 
         return match ($slug) {
             'ebay1', 'ebay2', 'ebay3' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['NOT_STARTED']),
-            'shein' => $base->whereIn('status', [
-                'Pending',
-                'To Be Shipped',
-            ]),
+            'shein' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['pending', 'to be shipped'])
+                // Shein-fulfilled lines are not warehouse pending.
+                ->whereRaw("LOWER(TRIM(COALESCE(status, ''))) NOT LIKE ?", ['%by shein%']),
             'reverb' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['paid']),
             'aliexpress', 'alibaba' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['WAIT_SELLER_SEND_GOODS']),
             'newegg' => $base->whereIn('status', ['0', 0]),
@@ -3357,7 +3519,26 @@ class SalesOrderFulfillmentController extends Controller
                 $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['TO_COLLECT'])
                     ->orWhereRaw("LOWER(TRIM(COALESCE(status, ''))) LIKE ?", ['%awaiting shipment%']);
             }),
-            'wayfair' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['open']),
+            'wayfair' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['open'])
+                ->when(
+                    Schema::hasColumn('wayfair_daily_data', 'packing_slip_url')
+                    || Schema::hasColumn('wayfair_daily_data', 'carrier_code'),
+                    function (Builder $q) {
+                        // Wayfair keeps status=open after the packing slip / carrier is assigned.
+                        $q->where(function (Builder $inner) {
+                            if (Schema::hasColumn('wayfair_daily_data', 'packing_slip_url')) {
+                                $inner->where(function (Builder $q2) {
+                                    $q2->whereNull('packing_slip_url')->orWhere('packing_slip_url', '');
+                                });
+                            }
+                            if (Schema::hasColumn('wayfair_daily_data', 'carrier_code')) {
+                                $inner->where(function (Builder $q2) {
+                                    $q2->whereNull('carrier_code')->orWhere('carrier_code', '');
+                                });
+                            }
+                        });
+                    }
+                ),
             'bestbuy', 'macy' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(status, ''))) = ?",
                 ['AWAITING_SHIPMENT']

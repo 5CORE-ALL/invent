@@ -8,6 +8,7 @@ return [
     'viewer_emails' => [
         'president@5core.com',
         'hr@5core.com',
+        'tech-support@5core.com',
         'software@5core.com',
         'software5@5core.com',
     ],
@@ -28,6 +29,7 @@ return [
     'editor_emails' => [
         'president@5core.com',
         'hr@5core.com',
+        'tech-support@5core.com',
         'software5@5core.com',
     ],
 

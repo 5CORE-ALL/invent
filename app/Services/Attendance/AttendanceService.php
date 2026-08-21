@@ -33,6 +33,11 @@ class AttendanceService
             throw new \RuntimeException('Clock-in is only available from the desktop app. Mobile and browser clock-in are not allowed.');
         }
 
+        $rawActive = $user->getAttributes()['is_active'] ?? null;
+        if ($rawActive !== null && (int) $rawActive !== 1) {
+            throw new \RuntimeException('This account is inactive. Contact an administrator.');
+        }
+
         $existing = $this->activeSession($user);
         if ($existing) {
             return $existing;

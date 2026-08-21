@@ -67,7 +67,8 @@
                                         @if($o->shopify_order_id)
                                             <span class="badge bg-success" title="Imported">✓ #{{ $o->shopify_order_id }}</span>
                                         @elseif(($o->import_status ?? '') === 'queued')
-                                            <span class="badge bg-info">Queued</span>
+                                            <span class="badge bg-info me-1">Queued</span>
+                                            <button class="btn btn-xs btn-outline-primary btn-push-order" data-id="{{ $o->id }}" title="Push now (skips if already on Shopify)">Push</button>
                                         @elseif(($o->import_status ?? '') === 'import_failed')
                                             <button class="btn btn-xs btn-outline-danger btn-push-order" data-id="{{ $o->id }}" title="Retry push">Retry</button>
                                         @else

@@ -9,8 +9,8 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Hourly: fetch missing tracking numbers for Sales Order Fulfillment
- * (Temu OpenAPI + Veeqo / GOFO / 4Seller labels).
+ * Every 15 minutes: fetch missing tracking numbers for Sales Order Fulfillment
+ * (Temu OpenAPI + Veeqo / GOFO / 4Seller labels for Pending and Label Created).
  */
 class PullSofMissingTracking extends Command
 {

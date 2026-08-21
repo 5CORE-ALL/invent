@@ -679,10 +679,7 @@ class UserController extends Controller
             ], 422);
         }
 
-        $user->is_active = false;
-        $user->deactivated_at = now();
-        $user->save();
-        $user->delete();
+        UserAccountStatus::apply($user, UserAccountStatus::DELETED);
 
         return response()->json([
             'success' => true,
@@ -710,9 +707,7 @@ class UserController extends Controller
             ], 422);
         }
 
-        $user->is_active = false;
-        $user->deactivated_at = now();
-        $user->save();
+        UserAccountStatus::apply($user, UserAccountStatus::INACTIVE);
 
         return response()->json([
             'success' => true,
@@ -764,13 +759,7 @@ class UserController extends Controller
 
         $user = User::withTrashed()->findOrFail($id);
 
-        if ($user->trashed()) {
-            $user->restore();
-        }
-
-        $user->is_active = true;
-        $user->deactivated_at = null;
-        $user->save();
+        UserAccountStatus::apply($user, UserAccountStatus::ACTIVE);
         $user->load(['userRR', 'userSalary']);
 
         return response()->json([
