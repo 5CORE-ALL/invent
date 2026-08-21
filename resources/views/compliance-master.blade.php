@@ -192,19 +192,22 @@
             padding: 4px 0 2px;
             background: #fff;
             border-bottom: 1px solid #e5e7eb;
+            z-index: 3;
         }
 
         .cm-filter-row {
-            position: relative;
-            height: 48px;
-            width: 100%;
+            display: grid;
+            align-items: end;
+            width: max-content;
+            min-width: 100%;
+            min-height: 48px;
+            column-gap: 0;
         }
 
         .cm-filter-cell {
-            position: absolute;
-            top: 0;
             box-sizing: border-box;
             padding: 0 3px;
+            min-width: 0;
             overflow: hidden;
         }
 
@@ -2547,36 +2550,62 @@
             }
 
             function syncComplianceFilterRowToColumns() {
-                if (!complianceTable) return;
                 const toolbar = document.getElementById('cm-compliance-filters-toolbar');
                 const row = document.getElementById('cm-filter-row');
-                if (!toolbar || !row) return;
-                const toolbarRect = toolbar.getBoundingClientRect();
-                complianceTable.getColumns().forEach(function(col) {
-                    const field = col.getField();
-                    if (!field) return;
-                    const cell = row.querySelector('.cm-filter-cell[data-col="' + field + '"]');
-                    const el = col.getElement();
-                    if (!cell || !el) return;
-                    const r = el.getBoundingClientRect();
-                    cell.style.left = Math.round(r.left - toolbarRect.left) + 'px';
-                    cell.style.width = Math.round(r.width) + 'px';
+                const header = document.querySelector('#compliance-tabulator .tabulator-headers')
+                    || document.querySelector('#compliance-tabulator .tabulator-header');
+                if (!toolbar || !row || !header) return false;
+                const cols = header.querySelectorAll(':scope > .tabulator-col, :scope .tabulator-col[tabulator-field]');
+                const seen = [];
+                cols.forEach(function(el) {
+                    const field = el.getAttribute('tabulator-field');
+                    if (!field || seen.some(function(x) { return x.field === field; })) return;
+                    const w = Math.round(el.getBoundingClientRect().width || el.offsetWidth || 0);
+                    if (w <= 0) return;
+                    seen.push({ field: field, width: w, el: el });
                 });
+                if (seen.length === 0) return false;
+
+                seen.forEach(function(col) {
+                    const cell = row.querySelector('.cm-filter-cell[data-col="' + col.field + '"]');
+                    if (cell) row.appendChild(cell);
+                });
+
+                row.style.display = 'grid';
+                row.style.gridTemplateColumns = seen.map(function(col) { return col.width + 'px'; }).join(' ');
+
+                const toolbarRect = toolbar.getBoundingClientRect();
+                const firstColRect = seen[0].el.getBoundingClientRect();
+                const pad = Math.round(firstColRect.left - toolbarRect.left);
+                row.style.transform = 'translateX(' + pad + 'px)';
+                return true;
             }
 
             let complianceFilterScrollBound = false;
+            let complianceFilterSyncTries = 0;
             function bindComplianceFilterScroll() {
                 const holder = document.querySelector('#compliance-tabulator .tabulator-tableholder');
                 const header = document.querySelector('#compliance-tabulator .tabulator-header');
-                if (!holder) return;
                 const apply = function() {
-                    syncComplianceFilterRowToColumns();
+                    if (!syncComplianceFilterRowToColumns() && complianceFilterSyncTries < 25) {
+                        complianceFilterSyncTries += 1;
+                        setTimeout(apply, 80);
+                        return;
+                    }
+                    complianceFilterSyncTries = 0;
                 };
                 if (!complianceFilterScrollBound) {
                     complianceFilterScrollBound = true;
-                    holder.addEventListener('scroll', apply);
+                    if (holder) holder.addEventListener('scroll', apply);
                     if (header) header.addEventListener('scroll', apply);
                     window.addEventListener('resize', apply);
+                    if (typeof ResizeObserver !== 'undefined') {
+                        const headerEl = document.querySelector('#compliance-tabulator .tabulator-header');
+                        if (headerEl) {
+                            const ro = new ResizeObserver(apply);
+                            ro.observe(headerEl);
+                        }
+                    }
                 }
                 apply();
             }
