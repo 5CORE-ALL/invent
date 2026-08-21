@@ -48,14 +48,12 @@
             color: #1e293b;
             font-weight: 600;
             border-bottom: 1px solid #cbd5e1;
-            overflow: visible !important;
         }
 
         #compliance-tabulator .tabulator-header .tabulator-col {
             border-right: 1px solid #cbd5e1;
-            height: 108px !important;
-            min-height: 108px !important;
-            overflow: visible;
+            height: 76px !important;
+            min-height: 76px !important;
         }
 
         #compliance-tabulator .tabulator-header .tabulator-col-content {
@@ -104,114 +102,7 @@
         }
 
         #compliance-tabulator .tabulator-header .tabulator-col.cm-tabulator-cb-header {
-            height: 108px !important;
-        }
-
-        #compliance-tabulator .tabulator-header .tabulator-col:not(.cm-has-col-filter):not(.cm-tabulator-cb-header) .tabulator-col-content {
-            padding-top: 28px;
-        }
-
-        #compliance-tabulator .tabulator-header .tabulator-col.cm-has-col-filter .tabulator-col-title {
-            writing-mode: horizontal-tb !important;
-            transform: none !important;
-            height: 100% !important;
-            width: 100%;
-            display: block;
-            white-space: normal;
-        }
-
-        #compliance-tabulator .cm-col-head {
-            display: flex;
-            flex-direction: column;
-            align-items: stretch;
-            justify-content: flex-start;
-            height: 100%;
-            min-width: 0;
-            gap: 2px;
-        }
-
-        #compliance-tabulator .cm-col-head-filter {
-            flex: 0 0 auto;
-            min-width: 0;
-            padding: 0 1px;
-        }
-
-        #compliance-tabulator .cm-col-head-title {
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            transform: rotate(180deg);
-            flex: 1 1 auto;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            white-space: nowrap;
-            font-size: 11px;
-            font-weight: 600;
-            line-height: 1.15;
-            color: #334155;
-            margin: 0 auto;
-        }
-
-        #compliance-tabulator .cm-col-head-filter .form-control-sm,
-        #compliance-tabulator .cm-col-head-filter .form-select-sm {
-            font-size: 10px;
-            padding: 0.12rem 0.2rem;
-            width: 100%;
-            min-width: 0;
-            height: 24px;
-        }
-
-        #compliance-tabulator .cm-col-head-filter .cm-field-filter {
-            font-weight: 600;
-        }
-
-        #compliance-tabulator .cm-col-head-filter .cm-field-filter.cm-filter-req {
-            background-color: #dc3545 !important;
-            border-color: #dc3545 !important;
-            color: #fff !important;
-        }
-
-        #compliance-tabulator .cm-col-head-filter .cm-field-filter.cm-filter-na {
-            background-color: #0d6efd !important;
-            border-color: #0d6efd !important;
-            color: #fff !important;
-        }
-
-        #compliance-tabulator .cm-col-head-filter .cm-field-filter option,
-        #compliance-tabulator .cm-col-head-filter .cm-field-filter option[value="all"] {
-            background-color: #fff !important;
-            color: #212529 !important;
-            font-weight: 600;
-        }
-
-        #compliance-tabulator .cm-col-head-filter .cm-field-filter option.cm-opt-req,
-        #compliance-tabulator .cm-col-head-filter .cm-field-filter option[value="req"] {
-            background-color: #dc3545 !important;
-            color: #fff !important;
-        }
-
-        #compliance-tabulator .cm-col-head-filter .cm-field-filter option.cm-opt-na,
-        #compliance-tabulator .cm-col-head-filter .cm-field-filter option[value="na"] {
-            background-color: #0d6efd !important;
-            color: #fff !important;
-        }
-
-        #compliance-tabulator .cm-col-head-filter .cm-status-filter-wrap--toolbar .cm-status-filter-trigger {
-            color: #1e293b;
-            background: #fff;
-            border: 1px solid #cbd5e1;
-            padding: 2px 4px;
-            border-radius: 5px;
-            gap: 4px;
-            font-size: 10px;
-            width: 100%;
-            height: 24px;
-            justify-content: space-between;
-        }
-
-        #compliance-tabulator .cm-col-head-filter .cm-status-filter-wrap--toolbar .cm-status-filter-trigger:hover {
-            background: #f8fafc;
-            border-color: #94a3b8;
+            height: 76px !important;
         }
 
         #compliance-tabulator .tabulator-cell.cm-compliance-field-col {
@@ -297,22 +188,23 @@
         .cm-compliance-filters-toolbar {
             flex-shrink: 0;
             overflow: hidden;
+            position: relative;
             padding: 4px 0 2px;
+            background: #fff;
+            border-bottom: 1px solid #e5e7eb;
         }
 
         .cm-filter-row {
-            display: flex;
-            flex-wrap: nowrap;
-            align-items: flex-end;
-            width: max-content;
-            min-width: 100%;
+            position: relative;
+            height: 48px;
+            width: 100%;
         }
 
         .cm-filter-cell {
-            flex: 0 0 auto;
+            position: absolute;
+            top: 0;
             box-sizing: border-box;
-            padding: 0 2px;
-            min-width: 0;
+            padding: 0 3px;
             overflow: hidden;
         }
 
@@ -1315,6 +1207,72 @@
                                 <button class="btn btn-outline-secondary btn-sm" type="button" id="clearSearch">Clear</button>
                             </div>
                         </div>
+                        <div id="cm-compliance-filters-toolbar" class="cm-compliance-filters-toolbar">
+                            <div id="cm-filter-row" class="cm-filter-row">
+                                <div class="cm-filter-cell" data-col="image_path"></div>
+                                <div class="cm-filter-cell" data-col="Parent">
+                                    <label class="form-label small mb-0 text-secondary" for="parentSearch">Parent <span id="parentCount" class="text-danger fw-bold">(0)</span></label>
+                                    <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Parent" autocomplete="off">
+                                </div>
+                                <div class="cm-filter-cell" data-col="SKU">
+                                    <label class="form-label small mb-0 text-secondary" for="skuSearch">SKU <span id="skuCount" class="text-danger fw-bold">(0)</span></label>
+                                    <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="SKU" autocomplete="off">
+                                </div>
+                                <div class="cm-filter-cell" data-col="_cb"></div>
+                                <div class="cm-filter-cell cm-filter-cell--status" data-col="status">
+                                    <span class="form-label small mb-0 text-secondary d-block">Status</span>
+                                    <div class="cm-status-filter-wrap cm-status-filter-wrap--toolbar mt-0">
+                                        <button type="button" class="cm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox" id="cmStatusFilterTrigger">
+                                            <span class="cm-status-filter-trigger-label">All</span>
+                                            <span style="font-size:9px;opacity:0.75;" aria-hidden="true">▼</span>
+                                        </button>
+                                        <input type="hidden" id="filterComplianceStatus" value="all" autocomplete="off">
+                                        <div class="cm-status-filter-menu" role="listbox" id="cmStatusFilterMenu">
+                                            <button type="button" class="cm-status-filter-item" data-value="all" role="option">
+                                                <span class="cm-status-filter-check" aria-hidden="true">✓</span>
+                                                <span>All</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="missing" role="option">
+                                                <span class="cm-status-filter-item-spacer"></span>
+                                                <span>Missing</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="active" role="option">
+                                                <span class="cm-status-marble cm-status-marble--active"></span>
+                                                <span>Active</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="inactive" role="option">
+                                                <span class="cm-status-marble cm-status-marble--inactive"></span>
+                                                <span>Inactive</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="DC" role="option">
+                                                <span class="cm-status-marble cm-status-marble--dc"></span>
+                                                <span>DC</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="upcoming" role="option">
+                                                <span class="cm-status-marble cm-status-marble--upcoming"></span>
+                                                <span>Upcoming</span>
+                                            </button>
+                                            <button type="button" class="cm-status-filter-item" data-value="2BDC" role="option">
+                                                <span class="cm-status-marble cm-status-marble--2bdc"></span>
+                                                <span>2BDC</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="cm-filter-cell" data-col="shopify_inv"></div>
+                                @foreach ($__cmFields as $fkey => $flabel)
+                                    <div class="cm-filter-cell" data-col="{{ $fkey }}">
+                                        <label class="form-label small mb-0 text-secondary" for="{{ $__cmFilterIds[$fkey] }}">{{ $flabel }} <span id="{{ $fkey }}MissingCount" class="text-danger fw-bold">(0)</span></label>
+                                        <select id="{{ $__cmFilterIds[$fkey] }}" class="form-select form-select-sm cm-field-filter" data-field="{{ $fkey }}">
+                                            <option value="all">All Data</option>
+                                            <option value="req" class="cm-opt-req">REQ</option>
+                                            <option value="na" class="cm-opt-na">N/A</option>
+                                        </select>
+                                    </div>
+                                @endforeach
+                                <div class="cm-filter-cell" data-col="_actions"></div>
+                            </div>
+                        </div>
                         <div id="compliance-tabulator" class="cm-tabulator-host" aria-label="Compliance data grid"></div>
 
                         <div id="rainbow-loader" class="rainbow-loader">
@@ -1596,7 +1554,7 @@
             }
 
             function syncComplianceFieldFilterStyles() {
-                document.querySelectorAll('#compliance-tabulator .cm-field-filter').forEach(function(sel) {
+                document.querySelectorAll('#cm-compliance-filters-toolbar .cm-field-filter').forEach(function(sel) {
                     sel.classList.remove('cm-filter-req', 'cm-filter-req-ok', 'cm-filter-na');
                     if (sel.value === 'req') sel.classList.add('cm-filter-req');
                     else if (sel.value === 'na') sel.classList.add('cm-filter-na');
@@ -2334,7 +2292,7 @@
 
             function refreshCmStatusFilterUI() {
                 const hidden = document.getElementById('filterComplianceStatus');
-                const wrap = document.querySelector('#compliance-tabulator .cm-status-filter-wrap');
+                const wrap = document.querySelector('#cm-compliance-filters-toolbar .cm-status-filter-wrap');
                 if (!hidden || !wrap) return;
                 const trigger = wrap.querySelector('.cm-status-filter-trigger');
                 const labelEl = trigger && trigger.querySelector('.cm-status-filter-trigger-label');
@@ -2362,12 +2320,12 @@
 
                 document.addEventListener('click', function(e) {
                     const wrap = e.target.closest('.cm-status-filter-wrap');
-                    const host = document.getElementById('compliance-tabulator');
+                    const toolbar = document.getElementById('cm-compliance-filters-toolbar');
 
                     const item = e.target.closest('.cm-status-filter-item');
                     const trigger = e.target.closest('.cm-status-filter-trigger');
 
-                    if (item && wrap && host && host.contains(wrap)) {
+                    if (item && wrap && toolbar && toolbar.contains(wrap)) {
                         e.preventDefault();
                         e.stopPropagation();
                         const val = item.getAttribute('data-value');
@@ -2382,7 +2340,7 @@
                         return;
                     }
 
-                    if (trigger && wrap && host && host.contains(wrap)) {
+                    if (trigger && wrap && toolbar && toolbar.contains(wrap)) {
                         e.preventDefault();
                         e.stopPropagation();
                         const wasOpen = wrap.classList.contains('is-open');
@@ -2454,52 +2412,6 @@
                 graph: 'Graph'
             };
 
-            const CM_FIELD_FILTER_IDS = {
-                battery: 'filterBattery',
-                wireless: 'filterWireless',
-                electric: 'filterElectric',
-                gcc: 'filterGcc',
-                rohs: 'filterRohs',
-                blanket: 'filterBlanket',
-                bluetooth: 'filterBluetooth',
-                logo: 'filterLogo',
-                graph: 'filterGraph'
-            };
-
-            function cmColHeadHtml(titleHtml, filterHtml) {
-                const wrap = document.createElement('div');
-                wrap.className = 'cm-col-head';
-                wrap.innerHTML = '<div class="cm-col-head-filter">' + filterHtml + '</div>' +
-                    '<div class="cm-col-head-title">' + titleHtml + '</div>';
-                return wrap;
-            }
-
-            function cmFieldFilterSelectHtml(fieldKey, filterId) {
-                return '<select id="' + filterId + '" class="form-select form-select-sm cm-field-filter" data-field="' + fieldKey + '">' +
-                    '<option value="all">All Data</option>' +
-                    '<option value="req" class="cm-opt-req">REQ</option>' +
-                    '<option value="na" class="cm-opt-na">N/A</option>' +
-                    '</select>';
-            }
-
-            function cmStatusFilterHeaderHtml() {
-                return '<div class="cm-status-filter-wrap cm-status-filter-wrap--toolbar mt-0">' +
-                    '<button type="button" class="cm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox" id="cmStatusFilterTrigger">' +
-                    '<span class="cm-status-filter-trigger-label">All</span>' +
-                    '<span style="font-size:9px;opacity:0.75;" aria-hidden="true">▼</span>' +
-                    '</button>' +
-                    '<input type="hidden" id="filterComplianceStatus" value="all" autocomplete="off">' +
-                    '<div class="cm-status-filter-menu" role="listbox" id="cmStatusFilterMenu">' +
-                    '<button type="button" class="cm-status-filter-item" data-value="all" role="option"><span class="cm-status-filter-check" aria-hidden="true">✓</span><span>All</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="missing" role="option"><span class="cm-status-filter-item-spacer"></span><span>Missing</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="active" role="option"><span class="cm-status-marble cm-status-marble--active"></span><span>Active</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="inactive" role="option"><span class="cm-status-marble cm-status-marble--inactive"></span><span>Inactive</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="DC" role="option"><span class="cm-status-marble cm-status-marble--dc"></span><span>DC</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="upcoming" role="option"><span class="cm-status-marble cm-status-marble--upcoming"></span><span>Upcoming</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="2BDC" role="option"><span class="cm-status-marble cm-status-marble--2bdc"></span><span>2BDC</span></button>' +
-                    '</div></div>';
-            }
-
             function getComplianceTabulatorColumnDefinitions() {
                 const cols = [
                     {
@@ -2519,16 +2431,9 @@
                         title: 'Parent',
                         field: 'Parent',
                         headerSort: false,
-                        headerClass: 'cm-has-col-filter',
                         cssClass: 'compliance-parent-col',
                         minWidth: 56,
                         widthGrow: 2,
-                        titleFormatter: function() {
-                            return cmColHeadHtml(
-                                'Parent <span id="parentCount" class="text-danger fw-bold">(0)</span>',
-                                '<input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Parent" autocomplete="off">'
-                            );
-                        },
                         formatter: function(cell) {
                             const item = cell.getRow().getData();
                             const raw = item.Parent != null && item.Parent !== '' ? String(item.Parent) : '';
@@ -2540,15 +2445,8 @@
                         title: 'SKU',
                         field: 'SKU',
                         headerSort: false,
-                        headerClass: 'cm-has-col-filter',
                         minWidth: 56,
                         widthGrow: 2,
-                        titleFormatter: function() {
-                            return cmColHeadHtml(
-                                'SKU <span id="skuCount" class="text-danger fw-bold">(0)</span>',
-                                '<input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="SKU" autocomplete="off">'
-                            );
-                        },
                         formatter: function(cell) {
                             const item = cell.getRow().getData();
                             const v = item.SKU != null && String(item.SKU) !== '' ? String(item.SKU) : '';
@@ -2583,14 +2481,10 @@
                         title: 'STATUS',
                         field: 'status',
                         headerSort: false,
-                        headerClass: 'cm-has-col-filter',
                         cssClass: 'compliance-status-col',
                         hozAlign: 'center',
                         minWidth: 56,
                         widthGrow: 1,
-                        titleFormatter: function() {
-                            return cmColHeadHtml('Status', cmStatusFilterHeaderHtml());
-                        },
                         formatter: function(cell) {
                             return getComplianceStatusCellHtml(cell.getRow().getData());
                         }
@@ -2618,18 +2512,10 @@
                         title: label,
                         field: fk,
                         headerSort: false,
-                        headerClass: 'cm-has-col-filter',
                         hozAlign: 'center',
                         minWidth: 52,
                         widthGrow: 1,
                         cssClass: 'cm-compliance-field-col',
-                        titleFormatter: function() {
-                            const fid = CM_FIELD_FILTER_IDS[fk] || ('filter' + fk);
-                            return cmColHeadHtml(
-                                label + ' <span id="' + fk + 'MissingCount" class="text-danger fw-bold">(0)</span>',
-                                cmFieldFilterSelectHtml(fk, fid)
-                            );
-                        },
                         formatter: function(cell) {
                             const item = cell.getRow().getData();
                             if (complianceRowHasParentKeyword(item)) {
@@ -2660,6 +2546,41 @@
                 return cols;
             }
 
+            function syncComplianceFilterRowToColumns() {
+                if (!complianceTable) return;
+                const toolbar = document.getElementById('cm-compliance-filters-toolbar');
+                const row = document.getElementById('cm-filter-row');
+                if (!toolbar || !row) return;
+                const toolbarRect = toolbar.getBoundingClientRect();
+                complianceTable.getColumns().forEach(function(col) {
+                    const field = col.getField();
+                    if (!field) return;
+                    const cell = row.querySelector('.cm-filter-cell[data-col="' + field + '"]');
+                    const el = col.getElement();
+                    if (!cell || !el) return;
+                    const r = el.getBoundingClientRect();
+                    cell.style.left = Math.round(r.left - toolbarRect.left) + 'px';
+                    cell.style.width = Math.round(r.width) + 'px';
+                });
+            }
+
+            let complianceFilterScrollBound = false;
+            function bindComplianceFilterScroll() {
+                const holder = document.querySelector('#compliance-tabulator .tabulator-tableholder');
+                const header = document.querySelector('#compliance-tabulator .tabulator-header');
+                if (!holder) return;
+                const apply = function() {
+                    syncComplianceFilterRowToColumns();
+                };
+                if (!complianceFilterScrollBound) {
+                    complianceFilterScrollBound = true;
+                    holder.addEventListener('scroll', apply);
+                    if (header) header.addEventListener('scroll', apply);
+                    window.addEventListener('resize', apply);
+                }
+                apply();
+            }
+
             function renderTable(data) {
                 const d = Array.isArray(data) ? data : [];
                 if (typeof Tabulator === 'undefined') {
@@ -2687,21 +2608,24 @@
                             }
                         },
                         tableBuilt: function() {
-                            setupSearch();
-                            setupComplianceStatusFilter();
-                            refreshCmStatusFilterUI();
-                            updateCounts();
-                            syncComplianceFieldFilterStyles();
+                            requestAnimationFrame(function() {
+                                syncComplianceFilterRowToColumns();
+                                bindComplianceFilterScroll();
+                            });
                         },
                         renderComplete: function() {
-                            setupSearch();
-                            setupComplianceStatusFilter();
+                            syncComplianceFilterRowToColumns();
+                            bindComplianceFilterScroll();
                         },
+                        columnResized: function() {
+                            syncComplianceFilterRowToColumns();
+                        }
                     });
                     syncComplianceSelectAllCheckbox();
                 } else {
                     complianceTable.replaceData(d).then(function() {
                         syncComplianceSelectAllCheckbox();
+                        syncComplianceFilterRowToColumns();
                     });
                 }
             }
@@ -3042,9 +2966,6 @@
 
                 complianceSearchSetupDone = true;
 
-                parentSearch.addEventListener('mousedown', function(e) { e.stopPropagation(); });
-                skuSearch.addEventListener('mousedown', function(e) { e.stopPropagation(); });
-
                 parentSearch.addEventListener('input', function() {
                     applyFilters();
                 });
@@ -3083,9 +3004,7 @@
                 });
 
                 filterIds.forEach(function(fid) {
-                    const fel = document.getElementById(fid);
-                    fel.addEventListener('mousedown', function(e) { e.stopPropagation(); });
-                    fel.addEventListener('change', function() {
+                    document.getElementById(fid).addEventListener('change', function() {
                         syncComplianceFieldFilterStyles();
                         applyFilters();
                     });
