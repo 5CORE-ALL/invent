@@ -1240,7 +1240,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-pending-pane" role="tabpanel" aria-labelledby="sof-pending-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Pending / unfulfilled orders in the selected date range.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Orders still waiting for a shipping label (no tracking number yet) in the selected date range.</p>
                             <div id="sof-pending-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
