@@ -727,7 +727,7 @@
             if (parseFloat(sp2) > parseFloat(ap2)) {
                 return { kind: 'increase', color: '#28a745', title: 'Increase vs channel price' };
             }
-            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches channel price)' };
+            return null;
         }
 
         function sheinStdPrcChangeDotHtml(stdPrc, comparePrice) {
@@ -1619,9 +1619,7 @@
                             const channelPrice = parseFloat(d.special_offer || d.original_price || 0) || 0;
                             const comparePrice = lmpPrice > 0 ? lmpPrice : channelPrice;
                             const dot = sheinStdPrcChangeDotHtml(std, comparePrice);
-                            if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + '</span>';
-                            }
+
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
                         }
                     },
@@ -2198,6 +2196,19 @@
             const AE_COLUMN_VIS_CHANNEL = 'shein_pricing';
 
             function aeBuildColumnDropdown() {
+                if (window.AnalyticsColVis) {
+                    window.AnalyticsColVis.install({
+                        getTable: function() { return table; },
+                        menuId: 'ae-column-dropdown-menu',
+                        storageKey: 'shein_col_cats_v1',
+                        skipFields: ['_ae_select', '_select'],
+                        onSave: function() {
+                            if (typeof aeSaveColumnVisibilityToServer === 'function') aeSaveColumnVisibilityToServer();
+                        }
+                    });
+                    window.AnalyticsColVis.rebuild(null, 'ae-column-dropdown-menu');
+                    return;
+                }
                 const menu = document.getElementById('ae-column-dropdown-menu');
                 if (!menu) return;
                 menu.innerHTML = '';

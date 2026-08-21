@@ -21,7 +21,15 @@
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
-        
+        .tabulator .tabulator-tableholder {
+            overflow-x: auto !important;
+        }
+        .tabulator .tabulator-row .tabulator-cell {
+            white-space: nowrap !important;
+            text-overflow: clip !important;
+        }
+        @include('partials.analytics-column-visibility', ['colVisPart' => 'css'])
+
         /* Vertical column headers */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
@@ -1903,6 +1911,8 @@
                 });
             }
             
+            @include('partials.tabulator-column-autofit')
+            @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
             table = new Tabulator("#ebay2op-table", {
                 ajaxURL: "/ebay2op-data?open_box_only=1",
                 ajaxResponse: function(url, params, response) {
@@ -1927,7 +1937,8 @@
                     return response.data || [];
                 },
                 ajaxSorting: false,
-                layout: "fitDataStretch",
+                layout: "fitData",
+                layoutColumnsOnNewData: true,
                 pagination: true,
                 paginationSize: 100,
                 paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -4661,6 +4672,19 @@
 
             // Build Column Visibility Dropdown (optional savedVisibility from same fetch as apply)
             function buildColumnDropdown(savedVisibility) {
+                if (window.AnalyticsColVis) {
+                    window.AnalyticsColVis.install({
+                        getTable: function() { return table; },
+                        menuId: 'column-dropdown-menu',
+                        storageKey: 'ebay2op_col_cats_v1',
+                        skipFields: ['_select'],
+                        onSave: function() {
+                            if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                        }
+                    });
+                    window.AnalyticsColVis.rebuild(savedVisibility || null);
+                    return;
+                }
                 const menu = document.getElementById("column-dropdown-menu");
                 menu.innerHTML = '';
 

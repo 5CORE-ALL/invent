@@ -1479,6 +1479,19 @@
 
         // Column dropdown (icon-only eye; Show All lives inside the menu — same as /ebay-tabulator-view)
         function buildColumnDropdown() {
+            if (window.AnalyticsColVis) {
+                window.AnalyticsColVis.install({
+                    getTable: function() { return table; },
+                    menuId: 'column-dropdown-menu',
+                    storageKey: 'pls_col_cats_v1',
+                    skipFields: ['_select'],
+                    onSave: function() {
+                        if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                    }
+                });
+                window.AnalyticsColVis.rebuild();
+                return;
+            }
             let html = '<li><a class="dropdown-item py-1" href="#" id="show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a></li>';
             html += '<li><hr class="dropdown-divider"></li>';
             table.getColumns().forEach(col => {

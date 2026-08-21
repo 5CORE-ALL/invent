@@ -176,6 +176,14 @@
         #pefCvrVsCpnModal .table thead.table-light th {
             background: #ede9fe;
         }
+        .tabulator .tabulator-tableholder {
+            overflow-x: auto !important;
+        }
+        .tabulator .tabulator-row .tabulator-cell {
+            white-space: nowrap !important;
+            text-overflow: clip !important;
+        }
+        @include('partials.analytics-column-visibility', ['colVisPart' => 'css'])
 @endif
 
 @if($amazonPefPromoPart === 'buttons' || $amazonPefPromoPart === 'all')
@@ -362,6 +370,8 @@
 @endif
 
 @if($amazonPefPromoPart === 'script' || $amazonPefPromoPart === 'all')
+        @include('partials.tabulator-column-autofit')
+        @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
         // ==================== Dil vs PRMT / CVR vs CPN (same as /pricing-errors-fix) ====================
         const PEF_DIL_PRMT_DEFAULTS = [
             { key: '0-10', label: '0–10%', prmt: 10 },

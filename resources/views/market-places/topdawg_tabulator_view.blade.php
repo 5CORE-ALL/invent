@@ -362,7 +362,7 @@
         if (parseFloat(sp2) > parseFloat(ap2)) {
             return { kind: 'increase', color: '#28a745', title: 'Increase vs channel price' };
         }
-        return { kind: 'hold', color: '#ffc107', title: 'Hold (matches channel price)' };
+        return null;
     }
 
     function tdStdPrcChangeDotHtml(stdPrc, comparePrice) {
@@ -996,9 +996,7 @@
                         if (!value || std <= 0) return '';
                         const channelPrice = parseFloat(d['TD Price'] || d.price || 0) || 0;
                         const dot = tdStdPrcChangeDotHtml(std, channelPrice);
-                        if (channelPrice > 0 && channelPrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + '</span>';
-                        }
+
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                             dot + ('$' + std.toFixed(2)) + '</span>';
                     }},
@@ -1173,6 +1171,20 @@
         const TD_TABULATOR_COLUMN_VISIBILITY_URL = '{{ url('/tabulator-column-visibility') }}';
 
         function tdBuildColumnDropdown() {
+            if (window.AnalyticsColVis) {
+                window.AnalyticsColVis.install({
+                    getTable: function() { return table; },
+                    menuId: 'column-dropdown-menu',
+                    storageKey: 'topdawg_col_cats_v1',
+                    skipFields: ['_select'],
+                    onSave: function() {
+                        if (typeof tdSaveColumnVisibilityToServer === 'function') tdSaveColumnVisibilityToServer();
+                        else if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                    }
+                });
+                window.AnalyticsColVis.rebuild();
+                return;
+            }
             let html = '';
             table.getColumns().forEach(col => {
                 const field = col.getField();

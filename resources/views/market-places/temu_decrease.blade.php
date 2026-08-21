@@ -2401,7 +2401,7 @@
         if (parseFloat(sp2) > parseFloat(ap2)) {
             return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
         }
-        return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+        return null;
     }
 
     function temu1StdPrcChangeDotHtml(stdPrc, comparePrice) {
@@ -4295,11 +4295,12 @@
             ajaxURL: temuDecreaseDataUrl,
             ajaxRequestTimeout: 180000,
             ajaxSorting: false,
-            layout: "fitDataStretch",
+            layout: "fitData",
+            layoutColumnsOnNewData: true,
             // Drag column edges to widen/narrow (same as ebay / other Tabulator pages)
             columnDefaults: {
                 resizable: true,
-                minWidth: 40
+                minWidth: 64
             },
             pagination: true,
             paginationSize: 100,
@@ -4685,6 +4686,7 @@
                 {
                     title: "Temu Price",
                     field: "temu_price_display",
+                    minWidth: 90,
                     hozAlign: "center",
                     sorter: "number",
                     headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
@@ -4709,6 +4711,7 @@
                     title: "Temu R Price",
                     field: "temu_price",
                     hozAlign: "center",
+                    minWidth: 86,
                     sorter: "number",
                     headerTooltip: "Normal Temu price (base + $2.99 when base ≤ $26.99)",
                     formatter: function(cell) {
@@ -4766,6 +4769,7 @@
                     title: "S Profit",
                     field: "s_profit",
                     hozAlign: "center",
+                    minWidth: 88,
                     sorter: "number",
                     headerTooltip: "S Profit = S Recovery × marketplace% − LP − Temu Ship",
                     formatter: function(cell) {
@@ -4780,6 +4784,7 @@
                     title: "Base Price",
                     field: "base_price",
                     hozAlign: "center",
+                    minWidth: 92,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue());
@@ -4806,6 +4811,7 @@
                     title: "GROI %",
                     field: "roi_percent",
                     hozAlign: "center",
+                    minWidth: 80,
                     sorter: "number",
                     headerTooltip: "GROI% = Gpft / LP. Gpft = (Temu R Price × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
@@ -4821,6 +4827,7 @@
                     title: "GPRFT %",
                     field: "profit_percent",
                     hozAlign: "center",
+                    minWidth: 80,
                     // Hidden by default — users can re-enable via the Col dropdown
                     // (persists in channel_tabulator_column_settings as 'temu_decrease').
                     // GPRFT badge in the summary stats still reflects the underlying data.
@@ -4971,6 +4978,7 @@
                     title: "LMP",
                     field: "lmp",
                     hozAlign: "center",
+                    minWidth: 88,
                     sorter: "number",
                     headerSort: true,
                     formatter: function(cell) {
@@ -5038,6 +5046,7 @@
                     title: "Diff",
                     field: "lmp_diff_pct",
                     hozAlign: "center",
+                    minWidth: 84,
                     width: 70,
                     headerTooltip: "S PRC vs LMP: (LMP − S PRC) / LMP. Green = S PRC below LMP, Red = S PRC above LMP.",
                     headerSortStartingDir: "desc",

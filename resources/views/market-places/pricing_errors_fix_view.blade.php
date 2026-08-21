@@ -2953,8 +2953,8 @@
                         }
                         const price = Number(d.price) || 0;
                         const lmp = Number(d.lmp) || 0;
-                        let color = '#ffc107';
-                        let tip = 'Hold';
+                        let color = '';
+                        let tip = 'Standard Price';
                         if (price > 0) {
                             const s2 = std.toFixed(2);
                             const p2 = price.toFixed(2);
@@ -2964,8 +2964,6 @@
                             } else if (parseFloat(s2) > parseFloat(p2)) {
                                 color = '#28a745';
                                 tip = 'Increase vs channel price';
-                            } else {
-                                tip = 'Hold (matches channel price)';
                             }
                         }
                         // Red triangle when LMP < STD PRC for this channel
@@ -2975,10 +2973,13 @@
                                 + lmp.toFixed(2) + ') is lower than Standard Price ($' + std.toFixed(2)
                                 + ') for this channel"></i>'
                             : '';
+                        const dotHtml = color
+                            ? '<span class="pef-std-prc-dot" style="background:' + color + ';"></span>'
+                            : '';
                         return '<span class="pef-std-prc-cell" title="' + tip.replace(/"/g, '&quot;')
                             + ' — SP (Standard Price)">'
                             + alertHtml
-                            + '<span class="pef-std-prc-dot" style="background:' + color + ';"></span>'
+                            + dotHtml
                             + std.toFixed(2)
                             + '</span>';
                     },

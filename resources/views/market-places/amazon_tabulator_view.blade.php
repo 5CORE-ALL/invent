@@ -1305,7 +1305,7 @@
             const ap = parseFloat(amazonPrice) || 0;
             if (sp <= 0) return null;
             if (ap <= 0) {
-                return { kind: 'hold', color: '#ffc107', title: 'Hold' };
+                return null;
             }
             const sp2 = sp.toFixed(2);
             const ap2 = ap.toFixed(2);
@@ -1315,7 +1315,7 @@
             if (parseFloat(sp2) > parseFloat(ap2)) {
                 return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
             }
-            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+            return null;
         }
 
         function amazonSpriceChangeDotHtml(sprice, amazonPrice, sku) {

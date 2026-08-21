@@ -1651,7 +1651,7 @@
                 if (parseFloat(sp2) > parseFloat(ap2)) {
                     return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
                 }
-                return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+                return null;
             }
 
             function dwsStdPrcChangeDotHtml(stdPrc, comparePrice) {
@@ -2152,9 +2152,7 @@
                             const channelPrice = parseFloat(d.self_pick_price || d.price || 0) || 0;
                             const comparePrice = amzPrice > 0 ? amzPrice : channelPrice;
                             const dot = dwsStdPrcChangeDotHtml(std, comparePrice);
-                            if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + '</span>';
-                            }
+
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
                         }
                     },
@@ -2684,6 +2682,19 @@
              *   show() / hide() the column, then saveColumnVisibilityToServer().
              */
             function buildColumnDropdown() {
+                if (window.AnalyticsColVis) {
+                    window.AnalyticsColVis.install({
+                        getTable: function() { return table; },
+                        menuId: 'column-dropdown-menu',
+                        storageKey: 'doba_withoutship_col_cats_v1',
+                        skipFields: ['_select', 'sl_no'],
+                        onSave: function() {
+                            if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                        }
+                    });
+                    window.AnalyticsColVis.rebuild();
+                    return;
+                }
                 const menu = document.getElementById("column-dropdown-menu");
                 if (!menu) return;
 

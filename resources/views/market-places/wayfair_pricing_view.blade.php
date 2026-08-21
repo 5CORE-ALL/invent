@@ -329,7 +329,7 @@
             if (parseFloat(sp2) > parseFloat(ap2)) {
                 return { kind: 'increase', color: '#28a745', title: 'Increase vs channel price' };
             }
-            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches channel price)' };
+            return null;
         }
 
         function wfStdPrcChangeDotHtml(stdPrc, comparePrice) {
@@ -1171,6 +1171,20 @@
 
         function wfBuildColumnDropdown() {
             if (!table) return;
+            if (window.AnalyticsColVis) {
+                window.AnalyticsColVis.install({
+                    getTable: function() { return table; },
+                    menuId: 'wf-column-dropdown-menu',
+                    storageKey: 'wayfair_col_cats_v1',
+                    skipFields: ['_wf_select', '_select'],
+                    onSave: function() {
+                        if (typeof wfSaveColumnVisibilityToServer === 'function') wfSaveColumnVisibilityToServer();
+                        else if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                    }
+                });
+                window.AnalyticsColVis.rebuild(null, 'wf-column-dropdown-menu');
+                return;
+            }
             const menu = document.getElementById('wf-column-dropdown-menu');
             if (!menu) return;
             let html = '';
@@ -1460,10 +1474,7 @@
                             if (!value || std <= 0) return '';
                             const channelPrice = parseFloat(d.price || d['Price'] || 0) || 0;
                             const dot = wfStdPrcChangeDotHtml(std, channelPrice);
-                            if (channelPrice > 0 && channelPrice.toFixed(2) === std.toFixed(2)) {
-                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                    dot + '</span>';
-                            }
+
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                                 dot + ('$' + std.toFixed(2)) + '</span>';
                         }

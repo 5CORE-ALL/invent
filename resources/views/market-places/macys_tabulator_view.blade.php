@@ -488,7 +488,7 @@
         if (parseFloat(sp2) > parseFloat(ap2)) {
             return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
         }
-        return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+        return null;
     }
 
     function macysStdPrcChangeDotHtml(stdPrc, comparePrice) {
@@ -1884,7 +1884,8 @@
         table = new Tabulator("#macys-table", {
             ajaxURL: "/macys-data-json",
             ajaxSorting: false,
-            layout: "fitColumns",
+            layout: "fitData",
+            layoutColumnsOnNewData: true,
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [25, 50, 100, 200, true],
@@ -2949,6 +2950,19 @@
 
         // Build Column Visibility Dropdown
         function buildColumnDropdown() {
+            if (window.AnalyticsColVis) {
+                window.AnalyticsColVis.install({
+                    getTable: function() { return table; },
+                    menuId: 'column-dropdown-menu',
+                    storageKey: 'macys_col_cats_v1',
+                    skipFields: ['_select'],
+                    onSave: function() {
+                        if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                    }
+                });
+                window.AnalyticsColVis.rebuild();
+                return;
+            }
             const columns = table.getColumns();
             let html = `<li>
                     <button type="button" id="show-all-columns-item" class="dropdown-item fw-bold">

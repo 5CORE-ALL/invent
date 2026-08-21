@@ -1710,6 +1710,19 @@
 
         function frBuildColumnDropdown() {
             if (!table) return;
+            if (window.AnalyticsColVis) {
+                window.AnalyticsColVis.install({
+                    getTable: function() { return table; },
+                    menuId: 'fr-column-dropdown-menu',
+                    storageKey: 'faire_col_cats_v1',
+                    skipFields: ['_fr_select', '_select'],
+                    onSave: function() {
+                        if (typeof frSaveColumnVisibilityToServer === 'function') frSaveColumnVisibilityToServer();
+                    }
+                });
+                window.AnalyticsColVis.rebuild(null, 'fr-column-dropdown-menu');
+                return;
+            }
             const menu = document.getElementById('fr-column-dropdown-menu');
             if (!menu) return;
             let html = '';

@@ -547,6 +547,7 @@
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown"
+                            data-bs-auto-close="outside"
                             data-bs-display="static" aria-expanded="false"
                             title="Columns">
                             <i class="fa fa-eye"></i>
@@ -782,7 +783,7 @@
         if (parseFloat(sp2) > parseFloat(ap2)) {
             return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
         }
-        return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+        return null;
     }
 
     function shopifyB2cStdPrcChangeDotHtml(stdPrc, comparePrice) {
@@ -2214,10 +2215,7 @@
                         const channelPrice = parseFloat(rowData['Price'] || rowData.price || 0) || 0;
                         const comparePrice = amzPrice > 0 ? amzPrice : channelPrice;
                         const dot = shopifyB2cStdPrcChangeDotHtml(std, comparePrice);
-                        if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + '</span>';
-                        }
+
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                             dot + ('$' + std.toFixed(2)) + '</span>';
                     }
@@ -3223,6 +3221,19 @@
          * endpoint Amazon / ebay / mfrg tabulators use.
          */
         function buildColumnDropdown(savedVisibility) {
+            if (window.AnalyticsColVis) {
+                window.AnalyticsColVis.install({
+                    getTable: function() { return table; },
+                    menuId: 'column-dropdown-menu',
+                    storageKey: 'shopify_b2c_col_cats_v1',
+                    skipFields: ['_select'],
+                    onSave: function() {
+                        if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                    }
+                });
+                window.AnalyticsColVis.rebuild(savedVisibility || null);
+                return;
+            }
             const menu = document.getElementById('column-dropdown-menu');
             if (!menu || !table) return;
 

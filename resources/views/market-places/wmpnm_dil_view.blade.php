@@ -4701,10 +4701,7 @@
                         if (!value || std <= 0) return '';
                         const sku = rowData.sku || '';
                         const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
-                        if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + '</span>';
-                        }
+
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                             dot + ('$' + std.toFixed(2)) + '</span>';
                     }
@@ -5287,7 +5284,7 @@
             const ap = parseFloat(amazonPrice) || 0;
             if (sp <= 0) return null;
             if (ap <= 0) {
-                return { kind: 'hold', color: '#ffc107', title: 'Hold' };
+                return null;
             }
             const sp2 = sp.toFixed(2);
             const ap2 = ap.toFixed(2);
@@ -5297,7 +5294,7 @@
             if (parseFloat(sp2) > parseFloat(ap2)) {
                 return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
             }
-            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+            return null;
         }
 
         function priceIncreaseSpChangeDotHtml(sprice, amazonPrice, sku) {

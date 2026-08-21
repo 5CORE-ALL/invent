@@ -496,7 +496,7 @@
         if (parseFloat(sp2) > parseFloat(ap2)) {
             return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
         }
-        return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+        return null;
     }
 
     function bestbuyStdPrcChangeDotHtml(stdPrc, comparePrice) {
@@ -1585,7 +1585,8 @@
         table = new Tabulator("#bestbuy-table", {
             ajaxURL: "/bestbuy-data-json",
             ajaxSorting: false,
-            layout: "fitColumns",
+            layout: "fitData",
+            layoutColumnsOnNewData: true,
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -1791,10 +1792,7 @@
                         const channelPrice = parseFloat(rowData['BB Price'] || rowData.price || 0) || 0;
                         const comparePrice = amzPrice > 0 ? amzPrice : channelPrice;
                         const dot = bestbuyStdPrcChangeDotHtml(std, comparePrice);
-                        if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + '</span>';
-                        }
+
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                             dot + ('$' + std.toFixed(2)) + '</span>';
                     }
@@ -2526,6 +2524,19 @@
 
         // Build Column Visibility Dropdown
         function buildColumnDropdown() {
+            if (window.AnalyticsColVis) {
+                window.AnalyticsColVis.install({
+                    getTable: function() { return table; },
+                    menuId: 'column-dropdown-menu',
+                    storageKey: 'bestbuy_col_cats_v1',
+                    skipFields: ['_select'],
+                    onSave: function() {
+                        if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                    }
+                });
+                window.AnalyticsColVis.rebuild();
+                return;
+            }
             const columns = table.getColumns();
             let html = `<li>
                     <button type="button" id="show-all-columns-item" class="dropdown-item fw-bold">

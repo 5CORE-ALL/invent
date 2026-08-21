@@ -506,7 +506,7 @@
             if (parseFloat(sp2) > parseFloat(ap2)) {
                 return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
             }
-            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+            return null;
         }
 
         function neStdPrcChangeDotHtml(stdPrc, comparePrice) {
@@ -1104,10 +1104,7 @@
                             const channelPrice = parseFloat(d.price || d['Price'] || 0) || 0;
                             const comparePrice = amzPrice > 0 ? amzPrice : channelPrice;
                             const dot = neStdPrcChangeDotHtml(std, comparePrice);
-                            if (comparePrice > 0 && comparePrice.toFixed(2) === std.toFixed(2)) {
-                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                    dot + '</span>';
-                            }
+
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                                 dot + ('$' + std.toFixed(2)) + '</span>';
                         }
@@ -2236,6 +2233,19 @@
             const COL_URL = '/newegg-pricing-column-visibility';
 
             function buildColumnDropdown() {
+                if (window.AnalyticsColVis) {
+                    window.AnalyticsColVis.install({
+                        getTable: function() { return table; },
+                        menuId: 'column-dropdown-menu',
+                        storageKey: 'newegg_col_cats_v1',
+                        skipFields: ['_select'],
+                        onSave: function() {
+                            if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                        }
+                    });
+                    window.AnalyticsColVis.rebuild();
+                    return;
+                }
                 const menu = document.getElementById("column-dropdown-menu");
                 menu.innerHTML = '';
                 fetch(COL_URL, { headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' } })

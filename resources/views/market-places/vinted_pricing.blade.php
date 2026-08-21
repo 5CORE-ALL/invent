@@ -1292,6 +1292,19 @@
         }
 
         function buildColumnDropdown() {
+            if (window.AnalyticsColVis) {
+                window.AnalyticsColVis.install({
+                    getTable: function() { return table; },
+                    menuId: 'column-dropdown-menu',
+                    storageKey: 'vinted_col_cats_v1',
+                    skipFields: ['_select'],
+                    onSave: function() {
+                        if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                    }
+                });
+                window.AnalyticsColVis.rebuild();
+                return;
+            }
             let html = '';
             table.getColumns().forEach(col => {
                 const field = col.getField(), title = col.getDefinition().title;

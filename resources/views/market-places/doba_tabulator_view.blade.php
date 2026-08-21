@@ -2957,6 +2957,19 @@
              *   show() / hide() the column, then saveColumnVisibilityToServer().
              */
             function buildColumnDropdown() {
+                if (window.AnalyticsColVis) {
+                    window.AnalyticsColVis.install({
+                        getTable: function() { return table; },
+                        menuId: 'column-dropdown-menu',
+                        storageKey: 'doba_col_cats_v1',
+                        skipFields: ['_select', 'sl_no'],
+                        onSave: function() {
+                            if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                        }
+                    });
+                    window.AnalyticsColVis.rebuild();
+                    return;
+                }
                 const menu = document.getElementById("column-dropdown-menu");
                 if (!menu) return;
 

@@ -306,6 +306,15 @@
         #chPromoCvrVsCpnModal .table thead.table-light th {
             background: #ede9fe;
         }
+        /* Analytics tables: show full cell values; scroll horizontally instead of "…" */
+        .tabulator .tabulator-tableholder {
+            overflow-x: auto !important;
+        }
+        .tabulator .tabulator-row .tabulator-cell {
+            white-space: nowrap !important;
+            text-overflow: clip !important;
+        }
+        @include('partials.analytics-column-visibility', ['colVisPart' => 'css'])
 @endif
 
 @if($channelPromoPart === 'buttons' || $channelPromoPart === 'all')
@@ -690,6 +699,9 @@
 @if($channelPromoPart === 'script' || $channelPromoPart === 'all')
 
         // ==================== Channel PEF Promo (channel_promo_pricing) ====================
+        @include('partials.tabulator-column-autofit')
+        @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
+
         const CHANNEL_PROMO_CHANNEL = @json($channelPromoChannel ?? 'ebay1');
         const CHANNEL_PROMO_HIDE_CVR_CPN = @json($channelPromoHideCvrCpn);
         const CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES = @json($channelPromoShowZeroSoldRules);

@@ -1772,7 +1772,7 @@
         if (parseFloat(sp2) > parseFloat(ap2)) {
             return { kind: 'increase', color: '#28a745', title: 'Increase vs Amz price' };
         }
-        return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amz price)' };
+        return null;
     }
 
     function temu2StdPrcChangeDotHtml(stdPrc, comparePrice) {
@@ -3793,9 +3793,7 @@
                             : (parseFloat(rowData.temu_price_display || rowData.temu_price || 0) || 0);
                         const channelPrice = amzPrice > 0 ? amzPrice : temuDisplay;
                         const dot = temu2StdPrcChangeDotHtml(std, channelPrice);
-                        if (channelPrice > 0 && channelPrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + '</span>';
-                        }
+
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
                     }
                 },
