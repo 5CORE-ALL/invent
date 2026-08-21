@@ -2780,6 +2780,7 @@
         }
         sofUpdateTrackingFilterCounts();
         sofUpdateDateFilterHint();
+        sofStripLabeledPendingRows();
         return updated;
     }
 
@@ -3657,6 +3658,7 @@
             if (allOrderTabCount && !allOrderTableLoaded) {
                 allOrderTabCount.textContent = allOrderTotal.toLocaleString();
             }
+            sofReconcilePendingLabels();
 
             return allRows;
         },
@@ -4100,6 +4102,7 @@
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(pendingRows);
                 applyPendingFilters();
+                sofAutoFillMissingLabelTracking(pendingRows, 0);
             },
             columns: orderListColumns('sof-pending-badge'),
         }));
@@ -4175,6 +4178,7 @@
                     if (fulfilledTable) {
                         try { fulfilledTable.redraw(true); } catch (e) {}
                     }
+                    sofAutoFillMissingLabelTracking(fulfilledRows, 0);
                 }, 50);
             },
             columns: (function () {
@@ -4720,6 +4724,125 @@
         }
         return mapped;
     }
+
+    function sofUpdatePendingBadge(n) {
+        n = Math.max(0, Number(n) || 0);
+        const pendingEl = document.getElementById('sof-pending-total');
+        const tabCount = document.getElementById('sof-pending-tab-count');
+        if (pendingEl) pendingEl.textContent = n.toLocaleString();
+        if (tabCount) tabCount.textContent = n.toLocaleString();
+    }
+
+    function sofStripLabeledPendingRows() {
+        if (!Array.isArray(pendingRows)) return;
+        pendingRows = pendingRows.filter(function (r) {
+            return !String(r.tracking_number || '').trim();
+        });
+        sofUpdatePendingBadge(pendingRows.length);
+        if (pendingTable && pendingTableLoaded) {
+            try {
+                pendingTable.replaceData(pendingRows);
+            } catch (e) {
+                try { pendingTable.setData(pendingRows); } catch (e2) {}
+            }
+        }
+    }
+
+    function sofReconcilePendingLabels() {
+        if (window.__sofReconcilePendingStarted) return;
+        window.__sofReconcilePendingStarted = true;
+        const params = typeof sofDateParams === 'function' ? sofDateParams() : {};
+        const qs = new URLSearchParams(params).toString();
+        fetch('{{ route("sales.order.fulfillment.pending.data") }}' + (qs ? ('?' + qs) : ''), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (!pendingTableLoaded) {
+                    pendingRows = sofNormalizeOrderRows((j && j.success && Array.isArray(j.data)) ? j.data : []);
+                    sofUpdatePendingBadge(pendingRows.length);
+                }
+                sofAutoFillMissingLabelTracking(pendingRows, 0);
+            })
+            .catch(function () {
+                window.__sofReconcilePendingStarted = false;
+            });
+    }
+
+    /**
+     * After Label Created rows render, pull Veeqo/GOFO tracking for blank Tracking cells.
+     * Does not block the table. Pending (no label) stays blank.
+     */
+    function sofAutoFillMissingLabelTracking(rows, round) {
+        round = round || 0;
+        if (round >= 4 || window.__sofAutoFillTrackingBusy) return;
+        const missing = [];
+        const seen = {};
+        (Array.isArray(rows) ? rows : []).forEach(function (r) {
+            if (String(r.tracking_number || '').trim()) return;
+            const mapped = sofMapPullTarget(r);
+            if (!mapped) return;
+            const key = mapped.id
+                || (mapped.mm_slug + '|' + (mapped.order_id_api || mapped.order_id || mapped.order_number || mapped.shopify_order_id));
+            if (seen[key]) return;
+            seen[key] = true;
+            missing.push(mapped);
+        });
+        if (!missing.length) return;
+
+        window.__sofAutoFillTrackingBusy = true;
+        const chunk = missing.slice(0, 80);
+        fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                limit: chunk.length,
+                selected: chunk,
+                selected_only: true,
+            }),
+        })
+            .then(function (r) {
+                return r.text().then(function (text) {
+                    let j = null;
+                    try { j = text ? JSON.parse(text) : null; } catch (e) { j = null; }
+                    return { ok: r.ok, json: j };
+                });
+            })
+            .then(function (res) {
+                const j = res.json || {};
+                const pulled = Array.isArray(j.data) ? j.data : [];
+                if (res.ok && j.success !== false) {
+                    sofApplyPulledTrackingToTables(pulled);
+                }
+                const found = pulled.filter(function (row) {
+                    return String(row && row.tracking_number || '').trim() !== '';
+                }).length;
+                window.__sofAutoFillTrackingBusy = false;
+                sofStripLabeledPendingRows();
+                if (found > 0) {
+                    const still = []
+                        .concat(pendingRows || [])
+                        .concat(fulfilledRows || [])
+                        .filter(function (r) { return !String(r.tracking_number || '').trim(); });
+                    sofAutoFillMissingLabelTracking(still, round + 1);
+                }
+            })
+            .catch(function () {
+                window.__sofAutoFillTrackingBusy = false;
+            });
+    }
+
+    // Keep Label Created / Pending tracking in sync while the page is open.
+    setInterval(function () {
+        window.__sofAutoFillTrackingBusy = false;
+        const rows = [].concat(pendingRows || [], fulfilledRows || []);
+        sofAutoFillMissingLabelTracking(rows, 0);
+    }, 15 * 60 * 1000);
 
     function sofSelectedPullTargets() {
         const seen = {};
