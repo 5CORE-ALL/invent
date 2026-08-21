@@ -114,15 +114,16 @@
             z-index: 11;
         }
 
-        /* Full-width table; allow horizontal scroll so columns can show full values */
+        /* Full-width table; columns autofit to cell values and scroll horizontally */
         #temu-table {
             width: 100% !important;
         }
         #temu-table .tabulator-tableholder {
-            overflow-x: auto;
+            overflow-x: auto !important;
         }
         #temu-table .tabulator-cell {
-            white-space: nowrap;
+            white-space: nowrap !important;
+            text-overflow: clip !important;
         }
         #temu-table .tabulator-cell[tabulator-field="parent"],
         #temu-table .tabulator-cell[tabulator-field="sku"],
@@ -3365,12 +3366,13 @@
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu2-decrease-data",
             ajaxSorting: false,
-            layout: "fitDataStretch",
+            layout: "fitData",
+            layoutColumnsOnNewData: true,
             columnDefaults: {
                 hozAlign: "center",
                 headerHozAlign: "center",
                 resizable: true,
-                minWidth: 55,
+                minWidth: 64,
             },
             pagination: true,
             paginationSize: 100,
@@ -3769,7 +3771,8 @@
                     hozAlign: "center",
                     headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view. Editable; saves to all Sku Link LMP siblings. Dot vs Amz/Temu price.",
                     editor: "input",
-                    width: 70,
+                    width: 88,
+                    minWidth: 88,
                     sorter: "number",
                     editable: function(cell) {
                         const d = cell.getRow().getData();
@@ -3800,6 +3803,7 @@
                     title: "Temu Price",
                     field: "temu_price_display",
                     hozAlign: "center",
+                    minWidth: 90,
                     sorter: "number",
                     headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     formatter: function(cell) {
@@ -3816,6 +3820,7 @@
                     title: "Temu R Price",
                     field: "temu_price",
                     hozAlign: "center",
+                    minWidth: 86,
                     sorter: "number",
                     headerTooltip: "Normal Temu price (base + $2.99 when base ≤ $26.99)",
                     formatter: function(cell) {
@@ -3831,6 +3836,7 @@
                     title: "S Profit",
                     field: "s_profit",
                     hozAlign: "center",
+                    minWidth: 88,
                     sorter: "number",
                     headerTooltip: "S Profit = S Recovery × marketplace% − LP − Temu Ship",
                     formatter: function(cell) {
@@ -3845,6 +3851,7 @@
                     title: "Base Price",
                     field: "base_price",
                     hozAlign: "center",
+                    minWidth: 92,
                     sorter: "number",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3867,6 +3874,7 @@
                     title: "Temu 1 Price",
                     field: "temu1_price",
                     hozAlign: "center",
+                    minWidth: 86,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue());
@@ -3892,6 +3900,7 @@
                     title: "GROI %",
                     field: "roi_percent",
                     hozAlign: "center",
+                    minWidth: 80,
                     sorter: "number",
                     headerTooltip: "GROI% = Gpft / LP. Gpft = (Temu R Price × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
@@ -3909,6 +3918,7 @@
                     title: "GPRFT %",
                     field: "profit_percent",
                     hozAlign: "center",
+                    minWidth: 80,
                     headerTooltip: "GPRFT% = Gpft / Temu Price. Gpft = (Temu R Price × 0.95) − Temu Ship − LP",
                     sorter: function(a, b, aRow, bRow) {
                         const calc = (row) => {
@@ -3985,6 +3995,7 @@
                     title: "LMP",
                     field: "lmp",
                     hozAlign: "center",
+                    minWidth: 88,
                     sorter: "number",
                     headerSort: true,
                     headerTooltip: "Temu Recovery (≤$27: Price×0.85+2.99; >$27: Price×0.85) — same as /pricing-master-cvr; raw LMP stays in the modal",
@@ -4029,7 +4040,8 @@
                     title: "Diff",
                     field: "lmp_diff_pct",
                     hozAlign: "center",
-                    width: 70,
+                    width: 84,
+                    minWidth: 84,
                     headerTooltip: "S PRC vs LMP: (LMP − S PRC) / LMP. Green = S PRC below LMP, Red = S PRC above LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -4076,6 +4088,7 @@
                     title: "S PRC",
                     field: "sprice",
                     hozAlign: "center",
+                    minWidth: 88,
                     editor: "input",
                     headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
@@ -4426,13 +4439,44 @@
 
         table.on('pageLoaded', function() {
             updateSelectAllCheckbox();
+            temu2AutofitColumns();
         });
+
+        const TEMU2_AUTOFIT_SKIP = {
+            image_path: 1, links_column: 1, _select: 1, _push: 1, nr_req: 1, lmp_match: 1
+        };
+        const TEMU2_AUTOFIT_FLOOR = {
+            s_profit: 88, temu_price: 86, temu1_price: 86, base_price: 92,
+            roi_percent: 80, profit_percent: 80, lmp: 88, lmp_diff_pct: 84,
+            STANDARD_PRICE: 88, sprice: 88, temu_price_display: 90
+        };
+        let temu2AutofitTimer = null;
+        function temu2AutofitColumns() {
+            clearTimeout(temu2AutofitTimer);
+            temu2AutofitTimer = setTimeout(temu2AutofitColumnsNow, 80);
+        }
+        function temu2AutofitColumnsNow() {
+            if (!table || typeof table.getColumns !== 'function') return;
+            table.getColumns().forEach(function(col) {
+                try {
+                    if (!col.isVisible()) return;
+                    const field = col.getField() || '';
+                    if (TEMU2_AUTOFIT_SKIP[field]) return;
+                    if (typeof col.setWidth === 'function') col.setWidth(true);
+                    const measured = col.getWidth() || 0;
+                    const def = col.getDefinition() || {};
+                    const floor = TEMU2_AUTOFIT_FLOOR[field] || def.minWidth || 68;
+                    const next = Math.max(measured + 10, floor);
+                    if (next > measured) col.setWidth(Math.min(next, 280));
+                } catch (e) { /* ignore */ }
+            });
+        }
 
         let temu2ResizeTimer = null;
         window.addEventListener('resize', function() {
             clearTimeout(temu2ResizeTimer);
             temu2ResizeTimer = setTimeout(function() {
-                if (table) table.redraw(true);
+                temu2AutofitColumns();
             }, 150);
         });
 
@@ -5492,6 +5536,7 @@
                     // Keep Spend visible (display-only; not Temu ads feature set)
                     try { table.showColumn('spend'); } catch (e) {}
                     enforceAlwaysHiddenColumns();
+                    temu2AutofitColumns();
                 })
                 .catch(err => console.error('Error applying column visibility:', err));
         }
@@ -5520,6 +5565,7 @@
 
             // Auto-store daily average views if not already stored today
             autoStoreDailyAvgViews();
+            temu2AutofitColumns();
 
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
@@ -5580,6 +5626,7 @@
                     e.target.indeterminate = false;
                     enforceAlwaysHiddenColumns();
                     saveColumnVisibilityToServer();
+                    temu2AutofitColumns();
                     return;
                 }
 
@@ -5599,6 +5646,7 @@
                 }
                 syncGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
                 saveColumnVisibilityToServer();
+                temu2AutofitColumns();
             });
             // "Show All" — same as /ebay-tabulator-view
             colMenu.addEventListener("click", function(e) {
@@ -5610,6 +5658,7 @@
                     enforceAlwaysHiddenColumns();
                     buildColumnDropdown();
                     saveColumnVisibilityToServer();
+                    temu2AutofitColumns();
                 }
             });
         })();
