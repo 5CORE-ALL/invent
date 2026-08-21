@@ -225,16 +225,14 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Label Created / No Scan (fulfilled) orders — last 30 days.
-     * Excludes rows whose carrier tracking has already progressed (In Transit / Delivered).
+     * Label Created / No Scan — last 24 hours only.
+     * Older labeled rows (already scanned in the warehouse) go to In Transit
+     * until carrier tracking reports Delivered.
      */
     public function fulfilledData(): JsonResponse
     {
         try {
-            $rows = array_values(array_filter(
-                $this->labelCreatedOrderRows(),
-                fn (array $r) => ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null)
-            ));
+            $rows = $this->labelCreatedNoScanRows();
 
             return response()->json([
                 'success' => true,
@@ -299,7 +297,9 @@ class SalesOrderFulfillmentController extends Controller
                     ], true);
                 }
             ));
+            $fromOlderLabels = $this->labelCreatedAssumedScannedRows();
             $rows = $this->mergeOrderRowsById($rows, $fromCarrier);
+            $rows = $this->mergeOrderRowsById($rows, $fromOlderLabels);
 
             return response()->json([
                 'success' => true,
@@ -859,6 +859,70 @@ class SalesOrderFulfillmentController extends Controller
             ShipmentTrackingService::STATUS_PICKUP,
             ShipmentTrackingService::STATUS_DELIVERED,
         ], true);
+    }
+
+    /**
+     * True when the order date is within the last 24 hours (Pacific).
+     * Date-only values are treated as the start of that California day.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function rowIsWithinLast24Hours(array $row): bool
+    {
+        $raw = trim((string) ($row['order_date'] ?? ''));
+        if ($raw === '') {
+            $raw = trim((string) ($row['updated_at'] ?? ''));
+        }
+        if ($raw === '') {
+            return true;
+        }
+
+        try {
+            $tz = 'America/Los_Angeles';
+            $dt = preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) === 1
+                ? Carbon::createFromFormat('Y-m-d', $raw, $tz)->startOfDay()
+                : Carbon::parse($raw, $tz)->timezone($tz);
+
+            return $dt->gte(now($tz)->subHours(24));
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    /**
+     * Label Created / No Scan: last 24 hours, carrier has not scanned yet.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function labelCreatedNoScanRows(): array
+    {
+        return array_values(array_filter(
+            $this->labelCreatedOrderRows(),
+            fn (array $r) => ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null)
+                && $this->rowIsWithinLast24Hours($r)
+        ));
+    }
+
+    /**
+     * Labeled more than 24 hours ago with no carrier scan yet — warehouse already scanned these.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function labelCreatedAssumedScannedRows(): array
+    {
+        $rows = [];
+        foreach ($this->labelCreatedOrderRows() as $row) {
+            if ($this->carrierStatusHasLeftLabelCreated($row['shipment_status'] ?? null)) {
+                continue;
+            }
+            if ($this->rowIsWithinLast24Hours($row)) {
+                continue;
+            }
+            $row['status_label'] = 'In Transit';
+            $rows[] = $row;
+        }
+
+        return $rows;
     }
 
     /**
@@ -2626,16 +2690,12 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Count of Label Created / No Scan orders in the last 30 days (all MM channels).
-     * Same membership as fulfilledData() — excludes carrier InTransit/Delivered.
+     * Count of Label Created / No Scan orders in the last 24 hours (all MM channels).
      * JSON key remains fulfilled_24h for frontend compatibility.
      */
     protected function fulfilledLast24HoursCount(): int
     {
-        return count(array_filter(
-            $this->labelCreatedOrderRows(),
-            fn (array $r) => ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null)
-        ));
+        return count($this->labelCreatedNoScanRows());
     }
 
     /**
@@ -2671,8 +2731,12 @@ class SalesOrderFulfillmentController extends Controller
                 ], true);
             }
         ));
+        $fromOlderLabels = $this->labelCreatedAssumedScannedRows();
 
-        return count($this->mergeOrderRowsById($rows, $fromCarrier));
+        return count($this->mergeOrderRowsById(
+            $this->mergeOrderRowsById($rows, $fromCarrier),
+            $fromOlderLabels
+        ));
     }
 
     /**
@@ -2986,10 +3050,18 @@ class SalesOrderFulfillmentController extends Controller
             // Shein / Ali / TopDawg / Mirakl "Shipped" → Shipped/Received tab
             'shein', 'aliexpress', 'alibaba', 'topdawg', 'bestbuy', 'macy' => null,
             'reverb' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['picked_up']),
-            'amazon' => $base->whereHas('order', fn (Builder $q) => $q->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)",
-                ['SHIPPED', 'PARTIALLYSHIPPED']
-            )),
+            'amazon' => $base->whereHas('order', function (Builder $q) {
+                $q->whereRaw(
+                    "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)",
+                    ['SHIPPED', 'PARTIALLYSHIPPED']
+                );
+                if (Schema::hasColumn('amazon_orders', 'fulfillment_channel')) {
+                    $q->where(function (Builder $q2) {
+                        $q2->whereNull('fulfillment_channel')
+                            ->orWhereRaw("UPPER(TRIM(fulfillment_channel)) != ?", ['AFN']);
+                    });
+                }
+            }),
             'temu', 'temu2' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['SHIPPED', 'PARTIALLY_SHIPPED']
