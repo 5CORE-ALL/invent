@@ -1874,6 +1874,40 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * Hourly job: Label Created / No Scan rows still missing a tracking number.
+     * Looks up Veeqo / GOFO / 4Seller and writes the number onto the channel order.
+     *
+     * @return array{checked: int, updated: int, with_tracking: int, message: string, candidates: int}
+     */
+    public function pullMissingLabelCreatedTracking(int $limit = 80): array
+    {
+        $limit = max(1, min(200, $limit));
+        $candidates = [];
+        foreach ($this->labelCreatedOrderRows() as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
+            if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
+                continue;
+            }
+            $candidates[] = $row;
+        }
+
+        $result = $this->pullLabelTrackingFromApis(
+            $candidates,
+            $limit,
+            app(VeeqoShopifyFulfillmentService::class)
+        );
+        $result['candidates'] = count($candidates);
+
+        return $result;
+    }
+
+    /**
      * Pull tracking from Veeqo / GOFO / 4Seller for SOF rows that still have no number.
      *
      * @param  list<array<string, mixed>>  $candidateRows
@@ -1881,7 +1915,7 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function pullLabelTrackingFromApis(array $candidateRows, int $limit, VeeqoShopifyFulfillmentService $labels): array
     {
-        $limit = max(1, min(100, $limit));
+        $limit = max(1, min(200, $limit));
         $checked = 0;
         $updated = 0;
         $withTracking = 0;
@@ -1911,6 +1945,20 @@ class SalesOrderFulfillmentController extends Controller
                 continue;
             }
             $seen[$dedupe] = true;
+
+            if ($slug === 'amazon') {
+                $amazonOrder = AmazonOrder::query()->find($showId);
+                if ($amazonOrder === null) {
+                    $amazonOid = trim((string) ($row['order_id'] ?? $row['order_id_api'] ?? ''));
+                    if ($amazonOid !== '') {
+                        $amazonOrder = AmazonOrder::query()->where('amazon_order_id', $amazonOid)->first();
+                    }
+                }
+                if ($amazonOrder && $amazonOrder->isFba()) {
+                    continue;
+                }
+            }
+
             $checked++;
 
             $refs = [];
