@@ -459,15 +459,18 @@
                     <p class="small text-muted mb-2" id="ch-promo-cvr-cpn-help">
                         @if($channelPromoChannel === 'ebay2op')
                             Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
+                            <strong>Save Rule</strong> stores the slabs.
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
                             (database only — no eBay coupon).
                         @elseif(in_array($channelPromoChannel, ['ebay2', 'ebay3'], true))
                             Map CVR% slabs to <strong>CPN %</strong>.
+                            <strong>Save Rule</strong> stores the slabs.
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
                             (database only — no eBay coupon).
                         @else
-                            Map CVR% slabs to <strong>CPN %</strong>. Apply saves rules and CPN% to the database only
-                            (no eBay coupon).
+                            Map CVR% slabs to <strong>CPN %</strong>.
+                            <strong>Save Rule</strong> stores the slabs.
+                            Apply then writes CPN% to the database only (no eBay coupon).
                         @endif
                     </p>
                     <div class="table-responsive">
@@ -484,8 +487,12 @@
                     <div class="small text-muted mt-2" id="ch-promo-cvr-cpn-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-primary" id="ch-promo-cvr-cpn-save-btn"
+                        title="Save CVR→CPN slab values only (does not write SKU CPN%).">
+                        <i class="fas fa-save me-1"></i>Save Rule
+                    </button>
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-cvr-cpn-apply-btn"
-                        title="{{ in_array($channelPromoChannel, ['ebay2', 'ebay2op', 'ebay3'], true) ? 'Save CVR→CPN rules and write CPN% only on SKUs with E L30 > 0 (database only — no eBay coupon)' : 'Save CVR→CPN rules and CPN% to the database only — does not create eBay coupons' }}">
+                        title="{{ in_array($channelPromoChannel, ['ebay2', 'ebay2op', 'ebay3'], true) ? 'Save CVR→CPN rules, then write CPN% only on SKUs with E L30 > 0 (database only — no eBay coupon)' : 'Save CVR→CPN rules and CPN% to the database only — does not create eBay coupons' }}">
                         Apply
                     </button>
                 </div>
@@ -2299,14 +2306,18 @@
         function chPromoCpnInt(d) {
             return Math.round(Math.max(0, Number(d && (d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied)) || 0));
         }
-        /** PRMT% + CPN% (T Promo). */
-        function chPromoTPromoPct(d) {
+        /** PRMT% used in S PRC (Dil vs PRMT slab on eBay). */
+        function chPromoEbayPrmtUsed(d) {
             let prmt = Math.max(0, Number(d && (d.prmt_pct != null && d.prmt_pct !== ''
                 ? d.prmt_pct : d._prmt_pct_applied)) || 0);
             if (chPromoIsEbayChannel()) {
-                const slab = chPromoEbaySlabPrmt(d);
+                const slab = typeof chPromoEbaySlabPrmt === 'function' ? chPromoEbaySlabPrmt(d) : null;
                 if (slab != null) prmt = slab;
             }
+            return chPromoRound2(prmt);
+        }
+        /** cvr % / CPN% used in S PRC. */
+        function chPromoEbayCpnUsed(d) {
             let cpn = Math.max(0, Number(d && (d.cpn_pct != null && d.cpn_pct !== ''
                 ? d.cpn_pct : d._cpn_pct_applied)) || 0);
             if (chPromoIsEbayChannel() && !(cpn > 0) && typeof chPromoCpnForCvr === 'function') {
@@ -2315,7 +2326,11 @@
                 const slabCpn = chPromoCpnForCvr(cvr);
                 if (slabCpn > 0) cpn = slabCpn;
             }
-            return chPromoRound2(prmt + cpn);
+            return chPromoRound2(cpn);
+        }
+        /** PRMT% + CPN% (T Promo). */
+        function chPromoTPromoPct(d) {
+            return chPromoRound2(chPromoEbayPrmtUsed(d) + chPromoEbayCpnUsed(d));
         }
         function chPromoLastCouponPct(d) {
             return Math.round(Math.max(0, Number(d && d.PEF_COUPON_PCT) || 0));
@@ -2819,6 +2834,11 @@
             if (isFinite(s) && s > 0) return s;
             return 0;
         }
+        /** Live S PRC from Dil/cvr rules only. Never uses stored SPRICE or live Price. */
+        function chPromoLiveSprice(d) {
+            if (!d || !chPromoIsChildRow(d)) return 0;
+            return chPromoSpriceFromStdTPromo(d) || 0;
+        }
         function chPromoSpricePatch(val) {
             const n = Number(val);
             const patch = { SPRICE: val, sprice: val };
@@ -2829,6 +2849,7 @@
         function chPromoStdBase(d) {
             const std = Number(d.STANDARD_PRICE) || Number(d.standard_price) || 0;
             if (std > 0) return chPromoRound2(std);
+            if (chPromoIsEbayChannel()) return 0;
             const price = chPromoPrice(d);
             return price > 0 ? chPromoRound2(price) : 0;
         }
@@ -3170,10 +3191,12 @@
                 headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
                 data: data,
             }).done(function() {
-                const shouldQueue = queueEnabled && extra.skip_push !== true && (
-                    extra.queue_push === true
-                    || extra.queue_push !== false
-                );
+                let shouldQueue = false;
+                if (queueEnabled) {
+                    if (extra.queue_push === true) shouldQueue = true;
+                    else if (extra.queue_push === false) shouldQueue = false;
+                    else shouldQueue = extra.skip_push !== true;
+                }
                 if (shouldQueue) {
                     enqueueChannelPushSpriceAfterSave(sku, val, extra.row || null);
                 }
@@ -3584,7 +3607,18 @@
             const price = (lp * (1 + roi / 100) + chPromoShipCost(d)) / margin;
             return (isFinite(price) && price > 0) ? chPromoRound2(price) : 0;
         }
-        function chPromoApplySpriceSavePatch(row, fill, saveRes) {
+        function chPromoPatchDatasetSprice(sku, updates) {
+            const key = chPromoSkuKey(sku);
+            if (!key || !updates) return;
+            const extra = (typeof window !== 'undefined' && Array.isArray(window.allTableData))
+                ? window.allTableData
+                : ((typeof allTableData !== 'undefined' && Array.isArray(allTableData)) ? allTableData : []);
+            extra.forEach(function(r) {
+                if (!r) return;
+                if (chPromoSkuKey(chPromoSku(r)) === key) Object.assign(r, updates);
+            });
+        }
+        function chPromoApplySpriceSavePatch(row, fill, saveRes, sku) {
             const updates = Object.assign({}, chPromoSpricePatch(fill));
             if (saveRes && (saveRes.sgpft_percent !== undefined || saveRes.sroi_percent !== undefined
                 || saveRes.snroi_percent !== undefined)) {
@@ -3605,13 +3639,26 @@
                     updates['eBay Price'] = live;
                 }
             }
+            // Local cannot revise eBay. Match Price to the saved calc so the blue
+            // triangle can clear on this page (production still uses live Price).
+            if (window._chPushSpriceLiveAllowed === false && fill > 0 && updates['eBay Price'] == null) {
+                updates['eBay Price'] = fill;
+            }
             if (saveRes && saveRes.SPRICE_STATUS) {
                 updates.SPRICE_STATUS = saveRes.SPRICE_STATUS;
             } else if (saveRes && saveRes.price_push_success) {
                 updates.SPRICE_STATUS = 'pushed';
+            } else if (window._chPushSpriceLiveAllowed === false && fill > 0) {
+                updates.SPRICE_STATUS = 'saved';
             }
-            row.update(updates);
-            try { row.reformat(); } catch (e) { /* ignore */ }
+            if (row && typeof row.update === 'function') {
+                try { row.update(updates); } catch (e) { /* ignore */ }
+                try { row.reformat(); } catch (e) { /* ignore */ }
+            }
+            const skuKey = sku || (row && typeof row.getData === 'function'
+                ? chPromoSku(row.getData() || {})
+                : '');
+            if (skuKey) chPromoPatchDatasetSprice(skuKey, updates);
         }
         function chPromoReverbSoldQty(d) {
             const f = chPromoCfg.soldField;
@@ -4417,47 +4464,69 @@
             }
         }
 
+        async function saveChPromoCvrCpnRulesOnly() {
+            const $btn = $('#ch-promo-cvr-cpn-save-btn');
+            const html = $btn.length ? $btn.html() : '';
+            if ($btn.length) $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
+            try {
+                await saveChPromoCvrCpnRules();
+                chPromoToast('success', 'CVR vs CPN rules saved');
+            } catch (xhr) {
+                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+            } finally {
+                if ($btn.length) $btn.prop('disabled', false).html(html || '<i class="fas fa-save me-1"></i>Save Rule');
+            }
+        }
         async function saveAndApplyChPromoCvrCpn() {
-            const selected = collectChPromoSelectedRows();
-            let targets = selected;
+            const $btn = $('#ch-promo-cvr-cpn-apply-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+            try {
+                await saveChPromoCvrCpnRules();
+            } catch (xhr) {
+                $btn.prop('disabled', false).html(html);
+                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                return;
+            }
+
+            let targets = collectChPromoSelectedRows();
             let label = 'selected';
             if (!targets.length) {
                 targets = collectChPromoVisibleRows();
                 label = 'all visible';
-                if (!targets.length) {
-                    chPromoToast('error', 'No rows to apply');
-                    return;
-                }
             }
             if (chPromoSaleGatedApply()) {
                 targets = targets.filter(function(t) {
                     const d = (t.d || (t.row && t.row.getData())) || {};
                     return chPromoHasSaleQty(d);
                 });
-                if (!targets.length) {
-                    chPromoToast('error', 'No rows with ' + chPromoSaleGateLabel() + ' to apply');
-                    return;
-                }
+            }
+            if (!targets.length) {
+                $btn.prop('disabled', false).html(html);
+                chPromoToast(
+                    'success',
+                    (chPromoSaleGatedApply())
+                        ? ('Rules saved. No rows with ' + chPromoSaleGateLabel() + ' to apply.')
+                        : 'Rules saved. No SKUs to apply.'
+                );
+                return;
             }
             if (label === 'all visible') {
                 if (!confirm(
-                    'No rows selected — save rules and apply CVR→CPN % to '
+                    'No rows selected — apply CVR→CPN % to '
                     + targets.length + ' visible row(s)'
                     + ((chPromoSaleGatedApply())
                         ? (' with ' + chPromoSaleGateLabel()) : '')
                     + '?'
                 )) {
+                    $btn.prop('disabled', false).html(html);
                     return;
                 }
             }
-            const $btn = $('#ch-promo-cvr-cpn-apply-btn');
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
             try {
-                await saveChPromoCvrCpnRules();
                 await applyChPromoCvrCpnToTargets(targets, label);
             } catch (xhr) {
-                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                chPromoToast('error', 'Apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
             } finally {
                 $btn.prop('disabled', false).html(html);
             }
@@ -5966,6 +6035,7 @@
             const blocked = typeof table.blockRedraw === 'function';
             if (blocked) table.blockRedraw();
             const queuedKeys = new Set();
+            const livePushOn = window._chPushSpriceLiveAllowed !== false;
             function considerRow(row, d) {
                 if (!chPromoIsChildRow(d)) return;
                 if (chPromoIsEndedListing(d)) return;
@@ -5976,16 +6046,35 @@
                 if (!(fill > 0)) return;
                 const current = chPromoGetSprice(d);
                 const live = chPromoLivePrice(d);
+                const prmt = chPromoEbayPrmtUsed(d);
+                const cpn = chPromoEbayCpnUsed(d);
                 const needsFill = !(current > 0) || (overwrite && !chPromoNearlyEqual(current, fill));
-                const needsPush = chPromoEbayStdMinusPrmtCpnEnabled()
+                const needsPush = livePushOn
                     && live > 0
                     && !chPromoNearlyEqual(fill, live);
                 if (!needsFill && !needsPush) return;
                 queuedKeys.add(key);
+                const patch = Object.assign(chPromoSpricePatch(fill), {
+                    prmt_pct: String(prmt),
+                    _prmt_pct_applied: prmt,
+                    cpn_pct: String(cpn),
+                    _cpn_pct_applied: cpn,
+                });
+                if (!livePushOn) patch['eBay Price'] = fill;
                 if (row && typeof row.update === 'function') {
-                    row.update(chPromoSpricePatch(fill));
+                    row.update(patch);
+                } else if (d) {
+                    Object.assign(d, patch);
                 }
-                jobs.push({ row: row || null, sku: sku, price: fill, skip_push: !needsPush });
+                chPromoPatchDatasetSprice(sku, patch);
+                jobs.push({
+                    row: row || null,
+                    sku: sku,
+                    price: fill,
+                    prmt: prmt,
+                    cpn: cpn,
+                    skip_push: !needsPush,
+                });
             }
             try {
                 chPromoEachTableRow(function(row, d) { considerRow(row, d); });
@@ -6005,26 +6094,48 @@
             }
             if (!jobs.length) return;
             try { table.redraw(true); } catch (e) { /* ignore */ }
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e) { /* ignore */ }
+            }
             if (!persist) {
                 if (!silent) chPromoToast('success', 'S PRC = Std − PRMT% − CPN% → ' + jobs.length + ' SKU(s)');
                 return;
             }
             chPromoEbaySpriceAutoBusy = true;
             const pushCount = jobs.filter(function(j) { return !j.skip_push; }).length;
+            if (livePushOn && pushCount && typeof enqueueChannelPushSprice === 'function') {
+                enqueueChannelPushSprice(
+                    jobs.filter(function(j) { return !j.skip_push; })
+                        .map(function(j) { return { sku: j.sku, price: j.price }; }),
+                    { silent: true }
+                );
+            }
             const conc = pushCount ? 3 : ((CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8);
             if (pushCount && silent) {
                 chPromoToast('success', 'S PRC queued: ' + pushCount + ' SKU(s) — page close OK');
             }
             chPromoMapLimit(jobs, conc, async function(job) {
                 try {
-                    const saveRes = await Promise.resolve(saveChannelSprice(job.sku, job.price, true, {
+                    const extra = {
                         skip_push: true,
-                        queue_push: !job.skip_push,
+                        queue_push: false,
                         row: job.row,
-                    }));
-                    chPromoApplySpriceSavePatch(job.row, job.price, saveRes);
+                        prmt_pct: job.prmt,
+                        cpn_pct: job.cpn,
+                    };
+                    let saveRes;
+                    if (job.row) {
+                        saveRes = await Promise.resolve(saveChannelSpriceAndPromo(job.row, job.price, true, extra));
+                    } else {
+                        await Promise.resolve(saveChannelPromoFields(job.sku, {
+                            prmt_pct: job.prmt,
+                            cpn_pct: job.cpn,
+                        })).catch(function() { /* still save S PRC */ });
+                        saveRes = await Promise.resolve(saveChannelSprice(job.sku, job.price, true, extra));
+                    }
+                    chPromoApplySpriceSavePatch(job.row, job.price, saveRes, job.sku);
                 } catch (e) {
-                    chPromoApplySpriceSavePatch(job.row, job.price, null);
+                    chPromoApplySpriceSavePatch(job.row, job.price, null, job.sku);
                 }
             }).then(function() {
                 chPromoEbaySpriceAutoBusy = false;
@@ -6032,6 +6143,13 @@
                     chPromoToast('success', 'S PRC = Std − PRMT% − CPN% → ' + jobs.length + ' SKU(s)');
                 } else if (pushCount) {
                     chPromoToast('success', 'S PRC queued for ' + pushCount + ' SKU(s) — page close OK');
+                } else if (jobs.length) {
+                    chPromoToast(
+                        'success',
+                        window._chPushSpriceLiveAllowed === false
+                            ? ('S PRC saved for ' + jobs.length + ' SKU(s) — local Price matched (eBay not revised)')
+                            : ('S PRC saved for ' + jobs.length + ' SKU(s)')
+                    );
                 }
                 try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
                 if (typeof updateSummary === 'function') updateSummary();
@@ -6053,11 +6171,16 @@
             if (kind === 'cvr') chPromoEbaySpriceRulesReady.cvr = true;
             chPromoTryQueueAfterSlabs();
         }
-        /** Queue S PRC after Dil/CVR slabs are loaded — early page-load used defaults and skipped. */
+        setTimeout(function() {
+            if (chPromoEbaySpriceRulesReady.dil && chPromoEbaySpriceRulesReady.cvr) return;
+            chPromoEbaySpriceRulesReady.dil = true;
+            chPromoEbaySpriceRulesReady.cvr = true;
+            chPromoTryQueueAfterSlabs();
+        }, 4000);
+        /** Calc + store S PRC after Dil/CVR slabs load (Amazon-style). Live push stays off on local. */
         function chPromoTryQueueAfterSlabs() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
             if (!chPromoEbaySpriceSlabsReady()) return;
-            if (window._chPushSpriceLiveAllowed === false) return;
             if (window._chPushSpriceSlabsQueued) return;
             if (typeof table === 'undefined' || !table) {
                 setTimeout(chPromoTryQueueAfterSlabs, 400);
@@ -7265,6 +7388,7 @@
                     if (help) {
                         help.innerHTML = 'Map CVR% slabs to <strong>CPN %</strong>. '
                             + (CH_PEF_CVR_CPN_SKIP_ZERO ? 'There is no <strong>0%</strong> CVR slab. ' : '')
+                            + '<strong>Save Rule</strong> stores the slabs. '
                             + '<strong>Apply</strong> writes CPN% only on selected or visible SKUs with '
                             + '<strong>eBay sale (E L30) &gt; 0</strong> (database only — no eBay coupon).';
                     }
@@ -7332,6 +7456,7 @@
             });
 
             if (!CHANNEL_PROMO_HIDE_CVR_CPN) {
+                $('#ch-promo-cvr-cpn-save-btn').off('click.chpromo').on('click.chpromo', saveChPromoCvrCpnRulesOnly);
                 $('#ch-promo-cvr-cpn-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoCvrCpn);
             }
 
@@ -7455,6 +7580,7 @@
         window.chPromoTemuSpriceFromStdPrmtCpn = chPromoTemuSpriceFromStdPrmtCpn;
         window.chPromoIsEndedListing = chPromoIsEndedListing;
         window.chPromoSpriceFromStdTPromo = chPromoSpriceFromStdTPromo;
+        window.chPromoLiveSprice = chPromoLiveSprice;
         window.applyChannelSpriceFromStdChange = applyChannelSpriceFromStdChange;
         window.chPromoSpriceFromStdPrmtCpnWith = chPromoSpriceFromStdPrmtCpnWith;
         window.chPromoEbayStdMinusPrmtCpnEnabled = chPromoEbayStdMinusPrmtCpnEnabled;

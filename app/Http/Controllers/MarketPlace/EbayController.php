@@ -717,7 +717,7 @@ class EbayController extends Controller
         // Key by NBSP / Unicode space–safe normalized SKU: ebay_metrics.sku can contain
         // non-breaking spaces (U+00A0) while product_masters.sku uses normal spaces, which
         // otherwise breaks the lookup (item_id/price missing → row wrongly shows as Missing L).
-        $ebayMetrics = EbayMetric::select(
+        $ebayMetrics = EbayMetric::select(EbayListingEnded::withStatusColumn('ebay_metrics', [
                 'sku',
                 'ebay_l30',
                 'ebay_l60',
@@ -727,8 +727,7 @@ class EbayController extends Controller
                 'l7_views',
                 'item_id',
                 'ebay_stock',
-                'listing_status'
-            )
+            ]))
             ->whereIn('sku', $skus)
             ->get()
             ->keyBy(function ($metric) {

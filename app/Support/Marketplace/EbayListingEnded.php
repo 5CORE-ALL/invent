@@ -2,9 +2,24 @@
 
 namespace App\Support\Marketplace;
 
+use Illuminate\Support\Facades\Schema;
+
 final class EbayListingEnded
 {
     public const STATUSES = ['ENDED', 'INACTIVE', 'UNSOLD', 'COMPLETED', 'SOLD'];
+
+    /**
+     * @param  list<string>  $columns
+     * @return list<string>
+     */
+    public static function withStatusColumn(string $table, array $columns): array
+    {
+        if (Schema::hasTable($table) && Schema::hasColumn($table, 'listing_status')) {
+            $columns[] = 'listing_status';
+        }
+
+        return $columns;
+    }
 
     public static function isEnded(?string $status): bool
     {

@@ -251,7 +251,7 @@ class ChannelPromoPricingService
         $table = $model->getTable();
 
         // Lock row during read-modify-write so bulk Dil/CPN/S PRC saves cannot wipe PEF_* keys.
-        return DB::transaction(function () use ($modelClass, $table, $skuNorm, $fields) {
+        return DB::transaction(function () use ($modelClass, $table, $skuNorm, $fields, $channel) {
             /** @var Model|null $row */
             $row = $modelClass::query()
                 ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])

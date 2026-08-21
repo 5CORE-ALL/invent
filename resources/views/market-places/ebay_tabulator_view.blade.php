@@ -1400,9 +1400,18 @@
          * @param {object} rowData
          * @param {string} priceKey  'eBay Price' for NROI, 'SPRICE' for SNROI
          */
+        function ebaySpriceAmount(rowData) {
+            if (typeof chPromoLiveSprice === 'function') {
+                const live = Number(chPromoLiveSprice(rowData));
+                if (isFinite(live) && live > 0) return live;
+            }
+            return 0;
+        }
         function ebayComputeNetRoi(rowData, priceKey) {
             if (!rowData) return null;
-            const price = parseFloat(rowData[priceKey]);
+            const price = priceKey === 'SPRICE'
+                ? ebaySpriceAmount(rowData)
+                : parseFloat(rowData[priceKey]);
             const lp = parseFloat(rowData.LP_productmaster);
             if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
@@ -1416,7 +1425,7 @@
         /** S GPFT / S GROI / SNROI / SNPFT use S PRC (SPRICE). */
         function ebayComputeSgpftFromSprice(rowData) {
             if (!rowData) return null;
-            const price = parseFloat(rowData.SPRICE);
+            const price = ebaySpriceAmount(rowData);
             if (!isFinite(price) || price <= 0) return null;
             const lp = parseFloat(rowData.LP_productmaster) || 0;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
@@ -1426,7 +1435,7 @@
         }
         function ebayComputeSgroiFromSprice(rowData) {
             if (!rowData) return null;
-            const price = parseFloat(rowData.SPRICE);
+            const price = ebaySpriceAmount(rowData);
             const lp = parseFloat(rowData.LP_productmaster);
             if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
@@ -3238,12 +3247,9 @@
                     || (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))));
             }
             function ebay1RowSpriceForAlert(data) {
-                let sprice = parseFloat(data && data.SPRICE) || 0;
-                if (typeof chPromoSpriceFromStdTPromo === 'function' && !ebay1IsAlertParentRow(data)) {
-                    const calc = chPromoSpriceFromStdTPromo(data);
-                    if (calc > 0) sprice = calc;
-                }
-                return sprice;
+                if (typeof chPromoLiveSprice === 'function') return chPromoLiveSprice(data);
+                if (typeof chPromoSpriceFromStdTPromo !== 'function' || ebay1IsAlertParentRow(data)) return 0;
+                return chPromoSpriceFromStdTPromo(data) || 0;
             }
             function ebay1IsEndedListing(data) {
                 if (!data || ebay1IsAlertParentRow(data)) return false;
@@ -4775,23 +4781,12 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + CPN%)/100). Read-only. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP. Dot = vs last recorded S PRC. Click the dot for Rolling L30.",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. Never stored. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP. Dot = vs last recorded S PRC.",
                         formatter: function(cell) {
-                            const value = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const hasCustomSprice = rowData.has_custom_sprice;
-                            const spriceNum = (value != null && value !== '') ? parseFloat(value) :
-                                NaN;
-                            let sprice = isNaN(spriceNum) ? 0 : spriceNum;
-
-                            if (typeof chPromoSpriceFromStdTPromo === 'function'
-                                && !rowData.is_parent_summary
-                                && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
-                                const calc = chPromoSpriceFromStdTPromo(rowData);
-                                if (calc > 0) sprice = calc;
-                            }
-
-                            // Blank only when SPRICE is missing or zero (no override)
+                            const sprice = (typeof chPromoLiveSprice === 'function')
+                                ? chPromoLiveSprice(rowData)
+                                : 0;
                             if (!(sprice > 0)) {
                                 return '';
                             }
@@ -4840,8 +4835,6 @@
                             let priceHtml = formattedValue;
                             if (lmp > 0 && sprice > lmp) {
                                 priceHtml = `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>`;
-                            } else if (hasCustomSprice === false) {
-                                priceHtml = `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
                             }
 
                             return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${priceHtml}${blueTri}${dotBtn}</span>`;
