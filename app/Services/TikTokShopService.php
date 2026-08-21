@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use EcomPHP\TiktokShop\Client;
-use GuzzleHttp\RequestOptions;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
@@ -44,8 +43,11 @@ class TikTokShopService
     /** @var array<string, array<string, mixed>> */
     protected array $inventorySearchCache = [];
 
-    /** Path that last succeeded for inventory update on this request. */
+    /** version|method that last succeeded for inventory update on this request. */
     protected ?string $workingInventoryPath = null;
+
+    /** @var array<string, true> Paths that this shop does not support (no schema / invalid version). */
+    protected array $deadInventoryKeys = [];
 
     public function __construct()
     {
@@ -1830,13 +1832,13 @@ class TikTokShopService
 
     /**
      * Extra JSON fields (available_stock, sku_id) make TikTok return "no schema found".
-     * LIVE listings are rejected by 202309 Update Inventory; Partial Edit 202509 allows them.
+     * LIVE listings are rejected by 202309 Update Inventory; Partial Edit is the fallback.
      *
      * @return list<string>
      */
     protected function productDetailApiVersions(): array
     {
-        return ['202309', '202509', '202508', '202506'];
+        return ['202309', '202509'];
     }
 
     protected function isProductStatusRestrictionError(string $message): bool
@@ -1890,20 +1892,19 @@ class TikTokShopService
     }
 
     /**
-     * @param  array<string, mixed>  $body
+     * @param  array<string, mixed>  $params
      * @return array{success: bool, message: string, retry?: bool}
      */
-    protected function postSignedJson(string $path, array $body): array
+    protected function invokeSdkInventory(string $productId, array $params, string $version, string $method): array
     {
-        $path = ltrim($path, '/');
         try {
-            if (method_exists($this->client, 'post')) {
-                $json = $this->client->post($path, $body);
+            $product = $this->client->Product->useVersion($version);
+            if ($method === 'partial') {
+                $response = $product->partialEditProduct($productId, $params);
             } else {
-                $json = $this->client->call('POST', $path, [
-                    RequestOptions::JSON => $body,
-                ]);
+                $response = $product->updateInventory($productId, $params);
             }
+            $this->lastResponse = $response;
         } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
             if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
                 return ['success' => false, 'message' => $e->getMessage(), 'retry' => true];
@@ -1919,84 +1920,17 @@ class TikTokShopService
             ];
         }
 
-        if (! is_array($json)) {
-            return ['success' => false, 'message' => 'TikTok inventory update failed.', 'retry' => true];
+        if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
+            $message = (string) ($response['message'] ?? 'TikTok inventory update failed.');
+
+            return [
+                'success' => false,
+                'message' => $message,
+                'retry' => $this->shouldRetryInventoryApiVersion($message),
+            ];
         }
 
-        $code = (int) ($json['code'] ?? 0);
-        $message = trim((string) ($json['message'] ?? ''));
-        if ($code === 0) {
-            $this->lastResponse = $json['data'] ?? $json;
-
-            return ['success' => true, 'message' => 'Inventory updated.'];
-        }
-
-        $this->rememberIpAllowList($message);
-
-        return [
-            'success' => false,
-            'message' => $message !== '' ? $message : 'TikTok inventory update failed.',
-            'retry' => $this->shouldRetryInventoryApiVersion($message),
-        ];
-    }
-
-    /**
-     * @param  list<array{warehouse_id?: string, quantity: int}>  $rows
-     * @return list<array{path: string, body: array<string, mixed>}>
-     */
-    protected function inventoryUpdateAttempts(string $productId, string $skuId, array $rows): array
-    {
-        $clean = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
-        $stockInfos = [
-            'product_id' => $productId,
-            'skus' => [[
-                'id' => $skuId,
-                'stock_infos' => array_map(static function (array $row): array {
-                    $info = ['available_stock' => (int) ($row['quantity'] ?? 0)];
-                    if (! empty($row['warehouse_id'])) {
-                        $info['warehouse_id'] = $row['warehouse_id'];
-                    }
-
-                    return $info;
-                }, $rows),
-            ]],
-        ];
-
-        $paths = [
-            "product/202309/products/{$productId}/inventory/update",
-            "product/202509/products/{$productId}/partial_edit",
-            "product/202508/products/{$productId}/partial_edit",
-            "product/202506/products/{$productId}/partial_edit",
-            "product/202504/products/{$productId}/inventory/update",
-            "product/202501/products/{$productId}/inventory/update",
-            "product/202411/products/{$productId}/inventory/update",
-            "product/202409/products/{$productId}/inventory/update",
-            "product/202509/products/{$productId}/inventory/update",
-            "product/202309/products/{$productId}/partial_edit",
-        ];
-
-        $attempts = [];
-        if ($this->workingInventoryPath !== null) {
-            $body = str_contains($this->workingInventoryPath, 'api/products/stocks') ? $stockInfos : $clean;
-            $attempts[] = ['path' => $this->workingInventoryPath, 'body' => $body];
-        }
-        foreach ($paths as $path) {
-            $attempts[] = ['path' => $path, 'body' => $clean];
-        }
-        $attempts[] = ['path' => 'api/products/stocks', 'body' => $stockInfos];
-
-        $out = [];
-        $seen = [];
-        foreach ($attempts as $attempt) {
-            $key = $attempt['path'].'|'.md5((string) json_encode($attempt['body']));
-            if (isset($seen[$key])) {
-                continue;
-            }
-            $seen[$key] = true;
-            $out[] = $attempt;
-        }
-
-        return $out;
+        return ['success' => true, 'message' => 'Inventory updated.'];
     }
 
     /**
@@ -2016,16 +1950,29 @@ class TikTokShopService
             return ['success' => false, 'message' => 'No TikTok warehouse rows to update.'];
         }
 
+        $params = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
+        $attempts = [
+            ['version' => '202309', 'method' => 'inventory'],
+            ['version' => '202509', 'method' => 'partial'],
+            ['version' => '202309', 'method' => 'partial'],
+        ];
+        if ($this->workingInventoryPath !== null) {
+            [$version, $method] = array_pad(explode('|', $this->workingInventoryPath, 2), 2, 'inventory');
+            array_unshift($attempts, ['version' => $version, 'method' => $method]);
+        }
+
         $lastMessage = 'TikTok inventory update failed.';
-        foreach ($this->inventoryUpdateAttempts($productId, $skuId, $rows) as $attempt) {
-            $result = $this->postSignedJson($attempt['path'], $attempt['body']);
+        $seen = [];
+        foreach ($attempts as $attempt) {
+            $key = $attempt['version'].'|'.$attempt['method'];
+            if (isset($seen[$key]) || isset($this->deadInventoryKeys[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            $result = $this->invokeSdkInventory($productId, $params, $attempt['version'], $attempt['method']);
             if (! empty($result['success'])) {
-                $this->workingInventoryPath = $attempt['path'];
-                Log::info('TikTok inventory update succeeded', [
-                    'product_id' => $productId,
-                    'sku_id' => $skuId,
-                    'path' => $attempt['path'],
-                ]);
+                $this->workingInventoryPath = $key;
 
                 return $result;
             }
@@ -2035,10 +1982,14 @@ class TikTokShopService
             if ($this->ipAllowListBlocked) {
                 return ['success' => false, 'message' => $lastMessage];
             }
+            if ($this->isNoSchemaError($lastMessage) || $this->isInvalidApiVersionError($lastMessage)) {
+                $this->deadInventoryKeys[$key] = true;
+            }
             Log::info('TikTok inventory update attempt failed', [
                 'product_id' => $productId,
                 'sku_id' => $skuId,
-                'path' => $attempt['path'],
+                'version' => $attempt['version'],
+                'method' => $attempt['method'],
                 'error' => $lastMessage,
             ]);
             if (! empty($result['retry'])) {

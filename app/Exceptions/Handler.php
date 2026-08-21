@@ -26,5 +26,43 @@ class Handler extends ExceptionHandler
         $this->reportable(function (Throwable $e) {
             //
         });
+
+        $this->renderable(function (Throwable $e, $request) {
+            if (! $request->expectsJson()) {
+                return null;
+            }
+
+            $path = ltrim((string) $request->path(), '/');
+            if (! str_starts_with($path, 'marketplace/')) {
+                return null;
+            }
+
+            if ($e instanceof \Illuminate\Validation\ValidationException
+                || $e instanceof \Illuminate\Auth\AuthenticationException) {
+                return null;
+            }
+
+            $message = trim($e->getMessage());
+            if ($e instanceof \Illuminate\Session\TokenMismatchException || $message === '') {
+                $message = $message !== ''
+                    ? $message
+                    : ($e instanceof \Illuminate\Session\TokenMismatchException
+                        ? 'Session expired. Refresh the page and try again.'
+                        : class_basename($e));
+            }
+
+            \Illuminate\Support\Facades\Log::error('Marketplace JSON request failed', [
+                'path' => $request->path(),
+                'error' => $message,
+                'exception' => $e::class,
+            ]);
+
+            $status = $e instanceof \Illuminate\Session\TokenMismatchException ? 419 : 500;
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+            ], $status);
+        });
     }
 }

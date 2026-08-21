@@ -104,7 +104,7 @@ class TikTokListingsPageBuilder
             null,
             $this->stockMapForSkus($allLinkedVerified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
@@ -317,6 +317,26 @@ class TikTokListingsPageBuilder
      */
     public function syncMismatchInventoryNow(Request $request): array
     {
+        try {
+            return $this->runMismatchInventoryNow($request);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('TikTok mismatch inventory sync failed', [
+                'channel' => $this->channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Mismatch sync failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array{success: bool, done?: bool, total?: int, offset?: int, batch?: int, updated?: int, failed?: int, skipped?: int, message: string, queued?: bool}
+     */
+    protected function runMismatchInventoryNow(Request $request): array
+    {
         @set_time_limit(300);
 
         $settings = MarketplaceSyncSettings::getFor($this->channel);
@@ -335,7 +355,7 @@ class TikTokListingsPageBuilder
             null,
             $this->stockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
         $mismatchQty = $classified['mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
         $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)

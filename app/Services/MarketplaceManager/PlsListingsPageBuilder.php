@@ -309,6 +309,25 @@ class PlsListingsPageBuilder
      */
     public function syncMismatchInventoryNow(Request $request): array
     {
+        try {
+            return $this->runMismatchInventoryNow($request);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('PLS mismatch inventory sync failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Mismatch sync failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array{success: bool, done?: bool, total?: int, offset?: int, batch?: int, updated?: int, failed?: int, skipped?: int, message: string, queued?: bool}
+     */
+    protected function runMismatchInventoryNow(Request $request): array
+    {
         @set_time_limit(300);
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);

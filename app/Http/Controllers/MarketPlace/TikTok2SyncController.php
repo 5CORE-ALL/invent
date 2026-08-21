@@ -357,10 +357,19 @@ class TikTok2SyncController extends Controller
 
     public function syncMismatchInventoryNow(Request $request): JsonResponse
     {
-        $result = TikTokListingsPageBuilder::for('tiktok2')->syncMismatchInventoryNow($request);
-        $status = (! empty($result['success'])) ? 200 : 422;
+        try {
+            $result = TikTokListingsPageBuilder::for('tiktok2')->syncMismatchInventoryNow($request);
+            $status = (! empty($result['success'])) ? 200 : 422;
 
-        return response()->json($result, $status);
+            return response()->json($result, $status);
+        } catch (\Throwable $e) {
+            Log::error('TikTok2 syncMismatchInventoryNow failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Mismatch sync failed: '.$e->getMessage(),
+            ], 500);
+        }
     }
 
     public function syncTrackingNow(): JsonResponse
