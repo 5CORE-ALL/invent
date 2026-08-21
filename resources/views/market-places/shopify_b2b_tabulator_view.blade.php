@@ -243,27 +243,20 @@
             background-color: rgba(189, 224, 255, 0.8) !important;
         }
 
-        /* Column visibility dropdown — 4 columns */
-        .column-dropdown-multicol {
-            min-width: 560px;
-            padding: 6px 4px;
-            column-count: 4;
-            column-gap: 8px;
-            max-height: 420px;
-            overflow-y: auto;
+        /* Column visibility — grouped menu (Basic / Pricing / Advertisement / Other) */
+        #column-dropdown-menu.column-dropdown-multicol,
+        #column-dropdown-menu.analytics-col-vis-menu {
+            column-count: unset !important;
         }
-        .column-dropdown-multicol > li {
-            break-inside: avoid;
-            -webkit-column-break-inside: avoid;
-            page-break-inside: avoid;
+        #reverb-table {
+            width: 100% !important;
         }
-        .column-dropdown-multicol > li.column-dropdown-span-all {
-            column-span: all;
-            -webkit-column-span: all;
+        #reverb-table .tabulator-tableholder {
+            overflow-x: auto !important;
         }
-        .column-dropdown-multicol .dropdown-item {
-            padding: 3px 10px;
-            white-space: nowrap;
+        #reverb-table .tabulator-cell {
+            white-space: nowrap !important;
+            text-overflow: clip !important;
         }
 
         /* ========== SKU / PARENT SEARCH (inline after NPFT badge) ========== */
@@ -1932,7 +1925,14 @@
         table = new Tabulator("#reverb-table", {
             ajaxURL: "/shopify-b2b-data-json",
             ajaxSorting: false,
-            layout: "fitDataStretch",
+            layout: "fitData",
+            layoutColumnsOnNewData: true,
+            columnDefaults: {
+                hozAlign: "center",
+                headerHozAlign: "center",
+                resizable: true,
+                minWidth: 64,
+            },
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -2052,14 +2052,16 @@
                     title: "INV",
                     field: "INV",
                     hozAlign: "center",
-                    width: 50,
+                    width: 64,
+                    minWidth: 64,
                     sorter: "number"
                 },
                 {
                     title: "OV L30",
                     field: "L30",
                     hozAlign: "center",
-                    width: 50,
+                    width: 68,
+                    minWidth: 68,
                     sorter: "number"
                 },
                 {
@@ -2084,13 +2086,15 @@
                         
                         return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
                     },
-                    width: 50
+                    width: 64,
+                    minWidth: 64
                 },
                 {
                     title: "Views",
                     field: "Views",
                     hozAlign: "center",
-                    width: 60,
+                    width: 70,
+                    minWidth: 70,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue() || 0, 10);
@@ -2105,7 +2109,8 @@
                     field: "CVR%",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 60,
+                    width: 72,
+                    minWidth: 72,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         // CVR% = B2B L30 ÷ Views (not OV L30)
@@ -2130,7 +2135,8 @@
                     title: "B2B L30",
                     field: "B2B L30",
                     hozAlign: "center",
-                    width: 70,
+                    width: 74,
+                    minWidth: 74,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue() || 0);
@@ -2188,7 +2194,8 @@
                     hozAlign: "center",
                     headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Editable; saves to all Sku Link LMP siblings. Dot vs Amz price.",
                     editor: "input",
-                    width: 70,
+                    width: 86,
+                    minWidth: 86,
                     sorter: "number",
                     editable: function(cell) {
                         const d = cell.getRow().getData();
@@ -2215,6 +2222,7 @@
                     title: "Price",
                     field: "Price",
                     hozAlign: "center",
+                    minWidth: 86,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
@@ -2239,12 +2247,14 @@
                         
                         return `$${value.toFixed(2)}${lmpTri}${purpleTri}`;
                     },
-                    width: 70
+                    width: 88,
+                    minWidth: 88
                 },
                 {
                     title: "LMP",
                     field: "lmp_price",
                     hozAlign: "center",
+                    minWidth: 88,
                     sorter: "number",
                     width: 100,
                     headerTooltip: "Google LMP from /repricer/google-search (manual add supported)",
@@ -2301,7 +2311,8 @@
                     title: "Diff",
                     field: "lmp_diff_pct",
                     hozAlign: "center",
-                    width: 70,
+                    width: 84,
+                    minWidth: 84,
                     headerTooltip: "(Google LMP − Shopify Price) / LMP × 100",
                     sorter: function(a, b, aRow, bRow) {
                         const calc = function(rd) {
@@ -3289,6 +3300,9 @@
             setTimeout(function() {
                 applyFilters();
                 updateSummary();
+                if (typeof window.chPromoAutofitColumns === 'function') {
+                    window.chPromoAutofitColumns(table);
+                }
             }, 100);
         });
 
@@ -3300,7 +3314,8 @@
 
         // Toggle column from dropdown
         document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-            if (e.target.classList.contains('column-toggle') || e.target.type === 'checkbox') {
+            if (e.target.closest && e.target.closest('.analytics-col-vis-menu')) return;
+            if (e.target.classList.contains('column-toggle')) {
                 const field = e.target.dataset.field || e.target.getAttribute('data-field');
                 const col = table.getColumn(field);
                 if (col) {
