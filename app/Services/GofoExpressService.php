@@ -37,6 +37,11 @@ class GofoExpressService
         return $this->baseUrl !== '' && $this->username !== '' && $this->password !== '';
     }
 
+    public function setTimeout(int $seconds): void
+    {
+        $this->timeout = max(3, $seconds);
+    }
+
     public function productCode(): string
     {
         return $this->productCode;
@@ -155,23 +160,31 @@ class GofoExpressService
      * @param  list<string>  $refs
      * @return array{tracking: string, carrier: string, source: string, gofo_order_no: string}|null
      */
-    public function findShipment(array $refs): ?array
+    public function findShipment(array $refs, bool $fast = false): ?array
     {
         if (! $this->isConfigured()) {
             return null;
         }
 
-        foreach ($this->candidateOrderNos($refs) as $orderNo) {
+        $candidates = $this->candidateOrderNos($refs);
+        if ($fast) {
+            $candidates = array_slice($candidates, 0, 2);
+        }
+
+        foreach ($candidates as $orderNo) {
+            $fromTrack = null;
             $res = $this->track($orderNo);
-            if (empty($res['ok'])) {
-                continue;
+            if (! empty($res['ok'])) {
+                $fromTrack = $this->trackingFromPayload($res['data'] ?? null);
             }
 
-            $fromTrack = $this->trackingFromPayload($res['data'] ?? null);
             $fromLabel = null;
-            $label = $this->getLabel($orderNo);
-            if (! empty($label['ok'])) {
-                $fromLabel = $this->trackingFromPayload($label['data'] ?? null);
+            $trackHasNumber = $fromTrack !== null && strlen((string) ($fromTrack['tracking'] ?? '')) >= 8;
+            if (! $fast || ! $trackHasNumber) {
+                $label = $this->getLabel($orderNo);
+                if (! empty($label['ok'])) {
+                    $fromLabel = $this->trackingFromPayload($label['data'] ?? null);
+                }
             }
 
             $tracking = $fromLabel['tracking'] ?? $fromTrack['tracking'] ?? null;

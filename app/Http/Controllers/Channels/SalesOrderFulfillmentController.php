@@ -38,6 +38,7 @@ use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Support\TrackingCarrierGuesser;
+use App\Services\FourSellerApiService;
 use App\Services\VeeqoApiService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -56,6 +57,12 @@ class SalesOrderFulfillmentController extends Controller
 {
     /** @var list<string> */
     public const TOP_BADGE_KEYS = ['gofo', 'veeqo', 'shopify', 'others'];
+
+    /** Max orders per HTTP Pull Tracking request (keep under nginx/proxy gateway timeout). */
+    protected const HTTP_PULL_MAX = 4;
+
+    /** Stop HTTP Pull Tracking after this many seconds and return partial results. */
+    protected const HTTP_PULL_DEADLINE_SECONDS = 16.0;
 
     /** @var list<array<string, mixed>>|null */
     protected ?array $cachedLabelCreatedRows = null;
@@ -1843,6 +1850,7 @@ class SalesOrderFulfillmentController extends Controller
      * 1) Temu / Temu 2 → Temu OpenAPI.
      * 2) Other channels → that channel's own API (Newegg, Reverb, AE, Alibaba, Faire, PP, Doba).
      * When `selected` rows are posted, only those orders are pulled.
+     * HTTP requests are capped and time-boxed so nginx/proxy (often 60s) does not 504.
      */
     public function pullTrackingNumbers(
         Request $request,
@@ -1851,7 +1859,17 @@ class SalesOrderFulfillmentController extends Controller
         ChannelTrackingApiFallbackService $channelApiFallback,
         VeeqoShopifyFulfillmentService $labelTracking,
     ): JsonResponse {
-        $limit = max(1, min(100, (int) $request->input('limit', 40)));
+        @set_time_limit(45);
+        $deadline = microtime(true) + self::HTTP_PULL_DEADLINE_SECONDS;
+        try {
+            app(VeeqoApiService::class)->setTimeout(6);
+            app(GofoExpressService::class)->setTimeout(6);
+            app(FourSellerApiService::class)->setTimeout(5);
+        } catch (\Throwable $e) {
+            // Timeouts are best-effort; continue with service defaults.
+        }
+
+        $limit = max(1, min(self::HTTP_PULL_MAX, (int) $request->input('limit', self::HTTP_PULL_MAX)));
         $channel = strtolower(trim((string) $request->input('channel', '')));
         // Resolve Channels quick-search label → slug when needed.
         if ($channel !== '') {
@@ -1905,14 +1923,20 @@ class SalesOrderFulfillmentController extends Controller
                 'summary' => ['checked' => 0, 'with_tracking' => 0, 'updated' => 0, 'empty' => 0, 'selected' => 0],
             ], 422);
         }
-        if ($hasSelection) {
-            $limit = max(1, min(100, count($selected)));
+        if (! $hasSelection) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select orders (or wait for the table to finish loading), then click Pull Tracking. Unscoped pulls hit the gateway timeout.',
+                'data' => [],
+                'summary' => ['checked' => 0, 'with_tracking' => 0, 'updated' => 0, 'empty' => 0, 'selected' => 0],
+            ], 422);
         }
+        $limit = max(1, min(self::HTTP_PULL_MAX, count($selected)));
+        $selected = array_slice($selected, 0, $limit);
 
         $selectedSlugs = [];
         $temuParents = [];
         $temu2Parents = [];
-        $selectedKeys = [];
         foreach ($selected as $row) {
             $slug = $row['mm_slug'];
             // When Channels filter is Temu/Temu2, accept selected rows even if mm_slug was blank.
@@ -1937,11 +1961,6 @@ class SalesOrderFulfillmentController extends Controller
             if ($channel === 'temu2' && $parent !== '' && ($slug === '' || $slug === 'temu2')) {
                 $temu2Parents[$parent] = true;
             }
-            foreach ([$row['order_id'], $row['order_id_api'], $row['order_number'], $row['shopify_order_id']] as $k) {
-                if ($k !== '') {
-                    $selectedKeys[strtolower($k)] = true;
-                }
-            }
         }
 
         $pullTemu = $hasSelection
@@ -1961,156 +1980,37 @@ class SalesOrderFulfillmentController extends Controller
             $rows = [];
             $parts = [];
             $hardFail = false;
-            if ($hasSelection) {
-                $parts[] = 'Selected rows: '.count($selected).'.';
-            }
-
-            if ($pullTemu) {
-                $temu = $hasSelection
-                    ? $temuPull->pullForParents(array_keys($temuParents), true)
-                    : $temuPull->pullPending($limit, false);
-                $checked += (int) ($temu['checked'] ?? 0);
-                $updated += (int) ($temu['updated'] ?? 0);
-                $withTracking += (int) ($temu['updated'] ?? 0);
-                $parts[] = 'Temu API: '.((string) ($temu['message'] ?? 'done'));
-                if (empty($temu['success']) && (int) ($temu['checked'] ?? 0) === 0) {
-                    $hardFail = true;
-                }
-                $rows = array_merge(
-                    $rows,
-                    $hasSelection
-                        ? ($temu['rows'] ?? [])
-                        : $this->recentTemuPulledTrackingRows('temu', $limit)
-                );
-            }
-
-            if ($pullTemu2) {
-                $temu2 = $hasSelection
-                    ? $temu2Pull->pullForParents(array_keys($temu2Parents), true)
-                    : $temu2Pull->pullPending($limit, false);
-                $checked += (int) ($temu2['checked'] ?? 0);
-                $updated += (int) ($temu2['updated'] ?? 0);
-                $withTracking += (int) ($temu2['updated'] ?? 0);
-                $parts[] = 'Temu 2 API: '.((string) ($temu2['message'] ?? 'done'));
-                if (empty($temu2['success']) && (int) ($temu2['checked'] ?? 0) === 0) {
-                    $hardFail = true;
-                }
-                $rows = array_merge(
-                    $rows,
-                    $hasSelection
-                        ? ($temu2['rows'] ?? [])
-                        : $this->recentTemuPulledTrackingRows('temu2', $limit)
-                );
-            }
-
-            // Channel API for Label Created / No Scan rows still without tracking (never Shopify).
-            if ($pullChannelApi) {
-                $this->forgetSofOrderRowCaches();
-                $missing = array_values(array_filter(
-                    $hasSelection ? $selected : $this->missingLabelTrackingRows(),
-                    function ($row) use ($hasSelection, $channel, $selectedKeys) {
-                        if (! is_array($row)) {
-                            return false;
-                        }
-                        $slug = strtolower((string) ($row['mm_slug'] ?? ''));
-                        if (in_array($slug, ['temu', 'temu2'], true)) {
-                            return false;
-                        }
-                        if (! $hasSelection && trim((string) ($row['tracking_number'] ?? '')) !== '') {
-                            return false;
-                        }
-                        if (! $hasSelection && $channel !== '' && $slug !== $channel) {
-                            return false;
-                        }
-                        if ($hasSelection) {
-                            foreach ([
-                                $row['order_id'] ?? '',
-                                $row['order_id_api'] ?? '',
-                                $row['order_number'] ?? '',
-                                $row['shopify_order_id'] ?? '',
-                            ] as $k) {
-                                $k = strtolower(trim((string) $k));
-                                if ($k !== '' && isset($selectedKeys[$k])) {
-                                    return true;
-                                }
-                            }
-
-                            return $slug !== '';
-                        }
-
-                        return true;
-                    }
-                ));
-
-                // Normalize selected rows into SOF-like shape for fallback service.
-                if ($hasSelection) {
-                    $missing = array_map(static function ($row) {
-                        return [
-                            'mm_slug' => $row['mm_slug'] ?? '',
-                            'row_id' => (int) ($row['row_id'] ?? 0),
-                            'show_id' => (int) ($row['show_id'] ?? $row['row_id'] ?? 0),
-                            'order_id' => $row['order_id'] ?? '',
-                            'order_id_api' => $row['order_id_api'] ?? '',
-                            'order_number' => $row['order_number'] ?? '',
-                            'shopify_order_id' => $row['shopify_order_id'] ?? '',
-                            'tracking_number' => '',
-                        ];
-                    }, $missing);
-                }
-
-                if ($missing !== []) {
-                    $fallback = $channelApiFallback->pullForMissingRows(
-                        $missing,
-                        $limit,
-                        $hasSelection ? null : ($channel !== '' ? $channel : null)
-                    );
-                    $checked += (int) ($fallback['checked'] ?? 0);
-                    $updated += (int) ($fallback['updated'] ?? 0);
-                    $withTracking += (int) ($fallback['with_tracking'] ?? 0);
-                    if (($fallback['message'] ?? '') !== '') {
-                        $parts[] = (string) $fallback['message'];
-                    }
-                    $rows = array_merge($rows, $fallback['rows'] ?? []);
-                    $this->forgetSofOrderRowCaches();
-                }
-            }
+            $timedOut = false;
+            $processedKeys = [];
+            $parts[] = 'Selected rows: '.count($selected).'.';
 
             $labelCandidates = [];
-            if ($hasSelection) {
-                foreach ($selected as $row) {
-                    $slug = strtolower((string) ($row['mm_slug'] ?? ''));
-                    if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
-                        continue;
-                    }
-                    $labelCandidates[] = [
-                        'mm_slug' => $slug,
-                        'row_id' => (int) ($row['row_id'] ?? 0),
-                        'show_id' => (int) ($row['show_id'] ?? $row['row_id'] ?? 0),
-                        'order_id' => (string) ($row['order_id'] ?? ''),
-                        'order_id_api' => (string) ($row['order_id_api'] ?? ''),
-                        'order_number' => (string) ($row['order_number'] ?? ''),
-                        'shopify_order_id' => (string) ($row['shopify_order_id'] ?? ''),
-                        'tracking_number' => '',
-                    ];
+            foreach ($selected as $row) {
+                $slug = strtolower((string) ($row['mm_slug'] ?? ''));
+                if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
+                    continue;
                 }
-            } elseif ($pullChannelApi) {
-                foreach ($this->missingLabelTrackingRows() as $row) {
-                    $slug = strtolower((string) ($row['mm_slug'] ?? ''));
-                    if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
-                        continue;
-                    }
-                    if ($channel !== '' && $slug !== $channel) {
-                        continue;
-                    }
-                    if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
-                        continue;
-                    }
-                    $labelCandidates[] = $row;
-                }
+                $labelCandidates[] = [
+                    'id' => (string) ($row['id'] ?? ''),
+                    'mm_slug' => $slug,
+                    'row_id' => (int) ($row['row_id'] ?? 0),
+                    'show_id' => (int) ($row['show_id'] ?? $row['row_id'] ?? 0),
+                    'order_id' => (string) ($row['order_id'] ?? ''),
+                    'order_id_api' => (string) ($row['order_id_api'] ?? ''),
+                    'order_number' => (string) ($row['order_number'] ?? ''),
+                    'shopify_order_id' => (string) ($row['shopify_order_id'] ?? ''),
+                    'tracking_number' => '',
+                ];
             }
 
-            if ($labelCandidates !== []) {
-                $labelPull = $this->pullLabelTrackingFromApis($labelCandidates, $limit, $labelTracking);
+            if ($labelCandidates !== [] && microtime(true) < $deadline) {
+                $labelPull = $this->pullLabelTrackingFromApis(
+                    $labelCandidates,
+                    $limit,
+                    $labelTracking,
+                    $deadline,
+                    true
+                );
                 $checked += (int) ($labelPull['checked'] ?? 0);
                 $updated += (int) ($labelPull['updated'] ?? 0);
                 $withTracking += (int) ($labelPull['with_tracking'] ?? 0);
@@ -2118,6 +2018,44 @@ class SalesOrderFulfillmentController extends Controller
                     $parts[] = (string) $labelPull['message'];
                 }
                 $rows = array_merge($rows, $labelPull['rows'] ?? []);
+                $processedKeys = array_merge($processedKeys, $labelPull['processed_keys'] ?? []);
+                if (! empty($labelPull['truncated'])) {
+                    $timedOut = true;
+                }
+            } elseif ($labelCandidates !== []) {
+                $timedOut = true;
+            }
+
+            if ($pullTemu && microtime(true) < $deadline) {
+                $temu = $temuPull->pullForParents(array_keys($temuParents), true);
+                $checked += (int) ($temu['checked'] ?? 0);
+                $updated += (int) ($temu['updated'] ?? 0);
+                $withTracking += (int) ($temu['updated'] ?? 0);
+                $parts[] = 'Temu API: '.((string) ($temu['message'] ?? 'done'));
+                if (empty($temu['success']) && (int) ($temu['checked'] ?? 0) === 0) {
+                    $hardFail = true;
+                }
+                $rows = array_merge($rows, $temu['rows'] ?? []);
+            } elseif ($pullTemu) {
+                $timedOut = true;
+            }
+
+            if ($pullTemu2 && microtime(true) < $deadline) {
+                $temu2 = $temu2Pull->pullForParents(array_keys($temu2Parents), true);
+                $checked += (int) ($temu2['checked'] ?? 0);
+                $updated += (int) ($temu2['updated'] ?? 0);
+                $withTracking += (int) ($temu2['updated'] ?? 0);
+                $parts[] = 'Temu 2 API: '.((string) ($temu2['message'] ?? 'done'));
+                if (empty($temu2['success']) && (int) ($temu2['checked'] ?? 0) === 0) {
+                    $hardFail = true;
+                }
+                $rows = array_merge($rows, $temu2['rows'] ?? []);
+            } elseif ($pullTemu2) {
+                $timedOut = true;
+            }
+
+            if ($timedOut) {
+                $parts[] = 'Stopped early to stay under the gateway timeout; remaining orders continue in the next batch.';
             }
 
             $empty = max(0, $checked - $withTracking);
@@ -2137,6 +2075,8 @@ class SalesOrderFulfillmentController extends Controller
             return response()->json([
                 'success' => ! $hardFail,
                 'message' => $message,
+                'truncated' => $timedOut,
+                'processed_keys' => array_values(array_unique($processedKeys)),
                 'summary' => [
                     'checked' => $checked,
                     'with_tracking' => $withTracking,
@@ -2235,19 +2175,30 @@ class SalesOrderFulfillmentController extends Controller
      * Pull tracking from Veeqo / GOFO / 4Seller for SOF rows that still have no number.
      *
      * @param  list<array<string, mixed>>  $candidateRows
-     * @return array{checked: int, updated: int, with_tracking: int, message: string, rows: list<array<string, mixed>>}
+     * @return array{checked: int, updated: int, with_tracking: int, message: string, rows: list<array<string, mixed>>, truncated: bool, processed_keys: list<string>}
      */
-    protected function pullLabelTrackingFromApis(array $candidateRows, int $limit, VeeqoShopifyFulfillmentService $labels): array
-    {
+    protected function pullLabelTrackingFromApis(
+        array $candidateRows,
+        int $limit,
+        VeeqoShopifyFulfillmentService $labels,
+        ?float $deadline = null,
+        bool $fast = false,
+    ): array {
         $limit = max(1, min(200, $limit));
         $checked = 0;
         $updated = 0;
         $withTracking = 0;
         $outRows = [];
         $seen = [];
+        $truncated = false;
+        $processedKeys = [];
 
         foreach ($candidateRows as $row) {
             if ($checked >= $limit) {
+                break;
+            }
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                $truncated = true;
                 break;
             }
             if (! is_array($row)) {
@@ -2279,11 +2230,13 @@ class SalesOrderFulfillmentController extends Controller
                     }
                 }
                 if ($amazonOrder && $amazonOrder->isFba()) {
+                    $processedKeys[] = $this->sofPullRowKey($row);
                     continue;
                 }
             }
 
             $checked++;
+            $processedKeys[] = $this->sofPullRowKey($row);
 
             $refs = [];
             foreach (['order_id', 'order_id_api', 'order_number', 'shopify_order_id'] as $k) {
@@ -2308,7 +2261,7 @@ class SalesOrderFulfillmentController extends Controller
                 }
             }
 
-            $found = $labels->lookupLabelTracking($refs, $local);
+            $found = $labels->lookupLabelTracking($refs, $local, $fast);
             if ($found === null) {
                 continue;
             }
@@ -2327,6 +2280,9 @@ class SalesOrderFulfillmentController extends Controller
             $withTracking++;
             $updated++;
             $outRows[] = [
+                'id' => (string) ($row['id'] ?? ''),
+                'mm_slug' => $slug,
+                'show_id' => $showId,
                 'order_number' => (string) ($row['order_number'] ?? $row['order_id'] ?? ''),
                 'shopify_order_id' => $row['shopify_order_id'] ?? null,
                 'order_id' => (string) ($row['order_id'] ?? ''),
@@ -2356,7 +2312,27 @@ class SalesOrderFulfillmentController extends Controller
             'with_tracking' => $withTracking,
             'message' => $message,
             'rows' => $outRows,
+            'truncated' => $truncated,
+            'processed_keys' => array_values(array_unique(array_filter($processedKeys))),
         ];
+    }
+
+    /**
+     * Stable key so the browser can retry only orders this request did not finish.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function sofPullRowKey(array $row): string
+    {
+        $id = trim((string) ($row['id'] ?? ''));
+        if ($id !== '') {
+            return $id;
+        }
+        $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
+        $showId = (int) ($row['show_id'] ?? $row['row_id'] ?? 0);
+        $order = trim((string) ($row['order_id_api'] ?? $row['order_id'] ?? $row['order_number'] ?? ''));
+
+        return $slug.'|'.$showId.'|'.$order;
     }
 
     /**

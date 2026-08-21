@@ -2688,6 +2688,8 @@
                 tracking_number: tn,
                 tracking_company: carrier,
             };
+            const id = String(r.id || '').trim().toLowerCase();
+            if (id) byKey[id] = patch;
             ['order_number', 'shopify_order_id', 'order_id', 'order_id_api'].forEach(function (k) {
                 const v = String(r[k] || '').trim().toLowerCase();
                 if (v) byKey[v] = patch;
@@ -2697,6 +2699,8 @@
 
         function lookupPatch(row) {
             if (!row || typeof row !== 'object') return null;
+            const id = String(row.id || '').trim().toLowerCase();
+            if (id && byKey[id]) return byKey[id];
             const candidates = [
                 row.order_number, row.order_id, row.order_id_api, row.shopify_order_id,
             ];
@@ -4769,30 +4773,33 @@
             });
     }
 
-    /**
-     * After Label Created rows render, pull Veeqo/GOFO tracking for blank Tracking cells.
-     * Does not block the table. Pending (no label) stays blank.
-     */
-    function sofAutoFillMissingLabelTracking(rows, round) {
-        round = round || 0;
-        if (round >= 4 || window.__sofAutoFillTrackingBusy) return;
-        const missing = [];
+    const SOF_PULL_CHUNK = 4;
+
+    function sofPullTargetKey(t) {
+        if (!t || typeof t !== 'object') return '';
+        return String(t.id || '').trim()
+            || (String(t.mm_slug || '') + '|' + (t.show_id || t.row_id || '') + '|'
+                + (t.order_id_api || t.order_id || t.order_number || t.shopify_order_id || ''));
+    }
+
+    function sofMissingPullTargetsFromCache() {
         const seen = {};
-        (Array.isArray(rows) ? rows : []).forEach(function (r) {
+        const out = [];
+        [].concat(fulfilledRows || [], pendingRows || []).forEach(function (r) {
             if (String(r.tracking_number || '').trim()) return;
             const mapped = sofMapPullTarget(r);
             if (!mapped) return;
-            const key = mapped.id
-                || (mapped.mm_slug + '|' + (mapped.order_id_api || mapped.order_id || mapped.order_number || mapped.shopify_order_id));
-            if (seen[key]) return;
+            const key = sofPullTargetKey(mapped);
+            if (!key || seen[key]) return;
             seen[key] = true;
-            missing.push(mapped);
+            out.push(mapped);
         });
-        if (!missing.length) return;
+        return out;
+    }
 
-        window.__sofAutoFillTrackingBusy = true;
-        const chunk = missing.slice(0, 80);
-        fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
+    function sofPullTrackingRequest(targets) {
+        const channelFilter = sofChannelFilterValue();
+        return fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -4801,35 +4808,73 @@
                 'X-Requested-With': 'XMLHttpRequest',
             },
             body: JSON.stringify({
-                limit: chunk.length,
-                selected: chunk,
+                limit: Math.min(SOF_PULL_CHUNK, targets.length),
+                channel: channelFilter || '',
+                selected: targets,
                 selected_only: true,
             }),
-        })
-            .then(function (r) {
-                return r.text().then(function (text) {
-                    let j = null;
-                    try { j = text ? JSON.parse(text) : null; } catch (e) { j = null; }
-                    return { ok: r.ok, json: j };
-                });
-            })
+        }).then(function (r) {
+            return r.text().then(function (text) {
+                let j = null;
+                try { j = text ? JSON.parse(text) : null; } catch (e) { j = null; }
+                return { ok: r.ok, status: r.status, json: j };
+            });
+        });
+    }
+
+    /**
+     * After Label Created rows render, pull GOFO/Veeqo tracking for blank Tracking cells.
+     * Continues in small batches until every missing Label Created row has been checked.
+     */
+    function sofAutoFillMissingLabelTracking(rows, round) {
+        round = round || 0;
+        if (round >= 80 || window.__sofAutoFillTrackingBusy) return;
+        const missing = [];
+        const seen = {};
+        (Array.isArray(rows) ? rows : []).forEach(function (r) {
+            if (String(r.tracking_number || '').trim()) return;
+            const mapped = sofMapPullTarget(r);
+            if (!mapped) return;
+            const key = sofPullTargetKey(mapped);
+            if (!key || seen[key]) return;
+            seen[key] = true;
+            missing.push(mapped);
+        });
+        if (!missing.length) return;
+
+        window.__sofAutoFillTrackingBusy = true;
+        const chunk = missing.slice(0, SOF_PULL_CHUNK);
+        sofPullTrackingRequest(chunk)
             .then(function (res) {
                 const j = res.json || {};
                 const pulled = Array.isArray(j.data) ? j.data : [];
                 if (res.ok && j.success !== false) {
                     sofApplyPulledTrackingToTables(pulled);
                 }
-                const found = pulled.filter(function (row) {
-                    return String(row && row.tracking_number || '').trim() !== '';
-                }).length;
                 window.__sofAutoFillTrackingBusy = false;
                 sofStripLabeledPendingRows();
-                if (found > 0) {
-                    const still = []
-                        .concat(pendingRows || [])
-                        .concat(fulfilledRows || [])
-                        .filter(function (r) { return !String(r.tracking_number || '').trim(); });
-                    sofAutoFillMissingLabelTracking(still, round + 1);
+                const processed = {};
+                (j.processed_keys || []).forEach(function (k) {
+                    if (k) processed[String(k)] = true;
+                });
+                chunk.forEach(function (t) {
+                    if (processed[sofPullTargetKey(t)]) return;
+                    if (res.status === 504 || res.status === 502 || j.truncated) return;
+                    processed[sofPullTargetKey(t)] = true;
+                });
+                const next = []
+                    .concat(fulfilledRows || [])
+                    .concat(pendingRows || [])
+                    .filter(function (r) {
+                        if (String(r.tracking_number || '').trim()) return false;
+                        const mapped = sofMapPullTarget(r);
+                        if (!mapped) return false;
+                        return !processed[sofPullTargetKey(mapped)];
+                    });
+                if (next.length && round + 1 < 80) {
+                    setTimeout(function () {
+                        sofAutoFillMissingLabelTracking(next, round + 1);
+                    }, 250);
                 }
             })
             .catch(function () {
@@ -4876,105 +4921,176 @@
         const $label = $btn.find('.sof-pull-tracking-label');
         const prev = $label.text();
         let targets = Array.isArray(selected) ? selected.slice() : [];
-        if (targets.length > 100) {
-            const proceed = window.confirm(
-                'You have ' + targets.length + ' rows selected. Pull will process the first 100 only. Continue?'
-            );
-            if (!proceed) return;
-            targets = targets.slice(0, 100);
+        if (!targets.length) {
+            targets = sofMissingPullTargetsFromCache();
         }
-        $btn.prop('disabled', true);
-        $label.text(targets.length ? ('Pulling ' + targets.length + '…') : 'Pulling…');
+        if (!targets.length) {
+            const emptyMsg = 'No orders missing tracking on this page yet. Wait for the tables to load, or check rows and try again.';
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'info', title: 'Nothing to pull', text: emptyMsg });
+            } else {
+                alert(emptyMsg);
+            }
+            return;
+        }
 
-        const channelFilter = sofChannelFilterValue();
-        const payload = {
-            limit: targets.length ? Math.min(100, targets.length) : 40,
-            channel: channelFilter || '',
-            selected: targets,
-            selected_only: targets.length > 0,
-        };
-        fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-            body: JSON.stringify(payload),
-        })
-            .then(function (r) {
-                return r.text().then(function (text) {
-                    let j = null;
-                    try { j = text ? JSON.parse(text) : null; } catch (e) { j = null; }
-                    return { ok: r.ok, status: r.status, json: j, raw: text };
+        $btn.prop('disabled', true);
+
+        const totalStarted = targets.length;
+        const totals = { checked: 0, with_tracking: 0, updated: 0, empty: 0 };
+        const allRows = [];
+        const attempts = {};
+        let lastMsg = '';
+        let hardFail = false;
+        let gatewayFail = false;
+        let doneCount = 0;
+
+        function showPullResult(ok, msg) {
+            const summaryLine = 'Orders: ' + totalStarted
+                + ' · Checked: ' + totals.checked
+                + ' · With tracking: ' + totals.with_tracking
+                + ' · Saved: ' + totals.updated
+                + ' · Empty: ' + totals.empty;
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: ok ? 'success' : (gatewayFail && totals.updated > 0 ? 'warning' : (ok ? 'success' : 'error')),
+                    title: ok
+                        ? ('Updated tracking for ' + totals.updated + ' of ' + totalStarted)
+                        : (gatewayFail ? 'Pull timed out' : 'Pull failed'),
+                    width: Math.min(920, window.innerWidth - 40),
+                    html: '<div style="text-align:left;font-size:0.9rem;">'
+                        + '<p class="mb-1">' + escapeHtml(msg) + '</p>'
+                        + '<p class="text-muted mb-2" style="font-size:0.8rem;">' + escapeHtml(summaryLine) + '</p>'
+                        + buildPulledTrackingTableHtml(allRows)
+                        + '</div>',
+                    showConfirmButton: true,
+                    confirmButtonText: 'Close',
                 });
-            })
-            .then(function (res) {
-                const j = res.json || {};
-                const ok = !!(res.ok && j.success !== false);
-                const msg = j.message
-                    || (ok ? 'Done.' : ('Pull failed' + (res.status ? (' (HTTP ' + res.status + ')') : '') + '.'));
-                const rows = Array.isArray(j.data) ? j.data : [];
-                const summary = j.summary || {};
-                const summaryLine = (summary.selected ? ('Selected: ' + summary.selected + ' · ') : '')
-                    + 'Checked: ' + (summary.checked || 0)
-                    + ' · With tracking: ' + (summary.with_tracking || 0)
-                    + ' · Saved: ' + (summary.updated || 0)
-                    + ' · Empty: ' + (summary.empty || 0);
-                if (typeof Swal !== 'undefined') {
-                    Swal.fire({
-                        icon: ok ? 'success' : 'error',
-                        title: ok
-                            ? (targets.length ? ('Pulled ' + targets.length + ' selected') : 'Pulled tracking numbers')
-                            : 'Pull failed',
-                        width: Math.min(920, window.innerWidth - 40),
-                        html: '<div style="text-align:left;font-size:0.9rem;">'
-                            + '<p class="mb-1">' + escapeHtml(msg) + '</p>'
-                            + '<p class="text-muted mb-2" style="font-size:0.8rem;">' + escapeHtml(summaryLine) + '</p>'
-                            + buildPulledTrackingTableHtml(rows)
-                            + '</div>',
-                        showConfirmButton: true,
-                        confirmButtonText: 'Close',
-                    });
-                } else {
-                    alert(msg + '\n' + summaryLine);
-                }
-                if (ok) {
-                    sofApplyPulledTrackingToTables(rows);
-                }
-            })
-            .catch(function (err) {
-                const msg = err && err.message ? err.message : 'Network error';
-                if (typeof Swal !== 'undefined') {
-                    Swal.fire({ icon: 'error', title: 'Pull failed', text: msg });
-                } else {
-                    alert(msg);
-                }
-            })
-            .finally(function () {
+            } else {
+                alert(msg + '\n' + summaryLine);
+            }
+            if (allRows.length) {
+                sofApplyPulledTrackingToTables(allRows);
+            }
+        }
+
+        function pullQueue(queue) {
+            if (!queue.length) {
+                const ok = !hardFail && (totals.checked > 0 || totals.updated > 0 || !gatewayFail);
+                const msg = lastMsg || (totals.updated
+                    ? ('Saved tracking on ' + totals.updated + ' labeled order' + (totals.updated === 1 ? '' : 's') + '.')
+                    : 'Checked all selected orders. No new tracking numbers were found.');
+                showPullResult(ok && !hardFail, msg);
                 $btn.prop('disabled', false);
                 $label.text(prev);
-            });
+                return;
+            }
+
+            const chunk = queue.slice(0, SOF_PULL_CHUNK);
+            const rest = queue.slice(SOF_PULL_CHUNK);
+            $label.text('Pulling ' + Math.min(doneCount + chunk.length, totalStarted) + '/' + totalStarted + '…');
+
+            sofPullTrackingRequest(chunk)
+                .then(function (res) {
+                    const j = res.json || {};
+                    const rows = Array.isArray(j.data) ? j.data : [];
+                    rows.forEach(function (row) { allRows.push(row); });
+                    const summary = j.summary || {};
+                    totals.checked += Number(summary.checked || 0);
+                    totals.with_tracking += Number(summary.with_tracking || 0);
+                    totals.updated += Number(summary.updated || 0);
+                    totals.empty += Number(summary.empty || 0);
+                    if (j.message) lastMsg = j.message;
+                    if (res.ok && j.success !== false) {
+                        sofApplyPulledTrackingToTables(rows);
+                    }
+
+                    const processed = {};
+                    (j.processed_keys || []).forEach(function (k) {
+                        if (k) processed[String(k)] = true;
+                    });
+                    rows.forEach(function (row) {
+                        const k = sofPullTargetKey(row);
+                        if (k) processed[k] = true;
+                    });
+
+                    const leftover = [];
+                    const timedOut = !!(j.truncated || res.status === 504 || res.status === 502 || res.status === 524);
+                    if (timedOut) gatewayFail = true;
+
+                    chunk.forEach(function (t) {
+                        const key = sofPullTargetKey(t);
+                        if (processed[key]) {
+                            doneCount += 1;
+                            return;
+                        }
+                        attempts[key] = (attempts[key] || 0) + 1;
+                        if (timedOut && attempts[key] < 3) {
+                            leftover.push(t);
+                            return;
+                        }
+                        if (!timedOut) {
+                            doneCount += 1;
+                            return;
+                        }
+                        leftover.push(t);
+                        if (attempts[key] >= 3) {
+                            doneCount += 1;
+                            leftover.pop();
+                        }
+                    });
+
+                    if (res.status >= 400 && res.status !== 504 && res.status !== 502 && res.status !== 524 && j.success === false) {
+                        hardFail = true;
+                        lastMsg = j.message || ('Pull failed (HTTP ' + res.status + ').');
+                    }
+
+                    pullQueue(leftover.concat(rest));
+                })
+                .catch(function (err) {
+                    const leftover = [];
+                    chunk.forEach(function (t) {
+                        const key = sofPullTargetKey(t);
+                        attempts[key] = (attempts[key] || 0) + 1;
+                        if (attempts[key] < 3) leftover.push(t);
+                        else doneCount += 1;
+                    });
+                    gatewayFail = true;
+                    lastMsg = err && err.message ? err.message : 'Network error';
+                    if (!leftover.length && !rest.length) {
+                        showPullResult(false, lastMsg);
+                        $btn.prop('disabled', false);
+                        $label.text(prev);
+                        return;
+                    }
+                    pullQueue(leftover.concat(rest));
+                });
+        }
+
+        pullQueue(targets);
     }
 
     $('#sof-pull-tracking-btn').on('click', function () {
         const selected = sofSelectedPullTargets();
         if (!selected.length) {
+            const missing = sofMissingPullTargetsFromCache();
             if (typeof Swal !== 'undefined') {
                 Swal.fire({
                     icon: 'warning',
                     title: 'No rows checked',
                     html: 'Use the <b>header checkbox</b> (or row checkboxes) to select orders, then click <b>Pull Tracking Number</b>.<br><br>'
-                        + 'Or continue to pull a batch of 40 orders that are still missing tracking.',
+                        + (missing.length
+                            ? ('Or continue to pull tracking for all <b>' + missing.length + '</b> Label Created / Pending orders still missing a number.')
+                            : 'Wait for Label Created / Pending to finish loading if the tables are still empty.'),
                     showCancelButton: true,
-                    confirmButtonText: 'Pull batch of 40',
+                    confirmButtonText: missing.length ? ('Pull all missing (' + missing.length + ')') : 'OK',
+                    showConfirmButton: true,
                     cancelButtonText: 'Cancel',
                 }).then(function (result) {
-                    if (result.isConfirmed) sofRunPullTracking([]);
+                    if (result.isConfirmed && missing.length) sofRunPullTracking(missing);
                 });
-            } else if (confirm('No rows checked. Pull a batch of 40?')) {
-                sofRunPullTracking([]);
+            } else if (missing.length && confirm('No rows checked. Pull tracking for all ' + missing.length + ' orders missing a number?')) {
+                sofRunPullTracking(missing);
             }
             return;
         }

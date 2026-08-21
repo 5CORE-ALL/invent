@@ -205,8 +205,17 @@ class VeeqoShopifyFulfillmentService
      * @param  array{tracking?: string, carrier?: string}|null  $localTracking
      * @return array{tracking: string, carrier: string, source: string}|null
      */
-    public function lookupLabelTracking(array $refs, ?array $localTracking = null): ?array
+    public function lookupLabelTracking(array $refs, ?array $localTracking = null, bool $fast = false): ?array
     {
+        $localTn = strtoupper(preg_replace('/\s+/', '', (string) ($localTracking['tracking'] ?? '')) ?? '');
+        if (strlen($localTn) >= 8) {
+            return [
+                'tracking' => $localTn,
+                'carrier' => (string) ($localTracking['carrier'] ?? 'Other'),
+                'source' => 'marketplace',
+            ];
+        }
+
         $clean = [];
         foreach ($refs as $ref) {
             $ref = trim((string) $ref);
@@ -215,9 +224,37 @@ class VeeqoShopifyFulfillmentService
             }
             $clean[] = $ref;
         }
+        $marketRefs = $this->marketplaceLookupRefs($clean, $fast ? 3 : 8);
+
+        if ($fast) {
+            // Label Created eBay/Amazon labels are usually bought in GOFO/4Seller.
+            // Hitting Veeqo first burned the HTTP deadline and left most rows blank.
+            if ($this->gofo->isConfigured() && $marketRefs !== []) {
+                $gofo = $this->gofo->findShipment($marketRefs, true);
+                if ($gofo !== null && trim((string) ($gofo['tracking'] ?? '')) !== '') {
+                    return [
+                        'tracking' => (string) $gofo['tracking'],
+                        'carrier' => (string) ($gofo['carrier'] ?? 'GOFO'),
+                        'source' => 'gofo',
+                    ];
+                }
+            }
+            if ($this->veeqo->isConfigured() && $marketRefs !== []) {
+                $veeqo = $this->findVeeqoShipment(array_slice($marketRefs, 0, 2), true);
+                if ($veeqo !== null && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
+                    return [
+                        'tracking' => (string) $veeqo['tracking'],
+                        'carrier' => (string) ($veeqo['carrier'] ?? 'Veeqo'),
+                        'source' => 'veeqo',
+                    ];
+                }
+            }
+
+            return null;
+        }
 
         if ($this->veeqo->isConfigured()) {
-            $veeqo = $this->findVeeqoShipment($clean);
+            $veeqo = $this->findVeeqoShipment($clean, false);
             if ($veeqo !== null && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
                 return [
                     'tracking' => (string) $veeqo['tracking'],
@@ -228,7 +265,7 @@ class VeeqoShopifyFulfillmentService
         }
 
         if ($this->gofo->isConfigured()) {
-            $gofo = $this->gofo->findShipment($clean);
+            $gofo = $this->gofo->findShipment($marketRefs !== [] ? $marketRefs : $clean);
             if ($gofo !== null && trim((string) ($gofo['tracking'] ?? '')) !== '') {
                 return [
                     'tracking' => (string) $gofo['tracking'],
@@ -249,16 +286,39 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        $localTn = strtoupper(preg_replace('/\s+/', '', (string) ($localTracking['tracking'] ?? '')) ?? '');
-        if (strlen($localTn) >= 8) {
-            return [
-                'tracking' => $localTn,
-                'carrier' => (string) ($localTracking['carrier'] ?? 'Other'),
-                'source' => 'marketplace',
-            ];
+        return null;
+    }
+
+    /**
+     * Marketplace / customer order numbers suitable for GOFO and Veeqo search.
+     * Drops Shopify GIDs and other long internal ids that will never match a label.
+     *
+     * @param  list<string>  $refs
+     * @return list<string>
+     */
+    protected function marketplaceLookupRefs(array $refs, int $max = 6): array
+    {
+        $out = [];
+        foreach ($refs as $ref) {
+            $ref = trim((string) $ref);
+            if ($ref === '' || strlen($ref) < 6) {
+                continue;
+            }
+            if (str_starts_with($ref, 'gid://') || str_starts_with($ref, 'https://')) {
+                continue;
+            }
+            if (strlen($ref) > 64) {
+                continue;
+            }
+            if (! in_array($ref, $out, true)) {
+                $out[] = $ref;
+            }
+            if (count($out) >= $max) {
+                break;
+            }
         }
 
-        return null;
+        return $out;
     }
 
     /**
@@ -805,7 +865,7 @@ class VeeqoShopifyFulfillmentService
      * @param  list<string>  $refs
      * @return array{tracking: string, carrier: string, veeqo_order_id: ?int}|null
      */
-    public function findVeeqoShipment(array $refs): ?array
+    public function findVeeqoShipment(array $refs, bool $fast = false): ?array
     {
         $clean = [];
         foreach ($refs as $ref) {
@@ -836,6 +896,9 @@ class VeeqoShopifyFulfillmentService
                     $clean[] = $candidate;
                 }
             }
+            if ($fast && count($clean) >= 2) {
+                break;
+            }
         }
         if ($clean === []) {
             return null;
@@ -845,6 +908,9 @@ class VeeqoShopifyFulfillmentService
             $hit = $this->searchVeeqoOrders($ref, $clean);
             if ($hit !== null) {
                 return $hit;
+            }
+            if ($fast) {
+                continue;
             }
             $hit = $this->searchVeeqoShipments($ref, $clean);
             if ($hit !== null) {

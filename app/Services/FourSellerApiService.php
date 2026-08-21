@@ -33,6 +33,11 @@ class FourSellerApiService
         return $this->baseUrl !== '' && $this->token !== '';
     }
 
+    public function setTimeout(int $seconds): void
+    {
+        $this->timeout = max(3, $seconds);
+    }
+
     /**
      * @param  list<string>  $refs
      * @return array{tracking: string, carrier: string, source: string}|null
