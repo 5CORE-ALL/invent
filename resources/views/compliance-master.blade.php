@@ -50,33 +50,53 @@
             border-bottom: 1px solid #cbd5e1;
         }
 
+        /* Horizontal titles with the filter control above the name */
         #compliance-tabulator .tabulator-header .tabulator-col {
             border-right: 1px solid #cbd5e1;
-            height: 76px !important;
-            min-height: 76px !important;
+            height: auto !important;
+            min-height: 72px !important;
         }
 
         #compliance-tabulator .tabulator-header .tabulator-col-content {
-            padding: 2px 1px;
+            padding: 4px 3px 6px;
             height: 100%;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: flex-start;
+            gap: 4px;
         }
 
         #compliance-tabulator .tabulator-header .tabulator-col .tabulator-col-title {
-            writing-mode: vertical-rl;
+            writing-mode: horizontal-tb !important;
             text-orientation: mixed;
-            white-space: nowrap;
-            transform: rotate(180deg);
-            height: 68px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            white-space: normal;
+            transform: none !important;
+            height: auto !important;
+            display: block;
+            text-align: center;
             font-size: 11px;
             font-weight: 600;
-            line-height: 1.15;
+            line-height: 1.2;
             color: #334155;
             padding: 0;
-            margin: 0 auto;
+            margin: 0;
+            order: 2;
+        }
+
+        #compliance-tabulator .tabulator-header .tabulator-col:has(.cm-filter-cell .form-label) .tabulator-col-title,
+        #compliance-tabulator .tabulator-header .tabulator-col:has(.cm-filter-cell .cm-status-filter-wrap) .tabulator-col-title {
+            display: none;
+        }
+
+        #compliance-tabulator .tabulator-header .cm-filter-cell {
+            order: 1;
+            position: relative;
+            width: 100%;
+            min-width: 0;
+            padding: 0;
+            overflow: visible;
         }
 
         #compliance-tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -102,7 +122,8 @@
         }
 
         #compliance-tabulator .tabulator-header .tabulator-col.cm-tabulator-cb-header {
-            height: 76px !important;
+            height: auto !important;
+            min-height: 72px !important;
         }
 
         #compliance-tabulator .tabulator-cell.cm-compliance-field-col {
@@ -186,33 +207,12 @@
         }
 
         .cm-compliance-filters-toolbar {
-            flex-shrink: 0;
-            overflow: hidden;
-            position: relative;
-            padding: 4px 0 2px;
-            background: #fff;
-            border-bottom: 1px solid #e5e7eb;
-            z-index: 3;
-        }
-
-        .cm-filter-row {
-            display: grid;
-            align-items: end;
-            width: max-content;
-            min-width: 100%;
-            min-height: 48px;
-            column-gap: 0;
-        }
-
-        .cm-filter-cell {
-            box-sizing: border-box;
-            padding: 0 3px;
-            min-width: 0;
-            overflow: hidden;
+            display: none !important;
         }
 
         .cm-filter-cell.cm-filter-cell--status {
             overflow: visible;
+            z-index: 6;
         }
 
         .cm-filter-cell .form-label {
@@ -230,8 +230,8 @@
             padding-bottom: 0.2rem;
         }
 
-        .cm-compliance-filters-toolbar .form-control-sm,
-        .cm-compliance-filters-toolbar .form-select-sm {
+        .cm-filter-cell .form-control-sm,
+        .cm-filter-cell .form-select-sm {
             font-size: 10px;
             padding-top: 0.15rem;
             padding-bottom: 0.15rem;
@@ -241,42 +241,42 @@
             min-width: 0;
         }
 
-        .cm-compliance-filters-toolbar .cm-field-filter {
+        .cm-filter-cell .cm-field-filter {
             font-weight: 600;
             transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
         }
 
-        .cm-compliance-filters-toolbar .cm-field-filter.cm-filter-req {
+        .cm-filter-cell .cm-field-filter.cm-filter-req {
             background-color: #dc3545 !important;
             border-color: #dc3545 !important;
             color: #fff !important;
         }
 
-        .cm-compliance-filters-toolbar .cm-field-filter.cm-filter-na {
+        .cm-filter-cell .cm-field-filter.cm-filter-na {
             background-color: #0d6efd !important;
             border-color: #0d6efd !important;
             color: #fff !important;
         }
 
-        .cm-compliance-filters-toolbar .cm-field-filter option {
+        .cm-filter-cell .cm-field-filter option {
             background-color: #fff;
             color: #212529;
             font-weight: 600;
         }
 
-        .cm-compliance-filters-toolbar .cm-field-filter option.cm-opt-req,
-        .cm-compliance-filters-toolbar .cm-field-filter option[value="req"] {
+        .cm-filter-cell .cm-field-filter option.cm-opt-req,
+        .cm-filter-cell .cm-field-filter option[value="req"] {
             background-color: #dc3545 !important;
             color: #fff !important;
         }
 
-        .cm-compliance-filters-toolbar .cm-field-filter option.cm-opt-na,
-        .cm-compliance-filters-toolbar .cm-field-filter option[value="na"] {
+        .cm-filter-cell .cm-field-filter option.cm-opt-na,
+        .cm-filter-cell .cm-field-filter option[value="na"] {
             background-color: #0d6efd !important;
             color: #fff !important;
         }
 
-        .cm-compliance-filters-toolbar .cm-field-filter option[value="all"] {
+        .cm-filter-cell .cm-field-filter option[value="all"] {
             background-color: #fff !important;
             color: #212529 !important;
         }
@@ -296,7 +296,7 @@
             padding: 0.2rem 0.4rem;
         }
 
-        .cm-compliance-filters-toolbar .cm-status-filter-wrap--toolbar .cm-status-filter-trigger {
+        .cm-filter-cell .cm-status-filter-wrap--toolbar .cm-status-filter-trigger {
             color: #1e293b;
             background: #fff;
             border: 1px solid #cbd5e1;
@@ -308,12 +308,12 @@
             justify-content: space-between;
         }
 
-        .cm-compliance-filters-toolbar .cm-status-filter-wrap--toolbar .cm-status-filter-trigger:hover {
+        .cm-filter-cell .cm-status-filter-wrap--toolbar .cm-status-filter-trigger:hover {
             background: #f8fafc;
             border-color: #94a3b8;
         }
 
-        .cm-compliance-filters-toolbar .cm-status-filter-wrap--toolbar .cm-status-filter-trigger-label {
+        .cm-filter-cell .cm-status-filter-wrap--toolbar .cm-status-filter-trigger-label {
             color: #334155;
         }
 
@@ -1557,7 +1557,7 @@
             }
 
             function syncComplianceFieldFilterStyles() {
-                document.querySelectorAll('#cm-compliance-filters-toolbar .cm-field-filter').forEach(function(sel) {
+                document.querySelectorAll('.cm-field-filter').forEach(function(sel) {
                     sel.classList.remove('cm-filter-req', 'cm-filter-req-ok', 'cm-filter-na');
                     if (sel.value === 'req') sel.classList.add('cm-filter-req');
                     else if (sel.value === 'na') sel.classList.add('cm-filter-na');
@@ -2295,7 +2295,7 @@
 
             function refreshCmStatusFilterUI() {
                 const hidden = document.getElementById('filterComplianceStatus');
-                const wrap = document.querySelector('#cm-compliance-filters-toolbar .cm-status-filter-wrap');
+                const wrap = document.querySelector('.cm-status-filter-wrap');
                 if (!hidden || !wrap) return;
                 const trigger = wrap.querySelector('.cm-status-filter-trigger');
                 const labelEl = trigger && trigger.querySelector('.cm-status-filter-trigger-label');
@@ -2323,12 +2323,11 @@
 
                 document.addEventListener('click', function(e) {
                     const wrap = e.target.closest('.cm-status-filter-wrap');
-                    const toolbar = document.getElementById('cm-compliance-filters-toolbar');
 
                     const item = e.target.closest('.cm-status-filter-item');
                     const trigger = e.target.closest('.cm-status-filter-trigger');
 
-                    if (item && wrap && toolbar && toolbar.contains(wrap)) {
+                    if (item && wrap) {
                         e.preventDefault();
                         e.stopPropagation();
                         const val = item.getAttribute('data-value');
@@ -2343,7 +2342,7 @@
                         return;
                     }
 
-                    if (trigger && wrap && toolbar && toolbar.contains(wrap)) {
+                    if (trigger && wrap) {
                         e.preventDefault();
                         e.stopPropagation();
                         const wasOpen = wrap.classList.contains('is-open');
@@ -2549,64 +2548,34 @@
                 return cols;
             }
 
-            function syncComplianceFilterRowToColumns() {
-                const toolbar = document.getElementById('cm-compliance-filters-toolbar');
+            function mountFiltersIntoColumnHeaders() {
+                if (document.querySelector('#compliance-tabulator .tabulator-header .cm-filter-cell')) {
+                    return true;
+                }
+                const header = document.querySelector('#compliance-tabulator .tabulator-header');
                 const row = document.getElementById('cm-filter-row');
-                const header = document.querySelector('#compliance-tabulator .tabulator-headers')
-                    || document.querySelector('#compliance-tabulator .tabulator-header');
-                if (!toolbar || !row || !header) return false;
-                const cols = header.querySelectorAll(':scope > .tabulator-col, :scope .tabulator-col[tabulator-field]');
-                const seen = [];
-                cols.forEach(function(el) {
-                    const field = el.getAttribute('tabulator-field');
-                    if (!field || seen.some(function(x) { return x.field === field; })) return;
-                    const w = Math.round(el.getBoundingClientRect().width || el.offsetWidth || 0);
-                    if (w <= 0) return;
-                    seen.push({ field: field, width: w, el: el });
+                if (!header || !row) return false;
+                const cols = header.querySelectorAll('.tabulator-col[tabulator-field]');
+                if (!cols.length) return false;
+                cols.forEach(function(col) {
+                    const field = col.getAttribute('tabulator-field');
+                    if (!field) return;
+                    const cell = row.querySelector('.cm-filter-cell[data-col="' + field + '"]');
+                    if (!cell || !cell.querySelector('input, select, .cm-status-filter-wrap')) return;
+                    const content = col.querySelector('.tabulator-col-content') || col;
+                    content.insertBefore(cell, content.firstChild);
                 });
-                if (seen.length === 0) return false;
-
-                seen.forEach(function(col) {
-                    const cell = row.querySelector('.cm-filter-cell[data-col="' + col.field + '"]');
-                    if (cell) row.appendChild(cell);
-                });
-
-                row.style.display = 'grid';
-                row.style.gridTemplateColumns = seen.map(function(col) { return col.width + 'px'; }).join(' ');
-
-                const toolbarRect = toolbar.getBoundingClientRect();
-                const firstColRect = seen[0].el.getBoundingClientRect();
-                const pad = Math.round(firstColRect.left - toolbarRect.left);
-                row.style.transform = 'translateX(' + pad + 'px)';
-                return true;
+                return !!document.querySelector('#compliance-tabulator .tabulator-header .cm-filter-cell');
             }
 
-            let complianceFilterScrollBound = false;
-            let complianceFilterSyncTries = 0;
+            let complianceFilterMountTries = 0;
             function bindComplianceFilterScroll() {
-                const holder = document.querySelector('#compliance-tabulator .tabulator-tableholder');
-                const header = document.querySelector('#compliance-tabulator .tabulator-header');
                 const apply = function() {
-                    if (!syncComplianceFilterRowToColumns() && complianceFilterSyncTries < 25) {
-                        complianceFilterSyncTries += 1;
+                    if (!mountFiltersIntoColumnHeaders() && complianceFilterMountTries < 30) {
+                        complianceFilterMountTries += 1;
                         setTimeout(apply, 80);
-                        return;
                     }
-                    complianceFilterSyncTries = 0;
                 };
-                if (!complianceFilterScrollBound) {
-                    complianceFilterScrollBound = true;
-                    if (holder) holder.addEventListener('scroll', apply);
-                    if (header) header.addEventListener('scroll', apply);
-                    window.addEventListener('resize', apply);
-                    if (typeof ResizeObserver !== 'undefined') {
-                        const headerEl = document.querySelector('#compliance-tabulator .tabulator-header');
-                        if (headerEl) {
-                            const ro = new ResizeObserver(apply);
-                            ro.observe(headerEl);
-                        }
-                    }
-                }
                 apply();
             }
 
@@ -2638,23 +2607,18 @@
                         },
                         tableBuilt: function() {
                             requestAnimationFrame(function() {
-                                syncComplianceFilterRowToColumns();
                                 bindComplianceFilterScroll();
                             });
                         },
                         renderComplete: function() {
-                            syncComplianceFilterRowToColumns();
                             bindComplianceFilterScroll();
-                        },
-                        columnResized: function() {
-                            syncComplianceFilterRowToColumns();
                         }
                     });
                     syncComplianceSelectAllCheckbox();
                 } else {
                     complianceTable.replaceData(d).then(function() {
                         syncComplianceSelectAllCheckbox();
-                        syncComplianceFilterRowToColumns();
+                        bindComplianceFilterScroll();
                     });
                 }
             }
