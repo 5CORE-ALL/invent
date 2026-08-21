@@ -52,6 +52,7 @@
             color: black;
             font-weight: normal;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'walmart'])
     </style>
 @endsection
 
@@ -177,6 +178,7 @@
                     <button id="refresh-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'walmart'])
                 </div>
 
                 <!-- Summary Stats -->
@@ -193,6 +195,8 @@
                         <!-- Walmart Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total Walmart INV: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold Count: 0</span>
+                        <span class="badge fs-6 p-2" id="walmart-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         
                         <!-- Financial Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
@@ -275,6 +279,7 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'walmart'])
 @endsection
 
 @section('script-bottom')
@@ -330,6 +335,9 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                if (typeof applyChannelSpriceFromStdChange === 'function') {
+                    applyChannelSpriceFromStdChange(r);
+                }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
@@ -342,6 +350,35 @@
             if (!sku || !isFinite(saved) || saved <= 0) return;
             applyWalmartStandardPriceToLinkedRows(sku, saved, detail.applied_skus);
         });
+
+        function isWalmartParentRow(row) {
+            if (!row) return false;
+            if (row.is_parent_summary === true) return true;
+            const sku = String(row['(Child) sku'] || row.SKU || row.sku || '').toUpperCase();
+            return sku.includes('PARENT');
+        }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'walmart'])
+        function walmartRowSpriceForAlert(data) {
+            let sprice = parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function' && !isWalmartParentRow(data)) {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function walmartHasBlueTriangle(data) {
+            if (isWalmartParentRow(data)) return false;
+            const sprice = walmartRowSpriceForAlert(data);
+            const price = parseFloat(data && data.price) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        let blueTriangleFilterActive = false;
+        function syncWalmartTriangleBadgeState() {
+            $('#walmart-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
 
         $(document).ready(function() {
             table = new Tabulator("#walmart-table", {
@@ -842,28 +879,38 @@
                     //     sorter: "number",
                     //     width: 100
                     // },
+                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
                         editor: "input",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                         formatter: function(cell) {
-                            const value = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const hasCustomSprice = rowData.has_custom_sprice;
-                            
-                            if (!value) return '';
-                            
-                            const formattedValue = `$${parseFloat(value).toFixed(2)}`;
-                            
-                            // If using default price (not custom), show in blue
-                            if (hasCustomSprice === false) {
-                                return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
+                            if (isWalmartParentRow(rowData)) return '';
+                            let value = parseFloat(cell.getValue() || 0);
+                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                                const calc = chPromoSpriceFromStdTPromo(rowData);
+                                if (calc > 0) value = calc;
                             }
-                            
-                            return formattedValue;
+                            const hasCustomSprice = rowData.has_custom_sprice;
+                            const live = parseFloat(rowData.price) || 0;
+                            const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
+                            if (!(value > 0)) return '';
+                            const formatted = '$' + value.toFixed(2);
+                            const overLmp = lmp > 0 && value > lmp;
+                            let style = 'font-weight:600;';
+                            if (overLmp) style += 'color:#dc3545;';
+                            else if (hasCustomSprice === false) style += 'color:#0d6efd;';
+                            const priceHtml = `<span style="${style}">${formatted}</span>`;
+                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                         },
-                        width: 80
+                        width: 92
                     },
                     {
                         title: "SROI",
@@ -1309,10 +1356,20 @@
                         }
                     ]);
                 }
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return walmartHasBlueTriangle(data);
+                    });
+                }
 
                 updateCalcValues();
                 updateSummary();
             }
+
+            $('#walmart-blue-triangle-badge').on('click', function() {
+                blueTriangleFilterActive = !blueTriangleFilterActive;
+                applyFilters();
+            });
 
             $('#inventory-filter, #nrl-filter, #cvr-filter, #gpft-filter, #ads-filter, #parent-filter, #status-filter').on('change', function() {
                 applyFilters();
@@ -1448,6 +1505,14 @@
                 $('#total-inv-badge').text('Total Walmart INV: ' + totalInv.toLocaleString());
                 $('#total-l30-badge').text('Total W L30: ' + totalWL30.toLocaleString());
                 $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
+                let blueTriangleCount = 0;
+                (table ? table.getData() : []).forEach(function(row) {
+                    if (walmartHasBlueTriangle(row)) blueTriangleCount++;
+                });
+                $('#walmart-blue-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+                );
+                if (typeof syncWalmartTriangleBadgeState === 'function') syncWalmartTriangleBadgeState();
                 $('#avg-dil-percent-badge').text('DIL %: ' + avgDil.toFixed(1) + '%');
                 $('#total-spend-l30-badge').text('Total Spend L30: $' + totalSpendL30.toFixed(2));
                 $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalCogs).toLocaleString());

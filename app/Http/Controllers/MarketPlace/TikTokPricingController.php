@@ -17,6 +17,7 @@ use App\Models\TiktokTwoShopDataView;
 use App\Models\TiktokShopListingStatus;
 use App\Models\TiktokSkuCompetitor;
 use App\Models\TiktokSkuDailyData;
+use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -404,6 +405,9 @@ class TikTokPricingController extends Controller
                 $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
             }
         }
+
+        $promoChannel = $isTiktokTwo ? 'tiktok2' : 'tiktok';
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus($promoChannel, $skus);
         
         // Create uppercase version for TikTok products lookup
         $skusUpper = array_map('strtoupper', $skus);
@@ -969,6 +973,8 @@ class TikTokPricingController extends Controller
                 }
             }
             $processedItem['STANDARD_PRICE'] = $stdPrc;
+            $processedItem['Price'] = $processedItem['TT Price'] ?? 0;
+            $processedItem = app(ChannelPromoPricingService::class)->applyToRow($processedItem, $promoMap, (string) $sku);
 
             $mergedLmpEntries = collect();
             $seenLmp = [];

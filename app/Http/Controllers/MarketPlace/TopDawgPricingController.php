@@ -11,6 +11,7 @@ use App\Models\ShopifySku;
 use App\Models\TopDawgDataView;
 use App\Models\TopDawgOrderMetric;
 use App\Models\TopDawgProduct;
+use App\Services\ChannelPromoPricingService;
 use App\Services\TopDawgApiService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -127,6 +128,8 @@ class TopDawgPricingController extends Controller
             ? TopDawgDataView::whereIn('sku', $skus)->get()->keyBy('sku')
             : collect();
 
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('topdawg', $skus);
+
         $processedData = [];
 
         foreach ($productMasterRows as $productMaster) {
@@ -233,6 +236,7 @@ class TopDawgPricingController extends Controller
             }
 
             $row['STANDARD_PRICE'] = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
+            $row = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $sku);
 
             $processedData[] = $row;
         }

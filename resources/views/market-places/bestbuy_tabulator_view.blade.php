@@ -70,7 +70,7 @@
             padding: 0 2px;
             cursor: pointer;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'bestbuy', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'bestbuy'])
         .sprice-lmp-alert {
             color: #dc3545;
             font-size: 11px;
@@ -103,6 +103,10 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold; display: none;">Price: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">BB L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="bestbuy-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ BB Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz</span>
@@ -197,7 +201,7 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
-                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'bestbuy', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'bestbuy'])
 
                     <button id="mode-toggle-btn" class="btn btn-sm btn-secondary"
                         title="Click to cycle: Prc Mode → Decrease → Increase">
@@ -429,12 +433,12 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'bestbuy', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'bestbuy'])
 @endsection
 
 @section('script-bottom')
 <script>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'bestbuy', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'bestbuy'])
     const COLUMN_VIS_KEY = "bestbuy_tabulator_column_visibility";
     /** Same as Temu / Macys / eBay: |INV − BB INV| ≤ this counts as MAP, not a mapping issue. */
     const BB_INV_MAP_TOLERANCE = 3;
@@ -450,6 +454,34 @@
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let selectedSkus = new Set();
+    let blueTriangleFilterActive = false;
+
+    function isBestbuyParentRow(row) {
+        if (!row) return false;
+        if (row.is_parent_summary || row.is_parent) return true;
+        if (row.Parent && String(row.Parent).startsWith('PARENT')) return true;
+        return false;
+    }
+    function bestbuyRowSpriceForAlert(data) {
+        let sprice = parseFloat(data && data.SPRICE) || 0;
+        if (typeof chPromoSpriceFromStdTPromo === 'function' && !isBestbuyParentRow(data)) {
+            const calc = chPromoSpriceFromStdTPromo(data);
+            if (calc > 0) sprice = calc;
+        }
+        return sprice;
+    }
+    function bestbuyHasBlueTriangle(data) {
+        if (isBestbuyParentRow(data)) return false;
+        const sprice = bestbuyRowSpriceForAlert(data);
+        const price = parseFloat(data && data['BB Price']) || 0;
+        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+    }
+    function syncBestbuyTriangleBadgeState() {
+        $('#bestbuy-blue-triangle-badge').css({
+            outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
+    }
 
     /** Std Prc vs Amz/channel price: reduce / hold / increase → red / yellow / green. */
     function bestbuyStdPrcChangeDotMeta(stdPrc, comparePrice) {
@@ -497,6 +529,9 @@
                 || (target && rowKey === target);
             if (!inGroup) return;
             r.update({ STANDARD_PRICE: std });
+            if (typeof applyChannelSpriceFromStdChange === 'function') {
+                applyChannelSpriceFromStdChange(r);
+            }
             if (rowKey === target) primaryRow = r;
         });
         return primaryRow;
@@ -2046,12 +2081,12 @@
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
                     }
                 },
-                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Suggested price. Red triangle when SPRICE > LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ BB Price. Red text = S PRC > LMP.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -2059,25 +2094,35 @@
                     },
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
+                        if (isBestbuyParentRow(rowData)) return '';
+                        let value = parseFloat(cell.getValue() || 0);
+                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                            if (calc > 0) value = calc;
+                        }
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
+                        const live = parseFloat(rowData['BB Price']) || 0;
                         const lmp = parseFloat(rowData.lmp_price) || 0;
-                        const overLmp = value > 0 && lmp > 0 && value > lmp;
-                        
+
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
                         else if (status === 'applied') bgColor = 'background-color: #d4edda;';
                         else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
-                        const alertHtml = overLmp
-                            ? `<i class="fas fa-exclamation-triangle sprice-lmp-alert" title="SPRICE $${value.toFixed(2)} &gt; LMP $${lmp.toFixed(2)}"></i>`
+                        if (!(value > 0)) return '';
+                        const formatted = '$' + value.toFixed(2);
+                        const overLmp = lmp > 0 && value > lmp;
+                        const priceHtml = overLmp
+                            ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
+                            : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + value.toFixed(2) + ' ≠ BB Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        const priceColor = overLmp ? 'color:#dc3545;' : '';
-                        
-                        return `<span style="font-weight: 600; ${priceColor} ${bgColor} padding: 2px 6px; border-radius: 3px; display:inline-flex; align-items:center; justify-content:center;">$${value.toFixed(2)}${alertHtml}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                     },
                     width: 96
                 },
@@ -2370,11 +2415,21 @@
                     return nrReq === 'REQ' && ourInv > 0 && !isMissing && isBestbuyInvMappingMismatch(ourInv, bbInv);
                 });
             }
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return bestbuyHasBlueTriangle(data);
+                });
+            }
 
             updateSummary();
         }
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #roi-filter, #dil-filter, #sold-filter').on('change', function() {
+            applyFilters();
+        });
+
+        $('#bestbuy-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
             applyFilters();
         });
 
@@ -2456,6 +2511,14 @@
             $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
             $('#total-l30-badge').text(`BB L30: ${totalL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
+            let blueTriangleCount = 0;
+            (table ? table.getData() : []).forEach(function(row) {
+                if (bestbuyHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#bestbuy-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncBestbuyTriangleBadgeState === 'function') syncBestbuyTriangleBadgeState();
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
             $('#missing-badge').text(`Miss: ${missingCount}`);
             $('#mapping-badge').text('N Map: ' + mappingCount.toLocaleString());

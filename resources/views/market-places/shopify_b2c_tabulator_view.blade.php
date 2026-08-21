@@ -566,7 +566,7 @@
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
 
-                    {{-- Dil vs PRMT / CVR vs CPN / sprice ? — same as /ebay-tabulator-view --}}
+                    {{-- Dil vs PRMT / CVR vs CPN — same as /ebay-tabulator-view --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2c'])
 
                     <div class="btn-group">

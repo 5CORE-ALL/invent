@@ -8,6 +8,7 @@
         .badge-pricing-stat { font-size: 0.9rem; padding: 0.45rem 0.7rem; }
         /* Select column header checkbox */
         .depop-select-header { display: flex; align-items: center; justify-content: center; }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'depop'])
     </style>
 @endsection
 
@@ -26,6 +27,7 @@
                     <a href="{{ route('depop.pricing.export') }}" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-file-csv"></i> Export CSV
                     </a>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'depop'])
 
                     <form id="import-form" class="d-flex align-items-center gap-2 mb-0">
                         @csrf
@@ -57,6 +59,10 @@
                     <span class="badge bg-info text-dark badge-pricing-stat" id="stat-l30">With L30: 0</span>
                     @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'depop-price-gt-lmp-badge', 'pglChannelKey' => 'depop', 'pglPriceField' => 'price'])
                     @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'depop-price-lt80-lmp-badge', 'pltChannelKey' => 'depop', 'pltPriceField' => 'price'])
+                    <span class="badge fs-6 p-2" id="depop-blue-triangle-badge"
+                        style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                        title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                        <i class="fas fa-exclamation-triangle"></i> 0</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -103,12 +109,14 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'depop'])
 @endsection
 
 @section('script-bottom')
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'depop'])
     let table = null;
     let allTableData = [];
     let decreaseModeActive = false;
@@ -117,6 +125,29 @@
     let selectedSkus = new Set();
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
+    let blueTriangleFilterActive = false;
+
+    function depopRowSpriceForAlert(data) {
+        if (!data) return 0;
+        let sprice = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+            const calc = chPromoSpriceFromStdTPromo(data);
+            if (calc > 0) sprice = calc;
+        }
+        return sprice;
+    }
+    function depopHasBlueTriangle(data) {
+        if (!data) return false;
+        const sprice = depopRowSpriceForAlert(data);
+        const price = parseFloat(data.price) || 0;
+        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+    }
+    function syncDepopTriangleBadgeState() {
+        $('#depop-blue-triangle-badge').css({
+            outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
+    }
 
     function showToast(message, type) {
         type = type || 'info';
@@ -149,6 +180,14 @@
                     PriceLt80LmpBadge.update('#depop-price-lt80-lmp-badge', table ? table.getData() : rows, 'depop', 'price');
                 }
         }
+        let blueTriangleCount = 0;
+        (rows || []).forEach(function(row) {
+            if (depopHasBlueTriangle(row)) blueTriangleCount++;
+        });
+        $('#depop-blue-triangle-badge').html(
+            '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+        );
+        if (typeof syncDepopTriangleBadgeState === 'function') syncDepopTriangleBadgeState();
     }
 
     // Retail .99 rounding (matches Macys / Shopify B2C helpers).
@@ -339,16 +378,34 @@
                         return '$' + Number(v).toFixed(2) + lmpTri + purpleTri;
                     }
                 },
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "SPRICE",
                     field: "sprice",
                     width: 110,
                     hozAlign: "right",
                     sorter: "number",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
-                        const v = cell.getValue();
-                        if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
-                        return '<strong>$' + Number(v).toFixed(2) + '</strong>';
+                        const d = cell.getRow().getData();
+                        let value = parseFloat(cell.getValue() || 0);
+                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                            const calc = chPromoSpriceFromStdTPromo(d);
+                            if (calc > 0) value = calc;
+                        }
+                        if (!(value > 0)) return '<span class="text-muted">-</span>';
+                        const live = parseFloat(d.price) || 0;
+                        const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                        const formatted = '$' + value.toFixed(2);
+                        const overLmp = lmp > 0 && value > lmp;
+                        const priceHtml = overLmp
+                            ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
+                            : '<strong>' + formatted + '</strong>';
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                            : '';
+                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + blueTri + '</span>';
                     }
                 },
                 {
@@ -530,6 +587,11 @@
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
                     });
                 }
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return depopHasBlueTriangle(data);
+                    });
+                }
                 return;
             }
 
@@ -550,6 +612,11 @@
                     return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
                 });
             }
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return depopHasBlueTriangle(data);
+                });
+            }
         }
 
         if (window.PriceGtLmpBadge) {
@@ -558,6 +625,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyDepopFilters();
                 }
             });
@@ -568,10 +636,20 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                                        applyDepopFilters();
+                    if (on) blueTriangleFilterActive = false;
+                    applyDepopFilters();
                 }
             });
         }
+        $('#depop-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            applyDepopFilters();
+            syncDepopTriangleBadgeState();
+        });
         function startDpPlay() {
             dpUniqueParents = buildDpUniqueParents();
             if (dpUniqueParents.length === 0) return;

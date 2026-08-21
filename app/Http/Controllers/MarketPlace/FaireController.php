@@ -12,6 +12,7 @@ use App\Models\FaireDailyData;
 use App\Models\FaireMetric;
 use App\Models\FaireListingStatus;
 use App\Models\AmazonChannelSummary;
+use App\Services\ChannelPromoPricingService;
 use App\Services\FaireApiService;
 use App\Services\MarketplaceManager\FaireLinkMapSyncService;
 use Illuminate\Support\Facades\Cache;
@@ -763,6 +764,12 @@ class FaireController extends Controller
                     return (is_numeric($std) && floatval($std) > 0) ? round(floatval($std), 2) : 0;
                 });
 
+            $promoSkus = $productMastersBySku->map(fn ($pm) => trim((string) $pm->sku))->filter()->values()->all();
+            if ($promoSkus === []) {
+                $promoSkus = $allNormalizedSkus->all();
+            }
+            $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('faire', $promoSkus);
+
             $rows = [];
             foreach ($allNormalizedSkus as $normalizedSku) {
                 $sale = $salesBySku->get($normalizedSku);
@@ -845,7 +852,7 @@ class FaireController extends Controller
                 $buyerLink = $buyerLink !== '' ? $buyerLink : null;
                 $sellerLink = $sellerLink !== '' ? $sellerLink : null;
 
-                $rows[] = [
+                $row = [
                     'sku' => $displaySku,
                     'parent' => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
                     'is_parent' => false,
@@ -881,6 +888,9 @@ class FaireController extends Controller
                     'ae_stock' => $faireStock,
                     'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
                 ];
+                $row['STANDARD_PRICE'] = ($row['standard_price'] ?? 0) > 0 ? $row['standard_price'] : null;
+                $row['SPRICE'] = $row['sprice'];
+                $rows[] = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $displaySku);
             }
 
             usort($rows, static function ($a, $b) {

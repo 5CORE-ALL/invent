@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\ChannelPromoPricingService;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use App\Services\ShopifyCatalogSyncService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -172,6 +173,8 @@ class PlsController extends Controller
             }
         }
 
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('pls', $skus);
+
         // 6c. Buyer / Seller links from pls_listing_statuses
         $plsLinkBySku = [];
         foreach (PlsListingStatus::whereIn('sku', $skus)->get() as $linkRow) {
@@ -287,6 +290,7 @@ class PlsController extends Controller
             
             // Add SPRICE, SGPFT%, SROI% from pls_data_views
             $row['sprice'] = $sprice;
+            $row['SPRICE'] = $sprice;
             $row['sgpft'] = $sgpft;
             $row['sroi'] = $sroi;
             $row['has_custom_sprice'] = $hasCustomSprice;
@@ -294,6 +298,7 @@ class PlsController extends Controller
             // Get PLS_STATUS from amazon_data_views
             $amazonDataView = $amazonDataViews[$skuNorm] ?? null;
             $plsStatus = null;
+            $stdPrc = null;
             
             if ($amazonDataView) {
                 $amazonValue = is_array($amazonDataView->value) 
@@ -302,6 +307,10 @@ class PlsController extends Controller
                 
                 if (is_array($amazonValue)) {
                     $plsStatus = isset($amazonValue['PLS_STATUS']) ? $amazonValue['PLS_STATUS'] : null;
+                    $stdRaw = $amazonValue['STANDARD_PRICE'] ?? null;
+                    if (is_numeric($stdRaw) && (float) $stdRaw > 0) {
+                        $stdPrc = round((float) $stdRaw, 2);
+                    }
                 }
             }
             
@@ -338,6 +347,8 @@ class PlsController extends Controller
             }
             
             $row['missing'] = $missing;
+            $row['STANDARD_PRICE'] = $stdPrc;
+            $row = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $pm->sku);
             
             $data[] = $row;
         }

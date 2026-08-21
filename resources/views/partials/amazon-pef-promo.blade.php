@@ -231,10 +231,6 @@
                             </li>
                         </ul>
                     </div>
-                    <button type="button" class="btn btn-sm" id="amz-sprice-recalc-btn"
-                        title="Clear S PRC, then refill using Push Prc formula (Std − (PRMT% + CVR Disc%)) — no Amazon push. Skips INV = 0. Selected SKUs if checked; otherwise all visible.">
-                        sprice ?
-                    </button>
                     <div id="amz-push-prc-progress" aria-live="polite" title="Push Prc background job — survives refresh; you can queue more SKUs anytime">
                         <div class="amz-push-prc-progress-meta">
                             <span id="amz-push-prc-progress-pct">0%</span>

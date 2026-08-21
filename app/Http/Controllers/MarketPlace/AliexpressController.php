@@ -15,6 +15,7 @@ use App\Models\AliexpressPricingPrice;
 use App\Models\AliexpressMetric;
 use App\Models\ChannelMaster;
 use App\Services\AliExpressApiService;
+use App\Services\ChannelPromoPricingService;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\Cache;
@@ -1451,6 +1452,7 @@ class AliexpressController extends Controller
             $productMastersBySku = $productMasters->keyBy(fn ($row) => $normalizeSku($row->sku));
 
             $pmSkus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('aliexpress', $pmSkus);
             $amazonStandardPrices = [];
             foreach (AmazonDataView::whereIn('sku', $pmSkus)->get(['sku', 'value']) as $adv) {
                 $val = is_array($adv->value)
@@ -1590,7 +1592,7 @@ class AliexpressController extends Controller
                 $buyerLink = $linkVal['buyer_link'] ?? '';
                 $sellerLink = $linkVal['seller_link'] ?? '';
 
-                $rows[] = [
+                $row = [
                     'buyer_link'  => $buyerLink,
                     'seller_link' => $sellerLink,
                     'sku'         => trim((string) $displaySku),
@@ -1622,6 +1624,7 @@ class AliexpressController extends Controller
                     'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
                     'STANDARD_PRICE' => $amazonStandardPrices[strtoupper(trim((string) $displaySku))] ?? null,
                 ];
+                $rows[] = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $displaySku);
             }
 
             // Sort: group by parent (nulls last), children alphabetically within group

@@ -70,7 +70,7 @@
             padding: 0 2px;
             cursor: pointer;
         }
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGtSoldRules' => true])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'macys'])
         .sprice-lmp-alert {
             color: #dc3545;
             font-size: 11px;
@@ -109,6 +109,10 @@
                     @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'macys-lmp-missing-badge', 'lmpChannelKey' => 'macys'])
                     @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'macys-price-gt-lmp-badge', 'pglChannelKey' => 'macys', 'pglPriceField' => 'MC Price'])
                     @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'macys-price-lt80-lmp-badge', 'pltChannelKey' => 'macys', 'pltPriceField' => 'MC Price'])
+                    <span class="badge fs-6 p-2" id="macys-blue-triangle-badge"
+                        style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                        title="Blue triangle: S PRC ≠ MC Price. Click to show only those rows. Click again to clear.">
+                        <i class="fas fa-exclamation-triangle"></i> 0</span>
                     <span class="badge fs-6 p-2" id="zero-sold-rule-badge" style="background-color: #4f46e5; color: white; font-weight: bold; cursor: pointer;" title="0 Sold Rule — apply Amazon Price to S PRC for MC L30 = 0. Selected SKUs if checked; otherwise all visible. Skips INV = 0 and missing A Price.">0 Sold Rule: 0</span>
                     <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
                     <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
@@ -203,7 +207,7 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
-                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGtSoldRules' => true])
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'macys'])
 
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal" title="Upload Price">
                         <i class="fa fa-upload"></i> Prc
@@ -405,17 +409,18 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGtSoldRules' => true])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'macys'])
 @endsection
 
 @section('script-bottom')
 <script>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGtSoldRules' => true])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys'])
     const COLUMN_VIS_KEY = "macys_tabulator_column_visibility";
     let table = null;
     let lmpMissingFilterActive = false;
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
+    let blueTriangleFilterActive = false;
     let allTableData = []; // Full dataset for ParentExpand
     let decreaseModeActive = true;
     let increaseModeActive = false;
@@ -424,6 +429,33 @@
     // Must match MarketplacePercentage for Macys (and row.percentage from API) — NOT a hardcoded 0.80.
     // Using 0.80 here while GPFT uses 0.75 made SPFT ≠ GPFT when SPRICE === MC Price.
     const MACYS_DEFAULT_MARGIN = {{ number_format(((float) ($macysPercentage ?? 80)) / 100, 4, '.', '') }};
+
+    function isMacysParentRow(row) {
+        if (!row) return false;
+        if (row.is_parent_summary) return true;
+        if (row.Parent && String(row.Parent).startsWith('PARENT')) return true;
+        return false;
+    }
+    function macysRowSpriceForAlert(data) {
+        let sprice = parseFloat(data && data.SPRICE) || 0;
+        if (typeof chPromoSpriceFromStdTPromo === 'function' && !isMacysParentRow(data)) {
+            const calc = chPromoSpriceFromStdTPromo(data);
+            if (calc > 0) sprice = calc;
+        }
+        return sprice;
+    }
+    function macysHasBlueTriangle(data) {
+        if (isMacysParentRow(data)) return false;
+        const sprice = macysRowSpriceForAlert(data);
+        const price = parseFloat(data && data['MC Price']) || 0;
+        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+    }
+    function syncMacysTriangleBadgeState() {
+        $('#macys-blue-triangle-badge').css({
+            outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
+    }
 
     /** Listed = uploaded sheet has a price (row.is_missing_macy from API). */
     function isMacysListed(rowData) {
@@ -489,6 +521,9 @@
                 || (target && rowKey === target);
             if (!inGroup) return;
             r.update({ STANDARD_PRICE: std });
+            if (typeof applyChannelSpriceFromStdChange === 'function') {
+                applyChannelSpriceFromStdChange(r);
+            }
             if (rowKey === target) primaryRow = r;
         });
         return primaryRow;
@@ -2372,13 +2407,13 @@
                     }
                 },
                 // PRMT % / CPN % — macys_promo_pricing
-                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
 
                 {
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Suggested price. Red triangle when SPRICE > LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -2386,25 +2421,35 @@
                     },
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
+                        if (isMacysParentRow(rowData)) return '';
+                        let value = parseFloat(cell.getValue() || 0);
+                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                            if (calc > 0) value = calc;
+                        }
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
+                        const live = parseFloat(rowData['MC Price']) || 0;
                         const lmp = parseFloat(rowData.lmp_price) || 0;
-                        const overLmp = value > 0 && lmp > 0 && value > lmp;
-                        
+
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
                         else if (status === 'applied') bgColor = 'background-color: #d4edda;';
                         else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
-                        const alertHtml = overLmp
-                            ? `<i class="fas fa-exclamation-triangle sprice-lmp-alert" title="SPRICE $${value.toFixed(2)} &gt; LMP $${lmp.toFixed(2)}"></i>`
+                        if (!(value > 0)) return '';
+                        const formatted = '$' + value.toFixed(2);
+                        const overLmp = lmp > 0 && value > lmp;
+                        const priceHtml = overLmp
+                            ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
+                            : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + value.toFixed(2) + ' ≠ MC Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        const priceColor = overLmp ? 'color:#dc3545;' : '';
-                        
-                        return `<span style="font-weight: 600; ${priceColor} ${bgColor} padding: 2px 6px; border-radius: 3px; display:inline-flex; align-items:center; justify-content:center;">$${value.toFixed(2)}${alertHtml}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                     },
                     width: 96
                 },
@@ -2717,6 +2762,11 @@
                     return PriceLt80LmpBadge.hasPurpleTriangle(data, 'MC Price');
                 });
             }
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return macysHasBlueTriangle(data);
+                });
+            }
 
             if (mappingFilterActive) {
                 table.addFilter(function(data) {
@@ -2746,6 +2796,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
@@ -2756,10 +2807,21 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
         }
+
+        $('#macys-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                lmpMissingFilterActive = false;
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            applyFilters();
+        });
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #roi-filter, #dil-filter, #sold-filter').on('change', function() {
             applyFilters();
@@ -2867,6 +2929,14 @@
             if (window.PriceLt80LmpBadge && table) {
                 PriceLt80LmpBadge.update('#macys-price-lt80-lmp-badge', table.getData(), 'macys', 'MC Price');
             }
+            let blueTriangleCount = 0;
+            (table ? table.getData() : []).forEach(function(row) {
+                if (macysHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#macys-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncMacysTriangleBadgeState === 'function') syncMacysTriangleBadgeState();
             $('#zero-sold-rule-badge').text(`0 Sold Rule: ${zeroSoldRuleCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount.toLocaleString()}`);
             $('#avg-dil-badge').text(`DIL%: ${Math.round(avgDil * 100)}%`);

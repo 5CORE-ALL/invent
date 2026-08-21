@@ -12,6 +12,7 @@ use App\Models\NeweggPricing;
 use App\Models\NeweggSkuCompetitor;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use App\Services\NeweggApiService;
 use Illuminate\Http\Request;
@@ -89,6 +90,8 @@ class NeweggPricingController extends Controller
         $amazonBySku = AmazonDatasheet::whereIn('sku', $skus)
             ->get()
             ->keyBy(fn ($r) => strtoupper((string) $r->sku));
+
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('newegg', $skus);
 
         // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
         $amazonStandardPrices = [];
@@ -216,7 +219,7 @@ class NeweggPricingController extends Controller
                 }
             }
 
-            $data[] = [
+            $row = [
                 'sku'                => $sku,
                 'image'              => $image ?: null,
                 'title'              => $titleByNorm[$norm] ?? null,
@@ -275,6 +278,7 @@ class NeweggPricingController extends Controller
                     ->toArray(),
                 'lmp_entries_total'  => $mergedLmpEntries->count(),
             ];
+            $data[] = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $sku);
         }
 
         return response()->json(['data' => $data]);

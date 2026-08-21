@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\AmazonDataView;
 use App\Models\ShopifySku;
+use App\Services\ChannelPromoPricingService;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -79,6 +80,8 @@ class MercariWShipController extends Controller
             }
         }
 
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('mercari_wship', $skus);
+
         $data = [];
         foreach ($productMasterRows as $productMaster) {
             $sku = $productMaster->sku;
@@ -120,7 +123,7 @@ class MercariWShipController extends Controller
             $spft = ($sprice !== null && $sprice > 0) ? (($sprice * $factor - $lp - $ship) / $sprice) * 100 : 0;
             $sroi = ($sprice !== null && $lp > 0) ? (($sprice * $factor - $lp - $ship) / $lp) * 100 : 0;
 
-            $data[] = [
+            $row = [
                 'Parent' => $productMaster->parent ?? null,
                 'image_path' => $shopifyItem->image_src ?? ($values['image_path'] ?? null),
                 'sku' => $sku,
@@ -142,6 +145,7 @@ class MercariWShipController extends Controller
                 'approved' => $statusValue['approved'] ?? null,
                 'STANDARD_PRICE' => $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null,
             ];
+            $data[] = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $sku);
         }
 
         return response()->json(['data' => $data]);

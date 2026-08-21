@@ -22,6 +22,7 @@
         .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title { padding-right: 0px !important; }
         .tabulator-paginator label { margin-right: 5px; }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'purchasing_power'])
     </style>
 @endsection
 
@@ -133,6 +134,7 @@
                         title="Price rules: Dil %, PP sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship">
                         <i class="fas fa-sliders-h"></i> Rule
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'purchasing_power'])
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100)) / margin   (Ship excluded for Purchasing Power; margin = $ppPercentage / 100) --}}
@@ -200,6 +202,10 @@
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color:white;font-weight:bold;cursor:pointer;">&lt; Amz</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color:#28a745;color:white;font-weight:bold;cursor:pointer;">&gt; Amz</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color:white;font-weight:bold;cursor:pointer;">MISSING: 0</span>
+                        <span class="badge fs-6 p-2" id="pp-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'purchasingpower-price-gt-lmp-badge', 'pglChannelKey' => 'purchasingpower', 'pglPriceField' => 'PP Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'purchasingpower-price-lt80-lmp-badge', 'pltChannelKey' => 'purchasingpower', 'pltPriceField' => 'PP Price'])
                         <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color:white;font-weight:bold;cursor:pointer;">MAPPING: 0</span>
@@ -314,10 +320,12 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'purchasing_power'])
 @endsection
 
 @section('script-bottom')
 <script>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'purchasing_power'])
     const COLUMN_VIS_KEY = "pp_tabulator_column_visibility";
     let table = null;
     let allTableData = [];
@@ -577,6 +585,9 @@
                 || (target && rowKey === target);
             if (!inGroup) return;
             r.update({ STANDARD_PRICE: std, standard_price: std });
+            if (typeof applyChannelSpriceFromStdChange === 'function') {
+                applyChannelSpriceFromStdChange(r);
+            }
             if (rowKey === target) primaryRow = r;
         });
         return primaryRow;
@@ -862,6 +873,31 @@
         let missingFilterActive = false, mappingFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
+        let blueTriangleFilterActive = false;
+
+        function ppIsParentRow(d) {
+            return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
+        }
+        function ppRowSpriceForAlert(data) {
+            let sprice = parseFloat(data && data.SPRICE) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function' && !ppIsParentRow(data)) {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function ppHasBlueTriangle(data) {
+            if (ppIsParentRow(data)) return false;
+            const sprice = ppRowSpriceForAlert(data);
+            const price = parseFloat(data && data['PP Price']) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncPpTriangleBadgeState() {
+            $('#pp-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
 
         // Sold badges just toggle the dropdown so the dropdown stays the single source of
         // truth. Clicking the same badge twice clears the filter (toggle semantics preserved).
@@ -1271,17 +1307,36 @@
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${selectedSkus.has(sku) ? 'checked' : ''}>`;
                     }
                 },
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', editor: 'number',
-                    editorParams: { min: 0, step: 0.01 }, sorter: 'number', width: 80,
+                    editorParams: { min: 0, step: 0.01 }, sorter: 'number', width: 92,
+                    headerTooltip: 'S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                     formatter: function(cell) {
-                        const v = parseFloat(cell.getValue() || 0);
                         const d = cell.getRow().getData();
+                        if (ppIsParentRow(d)) return '';
+                        let value = parseFloat(cell.getValue() || 0);
+                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                            const calc = chPromoSpriceFromStdTPromo(d);
+                            if (calc > 0) value = calc;
+                        }
                         let bg = '';
                         if (d.SPRICE_STATUS === 'pushed') bg = 'background-color:#fff3cd;';
                         else if (d.SPRICE_STATUS === 'applied') bg = 'background-color:#d4edda;';
                         else if (d.has_custom_sprice) bg = 'background-color:#e7f1ff;';
-                        return `<span style="font-weight:600;${bg}padding:2px 6px;border-radius:3px;">$${v.toFixed(2)}</span>`;
+                        if (!(value > 0)) return '';
+                        const live = parseFloat(d['PP Price']) || 0;
+                        const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                        const formatted = '$' + value.toFixed(2);
+                        const overLmp = lmp > 0 && value > lmp;
+                        const priceHtml = overLmp
+                            ? `<span style="color:#dc3545;font-weight:600;${bg}padding:2px 6px;border-radius:3px;">${formatted}</span>`
+                            : `<span style="font-weight:600;${bg}padding:2px 6px;border-radius:3px;">${formatted}</span>`;
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                            : '';
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                     }
                 },
                 {
@@ -1519,6 +1574,11 @@
                     return PriceLt80LmpBadge.hasPurpleTriangle(data, 'PP Price');
                 });
             }
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return ppHasBlueTriangle(data);
+                });
+            }
 
             updateSummary();
         }
@@ -1529,6 +1589,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
@@ -1539,10 +1600,19 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                                        applyFilters();
+                    if (on) blueTriangleFilterActive = false;
+                    applyFilters();
                 }
             });
         }
+        $('#pp-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            applyFilters();
+        });
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter, #sold-filter').on('change', function() { applyFilters(); });
 
@@ -1619,6 +1689,14 @@
                     PriceLt80LmpBadge.update('#purchasingpower-price-lt80-lmp-badge', table.getData(), 'purchasingpower', 'PP Price');
                 }
             }
+            let blueTriangleCount = 0;
+            (table ? table.getData() : []).forEach(function(row) {
+                if (ppHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#pp-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncPpTriangleBadgeState === 'function') syncPpTriangleBadgeState();
         }
 
         function buildColumnDropdown() {

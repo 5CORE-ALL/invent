@@ -763,7 +763,7 @@
                         <option value="pink">Pink</option>
                     </select>
 
-                    {{-- Dil vs PRMT / Cpn% / Push Prc / sprice ? — same action row as Amazon --}}
+                    {{-- Dil vs PRMT / Cpn% / Push Prc — same action row as Amazon --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay1'])
 
                     {{-- Target ROI% bulk control — back-solves SPRICE so SGROI = Target. --}}

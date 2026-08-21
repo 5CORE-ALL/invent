@@ -1033,7 +1033,7 @@
                         </ul>
                     </div>
 
-                    {{-- Dil vs PRMT / Cpn% / sprice ? — same action row as /ebay-tabulator-view --}}
+                    {{-- Dil vs PRMT / Cpn% — same action row as /ebay-tabulator-view --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'temu'])
 
                     {{-- LMP — set SPRICE so S Temu B Prc (push base) = L1 × 0.99 for selected rows --}}
@@ -5545,7 +5545,7 @@
                         e.stopPropagation();
                     }
                 },
-                ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "Goods ID",
                     field: "goods_id",

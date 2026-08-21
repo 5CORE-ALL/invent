@@ -84,6 +84,7 @@
             position: relative;
             z-index: 5;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'newegg'])
     </style>
 @endsection
 
@@ -112,6 +113,10 @@
                             style="color: black; font-weight: bold;">L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="newegg-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge"
                             style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge"
@@ -207,6 +212,7 @@
                     <button type="button" class="btn btn-sm btn-success flex-shrink-0" id="export-btn" title="Export">
                         <i class="fa fa-file-excel"></i>
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'newegg'])
 
                     <div class="dropdown d-inline-block flex-shrink-0" id="sprice-mode-dropdown">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -406,10 +412,12 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'newegg'])
 @endsection
 
 @section('script-bottom')
     <script>
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'newegg'])
         let table = null;
         let decreaseModeActive  = false;
         let increaseModeActive  = false;
@@ -531,6 +539,9 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                if (typeof applyChannelSpriceFromStdChange === 'function') {
+                    applyChannelSpriceFromStdChange(r);
+                }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
@@ -595,6 +606,29 @@
         // ── Missing-listing / mapping state + helpers (same rules as map-issues) ──
         let neMissingActive = false, neMapActive = false, neNMapActive = false;
         let neZeroSoldActive = false, neMoreSoldActive = false;
+        let blueTriangleFilterActive = false;
+
+        function neRowSpriceForAlert(data) {
+            if (!data) return 0;
+            let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function neHasBlueTriangle(data) {
+            if (!data || !data.sku) return false;
+            const sprice = neRowSpriceForAlert(data);
+            const price = parseFloat(data.price) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncNeTriangleBadgeState() {
+            $('#newegg-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
 
         function neNr(row) {
             return String((row && row.nr) || 'REQ').trim().toUpperCase();
@@ -1245,14 +1279,32 @@
                             return `<span style="color:${color};font-weight:bold;">${n.toFixed(0)}%</span>`;
                         }
                     },
+                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: "SPrice", field: "sprice", hozAlign: "right", sorter: "number",
                         editor: "number", editorParams: { min: 0, step: 0.01 },
                         cssClass: "editable-cell",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                         formatter: function(cell) {
-                            const v = cell.getValue();
-                            if (v === null || v === undefined || v === '') return '<span style="color:#bbb;">—</span>';
-                            return '$' + (parseFloat(v) || 0).toFixed(2);
+                            const d = cell.getRow().getData();
+                            let value = parseFloat(cell.getValue());
+                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                                const calc = chPromoSpriceFromStdTPromo(d);
+                                if (calc > 0) value = calc;
+                            }
+                            if (!isFinite(value) || !(value > 0)) return '<span style="color:#bbb;">—</span>';
+                            const live = parseFloat(d.price) || 0;
+                            const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                            const formatted = '$' + value.toFixed(2);
+                            const overLmp = lmp > 0 && value > lmp;
+                            const priceHtml = overLmp
+                                ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
+                                : formatted;
+                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + blueTri + '</span>';
                         }
                     },
                     {
@@ -1521,6 +1573,7 @@
                     if (neMissingActive && !neRowMissingL(row)) return false;
                     if (neMapActive && neMapStatus(row) !== 'map') return false;
                     if (neNMapActive && neMapStatus(row) !== 'nmap') return false;
+                    if (blueTriangleFilterActive && !neHasBlueTriangle(row)) return false;
 
                     return true;
                 });
@@ -1562,6 +1615,7 @@
                     neNMapActive = !neNMapActive;
                     neZeroSoldActive = neMoreSoldActive = neMissingActive = neMapActive = false;
                 }
+                if (blueTriangleFilterActive) blueTriangleFilterActive = false;
                 applyNeFilters();
             }
 
@@ -1572,6 +1626,14 @@
             $('#ne-missing-badge').on('click', function() { neOnSummaryFilterBadgeClick('missing'); });
             $('#ne-map-badge').on('click', function() { neOnSummaryFilterBadgeClick('map'); });
             $('#ne-nmap-badge').on('click', function() { neOnSummaryFilterBadgeClick('nmap'); });
+            $('#newegg-blue-triangle-badge').on('click', function() {
+                blueTriangleFilterActive = !blueTriangleFilterActive;
+                if (blueTriangleFilterActive) {
+                    neZeroSoldActive = neMoreSoldActive = neMissingActive = neMapActive = neNMapActive = false;
+                }
+                applyNeFilters();
+                syncNeTriangleBadgeState();
+            });
 
             // ── Toolbar filter wiring ──────────────────────────────────────────
             $('#inventory-filter').on('change', function() { inventoryFilter = $(this).val(); applyNeFilters(); });
@@ -2158,6 +2220,14 @@
                 });
                 $('#zero-sold-count-badge').text('0 Sold: ' + zeroSold.toLocaleString());
                 $('#more-sold-count-badge').text('> 0 Sold: ' + moreSold.toLocaleString());
+                let blueTriangleCount = 0;
+                table.getData().forEach(function(row) {
+                    if (neHasBlueTriangle(row)) blueTriangleCount++;
+                });
+                $('#newegg-blue-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+                );
+                if (typeof syncNeTriangleBadgeState === 'function') syncNeTriangleBadgeState();
                 $('#ne-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
                 $('#ne-map-badge').text('Map: ' + mapCount.toLocaleString());
                 $('#ne-nmap-badge').text('N Map: ' + nmapCount.toLocaleString());

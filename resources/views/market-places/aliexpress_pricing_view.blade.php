@@ -138,6 +138,7 @@
             width: 100%;
             max-width: 100%;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'aliexpress'])
     </style>
 @endsection
 
@@ -285,6 +286,7 @@
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success">
                             <i class="fas fa-file-csv"></i> Export CSV
                         </button>
+                        @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'aliexpress'])
                         <a href="{{ route('aliexpress.lmp.sample') }}" class="btn btn-sm btn-outline-secondary">
                             <i class="fas fa-download"></i> LMP sample
                         </a>
@@ -393,6 +395,10 @@
                             <span class="badge bg-danger   fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-missing-badge"     data-metric="missing_count" data-filter="missing" style="font-weight:700;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">Missing L: 0</span>
                             @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'aliexpress-price-gt-lmp-badge', 'pglChannelKey' => 'aliexpress', 'pglPriceField' => 'price'])
                             @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'aliexpress-price-lt80-lmp-badge', 'pltChannelKey' => 'aliexpress', 'pltPriceField' => 'price'])
+                            <span class="badge fs-6 p-2" id="aliexpress-blue-triangle-badge"
+                                style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                                <i class="fas fa-exclamation-triangle"></i> 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-map-badge"         data-metric="map_count"     data-filter="map" style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click to filter table · Hover ½s for daily trend">Map: 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-nmap-badge"        data-metric="nmap_count"    data-filter="nmap" style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click to filter table · Hover ½s for daily trend">N Map: 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-zero-sold-badge"   data-metric="zero_sold"     data-filter="zero_sold" style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click to filter table · Hover ½s for daily trend">0 Sold: 0</span>
@@ -543,6 +549,7 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'aliexpress'])
 @endsection
 
 @section('script-bottom')
@@ -551,6 +558,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script>
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'aliexpress'])
         let table = null;
         let allTableData = [];
         let summaryDataCache = [];
@@ -587,7 +595,30 @@
         let aeMoreSoldActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
+        let blueTriangleFilterActive = false;
         let aeBadgeHoverTimer = null;
+
+        function aeRowSpriceForAlert(data) {
+            if (!data || data.is_parent) return 0;
+            let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function aeHasBlueTriangle(data) {
+            if (!data || data.is_parent) return false;
+            const sprice = aeRowSpriceForAlert(data);
+            const price = parseFloat(data.price) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncAeTriangleBadgeState() {
+            $('#aliexpress-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
 
         function aeClearBadgeHoverTimer() {
             if (aeBadgeHoverTimer) {
@@ -812,6 +843,9 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                if (typeof applyChannelSpriceFromStdChange === 'function') {
+                    applyChannelSpriceFromStdChange(r);
+                }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
@@ -1091,6 +1125,11 @@
                     return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
                 });
             }
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return aeHasBlueTriangle(data);
+                });
+            }
         }
 
         if (window.PriceGtLmpBadge) {
@@ -1099,6 +1138,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
@@ -1109,10 +1149,20 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                                        applyFilters();
+                    if (on) blueTriangleFilterActive = false;
+                    applyFilters();
                 }
             });
         }
+        $('#aliexpress-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+                aeMissingActive = aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+            }
+            applyFilters();
+        });
 
         function normalizeRows(rowsInput) {
             if (Array.isArray(rowsInput)) {
@@ -1204,6 +1254,14 @@
             $('#ae-nmap-badge').text(`N Map: ${nmapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
             $('#ae-more-sold-badge').text(`>0 Sold: ${moreSold.toLocaleString()}`);
+            let blueTriangleCount = 0;
+            (table ? table.getData() : rows).forEach(function(row) {
+                if (aeHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#aliexpress-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncAeTriangleBadgeState === 'function') syncAeTriangleBadgeState();
             if ($('#ae-avg-roi-badge').length) {
                 $('#ae-avg-roi-badge').text(`ROI: ${Math.round(avgRoi)}%`);
             }
@@ -1663,6 +1721,7 @@
                             return money(cell.getValue());
                         }
                     },
+                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: "Sprice",
                         field: "sprice",
@@ -1670,11 +1729,28 @@
                         hozAlign: "right",
                         editor: "number",
                         editorParams: { min: 0, step: 0.01 },
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue()) || 0;
-                            return `<span style="font-weight:600;padding:2px 6px;border-radius:3px;">${money(v)}</span>`;
+                            let value = parseFloat(cell.getValue()) || 0;
+                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                                const calc = chPromoSpriceFromStdTPromo(d);
+                                if (calc > 0) value = calc;
+                            }
+                            if (!(value > 0)) return '';
+                            const live = parseFloat(d.price) || 0;
+                            const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                            const formatted = money(value);
+                            const overLmp = lmp > 0 && value > lmp;
+                            const priceHtml = overLmp
+                                ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
+                                : `<span style="font-weight:600;">${formatted}</span>`;
+                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                         }
                     },
                     {

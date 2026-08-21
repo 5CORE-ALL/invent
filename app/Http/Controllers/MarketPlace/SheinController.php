@@ -14,6 +14,7 @@ use App\Models\ShopifySku;
 use App\Services\SheinShopifySalesService;
 use App\Services\SheinApiService;
 use App\Services\LmpSkuGroupService;
+use App\Services\ChannelPromoPricingService;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\Log;
@@ -519,6 +520,7 @@ class SheinController extends Controller
                 ->unique()
                 ->values()
                 ->all();
+            $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('shein', $sheinPmSkus);
             $amazonStandardPrices = [];
             foreach (AmazonDataView::whereIn('sku', $sheinPmSkus)->get(['sku', 'value']) as $adv) {
                 $val = is_array($adv->value)
@@ -660,7 +662,7 @@ class SheinController extends Controller
                     }
                 }
 
-                $rows[] = [
+                $row = [
                     'sku'          => trim((string) $displaySku),
                     'parent'       => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
                     'is_parent'    => false,
@@ -696,6 +698,7 @@ class SheinController extends Controller
                     'linked_lmp_skus' => $linkedLmpSkus,
                     'STANDARD_PRICE' => $stdPrc,
                 ];
+                $rows[] = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $displaySku);
             }
 
             // Sort by parent groups then by SKU

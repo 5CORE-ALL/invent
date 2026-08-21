@@ -291,6 +291,7 @@
         .dws-sc.yellow { background: #ffc107; }
         .dws-sc.green { background: #28a745; }
         .dws-sc.pink { background: #e83e8c; }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'doba_withoutship'])
     </style>
 @endsection
 
@@ -350,6 +351,11 @@
                               title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'dobawithoutship-price-gt-lmp-badge', 'pglChannelKey' => 'dobawithoutship', 'pglPriceField' => 'self_pick_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'dobawithoutship-price-lt80-lmp-badge', 'pltChannelKey' => 'dobawithoutship', 'pltPriceField' => 'self_pick_price'])
+                        <span id="doba_withoutship-blue-triangle-badge"
+                              class="badge text-center"
+                              style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
+                              title="Blue triangle: S PRC ≠ Price.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span id="nmap-count"
                               class="badge text-center"
                               style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
@@ -466,6 +472,7 @@
                             title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'doba_withoutship'])
 
                     <button id="push-to-doba-btn" class="btn btn-sm btn-primary" style="display: none;"
                             title="Push pickup / prepaid price (selfPickAnticipatedIncome) to Doba">
@@ -600,6 +607,7 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'doba_withoutship'])
 @endsection
 
 @section('script-bottom')
@@ -690,6 +698,35 @@
         let missingBadgeFilterActive = false; // Missing badge: INV > 0 and Doba L30 === 0
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
+        let blueTriangleFilterActive = false;
+
+        function isDobaWithoutshipParentRow(row) {
+            if (!row) return false;
+            if (row.is_parent === true) return true;
+            const sku = String(row['(Child) sku'] || row.SKU || row.sku || '').toUpperCase();
+            return sku.includes('PARENT');
+        }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba_withoutship'])
+        function dobaWithoutshipRowSpriceForAlert(data) {
+            let sprice = parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function' && !isDobaWithoutshipParentRow(data)) {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function dobaWithoutshipHasBlueTriangle(data) {
+            if (isDobaWithoutshipParentRow(data)) return false;
+            const sprice = dobaWithoutshipRowSpriceForAlert(data);
+            const price = parseFloat(data && (data.self_pick_price != null ? data.self_pick_price : data['doba Price'])) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncDobaWithoutshipTriangleBadgeState() {
+            $('#doba_withoutship-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
 
         $(document).ready(function() {
 
@@ -1646,6 +1683,9 @@
                         || (target && rowKey === target);
                     if (!inGroup) return;
                     r.update({ standard_price: std, STANDARD_PRICE: std });
+                    if (typeof applyChannelSpriceFromStdChange === 'function') {
+                        applyChannelSpriceFromStdChange(r);
+                    }
                     if (rowKey === target) primaryRow = r;
                 });
                 return primaryRow;
@@ -1722,8 +1762,21 @@
                                 quantity_l7_prev: quantityL7Prev,
                                 growth_percent: 0, // Calculated in formatter
                                 self_pick_price: selfPickPriceVal,
+                                'doba Price': selfPickPriceVal,
                                 standard_price: Number(item.standard_price || item.STANDARD_PRICE) || 0,
                                 STANDARD_PRICE: Number(item.STANDARD_PRICE || item.standard_price) || 0,
+                                prmt_pct: item.prmt_pct,
+                                cpn_pct: item.cpn_pct,
+                                zero_sold_prmt: item.zero_sold_prmt,
+                                dsc: item.dsc,
+                                appr: item.appr,
+                                'Dil%': (ovDil > 0 && ovDil <= 2) ? ovDil * 100 : ovDil,
+                                'CVR%': item['CVR%'],
+                                lmp_price: item.lmp_price || item.lmp || item.LMP || null,
+                                _prmt_pct_applied: item._prmt_pct_applied,
+                                _cpn_pct_applied: item._cpn_pct_applied,
+                                _zero_sold_prmt_applied: item._zero_sold_prmt_applied,
+                                _dsc_applied: item._dsc_applied,
                                 amazon_price: amazonPrice,
                                 disc_vs_amz: discVsAmz,
                                 Profit: item.Total_pft || item.Profit || 0,
@@ -2153,10 +2206,11 @@
                             return value > 0 ? `$${value.toFixed(2)}` : '';
                         }
                     },
+                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: "SPRICE",
                         field: "sprice",
-                        width: 80,
+                        width: 92,
                         sorter: "number",
                         visible: true,
                         editor: "number",
@@ -2164,9 +2218,28 @@
                             min: 0,
                             step: 0.01
                         },
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                         formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            return value > 0 ? `<span style="color: #000; font-weight: 600;">$${value.toFixed(2)}</span>` : '';
+                            const rowData = cell.getRow().getData();
+                            if (isDobaWithoutshipParentRow(rowData)) return '';
+                            let value = parseFloat(cell.getValue() || 0);
+                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                                const calc = chPromoSpriceFromStdTPromo(rowData);
+                                if (calc > 0) value = calc;
+                            }
+                            const live = parseFloat(rowData.self_pick_price || rowData['doba Price']) || 0;
+                            const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
+                            if (!(value > 0)) return '';
+                            const formatted = '$' + value.toFixed(2);
+                            const overLmp = lmp > 0 && value > lmp;
+                            const priceHtml = overLmp
+                                ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
+                                : `<span style="color:#000;font-weight:600;">${formatted}</span>`;
+                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                         }
                     },
                     {
@@ -2417,11 +2490,17 @@
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'self_pick_price');
                     });
                 }
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return dobaWithoutshipHasBlueTriangle(data);
+                    });
+                }
 
                 setTimeout(function() {
                     updateSelectAllCheckbox();
                     updateVisibleRowsCount();
                 }, 100);
+                if (typeof syncDobaWithoutshipTriangleBadgeState === 'function') syncDobaWithoutshipTriangleBadgeState();
             }
 
             if (window.PriceGtLmpBadge) {
@@ -2430,6 +2509,7 @@
                     getActive: function() { return priceGtLmpFilterActive; },
                     onToggle: function(on) {
                         priceGtLmpFilterActive = on;
+                        if (on) blueTriangleFilterActive = false;
                         applyFilters();
                     }
                 });
@@ -2440,10 +2520,20 @@
                     getActive: function() { return priceLt80LmpFilterActive; },
                     onToggle: function(on) {
                         priceLt80LmpFilterActive = on;
-                                                applyFilters();
+                        if (on) blueTriangleFilterActive = false;
+                        applyFilters();
                     }
                 });
             }
+            $('#doba_withoutship-blue-triangle-badge').on('click', function() {
+                blueTriangleFilterActive = !blueTriangleFilterActive;
+                if (blueTriangleFilterActive) {
+                    priceGtLmpFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                }
+                applyFilters();
+                if (typeof updateSummary === 'function') updateSummary();
+            });
 
             function updateVisibleRowsCount() {
                 if (!table) return;
@@ -2569,6 +2659,14 @@
                     PriceLt80LmpBadge.update('#dobawithoutship-price-lt80-lmp-badge', table.getData(), 'dobawithoutship', 'self_pick_price');
                 }
                 }
+                let blueTriangleCount = 0;
+                (table ? table.getData() : []).forEach(function(row) {
+                    if (dobaWithoutshipHasBlueTriangle(row)) blueTriangleCount++;
+                });
+                $('#doba_withoutship-blue-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+                );
+                if (typeof syncDobaWithoutshipTriangleBadgeState === 'function') syncDobaWithoutshipTriangleBadgeState();
                 $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
             }

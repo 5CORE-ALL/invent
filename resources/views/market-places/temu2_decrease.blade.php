@@ -320,6 +320,7 @@
             width: 100%;
             max-width: 100%;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'temu2'])
     </style>
 @endsection
 
@@ -523,6 +524,7 @@
                         title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'temu2'])
 
                     {{-- Temu-only actions (kept after ebay-aligned filters) --}}
                     <div class="btn-group align-items-center pricing-filter-item" role="group">
@@ -654,6 +656,8 @@
                             title="Click to filter Missing L (INV&gt;0, not listed, REQ)">M L: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'temu2-price-gt-lmp-badge', 'pglChannelKey' => 'temu2', 'pglPriceField' => 'temu_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu2-price-lt80-lmp-badge', 'pltChannelKey' => 'temu2', 'pltPriceField' => 'temu_price'])
+                        <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing M (listed, INV&gt;0, REQ, INV vs Temu Stock mismatch)">M M: 0</span>
@@ -1135,6 +1139,7 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'temu2'])
 @endsection
 
 @section('script-bottom')
@@ -1798,6 +1803,9 @@
                 || (target && rowKey === target);
             if (!inGroup) return;
             r.update({ STANDARD_PRICE: std });
+            if (typeof applyChannelSpriceFromStdChange === 'function') {
+                applyChannelSpriceFromStdChange(r);
+            }
             if (rowKey === target) primaryRow = r;
         });
         return primaryRow;
@@ -1810,6 +1818,35 @@
         if (!sku || !isFinite(saved) || saved <= 0) return;
         applyTemu2StandardPriceToLinkedRows(sku, saved, detail.applied_skus);
     });
+
+    function isTemu2ParentRow(data) {
+        if (!data) return false;
+        if (data.is_parent === true || data.is_parent === 1 || data.is_parent === '1') return true;
+        const sku = String(data.sku || data['(Child) sku'] || '').trim().toUpperCase();
+        return sku.indexOf('PARENT ') === 0 || sku === 'PARENT' || sku.includes('PARENT');
+    }
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu2'])
+    function temu2RowSpriceForAlert(data) {
+        let sprice = parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
+        if (typeof chPromoSpriceFromStdTPromo === 'function' && !isTemu2ParentRow(data)) {
+            const calc = chPromoSpriceFromStdTPromo(data);
+            if (calc > 0) sprice = calc;
+        }
+        return sprice;
+    }
+    function temu2HasBlueTriangle(data) {
+        if (isTemu2ParentRow(data)) return false;
+        const sprice = temu2RowSpriceForAlert(data);
+        const price = parseFloat(data && data.temu_price) || 0;
+        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+    }
+    let blueTriangleFilterActive = false;
+    function syncTemu2TriangleBadgeState() {
+        $('#temu2-blue-triangle-badge').css({
+            outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
+    }
 
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -3280,6 +3317,14 @@
                     PriceLt80LmpBadge.update('#temu2-price-lt80-lmp-badge', table.getData(), 'temu2', 'temu_price');
                 }
             }
+            let blueTriangleCount = 0;
+            (table ? table.getData() : []).forEach(function(row) {
+                if (temu2HasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#temu2-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncTemu2TriangleBadgeState === 'function') syncTemu2TriangleBadgeState();
             $('#missing-m-count-badge').text('M M: ' + notMappedCount.toLocaleString());
 
             // Legacy hidden IDs (if present) — avoid JS errors
@@ -4026,22 +4071,34 @@
                         e.stopPropagation();
                     }
                 },
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "S PRC",
                     field: "sprice",
                     hozAlign: "center",
                     editor: "input",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
-                        const value = cell.getValue();
                         const rowData = cell.getRow().getData();
-                        const currentPrice = parseFloat(rowData['base_price']) || 0;
-                        const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
-                        const sprice = isNaN(spriceNum) ? 0 : spriceNum;
-
-                        if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) return '';
-                        if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) return '';
-
-                        return `$${sprice.toFixed(2)}`;
+                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
+                        let value = parseFloat(cell.getValue() || 0);
+                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                            if (calc > 0) value = calc;
+                        }
+                        const live = parseFloat(rowData.temu_price) || 0;
+                        const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
+                        if (!(value > 0)) return '';
+                        const formatted = '$' + value.toFixed(2);
+                        const overLmp = lmp > 0 && value > lmp;
+                        const priceHtml = overLmp
+                            ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
+                            : formatted;
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                            : '';
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                     }
                 },
                 {
@@ -4688,6 +4745,11 @@
                     return PriceLt80LmpBadge.hasPurpleTriangle(data, 'temu_price');
                 });
             }
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return temu2HasBlueTriangle(data);
+                });
+            }
 
             updateSummary();
             updateSelectAllCheckbox();
@@ -4719,6 +4781,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
@@ -4729,10 +4792,19 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                                        applyFilters();
+                    if (on) blueTriangleFilterActive = false;
+                    applyFilters();
                 }
             });
         }
+        $('#temu2-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            applyFilters();
+        });
 
         // ==================== Play/Pause parent navigation (same as pricing-master-cvr) ====================
         // Group key = parent + SKU prefix (WF/FR etc) so FR and WF SKUs don't mix in same play group

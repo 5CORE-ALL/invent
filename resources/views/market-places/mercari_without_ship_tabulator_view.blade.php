@@ -51,6 +51,7 @@
             text-align: center;
             white-space: nowrap;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'mercari_woship'])
     </style>
 @endsection
 
@@ -191,6 +192,7 @@
                         title="Export current (filtered) rows to CSV">
                         <i class="fas fa-file-export"></i> Export
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'mercari_woship'])
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#priceSoldUploadModal" title="Upload Price &amp; Sold">
                         <i class="fas fa-upload"></i>
@@ -205,6 +207,10 @@
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'mercariwoship-price-gt-lmp-badge', 'pglChannelKey' => 'mercariwoship', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'mercariwoship-price-lt80-lmp-badge', 'pltChannelKey' => 'mercariwoship', 'pltPriceField' => 'price'])
+                        <span class="badge fs-6 p-2" id="mercariwoship-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="revenue-badge" style="color: #000; font-weight: bold;" title="Total sales (Price × L30 sold)">Revenue: $0.00</span>
                     </div>
                 </div>
@@ -252,10 +258,12 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'mercari_woship'])
 @endsection
 
 @section('script-bottom')
     <script>
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'mercari_woship'])
         let table;
         let allTableData = [];
 
@@ -305,6 +313,9 @@
                 || (target && rowKey === target);
             if (!inGroup) return;
             r.update({ STANDARD_PRICE: std });
+            if (typeof applyChannelSpriceFromStdChange === 'function') {
+                applyChannelSpriceFromStdChange(r);
+            }
             if (rowKey === target) primaryRow = r;
         });
         return primaryRow;
@@ -466,6 +477,36 @@
                                 return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + '</span>';
                             }
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
+                        }
+                    },
+                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
+                    {
+                        title: "S PRC",
+                        field: "SPRICE",
+                        hozAlign: "center",
+                        width: 92,
+                        sorter: "number",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            let value = parseFloat(cell.getValue() || d.sprice || 0);
+                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                                const calc = chPromoSpriceFromStdTPromo(d);
+                                if (calc > 0) value = calc;
+                            }
+                            if (!(value > 0)) return '';
+                            const live = parseFloat(d.price) || 0;
+                            const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                            const formatted = '$' + value.toFixed(2);
+                            const overLmp = lmp > 0 && value > lmp;
+                            const priceHtml = overLmp
+                                ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
+                                : '<span style="font-weight:600;">' + formatted + '</span>';
+                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + blueTri + '</span>';
                         }
                     },
                     {
@@ -963,6 +1004,30 @@
         let missingLFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
+        let blueTriangleFilterActive = false;
+
+        function mercWosRowSpriceForAlert(data) {
+            if (!data) return 0;
+            let sprice = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function mercWosHasBlueTriangle(data) {
+            if (!data) return false;
+            const sprice = mercWosRowSpriceForAlert(data);
+            const price = parseFloat(data.price) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncMercWosTriangleBadgeState() {
+            $('#mercariwoship-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
+
         let decreaseModeActive = false;
         let increaseModeActive = false;
         let samePriceModeActive = false;
@@ -1083,6 +1148,9 @@
                 if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge && !PriceLt80LmpBadge.hasPurpleTriangle(row, 'price')) {
                     return false;
                 }
+                if (blueTriangleFilterActive && !mercWosHasBlueTriangle(row)) {
+                    return false;
+                }
 
                 // INV filter (0 INV / INV > 0)
                 if (invFilter && invFilter !== 'all') {
@@ -1138,6 +1206,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyAllFilters();
                 }
             });
@@ -1148,10 +1217,20 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                                        applyAllFilters();
+                    if (on) blueTriangleFilterActive = false;
+                    applyAllFilters();
                 }
             });
         }
+        $('#mercariwoship-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            applyAllFilters();
+            syncMercWosTriangleBadgeState();
+        });
 
         function updateBadges(data) {
             data = data || [];
@@ -1183,6 +1262,14 @@
                     PriceLt80LmpBadge.update('#mercariwoship-price-lt80-lmp-badge', table.getData(), 'mercariwoship', 'price');
                 }
             }
+            let blueTriangleCount = 0;
+            (table ? table.getData() : data).forEach(function(row) {
+                if (mercWosHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#mercariwoship-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncMercWosTriangleBadgeState === 'function') syncMercWosTriangleBadgeState();
             document.getElementById('revenue-badge').textContent = 'Revenue: $' + revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 

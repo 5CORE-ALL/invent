@@ -406,11 +406,6 @@
                         0 sold Vs Dil Rule
                     </button>
                     @endif
-                    @else
-                    <button type="button" class="btn btn-sm" id="ch-promo-sprice-recalc-btn"
-                        title="{{ in_array($channelPromoChannel, ['shopify_b2c', 'reverb'], true) ? 'Clear S PRC, then refill using Std × (1 − (PRMT% + cvr%)/100). Auto-pushes when it differs from live Price. Skips INV = 0. Selected SKUs if checked; otherwise all visible.' : 'Clear S PRC, then refill using Push Prc formula (Std − PRMT%) — no marketplace push. Skips INV = 0. Selected SKUs if checked; otherwise all visible.' }}">
-                        sprice ?
-                    </button>
                     @endif
                     @endunless
                     <div id="ch-promo-push-prc-progress" aria-live="polite" title="Push progress">
@@ -827,10 +822,11 @@
                 saveSpriceUrl: '/wayfair/pricing-save-sprice',
                 pushPriceUrl: null,
                 priceField: 'price',
-                cvrField: 'CVR%',
-                dilField: 'Dil%',
-                invField: 'INV',
+                cvrField: 'cvr',
+                dilField: 'dil_percent',
+                invField: 'inv',
                 skuField: 'sku',
+                soldField: 'al30',
                 saveSpriceMode: 'updates',
             },
             temu: {
@@ -853,6 +849,7 @@
                 dilField: 'dil_percent',
                 invField: 'inventory',
                 skuField: 'sku',
+                soldField: 'temu_l30',
                 saveSpriceMode: 'sku',
             },
             doba: {
@@ -864,197 +861,187 @@
                 dilField: 'Dil%',
                 invField: 'INV',
                 skuField: '(Child) sku',
+                soldField: 'doba L30',
                 saveSpriceMode: 'sku',
             },
             doba_withoutship: {
                 label: 'Doba (no ship)',
                 saveSpriceUrl: '/doba/save-sprice-withoutship',
                 pushPriceUrl: '/doba/push-price',
-                priceField: 'doba Price',
+                priceField: 'self_pick_price',
                 cvrField: 'CVR%',
                 dilField: 'Dil%',
                 invField: 'INV',
                 skuField: '(Child) sku',
+                soldField: 'doba L30',
                 saveSpriceMode: 'sku',
             },
             tiktok: {
                 label: 'TikTok',
                 saveSpriceUrl: '/tiktok-save-sprice',
                 pushPriceUrl: '/cvr-master-push-price',
-                priceField: 'Price',
+                priceField: 'TT Price',
                 cvrField: 'CVR%',
-                dilField: 'Dil%',
+                dilField: 'TT Dil%',
                 invField: 'INV',
                 skuField: '(Child) sku',
-                soldField: 'L30',
+                soldField: 'TT L30',
                 saveSpriceMode: 'sku',
             },
             tiktok2: {
                 label: 'TikTok 2',
                 saveSpriceUrl: '/tiktok-2-save-sprice',
                 pushPriceUrl: '/cvr-master-push-price',
-                priceField: 'Price',
+                priceField: 'TT Price',
                 cvrField: 'CVR%',
-                dilField: 'Dil%',
+                dilField: 'TT Dil%',
                 invField: 'INV',
                 skuField: '(Child) sku',
-                soldField: 'L30',
+                soldField: 'TT L30',
                 saveSpriceMode: 'sku',
             },
             topdawg: {
                 label: 'TopDawg',
                 saveSpriceUrl: '/topdawg-save-sprice',
                 pushPriceUrl: '/cvr-master-push-price',
-                priceField: 'Price',
+                priceField: 'TD Price',
                 cvrField: 'CVR%',
-                dilField: 'Dil%',
+                dilField: 'Dil',
                 invField: 'INV',
-                skuField: 'sku',
-                soldField: 'L30',
-                saveSpriceMode: 'sku',
+                skuField: '(Child) sku',
+                soldField: 'TD L30',
+                saveSpriceMode: 'updates',
             },
             purchasing_power: {
                 label: 'Purchasing Power',
                 saveSpriceUrl: '/pp-save-sprice-tabulator',
                 pushPriceUrl: '/cvr-master-push-price',
-                priceField: 'Price',
+                priceField: 'PP Price',
                 cvrField: 'CVR%',
                 dilField: 'Dil%',
                 invField: 'INV',
-                skuField: 'sku',
-                soldField: 'L30',
+                skuField: '(Child) sku',
+                soldField: 'PP L30',
                 saveSpriceMode: 'sku',
-            },
-            wayfair: {
-                label: 'Wayfair',
-                saveSpriceUrl: '/wayfair/pricing-save-sprice',
-                pushPriceUrl: null,
-                priceField: 'price',
-                cvrField: 'CVR%',
-                dilField: 'Dil%',
-                invField: 'INV',
-                skuField: 'sku',
-                soldField: 'L30',
-                saveSpriceMode: 'updates',
             },
             aliexpress: {
                 label: 'AliExpress',
                 saveSpriceUrl: '/aliexpress/save-sprice',
                 pushPriceUrl: '/cvr-master-push-price',
-                priceField: 'Price',
+                priceField: 'price',
                 cvrField: 'CVR%',
-                dilField: 'Dil%',
-                invField: 'INV',
+                dilField: 'dil_percent',
+                invField: 'inv',
                 skuField: 'sku',
-                soldField: 'L30',
+                soldField: 'al30',
                 saveSpriceMode: 'updates',
             },
             shein: {
                 label: 'Shein',
                 saveSpriceUrl: '/shein/save-sprice',
                 pushPriceUrl: '/cvr-master-push-price',
-                priceField: 'Price',
+                priceField: 'special_offer',
                 cvrField: 'CVR%',
-                dilField: 'Dil%',
-                invField: 'INV',
+                dilField: 'dil_percent',
+                invField: 'inv',
                 skuField: 'sku',
-                soldField: 'L30',
+                soldField: 'al30',
                 saveSpriceMode: 'updates',
             },
             newegg: {
                 label: 'Newegg',
                 saveSpriceUrl: '/newegg-pricing-save-sprice',
                 pushPriceUrl: null,
-                priceField: 'Price',
+                priceField: 'price',
                 cvrField: 'CVR%',
-                dilField: 'Dil%',
-                invField: 'INV',
+                dilField: 'dil',
+                invField: 'inv',
                 skuField: 'sku',
-                soldField: 'L30',
+                soldField: 'l30',
                 saveSpriceMode: 'sku',
             },
             faire: {
                 label: 'Faire',
                 saveSpriceUrl: '/faire/pricing-save-sprice',
                 pushPriceUrl: '/cvr-master-push-price',
-                priceField: 'Price',
+                priceField: 'price',
                 cvrField: 'CVR%',
-                dilField: 'Dil%',
-                invField: 'INV',
+                dilField: 'dil_percent',
+                invField: 'inv',
                 skuField: 'sku',
-                soldField: 'L30',
+                soldField: 'al30',
                 saveSpriceMode: 'updates',
             },
             pls: {
                 label: 'PLS',
                 saveSpriceUrl: '/save-pls-sprice',
                 pushPriceUrl: '/cvr-master-push-price',
-                priceField: 'Price',
+                priceField: 'price',
                 cvrField: 'CVR%',
-                dilField: 'Dil%',
-                invField: 'INV',
+                dilField: 'dil_pct',
+                invField: 'inventory',
                 skuField: 'sku',
-                soldField: 'L30',
+                soldField: 'pls_l30',
                 saveSpriceMode: 'sku',
             },
             mercari_wship: {
                 label: 'Mercari w Ship',
                 saveSpriceUrl: '',
                 pushPriceUrl: null,
-                priceField: 'Price',
+                priceField: 'price',
                 cvrField: 'CVR%',
                 dilField: 'Dil%',
                 invField: 'INV',
-                skuField: '(Child) sku',
-                soldField: 'L30',
+                skuField: 'sku',
+                soldField: 'sold',
                 saveSpriceMode: 'sku',
             },
             mercari_woship: {
                 label: 'Mercari w/o Ship',
                 saveSpriceUrl: '',
                 pushPriceUrl: null,
-                priceField: 'Price',
+                priceField: 'price',
                 cvrField: 'CVR%',
                 dilField: 'Dil%',
                 invField: 'INV',
-                skuField: '(Child) sku',
-                soldField: 'L30',
+                skuField: 'sku',
+                soldField: 'sold',
                 saveSpriceMode: 'sku',
             },
             fb_marketplace: {
                 label: 'FB Marketplace',
                 saveSpriceUrl: '',
                 pushPriceUrl: null,
-                priceField: 'Price',
+                priceField: 'price',
                 cvrField: 'CVR%',
                 dilField: 'Dil%',
                 invField: 'INV',
-                skuField: '(Child) sku',
-                soldField: 'L30',
+                skuField: 'sku',
+                soldField: 'sold',
                 saveSpriceMode: 'sku',
             },
             vinted: {
                 label: 'Vinted',
                 saveSpriceUrl: '/vinted/pricing/save-sprice-tabulator',
                 pushPriceUrl: null,
-                priceField: 'Price',
+                priceField: 'V Price',
                 cvrField: 'CVR%',
                 dilField: 'Dil%',
                 invField: 'INV',
-                skuField: 'sku',
-                soldField: 'L30',
+                skuField: '(Child) sku',
+                soldField: 'V L30',
                 saveSpriceMode: 'sku',
             },
             depop: {
                 label: 'Depop',
                 saveSpriceUrl: '/depop/pricing/save-sprice',
                 pushPriceUrl: null,
-                priceField: 'Price',
+                priceField: 'price',
                 cvrField: 'CVR%',
                 dilField: 'Dil%',
-                invField: 'INV',
+                invField: 'inv',
                 skuField: 'sku',
-                soldField: 'L30',
+                soldField: 'l30',
                 saveSpriceMode: 'sku',
             },
         };
@@ -2771,7 +2758,7 @@
             });
         }
         function chPromoInv(d) {
-            return Number(d[chPromoCfg.invField || 'INV']) || Number(d.INV) || Number(d.inventory) || 0;
+            return Number(d[chPromoCfg.invField || 'INV']) || Number(d.INV) || Number(d.inventory) || Number(d.inv) || 0;
         }
         function chPromoPrice(d) {
             const f = chPromoCfg.priceField;
@@ -2814,7 +2801,10 @@
         function chPromoSkuDil(d) {
             const inv = chPromoInv(d);
             if (inv <= 0) return 0;
-            const ovl30 = Number(d && (d.L30 != null ? d.L30 : d['L30'])) || 0;
+            const ovl30 = Number(d && (d.L30 != null ? d.L30 : d['L30']))
+                || Number(d && d.ov_l30)
+                || Number(d && d.ovl30)
+                || 0;
             return (ovl30 / inv) * 100;
         }
         function chPromoListingDilMap() {
@@ -2903,7 +2893,10 @@
             return chPromoRound2(chPromoPrice(d));
         }
         function chPromoOvl30(d) {
-            return Number(d && (d.L30 != null ? d.L30 : d['eBay L30'])) || 0;
+            return Number(d && (d.L30 != null ? d.L30 : d['eBay L30']))
+                || Number(d && d.ov_l30)
+                || Number(d && d.ovl30)
+                || 0;
         }
         function chPromoParentName(d) {
             return String((d && d.Parent) || '').trim().replace(/^PARENT\s+/i, '').trim();
@@ -2991,7 +2984,10 @@
             if (isFinite(cvr) && cvr >= 0) return cvr;
             const views = Number(d.Views || d.Sess30 || d.views || 0) || 0;
             const l30 = Number(d['RV L30'] || d['eBay L30'] || d['B2B L30'] || d['MC L30'] || d['W_L30'] || d.L30 || 0) || 0;
-            return views > 0 ? chPromoRound2((l30 / views) * 100) : 0;
+            if (views > 0) return chPromoRound2((l30 / views) * 100);
+            const sold = Number((chPromoCfg.soldField && d[chPromoCfg.soldField]) || d.al30 || d.sold || 0) || 0;
+            const ov = chPromoOvl30(d);
+            return ov > 0 ? chPromoRound2((sold / ov) * 100) : 0;
         }
         function parseChPromoPercentAmount(raw) {
             const s = String(raw == null ? '' : raw).trim();
@@ -7263,6 +7259,20 @@
 
         // Export + auto-init
         window.channelPromoPricingColumns = channelPromoPricingColumns;
+        window.channelPromoAnalyticsColumns = function() {
+            const hide = {
+                push_prmt: 1,
+                push_std_prc: 1,
+                push_prc: 1,
+                dsc_pct: 1,
+                dsc: 1,
+                appr: 1,
+            };
+            if (CHANNEL_PROMO_CHANNEL !== 'temu') hide.push_cpn = 1;
+            return (channelPromoPricingColumns() || []).filter(function(c) {
+                return c && !hide[c.field];
+            });
+        };
         window.channelPromoPushPrmtColumn = channelPromoPushPrmtColumn;
         window.channelPromoPushCpnColumn = channelPromoPushCpnColumn;
         window.channelPromoPushStdPrcColumn = channelPromoPushStdPrcColumn;

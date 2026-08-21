@@ -16,6 +16,7 @@
         #summary-stats .badge.active-filter {
             box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 0 5px currentColor;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'topdawg'])
     </style>
 @endsection
 
@@ -67,6 +68,10 @@
                               style="background:#0d6efd;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
                               title="Exact ROI % from /topdawg/sales-dashboard: (Σ pft ÷ Σ cogs) × 100. COGS = LP × qty, no ship.">GROI: {{ (int) round((float) ($topdawgSalesDashboardRoi ?? 0)) }}%</span>
                         <span class="badge bg-danger text-center" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
+                        <span class="badge text-center" id="topdawg-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'topdawg-price-gt-lmp-badge', 'pglChannelKey' => 'topdawg', 'pglPriceField' => 'TD Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'topdawg-price-lt80-lmp-badge', 'pltChannelKey' => 'topdawg', 'pltPriceField' => 'TD Price'])
                         <span class="badge bg-danger text-center" id="nmap-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="|INV − TD Stock| &gt; 3">N Map: 0</span>
@@ -205,6 +210,7 @@
                                 title="Cycle pricing mode: Off → Decrease → Increase → Same Price → Off">
                             <i class="fas fa-exchange-alt"></i> Price %
                         </button>
+                        @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'topdawg'])
 
                         {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%. --}}
                         <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
@@ -292,10 +298,12 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'topdawg'])
 @endsection
 
 @section('script-bottom')
 <script>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'topdawg'])
     const TD_MAP_TOLERANCE = 3;
     const TD_PERCENTAGE    = {{ $topdawgPercentage }} / 100;
     // Pinned to /topdawg/sales-dashboard Total Revenue / PFT% / ROI%.
@@ -309,6 +317,31 @@
     let missingFilter = false, nmapFilter = false;
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
+    let blueTriangleFilterActive = false;
+
+    function tdIsParentRow(d) {
+        return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
+    }
+    function tdRowSpriceForAlert(data) {
+        let sprice = parseFloat(data && data.SPRICE) || 0;
+        if (typeof chPromoSpriceFromStdTPromo === 'function' && !tdIsParentRow(data)) {
+            const calc = chPromoSpriceFromStdTPromo(data);
+            if (calc > 0) sprice = calc;
+        }
+        return sprice;
+    }
+    function tdHasBlueTriangle(data) {
+        if (tdIsParentRow(data)) return false;
+        const sprice = tdRowSpriceForAlert(data);
+        const price = parseFloat(data && data['TD Price']) || 0;
+        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+    }
+    function syncTdTriangleBadgeState() {
+        $('#topdawg-blue-triangle-badge').css({
+            outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
+    }
 
     // Pricing-mode state
     let tdDecreaseModeActive = false;
@@ -362,6 +395,9 @@
                 || (target && rowKey === target);
             if (!inGroup) return;
             r.update({ STANDARD_PRICE: std });
+            if (typeof applyChannelSpriceFromStdChange === 'function') {
+                applyChannelSpriceFromStdChange(r);
+            }
             if (rowKey === target) primaryRow = r;
         });
         return primaryRow;
@@ -685,6 +721,14 @@
                     PriceLt80LmpBadge.update('#topdawg-price-lt80-lmp-badge', table.getData(), 'topdawg', 'TD Price');
                 }
         }
+        let blueTriangleCount = 0;
+        (table ? table.getData() : []).forEach(function(row) {
+            if (tdHasBlueTriangle(row)) blueTriangleCount++;
+        });
+        $('#topdawg-blue-triangle-badge').html(
+            '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+        );
+        if (typeof syncTdTriangleBadgeState === 'function') syncTdTriangleBadgeState();
     }
 
     function applyFilters() {
@@ -766,6 +810,11 @@
                 return PriceLt80LmpBadge.hasPurpleTriangle(data, 'TD Price');
             });
         }
+        if (blueTriangleFilterActive) {
+            table.addFilter(function(data) {
+                return tdHasBlueTriangle(data);
+            });
+        }
 
         setActiveBadges();
         updateSummary();
@@ -777,6 +826,7 @@
             getActive: function() { return priceGtLmpFilterActive; },
             onToggle: function(on) {
                 priceGtLmpFilterActive = on;
+                if (on) blueTriangleFilterActive = false;
                 applyFilters();
             }
         });
@@ -787,10 +837,19 @@
             getActive: function() { return priceLt80LmpFilterActive; },
             onToggle: function(on) {
                 priceLt80LmpFilterActive = on;
-                                applyFilters();
+                if (on) blueTriangleFilterActive = false;
+                applyFilters();
             }
         });
     }
+    $('#topdawg-blue-triangle-badge').on('click', function() {
+        blueTriangleFilterActive = !blueTriangleFilterActive;
+        if (blueTriangleFilterActive) {
+            priceGtLmpFilterActive = false;
+            priceLt80LmpFilterActive = false;
+        }
+        applyFilters();
+    });
 
     $(document).ready(function() {
         applyUrlBadgeFilter();
@@ -998,24 +1057,43 @@
                         else color = '#d63384';
                         return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
                     }},
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
-                    title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 80, sorter: 'number',
+                    title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 92, sorter: 'number',
                     editor: 'number', editorParams: { min: 0, step: 0.01 },
+                    headerTooltip: 'S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                     tooltip: 'Click to edit SPRICE — SGPFT / SROI recompute and auto-save',
                     cellClick: (e) => e.stopPropagation(),
                     formatter: c => {
-                        const v = c.getValue();
-                        if (v === null || v === undefined || v === '') {
+                        const rowData = c.getRow().getData();
+                        if (tdIsParentRow(rowData)) return '';
+                        let value = parseFloat(c.getValue() || 0);
+                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                            if (calc > 0) value = calc;
+                        }
+                        const status = rowData.SPRICE_STATUS || '';
+                        const live = parseFloat(rowData['TD Price']) || 0;
+                        const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
+                        let bg = '';
+                        let tip = '';
+                        if (status === 'pushing') { bg = 'background-color:#ffe5b4;'; tip = ' title="Pushing to TopDawg…"'; }
+                        else if (status === 'pushed') { bg = 'background-color:#fff3cd;'; tip = ' title="Pushed — queued in TopDawg review"'; }
+                        else if (status === 'failed') { bg = 'background-color:#f8d7da;'; tip = ' title="Push failed — see console / Laravel log"'; }
+                        else if (value > 0) { bg = 'background-color:#e7f1ff;'; }
+                        if (!(value > 0)) {
                             return '<span class="text-muted" style="cursor:text;" title="Click to set SPRICE">-</span>';
                         }
-                        
-                        const status = c.getRow().getData().SPRICE_STATUS || '';
-                        let bg = '#e7f1ff';
-                        let tip = '';
-                        if (status === 'pushing') { bg = '#ffe5b4'; tip = ' title="Pushing to TopDawg…"'; }
-                        else if (status === 'pushed') { bg = '#fff3cd'; tip = ' title="Pushed — queued in TopDawg review"'; }
-                        else if (status === 'failed') { bg = '#f8d7da'; tip = ' title="Push failed — see console / Laravel log"'; }
-                        return `<strong${tip} style="cursor:text;background:${bg};padding:2px 6px;border-radius:3px;">$${Number(v).toFixed(2)}</strong>`;
+                        const formatted = '$' + value.toFixed(2);
+                        const overLmp = lmp > 0 && value > lmp;
+                        const priceHtml = overLmp
+                            ? `<strong${tip} style="cursor:text;color:#dc3545;${bg}padding:2px 6px;border-radius:3px;">${formatted}</strong>`
+                            : `<strong${tip} style="cursor:text;${bg}padding:2px 6px;border-radius:3px;">${formatted}</strong>`;
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                            : '';
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                     }
                 },
                 {

@@ -160,6 +160,7 @@
             width: 100%;
             max-width: 100%;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shein'])
     </style>
 @endsection
 
@@ -268,6 +269,7 @@
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success pricing-filter-item" title="Export">
                             <i class="fas fa-file-excel"></i>
                         </button>
+                        @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shein'])
 
                         {{-- Target ROI% (compact — same UX as /ebay2-tabulator-view) --}}
                         <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
@@ -345,6 +347,10 @@
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                         <div class="shein-summary-badge-row">
                             <span class="badge bg-danger fs-6 p-2" id="ae-zero-sold-badge" style="font-weight:700;cursor:pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2" id="shein-blue-triangle-badge"
+                                style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Blue triangle: S PRC ≠ Sp. Price. Click to show only those rows. Click again to clear.">
+                                <i class="fas fa-exclamation-triangle"></i> 0</span>
                             <span class="badge fs-6 p-2" id="ae-more-sold-badge" style="font-weight:700;cursor:pointer;background:#b6e0fe;color:#0f172a;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
                             <span class="badge bg-primary fs-6 p-2" id="ae-total-sales-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator: Σ (product_price × qty) from API orders">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="ae-total-al30-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator Total Quantity">Qty: 0</span>
@@ -527,6 +533,7 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shein'])
 @endsection
 
 @section('script-bottom')
@@ -534,6 +541,7 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shein'])
         let table = null;
         let allTableData = [];
         let summaryDataCache = [];
@@ -546,6 +554,29 @@
         let aeNMapActive     = false;
         let aeZeroSoldActive = false;
         let aeMoreSoldActive = false;
+        let blueTriangleFilterActive = false;
+
+        function sheinRowSpriceForAlert(data) {
+            if (!data || data.is_parent) return 0;
+            let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function sheinHasBlueTriangle(data) {
+            if (!data || data.is_parent) return false;
+            const sprice = sheinRowSpriceForAlert(data);
+            const price = parseFloat(data.special_offer) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncSheinTriangleBadgeState() {
+            $('#shein-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
 
         function aeApplyBadgeFilterFromUrl() {
             const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
@@ -728,6 +759,9 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                if (typeof applyChannelSpriceFromStdChange === 'function') {
+                    applyChannelSpriceFromStdChange(r);
+                }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
@@ -1004,6 +1038,11 @@
             }
             if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return sheinHasBlueTriangle(data);
+                });
+            }
         }
 
         function normalizeRows(rowsInput) {
@@ -1084,6 +1123,14 @@
             $('#ae-nmap-badge').text(`N Map: ${nmapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
             $('#ae-more-sold-badge').text(`> 0 Sold: ${moreSold.toLocaleString()}`);
+            let blueTriangleCount = 0;
+            rows.forEach(function(row) {
+                if (sheinHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#shein-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncSheinTriangleBadgeState === 'function') syncSheinTriangleBadgeState();
             $('#ae-avg-dil-badge').text(dilCount > 0 ? `DIL%: ${avgDil.toFixed(1)}%` : 'DIL%: –');
             if ($('#ae-avg-roi-badge').length) {
                 $('#ae-avg-roi-badge').text(hasSalesTotals && Number.isFinite(avgRoi) ? `GROI: ${Math.round(avgRoi)}%` : 'GROI: –');
@@ -1773,6 +1820,7 @@
                             return money(cell.getValue());
                         }
                     },
+                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: "Sprice",
                         field: "sprice",
@@ -1780,11 +1828,28 @@
                         hozAlign: "right",
                         editor: "number",
                         editorParams: { min: 0, step: 0.01 },
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC > LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue()) || 0;
-                            return `<span style="font-weight:600;padding:2px 6px;border-radius:3px;">${money(v)}</span>`;
+                            let value = parseFloat(cell.getValue()) || 0;
+                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                                const calc = chPromoSpriceFromStdTPromo(d);
+                                if (calc > 0) value = calc;
+                            }
+                            if (!(value > 0)) return '';
+                            const live = parseFloat(d.special_offer) || 0;
+                            const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                            const formatted = money(value);
+                            const overLmp = lmp > 0 && value > lmp;
+                            const priceHtml = overLmp
+                                ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
+                                : `<span style="font-weight:600;">${formatted}</span>`;
+                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Sp. Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                         }
                     },
                     {
@@ -2278,6 +2343,7 @@
                 e.stopPropagation();
                 aeZeroSoldActive = !aeZeroSoldActive;
                 aeMoreSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
+                if (aeZeroSoldActive) blueTriangleFilterActive = false;
                 applyFilters();
             });
             $('#ae-more-sold-badge').on('click', function(e) {
@@ -2285,6 +2351,14 @@
                 e.stopPropagation();
                 aeMoreSoldActive = !aeMoreSoldActive;
                 aeZeroSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
+                if (aeMoreSoldActive) blueTriangleFilterActive = false;
+                applyFilters();
+            });
+            $('#shein-blue-triangle-badge').on('click', function() {
+                blueTriangleFilterActive = !blueTriangleFilterActive;
+                if (blueTriangleFilterActive) {
+                    aeMissingActive = aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+                }
                 applyFilters();
             });
 

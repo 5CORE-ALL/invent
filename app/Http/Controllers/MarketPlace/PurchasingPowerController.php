@@ -12,6 +12,7 @@ use App\Models\PurchasingPowerDataView;
 use App\Models\PurchasingPowerProduct;
 use App\Models\PurchasingPowerSale;
 use App\Models\ShopifySku;
+use App\Services\ChannelPromoPricingService;
 use App\Services\PurchasingPowerApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -103,6 +104,8 @@ class PurchasingPowerController extends Controller
 
                 return (is_numeric($std) && floatval($std) > 0) ? round(floatval($std), 2) : 0;
             });
+
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('purchasing_power', $skus);
 
         $result = [];
 
@@ -243,6 +246,7 @@ class PurchasingPowerController extends Controller
             $row['SROI']  = round($lp > 0 ? (($sprice * $percentage - $lp) / $lp) * 100 : 0, 2);
 
             $row['image_path'] = $shopify?->image_src ?? ($values['image_path'] ?? ($pm->image_path ?? null));
+            $row = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $pm->sku);
 
             $result[] = (object) $row;
         }

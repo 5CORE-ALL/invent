@@ -299,18 +299,6 @@
             color: #fff;
         }
         #reverb-apply-std-price-btn:disabled { opacity: 0.65; }
-        #reverb-apply-prmt-btn {
-            background: #198754;
-            border-color: #198754;
-            color: #fff;
-        }
-        #reverb-apply-prmt-btn:hover,
-        #reverb-apply-prmt-btn:focus {
-            background: #157347;
-            border-color: #146c43;
-            color: #fff;
-        }
-        #reverb-apply-prmt-btn:disabled { opacity: 0.65; }
         #reverb-apply-bump-btn {
             background: #fd7e14;
             border-color: #fd7e14;
@@ -323,7 +311,6 @@
             color: #fff;
         }
         #reverb-apply-bump-btn:disabled { opacity: 0.65; }
-        .reverb-push-prmt-btn .fa-spinner,
         .reverb-push-bump-btn .fa-spinner,
         .reverb-push-std-btn .fa-spinner {
             display: inline-block !important;
@@ -376,8 +363,7 @@
             max-width: 100%;
             overflow: hidden;
         }
-        #reverb-table .reverb-push-std-btn,
-        #reverb-table .reverb-push-prmt-btn {
+        #reverb-table .reverb-push-std-btn {
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
@@ -781,7 +767,7 @@
                         </ul>
                     </div>
 
-                    {{-- Dil vs PRMT / CVR vs CPN / sprice ? --}}
+                    {{-- Dil vs PRMT / CVR vs CPN --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
 
                     <div class="btn-group flex-shrink-0">
@@ -828,10 +814,6 @@
                         </ul>
                     </div>
 
-                    <button type="button" class="btn btn-sm flex-shrink-0" id="reverb-apply-prmt-btn"
-                        title="Queue Reverb Drop the Price By at PRMT%. Listing / Std price is not changed. Selected SKUs if checked; otherwise all visible whose % changed since last push.">
-                        <i class="fas fa-percent"></i> Apply Prmt%
-                    </button>
                     <button type="button" class="btn btn-sm flex-shrink-0" id="reverb-apply-bump-btn"
                         title="Queue Reverb Bump bid at S Bump%. Selected SKUs if checked; otherwise all visible whose S Bump% differs from live Bump%.">
                         <i class="fas fa-upload"></i> Apply Bump
@@ -5483,9 +5465,6 @@
                 if (reverbPushStdLastTasks && reverbPushStdLastTasks.length) {
                     applyReverbPushStdTaskStatuses(reverbPushStdLastTasks);
                 }
-                if (reverbPushPrmtLastTasks && reverbPushPrmtLastTasks.length) {
-                    applyReverbPushPrmtTaskStatuses(reverbPushPrmtLastTasks);
-                }
             });
             table.on('renderComplete', function() {
                 reverbEachTableRow(function(row, d) {
@@ -5493,214 +5472,9 @@
                     if (st === 'processing' || st === 'pushed' || st === 'error') {
                         reverbPaintPushStdIcon(row);
                     }
-                    if (typeof reverbPaintPushPrmtIcon === 'function') {
-                        const pst = String(d.PUSH_PRC_STATUS || d.push_prmt || '');
-                        if (pst === 'processing' || pst === 'pushed' || pst === 'error') {
-                            reverbPaintPushPrmtIcon(row);
-                        }
-                    }
                 });
             });
         }
-
-        // ==================== Apply Prmt% / Push % queue ====================
-        const REVERB_PUSH_PRMT_QUEUE_URL = '/reverb-push-prmt';
-        let reverbPushPrmtPollTimer = null;
-        let reverbPushPrmtLastTasks = [];
-
-        function reverbPushPrmtNeedsPush(d) {
-            const prmt = reverbPrmtPctOf(d);
-            if (String((d && d.PUSH_PRC_STATUS) || '') === 'error') return true;
-            const last = parseFloat(d && d.PUSH_PRC_VALUE);
-            if (!isFinite(last) || last < 0) return prmt > 0;
-            return Number(last).toFixed(1) !== Number(prmt).toFixed(1);
-        }
-        function reverbPaintPushPrmtIcon(row) {
-            if (!row) return;
-            try {
-                const cell = row.getCell && row.getCell('push_prmt');
-                if (cell && typeof cell.reformat === 'function') cell.reformat();
-            } catch (e) { /* ignore */ }
-            try {
-                const d = row.getData() || {};
-                const el = (row.getElement && row.getElement()) || null;
-                const btn = el && el.querySelector && el.querySelector('.reverb-push-prmt-btn');
-                if (!btn) return;
-                const status = String(d.PUSH_PRC_STATUS || d.push_prmt || '');
-                const prmt = reverbPrmtPctOf(d);
-                const last = parseFloat(d.PUSH_PRC_VALUE);
-                const lastOk = isFinite(last) && last >= 0;
-                if (status === 'processing') {
-                    btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
-                    btn.style.color = '#ffc107';
-                    btn.title = 'Applying Drop the Price By…';
-                } else if (status === 'error') {
-                    btn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-                    btn.style.color = '#dc3545';
-                    btn.title = 'Last Drop the Price By failed — click to retry';
-                } else if (status === 'pushed' && lastOk && Number(last).toFixed(1) === Number(prmt).toFixed(1)) {
-                    btn.innerHTML = '<i class="fa-solid fa-check-double"></i>';
-                    btn.style.color = '#28a745';
-                    btn.title = 'Already pushed Drop the Price By ' + Number(last).toFixed(0) + '%';
-                }
-            } catch (e) { /* ignore */ }
-        }
-        function reverbPushPrmtUpdateRow(row, patch) {
-            if (!row || !patch) return;
-            const sku = reverbPushStdSku(row.getData() || {});
-            reverbSyncRowInDataset(sku, patch);
-            const paint = function() { reverbPaintPushPrmtIcon(row); };
-            try {
-                const p = row.update(patch);
-                if (p && typeof p.then === 'function') p.then(paint).catch(paint);
-                else paint();
-            } catch (e) {
-                paint();
-            }
-        }
-        function reverbPushPrmtRefreshCell(row) {
-            reverbPaintPushPrmtIcon(row);
-        }
-        function applyReverbPushPrmtTaskStatuses(tasks) {
-            if (!table || !Array.isArray(tasks)) return;
-            reverbPushPrmtLastTasks = tasks;
-            const bySku = {};
-            tasks.forEach(function(t) {
-                const k = reverbPushStdSkuKey(t && t.sku);
-                if (k) bySku[k] = t;
-            });
-            reverbEachTableRow(function(row, d) {
-                const t = bySku[reverbPushStdSkuKey(reverbPushStdSku(d))];
-                if (!t) return;
-                const st = String(t.status || '');
-                const prmtVal = parseFloat(t.prmt != null ? t.prmt : t.price);
-                const patch = {};
-                if (st === 'pushing' || st === 'pending' || st === 'queued') {
-                    patch.PUSH_PRC_STATUS = 'processing';
-                    patch.push_prmt = 'processing';
-                } else if (st === 'ok') {
-                    patch.PUSH_PRC_STATUS = 'pushed';
-                    patch.push_prmt = 'pushed';
-                    if (isFinite(prmtVal) && prmtVal >= 0) {
-                        patch.PUSH_PRC_VALUE = prmtVal;
-                    }
-                    if (t.prmt != null) patch.prmt_pct = String(t.prmt);
-                } else if (st === 'failed') {
-                    patch.PUSH_PRC_STATUS = 'error';
-                    patch.push_prmt = 'error';
-                }
-                if (Object.keys(patch).length) reverbPushPrmtUpdateRow(row, patch);
-            });
-        }
-        function paintReverbPushPrmtProgress(resp) {
-            if (typeof setChPromoPushPrcProgress !== 'function') return;
-            const active = !!(resp && resp.active);
-            const total = Number(resp && resp.total) || 0;
-            const done = Number(resp && resp.done_count) || 0;
-            const ok = Number(resp && resp.ok_count) || 0;
-            const fail = Number(resp && resp.fail_count) || 0;
-            const pct = Number(resp && resp.pct) || 0;
-            const sku = resp && resp.job && resp.job.current_sku;
-            setChPromoPushPrcProgress({
-                active: active,
-                done: done,
-                total: total,
-                ok: ok,
-                fail: fail,
-                pct: pct,
-                cancelable: active,
-                title: active ? 'Applying Prmt%' : (fail && !ok ? 'Prmt% failed' : 'Prmt% applied'),
-                msg: (resp && resp.message) || (sku ? ('Prmt% · ' + sku) : ''),
-            });
-        }
-        function stopReverbPushPrmtPoll() {
-            if (reverbPushPrmtPollTimer) {
-                clearInterval(reverbPushPrmtPollTimer);
-                reverbPushPrmtPollTimer = null;
-            }
-        }
-        function startReverbPushPrmtPoll() {
-            stopReverbPushPrmtPoll();
-            const tick = function() {
-                $.ajax({
-                    url: REVERB_PUSH_PRMT_QUEUE_URL + '/status',
-                    method: 'GET',
-                    headers: { 'Accept': 'application/json' },
-                    timeout: 15000,
-                }).done(function(resp) {
-                    if (resp && Array.isArray(resp.tasks)) applyReverbPushPrmtTaskStatuses(resp.tasks);
-                    paintReverbPushPrmtProgress(resp);
-                    if (!(resp && resp.active)) stopReverbPushPrmtPoll();
-                }).fail(function() { /* keep polling */ });
-            };
-            tick();
-            reverbPushPrmtPollTimer = setInterval(tick, 1500);
-        }
-        function queueReverbPushPrmt(singleRow) {
-            if (!table) {
-                showToast('Load data first', 'error');
-                return;
-            }
-            const all = reverbPushStdCollectTargets(singleRow || null);
-            const forceOne = !!singleRow;
-            const targets = all.filter(function(t) {
-                return forceOne || reverbPushPrmtNeedsPush(t.d);
-            });
-            const skipped = all.length - targets.length;
-            if (!targets.length) {
-                showToast(skipped
-                    ? ('No PRMT% Drop the Price By changes since last push (' + skipped + ' unchanged)')
-                    : 'No SKUs to apply Prmt%', 'info');
-                return;
-            }
-            const scope = singleRow ? 'this SKU' : (targets.length + ' SKU(s)');
-            if (!confirm('Apply Reverb Drop the Price By at PRMT% for ' + scope
-                + '?\n\nListing / Std price will not change.'
-                + (skipped && !singleRow ? ('\n(' + skipped + ' unchanged skipped)') : ''))) {
-                return;
-            }
-            const items = targets.map(function(t) {
-                return {
-                    sku: reverbPushStdSku(t.d),
-                    std: reverbPushStdCurrent(t.d),
-                    prmt: reverbPrmtPctOf(t.d)
-                };
-            });
-            targets.forEach(function(t) {
-                try {
-                    reverbPushPrmtUpdateRow(t.row, { PUSH_PRC_STATUS: 'processing', push_prmt: 'processing' });
-                } catch (e) { /* ignore */ }
-                reverbPushPrmtRefreshCell(t.row);
-            });
-            const $btn = $('#reverb-apply-prmt-btn');
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Queuing…');
-            $.ajax({
-                url: REVERB_PUSH_PRMT_QUEUE_URL,
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
-                data: { items: items, _token: csrfToken() },
-            }).done(function(resp) {
-                if (resp && Array.isArray(resp.tasks)) applyReverbPushPrmtTaskStatuses(resp.tasks);
-                paintReverbPushPrmtProgress(resp);
-                showToast((resp && resp.message) || 'Push Prmt% queued', 'success');
-                startReverbPushPrmtPoll();
-            }).fail(function(xhr) {
-                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to queue Apply Prmt%';
-                showToast(msg, 'error');
-                targets.forEach(function(t) {
-                    reverbPushPrmtUpdateRow(t.row, { PUSH_PRC_STATUS: 'error', push_prmt: 'error' });
-                });
-            }).always(function() {
-                $btn.prop('disabled', false).html(html);
-            });
-        }
-        window.queueReverbPushPrmt = queueReverbPushPrmt;
-
-        $('#reverb-apply-prmt-btn').on('click', function(e) {
-            e.preventDefault();
-            queueReverbPushPrmt();
-        });
 
         // ==================== Apply Bump / Push B% queue ====================
         const REVERB_PUSH_BUMP_QUEUE_URL = '/reverb-push-bump';
@@ -5902,34 +5676,6 @@
             }
             if (resp && resp.active) startReverbPushBumpPoll();
         });
-        $('#ch-promo-push-prc-cancel-btn').on('click.reverbprmt', function(e) {
-            if (!reverbPushPrmtPollTimer) return;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            $.ajax({
-                url: REVERB_PUSH_PRMT_QUEUE_URL + '/cancel',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
-                data: { _token: csrfToken() },
-            }).done(function(resp) {
-                stopReverbPushPrmtPoll();
-                if (resp && Array.isArray(resp.tasks)) applyReverbPushPrmtTaskStatuses(resp.tasks);
-                paintReverbPushPrmtProgress(Object.assign({}, resp, { active: false }));
-                showToast((resp && resp.message) || 'Push Prmt% cancelled', 'info');
-            });
-        });
-        $.ajax({
-            url: REVERB_PUSH_PRMT_QUEUE_URL + '/status',
-            method: 'GET',
-            headers: { 'Accept': 'application/json' },
-            timeout: 15000,
-        }).done(function(resp) {
-            if (resp && Array.isArray(resp.tasks) && resp.tasks.length) {
-                applyReverbPushPrmtTaskStatuses(resp.tasks);
-            }
-            if (resp && resp.active) startReverbPushPrmtPoll();
-        });
-
         const COL_VIS_CATEGORY_KEYS = ['basic', 'pricing', 'advertisement', 'other'];
         const COL_VIS_CATEGORY_LABELS = {
             basic: 'Basic',

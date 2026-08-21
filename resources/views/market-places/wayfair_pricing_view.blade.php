@@ -62,6 +62,7 @@
                 column-count: 2;
             }
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'wayfair'])
     </style>
 @endsection
 
@@ -90,6 +91,8 @@
                         <span class="badge bg-secondary fs-6 p-2" id="wf-missing-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter ML — Missing Listing (not NR, INV &gt; 0, no uploaded Wayfair price)">ML: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'wayfair-price-gt-lmp-badge', 'pglChannelKey' => 'wayfair', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'wayfair-price-lt80-lmp-badge', 'pltChannelKey' => 'wayfair', 'pltPriceField' => 'price'])
+                        <span class="badge fs-6 p-2" id="wayfair-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge bg-success fs-6 p-2" id="wf-more-sold-badge" style="color:black;font-weight:700;cursor:pointer;" title="Click to filter: sold &gt; 0">Sold &gt;0: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="wf-zero-sold-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
 
@@ -151,6 +154,7 @@
                         <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same SPRICE (enter one price, applies to all selected rows)">
                             <i class="fas fa-exchange-alt"></i> Prc M
                         </button>
+                        @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'wayfair'])
 
                         {{-- Target ROI% bulk control — Amazon-style compact UI; Wayfair back-solve omits ship.
                              Formula: sprice = LP × (1 + ROI%/100) / margin   (margin = per-row `_margin`, default 0.95) --}}
@@ -288,6 +292,7 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'wayfair'])
 @endsection
 
 @section('script-bottom')
@@ -304,6 +309,7 @@
         let wfSoldFilter = 'all';
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
+        let blueTriangleFilterActive = false;
 
         let wfDecreaseModeActive = false;
         let wfIncreaseModeActive = false;
@@ -356,6 +362,9 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                if (typeof applyChannelSpriceFromStdChange === 'function') {
+                    applyChannelSpriceFromStdChange(r);
+                }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
@@ -368,6 +377,34 @@
             if (!sku || !isFinite(saved) || saved <= 0) return;
             applyWfStandardPriceToLinkedRows(sku, saved, detail.applied_skus);
         });
+
+        function isWayfairParentRow(row) {
+            if (!row) return false;
+            if (row.is_parent === true) return true;
+            const sku = String(row.sku || row['(Child) sku'] || row.SKU || '').toUpperCase();
+            return sku.includes('PARENT');
+        }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'wayfair'])
+        function wayfairRowSpriceForAlert(data) {
+            let sprice = parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function' && !isWayfairParentRow(data)) {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function wayfairHasBlueTriangle(data) {
+            if (isWayfairParentRow(data)) return false;
+            const sprice = wayfairRowSpriceForAlert(data);
+            const price = parseFloat(data && data.price) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncWayfairTriangleBadgeState() {
+            $('#wayfair-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
 
         let wfSkuColHoverBase = null;
         let wfSkuColHoverActive = false;
@@ -881,6 +918,14 @@
                     PriceLt80LmpBadge.update('#wayfair-price-lt80-lmp-badge', table.getData(), 'wayfair', 'price');
                 }
             }
+            let blueTriangleCount = 0;
+            (table ? table.getData() : []).forEach(function(row) {
+                if (wayfairHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#wayfair-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncWayfairTriangleBadgeState === 'function') syncWayfairTriangleBadgeState();
 
             // Active filter colors — same pattern as Amazon N Map / ML badges.
             $('#wf-nmap-count-badge').toggleClass('bg-secondary', !wfNMapActive).toggleClass('bg-danger', wfNMapActive);
@@ -975,6 +1020,11 @@
                 if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
                     table.addFilter(function(data) {
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
+                    });
+                }
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return wayfairHasBlueTriangle(data);
                     });
                 }
                 return;
@@ -1079,6 +1129,11 @@
                     return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
                 });
             }
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return wayfairHasBlueTriangle(data);
+                });
+            }
 
             updateSummary();
         }
@@ -1089,6 +1144,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
@@ -1099,10 +1155,19 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                                        applyFilters();
+                    if (on) blueTriangleFilterActive = false;
+                    applyFilters();
                 }
             });
         }
+        $('#wayfair-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            applyFilters();
+        });
 
         function wfBuildColumnDropdown() {
             if (!table) return;
@@ -1533,13 +1598,32 @@
                             return money(cell.getValue());
                         }
                     },
+                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: 'S PRC', field: 'sprice', sorter: 'number', hozAlign: 'right',
                         editor: 'number', editorParams: { min: 0, step: 0.01 },
+                        headerTooltip: 'S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return '<span style="font-weight:600;">' + money(parseFloat(cell.getValue()) || 0) + '</span>';
+                            let value = parseFloat(cell.getValue() || 0);
+                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                                const calc = chPromoSpriceFromStdTPromo(d);
+                                if (calc > 0) value = calc;
+                            }
+                            const live = parseFloat(d.price) || 0;
+                            const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                            if (!(value > 0)) return '';
+                            const formatted = money(value);
+                            const overLmp = lmp > 0 && value > lmp;
+                            const priceHtml = overLmp
+                                ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
+                                : '<span style="font-weight:600;">' + formatted + '</span>';
+                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + blueTri + '</span>';
                         }
                     },
                     {

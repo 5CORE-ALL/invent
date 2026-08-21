@@ -74,6 +74,7 @@
             text-align: center;
             white-space: nowrap;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'pls'])
     </style>
 @endsection
 
@@ -141,6 +142,7 @@
                         title="Cycle: Off → Decrease → Increase → Same Price → Amz Prc → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'pls'])
 
                     {{-- Target ROI% / GPFT% — compact UI matches /ebay-tabulator-view (🎯 label + icon-only apply).
                          PLS take-home is 100%: sprice = LP × (1 + ROI%/100) + Ship --}}
@@ -225,6 +227,10 @@
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing L (INV&gt;0, not listed on PLS)">M L: 0</span>
+                        <span class="badge fs-6 p-2" id="pls-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'pls-price-gt-lmp-badge', 'pglChannelKey' => 'pls', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'pls-price-lt80-lmp-badge', 'pltChannelKey' => 'pls', 'pltPriceField' => 'price'])
                         <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
@@ -296,10 +302,12 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'pls'])
 @endsection
 
 @section('script-bottom')
 <script>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'pls'])
     const COLUMN_VIS_KEY = "pls_tabulator_column_visibility";
     const PLS_PERCENTAGE = {{ $plsPercentage ?? 100 }} / 100; // Dynamic from database
     let table = null;
@@ -317,6 +325,31 @@
     let missingMFilterActive = false;
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
+    let blueTriangleFilterActive = false;
+
+    function plsIsParentRow(d) {
+        return !!(d && (d.is_parent || d.is_parent_summary || (d.parent && String(d.parent).toUpperCase().indexOf('PARENT') === 0 && String(d.sku || '').toUpperCase().indexOf('PARENT') !== -1)));
+    }
+    function plsRowSpriceForAlert(data) {
+        let sprice = parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
+        if (typeof chPromoSpriceFromStdTPromo === 'function' && !plsIsParentRow(data)) {
+            const calc = chPromoSpriceFromStdTPromo(data);
+            if (calc > 0) sprice = calc;
+        }
+        return sprice;
+    }
+    function plsHasBlueTriangle(data) {
+        if (plsIsParentRow(data)) return false;
+        const sprice = plsRowSpriceForAlert(data);
+        const price = parseFloat(data && data.price) || 0;
+        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+    }
+    function syncPlsTriangleBadgeState() {
+        $('#pls-blue-triangle-badge').css({
+            outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
+    }
 
     /** M L — INV>0 and marked Missing (not listed on PLS). */
     function isPlsMissingL(row) {
@@ -451,6 +484,11 @@
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
                     });
                 }
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return plsHasBlueTriangle(data);
+                    });
+                }
                 updateSummary();
                 return;
             }
@@ -510,6 +548,7 @@
                 if (missingMFilterActive && !isPlsMissingM(data)) return false;
                 if (priceGtLmpFilterActive && window.PriceGtLmpBadge && !PriceGtLmpBadge.hasRedTriangle(data, 'price')) return false;
                 if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge && !PriceLt80LmpBadge.hasPurpleTriangle(data, 'price')) return false;
+                if (blueTriangleFilterActive && !plsHasBlueTriangle(data)) return false;
 
                 return true;
             });
@@ -523,6 +562,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
@@ -533,10 +573,19 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                                        applyFilters();
+                    if (on) blueTriangleFilterActive = false;
+                    applyFilters();
                 }
             });
         }
+        $('#pls-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            applyFilters();
+        });
 
         // ========== Play / Pause parent navigation ==========
         function normalizePlsParentKey(val) {
@@ -972,6 +1021,7 @@
                     },
                     width: 60
                 },
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "S PRC",
                     field: "sprice",
@@ -979,26 +1029,32 @@
                     editor: "input",
                     sorter: "number",
                     visible: true,
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
-                        const value = cell.getValue();
                         const rowData = cell.getRow().getData();
-                        const hasCustomSprice = rowData.has_custom_sprice;
-                        const currentPrice = parseFloat(rowData.price) || 0;
-                        const sprice = parseFloat(value) || 0;
-                        
-                        if (!value) return '';
-                        
-                        // Show SPRICE value
-                        const formattedValue = `$${parseFloat(value).toFixed(2)}`;
-                        
-                        // If using default price (not custom), show in blue
-                        if (hasCustomSprice === false) {
-                            return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
+                        if (plsIsParentRow(rowData)) return '';
+                        let value = parseFloat(cell.getValue() || 0);
+                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                            if (calc > 0) value = calc;
                         }
-                        
-                        return formattedValue;
+                        if (!(value > 0)) return '';
+                        const live = parseFloat(rowData.price) || 0;
+                        const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
+                        const formatted = '$' + value.toFixed(2);
+                        const overLmp = lmp > 0 && value > lmp;
+                        const priceHtml = overLmp
+                            ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
+                            : (rowData.has_custom_sprice === false
+                                ? `<span style="color: #0d6efd; font-weight: 500;">${formatted}</span>`
+                                : formatted);
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                            : '';
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                     },
-                    width: 80
+                    width: 92
                 },
                 {
                     title: "SROI%",
@@ -1285,6 +1341,14 @@
                     PriceLt80LmpBadge.update('#pls-price-lt80-lmp-badge', table.getData(), 'pls', 'price');
                 }
             }
+            let blueTriangleCount = 0;
+            allData.forEach(function(row) {
+                if (plsHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#pls-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncPlsTriangleBadgeState === 'function') syncPlsTriangleBadgeState();
             $('#missing-m-count-badge').text('M M: ' + missingMCount.toLocaleString());
 
             fitSummaryBadges();
@@ -1337,6 +1401,12 @@
             const row = cell.getRow();
             const data = row.getData();
             
+            if (field === 'STANDARD_PRICE' || field === 'standard_price') {
+                if (typeof applyChannelSpriceFromStdChange === 'function') {
+                    applyChannelSpriceFromStdChange(row);
+                }
+                return;
+            }
             if (field === 'sprice') {
                 const sku = data.sku;
                 const value = parseFloat(cell.getValue());

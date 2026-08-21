@@ -336,6 +336,7 @@
             font-size: 0.7rem;
             line-height: 1;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2b'])
     </style>
 @endsection
 
@@ -563,6 +564,7 @@
                         title="Push SPRICE to Shopify B2B (pricing-master-cvr sb2b) for selected SKUs">
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2b'])
 
                     <div class="btn-group">
                         <button type="button" id="price-mode-btn" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Price Mode">
@@ -642,6 +644,10 @@
                         <span class="badge fs-6 p-2" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Qty ÷ Views">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-b2b-l30-badge" style="color: black; font-weight: bold;">B2B: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="shopifyb2b-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2b-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2b'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2b-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2b', 'pglPriceField' => 'Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'shopifyb2b-price-lt80-lmp-badge', 'pltChannelKey' => 'shopifyb2b', 'pltPriceField' => 'Price'])
@@ -693,6 +699,7 @@
         </div>
     </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shopify_b2b'])
 @endsection
 
 @section('script-bottom')
@@ -734,6 +741,28 @@
         if (row.is_parent_summary === true) return true;
         const sku = String(row['(Child) sku'] || '').toUpperCase();
         return sku.includes('PARENT');
+    }
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2b'])
+
+    function shopifyB2bRowSpriceForAlert(data) {
+        let sprice = parseFloat(data && data.SPRICE) || 0;
+        if (typeof chPromoSpriceFromStdTPromo === 'function' && !isShopifyB2bParentRow(data)) {
+            const calc = chPromoSpriceFromStdTPromo(data);
+            if (calc > 0) sprice = calc;
+        }
+        return sprice;
+    }
+    function shopifyB2bHasBlueTriangle(data) {
+        if (isShopifyB2bParentRow(data)) return false;
+        const sprice = shopifyB2bRowSpriceForAlert(data);
+        const price = parseFloat(data && data.Price) || 0;
+        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+    }
+    function syncShopifyB2bTriangleBadgeState() {
+        $('#shopifyb2b-blue-triangle-badge').css({
+            outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
     }
 
     /** Std Prc vs Amz/channel price: reduce / hold / increase → red / yellow / green. */
@@ -782,6 +811,9 @@
                 || (target && rowKey === target);
             if (!inGroup) return;
             r.update({ STANDARD_PRICE: std });
+            if (typeof applyChannelSpriceFromStdChange === 'function') {
+                applyChannelSpriceFromStdChange(r);
+            }
             if (rowKey === target) primaryRow = r;
         });
         return primaryRow;
@@ -821,6 +853,7 @@
     let lmpMissingFilterActive = false;
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
+    let blueTriangleFilterActive = false;
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -2502,6 +2535,7 @@
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
                     }
                 },
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "S PRC",
                     field: "SPRICE",
@@ -2515,24 +2549,41 @@
                         step: 0.01
                     },
                     sorter: "number",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) {
                             return '';
                         }
-                        const value = parseFloat(cell.getValue() || 0);
+                        let value = parseFloat(cell.getValue() || 0);
+                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                            if (calc > 0) value = calc;
+                        }
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
+                        const live = parseFloat(rowData.Price) || 0;
+                        const lmp = parseFloat(rowData.lmp_price) || 0;
                         
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
                         else if (status === 'applied') bgColor = 'background-color: #d4edda;';
                         else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
-                        
-                        return `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">$${value.toFixed(2)}</span>`;
+
+                        if (!(value > 0)) return '';
+                        const formatted = '$' + value.toFixed(2);
+                        const overLmp = lmp > 0 && value > lmp;
+                        const priceHtml = overLmp
+                            ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
+                            : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                            : '';
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                     },
-                    width: 80
+                    width: 92
                 },
                 {
                     title: "Push",
@@ -2922,6 +2973,11 @@
                     return PriceLt80LmpBadge.hasPurpleTriangle(data, 'Price');
                 });
             }
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return shopifyB2bHasBlueTriangle(data);
+                });
+            }
 
             // Row type filter: All Rows / Parents / SKUs (same as Amazon)
             const parentFilter = $('#parent-filter').val();
@@ -2954,6 +3010,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
@@ -2964,10 +3021,20 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
         }
+        $('#shopifyb2b-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                lmpMissingFilterActive = false;
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            applyFilters();
+        });
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #sold-filter, #parent-filter').on('change', function() {
             applyFilters();
@@ -3087,6 +3154,14 @@
             if (window.PriceLt80LmpBadge) {
                 PriceLt80LmpBadge.update('#shopifyb2b-price-lt80-lmp-badge', allData, 'shopifyb2b', 'Price');
             }
+            let blueTriangleCount = 0;
+            allData.forEach(function(row) {
+                if (shopifyB2bHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#shopifyb2b-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncShopifyB2bTriangleBadgeState === 'function') syncShopifyB2bTriangleBadgeState();
             $('#more-sold-count-badge').text(`>0 Sold: ${moreSoldCount}`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(SHOPIFY_B2B_TOTAL_COGS || totalCogs).toLocaleString()}`);
             const groiBadge = (typeof SHOPIFY_B2B_GROI_PCT === 'number' && !isNaN(SHOPIFY_B2B_GROI_PCT))

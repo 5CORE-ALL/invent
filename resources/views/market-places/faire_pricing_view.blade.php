@@ -75,6 +75,7 @@
             -webkit-overflow-scrolling: touch;
             scrollbar-width: thin;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'faire'])
         #fr-summary-stats .fr-filter-badge.active-filter {
             box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.45);
             outline: 2px solid #0d6efd;
@@ -207,6 +208,7 @@
                             title="Price rules: Dil %, Faire sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship">
                             <i class="fas fa-sliders-h"></i> Rule
                         </button>
+                        @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'faire'])
                         <button type="button" id="fr-push-to-faire-btn" class="btn btn-sm btn-primary pricing-filter-item" style="display: none;"
                             title="Push SPRICE for selected SKUs to Faire (or all with SPRICE if none selected)">
                             <i class="fas fa-upload"></i> Push to Faire
@@ -296,6 +298,10 @@
                             <span class="badge bg-success fs-6 p-2 d-none fr-badge-chart fr-hover-chart" id="fr-total-profit-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;" aria-hidden="true" title="View trend">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-gpft-badge" data-metric="avg_gpft" style="font-weight:700;color:#111;cursor:pointer;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty). Click or hover for trend.">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-roi-badge" data-metric="avg_roi" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover for daily trend">ROI: 0%</span>
+                            <span class="badge fs-6 p-2" id="faire-blue-triangle-badge"
+                                style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                                <i class="fas fa-exclamation-triangle"></i> 0</span>
                             <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-zero-sold-badge" data-metric="zero_sold" data-filter="zero_sold" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">0 Sold: 0</span>
                             <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-more-sold-badge" data-metric="more_sold" data-filter="more_sold" style="font-weight:700;background:#b6e0fe;color:#0f172a;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">&gt;0 Sold: 0</span>
                         </div>
@@ -437,6 +443,7 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'faire'])
 @endsection
 
 @section('script-bottom')
@@ -444,11 +451,37 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'faire'])
         let table = null;
         let allTableData = [];
         let summaryDataCache = [];
         let frZeroSoldActive = false;
         let frMoreSoldActive = false;
+        let blueTriangleFilterActive = false;
+
+        function frIsParentRow(d) {
+            return !!(d && (d.is_parent || d.is_parent_summary));
+        }
+        function frRowSpriceForAlert(data) {
+            let sprice = parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function' && !frIsParentRow(data)) {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function frHasBlueTriangle(data) {
+            if (frIsParentRow(data)) return false;
+            const sprice = frRowSpriceForAlert(data);
+            const price = parseFloat(data && data.price) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncFrTriangleBadgeState() {
+            $('#faire-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
 
         let frDecreaseModeActive = false;
         let frIncreaseModeActive = false;
@@ -1476,6 +1509,14 @@
             $('#fr-avg-roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
             $('#fr-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#fr-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
+            let blueTriangleCount = 0;
+            (table ? table.getData() : rows).forEach(function(row) {
+                if (frHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#faire-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncFrTriangleBadgeState === 'function') syncFrTriangleBadgeState();
         }
 
         // Play / Pause parent navigation state
@@ -1660,6 +1701,11 @@
             frSyncFilterBadgeActiveClasses();
             if (frZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (frMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return frHasBlueTriangle(data);
+                });
+            }
         }
 
         function frBuildColumnDropdown() {
@@ -2064,13 +2110,32 @@
                             return money(cell.getValue());
                         }
                     },
+                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: 'Sprice', field: 'sprice', sorter: 'number', hozAlign: 'right',
                         editor: 'number', editorParams: { min: 0, step: 0.01 },
+                        headerTooltip: 'S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
-                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return '<span style="font-weight:600;">' + money(parseFloat(cell.getValue()) || 0) + '</span>';
+                            if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                            let value = parseFloat(cell.getValue() || 0);
+                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                                const calc = chPromoSpriceFromStdTPromo(d);
+                                if (calc > 0) value = calc;
+                            }
+                            if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
+                            const live = parseFloat(d.price) || 0;
+                            const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                            const formatted = money(value);
+                            const overLmp = lmp > 0 && value > lmp;
+                            const priceHtml = overLmp
+                                ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
+                                : '<span style="font-weight:600;">' + formatted + '</span>';
+                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + blueTri + '</span>';
                         }
                     },
                     {
@@ -2404,7 +2469,19 @@
                 frUpdateSelectedCount();
             });
 
+            $('#faire-blue-triangle-badge').on('click', function() {
+                blueTriangleFilterActive = !blueTriangleFilterActive;
+                applyFilters();
+            });
+
             table.on('cellEdited', function(cell) {
+                if (cell.getField() === 'standard_price' || cell.getField() === 'STANDARD_PRICE') {
+                    const row = cell.getRow();
+                    if (typeof applyChannelSpriceFromStdChange === 'function') {
+                        applyChannelSpriceFromStdChange(row);
+                    }
+                    return;
+                }
                 if (cell.getField() !== 'sprice') return;
                 const d = cell.getRow().getData();
                 if (d.is_parent) return;

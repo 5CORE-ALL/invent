@@ -1,4 +1,7 @@
 @extends('layouts.vertical', ['title' => $tiktokPageTitle ?? 'TikTok 1 Shop - Analytics', 'sidenav' => 'condensed'])
+@php
+    $tiktokPromoChannel = ((str_contains($tiktokPageTitle ?? '', 'TikTok 2') || (($tiktokPricingClientConfig['summaryChannel'] ?? '') === 'tiktok2')) ? 'tiktok2' : 'tiktok');
+@endphp
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -302,6 +305,7 @@
             width: 100%;
             max-width: 100%;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => $tiktokPromoChannel])
     </style>
 @endsection
 
@@ -442,6 +446,7 @@
                         title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         PRc
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => $tiktokPromoChannel])
 
                     {{-- Target ROI% bulk control — back-solves SPRICE so SROI = Target ROI%. --}}
                     {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin (TikTok take-home) --}}
@@ -623,6 +628,10 @@
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" data-metric="missing_count"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter">Missing L: 0</span>
+                        <span class="badge fs-6 p-2" id="tiktok-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.price-gt-lmp-badge', [
                             'pglBadgeId' => 'tiktok-price-gt-lmp-badge',
                             'pglChannelKey' => (str_contains($tiktokPageTitle ?? '', 'TikTok 2') || (($tiktokPricingClientConfig['summaryChannel'] ?? '') === 'tiktok2')) ? 'tiktok2' : 'tiktok',
@@ -993,6 +1002,7 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => $tiktokPromoChannel])
 
 @endsection
 
@@ -1020,6 +1030,7 @@
 @section('script-bottom')
     <script>
         const TTP_CFG = @json($ttpCfg);
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => $tiktokPromoChannel])
         const DEFAULT_TIKTOK_MARGIN_PERCENT = Number(@json($tiktokPercentage ?? 80));
         const DEFAULT_TIKTOK_MARGIN_FACTOR = DEFAULT_TIKTOK_MARGIN_PERCENT / 100;
         // Ads section columns: hidden by default, only show when "Show Ads Columns" btn is clicked
@@ -1030,6 +1041,7 @@
         const ALWAYS_HIDDEN_COLUMNS = ['out_roas', 'in_roas', 'T Profit', 'TT Ship'];
         let table = null;
         let allTableData = [];
+        let blueTriangleFilterActive = false;
         let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
         let decreaseModeActive = false;
         let increaseModeActive = false;
@@ -1284,6 +1296,9 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                if (typeof applyChannelSpriceFromStdChange === 'function') {
+                    applyChannelSpriceFromStdChange(r);
+                }
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
@@ -1349,6 +1364,29 @@
 
         function ttIsParentRow(data) {
             return data && (data.is_parent === true || (data.Parent && String(data.Parent).startsWith('PARENT ')));
+        }
+        function ttLivePrice(data) {
+            return parseFloat(data && (data['TT Price'] != null ? data['TT Price'] : data.Price)) || 0;
+        }
+        function ttRowSpriceForAlert(data) {
+            let sprice = parseFloat(data && data.SPRICE) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function' && !ttIsParentRow(data)) {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function ttHasBlueTriangle(data) {
+            if (ttIsParentRow(data)) return false;
+            const sprice = ttRowSpriceForAlert(data);
+            const price = ttLivePrice(data);
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncTtTriangleBadgeState() {
+            $('#tiktok-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
         }
 
         function ttRowIsMissing(d) {
@@ -3885,6 +3923,7 @@
                         },
                         width: 70
                     },
+                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: "SPRICE",
                         field: "SPRICE",
@@ -3895,11 +3934,19 @@
                             step: 0.01
                         },
                         sorter: "number",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                         formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
                             const rowData = cell.getRow().getData();
+                            if (ttIsParentRow(rowData)) return '';
+                            let value = parseFloat(cell.getValue() || 0);
+                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                                const calc = chPromoSpriceFromStdTPromo(rowData);
+                                if (calc > 0) value = calc;
+                            }
                             const hasCustom = rowData.has_custom_sprice;
                             const status = rowData.SPRICE_STATUS;
+                            const live = ttLivePrice(rowData);
+                            const lmp = parseFloat(rowData.lmp_price) || 0;
 
                             let bgColor = '';
                             if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
@@ -3907,9 +3954,19 @@
                             else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                             else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
-                            return `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">$${value.toFixed(2)}</span>`;
+                            if (!(value > 0)) return '';
+                            const formatted = '$' + value.toFixed(2);
+                            const overLmp = lmp > 0 && value > lmp;
+                            const priceHtml = overLmp
+                                ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
+                                : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                         },
-                        width: 80
+                        width: 92
                     },
                     {
                         title: "Push",
@@ -4947,6 +5004,11 @@
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'TT Price');
                     });
                 }
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return ttHasBlueTriangle(data);
+                    });
+                }
 
                 // N Map filter — |INV − TT Stock| > 3 only (≤3 is Map)
                 if (invTTStockFilterActive) {
@@ -5096,6 +5158,7 @@
                     getActive: function() { return priceGtLmpFilterActive; },
                     onToggle: function(on) {
                         priceGtLmpFilterActive = on;
+                        if (on) blueTriangleFilterActive = false;
                         applyFilters();
                     }
                 });
@@ -5106,10 +5169,19 @@
                     getActive: function() { return priceLt80LmpFilterActive; },
                     onToggle: function(on) {
                         priceLt80LmpFilterActive = on;
-                                                applyFilters();
+                        if (on) blueTriangleFilterActive = false;
+                        applyFilters();
                     }
                 });
             }
+            $('#tiktok-blue-triangle-badge').on('click', function() {
+                blueTriangleFilterActive = !blueTriangleFilterActive;
+                if (blueTriangleFilterActive) {
+                    priceGtLmpFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                }
+                applyFilters();
+            });
 
             $('#row-type-filter, #inventory-filter, #gpft-filter, #cvr-filter, #roi-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter, #dil-filter')
                 .on('change', function() {
@@ -5187,6 +5259,14 @@
                     PriceLt80LmpBadge.update('#tiktok-price-lt80-lmp-badge', table.getData(), ttChannel, 'TT Price');
                 }
                 }
+                let blueTriangleCount = 0;
+                (table ? table.getData() : []).forEach(function(row) {
+                    if (ttHasBlueTriangle(row)) blueTriangleCount++;
+                });
+                $('#tiktok-blue-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+                );
+                if (typeof syncTtTriangleBadgeState === 'function') syncTtTriangleBadgeState();
                 $('#inv-tt-stock-badge').text('N Map: ' + invTTStockCount.toLocaleString());
 
                 let sumSpend30 = 0,

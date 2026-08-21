@@ -44,6 +44,7 @@
             padding: 3px 10px;
             white-space: nowrap;
         }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'vinted'])
     </style>
 @endsection
 
@@ -136,6 +137,7 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV" aria-label="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'vinted'])
                     <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal"
                             data-bs-target="#uploadVintedPriceModal" title="Merge-upload into VintedPricing by SKU (keeps SPRICE / NR / links)">
                         <i class="fas fa-upload"></i> Up Prc
@@ -224,6 +226,10 @@
                               title="REQ + INV&gt;0 + V Price=0">Missing L: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'vinted-price-gt-lmp-badge', 'pglChannelKey' => 'vinted', 'pglPriceField' => 'V Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'vinted-price-lt80-lmp-badge', 'pltChannelKey' => 'vinted', 'pltPriceField' => 'V Price'])
+                        <span class="badge fs-6 p-2" id="vinted-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ V Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                     </div>
                 </div>
             </div>
@@ -316,10 +322,12 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'vinted'])
 @endsection
 
 @section('script-bottom')
 <script>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'vinted'])
     const COLUMN_VIS_KEY = "vinted_tabulator_column_visibility";
     let table = null;
     let allTableData = [];
@@ -620,6 +628,29 @@
         let missingFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
+        let blueTriangleFilterActive = false;
+
+        function vintedRowSpriceForAlert(data) {
+            if (!data) return 0;
+            let sprice = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                const calc = chPromoSpriceFromStdTPromo(data);
+                if (calc > 0) sprice = calc;
+            }
+            return sprice;
+        }
+        function vintedHasBlueTriangle(data) {
+            if (!data) return false;
+            const sprice = vintedRowSpriceForAlert(data);
+            const price = parseFloat(data['V Price']) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncVintedTriangleBadgeState() {
+            $('#vinted-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
 
         $('#zero-sold-badge').on('click', function() {
             const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
@@ -923,17 +954,38 @@
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${selectedSkus.has(sku) ? 'checked' : ''}>`;
                     }
                 },
+                ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', editor: 'number',
                     editorParams: { min: 0, step: 0.01 }, sorter: 'number', width: 80,
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ V Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
-                        const v = parseFloat(cell.getValue() || 0);
                         const d = cell.getRow().getData();
+                        let value = parseFloat(cell.getValue() || 0);
+                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                            const calc = chPromoSpriceFromStdTPromo(d);
+                            if (calc > 0) value = calc;
+                        }
+                        if (!(value > 0) && !(parseFloat(cell.getValue() || 0) > 0)) {
+                            return '';
+                        }
+                        const display = value > 0 ? value : (parseFloat(cell.getValue() || 0) || 0);
                         let bg = '';
                         if (d.SPRICE_STATUS === 'pushed') bg = 'background-color:#fff3cd;';
                         else if (d.SPRICE_STATUS === 'applied') bg = 'background-color:#d4edda;';
                         else if (d.has_custom_sprice) bg = 'background-color:#e7f1ff;';
-                        return `<span style="font-weight:600;${bg}padding:2px 6px;border-radius:3px;">$${v.toFixed(2)}</span>`;
+                        const live = parseFloat(d['V Price']) || 0;
+                        const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                        const formatted = '$' + display.toFixed(2);
+                        const overLmp = lmp > 0 && display > lmp;
+                        const priceHtml = overLmp
+                            ? '<span style="color:#dc3545;font-weight:600;' + bg + 'padding:2px 6px;border-radius:3px;">' + formatted + '</span>'
+                            : '<span style="font-weight:600;' + bg + 'padding:2px 6px;border-radius:3px;">' + formatted + '</span>';
+                        const blueTri = (live > 0 && Math.round(display * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + display.toFixed(2) + ' ≠ V Price $' + live.toFixed(2) + '"></i>'
+                            : '';
+                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + blueTri + '</span>';
                     }
                 },
                 {
@@ -1142,6 +1194,11 @@
                     return PriceLt80LmpBadge.hasPurpleTriangle(data, 'V Price');
                 });
             }
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return vintedHasBlueTriangle(data);
+                });
+            }
 
             // TopDawg-style active-filter ring on clickable badges
             $('#zero-sold-badge').toggleClass('active-filter', soldFilter === 'zero');
@@ -1157,6 +1214,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
@@ -1167,10 +1225,20 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                                        applyFilters();
+                    if (on) blueTriangleFilterActive = false;
+                    applyFilters();
                 }
             });
         }
+        $('#vinted-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            applyFilters();
+            syncVintedTriangleBadgeState();
+        });
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter, #sold-filter').on('change', function() { applyFilters(); });
 
@@ -1213,6 +1281,14 @@
                     PriceLt80LmpBadge.update('#vinted-price-lt80-lmp-badge', table.getData(), 'vinted', 'V Price');
                 }
             }
+            let blueTriangleCount = 0;
+            (table ? table.getData() : data).forEach(function(row) {
+                if (vintedHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#vinted-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncVintedTriangleBadgeState === 'function') syncVintedTriangleBadgeState();
         }
 
         function buildColumnDropdown() {
