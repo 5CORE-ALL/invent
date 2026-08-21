@@ -21,6 +21,11 @@ class AliexpressMetric extends Model
         'price',
         'l30',
         'l60',
+        'views',
+        'output_order',
+        'cvr',
+        'reviews',
+        'avg_rating',
         'order_dates',
         'last_order_date',
         'bullet_points',
@@ -31,7 +36,12 @@ class AliexpressMetric extends Model
         'last_order_date' => 'datetime',
         'price' => 'decimal:2',
         'l30' => 'integer',
-        'l60' => 'integer'
+        'l60' => 'integer',
+        'views' => 'integer',
+        'output_order' => 'integer',
+        'cvr' => 'float',
+        'reviews' => 'integer',
+        'avg_rating' => 'float',
     ];
 
     public static function updateOrderMetrics($productId, $sku, $orderData, $productData)

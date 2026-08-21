@@ -15,6 +15,7 @@ use App\Models\Permission;
 use App\Models\ProductMaster;
 use App\Models\ShortTitle;
 use App\Models\ShopifySku;
+use App\Models\StoreListingPrice;
 use App\Models\User;
 use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
@@ -25,6 +26,7 @@ use App\Services\MacysApiService;
 use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
 use App\Services\ShopifyApiService;
+use App\Services\StorePriceSyncService;
 use App\Services\MarketplaceTitlePushService;
 use App\Services\Support\AllMarketplaceChannelRegistry;
 use App\Services\Support\MarketplaceCharacterLimits;
@@ -41,6 +43,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ProductMasterController extends Controller
@@ -208,6 +211,20 @@ class ProductMasterController extends Controller
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
 
+        $storePricesByNorm = [];
+        if (Schema::hasTable('store_listing_prices')) {
+            foreach (StoreListingPrice::query()->get() as $storeRow) {
+                $storeKey = ShopifySku::normalizeSkuForShopifyLookup((string) $storeRow->sku);
+                if ($storeKey === '') {
+                    continue;
+                }
+                $existing = $storePricesByNorm[$storeKey] ?? null;
+                if ($existing === null || ($storeRow->is_variant && ! $existing->is_variant)) {
+                    $storePricesByNorm[$storeKey] = $storeRow;
+                }
+            }
+        }
+
         // Prepare data in the same format as your sheet (flatten Values)
         $result = [];
         foreach ($products as $product) {
@@ -291,6 +308,12 @@ class ProductMasterController extends Controller
                 $row['shopify_quantity'] = 0;
                 $shopifyImage = null;
             }
+
+            $storePrice = $storePricesByNorm[ShopifySku::normalizeSkuForShopifyLookup((string) $product->sku)] ?? null;
+            $row['website_price'] = $storePrice?->price;
+            $row['website_special_price'] = $storePrice?->special_price;
+            $row['website_selling_price'] = $storePrice?->selling_price;
+            $row['website_slug'] = $storePrice?->slug;
 
             $shopifyImage = $shopifySkus[$normalizedSku]->image_src ?? null;
             // image_path is inside $row (from Values JSON)
@@ -1839,6 +1862,37 @@ class ProductMasterController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to delete product(s). Please try again.',
+            ], 500);
+        }
+    }
+
+    public function syncWebsitePrices(Request $request, StorePriceSyncService $sync)
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        @set_time_limit(180);
+
+        try {
+            $result = $sync->sync($sku !== '' ? $sku : null);
+
+            return response()->json([
+                'success' => true,
+                'message' => $sku !== ''
+                    ? 'Website prices synced for SKU '.$sku
+                    : 'Website prices synced',
+                'fetched' => $result['fetched'],
+                'stored' => $result['stored'],
+                'matched' => $result['matched'],
+                'unmatched_count' => count($result['unmatched']),
+                'unmatched' => $result['unmatched'],
+                'failed_count' => count($result['failed']),
+                'failed' => $result['failed'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Website price sync failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
             ], 500);
         }
     }

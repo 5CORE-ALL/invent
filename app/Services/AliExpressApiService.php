@@ -1227,6 +1227,303 @@ class AliExpressApiService
     }
 
     /**
+     * Daily page views for one product (last 30 days) — aliexpress.data.redefining.queryproductviewedinfoeverydaybyid.
+     */
+    public function getProductDailyViews(string $productId, string $startDate, string $endDate, int $page = 1, int $pageSize = 50): array
+    {
+        return $this->callDataRedefining(
+            'aliexpress.data.redefining.queryproductviewedinfoeverydaybyid',
+            [
+                'product_id' => (string) $productId,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'current_page' => $page,
+                'page_size' => $pageSize,
+            ]
+        );
+    }
+
+    /**
+     * Product L30 business stats — aliexpress.data.redefining.queryproductbusinessinfobyid.
+     * Includes viewedCount (30-day page views).
+     */
+    public function getProductBusinessInfo(string $productId): array
+    {
+        return $this->callDataRedefining(
+            'aliexpress.data.redefining.queryproductbusinessinfobyid',
+            ['product_id' => (string) $productId]
+        );
+    }
+
+    /**
+     * L30 traffic for one product: views + CVR from AliExpress data APIs.
+     * Prefers queryproductbusinessinfobyid (viewedCount, outputOrder),
+     * then sums daily page views from queryproductviewedinfoeverydaybyid.
+     * CVR% = outputOrder ÷ viewedCount × 100.
+     *
+     * @return array{success: bool, views: int, output_order: int, cvr: float, source?: string, message?: string, request_id?: mixed}
+     */
+    public function getProductPageViewsL30(string $productId): array
+    {
+        $biz = $this->getProductBusinessInfo($productId);
+        $outputOrder = 0;
+        $lastId = $biz['request_id'] ?? null;
+        $lastMessage = $biz['message'] ?? null;
+
+        if (! empty($biz['success'])) {
+            $parsed = is_array($biz['data'] ?? null) ? $biz['data'] : [];
+            $viewed = $parsed['viewedCount'] ?? $parsed['viewed_count'] ?? $parsed['viewCount'] ?? null;
+            $orders = $parsed['outputOrder'] ?? $parsed['output_order'] ?? $parsed['orderCount'] ?? null;
+            $outputOrder = max(0, (int) ($orders ?? 0));
+            if ($viewed !== null && $viewed !== '') {
+                return $this->trafficResult(max(0, (int) $viewed), $outputOrder, 'business', $lastId);
+            }
+        }
+
+        $end = now()->format('Y-m-d');
+        $start = now()->subDays(29)->format('Y-m-d');
+        $page = 1;
+        $sum = 0;
+
+        while ($page <= 5) {
+            $daily = $this->getProductDailyViews($productId, $start, $end, $page, 50);
+            $lastId = $daily['request_id'] ?? $lastId;
+            if (empty($daily['success'])) {
+                $lastMessage = $daily['message'] ?? $lastMessage;
+                break;
+            }
+
+            $parsed = is_array($daily['data'] ?? null) ? $daily['data'] : [];
+            $items = $parsed['itemList'] ?? $parsed['item_list'] ?? [];
+            $pageSum = 0;
+            foreach ($this->normalizeList($items) as $item) {
+                $item = $this->normalizeApiRow($item);
+                $pageSum += (int) ($item['count'] ?? $item['viewed_count'] ?? $item['viewCount'] ?? 0);
+            }
+            $sum += $pageSum;
+
+            $total = (int) ($parsed['totalItem'] ?? $parsed['total_item'] ?? 0);
+            if ($page * 50 >= $total || $pageSum === 0) {
+                return $this->trafficResult(max(0, $sum), $outputOrder, 'daily', $lastId);
+            }
+            $page++;
+            usleep(80000);
+        }
+
+        if ($sum > 0 || $outputOrder > 0) {
+            return $this->trafficResult($sum, $outputOrder, $sum > 0 ? 'daily' : 'business', $lastId);
+        }
+
+        return [
+            'success' => false,
+            'views' => 0,
+            'output_order' => 0,
+            'cvr' => 0.0,
+            'message' => $lastMessage ?: 'AliExpress page-view API returned no views.',
+            'request_id' => $lastId,
+        ];
+    }
+
+    /**
+     * @return array{success: bool, views: int, output_order: int, cvr: float, source: string, request_id?: mixed}
+     */
+    private function trafficResult(int $views, int $outputOrder, string $source, mixed $requestId): array
+    {
+        $views = max(0, $views);
+        $outputOrder = max(0, $outputOrder);
+
+        return [
+            'success' => true,
+            'views' => $views,
+            'output_order' => $outputOrder,
+            'cvr' => $views > 0 ? round(($outputOrder / $views) * 100, 2) : 0.0,
+            'source' => $source,
+            'request_id' => $requestId,
+        ];
+    }
+
+    /**
+     * @return array{success: bool, data?: array, message?: string, request_id?: mixed}
+     */
+    private function callDataRedefining(string $method, array $params): array
+    {
+        $raw = $this->callSync($method, $params);
+        if (empty($raw['success'])) {
+            return $raw;
+        }
+
+        $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
+        $resultJson = $payload['result'] ?? null;
+        $parsed = is_string($resultJson)
+            ? json_decode($resultJson, true)
+            : (is_array($resultJson) ? $resultJson : $payload);
+
+        return [
+            'success' => true,
+            'data' => is_array($parsed) ? $parsed : [],
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
+
+    /**
+     * Product review count + average rating.
+     * Primary: aliexpress.social.product.evaluation.query (total_number).
+     * Fallback: aliexpress.solution.product.info.get (evaluation_count / avg_evaluation_rating).
+     *
+     * @return array{success: bool, reviews: int, avg_rating: float, source?: string, message?: string, request_id?: mixed}
+     */
+    public function getProductReviews(string $productId): array
+    {
+        $stats = ['reviews' => null, 'avg_rating' => null];
+        $lastId = null;
+        $lastMessage = null;
+        $source = null;
+
+        $eval = $this->callDataRedefining('aliexpress.social.product.evaluation.query', [
+            'product_id' => (string) $productId,
+            'page' => 1,
+            'page_size' => 20,
+        ]);
+        $lastId = $eval['request_id'] ?? $lastId;
+        $lastMessage = $eval['message'] ?? $lastMessage;
+        if (! empty($eval['success'])) {
+            $stats = $this->mergeReviewStats($stats, $this->extractReviewStats($eval['data'] ?? []));
+            $source = 'evaluation.query';
+        }
+
+        if ($stats['reviews'] === null && $stats['avg_rating'] === null) {
+            $rest = $this->callRestGateway('aliexpress.social.product.evaluation.query', [
+                'product_id' => (string) $productId,
+                'page' => 1,
+                'page_size' => 20,
+            ]);
+            $lastId = $rest['request_id'] ?? $lastId;
+            $lastMessage = $rest['message'] ?? $lastMessage;
+            if (! empty($rest['success'])) {
+                $payload = $this->unwrapSolutionEnvelope($rest['data'] ?? []);
+                $stats = $this->mergeReviewStats($stats, $this->extractReviewStats($payload));
+                $source = 'evaluation.query';
+            }
+        }
+
+        if ($stats['reviews'] === null || $stats['avg_rating'] === null) {
+            $info = $this->getProductInfo($productId);
+            $lastId = $info['request_id'] ?? $lastId;
+            $lastMessage = $info['message'] ?? $lastMessage;
+            if (! empty($info['success'])) {
+                $stats = $this->mergeReviewStats($stats, $this->extractReviewStats($info['data'] ?? []));
+                $source = $source ?: 'product.info';
+            }
+        }
+
+        if ($stats['reviews'] === null && $stats['avg_rating'] === null) {
+            return [
+                'success' => false,
+                'reviews' => 0,
+                'avg_rating' => 0.0,
+                'message' => $lastMessage ?: 'AliExpress review API returned no reviews.',
+                'request_id' => $lastId,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'reviews' => max(0, (int) ($stats['reviews'] ?? 0)),
+            'avg_rating' => round((float) ($stats['avg_rating'] ?? 0), 2),
+            'source' => $source ?: 'api',
+            'request_id' => $lastId,
+        ];
+    }
+
+    /**
+     * @param  array{reviews: int|null, avg_rating: float|null}  $current
+     * @param  array{reviews: int|null, avg_rating: float|null}  $incoming
+     * @return array{reviews: int|null, avg_rating: float|null}
+     */
+    private function mergeReviewStats(array $current, array $incoming): array
+    {
+        if ($current['reviews'] === null && $incoming['reviews'] !== null) {
+            $current['reviews'] = $incoming['reviews'];
+        }
+        if ($current['avg_rating'] === null && $incoming['avg_rating'] !== null) {
+            $current['avg_rating'] = $incoming['avg_rating'];
+        }
+
+        return $current;
+    }
+
+    /**
+     * @return array{reviews: int|null, avg_rating: float|null}
+     */
+    private function extractReviewStats(array $data): array
+    {
+        $data = $this->normalizeApiRow($data);
+        $reviews = $data['total_number']
+            ?? $data['totalNumber']
+            ?? $data['evaluation_count']
+            ?? $data['evaluationCount']
+            ?? $data['review_count']
+            ?? $data['reviewCount']
+            ?? $data['total_item']
+            ?? $data['totalItem']
+            ?? null;
+        $rating = $data['avg_evaluation_rating']
+            ?? $data['avgEvaluationRating']
+            ?? $data['avg_evaluation']
+            ?? $data['average_star']
+            ?? $data['averageStar']
+            ?? $data['product_star_rating']
+            ?? $data['evaluation_rating']
+            ?? null;
+
+        if (isset($data['result']) && (is_array($data['result']) || is_string($data['result']))) {
+            $nestedRaw = is_string($data['result']) ? json_decode($data['result'], true) : $data['result'];
+            if (is_array($nestedRaw)) {
+                $nested = $this->extractReviewStats($nestedRaw);
+                if ($reviews === null) {
+                    $reviews = $nested['reviews'];
+                }
+                if ($rating === null) {
+                    $rating = $nested['avg_rating'];
+                }
+            }
+        }
+
+        if ($rating === null) {
+            $evals = $data['evaluations'] ?? $data['buyer_evaluation'] ?? $data['evaluation_list'] ?? [];
+            $stars = [];
+            foreach ($this->normalizeList($evals) as $row) {
+                $row = $this->normalizeApiRow($row);
+                $star = $row['evaluation'] ?? $row['buyer_eval'] ?? $row['buyerEval'] ?? null;
+                if (is_numeric($star)) {
+                    $stars[] = (float) $star;
+                }
+            }
+            if ($stars !== []) {
+                $rating = array_sum($stars) / count($stars);
+            }
+        }
+
+        return [
+            'reviews' => $reviews !== null && $reviews !== '' ? max(0, (int) $reviews) : null,
+            'avg_rating' => $this->normalizeStarRating($rating),
+        ];
+    }
+
+    private function normalizeStarRating(mixed $rating): ?float
+    {
+        if ($rating === null || $rating === '' || ! is_numeric($rating)) {
+            return null;
+        }
+        $value = (float) $rating;
+        if ($value > 5 && $value <= 100) {
+            $value = $value / 20;
+        }
+
+        return round(max(0, min(5, $value)), 2);
+    }
+
+    /**
      * @return array<int, array{sku: string, price: float, stock: int|null, product_id: string, product_name: string|null}>
      */
     public function extractSkuRowsFromListItem(array $item, bool $fetchDetail = false): array

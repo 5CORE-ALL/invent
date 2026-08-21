@@ -1147,6 +1147,24 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // L30 page views → aliexpress_metric.views (/aliexpress-pricing Views column).
+        $schedule->command('app:fetch-aliexpress-metrics --views')
+            ->dailyAt('05:15')
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-fetch-page-views')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Review count + rating → aliexpress_metric.reviews (/aliexpress-pricing Reviews column).
+        $schedule->command('app:fetch-aliexpress-metrics --reviews')
+            ->dailyAt('05:45')
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-fetch-reviews')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\SyncInventoryToAlibaba)
             ->everyFourHours()
             ->timezone('Asia/Kolkata')

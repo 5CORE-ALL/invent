@@ -6,12 +6,15 @@ use App\Models\AliexpressMetric;
 use App\Models\AliexpressPricingPrice;
 use App\Services\AliExpressApiService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Schema;
 
 class FetchAliexpressMetrics extends Command
 {
     protected $signature = 'app:fetch-aliexpress-metrics
                             {--listed : Fetch listed product prices from AliExpress product-list API}
                             {--orders : Fetch orders and update L30/L60 sold counts}
+                            {--views : Fetch L30 page views (queryproductviewedinfoeverydaybyid / business viewedCount)}
+                            {--reviews : Fetch review count + avg rating (social.product.evaluation.query)}
                             {--no-sync-pricing : Skip updating aliexpress_pricing_prices (price + stock)}
                             {--fast : Skip product.info calls (no merchant SKU / stock from API)}
                             {--page-size=50 : Products or orders per API page}
@@ -19,7 +22,7 @@ class FetchAliexpressMetrics extends Command
                             {--replace : Remove listed-only metric rows before --listed}
                             {--cleanup : Remove invalid metric rows (price 0, sku = product_id, no orders)}';
 
-    protected $description = 'Fetch AliExpress price, stock, and sold (L30/L60) via official API';
+    protected $description = 'Fetch AliExpress price, stock, sold (L30/L60), page views, and reviews via official API';
 
     public function handle(AliExpressApiService $api): int
     {
@@ -33,8 +36,11 @@ class FetchAliexpressMetrics extends Command
             return self::FAILURE;
         }
 
-        $runListed = $this->option('listed') || ! $this->option('orders');
-        $runOrders = $this->option('orders') || ! $this->option('listed');
+        $explicit = $this->option('listed') || $this->option('orders') || $this->option('views') || $this->option('reviews');
+        $runListed = $this->option('listed') || ! $explicit;
+        $runOrders = $this->option('orders') || ! $explicit;
+        $runViews = $this->option('views');
+        $runReviews = $this->option('reviews');
 
         $exit = self::SUCCESS;
 
@@ -46,6 +52,16 @@ class FetchAliexpressMetrics extends Command
         if ($runOrders) {
             $ordersExit = $this->fetchOrders($api);
             $exit = $ordersExit !== self::SUCCESS ? $ordersExit : $exit;
+        }
+
+        if ($runViews) {
+            $viewsExit = $this->fetchPageViews($api);
+            $exit = $viewsExit !== self::SUCCESS ? $viewsExit : $exit;
+        }
+
+        if ($runReviews) {
+            $reviewsExit = $this->fetchReviews($api);
+            $exit = $reviewsExit !== self::SUCCESS ? $reviewsExit : $exit;
         }
 
         return $exit;
@@ -286,5 +302,141 @@ class FetchAliexpressMetrics extends Command
         $this->info("Orders: processed {$orderCount} order(s), {$productUpdates} product line(s) updated (L30/L60 + price).");
 
         return self::SUCCESS;
+    }
+
+    private function fetchPageViews(AliExpressApiService $api): int
+    {
+        if (! Schema::hasTable('aliexpress_metric') || ! Schema::hasColumn('aliexpress_metric', 'views')) {
+            $this->error('aliexpress_metric.views is missing. Run: php artisan migrate');
+
+            return self::FAILURE;
+        }
+
+        $productIds = AliexpressMetric::query()
+            ->whereNotNull('product_id')
+            ->where('product_id', '!=', '')
+            ->distinct()
+            ->pluck('product_id')
+            ->map(static fn ($id) => trim((string) $id))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($productIds->isEmpty()) {
+            $this->warn('No AliExpress product_id values in aliexpress_metric. Run --listed first.');
+
+            return self::SUCCESS;
+        }
+
+        $this->info('Fetching L30 page views + CVR for '.$productIds->count().' product(s)...');
+
+        $updated = 0;
+        $failed = 0;
+        $totalViews = 0;
+        $hasOutputOrder = Schema::hasColumn('aliexpress_metric', 'output_order');
+        $hasCvr = Schema::hasColumn('aliexpress_metric', 'cvr');
+
+        foreach ($productIds as $index => $productId) {
+            $result = $api->getProductPageViewsL30($productId);
+            if (empty($result['success'])) {
+                $failed++;
+                if ($failed <= 5) {
+                    $this->warn("Views failed for {$productId}: ".($result['message'] ?? 'unknown error'));
+                }
+                usleep(120000);
+
+                continue;
+            }
+
+            $views = max(0, (int) ($result['views'] ?? 0));
+            $payload = ['views' => $views];
+            if ($hasOutputOrder) {
+                $payload['output_order'] = max(0, (int) ($result['output_order'] ?? 0));
+            }
+            if ($hasCvr) {
+                $payload['cvr'] = (float) ($result['cvr'] ?? 0);
+            }
+            AliexpressMetric::query()
+                ->where('product_id', $productId)
+                ->update($payload);
+            $updated++;
+            $totalViews += $views;
+
+            if ((($index + 1) % 25) === 0) {
+                $this->info('Views/CVR progress: '.($index + 1).'/'.$productIds->count());
+            }
+
+            usleep(120000);
+        }
+
+        $this->info("Page views + CVR: {$updated} product(s) updated (sum views {$totalViews})".($failed ? ", {$failed} failed" : '').'.');
+
+        return $updated > 0 || $failed === 0 ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function fetchReviews(AliExpressApiService $api): int
+    {
+        if (! Schema::hasTable('aliexpress_metric') || ! Schema::hasColumn('aliexpress_metric', 'reviews')) {
+            $this->error('aliexpress_metric.reviews is missing. Run: php artisan migrate');
+
+            return self::FAILURE;
+        }
+
+        $productIds = AliexpressMetric::query()
+            ->whereNotNull('product_id')
+            ->where('product_id', '!=', '')
+            ->distinct()
+            ->pluck('product_id')
+            ->map(static fn ($id) => trim((string) $id))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($productIds->isEmpty()) {
+            $this->warn('No AliExpress product_id values in aliexpress_metric. Run --listed first.');
+
+            return self::SUCCESS;
+        }
+
+        $this->info('Fetching reviews for '.$productIds->count().' product(s)...');
+
+        $updated = 0;
+        $failed = 0;
+        $totalReviews = 0;
+        $hasRating = Schema::hasColumn('aliexpress_metric', 'avg_rating');
+
+        foreach ($productIds as $index => $productId) {
+            $result = $api->getProductReviews($productId);
+            if (empty($result['success'])) {
+                $failed++;
+                if ($failed <= 5) {
+                    $this->warn("Reviews failed for {$productId}: ".($result['message'] ?? 'unknown error'));
+                }
+                usleep(120000);
+
+                continue;
+            }
+
+            $reviews = max(0, (int) ($result['reviews'] ?? 0));
+            $payload = ['reviews' => $reviews];
+            if ($hasRating) {
+                $payload['avg_rating'] = round((float) ($result['avg_rating'] ?? 0), 2);
+            }
+            AliexpressMetric::query()
+                ->where('product_id', $productId)
+                ->update($payload);
+            $updated++;
+            $totalReviews += $reviews;
+
+            if ((($index + 1) % 25) === 0) {
+                $this->info('Reviews progress: '.($index + 1).'/'.$productIds->count());
+            }
+
+            usleep(120000);
+        }
+
+        $this->info("Reviews: {$updated} product(s) updated (sum {$totalReviews})".($failed ? ", {$failed} failed" : '').'.');
+
+        return $updated > 0 || $failed === 0 ? self::SUCCESS : self::FAILURE;
     }
 }

@@ -144,6 +144,7 @@ class TemuAdsController extends Controller
         $tacosSpend = $tacosPeriod === 'L30' && ! in_array($period, ['L7', 'L30', 'L60'], true)
             ? round((float) TemuAdsApiReport::query()->where('period', 'L30')->sum('ad_spend'), 2)
             : $spendSum;
+            
         $tacos = $channelSales > 0
             ? round(($tacosSpend / $channelSales) * 100, 2)
             : ($tacosSpend > 0 ? 100.0 : 0.0);

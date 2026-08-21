@@ -5349,6 +5349,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-reverb-column', [ReverbController::class, 'updateReverbColumn']);
 
     Route::post('/product-master/import-from-sheet', [ProductMasterController::class, 'importFromSheet']);
+    Route::post('/product-master/sync-website-prices', [ProductMasterController::class, 'syncWebsitePrices'])->name('product_master.sync_website_prices');
 
     // amazon db save routes
     Route::post('/amazon/save-nr', [OverallAmazonController::class, 'saveNrToDatabase']);

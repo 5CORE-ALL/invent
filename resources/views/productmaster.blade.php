@@ -336,7 +336,7 @@
         }
 
         /* Action-column icons: dark color, no box outline */
-        .cp-btn, .cp-history-btn, .edit-btn, .duplicate-btn, .delete-btn {
+        .cp-btn, .cp-history-btn, .sync-web-price-btn, .edit-btn, .duplicate-btn, .delete-btn {
             border: none !important;
             background: transparent !important;
             box-shadow: none !important;
@@ -344,7 +344,7 @@
             padding: 4px 6px !important;
         }
 
-        .cp-btn:hover, .cp-history-btn:hover, .edit-btn:hover, .duplicate-btn:hover, .delete-btn:hover {
+        .cp-btn:hover, .cp-history-btn:hover, .sync-web-price-btn:hover, .edit-btn:hover, .duplicate-btn:hover, .delete-btn:hover {
             color: #000 !important;
             background: transparent !important;
             border: none !important;
@@ -909,6 +909,9 @@
                             <button type="button" class="btn btn-sm btn-primary" id="cpAllHistoryBtn" title="CP change history for all SKUs">
                                 <i class="fas fa-clock-rotate-left me-1"></i> CP History
                             </button>
+                            <button type="button" class="btn btn-sm btn-info text-white" id="syncWebsitePricesBtn" title="Pull live prices from business5core.com">
+                                <i class="fas fa-sync-alt me-1"></i> Sync website prices
+                            </button>
                             <button type="button" class="btn btn-sm btn-warning" id="importFromApiBtn" hidden>
                                 <i class="fas fa-cloud-download-alt me-1"></i> Import from API Sheet
                             </button>
@@ -1413,6 +1416,40 @@
                                     </div>
                                     <div id="cp-history-chart-container" style="display:none; width: 100%;">
                                         <div id="cp-history-chart" style="min-height: 300px; width: 100%;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sync website prices modal -->
+                    <div class="modal fade" id="syncWebsitePricesModal" tabindex="-1" aria-labelledby="syncWebsitePricesModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                            <div class="modal-content" style="border:none; border-radius:12px; overflow:hidden;">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);">
+                                    <h5 class="modal-title text-white" id="syncWebsitePricesModalLabel">
+                                        <i class="fas fa-sync-alt me-2"></i>Sync website prices
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="text-muted mb-3">Pulls live listing prices from the FleetCart store (business5core.com) on the server. Matched by SKU.</p>
+                                    <div class="input-group mb-3">
+                                        <input type="text" id="syncWebsitePricesSku" class="form-control" placeholder="Optional SKU (leave blank to sync all)">
+                                        <button type="button" class="btn btn-outline-secondary" id="syncWebsitePricesOneBtn">Sync this SKU</button>
+                                        <button type="button" class="btn btn-info text-white" id="syncWebsitePricesAllBtn">Sync all</button>
+                                    </div>
+                                    <div id="syncWebsitePricesStatus" class="small text-muted mb-2"></div>
+                                    <div id="syncWebsitePricesResult" style="display:none;">
+                                        <div class="d-flex flex-wrap gap-2 mb-3" id="syncWebsitePricesCounts"></div>
+                                        <div id="syncWebsitePricesUnmatchedWrap" style="display:none;">
+                                            <div class="fw-semibold mb-1">Unmatched SKUs</div>
+                                            <div id="syncWebsitePricesUnmatched" class="border rounded p-2" style="max-height:220px; overflow:auto; font-size:12px; background:#f8fafc;"></div>
+                                        </div>
+                                        <div id="syncWebsitePricesFailedWrap" class="mt-2" style="display:none;">
+                                            <div class="fw-semibold text-danger mb-1">Failed</div>
+                                            <div id="syncWebsitePricesFailed" class="border rounded p-2" style="max-height:160px; overflow:auto; font-size:12px; background:#fef2f2;"></div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2376,6 +2413,9 @@
                             ${!isParentPlaceholder ?
                                 `<button type="button" class="btn btn-sm btn-outline-info cp-history-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="CP change history">
                                                         <i class="bi bi-clock-history"></i>
+                                                    </button>
+                                 <button type="button" class="btn btn-sm btn-outline-info sync-web-price-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="Sync website price">
+                                                        <i class="bi bi-currency-dollar"></i>
                                                     </button>`
                                 : ''
                             }
@@ -3350,6 +3390,9 @@
                         ${!isParentPlaceholder ?
                             `<button type="button" class="btn btn-sm btn-outline-info cp-history-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="CP change history">
                                                                             <i class="bi bi-clock-history"></i>
+                                                                        </button>
+                             <button type="button" class="btn btn-sm btn-outline-info sync-web-price-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="Sync website price">
+                                                                            <i class="bi bi-currency-dollar"></i>
                                                                         </button>`
                             : ''
                         }
@@ -6732,6 +6775,112 @@
                     });
                 });
             }
+
+            function runWebsitePriceSync(sku) {
+                const statusEl = document.getElementById('syncWebsitePricesStatus');
+                const resultEl = document.getElementById('syncWebsitePricesResult');
+                const countsEl = document.getElementById('syncWebsitePricesCounts');
+                const unmatchedWrap = document.getElementById('syncWebsitePricesUnmatchedWrap');
+                const unmatchedEl = document.getElementById('syncWebsitePricesUnmatched');
+                const failedWrap = document.getElementById('syncWebsitePricesFailedWrap');
+                const failedEl = document.getElementById('syncWebsitePricesFailed');
+                const allBtn = document.getElementById('syncWebsitePricesAllBtn');
+                const oneBtn = document.getElementById('syncWebsitePricesOneBtn');
+
+                if (resultEl) resultEl.style.display = 'none';
+                if (statusEl) statusEl.textContent = sku
+                    ? 'Syncing website price for ' + sku + '…'
+                    : 'Syncing all website prices… this may take a minute.';
+                if (allBtn) allBtn.disabled = true;
+                if (oneBtn) oneBtn.disabled = true;
+
+                return makeRequest('{{ route("product_master.sync_website_prices") }}', 'POST', sku ? { sku: sku } : {})
+                    .then(res => res.json().then(body => ({ ok: res.ok, body })))
+                    .then(({ ok, body }) => {
+                        if (!ok || !body.success) {
+                            throw new Error(body.message || 'Website price sync failed');
+                        }
+                        if (statusEl) {
+                            statusEl.textContent = body.message || 'Sync complete.';
+                        }
+                        if (countsEl) {
+                            countsEl.innerHTML = [
+                                ['Fetched', body.fetched ?? 0, 'bg-secondary'],
+                                ['Stored', body.stored ?? 0, 'bg-primary'],
+                                ['Matched', body.matched ?? 0, 'bg-success'],
+                                ['Unmatched', body.unmatched_count ?? 0, 'bg-warning text-dark'],
+                                ['Failed', body.failed_count ?? 0, 'bg-danger'],
+                            ].map(([label, count, cls]) =>
+                                `<span class="badge ${cls}" style="font-size:13px; padding:8px 10px;">${label}: ${count}</span>`
+                            ).join('');
+                        }
+                        const unmatched = Array.isArray(body.unmatched) ? body.unmatched : [];
+                        if (unmatchedWrap && unmatchedEl) {
+                            if (unmatched.length) {
+                                unmatchedWrap.style.display = 'block';
+                                unmatchedEl.textContent = unmatched.join('\n');
+                            } else {
+                                unmatchedWrap.style.display = 'none';
+                                unmatchedEl.textContent = '';
+                            }
+                        }
+                        const failed = Array.isArray(body.failed) ? body.failed : [];
+                        if (failedWrap && failedEl) {
+                            if (failed.length) {
+                                failedWrap.style.display = 'block';
+                                failedEl.textContent = failed.map(f => (f.sku || '(no sku)') + ': ' + (f.error || '')).join('\n');
+                            } else {
+                                failedWrap.style.display = 'none';
+                                failedEl.textContent = '';
+                            }
+                        }
+                        if (resultEl) resultEl.style.display = 'block';
+                        loadData();
+                    })
+                    .catch(err => {
+                        if (statusEl) statusEl.textContent = '';
+                        alert('Website price sync failed: ' + err.message);
+                    })
+                    .finally(() => {
+                        if (allBtn) allBtn.disabled = false;
+                        if (oneBtn) oneBtn.disabled = false;
+                    });
+            }
+
+            const syncWebsitePricesBtn = document.getElementById('syncWebsitePricesBtn');
+            if (syncWebsitePricesBtn) {
+                syncWebsitePricesBtn.addEventListener('click', function() {
+                    const modalEl = document.getElementById('syncWebsitePricesModal');
+                    if (modalEl && window.bootstrap) {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                });
+            }
+            document.getElementById('syncWebsitePricesAllBtn')?.addEventListener('click', function() {
+                runWebsitePriceSync('');
+            });
+            document.getElementById('syncWebsitePricesOneBtn')?.addEventListener('click', function() {
+                const sku = (document.getElementById('syncWebsitePricesSku')?.value || '').trim();
+                if (!sku) {
+                    alert('Enter a SKU to sync one listing, or use Sync all.');
+                    return;
+                }
+                runWebsitePriceSync(sku);
+            });
+            document.addEventListener('click', function(e) {
+                const btn = e.target.closest('.sync-web-price-btn');
+                if (!btn) return;
+                e.preventDefault();
+                const sku = (btn.getAttribute('data-sku') || '').trim();
+                if (!sku) return;
+                const skuInput = document.getElementById('syncWebsitePricesSku');
+                if (skuInput) skuInput.value = sku;
+                const modalEl = document.getElementById('syncWebsitePricesModal');
+                if (modalEl && window.bootstrap) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+                runWebsitePriceSync(sku);
+            });
 
             // Initialize import from API functionality
             const importFromApiBtn = document.getElementById('importFromApiBtn');

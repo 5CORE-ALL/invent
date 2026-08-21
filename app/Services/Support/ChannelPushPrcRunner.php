@@ -7,7 +7,6 @@ use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
 use App\Services\ChannelPromoPricingService;
 use App\Services\Ebay1CouponService;
-use App\Services\Ebay1PromotionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -15,8 +14,7 @@ use Illuminate\Support\Facades\Log;
  * Background channel Push Prc worker.
  *
  * 1) Push Std Prc as the live listing StartPrice
- * 2) Create/update markdown sale event from PRMT % (eBay1 item_price_markdown)
- * 3) Create/add coded coupon campaign from CPN % (eBay1 CODED_COUPON)
+ * 2) Coupon campaign from CPN % (eBay1 — sale events are not created)
  *
  * Local S PRC (Std − PRMT%) is not overwritten. Same queue pattern as AmazonPushPrcRunner.
  */
@@ -120,10 +118,10 @@ class ChannelPushPrcRunner
             $prmt = max(0, (float) ($task['prmt'] ?? 0));
             $cpn = max(0, (float) ($task['cpn'] ?? 0));
 
-            $stepTotal = $this->channel === 'ebay1' ? 3 : 1;
+            $stepTotal = $this->channel === 'ebay1' ? 2 : 1;
             $this->markPushStep($store, $index, $sku, 1, $stepTotal, 'listing price', true);
 
-            $logger->info('Channel Push Prc: 3-step push', [
+            $logger->info('Channel Push Prc: listing + coupon push', [
                 'channel' => $this->channel,
                 'sku' => $sku,
                 'std' => $std,
@@ -160,14 +158,8 @@ class ChannelPushPrcRunner
 
                 $stepErrors = [];
                 if ($this->channel === 'ebay1') {
-                    // 2) Sale event from PRMT %
-                    $this->markPushStep($store, $index, $sku, 2, $stepTotal, 'sale event');
-                    $saleRes = $this->syncEbay1Sale($sku, $prmt, $logger);
-                    if (empty($saleRes['success'])) {
-                        $stepErrors[] = 'Sale: '.((string) ($saleRes['message'] ?? 'failed'));
-                    }
-                    // 3) Coupon campaign from CPN %
-                    $this->markPushStep($store, $index, $sku, 3, $stepTotal, 'coupon');
+                    // Coupon campaign from CPN % — do not create markdown sale events
+                    $this->markPushStep($store, $index, $sku, 2, $stepTotal, 'coupon');
                     $cpnRes = $this->syncEbay1Coupon($sku, $cpn, $logger);
                     if (empty($cpnRes['success'])) {
                         $stepErrors[] = 'Coupon: '.((string) ($cpnRes['message'] ?? 'failed'));
@@ -227,31 +219,6 @@ class ChannelPushPrcRunner
 
             $store->appendMessage(($ok ? 'OK ' : 'Fail ').$sku.($error ? (': '.$error) : ''), $ok);
             usleep(250000);
-        }
-    }
-
-    /**
-     * @return array{success:bool,message?:string}
-     */
-    private function syncEbay1Sale(string $sku, float $prmt, \Psr\Log\LoggerInterface $logger): array
-    {
-        try {
-            $res = app(Ebay1PromotionService::class)->syncSkuPromotionPercent($sku, $prmt);
-            $logger->info('Channel Push Prc: sale event', [
-                'sku' => $sku,
-                'prmt' => $prmt,
-                'success' => ! empty($res['success']),
-                'message' => $res['message'] ?? null,
-            ]);
-
-            return is_array($res) ? $res : ['success' => false, 'message' => 'Sale event failed'];
-        } catch (\Throwable $e) {
-            $logger->error('Channel Push Prc: sale event exception', [
-                'sku' => $sku,
-                'error' => $e->getMessage(),
-            ]);
-
-            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 

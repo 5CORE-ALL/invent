@@ -716,8 +716,10 @@ class AliexpressController extends Controller
 
     private function buildAeParentRow(string $parentName, array $childRows): array
     {
-        $sumInv = $sumOvL30 = $sumAeStock = $sumAl30 = $sumSales = 0;
+        $sumInv = $sumOvL30 = $sumAeStock = $sumAl30 = $sumSales = $sumViews = $sumOutputOrder = 0;
+        $sumReviews = $ratingWeight = $ratingAcc = 0;
         $sumProfit = $sumLp = 0;
+        $seenViewProducts = [];
 
         foreach ($childRows as $r) {
             $sumInv     += (float) ($r['inv']      ?? 0);
@@ -729,6 +731,34 @@ class AliexpressController extends Controller
             $al30        = (float) ($r['al30']      ?? 0);
             $profit      = (float) ($r['profit']    ?? 0);
             $sumProfit  += $al30 * $profit;
+
+            $views = (int) ($r['views'] ?? 0);
+            $outputOrder = (int) ($r['output_order'] ?? 0);
+            $reviews = (int) ($r['reviews'] ?? 0);
+            $rating = (float) ($r['avg_rating'] ?? 0);
+            $pid = trim((string) ($r['ae_product_id'] ?? ''));
+            if ($pid !== '') {
+                if (! isset($seenViewProducts[$pid])) {
+                    $seenViewProducts[$pid] = true;
+                    $sumViews += $views;
+                    $sumOutputOrder += $outputOrder;
+                    $sumReviews += $reviews;
+                    if ($rating > 0) {
+                        $w = max(1, $reviews);
+                        $ratingAcc += $rating * $w;
+                        $ratingWeight += $w;
+                    }
+                }
+            } else {
+                $sumViews += $views;
+                $sumOutputOrder += $outputOrder;
+                $sumReviews += $reviews;
+                if ($rating > 0) {
+                    $w = max(1, $reviews);
+                    $ratingAcc += $rating * $w;
+                    $ratingWeight += $w;
+                }
+            }
         }
 
         $dilPct  = $sumInv   > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0;
@@ -755,6 +785,11 @@ class AliexpressController extends Controller
             'sroi'        => '-',
             'inv'         => (int) $sumInv,
             'ov_l30'      => (int) $sumOvL30,
+            'views'       => (int) $sumViews,
+            'output_order' => (int) $sumOutputOrder,
+            'cvr'         => $sumViews > 0 ? round(($sumOutputOrder / $sumViews) * 100, 2) : 0,
+            'reviews'     => (int) $sumReviews,
+            'avg_rating'  => $ratingWeight > 0 ? round($ratingAcc / $ratingWeight, 2) : 0,
             'ae_stock'    => (int) $sumAeStock,
             'dil_percent' => $dilPct,
             'lmp'         => null,
@@ -1144,6 +1179,8 @@ class AliexpressController extends Controller
      *
      * mode=price  → listed products → aliexpress_pricing_prices (+ aliexpress_metric)
      * mode=orders → order L30/L60   → aliexpress_metric
+     * mode=views  → L30 page views  → aliexpress_metric.views
+     * mode=reviews → review count + rating → aliexpress_metric.reviews
      * mode=both   → price + orders (default)
      */
     public function syncPricingFromApi(Request $request)
@@ -1166,7 +1203,7 @@ class AliexpressController extends Controller
             @set_time_limit(0);
 
             $mode = strtolower(trim((string) $request->input('mode', 'both')));
-            if (! in_array($mode, ['price', 'orders', 'both'], true)) {
+            if (! in_array($mode, ['price', 'orders', 'views', 'reviews', 'both'], true)) {
                 $mode = 'both';
             }
 
@@ -1175,6 +1212,10 @@ class AliexpressController extends Controller
                 $options['--listed'] = true;
             } elseif ($mode === 'orders') {
                 $options['--orders'] = true;
+            } elseif ($mode === 'views') {
+                $options['--views'] = true;
+            } elseif ($mode === 'reviews') {
+                $options['--reviews'] = true;
             } else {
                 $options['--listed'] = true;
                 $options['--orders'] = true;
@@ -1203,6 +1244,8 @@ class AliexpressController extends Controller
             $fallback = match ($mode) {
                 'price' => 'AliExpress price/stock synced from API.',
                 'orders' => 'AliExpress orders (AL30) synced from API.',
+                'views' => 'AliExpress page views + CVR (L30) synced from API.',
+                'reviews' => 'AliExpress reviews synced from API.',
                 default => 'AliExpress price and orders synced from API.',
             };
 
@@ -1495,6 +1538,63 @@ class AliexpressController extends Controller
                 }
             }
 
+            $viewsBySku = [];
+            $cvrBySku = [];
+            $outputOrderBySku = [];
+            $reviewsBySku = [];
+            $avgRatingBySku = [];
+            $productIdBySku = [];
+            if (Schema::hasTable('aliexpress_metric')) {
+                $metricCols = ['sku', 'product_id'];
+                $hasViewsCol = Schema::hasColumn('aliexpress_metric', 'views');
+                $hasCvrCol = Schema::hasColumn('aliexpress_metric', 'cvr');
+                $hasOutputCol = Schema::hasColumn('aliexpress_metric', 'output_order');
+                $hasReviewsCol = Schema::hasColumn('aliexpress_metric', 'reviews');
+                $hasRatingCol = Schema::hasColumn('aliexpress_metric', 'avg_rating');
+                if ($hasViewsCol) {
+                    $metricCols[] = 'views';
+                }
+                if ($hasCvrCol) {
+                    $metricCols[] = 'cvr';
+                }
+                if ($hasOutputCol) {
+                    $metricCols[] = 'output_order';
+                }
+                if ($hasReviewsCol) {
+                    $metricCols[] = 'reviews';
+                }
+                if ($hasRatingCol) {
+                    $metricCols[] = 'avg_rating';
+                }
+                foreach (AliexpressMetric::query()->get($metricCols) as $metric) {
+                    $nk = $normalizeSku($metric->sku);
+                    if ($nk === '') {
+                        continue;
+                    }
+                    $pid = trim((string) ($metric->product_id ?? ''));
+                    if ($pid !== '' && ! isset($productIdBySku[$nk])) {
+                        $productIdBySku[$nk] = $pid;
+                    }
+                    $views = $hasViewsCol ? (int) ($metric->views ?? 0) : 0;
+                    $reviews = $hasReviewsCol ? (int) ($metric->reviews ?? 0) : 0;
+                    if (! isset($viewsBySku[$nk]) || $views >= (int) ($viewsBySku[$nk] ?? 0)) {
+                        $viewsBySku[$nk] = $views;
+                        if ($hasCvrCol) {
+                            $cvrBySku[$nk] = (float) ($metric->cvr ?? 0);
+                        }
+                        if ($hasOutputCol) {
+                            $outputOrderBySku[$nk] = (int) ($metric->output_order ?? 0);
+                        }
+                    }
+                    if (! isset($reviewsBySku[$nk]) || $reviews >= (int) ($reviewsBySku[$nk] ?? 0)) {
+                        $reviewsBySku[$nk] = $reviews;
+                        if ($hasRatingCol) {
+                            $avgRatingBySku[$nk] = (float) ($metric->avg_rating ?? 0);
+                        }
+                    }
+                }
+            }
+
             $percentage = $this->resolveAliexpressMarginPercent();
             $margin = ((float) $percentage) / 100;
 
@@ -1620,6 +1720,12 @@ class AliexpressController extends Controller
                     '_margin'     => round($margin, 4),
                     'inv'         => $inv,
                     'ov_l30'      => $ovL30,
+                    'views'       => (int) ($viewsBySku[$normalizedSku] ?? 0),
+                    'cvr'         => (float) ($cvrBySku[$normalizedSku] ?? 0),
+                    'output_order' => (int) ($outputOrderBySku[$normalizedSku] ?? 0),
+                    'reviews'     => (int) ($reviewsBySku[$normalizedSku] ?? 0),
+                    'avg_rating'  => (float) ($avgRatingBySku[$normalizedSku] ?? 0),
+                    'ae_product_id' => $productIdBySku[$normalizedSku] ?? null,
                     'ae_stock'    => $aeStock,
                     'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
                     'STANDARD_PRICE' => $amazonStandardPrices[strtoupper(trim((string) $displaySku))] ?? null,

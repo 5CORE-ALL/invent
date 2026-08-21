@@ -330,8 +330,8 @@
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-prmt-btn"
-                            title="{{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount: map Dil% slabs (0–0 → 12 … 22%+ → 0). Auto-fills B2B disc; Apply writes PRMT%.' : 'Map Dil% slabs to PRMT%. Apply writes PRMT% only (no sale-event push).' }}">
-                            <i class="fas fa-sliders-h"></i> {{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount' : 'Prmt%' }}
+                            title="{{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount: map Dil% slabs (0–0 → 12 … 22%+ → 0). Auto-fills B2B disc; Apply writes PRMT%.' : 'Map Dil% slabs to PRMT%. Changing any number fills the PRMT% column. Does not create a sale event.' }}">
+                            <i class="fas fa-sliders-h"></i> {{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount' : ($channelPromoChannel === 'aliexpress' ? 'PRMT%' : 'Prmt%') }}
                         </button>
                         @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
                         <button type="button" class="btn btn-sm dropdown-toggle dropdown-toggle-split" id="ch-promo-prmt-menu-btn"
@@ -512,9 +512,9 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2" id="ch-promo-dil-prmt-help">
-                        Map Dil% slabs to PRMT%. First-time defaults: <strong>&gt; 100% → 0</strong> up to
-                        <strong>0–10% → 10</strong>. <strong>Apply</strong> saves rules for this channel
-                        and fills <strong>PRMT %</strong> from each row’s Dil% / discounts <strong>S PRC</strong>.
+                        Map Dil% slabs to PRMT%. Changing <strong>any</strong> slab number immediately
+                        fills the <strong>PRMT %</strong> column. <strong>Apply</strong> saves rules
+                        for this channel. Does <strong>not</strong> create an eBay sale event.
                         If <strong>INV = 0</strong>, PRMT% is forced to <strong>0</strong>.
                     </p>
                     <div class="table-responsive">
@@ -542,7 +542,7 @@
                         <i class="fas fa-save me-1"></i>Save Rule
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-dil-prmt-apply-btn"
-                        title="Save Dil→PRMT rules, then apply PRMT% — selected rows if checked, otherwise all visible. On eBay, only SKUs with E L30 &gt; 0.">
+                        title="Save Dil→PRMT rules, then write PRMT% — selected rows if checked, otherwise all visible. On eBay, only SKUs with E L30 &gt; 0. Does not create a sale event.">
                         Apply
                     </button>
                 </div>
@@ -1089,9 +1089,22 @@
         function chPromoPushPrcHasSaleCoupon() {
             return CHANNEL_PROMO_CHANNEL === 'ebay1';
         }
+        /** eBay1 Prmt% / Push Prc must not create markdown sale events. */
+        function chPromoEbay1CreateSaleEvents() {
+            return false;
+        }
 
-        /** eBay1: create/add markdown sale event from PRMT%. 0 removes SKU. */
+        /** eBay1: create/add markdown sale event from PRMT%. Disabled — column-only. */
         function syncEbay1Promotion(sku, percent) {
+            if (!chPromoEbay1CreateSaleEvents()) {
+                return Promise.resolve({
+                    ok: true,
+                    skipped: true,
+                    message: 'Sale event create is disabled',
+                    promotion_id: null,
+                    percent: percent != null ? Number(percent) : null,
+                });
+            }
             return new Promise(function(resolve) {
                 $.ajax({
                     url: CH_PROMO_EBAY1_PROMOTION_URL,
@@ -1131,6 +1144,10 @@
         async function pushChannelSaleEventOne(row, opts) {
             opts = opts || {};
             const silent = !!opts.silent;
+            if (!chPromoEbay1CreateSaleEvents()) {
+                if (!silent) chPromoToast('info', 'Sale event create is disabled — PRMT% column only');
+                return { ok: true, skipped: true };
+            }
             const d = row.getData() || {};
             const sku = chPromoSku(d);
             const prmt = chPromoPrmtInt(d);
@@ -1356,8 +1373,8 @@
 
         let chPromoSaleEventBusy = false;
         async function bulkPushChannelSaleEvent() {
-            if (CHANNEL_PROMO_CHANNEL !== 'ebay1') {
-                chPromoToast('error', 'Sale Event is eBay1 only');
+            if (!chPromoEbay1CreateSaleEvents() || CHANNEL_PROMO_CHANNEL !== 'ebay1') {
+                chPromoToast('info', 'Sale event create is disabled — change Dil vs PRMT numbers to fill the PRMT% column');
                 return;
             }
             if (chPromoSaleEventBusy) {
@@ -3828,6 +3845,16 @@
                 if (rule) rule.prmt = prmt;
             });
         }
+        /** Any Dil vs PRMT number change: update in-memory slabs and refill PRMT% (no sale event). */
+        function chPromoOnDilPrmtNumberChanged(inputEl) {
+            const first = $('#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input').get(0);
+            if (inputEl === first) {
+                cascadeChPromoDilPrmtFromFirst();
+            } else {
+                readChPromoDilPrmtRulesFromModal();
+            }
+            chPromoSyncEbayPrmtColumnFromSlabs();
+        }
         function renderChPromoDilPrmtModalTable() {
             const $tb = $('#ch-promo-dil-prmt-tbody').empty();
             const showB2bDisc = CHANNEL_PROMO_CHANNEL === 'shopify_b2b';
@@ -5297,9 +5324,7 @@
             if (!plan || !(plan.std > 0)) return '';
             let text = '1) Push Std Prc $' + plan.std.toFixed(2) + ' as listing price';
             if (chPromoPushPrcHasSaleCoupon()) {
-                text += '\n2) Sale event from PRMT% ' + plan.prmt + '%'
-                    + (plan.prmt <= 0 ? ' (pause if any)' : '');
-                text += '\n3) Coupon campaign from CPN% ' + plan.cpn + '%'
+                text += '\n2) Coupon campaign from CPN% ' + plan.cpn + '%'
                     + (plan.cpn <= 0 ? ' (remove if any)' : '');
             }
             return text;
@@ -5422,13 +5447,13 @@
                 } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
                     row.update({ PUSH_PRC_STATUS: 'processing', push_prc: 'processing' });
                 }
-                chPromoRefreshPushCell(row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → sale → coupon…');
+                chPromoRefreshPushCell(row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → coupon…');
             });
             try { table.redraw(true); } catch (e) { /* ignore */ }
             table.getRows().forEach(function(row) {
                 const d = row.getData() || {};
                 if (String(d.PUSH_PRC_STATUS || '') === 'processing') {
-                    chPromoRefreshPushCell(row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → sale → coupon…');
+                    chPromoRefreshPushCell(row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → coupon…');
                 }
             });
         }
@@ -5588,7 +5613,7 @@
                 const sku = chPromoSku(d);
                 const plan = item.plan || computeChannelPushPrcPlan(d);
                 const listing = plan && plan.std > 0 ? plan.std : 0;
-                const steps = chPromoPushPrcHasSaleCoupon() ? 3 : 1;
+                const steps = chPromoPushPrcHasSaleCoupon() ? 2 : 1;
                 function skuStepPct(stepDone) {
                     const per = 100 / total;
                     return Math.min(99, Math.round(((i - 1) + (stepDone / steps)) * per));
@@ -5628,26 +5653,15 @@
                             active: true, done: i - 1, total: total, ok: ok, fail: fail,
                             pct: skuStepPct(1),
                             cancelable: true, title: 'Pushing',
-                            msg: sku + ' · 2/3 sale event',
+                            msg: sku + ' · 2/2 coupon',
                         });
                         const stepErr = [];
-                        const saleRes = await syncEbay1Promotion(sku, plan.prmt);
-                        if (!saleRes.ok) stepErr.push('Sale: ' + (saleRes.message || 'failed'));
-                        setChPromoPushPrcProgress({
-                            active: true, done: i - 1, total: total, ok: ok, fail: fail,
-                            pct: skuStepPct(2),
-                            cancelable: true, title: 'Pushing',
-                            msg: sku + ' · 3/3 coupon',
-                        });
                         const cpnRes = await syncEbay1CodedCoupon(sku, plan.cpn);
                         if (!cpnRes.ok) stepErr.push('Coupon: ' + (cpnRes.message || 'failed'));
                         if (stepErr.length) throw new Error(stepErr.join(' | '));
                         item.row.update({
                             PUSH_PRC_STATUS: 'pushed',
                             PUSH_PRC_VALUE: listing,
-                            PUSH_SALE_STATUS: 'pushed',
-                            PEF_SALE_PCT: plan.prmt > 0 ? Math.round(plan.prmt) : 0,
-                            PEF_PRMT_PROMOTION_ID: saleRes.promotion_id || item.row.getData().PEF_PRMT_PROMOTION_ID,
                             PUSH_CPN_STATUS: 'pushed',
                             PEF_COUPON_PCT: plan.cpn > 0 ? Math.round(plan.cpn) : 0,
                             PEF_COUPON_CODE: cpnRes.coupon_code || item.row.getData().PEF_COUPON_CODE,
@@ -5692,7 +5706,7 @@
             const sku = chPromoSku(d);
             const plan = computeChannelPushPrcPlan(d);
             if (!sku || !plan || !(plan.std > 0)) {
-                chPromoToast('error', 'Std Prc required — Push Prc sends listing = Std, then sale (PRMT%) and coupon (CPN%)');
+                chPromoToast('error', 'Std Prc required — Push Prc sends listing = Std, then coupon (CPN%)');
                 return;
             }
             if (!confirm(
@@ -5707,12 +5721,12 @@
                     ? '\n\nYou can refresh or queue more SKUs while it runs.'
                     : (!chPromoCfg.pushPriceUrl ? '\n\n(Push URL not configured — will save promo only)' : ''))
             )) {
-                chPromoRefreshPushCell(row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → sale → coupon…');
+                chPromoRefreshPushCell(row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → coupon…');
                 return;
             }
 
             row.update({ PUSH_PRC_STATUS: 'processing', push_prc: 'processing' });
-            chPromoRefreshPushCell(row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → sale → coupon…');
+            chPromoRefreshPushCell(row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → coupon…');
             setChPromoPushPrcProgress({
                 active: true, done: 0, total: 1, ok: 0, fail: 0, pct: 8,
                 cancelable: true, title: 'Pushing',
@@ -5747,7 +5761,7 @@
             });
             const skipped = targets.length - ready.length;
             if (!ready.length) {
-                chPromoToast('error', 'Selected SKUs need Std Prc (Push Prc: Std → sale PRMT% → coupon CPN%)');
+                chPromoToast('error', 'Selected SKUs need Std Prc (Push Prc: Std → coupon CPN%)');
                 return;
             }
             if (!confirm(
@@ -5757,7 +5771,7 @@
                 + (skipped ? ('\n(' + skipped + ' skipped — no Std Prc)') : '')
                 + '\n\n1) Push Std Prc as listing price'
                 + (chPromoPushPrcHasSaleCoupon()
-                    ? '\n2) Sale event from PRMT%\n3) Coupon campaign from CPN%'
+                    ? '\n2) Coupon campaign from CPN%'
                     : '')
                 + (chPromoPushQueueEnabled
                     ? '\n\nSafe to refresh — progress continues. You can select more and queue again.'
@@ -5767,7 +5781,7 @@
             if (chPromoPushQueueEnabled) {
                 const items = ready.map(function(r) {
                     r.row.update({ PUSH_PRC_STATUS: 'processing', push_prc: 'processing' });
-                    chPromoRefreshPushCell(r.row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → sale → coupon…');
+                    chPromoRefreshPushCell(r.row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → coupon…');
                     applyChannelPushPrcToSpriceRow(r.row, r.plan, null);
                     return planToChannelPushPrcQueueItem(r.d, r.plan);
                 });
@@ -7150,9 +7164,10 @@
                     if (help) {
                         help.innerHTML = 'Map Dil% slabs to PRMT% (<strong>0–0</strong>, <strong>0.1–2</strong>, '
                             + '<strong>2–4</strong> … <strong>24–26</strong>). On eBay, Dil is <strong>listing-wise</strong> '
-                            + '(Σ OV L30 ÷ Σ INV by variation item id). <strong>Apply</strong> writes <strong>PRMT %</strong> '
-                            + 'only on selected or visible SKUs with <strong>eBay sale (E L30) &gt; 0</strong> '
-                            + '— parent rows and 0-sale SKUs are not changed. '
+                            + '(Σ OV L30 ÷ Σ INV by variation item id). Changing <strong>any</strong> slab number '
+                            + 'immediately fills the <strong>PRMT %</strong> column. <strong>Apply</strong> saves rules '
+                            + 'and writes PRMT% on selected or visible SKUs with <strong>eBay sale (E L30) &gt; 0</strong>. '
+                            + 'Does <strong>not</strong> create an eBay sale event. '
                             + 'If the listing’s total INV is 0, SKU PRMT% is <strong>0</strong>.';
                     }
                 } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
@@ -7246,9 +7261,7 @@
             $('#ch-promo-dil-prmt-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoDilPrmt);
             $(document).off('input.chPromoDilCascade change.chPromoDilCascade', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input')
                 .on('input.chPromoDilCascade change.chPromoDilCascade', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input', function() {
-                    const first = $('#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input').get(0);
-                    if (this !== first) return;
-                    cascadeChPromoDilPrmtFromFirst();
+                    chPromoOnDilPrmtNumberChanged(this);
                 });
 
             if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
