@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AccountHealthMetricFieldDefinition;
 use App\Models\CcMessagesPending;
 use App\Models\ChannelMaster;
+use App\Services\CustomerCare\MarketplacePendingMessagesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -15,11 +16,37 @@ use Illuminate\View\View;
 
 class CcMessagesPendingController extends Controller
 {
+    public function __construct(
+        protected MarketplacePendingMessagesService $pendingMessages
+    ) {}
+
     public function index(): View
     {
+        $this->pendingMessages->ensureSchema();
+
         return view('customer-care.messages-pending', [
             'channels' => $this->channelRows(),
             'pendingTotal' => CcMessagesPending::pendingTotal(),
+        ]);
+    }
+
+    public function pull(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'channel_id' => 'required|integer|min:1',
+        ]);
+
+        $channel = ChannelMaster::query()->find((int) $validated['channel_id']);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Channel not found.'], 422);
+        }
+
+        $row = $this->pendingMessages->fetchAndStore($channel);
+
+        return response()->json([
+            'success' => true,
+            'row' => $row,
+            'pending_total' => CcMessagesPending::pendingTotal(),
         ]);
     }
 
@@ -139,11 +166,22 @@ class CcMessagesPendingController extends Controller
             }
             $mLink = trim((string) ($scopeToMLink[$scope] ?? ''));
 
+            $status = $pending ? (string) ($pending->fetch_status ?? '') : '';
+            $hasApi = $this->pendingMessages->driverFor($c) !== null;
+
             return [
                 'id' => (int) $c->id,
                 'channel' => (string) $c->channel,
                 'logo' => $hasLogo ? ($c->logo ?? null) : null,
-                'pending_count' => $pending ? (int) $pending->pending_count : 0,
+                'pending_count' => $pending && $status === MarketplacePendingMessagesService::STATUS_OK
+                    ? (int) $pending->pending_count
+                    : 0,
+                'has_api' => $hasApi,
+                'fetch_status' => $status !== '' ? $status : ($hasApi ? 'pending' : MarketplacePendingMessagesService::STATUS_UNSUPPORTED),
+                'fetch_note' => $pending ? ($pending->fetch_note ?? null) : null,
+                'last_fetched_at' => $pending && $pending->last_fetched_at
+                    ? $pending->last_fetched_at->toIso8601String()
+                    : null,
                 'messages_link' => $storedLink !== '' ? $storedLink : ($mLink !== '' ? $mLink : null),
             ];
         })->values()->all();
@@ -151,18 +189,6 @@ class CcMessagesPendingController extends Controller
 
     protected function ensureTable(): void
     {
-        if (Schema::hasTable('cc_messages_pending')) {
-            return;
-        }
-
-        Schema::create('cc_messages_pending', function ($table) {
-            $table->id();
-            $table->unsignedBigInteger('channel_id')->unique();
-            $table->unsignedInteger('pending_count')->default(0);
-            $table->string('messages_link', 2048)->nullable();
-            $table->unsignedBigInteger('updated_by_user_id')->nullable();
-            $table->string('updated_by_name', 191)->nullable();
-            $table->timestamps();
-        });
+        $this->pendingMessages->ensureSchema();
     }
 }

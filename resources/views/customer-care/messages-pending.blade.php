@@ -68,9 +68,13 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-mm-stat" id="stat-messages-pending" title="Sum of pending messages across channels" style="background-color:#a71d2a !important;">
+                    <span class="badge bg-danger badge-mm-stat" id="stat-messages-pending" title="Sum of pending marketplace messages" style="background-color:#a71d2a !important;">
                         Messages Pending: <span id="total-messages-pending">{{ number_format($pendingTotal ?? 0) }}</span>
                     </span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="cmp-pull-btn">
+                        <i class="fas fa-rotate me-1"></i>Pull messages
+                    </button>
+                    <span class="small text-muted" id="cmp-pull-status">Counts come from each marketplace API.</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -111,7 +115,7 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     const channels = @json($channels);
-    const urlSaveCount = @json(route('customer.care.messages.pending.count.save'));
+    const urlPull = @json(route('customer.care.messages.pending.pull'));
     const urlSaveLink = @json(route('customer.care.messages.pending.link.save'));
     const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     let table = null;
@@ -153,16 +157,69 @@
         });
     }
 
-    function updateStats(rows) {
-        const total = (rows || []).reduce(function (sum, r) {
-            return sum + Number(r.pending_count || 0);
-        }, 0);
+    function updateStats(rows, serverTotal) {
+        const total = serverTotal != null
+            ? Number(serverTotal)
+            : (rows || []).reduce(function (sum, r) {
+                return r.fetch_status === 'ok' ? sum + Number(r.pending_count || 0) : sum;
+            }, 0);
         $('#total-messages-pending').text(total.toLocaleString('en-US'));
         $('.cc-messages-pending-sidebar-badge').each(function () {
             const $el = $(this);
             $el.text(total.toLocaleString('en-US'));
             $el.toggle(total > 0);
         });
+    }
+
+    function applyPullRow(channelId, row, serverTotal) {
+        if (!table || !row) return;
+        table.getRows().forEach(function (r) {
+            if (String(r.getData().id) === String(channelId)) {
+                r.update({
+                    pending_count: row.pending_count,
+                    fetch_status: row.fetch_status,
+                    fetch_note: row.fetch_note,
+                    last_fetched_at: row.last_fetched_at,
+                });
+            }
+        });
+        updateStats(table.getData(), serverTotal);
+    }
+
+    function pullAll(force) {
+        if (!table) return;
+        const rows = table.getData();
+        const ids = rows.map(function (r) { return r.id; });
+        const $btn = $('#cmp-pull-btn');
+        const $st = $('#cmp-pull-status');
+        $btn.prop('disabled', true);
+        let i = 0;
+
+        function next() {
+            if (i >= ids.length) {
+                $btn.prop('disabled', false);
+                $st.text('Pulled ' + ids.length + ' channels from marketplace APIs.');
+                return;
+            }
+            const id = ids[i];
+            i += 1;
+            $st.text('Pulling ' + i + ' / ' + ids.length + '…');
+            api(urlPull, {
+                method: 'POST',
+                body: JSON.stringify({ channel_id: id }),
+            }).then(function (resp) {
+                applyPullRow(id, resp && resp.row, resp && resp.pending_total);
+            }).catch(function (e) {
+                applyPullRow(id, {
+                    pending_count: 0,
+                    fetch_status: 'error',
+                    fetch_note: (e && e.message) || 'Pull failed',
+                    last_fetched_at: null,
+                });
+            }).finally(next);
+        }
+
+        next();
     }
 
     const linkModalEl = document.getElementById('cmpLinkModal');
@@ -257,30 +314,44 @@
                 {
                     title: 'Messages Pending',
                     field: 'pending_count',
-                    width: 200,
+                    width: 180,
                     hozAlign: 'center',
                     sorter: 'number',
-                    editor: 'number',
-                    editorParams: { min: 0, max: 999999, step: 1, selectContents: true },
-                    headerTooltip: 'Click a count to update it',
+                    headerTooltip: 'Unread / unanswered messages from the marketplace API',
                     formatter: function (cell) {
+                        const row = cell.getRow().getData() || {};
+                        const status = row.fetch_status || '';
+                        if (status === 'unsupported') {
+                            return '<span class="text-muted" title="' + escapeHtml(row.fetch_note || 'No messages API') + '">—</span>';
+                        }
+                        if (status === 'error') {
+                            return '<span class="text-warning" title="' + escapeHtml(row.fetch_note || 'Pull failed') + '"><i class="fas fa-triangle-exclamation"></i></span>';
+                        }
+                        if (status === 'pending') {
+                            return '<span class="text-muted">…</span>';
+                        }
                         const v = Number(cell.getValue() || 0);
                         const color = v === 0 ? '#198754' : '#dc3545';
-                        return `<span style="color:${color};font-weight:700;" title="Click to update">${v.toLocaleString('en-US')}</span>`;
+                        return `<span style="color:${color};font-weight:700;">${v.toLocaleString('en-US')}</span>`;
                     },
-                    bottomCalc: 'sum',
-                    cellEdited: function (cell) {
+                    bottomCalc: function (values, data) {
+                        return (data || []).reduce(function (sum, r) {
+                            return r.fetch_status === 'ok' ? sum + Number(r.pending_count || 0) : sum;
+                        }, 0);
+                    },
+                },
+                {
+                    title: 'Source',
+                    field: 'fetch_status',
+                    width: 150,
+                    hozAlign: 'center',
+                    formatter: function (cell) {
                         const row = cell.getRow().getData() || {};
-                        const next = Math.max(0, parseInt(cell.getValue(), 10) || 0);
-                        cell.setValue(next, true);
-                        api(urlSaveCount, {
-                            method: 'POST',
-                            body: JSON.stringify({ channel_id: row.id, pending_count: next }),
-                        }).then(function () {
-                            updateStats(table.getData());
-                        }).catch(function () {
-                            cell.restoreOldValue();
-                        });
+                        const status = cell.getValue() || '';
+                        if (status === 'ok') return '<span class="text-success" title="Live marketplace API">API</span>';
+                        if (status === 'unsupported') return '<span class="text-muted" title="' + escapeHtml(row.fetch_note || '') + '">No API</span>';
+                        if (status === 'error') return '<span class="text-danger" title="' + escapeHtml(row.fetch_note || '') + '">Error</span>';
+                        return '<span class="text-muted">Waiting</span>';
                     },
                 },
                 {
@@ -315,6 +386,11 @@
         });
 
         updateStats(channels);
+
+        $('#cmp-pull-btn').on('click', function () {
+            pullAll(true);
+        });
+        pullAll(false);
 
         $('#messages-pending-search').on('input', function () {
             const q = $(this).val().trim().toLowerCase();

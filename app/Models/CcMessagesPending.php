@@ -13,6 +13,10 @@ class CcMessagesPending extends Model
         'channel_id',
         'pending_count',
         'messages_link',
+        'fetch_status',
+        'fetch_note',
+        'source',
+        'last_fetched_at',
         'updated_by_user_id',
         'updated_by_name',
     ];
@@ -21,6 +25,7 @@ class CcMessagesPending extends Model
         'channel_id' => 'integer',
         'pending_count' => 'integer',
         'updated_by_user_id' => 'integer',
+        'last_fetched_at' => 'datetime',
     ];
 
     public static function pendingTotal(): int
@@ -29,6 +34,11 @@ class CcMessagesPending extends Model
             return 0;
         }
 
-        return (int) static::query()->sum('pending_count');
+        $query = static::query();
+        if (Schema::hasColumn('cc_messages_pending', 'fetch_status')) {
+            $query->where('fetch_status', 'ok');
+        }
+
+        return (int) $query->sum('pending_count');
     }
 }

@@ -1061,6 +1061,84 @@ class AliExpressApiService
     }
 
     /**
+     * Unprocessed buyer / order messages that still need a seller reply.
+     *
+     * @return array{success: bool, count: int, message?: string}
+     */
+    public function getPendingMessageCount(): array
+    {
+        $methods = [
+            'aliexpress.message.redefining.versionlist.queryMsgRelationList',
+            'api.queryMsgRelationList',
+        ];
+        $sources = ['message_center', 'order_msg'];
+        $lastMessage = 'AliExpress message API returned no count.';
+
+        foreach ($methods as $method) {
+            $sum = 0;
+            $ok = 0;
+            foreach ($sources as $source) {
+                $raw = $this->callRestGateway($method, [
+                    'currentPage' => 1,
+                    'pageSize' => 1,
+                    'msgSources' => $source,
+                    'filter' => 'dealStat',
+                ]);
+                if (empty($raw['success'])) {
+                    $raw = $this->callRestGateway($method, [
+                        'current_page' => 1,
+                        'page_size' => 1,
+                        'msg_sources' => $source,
+                        'filter' => 'dealStat',
+                    ]);
+                }
+                if (empty($raw['success'])) {
+                    $lastMessage = (string) ($raw['message'] ?? $lastMessage);
+                    continue;
+                }
+                $count = $this->extractPendingMessageTotal($raw['data'] ?? $raw['response'] ?? []);
+                if ($count === null) {
+                    continue;
+                }
+                $sum += $count;
+                $ok++;
+            }
+            if ($ok > 0) {
+                return ['success' => true, 'count' => $sum];
+            }
+        }
+
+        return ['success' => false, 'count' => 0, 'message' => $lastMessage];
+    }
+
+    /**
+     * @param  array<string, mixed>|mixed  $data
+     */
+    private function extractPendingMessageTotal($data): ?int
+    {
+        if (! is_array($data)) {
+            return null;
+        }
+
+        foreach (['totalItem', 'total_item', 'totRecordCount', 'unread_count', 'unreadCount', 'unReadCount', 'unDealCount', 'undeal_count', 'total'] as $key) {
+            if (isset($data[$key]) && is_numeric($data[$key])) {
+                return max(0, (int) $data[$key]);
+            }
+        }
+
+        foreach (['result', 'data', 'response', 'result_obj'] as $wrap) {
+            if (isset($data[$wrap]) && is_array($data[$wrap])) {
+                $found = $this->extractPendingMessageTotal($data[$wrap]);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Single order detail — aliexpress.solution.order.info.get (buyer, address, logistics, funds).
      */
     public function getOrderInfo(string $orderId): array

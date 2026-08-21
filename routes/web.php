@@ -1068,6 +1068,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.messages.pending');
     Route::post('/customer-care/messages-pending/count', [CcMessagesPendingController::class, 'saveCount'])
         ->name('customer.care.messages.pending.count.save');
+    Route::post('/customer-care/messages-pending/pull', [CcMessagesPendingController::class, 'pull'])
+        ->name('customer.care.messages.pending.pull');
     Route::post('/customer-care/messages-pending/link', [CcMessagesPendingController::class, 'saveLink'])
         ->name('customer.care.messages.pending.link.save');
     Route::post('/customer-care/cc-messages-returns/checklist', [AuditMasterController::class, 'storeCcChecklist'])

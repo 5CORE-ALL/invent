@@ -2472,6 +2472,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        $schedule->command('cc:pull-pending-messages')
+            ->everyFifteenMinutes()
+            ->timezone('America/Los_Angeles')
+            ->name('cc-pull-pending-messages')
+            ->withoutOverlapping(14)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // PEF Dil vs PRMT → eBay1 Promotion API (always once/day, even if Dil/INV/rules unchanged).
         // INV=0 forces PRMT%=0 (pause). Uses saved pef_dil_vs_prmt rules or first-time defaults.
         $schedule->command('pef:dil-prmt-auto-apply')
