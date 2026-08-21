@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AliexpressDataView;
 use App\Models\DobaDataView;
 use App\Models\DobaWithoutShipDataView;
 use App\Models\EbayDataView;
@@ -9,12 +10,23 @@ use App\Models\EbaySkuDailyData;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
 use App\Models\BestbuyUSADataView;
+use App\Models\FaireDataView;
+use App\Models\FBMarketplaceDataView;
 use App\Models\MacyDataView;
+use App\Models\MercariWoShipDataView;
+use App\Models\MercariWShipDataView;
+use App\Models\NeweggDataView;
+use App\Models\PLSDataView;
+use App\Models\PurchasingPowerDataView;
 use App\Models\ReverbDataView;
+use App\Models\SheinDataView;
 use App\Models\ShopifyB2BDataView;
 use App\Models\Shopifyb2cDataView;
 use App\Models\Temu2DataView;
 use App\Models\TemuDataView;
+use App\Models\TiktokShopDataView;
+use App\Models\TiktokTwoShopDataView;
+use App\Models\TopDawgDataView;
 use App\Models\WalmartDataView;
 use App\Models\WayfairDataView;
 use Illuminate\Database\Eloquent\Model;
@@ -53,6 +65,18 @@ class ChannelPromoPricingService
         'temu2',
         'doba',
         'doba_withoutship',
+        'tiktok',
+        'tiktok2',
+        'topdawg',
+        'purchasing_power',
+        'aliexpress',
+        'shein',
+        'newegg',
+        'faire',
+        'pls',
+        'mercari_wship',
+        'mercari_woship',
+        'fb_marketplace',
     ];
 
     /**
@@ -76,6 +100,18 @@ class ChannelPromoPricingService
         'temu2' => Temu2DataView::class,
         'doba' => DobaDataView::class,
         'doba_withoutship' => DobaWithoutShipDataView::class,
+        'tiktok' => TiktokShopDataView::class,
+        'tiktok2' => TiktokTwoShopDataView::class,
+        'topdawg' => TopDawgDataView::class,
+        'purchasing_power' => PurchasingPowerDataView::class,
+        'aliexpress' => AliexpressDataView::class,
+        'shein' => SheinDataView::class,
+        'newegg' => NeweggDataView::class,
+        'faire' => FaireDataView::class,
+        'pls' => PLSDataView::class,
+        'mercari_wship' => MercariWShipDataView::class,
+        'mercari_woship' => MercariWoShipDataView::class,
+        'fb_marketplace' => FBMarketplaceDataView::class,
     ];
 
     public function isSupported(string $channel): bool

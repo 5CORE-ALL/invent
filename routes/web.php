@@ -254,6 +254,7 @@ use App\Http\Controllers\ProductMaster\ImagesAPlusContentController;
 use App\Http\Controllers\ProductMaster\TechnicalSpecificationsController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
 use App\Http\Controllers\ProductMaster\ImageMasterController;
+use App\Http\Controllers\ProductMaster\RawImagesController;
 use App\Http\Controllers\ProductMaster\MastersBarcodeController;
 use App\Http\Controllers\ProductMaster\VideoMasterController;
 use App\Http\Controllers\ProductMaster\MovementAnalysisController;
@@ -4042,6 +4043,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/image-master/shopify-pull/pause', [ImageMasterController::class, 'pauseShopifyPullJob'])->name('image.master.shopify.pull.pause');
     Route::post('/image-master/shopify-pull/resume', [ImageMasterController::class, 'resumeShopifyPullJob'])->name('image.master.shopify.pull.resume');
     Route::post('/image-master/shopify-pull/stop', [ImageMasterController::class, 'stopShopifyPullJob'])->name('image.master.shopify.pull.stop');
+
+    Route::get('/raw-images', [RawImagesController::class, 'index'])->name('raw.images');
+    Route::get('/raw-images-data', [RawImagesController::class, 'getData'])->name('raw.images.data');
+    Route::post('/raw-images/upload', [RawImagesController::class, 'upload'])->name('raw.images.upload');
+    Route::delete('/raw-images/{id}', [RawImagesController::class, 'destroy'])->name('raw.images.destroy');
+
+    Route::get('/raw-images-batch-coo', [RawImagesController::class, 'index'])->name('raw.images.batch.coo');
+    Route::get('/raw-images-batch-coo-data', [RawImagesController::class, 'getData'])->name('raw.images.batch.coo.data');
+    Route::post('/raw-images-batch-coo/upload', [RawImagesController::class, 'upload'])->name('raw.images.batch.coo.upload');
+    Route::delete('/raw-images-batch-coo/{id}', [RawImagesController::class, 'destroy'])->name('raw.images.batch.coo.destroy');
 
     Route::get('/video-master', [VideoMasterController::class, 'index'])->name('video.master');
     Route::get('/video-master-data', [VideoMasterController::class, 'getData'])->name('video.master.data');

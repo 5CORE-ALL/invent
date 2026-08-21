@@ -620,6 +620,10 @@
                         <span class="badge bg-danger flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
                         <span class="badge flex-shrink-0" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">M L: 0</span>
+                        <span class="badge flex-shrink-0" id="reverb-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'reverb-price-gt-lmp-badge', 'pglChannelKey' => 'reverb', 'pglPriceField' => 'RV Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'reverb-price-lt80-lmp-badge', 'pltChannelKey' => 'reverb', 'pltPriceField' => 'RV Price'])
                         <span class="badge bg-danger flex-shrink-0" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter stock mismatch (REQ + INV&gt;0 + |INV − R Stock| &gt; 3)">N Map: 0</span>
@@ -777,7 +781,7 @@
                         </ul>
                     </div>
 
-                    {{-- Dil vs PRMT / CVR vs CPN / > 0 Sprice Vs Dil Rule --}}
+                    {{-- Dil vs PRMT / CVR vs CPN / sprice ? --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
 
                     <div class="btn-group flex-shrink-0">
@@ -824,10 +828,6 @@
                         </ul>
                     </div>
 
-                    <button type="button" class="btn btn-sm flex-shrink-0" id="reverb-apply-std-price-btn"
-                        title="Queue Std Prc to the live Reverb listing via API. Selected SKUs if checked; otherwise all visible with Std &gt; 0 that changed since last push.">
-                        <i class="fas fa-upload"></i> Apply Std Price
-                    </button>
                     <button type="button" class="btn btn-sm flex-shrink-0" id="reverb-apply-prmt-btn"
                         title="Queue Reverb Drop the Price By at PRMT%. Listing / Std price is not changed. Selected SKUs if checked; otherwise all visible whose % changed since last push.">
                         <i class="fas fa-percent"></i> Apply Prmt%
@@ -1320,8 +1320,34 @@
     }
     function reverbChannelPromoColumns() {
         const cols = typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [];
-        // S PRC already has its own Push column — do not show Push % / push_prmt.
-        return cols.filter(function(c) { return !c || c.field !== 'push_prmt'; });
+        const hide = { push_prmt: 1, push_std_prc: 1, push_cpn: 1, push_prc: 1, dsc_pct: 1, dsc: 1, appr: 1 };
+        return cols.filter(function(c) { return !c || !hide[c.field]; });
+    }
+
+    function isReverbParentRow(d) {
+        const sku = String(d && (d['(Child) sku'] || d.sku || d.SKU) || '');
+        return !!(d && (d.is_parent_summary || d.is_parent || (sku && sku.toUpperCase().indexOf('PARENT') !== -1)));
+    }
+    function reverbRowSpriceForAlert(data) {
+        let sprice = parseFloat(data && data.SPRICE) || 0;
+        if (typeof chPromoSpriceFromStdTPromo === 'function' && !isReverbParentRow(data)) {
+            const calc = chPromoSpriceFromStdTPromo(data);
+            if (calc > 0) sprice = calc;
+        }
+        return sprice;
+    }
+    function reverbHasBlueTriangle(data) {
+        if (isReverbParentRow(data)) return false;
+        const sprice = reverbRowSpriceForAlert(data);
+        const price = parseFloat(data && data['RV Price']) || 0;
+        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+    }
+    let blueTriangleFilterActive = false;
+    function syncReverbTriangleBadgeState() {
+        $('#reverb-blue-triangle-badge').css({
+            outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
     }
 
     /** Take-home margin factor (Reverb ~0.85). */
@@ -1484,6 +1510,9 @@
                 || (target && rowKey === target);
             if (!inGroup) return;
             r.update({ STANDARD_PRICE: std });
+            if (typeof applyChannelSpriceFromStdChange === 'function') {
+                applyChannelSpriceFromStdChange(r);
+            }
             if (rowKey === target) primaryRow = r;
         });
         return primaryRow;
@@ -2068,6 +2097,7 @@
 
         function clearReverbBadgeFilters() {
             missingFilterActive = mapFilterActive = invRStockFilterActive = false;
+            blueTriangleFilterActive = false;
             // Sold filter lives on the #sold-filter dropdown now — reset it here too so
             // this helper still fully clears any active Sold-style filter.
             $('#sold-filter').val('all');
@@ -2083,7 +2113,7 @@
         const missingHiddenColumnFields = [
             'RV Price',
             'GPFT%', 'ROI%', 'NPFT', 'NROI', 'SPRICE', 'SGPFT', 'SROI', 'SNPFT', 'SNROI',
-            'prmt_pct', 'cpn_pct', 'push_std_prc',
+            'prmt_pct', 'cpn_pct',
             'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
             'Views', 'CVR',
             'L30', 'RV Dil%', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
@@ -3921,87 +3951,6 @@
                     }
                 },
                 {
-                    title: "Push Std",
-                    field: "push_std_prc",
-                    hozAlign: "center",
-                    vertAlign: "middle",
-                    headerSort: false,
-                    width: 55,
-                    headerTooltip: "Push Std Prc to the live Reverb listing via API. Only SKUs whose Std changed since the last push are queued. Click the header to bulk selected (or visible) SKUs.",
-                    titleFormatter: function() {
-                        return '<button type="button" class="btn btn-sm p-0 reverb-push-std-header-btn" '
-                            + 'title="Queue Push Std for selected SKUs whose Std changed since last push" '
-                            + 'style="border:none;background:none;cursor:pointer;color:#000;'
-                            + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
-                            + 'Push Std</button>';
-                    },
-                    headerClick: function(e) {
-                        if (e.target.closest('.reverb-push-std-header-btn')) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            if (typeof queueReverbPushStd === 'function') queueReverbPushStd();
-                            return false;
-                        }
-                    },
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        const sku = String(d['(Child) sku'] || d.sku || '').trim();
-                        if (!sku || String(sku).toUpperCase().indexOf('PARENT') !== -1 || d.is_parent_summary) {
-                            return '';
-                        }
-                        const std = parseFloat(d.STANDARD_PRICE);
-                        if (!(std > 0)) {
-                            return '<span style="color:#adb5bd;" title="Std Prc required">—</span>';
-                        }
-                        const status = String(d.PUSH_STD_PRC_STATUS || cell.getValue() || '');
-                        const last = parseFloat(d.PUSH_STD_PRC_VALUE);
-                        const lastOk = isFinite(last) && last > 0;
-                        const needs = status === 'error' || !lastOk || last.toFixed(2) !== std.toFixed(2);
-                        let icon = '<i class="fas fa-upload"></i>';
-                        let color = '#FF9900';
-                        let tip = 'Push Std $' + std.toFixed(2) + ' to Reverb';
-                        if (status === 'processing') {
-                            icon = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
-                            color = '#ffc107';
-                            tip = 'Pushing Std to Reverb…';
-                        } else if (status === 'error') {
-                            icon = '<i class="fa-solid fa-xmark"></i>';
-                            color = '#dc3545';
-                            tip = 'Last Push Std failed — click to retry';
-                        } else if (!needs) {
-                            icon = '<i class="fa-solid fa-check-double"></i>';
-                            color = '#28a745';
-                            tip = 'Already pushed $' + last.toFixed(2) + ' — click to push again';
-                        } else if (lastOk) {
-                            tip = 'Std changed $' + last.toFixed(2) + ' → $' + std.toFixed(2)
-                                + ' — click to push to Reverb';
-                        }
-                        return '<button type="button" class="btn btn-sm p-0 reverb-push-std-btn" '
-                            + 'data-sku="' + sku.replace(/"/g, '&quot;') + '" '
-                            + 'data-price="' + std.toFixed(2) + '" '
-                            + 'title="' + tip.replace(/"/g, '&quot;') + '" '
-                            + 'style="border:none;background:none;cursor:pointer;color:' + color
-                            + ';padding:0;line-height:1;vertical-align:middle;">'
-                            + icon + '</button>';
-                    },
-                    cellClick: function(e, cell) {
-                        const btn = e.target.closest('.reverb-push-std-btn');
-                        if (!btn) return;
-                        e.stopPropagation();
-                        e.preventDefault();
-                        if (btn.disabled) return false;
-                        const d = cell.getRow().getData() || {};
-                        if (String(d.PUSH_STD_PRC_STATUS || '') === 'processing') return false;
-                        if (typeof queueReverbPushStd === 'function') {
-                            const sku = String(d['(Child) sku'] || '').trim();
-                            const selected = (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.size > 1
-                                && selectedSkus.has(sku));
-                            queueReverbPushStd(selected ? null : cell.getRow());
-                        }
-                        return false;
-                    }
-                },
-                {
                     title: "Price",
                     field: "RV Price",
                     hozAlign: "center",
@@ -4260,7 +4209,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Suggested price. Red triangle when SPRICE > LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -4268,12 +4217,17 @@
                     },
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
+                        if (isReverbParentRow(rowData)) return '';
+                        let value = parseFloat(cell.getValue() || 0);
+                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                            if (calc > 0) value = calc;
+                        }
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
+                        const live = parseFloat(rowData['RV Price']) || 0;
                         const lmp = parseFloat(rowData.lmp_price) || 0;
-                        const overLmp = value > 0 && lmp > 0 && value > lmp;
                         
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
@@ -4281,12 +4235,18 @@
                         else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
-                        const alertHtml = overLmp
-                            ? `<i class="fas fa-exclamation-triangle sprice-lmp-alert" title="SPRICE $${value.toFixed(2)} &gt; LMP $${lmp.toFixed(2)}"></i>`
+                        if (!(value > 0)) return '';
+
+                        const formatted = '$' + value.toFixed(2);
+                        const overLmp = lmp > 0 && value > lmp;
+                        const priceHtml = overLmp
+                            ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
+                            : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        const priceColor = overLmp ? 'color:#dc3545;' : '';
-                        
-                        return `<span style="font-weight: 600; ${priceColor} ${bgColor} padding: 2px 6px; border-radius: 3px; display:inline-flex; align-items:center; justify-content:center;">$${value.toFixed(2)}${alertHtml}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                     },
                     width: 96
                 },
@@ -5022,6 +4982,11 @@
                     return PriceLt80LmpBadge.hasPurpleTriangle(data, 'RV Price');
                 });
             }
+            if (blueTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return reverbHasBlueTriangle(data);
+                });
+            }
 
             updateSummary();
         }
@@ -5032,6 +4997,7 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
                     applyFilters();
                 }
             });
@@ -5042,10 +5008,19 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                                        applyFilters();
+                    if (on) blueTriangleFilterActive = false;
+                    applyFilters();
                 }
             });
         }
+        $('#reverb-blue-triangle-badge').on('click', function() {
+            blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            applyFilters();
+        });
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #reverb-stock-filter, #sold-filter, #status-filter').on('change', function() {
             applyFilters();
@@ -5202,6 +5177,14 @@
                     PriceLt80LmpBadge.update('#reverb-price-lt80-lmp-badge', table.getData(), 'reverb', 'RV Price');
                 }
             }
+            let blueTriangleCount = 0;
+            (table ? table.getData() : []).forEach(function(row) {
+                if (reverbHasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#reverb-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncReverbTriangleBadgeState === 'function') syncReverbTriangleBadgeState();
         }
 
         function csrfToken() {
@@ -5960,7 +5943,7 @@
             reverb_daily_qty_x_amount: 1, 'R Stock': 1, Views: 1, CVR: 1, nr_req: 1
         };
         const COL_VIS_PRICING = {
-            STANDARD_PRICE: 1, push_std_prc: 1, 'RV Price': 1, 'A Price': 1, lmp_price: 1,
+            STANDARD_PRICE: 1, 'RV Price': 1, 'A Price': 1, lmp_price: 1,
             linked_lmp_skus: 1, linked_lmp_sku_add: 1, 'ROI%': 1, 'GPFT%': 1, NPFT: 1, NROI: 1,
             Profit: 1, 'Sales L30': 1, LP_productmaster: 1, Ship_productmaster: 1, prmt_pct: 1,
             cpn_pct: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
@@ -5970,10 +5953,9 @@
         };
         function reverbColVisPlainTitle(def) {
             const field = def && def.field ? String(def.field) : '';
-            if (field === 'push_std_prc') return 'Push Std';
             if (field === 'push_bump') return 'Push B%';
             if (field === 'prmt_pct') return 'PRMT %';
-            if (field === 'cpn_pct') return 'CPN %';
+            if (field === 'cpn_pct') return 'cvr %';
             if (field === 'push_price') return 'Push';
             const raw = (def && def.title != null) ? def.title : field;
             const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();

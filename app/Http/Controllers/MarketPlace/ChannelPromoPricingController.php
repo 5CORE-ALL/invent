@@ -33,6 +33,18 @@ class ChannelPromoPricingController extends Controller
     /** Channels that support background Push Prc queue (Std listing + sale + coupon). */
     private const PUSH_QUEUE_CHANNELS = ['ebay1', 'ebay2', 'ebay2op', 'ebay3'];
 
+    /** Channels that support background S PRC → live listing price queue. */
+    private const PUSH_SPRICE_CHANNELS = [
+        'ebay1', 'ebay2', 'ebay2op', 'ebay3',
+        'shopify_b2c', 'shopify_b2b', 'reverb',
+        'macys', 'macy', 'bestbuy', 'walmart', 'wayfair',
+        'temu', 'temu2', 'doba', 'doba_withoutship',
+        'tiktok', 'tiktok2', 'topdawg', 'purchasing_power',
+        'aliexpress', 'shein', 'newegg', 'faire', 'pls',
+        'mercari_wship', 'mercari_woship', 'fb_marketplace',
+        'vinted', 'depop',
+    ];
+
     /** Channels that support background Push PRMT % sale-event queue (chunked). */
     private const PUSH_PRMT_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
 
@@ -173,19 +185,19 @@ class ChannelPromoPricingController extends Controller
 
     /**
      * Queue S PRC → live listing price (background). Survives page close.
-     * ebay1 / ebay2 / ebay2op / ebay3. Does not create sale or coupon.
+     * ebay1 / ebay2 / ebay2op / ebay3 / shopify_b2c / reverb. Does not create sale or coupon.
      */
     public function queuePushSprice(Request $request, string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
-        if (! in_array($channel, self::PUSH_QUEUE_CHANNELS, true)) {
+        if (! in_array($channel, self::PUSH_SPRICE_CHANNELS, true)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel for S PRC queue'], 422);
         }
 
         if (! ChannelPushSpriceRunner::livePushAllowed()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Live eBay S PRC push is disabled on local (it was overwriting listings with stale prices). Set CHANNEL_PUSH_SPRICE_ALLOW_LOCAL=true in .env only if you intend to push.',
+                'message' => 'Live S PRC push is disabled on local (it was overwriting listings with stale prices). Set CHANNEL_PUSH_SPRICE_ALLOW_LOCAL=true in .env only if you intend to push.',
             ], 403);
         }
 
@@ -257,7 +269,7 @@ class ChannelPromoPricingController extends Controller
     public function pushSpriceJobStatus(string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
-        if (! in_array($channel, self::PUSH_QUEUE_CHANNELS, true)) {
+        if (! in_array($channel, self::PUSH_SPRICE_CHANNELS, true)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
@@ -290,7 +302,7 @@ class ChannelPromoPricingController extends Controller
     public function cancelPushSprice(string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
-        if (! in_array($channel, self::PUSH_QUEUE_CHANNELS, true)) {
+        if (! in_array($channel, self::PUSH_SPRICE_CHANNELS, true)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
@@ -1300,48 +1312,7 @@ class ChannelPromoPricingController extends Controller
      */
     private function defaultDilPrmtRules(string $channel = ''): array
     {
-        if (in_array($channel, ['macys', 'macy', 'bestbuy'], true)) {
-            return [
-                ['key' => '0-sold-red', 'label' => '0 Sold · Red (<25%)', 'prmt' => 10],
-                ['key' => '0-sold-green', 'label' => '0 Sold · Green (25–50%)', 'prmt' => 8],
-                ['key' => '0-sold-pink', 'label' => '0 Sold · Pink (50%+)', 'prmt' => 3],
-                ['key' => '0-20', 'label' => '0–20%', 'prmt' => 10],
-                ['key' => '20-40', 'label' => '20–40%', 'prmt' => 8],
-                ['key' => '40-60', 'label' => '40–60%', 'prmt' => 5],
-                ['key' => '60-80', 'label' => '60–80%', 'prmt' => 3],
-                ['key' => '80-100', 'label' => '80–100%', 'prmt' => 1],
-                ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
-            ];
-        }
-
-        if ($channel === 'reverb') {
-            return [
-                ['key' => '0-20', 'label' => '0.1–20%', 'prmt' => 10],
-                ['key' => '20-40', 'label' => '20–40%', 'prmt' => 8],
-                ['key' => '40-60', 'label' => '40–60%', 'prmt' => 5],
-                ['key' => '60-80', 'label' => '60–80%', 'prmt' => 3],
-                ['key' => '80-100', 'label' => '80–100%', 'prmt' => 1],
-                ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
-            ];
-        }
-
-        if (in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true)) {
-            return $this->defaultEbayDilPrmtRules();
-        }
-
-        return [
-            ['key' => '0-10', 'label' => '0–10%', 'prmt' => 10],
-            ['key' => '10-20', 'label' => '10–20%', 'prmt' => 9],
-            ['key' => '20-30', 'label' => '20–30%', 'prmt' => 8],
-            ['key' => '30-40', 'label' => '30–40%', 'prmt' => 7],
-            ['key' => '40-50', 'label' => '40–50%', 'prmt' => 6],
-            ['key' => '50-60', 'label' => '50–60%', 'prmt' => 5],
-            ['key' => '60-70', 'label' => '60–70%', 'prmt' => 4],
-            ['key' => '70-80', 'label' => '70–80%', 'prmt' => 3],
-            ['key' => '80-90', 'label' => '80–90%', 'prmt' => 2],
-            ['key' => '90-100', 'label' => '90–100%', 'prmt' => 1],
-            ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
-        ];
+        return $this->defaultEbayDilPrmtRules();
     }
 
     /**

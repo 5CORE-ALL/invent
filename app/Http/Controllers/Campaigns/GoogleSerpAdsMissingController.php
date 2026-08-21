@@ -41,16 +41,15 @@ class GoogleSerpAdsMissingController extends Controller
     public static function missingTotalCount(): int
     {
         try {
-            return (int) Cache::remember(self::SIDEBAR_COUNT_CACHE_KEY, 300, function () {
-                return (new self)->computeMissingTotal();
-            });
-        } catch (\Throwable $e) {
-            try {
-                return (new self)->computeMissingTotal();
-            } catch (\Throwable $e2) {
-                return 0;
+            $cached = Cache::get(self::SIDEBAR_COUNT_CACHE_KEY);
+            if ($cached !== null) {
+                return (int) $cached;
             }
+        } catch (\Throwable $e) {
+            // File cache dirs may be missing mid-request after optimize:clear.
         }
+
+        return 0;
     }
 
     public static function forgetMissingTotalCache(): void

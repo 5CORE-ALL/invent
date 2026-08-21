@@ -943,12 +943,16 @@ class TaskController extends Controller
             report($e);
         }
 
-        // Refresh today's KPI history snapshots so status dots have day-over-day data.
+        // Once per California day — do not rewrite every KPI row on each /home load.
         try {
-            foreach (\App\Models\BadgeData::query()->get(['page_name', 'data']) as $badgeRow) {
-                if (is_array($badgeRow->data)) {
-                    \App\Models\BadgeDataHistory::recordPage((string) $badgeRow->page_name, $badgeRow->data);
+            $historyKey = 'dash_kpi_history_recorded:'.now('America/Los_Angeles')->toDateString();
+            if (! \Illuminate\Support\Facades\Cache::get($historyKey)) {
+                foreach (\App\Models\BadgeData::query()->get(['page_name', 'data']) as $badgeRow) {
+                    if (is_array($badgeRow->data)) {
+                        \App\Models\BadgeDataHistory::recordPage((string) $badgeRow->page_name, $badgeRow->data);
+                    }
                 }
+                \Illuminate\Support\Facades\Cache::put($historyKey, 1, now('America/Los_Angeles')->endOfDay());
             }
         } catch (\Throwable $e) {
             report($e);

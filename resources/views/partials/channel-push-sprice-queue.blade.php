@@ -12,7 +12,57 @@
                 ebay2: '/save-ebay2-sprice',
                 ebay2op: '/save-ebay2-sprice',
                 ebay3: '/ebay3/save-sprice',
+                shopify_b2c: '/shopify/save-sprice',
+                shopify_b2b: '/shopify-b2b/save-sprice',
+                reverb: '/reverb-save-sprice',
+                macys: '/macys-save-sprice-tabulator',
+                macy: '/macys-save-sprice-tabulator',
+                bestbuy: '/bestbuy-save-sprice',
+                walmart: '/save-walmart-sprice',
+                wayfair: '/wayfair/pricing-save-sprice',
+                temu: '/temu-pricing/save-sprice',
+                temu2: '/temu2-pricing/save-sprice',
+                doba: '/doba/save-sprice',
+                doba_withoutship: '/doba/save-sprice-withoutship',
+                tiktok: '/tiktok-save-sprice',
+                tiktok2: '/tiktok-2-save-sprice',
+                topdawg: '/topdawg-save-sprice',
+                purchasing_power: '/pp-save-sprice-tabulator',
+                aliexpress: '/aliexpress/save-sprice',
+                shein: '/shein/save-sprice',
+                newegg: '/newegg-pricing-save-sprice',
+                faire: '/faire/pricing-save-sprice',
+                pls: '/save-pls-sprice',
+                vinted: '/vinted/pricing/save-sprice-tabulator',
+                depop: '/depop/pricing/save-sprice',
             })[CH_PUSH_SPRICE_CHANNEL] || '';
+            const CH_PUSH_SPRICE_PRICE_FIELD = ({
+                ebay1: 'eBay Price',
+                ebay2: 'eBay Price',
+                ebay2op: 'eBay Price',
+                ebay3: 'eBay Price',
+                shopify_b2c: 'Price',
+                shopify_b2b: 'Price',
+                reverb: 'RV Price',
+                macys: 'MC Price',
+                macy: 'MC Price',
+                bestbuy: 'BB Price',
+                walmart: 'price',
+                wayfair: 'price',
+                temu: 'temu_price',
+                temu2: 'temu_price',
+                doba: 'doba Price',
+                doba_withoutship: 'doba Price',
+                tiktok: 'Price',
+                tiktok2: 'Price',
+                topdawg: 'Price',
+                purchasing_power: 'Price',
+                aliexpress: 'Price',
+                shein: 'Price',
+                newegg: 'Price',
+                faire: 'Price',
+                pls: 'Price',
+            })[CH_PUSH_SPRICE_CHANNEL] || 'Price';
             const CH_PUSH_SPRICE_CHUNK = 200;
             let chPushSpriceBuf = {};
             let chPushSpriceTimer = null;
@@ -68,7 +118,7 @@
                     + '<div class="bar"><span id="ch-promo-push-sprice-bar"></span></div>';
                 document.body.appendChild(box);
                 document.getElementById('ch-promo-push-sprice-cancel').addEventListener('click', function() {
-                    if (!confirm('Cancel remaining S PRC pushes? Already-queued SKUs that finished stay on eBay.')) return;
+                    if (!confirm('Cancel remaining S PRC pushes? Already-queued SKUs that finished stay on the marketplace.')) return;
                     $.ajax({
                         url: CH_PUSH_SPRICE_URL + '/cancel',
                         method: 'POST',
@@ -138,7 +188,12 @@
                         if (st === 'ok') {
                             patch.SPRICE_STATUS = 'pushed';
                             const live = Number(t.ebay_price != null ? t.ebay_price : t.price);
-                            if (live > 0) patch['eBay Price'] = live;
+                            if (live > 0) {
+                                patch[CH_PUSH_SPRICE_PRICE_FIELD] = live;
+                                if (CH_PUSH_SPRICE_PRICE_FIELD !== 'eBay Price') {
+                                    patch['eBay Price'] = live;
+                                }
+                            }
                         } else if (st === 'failed') {
                             patch.SPRICE_STATUS = 'error';
                         } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
@@ -283,7 +338,7 @@
                 const p = chPushSpriceRound2(price);
                 if (!sku || !(p > 0)) return;
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
-                const live = chPushSpriceRound2(d['eBay Price']);
+                const live = chPushSpriceRound2(d[CH_PUSH_SPRICE_PRICE_FIELD]);
                 if (live > 0 && chPushSpriceNearlyEqual(p, live)) return;
                 try {
                     if (row && typeof row.update === 'function') row.update({ SPRICE_STATUS: 'queued' });
@@ -326,7 +381,7 @@
                     }
                     if (!(fill > 0) && std > 0) fill = std;
                     if (!(fill > 0)) return;
-                    const live = chPushSpriceRound2(d['eBay Price']);
+                    const live = chPushSpriceRound2(d[CH_PUSH_SPRICE_PRICE_FIELD]);
                     if (!(live > 0) || chPushSpriceNearlyEqual(fill, live)) return;
                     const current = chPushSpriceRound2(d.SPRICE);
                     if (persistMissing && CH_PUSH_SPRICE_SAVE && (!(current > 0) || !chPushSpriceNearlyEqual(current, fill))) {

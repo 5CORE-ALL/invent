@@ -20,6 +20,8 @@ class BadgeCalculatorRegistry
             AllMarketplaceMasterBadgeCalculator::class,
             VideoMasterBadgeCalculator::class,
             VideosMasterBadgeCalculator::class,
+            RawImagesBadgeCalculator::class,
+            RawImagesBatchCooBadgeCalculator::class,
             VideoAdsMasterBadgeCalculator::class,
             CustomerCareBadgeCalculator::class,
             AccountHealthBadgeCalculator::class,

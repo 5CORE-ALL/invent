@@ -20,6 +20,8 @@ class BadgeDataCatalog
             'on-sea-transit' => 'On Sea Transit',
             'video-master' => 'Video Master',
             'videos-master' => 'Videos',
+            'raw-images' => 'Raw Images',
+            'raw-images-batch-coo' => 'Raw Images (Batch +COO)',
             'video-ads-master' => 'Video Request & Check',
             'customer-care' => 'Customer Care',
             'account-health' => 'Account Health',
@@ -97,6 +99,16 @@ class BadgeDataCatalog
                 'missing_ts' => 'Missing TS',
                 'missing_bs' => 'Missing BS',
                 'missing_pb' => 'Missing PB',
+            ],
+            'raw-images' => [
+                'sku_count' => 'SKUs',
+                'with_raw_image' => 'With raw image',
+                'missing' => 'Missing Raw Images',
+            ],
+            'raw-images-batch-coo' => [
+                'sku_count' => 'SKUs',
+                'with_raw_image' => 'With raw image',
+                'missing' => 'Missing Raw Images',
             ],
             'video-ads-master' => [
                 'required' => 'Required',

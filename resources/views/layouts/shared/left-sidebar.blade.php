@@ -2505,6 +2505,24 @@
                             <a href="{{ route('image.master') }}">PM Image Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('raw.images') }}">
+                                PM Raw Images
+                                @php $rawImagesMissingCount = \App\Http\Controllers\ProductMaster\RawImagesController::missingCountForSidebar(); @endphp
+                                @if($rawImagesMissingCount > 0)
+                                    <span class="badge bg-danger rounded-pill">{{ $rawImagesMissingCount }}</span>
+                                @endif
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('raw.images.batch.coo') }}">
+                                PM Raw Images (Batch +COO)
+                                @php $rawImagesBatchCooMissingCount = \App\Http\Controllers\ProductMaster\RawImagesController::missingCountForSidebar(\App\Models\ProductRawImage::KIND_BATCH_COO); @endphp
+                                @if($rawImagesBatchCooMissingCount > 0)
+                                    <span class="badge bg-danger rounded-pill">{{ $rawImagesBatchCooMissingCount }}</span>
+                                @endif
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('video.master') }}">PM Video Master</a>
                         </li>
                         <li>

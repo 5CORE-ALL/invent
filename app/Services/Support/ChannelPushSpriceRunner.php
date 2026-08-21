@@ -2,9 +2,11 @@
 
 namespace App\Services\Support;
 
+use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\EbayController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
+use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -300,9 +302,39 @@ class ChannelPushSpriceRunner
             'price' => $price,
         ]);
 
+        $cvrMarket = [
+            'shopify_b2b' => 'shopifyb2b',
+            'reverb' => 'reverb',
+            'walmart' => 'walmart',
+            'macys' => 'macys',
+            'macy' => 'macys',
+            'bestbuy' => 'bestbuy',
+            'temu' => 'temu',
+            'temu2' => 'temu2',
+            'doba' => 'doba',
+            'doba_withoutship' => 'doba',
+            'tiktok' => 'tiktok',
+            'tiktok2' => 'tiktok2',
+            'topdawg' => 'topdawg',
+            'purchasing_power' => 'purchasingpower',
+            'faire' => 'faire',
+            'pls' => 'pls',
+            'aliexpress' => 'aliexpress',
+            'shein' => 'shein',
+        ][$this->channel] ?? null;
+
+        if ($cvrMarket) {
+            return app(CvrMasterController::class)->pushPriceToAmazon(Request::create('/cvr-master-push-price', 'POST', [
+                'sku' => $sku,
+                'price' => $price,
+                'marketplace' => $cvrMarket,
+            ]));
+        }
+
         return match ($this->channel) {
             'ebay2', 'ebay2op' => app(EbayTwoController::class)->pushEbay2Price($req),
             'ebay3' => app(EbayThreeController::class)->pushEbay3Price($req),
+            'shopify_b2c' => app(OverallAmazonController::class)->pushShopifyB2CPrice($req),
             default => app(EbayController::class)->pushEbayPrice($req),
         };
     }
