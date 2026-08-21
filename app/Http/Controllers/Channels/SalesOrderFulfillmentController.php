@@ -141,6 +141,7 @@ class SalesOrderFulfillmentController extends Controller
                 ->orderBy('channel')
                 ->get($columns);
 
+            $this->autoFillMissingChOrdersLinks();
             $managerByMpKey = $this->managerChannelsByMpKey();
             $pendingBySlug = $this->pendingOrderCountsBySlug();
 
@@ -151,7 +152,11 @@ class SalesOrderFulfillmentController extends Controller
                 $hasManager = $slug !== null;
                 $connected = $hasManager ? $this->apiConfig->isConfigured($slug) : false;
                 $pending = $hasManager ? (int) ($pendingBySlug[$slug] ?? 0) : null;
+                $ordersUrl = $slug ? route('marketplace.orders', $slug) : null;
                 $chOrdersLink = $hasChOrdersLink ? trim((string) ($row->ch_orders_link ?? '')) : '';
+                if ($chOrdersLink === '' && $ordersUrl) {
+                    $chOrdersLink = $ordersUrl;
+                }
 
                 return [
                     'id' => $row->id,
@@ -165,7 +170,7 @@ class SalesOrderFulfillmentController extends Controller
                     'has_manager' => $hasManager,
                     'oc_connected' => $connected,
                     'pending_count' => $pending,
-                    'orders_url' => $slug ? route('marketplace.orders', $slug) : null,
+                    'orders_url' => $ordersUrl,
                 ];
             })->values();
 
@@ -3426,6 +3431,38 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * When a channel has no saved Ch Orders URL, store the in-app marketplace orders page.
+     */
+    protected function autoFillMissingChOrdersLinks(): void
+    {
+        if (! Schema::hasTable('channel_master') || ! Schema::hasColumn('channel_master', 'ch_orders_link')) {
+            return;
+        }
+
+        try {
+            $managerByMpKey = $this->managerChannelsByMpKey();
+            $rows = ChannelMaster::query()
+                ->where(function ($q) {
+                    $q->whereNull('ch_orders_link')->orWhere('ch_orders_link', '');
+                })
+                ->get(['id', 'channel']);
+
+            foreach ($rows as $row) {
+                $manager = $managerByMpKey[strtolower(trim((string) $row->channel))] ?? null;
+                $slug = $manager['slug'] ?? null;
+                if (! is_string($slug) || $slug === '') {
+                    continue;
+                }
+                ChannelMaster::query()->where('id', $row->id)->update([
+                    'ch_orders_link' => route('marketplace.orders', $slug),
+                ]);
+            }
+        } catch (\Throwable) {
+            // Display still falls back to orders_url / order_url.
+        }
+    }
+
+    /**
      * Resolve channel_master id + Ch Orders link for each Marketplace Manager slug.
      *
      * @return array<string, array{channel_id: ?int, ch_orders_link: ?string}>
@@ -3437,6 +3474,7 @@ class SalesOrderFulfillmentController extends Controller
             return $out;
         }
 
+        $this->autoFillMissingChOrdersLinks();
         $hasChOrdersLink = Schema::hasColumn('channel_master', 'ch_orders_link');
         $select = ['id', 'channel'];
         if ($hasChOrdersLink) {
@@ -3472,6 +3510,9 @@ class SalesOrderFulfillmentController extends Controller
                     $meta = $byName[$key];
                     break;
                 }
+            }
+            if (empty($meta['ch_orders_link'])) {
+                $meta['ch_orders_link'] = route('marketplace.orders', $slug);
             }
             $out[$slug] = $meta;
         }
