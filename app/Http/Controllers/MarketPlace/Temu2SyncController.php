@@ -651,7 +651,7 @@ class Temu2SyncController extends Controller
                 $searchName,
                 $page,
                 $perPage,
-                $liveService,
+            $liveService,
                 $tabs
             );
 
