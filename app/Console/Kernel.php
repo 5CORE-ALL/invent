@@ -104,6 +104,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\SyncShipmentTrackingStatus::class,
         \App\Console\Commands\RefreshFulfillmentShipmentStatus::class,
         \App\Console\Commands\SnapshotSalesOrderFulfillmentDaily::class,
+        \App\Console\Commands\PullSofMissingTracking::class,
         \App\Console\Commands\StoreAmazonUtilizationCounts::class,
         \App\Console\Commands\StoreAmazonFbaUtilizationCounts::class,
         \App\Console\Commands\StoreEbayUtilizationCounts::class,
@@ -2441,6 +2442,15 @@ class Kernel extends ConsoleKernel
             ->between('07:00', '21:00')
             ->name('fulfillment-refresh-marketplace-orders-pst')
             ->withoutOverlapping(50)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Pull missing tracking numbers onto SOF (Veeqo/GOFO + Temu OpenAPI).
+        $schedule->command('sof:pull-missing-tracking --limit=80 --temu-limit=40')
+            ->hourly()
+            ->timezone('America/Los_Angeles')
+            ->name('sof-pull-missing-tracking-hourly')
+            ->withoutOverlapping(55)
             ->runInBackground()
             ->appendOutputTo($log);
 
