@@ -32,6 +32,7 @@ use App\Services\PefEbayPricePullService;
 use App\Services\Ebay1PromotionService;
 use App\Services\EbayPushService;
 use App\Services\LmpSkuGroupService;
+use App\Support\Marketplace\EbayListingEnded;
 
 class EbayThreeController extends Controller
 {
@@ -278,7 +279,7 @@ class EbayThreeController extends Controller
         });
         $skus = array_values($nonParentSkus);
 
-        $ebayMetricsAll = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'l7_views', 'item_id')
+        $ebayMetricsAll = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'l7_views', 'item_id', 'listing_status')
             ->whereIn('sku', $allSkus)
             ->get();
         $ebayMetrics = $ebayMetricsAll->keyBy('sku');
@@ -966,6 +967,7 @@ class EbayThreeController extends Controller
                 $row['eBay L30'] = $ebayMetric->ebay_l30 ?? 0;
                 $row['views'] = $ebayMetric->views ?? 0;
                 $row['eBay Price'] = $ebayMetric->ebay_price ?? 0;
+                $row = array_merge($row, EbayListingEnded::fields($ebayMetric));
             
                 // eBay3 Metrics (common fields)
                 $row['eBay L60'] = $ebayMetric->ebay_l60 ?? 0;
@@ -1838,7 +1840,7 @@ class EbayThreeController extends Controller
         // Get all unique SKUs from product master
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $ebayMetricsAll = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'item_id', 'lmp_data', 'lmp_link')
+        $ebayMetricsAll = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'item_id', 'lmp_data', 'lmp_link', 'listing_status')
             ->whereIn('sku', $skus)
             ->get();
         $ebayMetrics = $ebayMetricsAll->keyBy('sku');
@@ -1951,6 +1953,7 @@ class EbayThreeController extends Controller
             //Start Ebay3 Data
             $processedItem['eBay L30'] = $ebayMetric->ebay_l30 ?? 0;
             $processedItem['eBay Price'] = $ebayMetric->ebay_price ?? 0;
+            $processedItem = array_merge($processedItem, EbayListingEnded::fields($ebayMetric));
             $processedItem['views'] = $ebayMetric->views ?? 0;
 
             // Add values from product_master

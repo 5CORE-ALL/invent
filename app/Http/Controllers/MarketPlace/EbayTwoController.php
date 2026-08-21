@@ -28,6 +28,7 @@ use App\Models\EbaySkuCompetitor;
 use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use App\Services\PefEbayPricePullService;
+use App\Support\Marketplace\EbayListingEnded;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -203,7 +204,7 @@ class EbayTwoController extends Controller
         // Key by NBSP / Unicode space–safe normalized SKU: ebay2_metrics.sku can contain
         // non-breaking spaces (U+00A0) while product_masters.sku uses normal spaces, which
         // otherwise breaks the lookup (item_id/price missing → row wrongly shows as Missing L).
-        $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'l7_views', 'item_id', 'ebay_stock')
+        $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'l7_views', 'item_id', 'ebay_stock', 'listing_status')
             ->get()
             ->keyBy(function ($metric) {
                 return ShopifySku::normalizeSkuForShopifyLookup($metric->sku);
@@ -672,6 +673,7 @@ class EbayTwoController extends Controller
             $row["eBay L30"] = $ebayMetric->ebay_l30 ?? 0;
             $row["eBay L60"] = $ebayMetric->ebay_l60 ?? 0;
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
+            $row = array_merge($row, EbayListingEnded::fields($ebayMetric));
             $pmNorm = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
             $row['price_yesterday'] = $priceYesterdayBySku[$pmNorm] ?? null;
             $row['views'] = $ebayMetric->views ?? 0;
@@ -1007,6 +1009,7 @@ class EbayTwoController extends Controller
                 $row["eBay L30"] = $metric->ebay_l30 ?? 0;
                 $row["eBay L60"] = $metric->ebay_l60 ?? 0;
                 $row["eBay Price"] = $metric->ebay_price ?? 0;
+                $row = array_merge($row, EbayListingEnded::fields($metric));
                 $row['price_yesterday'] = $priceYesterdayBySku[$normKey] ?? null;
                 $row['views'] = $metric->views ?? 0;
                 $row['l7_views'] = $metric->l7_views ?? 0;

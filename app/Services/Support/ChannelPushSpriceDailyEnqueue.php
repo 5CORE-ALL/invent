@@ -145,6 +145,9 @@ class ChannelPushSpriceDailyEnqueue
                     if (! ($live > 0)) {
                         continue;
                     }
+                    if (\App\Support\Marketplace\EbayListingEnded::isEnded($row->listing_status ?? null)) {
+                        continue;
+                    }
                     $skus[] = $sku;
                     $liveBySku[$sku] = $live;
                     $seen[$sku] = true;
@@ -161,6 +164,12 @@ class ChannelPushSpriceDailyEnqueue
                     $live = $liveBySku[$sku] ?? 0;
                     $std = $stdBySku[$sku] ?? 0;
                     $fill = $this->spriceForChannel($channel, $std, $promoBySku[$sku] ?? [], $savedSprice[$sku] ?? 0);
+                    $saved = $savedSprice[$sku] ?? 0;
+                    // Page S PRC includes Dil/CVR slabs; if that was saved, push it even when
+                    // saved promo % is still 0 and Std already matches live Price.
+                    if ($saved > 0 && abs($saved - $live) >= 0.005) {
+                        $fill = $saved;
+                    }
                     if (! ($fill > 0) || ! ($live > 0)) {
                         continue;
                     }

@@ -241,6 +241,7 @@ class ChannelPushSpriceRunner
                     'sku' => $sku,
                     'error' => $error,
                 ]);
+                $this->markListingEndedIfNeeded($sku, $error);
             }
 
             $store->update(function (array $state) use ($index, $sku, $ok, $error, $live) {
@@ -277,6 +278,37 @@ class ChannelPushSpriceRunner
 
             $store->appendMessage(($ok ? 'OK ' : 'Fail ').$sku.($error ? (': '.$error) : ''), $ok);
             usleep(250000);
+        }
+    }
+
+    private function markListingEndedIfNeeded(string $sku, ?string $error): void
+    {
+        if (! \App\Support\Marketplace\EbayListingEnded::looksEndedError($error)) {
+            return;
+        }
+        $class = match ($this->channel) {
+            'ebay2' => \App\Models\Ebay2Metric::class,
+            'ebay3' => \App\Models\Ebay3Metric::class,
+            'ebay1' => \App\Models\EbayMetric::class,
+            default => null,
+        };
+        if (! $class) {
+            return;
+        }
+        try {
+            $row = $class::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                ->first();
+            if (! $row) {
+                return;
+            }
+            $row->listing_status = 'ENDED';
+            if (empty($row->inactive_reason)) {
+                $row->inactive_reason = 'Ended listing';
+            }
+            $row->save();
+        } catch (\Throwable) {
+            // ignore
         }
     }
 

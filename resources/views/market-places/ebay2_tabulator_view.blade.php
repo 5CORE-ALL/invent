@@ -670,6 +670,10 @@
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="ebay2-ended-listing-badge"
+                            style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
+                            title="Ended listing">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay2-red-triangle-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="Red triangle: S PRC &gt; LMP. Click to show only those rows. Click again to clear.">
@@ -1540,6 +1544,7 @@
         let redTriangleFilterActive = false;
         let lmpMissingFilterActive = false;
         let priceLt80LmpFilterActive = false;
+        let endedListingFilterActive = false;
 
         function rowEbay2StockQty(data) {
             return parseFloat(data['E Stock'] || 0) || 0;
@@ -1562,9 +1567,21 @@
         }
         function ebay2HasBlueTriangle(data) {
             if (isEbay2TabulatorParentRow(data)) return false;
+            if (ebay2IsEndedListing(data)) return false;
             const sprice = ebay2RowSpriceForAlert(data);
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function ebay2IsEndedListing(data) {
+            if (!data) return false;
+            const sku = String(data['(Child) sku'] || data.sku || '').trim();
+            if (!sku || sku.toUpperCase().indexOf('PARENT') !== -1) return false;
+            if (data.is_parent_summary || data.is_parent_row) return false;
+            if (typeof chPromoIsEndedListing === 'function') return chPromoIsEndedListing(data);
+            if (data.listing_ended === true || data.listing_ended === 1 || data.listing_ended === '1') return true;
+            const raw = String(data.listing_status || '').trim().toUpperCase();
+            return raw === 'ENDED' || raw === 'INACTIVE' || raw === 'UNSOLD'
+                || raw === 'COMPLETED' || raw === 'SOLD';
         }
         function ebay2HasRedTriangle(data) {
             if (isEbay2TabulatorParentRow(data)) return false;
@@ -1588,6 +1605,10 @@
             $('#ebay2-purple-triangle-badge').css({
                 outline: priceLt80LmpFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: priceLt80LmpFilterActive ? '2px' : ''
+            });
+            $('#ebay2-ended-listing-badge').css({
+                outline: endedListingFilterActive ? '3px solid #0d6efd' : '',
+                outlineOffset: endedListingFilterActive ? '2px' : ''
             });
         }
         function ebay2NormalizeParentKey(val) {
@@ -2861,6 +2882,7 @@
                     redTriangleFilterActive = false;
                     lmpMissingFilterActive = false;
                     priceLt80LmpFilterActive = false;
+                    endedListingFilterActive = false;
                 }
                 applyFilters();
             });
@@ -2870,6 +2892,7 @@
                     blueTriangleFilterActive = false;
                     lmpMissingFilterActive = false;
                     priceLt80LmpFilterActive = false;
+                    endedListingFilterActive = false;
                 }
                 applyFilters();
             });
@@ -2879,6 +2902,7 @@
                     blueTriangleFilterActive = false;
                     redTriangleFilterActive = false;
                     priceLt80LmpFilterActive = false;
+                    endedListingFilterActive = false;
                 }
                 applyFilters();
             });
@@ -2888,6 +2912,18 @@
                     blueTriangleFilterActive = false;
                     redTriangleFilterActive = false;
                     lmpMissingFilterActive = false;
+                    endedListingFilterActive = false;
+                }
+                applyFilters();
+            });
+            $('#ebay2-ended-listing-badge').on('click', function() {
+                endedListingFilterActive = !endedListingFilterActive;
+                if (endedListingFilterActive) {
+                    blueTriangleFilterActive = false;
+                    redTriangleFilterActive = false;
+                    lmpMissingFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                    $('#view-mode-filter').val('sku');
                 }
                 applyFilters();
             });
@@ -3270,6 +3306,7 @@
                 ajaxResponse: function(url, params, response) {
                     // Extract the data array from the response object
                     allTableData = response.data || []; // Store unfiltered data
+                    window.allTableData = allTableData;
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     console.log('API Response - Total rows:', allTableData.length);
                     
@@ -3855,6 +3892,9 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Price $'
                                     + value.toFixed(2) + ' &gt; LMP $' + lmpPrice.toFixed(2) + '"></i>'
                                 : '';
+                            const yellowTri = ebay2IsEndedListing(rowData)
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#ffc107;font-size:10px;margin-left:3px;" title="Ended listing"></i>'
+                                : '';
                             const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, lmpPrice) : '');
                             const yesterday = parseFloat(rowData.price_yesterday);
                             const hasYesterday = isFinite(yesterday) && yesterday > 0;
@@ -3885,10 +3925,15 @@
                             }
 
                             const priceFormatted = '$' + value.toFixed(2);
-                            const priceColor = overLmp ? '#dc3545' : 'inherit';
-                            const priceWeight = overLmp ? '600' : 'normal';
+                            const ended = ebay2IsEndedListing(rowData);
+                            const priceColor = ended ? '#d39e00' : (overLmp ? '#dc3545' : 'inherit');
+                            const priceWeight = (ended || overLmp) ? '600' : 'normal';
+                            const priceTitle = ended ? 'Ended listing' : 'View Price chart';
                             if (sku && !isParent) {
-                                return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}${redTri}${purpleTri}</span>${dotBtn}</span>`;
+                                return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="${priceTitle}" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}${yellowTri}${redTri}${purpleTri}</span>${dotBtn}</span>`;
+                            }
+                            if (ended) {
+                                return `<span style="color: #d39e00; font-weight: 600;" title="Ended listing">${priceFormatted}${yellowTri}</span>`;
                             }
                             if (overLmp) {
                                 return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}${redTri}</span>`;
@@ -4104,7 +4149,11 @@
                             const differsFromPrice = ebayPrice > 0
                                 && Math.round(sprice * 100) !== Math.round(ebayPrice * 100);
                             const overLmp = lmp > 0 && sprice > lmp;
-                            const blueTri = differsFromPrice
+                            const ended = ebay2IsEndedListing(rowData);
+                            const yellowTri = ended
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#ffc107;font-size:10px;margin-left:3px;" title="Ended listing"></i>'
+                                : '';
+                            const blueTri = (!ended && differsFromPrice)
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
                                 : '';
@@ -4114,14 +4163,16 @@
                                 : '';
 
                             let priceHtml = formattedValue;
-                            if (overLmp) {
+                            if (ended) {
+                                priceHtml = '<span style="color:#d39e00;font-weight:700;" title="Ended listing">' + formattedValue + '</span>';
+                            } else if (overLmp) {
                                 priceHtml = '<span style="color:#dc3545;font-weight:600;">' + formattedValue + '</span>';
                             } else if (hasCustomSprice === false) {
                                 priceHtml = '<span style="color:#0d6efd;font-weight:500;">' + formattedValue + '</span>';
                             }
 
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                + priceHtml + blueTri + redTri + '</span>';
+                                + priceHtml + yellowTri + blueTri + redTri + '</span>';
                         },
                         width: 92
                     },
@@ -4760,6 +4811,11 @@
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'eBay Price');
                     });
                 }
+                if (endedListingFilterActive) {
+                    table.addFilter(function(data) {
+                        return ebay2IsEndedListing(data);
+                    });
+                }
 
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
@@ -4948,16 +5004,21 @@
 
                 let blueTriangleCount = 0;
                 let redTriangleCount = 0;
+                let endedListingCount = 0;
                 const triangleRows = (allTableData && allTableData.length) ? allTableData : table.getData();
                 triangleRows.forEach(function(row) {
                     if (ebay2HasBlueTriangle(row)) blueTriangleCount++;
                     if (ebay2HasRedTriangle(row)) redTriangleCount++;
+                    if (ebay2IsEndedListing(row)) endedListingCount++;
                 });
                 $('#ebay2-blue-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
                 );
                 $('#ebay2-red-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
+                );
+                $('#ebay2-ended-listing-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + endedListingCount.toLocaleString()
                 );
                 if (window.PriceGtLmpBadge) {
                     PriceGtLmpBadge.paint('#ebay2-red-triangle-badge', redTriangleCount);

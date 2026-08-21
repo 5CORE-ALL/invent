@@ -37,6 +37,7 @@ use App\Models\ChannelMasterSummary;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Services\ChannelPromoPricingService;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
+use App\Support\Marketplace\EbayListingEnded;
 
 class EbayController extends Controller
 {
@@ -725,7 +726,8 @@ class EbayController extends Controller
                 'views',
                 'l7_views',
                 'item_id',
-                'ebay_stock'
+                'ebay_stock',
+                'listing_status'
             )
             ->whereIn('sku', $skus)
             ->get()
@@ -1174,6 +1176,7 @@ class EbayController extends Controller
             $row["eBay L45"] = round((($row["eBay L30"] ?? 0) + ($row["eBay L60"] ?? 0)) / 2, 2);
             $row["eBay L7"] = $ebayMetric?->ebay_l7 ?? 0;
             $row["eBay Price"] = $ebayMetric?->ebay_price ?? 0;
+            $row = array_merge($row, EbayListingEnded::fields($ebayMetric));
             $row['price_yesterday'] = $priceYesterdayBySku[$pmNorm] ?? null;
             $row['price_yesterday_date'] = $priceYesterdayDateBySku[$pmNorm] ?? null;
             $row['sprice_yesterday'] = $spriceYesterdayBySku[$pmNorm] ?? null;

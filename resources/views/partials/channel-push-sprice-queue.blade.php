@@ -178,35 +178,60 @@
                 tasks.forEach(function(t) {
                     if (t && t.sku) bySku[String(t.sku).toUpperCase()] = t;
                 });
-                (table.getRows('all') || table.getRows() || []).forEach(function walk(row) {
+                function patchRecord(d, t) {
+                    if (!d || !t) return false;
+                    const st = String(t.status || '');
+                    const live = Number(t.ebay_price != null ? t.ebay_price : t.price);
+                    if (st === 'ok') {
+                        d.SPRICE_STATUS = 'pushed';
+                        if (live > 0) {
+                            d[CH_PUSH_SPRICE_PRICE_FIELD] = live;
+                            d['eBay Price'] = live;
+                        }
+                        return true;
+                    }
+                    if (st === 'failed') {
+                        d.SPRICE_STATUS = 'error';
+                        const err = String(t.error || t.message || '').toLowerCase();
+                        if (err.indexOf('291') !== -1 || err.indexOf('ended listing') !== -1) {
+                            d.listing_status = 'ENDED';
+                            d.listing_ended = true;
+                        }
+                        return true;
+                    }
+                    if (st === 'pushing' || st === 'pending' || st === 'queued') {
+                        d.SPRICE_STATUS = 'queued';
+                        return true;
+                    }
+                    return false;
+                }
+                let rows = [];
+                try { rows = table.getRows() || []; } catch (e) { rows = []; }
+                rows.forEach(function walk(row) {
                     const d = row.getData() || {};
                     const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim().toUpperCase();
                     const t = sku ? bySku[sku] : null;
-                    if (t) {
-                        const st = String(t.status || '');
-                        const patch = {};
-                        if (st === 'ok') {
-                            patch.SPRICE_STATUS = 'pushed';
-                            const live = Number(t.ebay_price != null ? t.ebay_price : t.price);
-                            if (live > 0) {
-                                patch[CH_PUSH_SPRICE_PRICE_FIELD] = live;
-                                if (CH_PUSH_SPRICE_PRICE_FIELD !== 'eBay Price') {
-                                    patch['eBay Price'] = live;
-                                }
-                            }
-                        } else if (st === 'failed') {
-                            patch.SPRICE_STATUS = 'error';
-                        } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
-                            patch.SPRICE_STATUS = 'queued';
-                        }
-                        if (Object.keys(patch).length) {
-                            try { row.update(patch); } catch (e) { /* ignore */ }
-                        }
+                    if (t && patchRecord(d, t)) {
+                        try { row.update(d); } catch (e) { /* ignore */ }
                     }
                     if (typeof row.getTreeChildren === 'function') {
                         (row.getTreeChildren() || []).forEach(walk);
                     }
                 });
+                const extra = (typeof window !== 'undefined' && Array.isArray(window.allTableData))
+                    ? window.allTableData
+                    : [];
+                extra.forEach(function(d) {
+                    const sku = String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim().toUpperCase();
+                    const t = sku ? bySku[sku] : null;
+                    if (t) patchRecord(d, t);
+                });
+                if (typeof updateSummary === 'function') {
+                    clearTimeout(applyChannelPushSpriceTasks._sumTimer);
+                    applyChannelPushSpriceTasks._sumTimer = setTimeout(function() {
+                        try { updateSummary(); } catch (e) { /* ignore */ }
+                    }, 400);
+                }
             }
             function stopChannelPushSpricePoll() {
                 if (chPushSpricePollTimer) {
@@ -340,6 +365,7 @@
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
                 const live = chPushSpriceRound2(d[CH_PUSH_SPRICE_PRICE_FIELD]);
                 if (live > 0 && chPushSpriceNearlyEqual(p, live)) return;
+                if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return;
                 try {
                     if (row && typeof row.update === 'function') row.update({ SPRICE_STATUS: 'queued' });
                 } catch (e) { /* ignore */ }
@@ -379,6 +405,7 @@
                 const saves = [];
                 chPushSpriceWalkRows(tbl, function(row, d) {
                     if (!chPushSpriceIsChild(d)) return;
+                    if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return;
                     const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
                     if (!sku) return;
                     let fill = chPushSpriceRound2(d.SPRICE);

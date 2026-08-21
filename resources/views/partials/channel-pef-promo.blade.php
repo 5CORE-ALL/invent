@@ -1471,9 +1471,9 @@
                 }
             }
             let rows = [];
-            try { rows = table.getRows('all') || []; } catch (e) { rows = []; }
+            try { rows = table.getRows() || []; } catch (e) { rows = []; }
             if (!rows.length) {
-                try { rows = table.getRows() || []; } catch (e) { rows = []; }
+                try { rows = table.getRows('active') || []; } catch (e) { rows = []; }
             }
             rows.forEach(walk);
         }
@@ -2292,8 +2292,14 @@
                 const slab = chPromoEbaySlabPrmt(d);
                 if (slab != null) prmt = slab;
             }
-            const cpn = Math.max(0, Number(d && (d.cpn_pct != null && d.cpn_pct !== ''
+            let cpn = Math.max(0, Number(d && (d.cpn_pct != null && d.cpn_pct !== ''
                 ? d.cpn_pct : d._cpn_pct_applied)) || 0);
+            if (chPromoIsEbayChannel() && !(cpn > 0) && typeof chPromoCpnForCvr === 'function') {
+                const cvrField = (chPromoCfg && chPromoCfg.cvrField) ? chPromoCfg.cvrField : 'SCVR';
+                const cvr = Number(d && (d[cvrField] != null ? d[cvrField] : d.SCVR)) || 0;
+                const slabCpn = chPromoCpnForCvr(cvr);
+                if (slabCpn > 0) cpn = slabCpn;
+            }
             return chPromoRound2(prmt + cpn);
         }
         function chPromoLastCouponPct(d) {
@@ -2691,6 +2697,13 @@
         }
         function chPromoIsChildRow(d) {
             return !!(d && !d.is_parent_summary && chPromoSku(d) && String(chPromoSku(d)).indexOf('PARENT') === -1);
+        }
+        function chPromoIsEndedListing(d) {
+            if (!d || !chPromoIsChildRow(d)) return false;
+            if (d.listing_ended === true || d.listing_ended === 1 || d.listing_ended === '1') return true;
+            const raw = String(d.listing_status || '').trim().toUpperCase();
+            return raw === 'ENDED' || raw === 'INACTIVE' || raw === 'UNSOLD'
+                || raw === 'COMPLETED' || raw === 'SOLD';
         }
         function chPromoIsParentRow(d) {
             if (!d) return false;
@@ -3833,12 +3846,18 @@
                     ? 'Using first-time defaults (0 Sold Red / Green / Pink). Apply to save & apply.'
                     : 'Loaded saved 0 Sold Dil color rules.');
                 chPromoSyncEbayPrmtColumnFromSlabs();
+                if (typeof chPromoMarkEbaySpriceRuleReady === 'function') {
+                    chPromoMarkEbaySpriceRuleReady('dil');
+                }
             } catch (e) {
                 renderChPromoDilPrmtModalTable();
                 renderChPromoZeroSoldPrmtModalTable();
                 $('#ch-promo-dil-prmt-status').text('Could not load saved rules — showing defaults.');
                 $('#ch-promo-zero-sold-prmt-status').text('Could not load saved rules — showing defaults.');
                 chPromoSyncEbayPrmtColumnFromSlabs();
+                if (typeof chPromoMarkEbaySpriceRuleReady === 'function') {
+                    chPromoMarkEbaySpriceRuleReady('dil');
+                }
             }
         }
         function saveChPromoDilPrmtRules() {
@@ -3909,9 +3928,15 @@
                 $('#ch-promo-cvr-cpn-status').text(res && res.is_default
                     ? 'Using first-time defaults (0–10). Apply to save & apply.'
                     : 'Loaded saved CVR vs CPN rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.');
+                if (typeof chPromoMarkEbaySpriceRuleReady === 'function') {
+                    chPromoMarkEbaySpriceRuleReady('cvr');
+                }
             } catch (e) {
                 renderChPromoCvrCpnModalTable();
                 $('#ch-promo-cvr-cpn-status').text('Could not load saved rules — showing defaults.');
+                if (typeof chPromoMarkEbaySpriceRuleReady === 'function') {
+                    chPromoMarkEbaySpriceRuleReady('cvr');
+                }
             }
         }
         function saveChPromoCvrCpnRules() {
@@ -5903,23 +5928,41 @@
             const jobs = [];
             const blocked = typeof table.blockRedraw === 'function';
             if (blocked) table.blockRedraw();
-            try {
-                chPromoEachTableRow(function(row, d) {
-                    if (!chPromoIsChildRow(d)) return;
-                    const fill = chPromoSpriceFromStdTPromo(d);
-                    if (!(fill > 0)) return;
-                    const current = chPromoGetSprice(d);
-                    const live = chPromoLivePrice(d);
-                    const needsFill = !(current > 0) || (overwrite && !chPromoNearlyEqual(current, fill));
-                    const needsPush = chPromoEbayStdMinusPrmtCpnEnabled()
-                        && live > 0
-                        && !chPromoNearlyEqual(fill, live);
-                    if (!needsFill && !needsPush) return;
-                    const sku = chPromoSku(d);
-                    if (!sku) return;
+            const queuedKeys = new Set();
+            function considerRow(row, d) {
+                if (!chPromoIsChildRow(d)) return;
+                if (chPromoIsEndedListing(d)) return;
+                const sku = chPromoSku(d);
+                const key = chPromoSkuKey(sku);
+                if (!sku || !key || queuedKeys.has(key)) return;
+                const fill = chPromoSpriceFromStdTPromo(d);
+                if (!(fill > 0)) return;
+                const current = chPromoGetSprice(d);
+                const live = chPromoLivePrice(d);
+                const needsFill = !(current > 0) || (overwrite && !chPromoNearlyEqual(current, fill));
+                const needsPush = chPromoEbayStdMinusPrmtCpnEnabled()
+                    && live > 0
+                    && !chPromoNearlyEqual(fill, live);
+                if (!needsFill && !needsPush) return;
+                queuedKeys.add(key);
+                if (row && typeof row.update === 'function') {
                     row.update(chPromoSpricePatch(fill));
-                    jobs.push({ row: row, sku: sku, price: fill, skip_push: !needsPush });
-                });
+                }
+                jobs.push({ row: row || null, sku: sku, price: fill, skip_push: !needsPush });
+            }
+            try {
+                chPromoEachTableRow(function(row, d) { considerRow(row, d); });
+                const extra = chPromoPromoDataset();
+                if (extra.length) {
+                    const rowBySku = {};
+                    chPromoEachTableRow(function(row, d) {
+                        const k = chPromoSkuKey(chPromoSku(d));
+                        if (k) rowBySku[k] = row;
+                    });
+                    extra.forEach(function(d) {
+                        considerRow(rowBySku[chPromoSkuKey(chPromoSku(d))] || null, d);
+                    });
+                }
             } finally {
                 if (blocked) table.restoreRedraw();
             }
@@ -5960,6 +6003,48 @@
             });
         }
 
+        let chPromoEbaySpriceRulesReady = {
+            dil: false,
+            cvr: !!CHANNEL_PROMO_HIDE_CVR_CPN,
+        };
+        function chPromoEbaySpriceSlabsReady() {
+            return !!chPromoEbaySpriceRulesReady.dil
+                && (!!CHANNEL_PROMO_HIDE_CVR_CPN || !!chPromoEbaySpriceRulesReady.cvr);
+        }
+        function chPromoMarkEbaySpriceRuleReady(kind) {
+            if (kind === 'dil') chPromoEbaySpriceRulesReady.dil = true;
+            if (kind === 'cvr') chPromoEbaySpriceRulesReady.cvr = true;
+            chPromoTryQueueAfterSlabs();
+        }
+        /** Queue S PRC after Dil/CVR slabs are loaded — early page-load used defaults and skipped. */
+        function chPromoTryQueueAfterSlabs() {
+            if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
+            if (!chPromoEbaySpriceSlabsReady()) return;
+            if (window._chPushSpriceLiveAllowed === false) return;
+            if (window._chPushSpriceSlabsQueued) return;
+            if (typeof table === 'undefined' || !table) {
+                setTimeout(chPromoTryQueueAfterSlabs, 400);
+                return;
+            }
+            const n = (typeof table.getDataCount === 'function') ? table.getDataCount() : 0;
+            const extraN = (typeof window !== 'undefined' && Array.isArray(window.allTableData))
+                ? window.allTableData.length
+                : ((typeof allTableData !== 'undefined' && Array.isArray(allTableData))
+                    ? allTableData.length
+                    : 0);
+            if (!(n > 0) && !(extraN > 0)) {
+                setTimeout(chPromoTryQueueAfterSlabs, 400);
+                return;
+            }
+            window._chPushSpriceSlabsQueued = true;
+            window._chPushSpricePageChecked = true;
+            if (typeof chPromoSyncEbayPrmtColumnFromSlabs === 'function') {
+                chPromoSyncEbayPrmtColumnFromSlabs();
+            }
+            setTimeout(function() {
+                autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
+            }, 150);
+        }
         function bindEbaySpriceAutofill() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
             if (typeof table === 'undefined' || !table || !table.on) {
@@ -5969,14 +6054,13 @@
             if (table._chPromoSpriceAutofillBound) return;
             table._chPromoSpriceAutofillBound = true;
             function runPageLoadSpriceQueue() {
-                if (window._chPushSpricePageChecked) return;
-                window._chPushSpricePageChecked = true;
-                // Local stays off so refresh cannot overwrite live listings.
-                // Production queues S PRC and the worker pulls GetItem after push.
-                if (window._chPushSpriceLiveAllowed === false) return;
-                setTimeout(function() {
-                    autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
-                }, 80);
+                // Wait for Dil vs PRMT / CVR vs CPN slabs — otherwise fill = Std and the
+                // blue-triangle SKUs (Std − slabs) are never queued.
+                if (!chPromoEbaySpriceSlabsReady()) {
+                    chPromoTryQueueAfterSlabs();
+                    return;
+                }
+                chPromoTryQueueAfterSlabs();
             }
             table.on('dataLoaded', function() {
                 chPromoSyncEbayPrmtColumnFromSlabs();
@@ -7299,6 +7383,7 @@
         window.hideChannelPushStdPrcColumn = hideChannelPushStdPrcColumn;
         window.hideChannelPushCpnColumn = hideChannelPushCpnColumn;
         window.chPromoTemuSpriceFromStdPrmtCpn = chPromoTemuSpriceFromStdPrmtCpn;
+        window.chPromoIsEndedListing = chPromoIsEndedListing;
         window.chPromoSpriceFromStdTPromo = chPromoSpriceFromStdTPromo;
         window.applyChannelSpriceFromStdChange = applyChannelSpriceFromStdChange;
         window.chPromoSpriceFromStdPrmtCpnWith = chPromoSpriceFromStdPrmtCpnWith;

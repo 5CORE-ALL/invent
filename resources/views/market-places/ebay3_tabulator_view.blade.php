@@ -471,6 +471,10 @@
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="ebay3-ended-listing-badge"
+                            style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
+                            title="Ended listing">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay3-red-triangle-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="Red triangle: Price &gt; LMP. Click to show only those rows. Click again to clear.">
@@ -1074,6 +1078,7 @@
     let redTriangleFilterActive = false;
     let lmpMissingFilterActive = false;
     let priceLt80LmpFilterActive = false;
+    let endedListingFilterActive = false;
 
     /** Daily snapshot badge chart (amazon_channel_summary_data, channel=ebay3) */
     const ebay3BadgeMetricLabels = {
@@ -2214,8 +2219,17 @@
             }
             return sprice;
         }
+        function ebay3IsEndedListing(data) {
+            if (!data || ebay3IsAlertParentRow(data)) return false;
+            if (typeof chPromoIsEndedListing === 'function') return chPromoIsEndedListing(data);
+            if (data.listing_ended === true || data.listing_ended === 1 || data.listing_ended === '1') return true;
+            const raw = String(data.listing_status || '').trim().toUpperCase();
+            return raw === 'ENDED' || raw === 'INACTIVE' || raw === 'UNSOLD'
+                || raw === 'COMPLETED' || raw === 'SOLD';
+        }
         function ebay3HasBlueTriangle(data) {
             if (ebay3IsAlertParentRow(data)) return false;
+            if (ebay3IsEndedListing(data)) return false;
             const sprice = ebay3RowSpriceForAlert(data);
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
@@ -2242,6 +2256,10 @@
             $('#ebay3-purple-triangle-badge').css({
                 outline: priceLt80LmpFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: priceLt80LmpFilterActive ? '2px' : ''
+            });
+            $('#ebay3-ended-listing-badge').css({
+                outline: endedListingFilterActive ? '3px solid #0d6efd' : '',
+                outlineOffset: endedListingFilterActive ? '2px' : ''
             });
         }
         function ebay3TriangleParentKeys(pred) {
@@ -2409,6 +2427,7 @@
                 redTriangleFilterActive = false;
                 lmpMissingFilterActive = false;
                 priceLt80LmpFilterActive = false;
+                endedListingFilterActive = false;
             }
             applyFilters();
             syncEbay3TriangleBadgeState();
@@ -2419,6 +2438,7 @@
                 blueTriangleFilterActive = false;
                 lmpMissingFilterActive = false;
                 priceLt80LmpFilterActive = false;
+                endedListingFilterActive = false;
             }
             applyFilters();
             syncEbay3TriangleBadgeState();
@@ -2429,6 +2449,7 @@
                 blueTriangleFilterActive = false;
                 redTriangleFilterActive = false;
                 priceLt80LmpFilterActive = false;
+                endedListingFilterActive = false;
             }
             applyFilters();
             syncEbay3TriangleBadgeState();
@@ -2439,6 +2460,18 @@
                 blueTriangleFilterActive = false;
                 redTriangleFilterActive = false;
                 lmpMissingFilterActive = false;
+                endedListingFilterActive = false;
+            }
+            applyFilters();
+            syncEbay3TriangleBadgeState();
+        });
+        $('#ebay3-ended-listing-badge').on('click', function() {
+            endedListingFilterActive = !endedListingFilterActive;
+            if (endedListingFilterActive) {
+                blueTriangleFilterActive = false;
+                redTriangleFilterActive = false;
+                lmpMissingFilterActive = false;
+                priceLt80LmpFilterActive = false;
             }
             applyFilters();
             syncEbay3TriangleBadgeState();
@@ -2556,6 +2589,7 @@
                     rows = Array.isArray(response) ? response : [];
                 }
                 allTableData = rows || [];
+                window.allTableData = allTableData;
                 console.log('API Response - Total rows:', allTableData.length);
 
                 // Tree: eBay L30 is on child SKUs under _children — sum whole tree, not just roots
@@ -3977,6 +4011,12 @@
                     return ebay3TriangleFilterMatch(data, ebay3HasBlueTriangle, blueParents);
                 });
             }
+            if (endedListingFilterActive) {
+                const endedParents = ebay3TriangleParentKeys(ebay3IsEndedListing);
+                table.addFilter(function(data) {
+                    return ebay3TriangleFilterMatch(data, ebay3IsEndedListing, endedParents);
+                });
+            }
             if (redTriangleFilterActive) {
                 const redParents = ebay3TriangleParentKeys(ebay3HasRedTriangle);
                 table.addFilter(function(data) {
@@ -4300,12 +4340,17 @@
 
             let blueTriangleCount = 0;
             let redTriangleCount = 0;
+            let endedListingCount = 0;
             data.forEach(function(row) {
                 if (ebay3HasBlueTriangle(row)) blueTriangleCount++;
                 if (ebay3HasRedTriangle(row)) redTriangleCount++;
+                if (ebay3IsEndedListing(row)) endedListingCount++;
             });
             $('#ebay3-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            $('#ebay3-ended-listing-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + endedListingCount.toLocaleString()
             );
             $('#ebay3-red-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
