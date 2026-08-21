@@ -32,6 +32,11 @@ class VeeqoApiService
         return $this->baseUrl !== '' && $this->apiKey !== '';
     }
 
+    public function setTimeout(int $seconds): void
+    {
+        $this->timeout = max(3, $seconds);
+    }
+
     public function apiBase(): string
     {
         return $this->baseUrl;

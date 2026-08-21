@@ -37,6 +37,11 @@ class GofoExpressService
         return $this->baseUrl !== '' && $this->username !== '' && $this->password !== '';
     }
 
+    public function setTimeout(int $seconds): void
+    {
+        $this->timeout = max(3, $seconds);
+    }
+
     public function productCode(): string
     {
         return $this->productCode;

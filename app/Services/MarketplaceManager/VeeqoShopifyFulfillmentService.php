@@ -205,8 +205,17 @@ class VeeqoShopifyFulfillmentService
      * @param  array{tracking?: string, carrier?: string}|null  $localTracking
      * @return array{tracking: string, carrier: string, source: string}|null
      */
-    public function lookupLabelTracking(array $refs, ?array $localTracking = null): ?array
+    public function lookupLabelTracking(array $refs, ?array $localTracking = null, bool $fast = false): ?array
     {
+        $localTn = strtoupper(preg_replace('/\s+/', '', (string) ($localTracking['tracking'] ?? '')) ?? '');
+        if (strlen($localTn) >= 8) {
+            return [
+                'tracking' => $localTn,
+                'carrier' => (string) ($localTracking['carrier'] ?? 'Other'),
+                'source' => 'marketplace',
+            ];
+        }
+
         $clean = [];
         foreach ($refs as $ref) {
             $ref = trim((string) $ref);
@@ -214,10 +223,13 @@ class VeeqoShopifyFulfillmentService
                 continue;
             }
             $clean[] = $ref;
+            if ($fast && count($clean) >= 2) {
+                break;
+            }
         }
 
         if ($this->veeqo->isConfigured()) {
-            $veeqo = $this->findVeeqoShipment($clean);
+            $veeqo = $this->findVeeqoShipment($clean, $fast);
             if ($veeqo !== null && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
                 return [
                     'tracking' => (string) $veeqo['tracking'],
@@ -228,7 +240,8 @@ class VeeqoShopifyFulfillmentService
         }
 
         if ($this->gofo->isConfigured()) {
-            $gofo = $this->gofo->findShipment($clean);
+            $gofoRefs = $fast ? array_slice($clean, 0, 1) : $clean;
+            $gofo = $this->gofo->findShipment($gofoRefs);
             if ($gofo !== null && trim((string) ($gofo['tracking'] ?? '')) !== '') {
                 return [
                     'tracking' => (string) $gofo['tracking'],
@@ -238,7 +251,7 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        if ($this->fourSeller->isConfigured()) {
+        if (! $fast && $this->fourSeller->isConfigured()) {
             $fs = $this->fourSeller->findShipment($clean);
             if ($fs !== null && trim((string) ($fs['tracking'] ?? '')) !== '') {
                 return [
@@ -247,15 +260,6 @@ class VeeqoShopifyFulfillmentService
                     'source' => '4seller',
                 ];
             }
-        }
-
-        $localTn = strtoupper(preg_replace('/\s+/', '', (string) ($localTracking['tracking'] ?? '')) ?? '');
-        if (strlen($localTn) >= 8) {
-            return [
-                'tracking' => $localTn,
-                'carrier' => (string) ($localTracking['carrier'] ?? 'Other'),
-                'source' => 'marketplace',
-            ];
         }
 
         return null;
@@ -805,7 +809,7 @@ class VeeqoShopifyFulfillmentService
      * @param  list<string>  $refs
      * @return array{tracking: string, carrier: string, veeqo_order_id: ?int}|null
      */
-    public function findVeeqoShipment(array $refs): ?array
+    public function findVeeqoShipment(array $refs, bool $fast = false): ?array
     {
         $clean = [];
         foreach ($refs as $ref) {
@@ -836,6 +840,9 @@ class VeeqoShopifyFulfillmentService
                     $clean[] = $candidate;
                 }
             }
+            if ($fast && count($clean) >= 2) {
+                break;
+            }
         }
         if ($clean === []) {
             return null;
@@ -845,6 +852,9 @@ class VeeqoShopifyFulfillmentService
             $hit = $this->searchVeeqoOrders($ref, $clean);
             if ($hit !== null) {
                 return $hit;
+            }
+            if ($fast) {
+                continue;
             }
             $hit = $this->searchVeeqoShipments($ref, $clean);
             if ($hit !== null) {
