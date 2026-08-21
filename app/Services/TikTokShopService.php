@@ -1951,10 +1951,11 @@ class TikTokShopService
         }
 
         $params = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
+        // LIVE listings reject 202309 Update Inventory. Partial Edit 202309 is the
+        // LIVE-capable path. 202509 is not enabled for this shop (invalid version).
         $attempts = [
-            ['version' => '202309', 'method' => 'inventory'],
-            ['version' => '202509', 'method' => 'partial'],
             ['version' => '202309', 'method' => 'partial'],
+            ['version' => '202309', 'method' => 'inventory'],
         ];
         if ($this->workingInventoryPath !== null) {
             [$version, $method] = array_pad(explode('|', $this->workingInventoryPath, 2), 2, 'inventory');
@@ -1983,6 +1984,9 @@ class TikTokShopService
                 return ['success' => false, 'message' => $lastMessage];
             }
             if ($this->isNoSchemaError($lastMessage) || $this->isInvalidApiVersionError($lastMessage)) {
+                $this->deadInventoryKeys[$key] = true;
+            }
+            if ($this->isProductStatusRestrictionError($lastMessage) && $attempt['method'] === 'inventory') {
                 $this->deadInventoryKeys[$key] = true;
             }
             Log::info('TikTok inventory update attempt failed', [
@@ -2075,29 +2079,10 @@ class TikTokShopService
             return $fromSearch;
         }
 
-        try {
-            $data = $this->fetchProductData($productId);
-            $skus = is_array($data['skus'] ?? null) ? $data['skus'] : [];
+        // Get Product 202309 rejects LIVE listings and can wait the full HTTP
+        // timeout per SKU. Fall through to the shop default warehouse instead.
 
-            foreach ($skus as $sku) {
-                if (! is_array($sku) || (string) ($sku['id'] ?? $sku['sku_id'] ?? '') !== $skuId) {
-                    continue;
-                }
-
-                return self::skuNodeWarehouseRows($sku);
-            }
-
-            return [];
-        } catch (\Throwable $e) {
-            $this->rememberIpAllowList($e->getMessage());
-            Log::info('TikTok skuWarehouseInventoryRows failed', [
-                'product_id' => $productId,
-                'sku_id' => $skuId,
-                'error' => $e->getMessage(),
-            ]);
-
-            return [];
-        }
+        return [];
     }
 
     /**
@@ -2112,6 +2097,9 @@ class TikTokShopService
 
             return $this->extractWarehouseRowsFromInventorySearch($data, $productId, $skuId);
         } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
+                return [];
+            }
             throw $e;
         } catch (\Throwable $e) {
             $this->rememberIpAllowList($e->getMessage());
@@ -2145,10 +2133,6 @@ class TikTokShopService
         $attempts = [];
         if ($productId !== '') {
             $attempts[] = ['body' => ['product_ids' => [$productId]], 'cache' => $productId];
-            $attempts[] = ['body' => ['product_id_list' => [$productId]], 'cache' => $productId];
-        }
-        if ($skuId !== '') {
-            $attempts[] = ['body' => ['sku_ids' => [$skuId]], 'cache' => $skuCacheKey];
         }
 
         $data = [];
@@ -2156,6 +2140,9 @@ class TikTokShopService
             try {
                 $response = $this->client->Product->inventorySearch($attempt['body']);
             } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+                if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
+                    return [];
+                }
                 throw $e;
             } catch (\Throwable $e) {
                 $this->rememberIpAllowList($e->getMessage());

@@ -33,7 +33,7 @@ class Handler extends ExceptionHandler
             }
 
             $path = ltrim((string) $request->path(), '/');
-            if (! str_starts_with($path, 'marketplace/')) {
+            if (! str_starts_with($path, 'marketplace')) {
                 return null;
             }
 

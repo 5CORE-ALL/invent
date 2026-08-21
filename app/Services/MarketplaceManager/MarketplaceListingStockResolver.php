@@ -536,15 +536,25 @@ final class MarketplaceListingStockResolver
             return [];
         }
 
+        $lookup = [];
+        foreach ($skus as $sku) {
+            $lookup[$sku] = true;
+            $lookup[strtoupper($sku)] = true;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $lookup[$norm] = true;
+            }
+        }
+        $lookup = array_keys($lookup);
+
         $out = [];
-        $rows = ShopifySku::query()
-            ->where(function ($q) use ($skus) {
-                $q->whereIn('sku', $skus);
-                foreach ($skus as $sku) {
-                    $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
-                }
-            })
-            ->get(['sku', 'available_to_sell', 'inv', 'on_hand']);
+        $rows = collect();
+        foreach (array_chunk($lookup, 400) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+            $rows = $rows->concat(ShopifySku::query()
+                ->whereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', array_map('strtoupper', $chunk))
+                ->get(['sku', 'available_to_sell', 'inv', 'on_hand']));
+        }
 
         foreach ($rows as $row) {
             $qty = self::shopifyQtyFromRow($row);

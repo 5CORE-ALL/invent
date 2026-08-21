@@ -11,6 +11,7 @@ use App\Models\TikTokProductTwo;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -142,6 +143,7 @@ class TikTokListingsPageBuilder
         $mismatchInactive = $overlay['mismatchInactive'];
         $counts['tiktok_products'] = $this->tiktokProductCount();
         $counts['tiktok_skus'] = count($linkedSkus);
+        $this->rememberMismatchSkus($mismatchActive);
 
         if (in_array($linkTab, $portalTabs, true)) {
             if ($counts[$linkTab] === 0 && ! $forceLive) {
@@ -347,23 +349,11 @@ class TikTokListingsPageBuilder
             ];
         }
 
-        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = $this->liveService();
-        $linkedSkus = $this->linkedSkus();
-        $verified = $catalog->filterLinkedToVerified($linkedSkus);
-        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
-            null,
-            $this->stockMapForSkus($verified)
-        );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
-        $mismatchQty = $classified['mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
-            ? []
-            : $mismatchQty;
-
+        $mismatch = $this->mismatchSkusForSync($scope);
         $offset = max(0, (int) $request->input('offset', 0));
-        $limit = max(1, min(40, (int) $request->input('limit', 25)));
+        $limit = max(1, min(10, (int) $request->input('limit', 5)));
         $total = count($mismatch);
         $batch = array_slice($mismatch, $offset, $limit);
 
@@ -384,8 +374,10 @@ class TikTokListingsPageBuilder
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
 
-        // Refresh local live cache after pushes so tabs update.
-        $liveService->clearCache();
+        if ($done) {
+            $liveService->clearCache();
+            $this->forgetMismatchSkuCache();
+        }
 
         return [
             'success' => true,
@@ -626,5 +618,63 @@ class TikTokListingsPageBuilder
         } else {
             WarmTikTokLiveListingsCache::dispatch();
         }
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    protected function rememberMismatchSkus(array $skus): void
+    {
+        try {
+            Cache::put($this->mismatchSkuCacheKey(), array_values($skus), now()->addMinutes(20));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    protected function forgetMismatchSkuCache(): void
+    {
+        try {
+            Cache::forget($this->mismatchSkuCacheKey());
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    protected function mismatchSkuCacheKey(): string
+    {
+        return 'mm.'.$this->channel.'.listings_mismatch_skus.v1';
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function mismatchSkusForSync(string $scope): array
+    {
+        if (in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)) {
+            return [];
+        }
+
+        try {
+            $cached = Cache::get($this->mismatchSkuCacheKey());
+            if (is_array($cached)) {
+                return array_values(array_filter(array_map('strval', $cached)));
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $linkedSkus = $this->linkedSkus();
+        $verified = $catalog->filterLinkedToVerified($linkedSkus);
+        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+            null,
+            $this->stockMapForSkus($verified)
+        );
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
+        $mismatch = array_values($classified['mismatch'] ?? []);
+        $this->rememberMismatchSkus($mismatch);
+
+        return $mismatch;
     }
 }

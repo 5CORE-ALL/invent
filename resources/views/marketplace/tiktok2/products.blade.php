@@ -306,60 +306,10 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 
     runPage(true);
 });
-
-document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
-    var btn = this;
-    var scope = btn.getAttribute('data-scope') || 'mismatch';
-    if (!confirm('Sync Inv SKU Mismatch SKUs from live Shopify → TikTok 2 right now (batched, no queue)?')) {
-        return;
-    }
-    btn.disabled = true;
-    var original = btn.innerHTML;
-    var url = @json(route('marketplace.manager.tiktok2.sync.mismatch.inventory'));
-    var offset = 0;
-    var totals = { updated: 0, failed: 0, skipped: 0 };
-
-    function tick() {
-        btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing… ' + offset;
-        return fetch(url, {
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ offset: offset, limit: 25, scope: scope }),
-        }).then(function (r) { return r.json(); }).then(function (data) {
-            if (!data.success) {
-                alert(data.message || 'Sync failed.');
-                btn.disabled = false;
-                btn.innerHTML = original;
-                return;
-            }
-            totals.updated += data.updated || 0;
-            totals.failed += data.failed || 0;
-            totals.skipped += data.skipped || 0;
-            offset = data.offset || offset;
-            if (data.done) {
-                alert(
-                    'Mismatch inventory sync complete.\n'
-                    + 'Updated: ' + totals.updated
-                    + '\nFailed: ' + totals.failed
-                    + '\nSkipped: ' + totals.skipped
-                    + (data.message ? ('\n\nLast batch: ' + data.message) : '')
-                );
-                location.reload();
-                return;
-            }
-            setTimeout(tick, 200);
-        }).catch(function () {
-            alert('Request failed.');
-            btn.disabled = false;
-            btn.innerHTML = original;
-        });
-    }
-
-    tick();
-});
 </script>
+@include('marketplace._sync-mismatch-now', [
+    'url' => route('marketplace.manager.tiktok2.sync.mismatch.inventory'),
+    'confirm' => "Sync Inv SKU Mismatch SKUs from live Shopify → TikTok 2 right now (batched, no queue)?",
+    'limit' => 5,
+])
 @endsection
