@@ -455,6 +455,8 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W L30 = 0 (Walmart Last 30 Days Quantity = 0, INV>0)">W 0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-than-zero-sold-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W L30 > 0 (Walmart Last 30 Days Quantity > 0, INV>0)">W &gt;0 Sold: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing items (INV>0)">Missing: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'walmart-price-gt-lmp-badge', 'pglChannelKey' => 'walmart', 'pglPriceField' => 'api_price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'walmart-price-lt80-lmp-badge', 'pltChannelKey' => 'walmart', 'pltPriceField' => 'api_price'])
                         <span class="badge bg-danger fs-6 p-2" id="missing-ads-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing Ads (INV>0, no campaign spend)">Missing Ads: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Mapped items (INV>0)">Map: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="nmap-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter: Not mapped items (INV>0)">Nmap: 0</span>
@@ -635,6 +637,8 @@
     let gtAmzFilterActive = false;
     let ltAmzFilterActive = false;
     let bbIssueFilterActive = false;
+    let priceGtLmpFilterActive = false;
+    let priceLt80LmpFilterActive = false;
     
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -1833,6 +1837,12 @@
             } else {
                 missingBadge.removeClass('bg-success').addClass('bg-danger');
             }
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#walmart-price-gt-lmp-badge', table.getData(), 'walmart', 'api_price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#walmart-price-lt80-lmp-badge', table.getData(), 'walmart', 'api_price');
+                }
+            }
             
             // Update Missing Ads badge with green color when count is 0
             const missingAdsBadge = $('#missing-ads-count-badge');
@@ -2238,7 +2248,10 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (!value || parseFloat(value) === 0) return '-';
-                        return `<span style="color: #0066cc; font-weight: 500;">$${parseFloat(value).toFixed(2)}</span>`;
+                        const rowData = cell.getRow().getData();
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        return `<span style="color: #0066cc; font-weight: 500;">$${parseFloat(value).toFixed(2)}</span>${lmpTri}${purpleTri}`;
                     },
                     tooltip: "Current price from Walmart API"
                 },
@@ -3040,10 +3053,41 @@
                     return apiPriceVal > 0 && aPriceVal > 0 && apiPriceVal < aPriceVal;
                 });
             }
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'api_price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'api_price');
+                });
+            }
 
             // Update UI
             updateSummary();
             updateSelectAllCheckbox();
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#walmart-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#walmart-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyFilters();
+                }
+            });
         }
 
         $('#inventory-filter, #gpft-filter, #cvr-filter, #bb-issue-filter, #rl-nrl-filter').on('change', function() {

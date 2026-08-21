@@ -642,6 +642,9 @@
                         <span class="badge fs-6 p-2" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Qty ÷ Views">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-b2b-l30-badge" style="color: black; font-weight: bold;">B2B: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
+                        @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2b-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2b'])
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2b-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2b', 'pglPriceField' => 'Price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'shopifyb2b-price-lt80-lmp-badge', 'pltChannelKey' => 'shopifyb2b', 'pltPriceField' => 'Price'])
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 > 0">&gt;0 Sold: 0</span>
                         <span class="badge bg-info fs-6 p-2 d-none" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="GROI% = Σ PFT ÷ Σ COGS × 100 — same as /shopify-b2b/daily-sales and Amz/eBay badges">GROI: 0%</span>
@@ -815,6 +818,9 @@
     }
 
     let table = null;
+    let lmpMissingFilterActive = false;
+    let priceGtLmpFilterActive = false;
+    let priceLt80LmpFilterActive = false;
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -2187,18 +2193,20 @@
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         
                         // Show red if Price is less than Amazon Price
                         if (amazonPrice > 0 && value < amazonPrice) {
-                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                         }
                         
                         // Show green if Price is greater than Amazon Price
                         if (amazonPrice > 0 && value > amazonPrice) {
-                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                         }
                         
-                        return `$${value.toFixed(2)}`;
+                        return `$${value.toFixed(2)}${lmpTri}${purpleTri}`;
                     },
                     width: 70
                 },
@@ -2899,6 +2907,21 @@
             if (missingFilterActive) {
                 table.addFilter("Missing", "=", "M");
             }
+            if (lmpMissingFilterActive && window.LmpMissingBadge) {
+                table.addFilter(function(data) {
+                    return !LmpMissingBadge.isParentRow(data) && !LmpMissingBadge.hasLmp(data);
+                });
+            }
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'Price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'Price');
+                });
+            }
 
             // Row type filter: All Rows / Parents / SKUs (same as Amazon)
             const parentFilter = $('#parent-filter').val();
@@ -2913,6 +2936,37 @@
             }
 
             updateSummary();
+        }
+
+        if (window.LmpMissingBadge) {
+            LmpMissingBadge.bind({
+                badge: '#shopifyb2b-lmp-missing-badge',
+                getActive: function() { return lmpMissingFilterActive; },
+                onToggle: function(on) {
+                    lmpMissingFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#shopifyb2b-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#shopifyb2b-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                    applyFilters();
+                }
+            });
         }
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #sold-filter, #parent-filter').on('change', function() {
@@ -3024,6 +3078,15 @@
             $('#avg-cvr-badge').text(`CVR: ${Math.round(overallCvr)}%`);
             $('#total-b2b-l30-badge').text(`B2B: ${totalB2BL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
+            if (window.LmpMissingBadge) {
+                LmpMissingBadge.update('#shopifyb2b-lmp-missing-badge', allData, 'shopifyb2b');
+            }
+            if (window.PriceGtLmpBadge) {
+                PriceGtLmpBadge.update('#shopifyb2b-price-gt-lmp-badge', allData, 'shopifyb2b', 'Price');
+            }
+            if (window.PriceLt80LmpBadge) {
+                PriceLt80LmpBadge.update('#shopifyb2b-price-lt80-lmp-badge', allData, 'shopifyb2b', 'Price');
+            }
             $('#more-sold-count-badge').text(`>0 Sold: ${moreSoldCount}`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(SHOPIFY_B2B_TOTAL_COGS || totalCogs).toLocaleString()}`);
             const groiBadge = (typeof SHOPIFY_B2B_GROI_PCT === 'number' && !isNaN(SHOPIFY_B2B_GROI_PCT))

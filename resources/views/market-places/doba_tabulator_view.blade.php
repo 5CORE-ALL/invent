@@ -310,6 +310,8 @@
                               class="badge text-center"
                               style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
                               title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'doba-price-gt-lmp-badge', 'pglChannelKey' => 'doba', 'pglPriceField' => 'doba Price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'doba-price-lt80-lmp-badge', 'pltChannelKey' => 'doba', 'pltPriceField' => 'doba Price'])
                         <span id="nmap-count"
                               class="badge text-center"
                               style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
@@ -629,6 +631,8 @@
         let samePriceModeActive = false;
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         let discVsAmzFilterActive = false; // Track DISC VS AMZ filter state
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         $(document).ready(function() {
 
@@ -2194,7 +2198,10 @@
                         sorter: "number",
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
-                            return `$${value.toFixed(2)}`;
+                            const rowData = cell.getRow().getData();
+                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                            return `$${value.toFixed(2)}` + lmpTri + purpleTri;
                         }
                     },
                     {
@@ -2637,12 +2644,43 @@
                         return discountPercent > -30;
                     });
                 }
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceGtLmpBadge.hasRedTriangle(data, 'doba Price');
+                    });
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceLt80LmpBadge.hasPurpleTriangle(data, 'doba Price');
+                    });
+                }
                 
                 // Update select all checkbox after filter is applied
                 setTimeout(function() {
                     updateSelectAllCheckbox();
                     updateVisibleRowsCount();
                 }, 100);
+            }
+
+            if (window.PriceGtLmpBadge) {
+                PriceGtLmpBadge.bind({
+                    badge: '#doba-price-gt-lmp-badge',
+                    getActive: function() { return priceGtLmpFilterActive; },
+                    onToggle: function(on) {
+                        priceGtLmpFilterActive = on;
+                        applyFilters();
+                    }
+                });
+            }
+            if (window.PriceLt80LmpBadge) {
+                PriceLt80LmpBadge.bind({
+                    badge: '#doba-price-lt80-lmp-badge',
+                    getActive: function() { return priceLt80LmpFilterActive; },
+                    onToggle: function(on) {
+                        priceLt80LmpFilterActive = on;
+                                                applyFilters();
+                    }
+                });
             }
             
             // Visible rows count shown in the table footer (like other pages)
@@ -2796,6 +2834,12 @@
                 // sold-count is hidden; keep the assignment so the data lives on the node.
                 $('#sold-count').text('SOLD: ' + sold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
+                if (window.PriceGtLmpBadge && table) {
+                    PriceGtLmpBadge.update('#doba-price-gt-lmp-badge', table.getData(), 'doba', 'doba Price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#doba-price-lt80-lmp-badge', table.getData(), 'doba', 'doba Price');
+                }
+                }
                 $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
 

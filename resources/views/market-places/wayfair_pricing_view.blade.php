@@ -88,6 +88,8 @@
                         <span class="badge bg-success fs-6 p-2" id="wf-avg-cvr-badge" style="color:black;font-weight:700;" title="CVR = (Σ sold ÷ Σ OV L30) × 100.">CVR: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="wf-nmap-count-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter N Map (listed, INV &gt; 0, price &gt; 0, |INV − Wayfair stock| &gt; 3)">N Map: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="wf-missing-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter ML — Missing Listing (not NR, INV &gt; 0, no uploaded Wayfair price)">ML: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'wayfair-price-gt-lmp-badge', 'pglChannelKey' => 'wayfair', 'pglPriceField' => 'price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'wayfair-price-lt80-lmp-badge', 'pltChannelKey' => 'wayfair', 'pltPriceField' => 'price'])
                         <span class="badge bg-success fs-6 p-2" id="wf-more-sold-badge" style="color:black;font-weight:700;cursor:pointer;" title="Click to filter: sold &gt; 0">Sold &gt;0: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="wf-zero-sold-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
 
@@ -300,6 +302,8 @@
         let wfNMapActive = false;
         // Sold filter via badges: 'all' | '0' | 'more' (al30)
         let wfSoldFilter = 'all';
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         let wfDecreaseModeActive = false;
         let wfIncreaseModeActive = false;
@@ -871,6 +875,12 @@
             $('#wf-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             $('#wf-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#wf-more-sold-badge').text('Sold >0: ' + moreSold.toLocaleString());
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#wayfair-price-gt-lmp-badge', table.getData(), 'wayfair', 'price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#wayfair-price-lt80-lmp-badge', table.getData(), 'wayfair', 'price');
+                }
+            }
 
             // Active filter colors — same pattern as Amazon N Map / ML badges.
             $('#wf-nmap-count-badge').toggleClass('bg-secondary', !wfNMapActive).toggleClass('bg-danger', wfNMapActive);
@@ -955,6 +965,16 @@
                     table.addFilter(function(d) {
                         const p = normalizeWfParentKey(d.parent);
                         return p === currentKey || p === ('PARENT ' + currentKey);
+                    });
+                }
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceGtLmpBadge.hasRedTriangle(data, 'price');
+                    });
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
                     });
                 }
                 return;
@@ -1049,8 +1069,39 @@
             }
             if (wfMapActive) table.addFilter(d => wfRowMapStatus(d) === 'map');
             if (wfNMapActive) table.addFilter(d => wfRowMapStatus(d) === 'nmap');
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
+                });
+            }
 
             updateSummary();
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#wayfair-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#wayfair-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyFilters();
+                }
+            });
         }
 
         function wfBuildColumnDropdown() {
@@ -1357,7 +1408,9 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return '<span style="font-weight:700;">' + money(cell.getValue()) + '</span>';
+                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(cell.getValue(), d.lmp_price || d.lmp || d.LMP) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(cell.getValue(), d.lmp_price || d.lmp || d.LMP) : '');
+                            return '<span style="font-weight:700;">' + money(cell.getValue()) + '</span>' + lmpTri + purpleTri;
                         }
                     },
                     {

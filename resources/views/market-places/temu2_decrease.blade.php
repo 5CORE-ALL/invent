@@ -652,6 +652,8 @@
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing L (INV&gt;0, not listed, REQ)">M L: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'temu2-price-gt-lmp-badge', 'pglChannelKey' => 'temu2', 'pglPriceField' => 'temu_price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu2-price-lt80-lmp-badge', 'pltChannelKey' => 'temu2', 'pltPriceField' => 'temu_price'])
                         <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing M (listed, INV&gt;0, REQ, INV vs Temu Stock mismatch)">M M: 0</span>
@@ -2440,6 +2442,8 @@
         // aliases kept for any leftover refs
         let missingBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         // Map tolerance — same formula as /map-issues, /temu-decrease, and the
         // /all-marketplace-master Temu 2 row helper (getTemuLiveMapMissNMapFromDecreaseData):
@@ -3270,6 +3274,12 @@
                 minimumFractionDigits: 0
             }));
             $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#temu2-price-gt-lmp-badge', table.getData(), 'temu2', 'temu_price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#temu2-price-lt80-lmp-badge', table.getData(), 'temu2', 'temu_price');
+                }
+            }
             $('#missing-m-count-badge').text('M M: ' + notMappedCount.toLocaleString());
 
             // Legacy hidden IDs (if present) — avoid JS errors
@@ -3748,10 +3758,13 @@
                     sorter: "number",
                     headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     formatter: function(cell) {
-                        const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
+                        const rowData = cell.getRow().getData();
+                        const basePrice = parseFloat(rowData['base_price']) || 0;
                         if (basePrice === 0) return '$0.00';
                         const displayPrice = +temu2FullPriceFromBase(basePrice).toFixed(2);
-                        return `<span title="(Base × 1.1364)${(basePrice * TEMU_FULL_PRICE_MULT) <= 26.99 ? ' + $2.99' : ''}">$${displayPrice.toFixed(2)}</span>`;
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        return `<span title="(Base × 1.1364)${(basePrice * TEMU_FULL_PRICE_MULT) <= 26.99 ? ' + $2.99' : ''}">$${displayPrice.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                     }
                 },
                 {
@@ -4665,6 +4678,16 @@
                     return !temuInvWithinMapTolerance(inv, temuStock);
                 });
             }
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'temu_price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'temu_price');
+                });
+            }
 
             updateSummary();
             updateSelectAllCheckbox();
@@ -4688,6 +4711,27 @@
                 if (missingMFilterActive || notMapBadgeFilterActive) table.getColumn('MAP').show();
                 else table.getColumn('MAP').hide();
             } catch (e) {}
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#temu2-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#temu2-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyFilters();
+                }
+            });
         }
 
         // ==================== Play/Pause parent navigation (same as pricing-master-cvr) ====================

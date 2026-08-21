@@ -222,6 +222,8 @@
                         <span class="badge bg-danger text-center" id="missing-badge"
                               style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
                               title="REQ + INV&gt;0 + V Price=0">Missing L: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'vinted-price-gt-lmp-badge', 'pglChannelKey' => 'vinted', 'pglPriceField' => 'V Price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'vinted-price-lt80-lmp-badge', 'pltChannelKey' => 'vinted', 'pltPriceField' => 'V Price'])
                     </div>
                 </div>
             </div>
@@ -616,6 +618,8 @@
 
         // Sold filter is owned by the #sold-filter dropdown (TopDawg-style badges).
         let missingFilterActive = false;
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         $('#zero-sold-badge').on('click', function() {
             const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
@@ -839,8 +843,11 @@
                     title: 'Price', field: 'V Price', hozAlign: 'center', sorter: 'number', width: 70,
                     formatter: function(cell) {
                         const v = parseFloat(cell.getValue() || 0);
+                        const rowData = cell.getRow().getData();
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(v, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(v, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         if (v === 0) return `<span style="color:#a00211;font-weight:600;">$0.00 <i class="fas fa-exclamation-triangle"></i></span>`;
-                        return `$${v.toFixed(2)}`;
+                        return `$${v.toFixed(2)}${lmpTri}${purpleTri}`;
                     }
                 },
                 {
@@ -1125,6 +1132,16 @@
             if (soldFilter === 'zero') table.addFilter('V L30', '=', 0);
             else if (soldFilter === 'sold') table.addFilter('V L30', '>', 0);
             if (missingFilterActive) table.addFilter(d => { return (d.nr_req || 'REQ') === 'REQ' && (parseFloat(d.INV) || 0) > 0 && (parseFloat(d['V Price']) || 0) === 0; });
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'V Price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'V Price');
+                });
+            }
 
             // TopDawg-style active-filter ring on clickable badges
             $('#zero-sold-badge').toggleClass('active-filter', soldFilter === 'zero');
@@ -1132,6 +1149,27 @@
             $('#missing-badge').toggleClass('active-filter', missingFilterActive);
 
             updateSummary();
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#vinted-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#vinted-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyFilters();
+                }
+            });
         }
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter, #sold-filter').on('change', function() { applyFilters(); });
@@ -1169,6 +1207,12 @@
             $('#gpft-pct-badge').text('GPFT: ' + Math.round(gpftPct) + '%');
             $('#groi-pct-badge').text('GROI: ' + Math.round(groiPct) + '%');
             $('#missing-badge').text('Missing L: ' + missingCount.toLocaleString());
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#vinted-price-gt-lmp-badge', table.getData(), 'vinted', 'V Price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#vinted-price-lt80-lmp-badge', table.getData(), 'vinted', 'V Price');
+                }
+            }
         }
 
         function buildColumnDropdown() {

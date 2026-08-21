@@ -225,6 +225,8 @@
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing L (INV&gt;0, not listed on PLS)">M L: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'pls-price-gt-lmp-badge', 'pglChannelKey' => 'pls', 'pglPriceField' => 'price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'pls-price-lt80-lmp-badge', 'pltChannelKey' => 'pls', 'pltPriceField' => 'price'])
                         <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing M (INV vs PLS Stock mismatch)">M M: 0</span>
@@ -313,6 +315,8 @@
     let moreSoldFilterActive = false;
     let missingLFilterActive = false;
     let missingMFilterActive = false;
+    let priceGtLmpFilterActive = false;
+    let priceLt80LmpFilterActive = false;
 
     /** M L — INV>0 and marked Missing (not listed on PLS). */
     function isPlsMissingL(row) {
@@ -437,6 +441,16 @@
                         return p === currentKey || p === ('PARENT ' + currentKey);
                     });
                 }
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceGtLmpBadge.hasRedTriangle(data, 'price');
+                    });
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
+                    });
+                }
                 updateSummary();
                 return;
             }
@@ -494,11 +508,34 @@
                 }
                 if (missingLFilterActive && !isPlsMissingL(data)) return false;
                 if (missingMFilterActive && !isPlsMissingM(data)) return false;
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge && !PriceGtLmpBadge.hasRedTriangle(data, 'price')) return false;
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge && !PriceLt80LmpBadge.hasPurpleTriangle(data, 'price')) return false;
 
                 return true;
             });
             
             updateSummary();
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#pls-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#pls-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyFilters();
+                }
+            });
         }
 
         // ========== Play / Pause parent navigation ==========
@@ -757,12 +794,15 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
+                        const rowData = cell.getRow().getData();
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
                         
-                        return `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        return `<span style="font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                     },
                     width: 70
                 },
@@ -1239,6 +1279,12 @@
             $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
             $('#groi-percent-badge').text('GROI: ' + Math.round(avgGroi) + '%');
             $('#missing-l-count-badge').text('M L: ' + missingLCount.toLocaleString());
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#pls-price-gt-lmp-badge', table.getData(), 'pls', 'price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#pls-price-lt80-lmp-badge', table.getData(), 'pls', 'price');
+                }
+            }
             $('#missing-m-count-badge').text('M M: ' + missingMCount.toLocaleString());
 
             fitSummaryBadges();

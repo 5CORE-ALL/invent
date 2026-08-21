@@ -674,6 +674,14 @@
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="Red triangle: S PRC &gt; LMP. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="ebay2-lmp-missing-badge"
+                            style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
+                            title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click to show only those rows.">
+                            LMP M. 0</span>
+                        <span class="badge fs-6 p-2" id="ebay2-purple-triangle-badge"
+                            style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Purple triangle: Price &lt; 80% of LMP. Click to show only those rows.">
+                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
                         
                     </div>
@@ -1115,6 +1123,9 @@
 @endsection
 
     @section('script-bottom')
+    @include('partials.lmp-missing-badge-script')
+    @include('partials.price-gt-lmp-badge-script')
+    @include('partials.price-lt80-lmp-badge-script')
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
@@ -1527,6 +1538,8 @@
         let moreSoldFilterActive = false;
         let blueTriangleFilterActive = false;
         let redTriangleFilterActive = false;
+        let lmpMissingFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         function rowEbay2StockQty(data) {
             return parseFloat(data['E Stock'] || 0) || 0;
@@ -1567,6 +1580,14 @@
             $('#ebay2-red-triangle-badge').css({
                 outline: redTriangleFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: redTriangleFilterActive ? '2px' : ''
+            });
+            $('#ebay2-lmp-missing-badge').css({
+                outline: lmpMissingFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: lmpMissingFilterActive ? '2px' : ''
+            });
+            $('#ebay2-purple-triangle-badge').css({
+                outline: priceLt80LmpFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: priceLt80LmpFilterActive ? '2px' : ''
             });
         }
         function ebay2NormalizeParentKey(val) {
@@ -2805,12 +2826,38 @@
             });
             $('#ebay2-blue-triangle-badge').on('click', function() {
                 blueTriangleFilterActive = !blueTriangleFilterActive;
-                if (blueTriangleFilterActive) redTriangleFilterActive = false;
+                if (blueTriangleFilterActive) {
+                    redTriangleFilterActive = false;
+                    lmpMissingFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                }
                 applyFilters();
             });
             $('#ebay2-red-triangle-badge').on('click', function() {
                 redTriangleFilterActive = !redTriangleFilterActive;
-                if (redTriangleFilterActive) blueTriangleFilterActive = false;
+                if (redTriangleFilterActive) {
+                    blueTriangleFilterActive = false;
+                    lmpMissingFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                }
+                applyFilters();
+            });
+            $('#ebay2-lmp-missing-badge').on('click', function() {
+                lmpMissingFilterActive = !lmpMissingFilterActive;
+                if (lmpMissingFilterActive) {
+                    blueTriangleFilterActive = false;
+                    redTriangleFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                }
+                applyFilters();
+            });
+            $('#ebay2-purple-triangle-badge').on('click', function() {
+                priceLt80LmpFilterActive = !priceLt80LmpFilterActive;
+                if (priceLt80LmpFilterActive) {
+                    blueTriangleFilterActive = false;
+                    redTriangleFilterActive = false;
+                    lmpMissingFilterActive = false;
+                }
                 applyFilters();
             });
 
@@ -3776,6 +3823,7 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Price $'
                                     + value.toFixed(2) + ' &gt; LMP $' + lmpPrice.toFixed(2) + '"></i>'
                                 : '';
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, lmpPrice) : '');
                             const yesterday = parseFloat(rowData.price_yesterday);
                             const hasYesterday = isFinite(yesterday) && yesterday > 0;
 
@@ -3808,12 +3856,12 @@
                             const priceColor = overLmp ? '#dc3545' : 'inherit';
                             const priceWeight = overLmp ? '600' : 'normal';
                             if (sku && !isParent) {
-                                return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}${redTri}</span>${dotBtn}</span>`;
+                                return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}${redTri}${purpleTri}</span>${dotBtn}</span>`;
                             }
                             if (overLmp) {
                                 return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}${redTri}</span>`;
                             }
-                            return priceFormatted;
+                            return priceFormatted + purpleTri;
                         },
                         width: 80
                     },
@@ -4670,6 +4718,16 @@
                         return ebay2HasRedTriangle(data);
                     });
                 }
+                if (lmpMissingFilterActive && window.LmpMissingBadge) {
+                    table.addFilter(function(data) {
+                        return !LmpMissingBadge.isParentRow(data) && !LmpMissingBadge.hasLmp(data);
+                    });
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceLt80LmpBadge.hasPurpleTriangle(data, 'eBay Price');
+                    });
+                }
 
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
@@ -4869,6 +4927,17 @@
                 $('#ebay2-red-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
                 );
+                if (window.PriceGtLmpBadge) {
+                    PriceGtLmpBadge.paint('#ebay2-red-triangle-badge', redTriangleCount);
+                    PriceGtLmpBadge.report('ebay2', redTriangleCount);
+                    PriceGtLmpBadge.setOutline(document.getElementById('ebay2-red-triangle-badge'), redTriangleFilterActive);
+                }
+                if (window.LmpMissingBadge) {
+                    LmpMissingBadge.update('#ebay2-lmp-missing-badge', triangleRows, 'ebay2');
+                }
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#ebay2-purple-triangle-badge', triangleRows, 'ebay2', 'eBay Price');
+                }
                 syncEbay2TriangleBadgeState();
 
                 // Repaint L7 View + S BID colours when the avg changes.

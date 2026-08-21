@@ -57,6 +57,9 @@ use App\Http\Controllers\Campaigns\GoogleYoutubeAdsMissingController;
 use App\Http\Controllers\Campaigns\TiktokAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
+use App\Http\Controllers\Campaigns\Tiktok1AdsRawDataController;
+use App\Http\Controllers\Campaigns\TiktokVideoQualityController;
+use App\Http\Controllers\Campaigns\TiktokGmvAdsRawDataController;
 use App\Http\Controllers\Campaigns\WalmartMissingAdsController;
 use App\Http\Controllers\Campaigns\WalmartRunningAdsController;
 use App\Http\Controllers\Campaigns\WalmartUtilisationController;
@@ -3901,6 +3904,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/missing-listing/dar/history',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'darHistory'])->name('missing.listing.dar.history');
     Route::post('/missing-listing/seller-portal/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateSellerPortal'])->name('missing.listing.seller.portal.save');
 
+    // LMP Missing data — analytics channels + LMP M. counts
+    Route::get('/lmp-missing-data', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'index'])->name('lmp.missing');
+    Route::get('/lmp-missing-data/data', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'getData'])->name('lmp.missing.data');
+    Route::post('/lmp-missing-data/report', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'report'])->name('lmp.missing.report');
+
+    // price >lmp — analytics channels + red-triangle (Price > LMP) counts
+    Route::get('/price-gt-lmp', [\App\Http\Controllers\MarketPlace\PriceGtLmpController::class, 'index'])->name('price.gt.lmp');
+    Route::get('/price-gt-lmp/data', [\App\Http\Controllers\MarketPlace\PriceGtLmpController::class, 'getData'])->name('price.gt.lmp.data');
+    Route::post('/price-gt-lmp/report', [\App\Http\Controllers\MarketPlace\PriceGtLmpController::class, 'report'])->name('price.gt.lmp.report');
+
+    // price < 80% of LMP — analytics channels + purple-triangle counts
+    Route::get('/price-lt-80-lmp', [\App\Http\Controllers\MarketPlace\PriceLt80LmpController::class, 'index'])->name('price.lt80.lmp');
+    Route::get('/price-lt-80-lmp/data', [\App\Http\Controllers\MarketPlace\PriceLt80LmpController::class, 'getData'])->name('price.lt80.lmp.data');
+    Route::post('/price-lt-80-lmp/report', [\App\Http\Controllers\MarketPlace\PriceLt80LmpController::class, 'report'])->name('price.lt80.lmp.report');
+
     // Listing Manager — Amazon catalog + multi-channel drafts
     Route::get('/listing-manager', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'index'])->name('listing.manager');
     Route::get('/listing-manager/data', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'data'])->name('listing.manager.data');
@@ -6482,6 +6500,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/tiktok/utilized/data', 'getUtilizedData')->name('tiktok.utilized.data');
         Route::post('/tiktok/utilized/upload', 'uploadUtilized')->name('tiktok.utilized.upload');
         Route::post('/tiktok/utilized/update', 'updateUtilized')->name('tiktok.utilized.update');
+    });
+
+    Route::controller(Tiktok1AdsRawDataController::class)->group(function () {
+        Route::get('/tiktok-1-ads-raw-data', 'index')->name('tiktok1.ads.raw');
+        Route::get('/tiktok-1-ads-raw-data/data', 'getData')->name('tiktok1.ads.raw.data');
+    });
+
+    Route::controller(TiktokGmvAdsRawDataController::class)->group(function () {
+        Route::get('/tiktok-gmv-ads-raw-data', 'index')->name('tiktok.gmv.ads.raw');
+        Route::get('/tiktok-gmv-ads-raw-data/data', 'getData')->name('tiktok.gmv.ads.raw.data');
+    });
+
+    Route::controller(TiktokVideoQualityController::class)->group(function () {
+        Route::get('/tiktok-video-quality', 'index')->name('tiktok.video.quality');
+        Route::get('/tiktok-video-quality/data', 'getData')->name('tiktok.video.quality.data');
     });
 
     // TikTok Missing Ads — same grandparents as YouTube, separate parent links (tiktok_g_parents)

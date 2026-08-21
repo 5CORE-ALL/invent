@@ -620,6 +620,8 @@
                         <span class="badge bg-danger flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
                         <span class="badge flex-shrink-0" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">M L: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'reverb-price-gt-lmp-badge', 'pglChannelKey' => 'reverb', 'pglPriceField' => 'RV Price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'reverb-price-lt80-lmp-badge', 'pltChannelKey' => 'reverb', 'pltPriceField' => 'RV Price'])
                         <span class="badge bg-danger flex-shrink-0" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter stock mismatch (REQ + INV&gt;0 + |INV − R Stock| &gt; 3)">N Map: 0</span>
                     </div>
                 </div>
@@ -2061,6 +2063,8 @@
         let missingFilterActive = false;
         let mapFilterActive = false;
         let invRStockFilterActive = false;
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         function clearReverbBadgeFilters() {
             missingFilterActive = mapFilterActive = invRStockFilterActive = false;
@@ -4010,18 +4014,20 @@
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         
                         // Show red if RV Price is less than Amazon Price
                         if (amazonPrice > 0 && value < amazonPrice) {
-                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                         }
                         
                         // Show green if RV Price is greater than Amazon Price
                         if (amazonPrice > 0 && value > amazonPrice) {
-                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                         }
                         
-                        return `$${value.toFixed(2)}`;
+                        return `$${value.toFixed(2)}${lmpTri}${purpleTri}`;
                     },
                     width: 70
                 },
@@ -5006,8 +5012,39 @@
                     return mapValue.includes('N Map|') && nrReq === 'REQ' && inv > 0 && !isMissing;
                 });
             }
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'RV Price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'RV Price');
+                });
+            }
 
             updateSummary();
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#reverb-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#reverb-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyFilters();
+                }
+            });
         }
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #reverb-stock-filter, #sold-filter, #status-filter').on('change', function() {
@@ -5159,6 +5196,12 @@
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#reverb-price-gt-lmp-badge', table.getData(), 'reverb', 'RV Price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#reverb-price-lt80-lmp-badge', table.getData(), 'reverb', 'RV Price');
+                }
+            }
         }
 
         function csrfToken() {

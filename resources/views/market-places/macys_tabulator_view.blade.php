@@ -106,6 +106,9 @@
                     <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = GROI% (Macys has no ads — same as /all-marketplace-master N ROI).">NROI: 0%</span>
                     <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold; display: none;">Price: $0</span>
                     <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                    @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'macys-lmp-missing-badge', 'lmpChannelKey' => 'macys'])
+                    @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'macys-price-gt-lmp-badge', 'pglChannelKey' => 'macys', 'pglPriceField' => 'MC Price'])
+                    @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'macys-price-lt80-lmp-badge', 'pltChannelKey' => 'macys', 'pltPriceField' => 'MC Price'])
                     <span class="badge fs-6 p-2" id="zero-sold-rule-badge" style="background-color: #4f46e5; color: white; font-weight: bold; cursor: pointer;" title="0 Sold Rule — apply Amazon Price to S PRC for MC L30 = 0. Selected SKUs if checked; otherwise all visible. Skips INV = 0 and missing A Price.">0 Sold Rule: 0</span>
                     <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
                     <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
@@ -410,6 +413,9 @@
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys', 'channelPromoHideCvrCpn' => true, 'channelPromoShowZeroSoldRules' => true, 'channelPromoShowGtSoldRules' => true])
     const COLUMN_VIS_KEY = "macys_tabulator_column_visibility";
     let table = null;
+    let lmpMissingFilterActive = false;
+    let priceGtLmpFilterActive = false;
+    let priceLt80LmpFilterActive = false;
     let allTableData = []; // Full dataset for ParentExpand
     let decreaseModeActive = true;
     let increaseModeActive = false;
@@ -2078,18 +2084,20 @@
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         
                         // Show red if MC Price is less than Amazon Price
                         if (amazonPrice > 0 && value < amazonPrice) {
-                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                         }
                         
                         // Show green if MC Price is greater than Amazon Price
                         if (amazonPrice > 0 && value > amazonPrice) {
-                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                         }
                         
-                        return `$${value.toFixed(2)}`;
+                        return `$${value.toFixed(2)}${lmpTri}${purpleTri}`;
                     },
                     width: 70
                 },
@@ -2694,6 +2702,21 @@
                     return nrReq === 'REQ' && inv > 0 && !isMacysListed(data);
                 });
             }
+            if (lmpMissingFilterActive && window.LmpMissingBadge) {
+                table.addFilter(function(data) {
+                    return !LmpMissingBadge.isParentRow(data) && !LmpMissingBadge.hasLmp(data);
+                });
+            }
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'MC Price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'MC Price');
+                });
+            }
 
             if (mappingFilterActive) {
                 table.addFilter(function(data) {
@@ -2705,6 +2728,37 @@
             }
 
             updateSummary();
+        }
+
+        if (window.LmpMissingBadge) {
+            LmpMissingBadge.bind({
+                badge: '#macys-lmp-missing-badge',
+                getActive: function() { return lmpMissingFilterActive; },
+                onToggle: function(on) {
+                    lmpMissingFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#macys-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#macys-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                    applyFilters();
+                }
+            });
         }
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #roi-filter, #dil-filter, #sold-filter').on('change', function() {
@@ -2804,6 +2858,15 @@
             $('#avg-price-badge').text(`Price: $${Math.round(avgPrice).toLocaleString()}`);
             $('#total-inv-badge').text(`Total INV: ${Math.round(totalInv).toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
+            if (window.LmpMissingBadge && table) {
+                LmpMissingBadge.update('#macys-lmp-missing-badge', table.getData(), 'macys');
+            }
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#macys-price-gt-lmp-badge', table.getData(), 'macys', 'MC Price');
+            }
+            if (window.PriceLt80LmpBadge && table) {
+                PriceLt80LmpBadge.update('#macys-price-lt80-lmp-badge', table.getData(), 'macys', 'MC Price');
+            }
             $('#zero-sold-rule-badge').text(`0 Sold Rule: ${zeroSoldRuleCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount.toLocaleString()}`);
             $('#avg-dil-badge').text(`DIL%: ${Math.round(avgDil * 100)}%`);

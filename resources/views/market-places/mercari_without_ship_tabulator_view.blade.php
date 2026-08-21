@@ -203,6 +203,8 @@
                         <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: #fff; font-weight: bold;">PFT: 0%</span>
                         <span class="badge bg-primary fs-6 p-2" id="avg-roi-badge" style="color: #fff; font-weight: bold;">ROI: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'mercariwoship-price-gt-lmp-badge', 'pglChannelKey' => 'mercariwoship', 'pglPriceField' => 'price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'mercariwoship-price-lt80-lmp-badge', 'pltChannelKey' => 'mercariwoship', 'pltPriceField' => 'price'])
                         <span class="badge bg-warning fs-6 p-2" id="revenue-badge" style="color: #000; font-weight: bold;" title="Total sales (Price × L30 sold)">Revenue: $0.00</span>
                     </div>
                 </div>
@@ -474,7 +476,10 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue()) || 0;
-                            return '$' + value.toFixed(2);
+                            const rowData = cell.getRow().getData();
+                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                            return '$' + value.toFixed(2) + lmpTri + purpleTri;
                         }
                     },
                     {
@@ -956,6 +961,8 @@
         }
 
         let missingLFilterActive = false;
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
         let decreaseModeActive = false;
         let increaseModeActive = false;
         let samePriceModeActive = false;
@@ -1070,6 +1077,12 @@
 
                 // Missing L (price = 0 and NR/REQ = REQ) — only when the badge is toggled on
                 if (missingLFilterActive && !missingLFilter(row)) return false;
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge && !PriceGtLmpBadge.hasRedTriangle(row, 'price')) {
+                    return false;
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge && !PriceLt80LmpBadge.hasPurpleTriangle(row, 'price')) {
+                    return false;
+                }
 
                 // INV filter (0 INV / INV > 0)
                 if (invFilter && invFilter !== 'all') {
@@ -1119,6 +1132,27 @@
             });
         }
 
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#mercariwoship-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyAllFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#mercariwoship-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyAllFilters();
+                }
+            });
+        }
+
         function updateBadges(data) {
             data = data || [];
             let pftSum = 0, roiSum = 0, count = 0, missingL = 0, revenue = 0;
@@ -1143,6 +1177,12 @@
             document.getElementById('avg-pft-badge').textContent = 'PFT: ' + Math.round(avgPft) + '%';
             document.getElementById('avg-roi-badge').textContent = 'ROI: ' + Math.round(avgRoi) + '%';
             document.getElementById('missing-l-badge').textContent = 'Missing L: ' + missingL;
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#mercariwoship-price-gt-lmp-badge', table.getData(), 'mercariwoship', 'price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#mercariwoship-price-lt80-lmp-badge', table.getData(), 'mercariwoship', 'price');
+                }
+            }
             document.getElementById('revenue-badge').textContent = 'Revenue: $' + revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 

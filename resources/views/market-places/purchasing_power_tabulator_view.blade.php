@@ -200,6 +200,8 @@
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color:white;font-weight:bold;cursor:pointer;">&lt; Amz</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color:#28a745;color:white;font-weight:bold;cursor:pointer;">&gt; Amz</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color:white;font-weight:bold;cursor:pointer;">MISSING: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'purchasingpower-price-gt-lmp-badge', 'pglChannelKey' => 'purchasingpower', 'pglPriceField' => 'PP Price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'purchasingpower-price-lt80-lmp-badge', 'pltChannelKey' => 'purchasingpower', 'pltPriceField' => 'PP Price'])
                         <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color:white;font-weight:bold;cursor:pointer;">MAPPING: 0</span>
                     </div>
                 </div>
@@ -858,6 +860,8 @@
         // Other "badge active" flags (Amz, mapping, missing) remain unchanged below.
         let lessAmzFilterActive = false, moreAmzFilterActive = false;
         let missingFilterActive = false, mappingFilterActive = false;
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         // Sold badges just toggle the dropdown so the dropdown stays the single source of
         // truth. Clicking the same badge twice clears the filter (toggle semantics preserved).
@@ -1164,8 +1168,10 @@
                         if (v === 0) {
                             return `<span title="${tip}" style="color:#a00211;font-weight:600;">$0.00 <i class="fas fa-exclamation-triangle"></i></span>`;
                         }
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(v, d.lmp_price || d.lmp || d.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(v, d.lmp_price || d.lmp || d.LMP) : '');
                         const color = amz > 0 ? (v < amz ? '#a00211' : v > amz ? '#28a745' : '') : '';
-                        return `<span title="${tip}" style="color:${color};font-weight:${color ? '600' : 'normal'};">$${v.toFixed(2)}</span>`;
+                        return `<span title="${tip}" style="color:${color};font-weight:${color ? '600' : 'normal'};">$${v.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                     }
                 },
                 {
@@ -1503,8 +1509,39 @@
                 const ourInv = parseFloat(d.INV) || 0, mcInv = parseFloat(d['PP INV']) || 0, price = parseFloat(d['PP Price']) || 0;
                 return (d.nr_req || 'REQ') === 'REQ' && ourInv > 0 && price > 0 && !ppInvPpStockWithinTolerance(ourInv, mcInv);
             });
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'PP Price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'PP Price');
+                });
+            }
 
             updateSummary();
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#purchasingpower-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#purchasingpower-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyFilters();
+                }
+            });
         }
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter, #sold-filter').on('change', function() { applyFilters(); });
@@ -1576,6 +1613,12 @@
             $('#missing-badge').text(`MISSING: ${missingCount}`);
             $('#mapping-badge').text(`MAPPING: ${mappingCount}`);
             $('#total-pp-stock-badge').text(`PP Stock: ${totalPpStock.toLocaleString()}`);
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#purchasingpower-price-gt-lmp-badge', table.getData(), 'purchasingpower', 'PP Price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#purchasingpower-price-lt80-lmp-badge', table.getData(), 'purchasingpower', 'PP Price');
+                }
+            }
         }
 
         function buildColumnDropdown() {

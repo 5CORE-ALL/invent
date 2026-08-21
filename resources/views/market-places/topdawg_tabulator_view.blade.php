@@ -67,6 +67,8 @@
                               style="background:#0d6efd;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
                               title="Exact ROI % from /topdawg/sales-dashboard: (Σ pft ÷ Σ cogs) × 100. COGS = LP × qty, no ship.">GROI: {{ (int) round((float) ($topdawgSalesDashboardRoi ?? 0)) }}%</span>
                         <span class="badge bg-danger text-center" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'topdawg-price-gt-lmp-badge', 'pglChannelKey' => 'topdawg', 'pglPriceField' => 'TD Price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'topdawg-price-lt80-lmp-badge', 'pltChannelKey' => 'topdawg', 'pltPriceField' => 'TD Price'])
                         <span class="badge bg-danger text-center" id="nmap-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="|INV − TD Stock| &gt; 3">N Map: 0</span>
                     </div>
                 </div>
@@ -305,6 +307,8 @@
     // zeroSoldFilter / moreSoldFilter removed — Sold filter is now owned by the
     // #sold-filter dropdown (driven by badge clicks and the ?badge=zero_sold|more_sold URL).
     let missingFilter = false, nmapFilter = false;
+    let priceGtLmpFilterActive = false;
+    let priceLt80LmpFilterActive = false;
 
     // Pricing-mode state
     let tdDecreaseModeActive = false;
@@ -675,6 +679,12 @@
         $('#groi-pct-badge').text('GROI: ' + Math.round(Number(TD_SALES_DASHBOARD_ROI)) + '%');
         $('#missing-badge').text('Missing L: ' + missing.toLocaleString());
         $('#nmap-badge').text('N Map: ' + nmapC.toLocaleString());
+        if (window.PriceGtLmpBadge && table) {
+            PriceGtLmpBadge.update('#topdawg-price-gt-lmp-badge', table.getData(), 'topdawg', 'TD Price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#topdawg-price-lt80-lmp-badge', table.getData(), 'topdawg', 'TD Price');
+                }
+        }
     }
 
     function applyFilters() {
@@ -746,9 +756,40 @@
         }
         if (missingFilter) table.addFilter(data => data.Missing === 'M' && data.nr_req === 'REQ' && (parseFloat(data.INV) || 0) > 0);
         if (nmapFilter) table.addFilter(data => (data.MAP || '').includes('N Map|') && data.nr_req === 'REQ' && (parseFloat(data.INV) || 0) > 0 && data.Missing !== 'M');
+        if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+            table.addFilter(function(data) {
+                return PriceGtLmpBadge.hasRedTriangle(data, 'TD Price');
+            });
+        }
+        if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+            table.addFilter(function(data) {
+                return PriceLt80LmpBadge.hasPurpleTriangle(data, 'TD Price');
+            });
+        }
 
         setActiveBadges();
         updateSummary();
+    }
+
+    if (window.PriceGtLmpBadge) {
+        PriceGtLmpBadge.bind({
+            badge: '#topdawg-price-gt-lmp-badge',
+            getActive: function() { return priceGtLmpFilterActive; },
+            onToggle: function(on) {
+                priceGtLmpFilterActive = on;
+                applyFilters();
+            }
+        });
+    }
+    if (window.PriceLt80LmpBadge) {
+        PriceLt80LmpBadge.bind({
+            badge: '#topdawg-price-lt80-lmp-badge',
+            getActive: function() { return priceLt80LmpFilterActive; },
+            onToggle: function(on) {
+                priceLt80LmpFilterActive = on;
+                                applyFilters();
+            }
+        });
     }
 
     $(document).ready(function() {
@@ -905,10 +946,13 @@
                 { title: 'Price', field: 'TD Price', hozAlign: 'center', width: 70, sorter: 'number',
                     formatter: c => {
                         const v = parseFloat(c.getValue()) || 0;
+                        const rowData = c.getRow().getData();
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(v, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(v, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         if (v === 0) {
                             return '<span style="color:#a00211;font-weight:600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left:4px;"></i></span>';
                         }
-                        return `$${v.toFixed(2)}`;
+                        return `$${v.toFixed(2)}${lmpTri}${purpleTri}`;
                     }},
                 {
                     title: 'Sales', field: 'Sales', hozAlign: 'center', width: 80, sorter: 'number',

@@ -98,6 +98,8 @@
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'faire-price-gt-lmp-badge', 'pglChannelKey' => 'faire', 'pglPriceField' => 'price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'faire-price-lt80-lmp-badge', 'pltChannelKey' => 'faire', 'pltPriceField' => 'price'])
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                     </div>
@@ -120,6 +122,8 @@
 @section('script-bottom')
 <script>
     let table = null;
+    let priceGtLmpFilterActive = false;
+    let priceLt80LmpFilterActive = false;
 
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -184,8 +188,13 @@
                     width: 130,
                     hozAlign: "right",
                     sorter: "number",
-                    formatter: "money",
-                    formatterParams: { symbol: "$", precision: 2 }
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue()) || 0;
+                        const row = cell.getRow().getData();
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(v, row.lmp_price || row.lmp || row.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(v, row.lmp_price || row.lmp || row.LMP) : '');
+                        return '$' + v.toFixed(2) + lmpTri + purpleTri;
+                    }
                 },
                 {
                     title: "LP",
@@ -301,6 +310,12 @@
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
             $('#pft-total-badge').text('PFT Total: $' + totalPft.toFixed(2));
             $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#faire-price-gt-lmp-badge', table.getData(), 'faire', 'price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#faire-price-lt80-lmp-badge', table.getData(), 'faire', 'price');
+                }
+            }
 
             const pftPctBadge = $('#pft-percentage-badge');
             if (pftPercentage >= 0) {
@@ -344,11 +359,49 @@
             updateSummary();
         });
 
+        function applyFilters() {
+            if (!table) return;
+            table.clearFilter();
+            const sku = ($('#sku-search').val() || '').trim();
+            const parent = ($('#parent-search').val() || '').trim();
+            if (sku) table.addFilter('sku', 'like', sku);
+            if (parent) table.addFilter('Parent', 'like', parent);
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
+                });
+            }
+            updateSummary();
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#faire-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#faire-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyFilters();
+                }
+            });
+        }
+
         $('#sku-search, #parent-search').on('keyup', function() {
-            table.setFilter([
-                { field: 'sku', type: 'like', value: $('#sku-search').val() || '' },
-                { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
-            ]);
+            applyFilters();
         });
 
         $('#export-btn').on('click', function() {

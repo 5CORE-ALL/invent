@@ -177,6 +177,45 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('lmp.missing') }}" class="side-nav-link lmp-missing-nav">
+                    <i class="ri-price-tag-3-line"></i>
+                    <span>LMP Missing data</span>
+                    @php
+                        $lmpMissingSidebarCount = \App\Support\Marketplace\LmpMissingChannelCounts::cachedTotalOrZero();
+                    @endphp
+                    @if($lmpMissingSidebarCount > 0)
+                        <span class="badge rounded-pill ms-auto lmp-missing-sidebar-badge" title="LMP M. total from analytics pages">{{ number_format($lmpMissingSidebarCount) }}</span>
+                    @endif
+                </a>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ route('price.gt.lmp') }}" class="side-nav-link price-gt-lmp-nav">
+                    <i class="ri-arrow-up-circle-line"></i>
+                    <span>price &gt;lmp</span>
+                    @php
+                        $priceGtLmpSidebarCount = \App\Support\Marketplace\PriceGtLmpChannelCounts::cachedTotalOrZero();
+                    @endphp
+                    @if($priceGtLmpSidebarCount > 0)
+                        <span class="badge rounded-pill ms-auto price-gt-lmp-sidebar-badge" title="price &gt;lmp (red triangle) total from analytics pages">{{ number_format($priceGtLmpSidebarCount) }}</span>
+                    @endif
+                </a>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ route('price.lt80.lmp') }}" class="side-nav-link price-lt80-lmp-nav">
+                    <i class="ri-arrow-down-circle-line"></i>
+                    <span>price &lt; 80% of LMP</span>
+                    @php
+                        $priceLt80LmpSidebarCount = \App\Support\Marketplace\PriceLt80LmpChannelCounts::cachedTotalOrZero();
+                    @endphp
+                    @if($priceLt80LmpSidebarCount > 0)
+                        <span class="badge rounded-pill ms-auto price-lt80-lmp-sidebar-badge" title="price &lt; 80% of LMP (purple triangle) total from analytics pages">{{ number_format($priceLt80LmpSidebarCount) }}</span>
+                    @endif
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('listing.manager') }}" class="side-nav-link">
                     <i class="ri-store-2-line"></i>
                     <span>Listing Manager</span>
@@ -1978,6 +2017,15 @@
                             <a href="{{ route('tiktok.ads.missing') }}">TikTok Missing Ads</a>
                         </li>
                         <li>
+                            <a href="{{ route('tiktok1.ads.raw') }}">Tiktok 1 Ads Raw Data</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('tiktok.gmv.ads.raw') }}">GMV Tiktok Ads Raw Data</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('tiktok.video.quality') }}">TikTok Video Quality</a>
+                        </li>
+                        <li>
                             <a href="{{ route('google.youtube.ads.audit') }}">Youtube Ads Audit</a>
                         </li>
 
@@ -2053,6 +2101,12 @@
                         {{-- <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
                                     </li> --}}
                         <li><a href="{{ route('tiktok.pricing') }}">TikTok 1 Shop - Analytics</a>
+                        </li>
+                        <li><a href="{{ route('tiktok1.ads.raw') }}">Tiktok 1 Ads Raw Data</a>
+                        </li>
+                        <li><a href="{{ route('tiktok.gmv.ads.raw') }}">GMV Tiktok Ads Raw Data</a>
+                        </li>
+                        <li><a href="{{ route('tiktok.video.quality') }}">TikTok Video Quality</a>
                         </li>
                         <li><a href="{{ route('tiktok2.listing.variation.verify') }}">TikTok 2 Listing Variation Verify</a>
                         </li>
@@ -3120,6 +3174,27 @@
     /* Missing Listing — Missing L count (same total as /all-marketplace-master). */
     .side-nav a.missing-listing-nav > .missing-listing-badge {
         background-color: #a71d2a !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+
+    /* LMP Missing data — LMP M. total from analytics pages. */
+    .side-nav a.lmp-missing-nav > .lmp-missing-sidebar-badge {
+        background-color: #dc3545 !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+
+    /* price >lmp — red-triangle total from analytics pages. */
+    .side-nav a.price-gt-lmp-nav > .price-gt-lmp-sidebar-badge {
+        background-color: #dc3545 !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+
+    /* price < 80% of LMP — purple-triangle total from analytics pages. */
+    .side-nav a.price-lt80-lmp-nav > .price-lt80-lmp-sidebar-badge {
+        background-color: #6f42c1 !important;
         color: #fff !important;
         font-weight: 700;
     }

@@ -7,6 +7,7 @@ use App\Models\ProductMaster;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\TiktokCampaignReport;
+use App\Models\TiktokGmvAd;
 use App\Models\ShopifySku;
 use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
@@ -181,6 +182,23 @@ class TikTokPricingController extends Controller
                 'map_count' => 'map_count',
                 'nmap_count' => 'nmap_count',
                 'inv_tt_stock_count' => 'inv_tt_stock_count',
+                'total_spend_30' => 'total_spend_30',
+                'total_spend_1' => 'total_spend_1',
+                'total_ads_views_30' => 'total_ads_views_30',
+                'total_ads_clicks_30' => 'total_ads_clicks_30',
+                'total_ads_views_1' => 'total_ads_views_1',
+                'total_ads_clicks_1' => 'total_ads_clicks_1',
+                'ads_cvr_30' => 'ads_cvr_30',
+                'ads_roas' => 'ads_roas',
+                'avg_target_roas' => 'avg_target_roas',
+                'ads_acos_pct' => 'ads_acos_pct',
+                'total_gmv_ad_sold_l30' => 'total_gmv_ad_sold_l30',
+                'total_gmv_ad_sold_l1' => 'total_gmv_ad_sold_l1',
+                'total_gmv_ad_sales_l30' => 'total_gmv_ad_sales_l30',
+                'total_gmv_ad_sales_l1' => 'total_gmv_ad_sales_l1',
+                'total_gmv_spend_l30' => 'total_gmv_spend_l30',
+                'total_gmv_spend_l1' => 'total_gmv_spend_l1',
+                'total_gmv_budget' => 'total_gmv_budget',
             ];
 
             $summaryKey = $metricMap[$metric] ?? null;
@@ -564,6 +582,21 @@ class TikTokPricingController extends Controller
             Log::warning('TikTok pricing: campaign/ads data fetch failed: ' . $e->getMessage());
         }
 
+        // Unfiltered tiktok_campaign_reports (same source as /tiktok-1-ads-raw-data).
+        $rawAdsBySku = $isTiktokTwo ? [] : $this->tiktok1RawAdsMetricsBySku();
+
+        // Live Shop API L30/L1 → tiktok_gmv_ads when the sheet is empty or stale.
+        if (! $isTiktokTwo) {
+            try {
+                app(\App\Services\TikTokGmvAdsSyncService::class)->syncIfStale();
+            } catch (\Throwable $e) {
+                Log::warning('TikTok GMV ads auto-sync skipped: '.$e->getMessage());
+            }
+        }
+
+        // GMV ads by SKU (API L30/L1 when present, else latest upload batch).
+        $gmvAdsBySku = $isTiktokTwo ? [] : $this->tiktok1GmvAdsMetricsBySku();
+
         // LMP (Lowest Marketplace Price) competitor lookup from tiktok_sku_competitors.
         // Mirrors the Amazon flow in OverallAmazonController: keep one bulk query
         // and attach lmp_price / lmp_entries / lmp_entries_total to each SKU row
@@ -821,21 +854,83 @@ class TikTokPricingController extends Controller
             $inv = (float)($processedItem["INV"] ?? 0);
             if ($inv <= 0) {
                 $processedItem["NR"] = 'NRA';
-                if ($isTiktokTwo) {
-                    $view = TiktokTwoShopDataView::firstOrNew(['sku' => $sku]);
-                } else {
-                    $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+                try {
+                    $view = $isTiktokTwo
+                        ? TiktokTwoShopDataView::firstOrNew(['sku' => $sku])
+                        : TiktokShopDataView::firstOrNew(['sku' => $sku]);
+                    $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
+                    if (($values['NR'] ?? null) !== 'NRA') {
+                        $values['NR'] = 'NRA';
+                        $view->value = $values;
+                        $view->save();
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('TikTok NRA auto-save failed for SKU '.$sku.': '.$e->getMessage());
                 }
-                $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
-                $values['NR'] = 'NRA';
-                $view->value = $values;
-                $view->save();
             }
             $processedItem["ads_price"] = $processedItem["TT Price"] ?? 0;
             $processedItem["budget"] = isset($metrics['budget']) && $metrics['budget'] !== null ? round((float)$metrics['budget'], 2) : null;
             $processedItem["spend"] = round((float)($metrics['cost'] ?? 0), 2);
             $processedItem["spend_l30"] = round((float)($metrics['cost_l30'] ?? 0), 2);
             $processedItem["spend_l7"] = round((float)($metrics['cost_l7'] ?? 0), 2);
+            $rawAds = $rawAdsBySku[$skuUpper] ?? [
+                'spend_30' => 0.0,
+                'spend_1' => 0.0,
+                'ads_views_30' => 0,
+                'ads_clicks_30' => 0,
+                'ads_views_1' => 0,
+                'ads_clicks_1' => 0,
+                'ads_sold_30' => 0,
+                'ads_cvr_30' => 0.0,
+                'ads_revenue_30' => 0.0,
+                'ads_roas' => 0.0,
+                'target_roas' => 0.0,
+                'ads_acos_pct' => 0.0,
+            ];
+            $processedItem['spend_30'] = $rawAds['spend_30'];
+            $processedItem['spend_1'] = $rawAds['spend_1'];
+            $processedItem['ads_views_30'] = $rawAds['ads_views_30'];
+            $processedItem['ads_clicks_30'] = $rawAds['ads_clicks_30'];
+            $processedItem['ads_views_1'] = $rawAds['ads_views_1'];
+            $processedItem['ads_clicks_1'] = $rawAds['ads_clicks_1'];
+            $processedItem['ads_sold_30'] = $rawAds['ads_sold_30'];
+            $processedItem['ads_cvr_30'] = $rawAds['ads_cvr_30'];
+            $processedItem['ads_revenue_30'] = $rawAds['ads_revenue_30'];
+            $processedItem['ads_roas'] = $rawAds['ads_roas'];
+            $processedItem['target_roas'] = $rawAds['target_roas'];
+            $processedItem['ads_acos_pct'] = $rawAds['ads_acos_pct'];
+            $gmvAds = $gmvAdsBySku[$skuUpper] ?? [
+                'gmv_ad_sold_l30' => 0,
+                'gmv_ad_sold_l1' => 0,
+                'gmv_ad_sales_l30' => 0.0,
+                'gmv_ad_sales_l1' => 0.0,
+                'gmv_spend_l30' => 0.0,
+                'gmv_spend_l1' => 0.0,
+                'gmv_budget' => null,
+                'gmv_status' => null,
+                'gmv_approval' => null,
+            ];
+            $processedItem['gmv_ad_sold_l30'] = $gmvAds['gmv_ad_sold_l30'];
+            $processedItem['gmv_ad_sold_l1'] = $gmvAds['gmv_ad_sold_l1'];
+            $processedItem['gmv_ad_sales_l30'] = $gmvAds['gmv_ad_sales_l30'];
+            $processedItem['gmv_ad_sales_l1'] = $gmvAds['gmv_ad_sales_l1'];
+            $processedItem['gmv_spend_l30'] = $gmvAds['gmv_spend_l30'];
+            $processedItem['gmv_spend_l1'] = $gmvAds['gmv_spend_l1'];
+            $processedItem['gmv_budget'] = $gmvAds['gmv_budget'];
+            $processedItem['gmv_status'] = $gmvAds['gmv_status'];
+            $processedItem['gmv_approval'] = $gmvAds['gmv_approval'];
+            if ((float) $processedItem['spend_30'] <= 0 && (float) $gmvAds['gmv_spend_l30'] > 0) {
+                $processedItem['spend_30'] = $gmvAds['gmv_spend_l30'];
+            }
+            if ((float) $processedItem['spend_1'] <= 0 && (float) $gmvAds['gmv_spend_l1'] > 0) {
+                $processedItem['spend_1'] = $gmvAds['gmv_spend_l1'];
+            }
+            if ((int) $processedItem['ads_sold_30'] <= 0 && (int) $gmvAds['gmv_ad_sold_l30'] > 0) {
+                $processedItem['ads_sold_30'] = $gmvAds['gmv_ad_sold_l30'];
+            }
+            if ((float) ($processedItem['ads_revenue_30'] ?? 0) <= 0 && (float) $gmvAds['gmv_ad_sales_l30'] > 0) {
+                $processedItem['ads_revenue_30'] = $gmvAds['gmv_ad_sales_l30'];
+            }
             // TACOS% = (spend / (TT L30 * TT Price)) * 100
             $spend = (float)$processedItem["spend"];
             $ttL30 = (float)($processedItem["TT L30"] ?? 0);
@@ -1026,6 +1121,23 @@ class TikTokPricingController extends Controller
         $sumAdSold = 0;
         $sumAdClicks = 0;
         $sumCogs = 0;
+        $sumSpend30 = 0.0;
+        $sumSpend1 = 0.0;
+        $sumAdsViews30 = 0;
+        $sumAdsClicks30 = 0;
+        $sumAdsViews1 = 0;
+        $sumAdsClicks1 = 0;
+        $sumAdsSold30 = 0;
+        $sumAdsRevenue30 = 0.0;
+        $sumTargetRoas = 0.0;
+        $targetRoasCount = 0;
+        $sumGmvAdSoldL30 = 0;
+        $sumGmvAdSoldL1 = 0;
+        $sumGmvAdSalesL30 = 0.0;
+        $sumGmvAdSalesL1 = 0.0;
+        $sumGmvSpendL30 = 0.0;
+        $sumGmvSpendL1 = 0.0;
+        $sumGmvBudget = 0.0;
 
         foreach ($childRows as $r) {
             $sumInv += (float)($r['INV'] ?? 0);
@@ -1041,6 +1153,26 @@ class TikTokPricingController extends Controller
             $sumTSales += $ttL30 * $ttPrice;
             $lp = (float)($r['LP_productmaster'] ?? 0);
             $sumCogs += $ttL30 * $lp;
+            $sumSpend30 += (float) ($r['spend_30'] ?? 0);
+            $sumSpend1 += (float) ($r['spend_1'] ?? 0);
+            $sumAdsViews30 += (int) ($r['ads_views_30'] ?? 0);
+            $sumAdsClicks30 += (int) ($r['ads_clicks_30'] ?? 0);
+            $sumAdsViews1 += (int) ($r['ads_views_1'] ?? 0);
+            $sumAdsClicks1 += (int) ($r['ads_clicks_1'] ?? 0);
+            $sumAdsSold30 += (int) ($r['ads_sold_30'] ?? 0);
+            $sumAdsRevenue30 += (float) ($r['ads_revenue_30'] ?? 0);
+            $tRoas = (float) ($r['target_roas'] ?? 0);
+            if ($tRoas > 0) {
+                $sumTargetRoas += $tRoas;
+                $targetRoasCount++;
+            }
+            $sumGmvAdSoldL30 += (int) ($r['gmv_ad_sold_l30'] ?? 0);
+            $sumGmvAdSoldL1 += (int) ($r['gmv_ad_sold_l1'] ?? 0);
+            $sumGmvAdSalesL30 += (float) ($r['gmv_ad_sales_l30'] ?? 0);
+            $sumGmvAdSalesL1 += (float) ($r['gmv_ad_sales_l1'] ?? 0);
+            $sumGmvSpendL30 += (float) ($r['gmv_spend_l30'] ?? 0);
+            $sumGmvSpendL1 += (float) ($r['gmv_spend_l1'] ?? 0);
+            $sumGmvBudget += (float) ($r['gmv_budget'] ?? 0);
         }
 
         $dilPct = $sumInv > 0 ? round(($sumL30 / $sumInv) * 100, 2) : 0;
@@ -1100,6 +1232,27 @@ class TikTokPricingController extends Controller
             'Sales L30' => $sumTSales,
             'ROI%' => $roiPct,
             'hasCampaign' => $dash,
+            'spend_30' => round($sumSpend30, 2),
+            'spend_1' => round($sumSpend1, 2),
+            'ads_views_30' => $sumAdsViews30,
+            'ads_clicks_30' => $sumAdsClicks30,
+            'ads_views_1' => $sumAdsViews1,
+            'ads_clicks_1' => $sumAdsClicks1,
+            'ads_sold_30' => $sumAdsSold30,
+            'ads_cvr_30' => $sumAdsClicks30 > 0 ? round(($sumAdsSold30 / $sumAdsClicks30) * 100, 2) : 0.0,
+            'ads_revenue_30' => round($sumAdsRevenue30, 2),
+            'ads_roas' => $sumSpend30 > 0 ? round($sumAdsRevenue30 / $sumSpend30, 2) : 0.0,
+            'target_roas' => $targetRoasCount > 0 ? round($sumTargetRoas / $targetRoasCount, 2) : 0.0,
+            'ads_acos_pct' => $sumAdsRevenue30 > 0 ? round(($sumSpend30 / $sumAdsRevenue30) * 100, 2) : 0.0,
+            'gmv_ad_sold_l30' => $sumGmvAdSoldL30,
+            'gmv_ad_sold_l1' => $sumGmvAdSoldL1,
+            'gmv_ad_sales_l30' => round($sumGmvAdSalesL30, 2),
+            'gmv_ad_sales_l1' => round($sumGmvAdSalesL1, 2),
+            'gmv_spend_l30' => round($sumGmvSpendL30, 2),
+            'gmv_spend_l1' => round($sumGmvSpendL1, 2),
+            'gmv_budget' => round($sumGmvBudget, 2),
+            'gmv_status' => $dash,
+            'gmv_approval' => $dash,
             'has_custom_sprice' => false,
             'SPRICE_STATUS' => $dash,
             'nrp' => $dash,
@@ -1521,6 +1674,269 @@ class TikTokPricingController extends Controller
     }
 
     /**
+     * All tiktok_campaign_reports rows (no Product-card / product_id filter),
+     * keyed by campaign_name (= SKU). Same table as /tiktok-1-ads-raw-data.
+     * *30 = L30. *1 = L1 when present, otherwise L7 (the short-range upload).
+     *
+     * @return array<string, array{spend_30: float, spend_1: float, ads_views_30: int, ads_clicks_30: int, ads_views_1: int, ads_clicks_1: int, ads_sold_30: int, ads_cvr_30: float}>
+     */
+    private function tiktok1RawAdsMetricsBySku(): array
+    {
+        if (! Schema::hasTable('tiktok_campaign_reports')) {
+            return [];
+        }
+
+        $buckets = [];
+        try {
+            $rows = TiktokCampaignReport::query()
+                ->whereNotNull('campaign_name')
+                ->where('campaign_name', '!=', '')
+                ->get([
+                    'campaign_name',
+                    'report_range',
+                    'cost',
+                    'product_ad_impressions',
+                    'product_ad_clicks',
+                    'sku_orders',
+                    'gross_revenue',
+                    'roi',
+                    'in_roas',
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok 1 raw ads metrics failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        foreach ($rows as $row) {
+            $sku = strtoupper(trim((string) $row->campaign_name));
+            if ($sku === '') {
+                continue;
+            }
+            $range = $this->normalizeTiktokAdsReportRange((string) ($row->report_range ?? ''));
+            if ($range === null) {
+                continue;
+            }
+            if (! isset($buckets[$sku][$range])) {
+                $buckets[$sku][$range] = [
+                    'cost' => 0.0,
+                    'impressions' => 0,
+                    'clicks' => 0,
+                    'orders' => 0,
+                    'revenue' => 0.0,
+                    'roi_sum' => 0.0,
+                    'roi_n' => 0,
+                    'in_roas' => null,
+                ];
+            }
+            $buckets[$sku][$range]['cost'] += (float) ($row->cost ?? 0);
+            $buckets[$sku][$range]['impressions'] += (int) ($row->product_ad_impressions ?? 0);
+            $buckets[$sku][$range]['clicks'] += (int) ($row->product_ad_clicks ?? 0);
+            $buckets[$sku][$range]['orders'] += (int) ($row->sku_orders ?? 0);
+            $buckets[$sku][$range]['revenue'] += (float) ($row->gross_revenue ?? 0);
+            if ($row->roi !== null && $row->roi !== '') {
+                $buckets[$sku][$range]['roi_sum'] += (float) $row->roi;
+                $buckets[$sku][$range]['roi_n']++;
+            }
+            if ($row->in_roas !== null && $row->in_roas !== '') {
+                $buckets[$sku][$range]['in_roas'] = (float) $row->in_roas;
+            }
+        }
+
+        $out = [];
+        foreach ($buckets as $sku => $byRange) {
+            $emptyBucket = ['cost' => 0, 'impressions' => 0, 'clicks' => 0, 'orders' => 0, 'revenue' => 0, 'roi_sum' => 0, 'roi_n' => 0, 'in_roas' => null];
+            $l30 = $byRange['L30'] ?? $emptyBucket;
+            $l1 = $byRange['L1'] ?? null;
+            $l7 = $byRange['L7'] ?? $emptyBucket;
+            $short = $l1;
+            if ($short === null || (
+                (float) ($short['cost'] ?? 0) == 0.0
+                && (int) ($short['impressions'] ?? 0) === 0
+                && (int) ($short['clicks'] ?? 0) === 0
+            )) {
+                $short = $l7;
+            }
+            $clicks30 = (int) ($l30['clicks'] ?? 0);
+            $orders30 = (int) ($l30['orders'] ?? 0);
+            $cost30 = (float) ($l30['cost'] ?? 0);
+            $rev30 = (float) ($l30['revenue'] ?? 0);
+            $roas = $cost30 > 0 && $rev30 > 0
+                ? $rev30 / $cost30
+                : (((int) ($l30['roi_n'] ?? 0) > 0) ? ((float) $l30['roi_sum'] / (int) $l30['roi_n']) : 0.0);
+            $acos = $rev30 > 0
+                ? ($cost30 / $rev30) * 100
+                : ($roas > 0 ? 100 / $roas : 0.0);
+            $targetRoas = $l30['in_roas'] ?? $short['in_roas'] ?? $l7['in_roas'] ?? 0.0;
+            $out[$sku] = [
+                'spend_30' => round($cost30, 2),
+                'spend_1' => round((float) ($short['cost'] ?? 0), 2),
+                'ads_views_30' => (int) ($l30['impressions'] ?? 0),
+                'ads_clicks_30' => $clicks30,
+                'ads_views_1' => (int) ($short['impressions'] ?? 0),
+                'ads_clicks_1' => (int) ($short['clicks'] ?? 0),
+                'ads_sold_30' => $orders30,
+                'ads_cvr_30' => $clicks30 > 0 ? round(($orders30 / $clicks30) * 100, 2) : 0.0,
+                'ads_revenue_30' => round($rev30, 2),
+                'ads_roas' => round((float) $roas, 2),
+                'target_roas' => round((float) $targetRoas, 2),
+                'ads_acos_pct' => round((float) $acos, 2),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * GMV ads keyed by SKU. Prefers API rows with report_range L30/L1
+     * (from TikTokGmvAdsSyncService). Falls back to the latest upload batch.
+     *
+     * @return array<string, array{gmv_ad_sold_l30: int, gmv_ad_sold_l1: int, gmv_ad_sales_l30: float, gmv_ad_sales_l1: float, gmv_spend_l30: float, gmv_spend_l1: float, gmv_budget: ?float, gmv_status: ?string, gmv_approval: ?string}>
+     */
+    private function tiktok1GmvAdsMetricsBySku(): array
+    {
+        if (! Schema::hasTable('tiktok_gmv_ads')) {
+            return [];
+        }
+
+        try {
+            $rows = TiktokGmvAd::query()->get();
+        } catch (\Throwable $e) {
+            Log::warning('TikTok 1 GMV ads metrics failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        $hasRange = Schema::hasColumn('tiktok_gmv_ads', 'report_range');
+        $out = [];
+        $empty = [
+            'gmv_ad_sold_l30' => 0,
+            'gmv_ad_sold_l1' => 0,
+            'gmv_ad_sales_l30' => 0.0,
+            'gmv_ad_sales_l1' => 0.0,
+            'gmv_spend_l30' => 0.0,
+            'gmv_spend_l1' => 0.0,
+            'gmv_budget' => null,
+            'gmv_status' => null,
+            'gmv_approval' => null,
+        ];
+
+        $ranged = $hasRange && $rows->contains(fn ($r) => in_array(strtoupper(trim((string) ($r->report_range ?? ''))), ['L30', 'L1'], true));
+        if ($ranged) {
+            foreach ($rows as $row) {
+                $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                if ($sku === '' || preg_match('/^\d{1,6}$/', $sku)) {
+                    continue;
+                }
+                $range = strtoupper(trim((string) ($row->report_range ?? '')));
+                if (! isset($out[$sku])) {
+                    $out[$sku] = $empty;
+                }
+                if ($range === 'L30') {
+                    $out[$sku]['gmv_ad_sold_l30'] += (int) ($row->ad_sold ?? 0);
+                    $out[$sku]['gmv_ad_sales_l30'] += (float) ($row->ad_sales ?? 0);
+                    $out[$sku]['gmv_spend_l30'] += (float) ($row->spend ?? 0);
+                } elseif ($range === 'L1') {
+                    $out[$sku]['gmv_ad_sold_l1'] += (int) ($row->ad_sold ?? 0);
+                    $out[$sku]['gmv_ad_sales_l1'] += (float) ($row->ad_sales ?? 0);
+                    $out[$sku]['gmv_spend_l1'] += (float) ($row->spend ?? 0);
+                }
+                if ($out[$sku]['gmv_status'] === null && $row->status) {
+                    $out[$sku]['gmv_status'] = (string) $row->status;
+                }
+                if ($out[$sku]['gmv_approval'] === null && $row->approval) {
+                    $out[$sku]['gmv_approval'] = (string) $row->approval;
+                }
+                if ($out[$sku]['gmv_budget'] === null && $row->budget !== null && $row->budget !== '') {
+                    $out[$sku]['gmv_budget'] = (float) $row->budget;
+                }
+            }
+            foreach ($out as $sku => $metrics) {
+                $out[$sku]['gmv_ad_sales_l30'] = round((float) $metrics['gmv_ad_sales_l30'], 2);
+                $out[$sku]['gmv_ad_sales_l1'] = round((float) $metrics['gmv_ad_sales_l1'], 2);
+                $out[$sku]['gmv_spend_l30'] = round((float) $metrics['gmv_spend_l30'], 2);
+                $out[$sku]['gmv_spend_l1'] = round((float) $metrics['gmv_spend_l1'], 2);
+            }
+
+            return $out;
+        }
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $sku = strtoupper(trim((string) ($row->sku ?? '')));
+            if ($sku === '') {
+                continue;
+            }
+            $grouped[$sku][] = $row;
+        }
+
+        foreach ($grouped as $sku => $list) {
+            $latestAt = null;
+            foreach ($list as $row) {
+                $at = $row->created_at ? $row->created_at->getTimestamp() : 0;
+                if ($latestAt === null || $at > $latestAt) {
+                    $latestAt = $at;
+                }
+            }
+
+            $adSold = 0;
+            $adSales = 0.0;
+            $spend = 0.0;
+            $budget = null;
+            $status = null;
+            $approval = null;
+            foreach ($list as $row) {
+                $at = $row->created_at ? $row->created_at->getTimestamp() : 0;
+                if ($at !== $latestAt) {
+                    continue;
+                }
+                $adSold += (int) ($row->ad_sold ?? 0);
+                $adSales += (float) ($row->ad_sales ?? 0);
+                $spend += (float) ($row->spend ?? 0);
+                if ($budget === null && $row->budget !== null && $row->budget !== '') {
+                    $budget = (float) $row->budget;
+                }
+                if ($status === null && $row->status) {
+                    $status = (string) $row->status;
+                }
+                if ($approval === null && $row->approval) {
+                    $approval = (string) $row->approval;
+                }
+            }
+
+            $out[$sku] = [
+                'gmv_ad_sold_l30' => $adSold,
+                'gmv_ad_sold_l1' => 0,
+                'gmv_ad_sales_l30' => round($adSales, 2),
+                'gmv_ad_sales_l1' => 0.0,
+                'gmv_spend_l30' => round($spend, 2),
+                'gmv_spend_l1' => 0.0,
+                'gmv_budget' => $budget !== null ? round($budget, 2) : null,
+                'gmv_status' => $status,
+                'gmv_approval' => $approval,
+            ];
+        }
+
+        return $out;
+    }
+
+    private function normalizeTiktokAdsReportRange(string $range): ?string
+    {
+        $r = strtoupper(trim($range));
+        if (in_array($r, ['L30', '30', 'LAST 30 DAYS', 'LAST30'], true)) {
+            return 'L30';
+        }
+        if (in_array($r, ['L7', '7', 'LAST 7 DAYS', 'LAST7'], true)) {
+            return 'L7';
+        }
+        if (in_array($r, ['L1', '1', 'LAST 1 DAY', 'LAST1', 'YESTERDAY', 'TODAY'], true)) {
+            return 'L1';
+        }
+
+        return null;
+    }
+
+    /**
      * Snapshot per-SKU TT Price (and stock/L30) for Price charts — California day.
      * Called on tabulator data load so charts work even before the nightly cron.
      */
@@ -1621,6 +2037,23 @@ class TikTokPricingController extends Controller
             $missingCount = 0;
             $mapCount = 0;
             $invTTStockCount = 0;
+            $totalSpend30 = 0.0;
+            $totalSpend1 = 0.0;
+            $totalAdsViews30 = 0;
+            $totalAdsClicks30 = 0;
+            $totalAdsViews1 = 0;
+            $totalAdsClicks1 = 0;
+            $totalAdsSold30 = 0;
+            $totalAdsRevenue30 = 0.0;
+            $totalTargetRoas = 0.0;
+            $targetRoasCount = 0;
+            $totalGmvAdSoldL30 = 0;
+            $totalGmvAdSoldL1 = 0;
+            $totalGmvAdSalesL30 = 0.0;
+            $totalGmvAdSalesL1 = 0.0;
+            $totalGmvSpendL30 = 0.0;
+            $totalGmvSpendL1 = 0.0;
+            $totalGmvBudget = 0.0;
             
             // Loop through each row (mirror JavaScript updateSummary logic)
             foreach ($filteredData as $row) {
@@ -1639,6 +2072,26 @@ class TikTokPricingController extends Controller
                 
                 $totalInv += floatval($row['INV'] ?? 0);
                 $totalL30 += $l30;
+                $totalSpend30 += (float) ($row['spend_30'] ?? 0);
+                $totalSpend1 += (float) ($row['spend_1'] ?? 0);
+                $totalAdsViews30 += (int) ($row['ads_views_30'] ?? 0);
+                $totalAdsClicks30 += (int) ($row['ads_clicks_30'] ?? 0);
+                $totalAdsViews1 += (int) ($row['ads_views_1'] ?? 0);
+                $totalAdsClicks1 += (int) ($row['ads_clicks_1'] ?? 0);
+                $totalAdsSold30 += (int) ($row['ads_sold_30'] ?? 0);
+                $totalAdsRevenue30 += (float) ($row['ads_revenue_30'] ?? 0);
+                $rowTargetRoas = (float) ($row['target_roas'] ?? 0);
+                if ($rowTargetRoas > 0) {
+                    $totalTargetRoas += $rowTargetRoas;
+                    $targetRoasCount++;
+                }
+                $totalGmvAdSoldL30 += (int) ($row['gmv_ad_sold_l30'] ?? 0);
+                $totalGmvAdSoldL1 += (int) ($row['gmv_ad_sold_l1'] ?? 0);
+                $totalGmvAdSalesL30 += (float) ($row['gmv_ad_sales_l30'] ?? 0);
+                $totalGmvAdSalesL1 += (float) ($row['gmv_ad_sales_l1'] ?? 0);
+                $totalGmvSpendL30 += (float) ($row['gmv_spend_l30'] ?? 0);
+                $totalGmvSpendL1 += (float) ($row['gmv_spend_l1'] ?? 0);
+                $totalGmvBudget += (float) ($row['gmv_budget'] ?? 0);
                 
                 if ($l30 == 0) {
                     $zeroSoldCount++;
@@ -1717,6 +2170,23 @@ class TikTokPricingController extends Controller
                 'avg_dil' => round($avgDil, 2),
                 'avg_roi' => round($avgRoi, 2),
                 'avg_price' => round($avgPrice, 2),
+                'total_spend_30' => round($totalSpend30, 2),
+                'total_spend_1' => round($totalSpend1, 2),
+                'total_ads_views_30' => $totalAdsViews30,
+                'total_ads_clicks_30' => $totalAdsClicks30,
+                'total_ads_views_1' => $totalAdsViews1,
+                'total_ads_clicks_1' => $totalAdsClicks1,
+                'ads_cvr_30' => $totalAdsClicks30 > 0 ? round(($totalAdsSold30 / $totalAdsClicks30) * 100, 2) : 0.0,
+                'ads_roas' => $totalSpend30 > 0 ? round($totalAdsRevenue30 / $totalSpend30, 2) : 0.0,
+                'avg_target_roas' => $targetRoasCount > 0 ? round($totalTargetRoas / $targetRoasCount, 2) : 0.0,
+                'ads_acos_pct' => $totalAdsRevenue30 > 0 ? round(($totalSpend30 / $totalAdsRevenue30) * 100, 2) : 0.0,
+                'total_gmv_ad_sold_l30' => $totalGmvAdSoldL30,
+                'total_gmv_ad_sold_l1' => $totalGmvAdSoldL1,
+                'total_gmv_ad_sales_l30' => round($totalGmvAdSalesL30, 2),
+                'total_gmv_ad_sales_l1' => round($totalGmvAdSalesL1, 2),
+                'total_gmv_spend_l30' => round($totalGmvSpendL30, 2),
+                'total_gmv_spend_l1' => round($totalGmvSpendL1, 2),
+                'total_gmv_budget' => round($totalGmvBudget, 2),
                 
                 // Metadata
                 'total_products_count' => count($products),

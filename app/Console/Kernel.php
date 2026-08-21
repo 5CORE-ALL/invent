@@ -2361,6 +2361,7 @@ class Kernel extends ConsoleKernel
 
         $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
         $retryFiveTimesUntil('sync:tiktok-api-data --channel=tiktok2', 'sync-tiktok2-api-data', '16:00');
+        $retryFiveTimesUntil('tiktok:sync-gmv-ads --force', 'sync-tiktok-gmv-ads', '16:20');
 
   
         $ist($schedule->command('stock:update-mapping-daily')

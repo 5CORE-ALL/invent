@@ -753,6 +753,9 @@
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             0 Sold: <span id="zero-sold-count">0</span>
                         </span>
+                        @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'amazon-lmp-missing-badge', 'lmpChannelKey' => 'amazon'])
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'amazon-price-gt-lmp-badge', 'pglChannelKey' => 'amazon', 'pglPriceField' => 'price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'amazon-price-lt80-lmp-badge', 'pltChannelKey' => 'amazon', 'pltPriceField' => 'price'])
                     </div>
                 </div>
             </div>
@@ -1071,6 +1074,9 @@
         let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
         let missingAmazonFbaFilterActive = false;    // Track Missing L FBA filter
         let missingAmazonNonFbaFilterActive = false; // Track Missing M FBM (non-FBA listing) filter
+        let lmpMissingFilterActive = false;
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         // Escape string for safe use in HTML attribute (fixes SKUs with " e.g. WF 8"-890 1PC)
         function escAttr(s) {
@@ -2690,6 +2696,37 @@
                 // Re-apply filters
                 applyFilters();
             });
+
+            if (window.LmpMissingBadge) {
+                LmpMissingBadge.bind({
+                    badge: '#amazon-lmp-missing-badge',
+                    getActive: function() { return lmpMissingFilterActive; },
+                    onToggle: function(on) {
+                        lmpMissingFilterActive = on;
+                        applyFilters();
+                    }
+                });
+            }
+            if (window.PriceGtLmpBadge) {
+                PriceGtLmpBadge.bind({
+                    badge: '#amazon-price-gt-lmp-badge',
+                    getActive: function() { return priceGtLmpFilterActive; },
+                    onToggle: function(on) {
+                        priceGtLmpFilterActive = on;
+                        applyFilters();
+                    }
+                });
+            }
+            if (window.PriceLt80LmpBadge) {
+                PriceLt80LmpBadge.bind({
+                    badge: '#amazon-price-lt80-lmp-badge',
+                    getActive: function() { return priceLt80LmpFilterActive; },
+                    onToggle: function(on) {
+                        priceLt80LmpFilterActive = on;
+                        applyFilters();
+                    }
+                });
+            }
 
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {
@@ -5002,10 +5039,12 @@
                             }
 
                             const priceFormatted = '$' + price.toFixed(2);
+                            const tri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(price, lmpPrice) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(price, lmpPrice) : '');
                             if (lmpPrice > 0 && price > lmpPrice) {
-                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>`;
+                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>${tri}`;
                             }
-                            return priceFormatted;
+                            return priceFormatted + purpleTri;
                         },
                         sorter: "number",
                         width: 70
@@ -6533,6 +6572,21 @@
                         return !!(data.is_missing_amazon && !rowIsFba(data) && nr !== 'NR');
                     });
                 }
+                if (lmpMissingFilterActive && window.LmpMissingBadge) {
+                    table.addFilter(function(data) {
+                        return !LmpMissingBadge.isParentRow(data) && !LmpMissingBadge.hasLmp(data);
+                    });
+                }
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceGtLmpBadge.hasRedTriangle(data, 'price');
+                    });
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
+                    });
+                }
                 updateCalcValues();
                 updateSummary();
                 amazonTabulatorFinalizeFilterApply(sortSnapshot);
@@ -6723,6 +6777,15 @@
                 // Update sold counts
                 $('#total-sold-count').text(totalSoldCount.toLocaleString());
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
+                if (window.LmpMissingBadge) {
+                    LmpMissingBadge.update('#amazon-lmp-missing-badge', allData, 'amazon');
+                }
+                if (window.PriceGtLmpBadge) {
+                    PriceGtLmpBadge.update('#amazon-price-gt-lmp-badge', allData, 'amazon', 'price');
+                }
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#amazon-price-lt80-lmp-badge', allData, 'amazon', 'price');
+                }
 
                 // Filtered (active) row count — exclude parent summary rows
                 const visibleRowCount = data.filter(function(row) {

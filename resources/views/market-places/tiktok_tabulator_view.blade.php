@@ -247,29 +247,39 @@
 
         /* NRP (REQ / NR) — stored in tiktok_shop_data_views / tiktok_two_shop_data_views value.NRP */
 
-        /* Summary badges — horizontal scroll on narrow viewports (same as eBay 2 pricing) */
+        /* Summary badges — wrap to content width so labels never overflow */
         #summary-stats .ebay2-summary-badge-row {
             display: flex;
-            flex-wrap: nowrap;
-            align-items: stretch;
-            gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.4rem 0.45rem;
             width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
         }
         #summary-stats .ebay2-summary-badge-row > .badge {
-            flex: 1 1 0;
-            min-width: 0;
-            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
-            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
-            font-weight: bold;
+            flex: 0 0 auto;
+            min-width: max-content;
+            max-width: none;
+            font-size: 0.8rem !important;
+            line-height: 1.25 !important;
+            padding: 0.35rem 0.65rem !important;
+            font-weight: 700;
             box-sizing: border-box;
-            display: inline-flex;
+            display: inline-flex !important;
             align-items: center;
             justify-content: center;
+            gap: 0.35rem;
             text-align: center;
             white-space: nowrap;
+            overflow: hidden;
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge.tt-badge-chart::after {
+            content: '';
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.55;
+            flex-shrink: 0;
         }
 
         /* Metric history modals — full width (theme uses --tz-modal-width / --tz-modal-margin) */
@@ -579,13 +589,19 @@
                             title="Upload L30 Report" style="font-size: 0.75rem;">
                             <i class="fa-solid fa-upload me-1"></i>L30
                         </button>
+                        <input type="file" id="l1-upload-file" accept=".xlsx,.xls,.csv"
+                            class="form-control form-control-sm d-none" style="width: 0;">
+                        <button type="button" id="l1-upload-btn" class="btn btn-sm btn-primary"
+                            title="Upload L1 Report" style="font-size: 0.75rem;">
+                            <i class="fa-solid fa-upload me-1"></i>L1
+                        </button>
                         <span id="upload-status-container" class="ms-2" style="font-size: 0.7rem;"></span>
                     </div>
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                    <div class="ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
                         <span class="badge bg-primary fs-6 p-2 tt-badge-chart" data-metric="total_sales"
                             id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor: pointer;"
                             title="Click for daily trend">Sales: $0</span>
@@ -607,9 +623,87 @@
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" data-metric="missing_count"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter">Missing L: 0</span>
+                        @include('partials.price-gt-lmp-badge', [
+                            'pglBadgeId' => 'tiktok-price-gt-lmp-badge',
+                            'pglChannelKey' => (str_contains($tiktokPageTitle ?? '', 'TikTok 2') || (($tiktokPricingClientConfig['summaryChannel'] ?? '') === 'tiktok2')) ? 'tiktok2' : 'tiktok',
+                            'pglPriceField' => 'TT Price'
+                        ])
+                        @include('partials.price-lt80-lmp-badge', [
+                            'pltBadgeId' => 'tiktok-price-lt80-lmp-badge',
+                            'pltChannelKey' => (str_contains($tiktokPageTitle ?? '', 'TikTok 2') || (($tiktokPricingClientConfig['summaryChannel'] ?? '') === 'tiktok2')) ? 'tiktok2' : 'tiktok',
+                            'pltPriceField' => 'TT Price'
+                        ])
                         <span class="badge fs-6 p-2" id="inv-tt-stock-badge" data-metric="nmap_count"
                             style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;"
                             title="Click to filter">N Map: 0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_spend_30"
+                            id="tt-spend-30-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #9ec5fe;"
+                            title="Sum of Spend 30 from tiktok_campaign_reports L30. Click for daily trend.">Spend 30: $0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_spend_1"
+                            id="tt-spend-1-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #b8cfe5;"
+                            title="Sum of Spend 1 (L1, else L7) from tiktok_campaign_reports. Click for daily trend.">Spend 1: $0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_ads_views_30"
+                            id="tt-ads-views-30-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #cfe2ff;"
+                            title="Sum of adsViews 30 (L30 impressions). Click for daily trend.">adsViews 30: 0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_ads_clicks_30"
+                            id="tt-ads-clicks-30-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #a5d6e8;"
+                            title="Sum of ads Clicks 30 (L30 clicks). Click for daily trend.">ads Clicks 30: 0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_ads_views_1"
+                            id="tt-ads-views-1-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #d7e3fc;"
+                            title="Sum of ads view1 (L1, else L7 impressions). Click for daily trend.">ads view1: 0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_ads_clicks_1"
+                            id="tt-ads-clicks-1-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #c5e4f3;"
+                            title="Sum of ads clicks 1 (L1, else L7 clicks). Click for daily trend.">ads clicks 1: 0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="ads_cvr_30"
+                            id="tt-ads-cvr-30-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #ffe69c;"
+                            title="ads CVR 30 = L30 ad sold / L30 clicks. Click for daily trend.">ads CVR 30: 0%</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="ads_roas"
+                            id="tt-ads-roas-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #a3cfbb;"
+                            title="ROAS = L30 ad revenue / L30 spend. Click for daily trend.">ROAS: 0.00</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="avg_target_roas"
+                            id="tt-target-roas-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #cfe2ff;"
+                            title="Average target ROAS (in_roas). Click for daily trend.">Target ROAS: 0.00</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="ads_acos_pct"
+                            id="tt-ads-acos-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #f8d7da;"
+                            title="ACOS% = L30 spend / L30 ad revenue. Click for daily trend.">Acos%: 0%</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_gmv_ad_sold_l30"
+                            id="tt-gmv-ad-sold-l30-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #cfe2ff;"
+                            title="GMV Ad sold L30 from tiktok_gmv_ads (matched by SKU). Click for daily trend.">GMV Ad sold L30: 0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_gmv_ad_sold_l1"
+                            id="tt-gmv-ad-sold-l1-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #d7e3fc;"
+                            title="GMV Ad sold L1 from tiktok_gmv_ads. Click for daily trend.">GMV Ad sold L1: 0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_gmv_ad_sales_l30"
+                            id="tt-gmv-ad-sales-l30-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #9ec5fe;"
+                            title="GMV Ad sales L30 from tiktok_gmv_ads (matched by SKU). Click for daily trend.">GMV Ad sales L30: $0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_gmv_ad_sales_l1"
+                            id="tt-gmv-ad-sales-l1-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #b8cfe5;"
+                            title="GMV Ad sales L1 from tiktok_gmv_ads. Click for daily trend.">GMV Ad sales L1: $0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_gmv_spend_l30"
+                            id="tt-gmv-spend-l30-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #a5d6e8;"
+                            title="GMV Spend L30 from tiktok_gmv_ads (matched by SKU). Click for daily trend.">GMV Spend L30: $0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_gmv_spend_l1"
+                            id="tt-gmv-spend-l1-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #c5e4f3;"
+                            title="GMV Spend L1 from tiktok_gmv_ads. Click for daily trend.">GMV Spend L1: $0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_gmv_budget"
+                            id="tt-gmv-budget-badge"
+                            style="color: black; font-weight: bold; cursor: pointer; background-color: #ffe69c;"
+                            title="GMV Budget from tiktok_gmv_ads (matched by SKU). Click for daily trend.">GMV Budget: $0</span>
                     </div>
                 </div>
             </div>
@@ -1365,8 +1459,9 @@
             let ttBadgeChartDays = 30;
             let ttBadgeChartMetricKey = '';
             let ttBadgeChartAjax = null;
-            const ttBadgeDollarMetrics = ['total_sales', 'avg_price', 'total_pft', 'total_cogs'];
-            const ttBadgePercentMetrics = ['avg_gpft', 'avg_roi', 'avg_dil'];
+            const ttBadgeDollarMetrics = ['total_sales', 'avg_price', 'total_pft', 'total_cogs', 'total_spend_30', 'total_spend_1', 'total_gmv_ad_sales_l30', 'total_gmv_ad_sales_l1', 'total_gmv_spend_l30', 'total_gmv_spend_l1', 'total_gmv_budget'];
+            const ttBadgePercentMetrics = ['avg_gpft', 'avg_roi', 'avg_dil', 'ads_cvr_30', 'ads_acos_pct'];
+            const ttBadgeRoasMetrics = ['ads_roas', 'avg_target_roas'];
             const ttBadgeMetricLabels = {
                 total_sales: 'Sales',
                 total_pft: 'Profit',
@@ -1381,6 +1476,23 @@
                 missing_count: 'Missing L',
                 nmap_count: 'N Map',
                 inv_tt_stock_count: 'N Map',
+                total_spend_30: 'Spend 30',
+                total_spend_1: 'Spend 1',
+                total_ads_views_30: 'adsViews 30',
+                total_ads_clicks_30: 'ads Clicks 30',
+                total_ads_views_1: 'ads view1',
+                total_ads_clicks_1: 'ads clicks 1',
+                ads_cvr_30: 'ads CVR 30',
+                ads_roas: 'ROAS',
+                avg_target_roas: 'Target ROAS',
+                ads_acos_pct: 'Acos%',
+                total_gmv_ad_sold_l30: 'GMV Ad sold L30',
+                total_gmv_ad_sold_l1: 'GMV Ad sold L1',
+                total_gmv_ad_sales_l30: 'GMV Ad sales L30',
+                total_gmv_ad_sales_l1: 'GMV Ad sales L1',
+                total_gmv_spend_l30: 'GMV Spend L30',
+                total_gmv_spend_l1: 'GMV Spend L1',
+                total_gmv_budget: 'GMV Budget',
             };
 
             function ttFormatChartValue(v) { 
@@ -1388,6 +1500,7 @@
                 if (ttBadgeDollarMetrics.includes(ttBadgeChartMetricKey)) return '$' + Math.round(num)
                     .toLocaleString('en-US');
                 if (ttBadgePercentMetrics.includes(ttBadgeChartMetricKey)) return num.toFixed(1) + '%';
+                if (ttBadgeRoasMetrics.includes(ttBadgeChartMetricKey)) return num.toFixed(2);
                 return Math.round(num).toLocaleString('en-US');
             }
 
@@ -2241,6 +2354,8 @@
             let moreSoldFilterActive = false;
             let missingFilterActive = false;
             let invTTStockFilterActive = false;
+            let priceGtLmpFilterActive = false;
+            let priceLt80LmpFilterActive = false;
             let adsBadgeFilter = null;
 
             function ttDismissBadgeChartModal() {
@@ -3179,6 +3294,261 @@
                         width: 85
                     },
                     {
+                        title: "Spend 30",
+                        field: "spend_30",
+                        hozAlign: "right",
+                        sorter: "number",
+                        width: 100,
+                        headerTooltip: "L30 Cost from tiktok_campaign_reports (same as /tiktok-1-ads-raw-data).",
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue() || 0);
+                            return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
+                    },
+                    {
+                        title: "Spend 1",
+                        field: "spend_1",
+                        hozAlign: "right",
+                        sorter: "number",
+                        width: 90,
+                        headerTooltip: "L1 Cost from tiktok_campaign_reports, or L7 if no L1 row.",
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue() || 0);
+                            return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
+                    },
+                    {
+                        title: "adsViews 30",
+                        field: "ads_views_30",
+                        hozAlign: "right",
+                        sorter: "number",
+                        width: 110,
+                        headerTooltip: "L30 Product ad impressions from tiktok_campaign_reports.",
+                        formatter: function(cell) {
+                            return (parseInt(cell.getValue(), 10) || 0).toLocaleString();
+                        }
+                    },
+                    {
+                        title: "ads Clicks 30",
+                        field: "ads_clicks_30",
+                        hozAlign: "right",
+                        sorter: "number",
+                        width: 120,
+                        headerTooltip: "L30 Product ad clicks from tiktok_campaign_reports.",
+                        formatter: function(cell) {
+                            return (parseInt(cell.getValue(), 10) || 0).toLocaleString();
+                        }
+                    },
+                    {
+                        title: "ads view1",
+                        field: "ads_views_1",
+                        hozAlign: "right",
+                        sorter: "number",
+                        width: 100,
+                        headerTooltip: "L1 Product ad impressions, or L7 if no L1 row.",
+                        formatter: function(cell) {
+                            return (parseInt(cell.getValue(), 10) || 0).toLocaleString();
+                        }
+                    },
+                    {
+                        title: "ads clicks 1",
+                        field: "ads_clicks_1",
+                        hozAlign: "right",
+                        sorter: "number",
+                        width: 110,
+                        headerTooltip: "L1 Product ad clicks, or L7 if no L1 row.",
+                        formatter: function(cell) {
+                            return (parseInt(cell.getValue(), 10) || 0).toLocaleString();
+                        }
+                    },
+                    {
+                        title: "ads CVR 30",
+                        field: "ads_cvr_30",
+                        hozAlign: "right",
+                        sorter: "number",
+                        width: 110,
+                        headerTooltip: "L30 ad sold / L30 clicks from tiktok_campaign_reports.",
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue());
+                            if (v === null || v === undefined || isNaN(v)) return '<span style="color:#6c757d;">-</span>';
+                            return v.toFixed(2) + '%';
+                        }
+                    },
+                    {
+                        title: "ROAS",
+                        field: "ads_roas",
+                        hozAlign: "right",
+                        sorter: "number",
+                        width: 80,
+                        headerTooltip: "L30 ad revenue / L30 spend from tiktok_campaign_reports (roi fallback).",
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue() || 0);
+                            return v.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Target ROAS",
+                        field: "target_roas",
+                        hozAlign: "right",
+                        sorter: "number",
+                        width: 110,
+                        editor: "number",
+                        editorParams: { min: 0, step: 0.01 },
+                        headerTooltip: "Target ROAS (in_roas) from tiktok_campaign_reports. Editable.",
+                        editable: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent_summary || d.is_parent) return false;
+                            const sku = String(d['(Child) sku'] || d.sku || '');
+                            return !!sku && !String(d.Parent || '').toUpperCase().startsWith('PARENT');
+                        },
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue() || 0);
+                            return v.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Acos%",
+                        field: "ads_acos_pct",
+                        hozAlign: "right",
+                        sorter: "number",
+                        width: 90,
+                        headerTooltip: "L30 spend / L30 ad revenue from tiktok_campaign_reports.",
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue() || 0);
+                            return v.toFixed(2) + '%';
+                        }
+                    },
+                    {
+                        title: "GMV Ad sold L30",
+                        field: "gmv_ad_sold_l30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerSort: true,
+                        width: 90,
+                        headerTooltip: "Ad sold L30 from tiktok_gmv_ads, matched by SKU (latest upload batch).",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            const raw = cell.getValue();
+                            if (isParent && (raw === '-' || raw === null || raw === undefined)) {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            return (parseInt(raw, 10) || 0).toLocaleString();
+                        }
+                    },
+                    {
+                        title: "GMV Ad sold L1",
+                        field: "gmv_ad_sold_l1",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerSort: true,
+                        width: 80,
+                        headerTooltip: "Ad sold L1 from tiktok_gmv_ads, matched by SKU.",
+                        formatter: function(cell) {
+                            return (parseInt(cell.getValue(), 10) || 0).toLocaleString();
+                        }
+                    },
+                    {
+                        title: "GMV Ad sales L30",
+                        field: "gmv_ad_sales_l30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerSort: true,
+                        width: 95,
+                        headerTooltip: "Ad sales L30 from tiktok_gmv_ads, matched by SKU (latest upload batch).",
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue() || 0);
+                            return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
+                    },
+                    {
+                        title: "GMV Ad sales L1",
+                        field: "gmv_ad_sales_l1",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerSort: true,
+                        width: 90,
+                        headerTooltip: "Ad sales L1 from tiktok_gmv_ads, matched by SKU.",
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue() || 0);
+                            return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
+                    },
+                    {
+                        title: "GMV Spend L30",
+                        field: "gmv_spend_l30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerSort: true,
+                        width: 90,
+                        headerTooltip: "Spend L30 from tiktok_gmv_ads, matched by SKU (latest upload batch).",
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue() || 0);
+                            return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
+                    },
+                    {
+                        title: "GMV Spend L1",
+                        field: "gmv_spend_l1",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerSort: true,
+                        width: 80,
+                        headerTooltip: "Spend L1 from tiktok_gmv_ads, matched by SKU.",
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue() || 0);
+                            return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
+                    },
+                    {
+                        title: "GMV Budget",
+                        field: "gmv_budget",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerSort: true,
+                        width: 80,
+                        headerTooltip: "Budget from tiktok_gmv_ads, matched by SKU.",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            if (raw === null || raw === undefined || raw === '' || raw === '-') {
+                                return '';
+                            }
+                            const v = parseFloat(raw);
+                            if (isNaN(v)) return '';
+                            return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
+                    },
+                    {
+                        title: "GMV Status",
+                        field: "gmv_status",
+                        hozAlign: "center",
+                        headerSort: true,
+                        width: 80,
+                        headerTooltip: "Status from tiktok_gmv_ads, matched by SKU.",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            if (raw === null || raw === undefined || raw === '' || raw === '-') {
+                                return '';
+                            }
+                            return String(raw);
+                        }
+                    },
+                    {
+                        title: "GMV Approval",
+                        field: "gmv_approval",
+                        hozAlign: "center",
+                        headerSort: true,
+                        width: 90,
+                        headerTooltip: "Approval from tiktok_gmv_ads, matched by SKU.",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            if (raw === null || raw === undefined || raw === '' || raw === '-') {
+                                return '';
+                            }
+                            return String(raw);
+                        }
+                    },
+                    {
                         title: "Std Prc",
                         field: "STANDARD_PRICE",
                         hozAlign: "center",
@@ -3236,13 +3606,15 @@
                             }
 
                             const priceFormatted = '$' + value.toFixed(2);
+                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, lmpPrice) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, lmpPrice) : '');
                             if (sku && !isParent) {
-                                return `<span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}</span>`;
+                                return `<span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}</span>${lmpTri}${purpleTri}`;
                             }
                             if (lmpPrice > 0 && value > lmpPrice) {
-                                return `<span style="color: #dc3545; font-weight: 700;">${priceFormatted}</span>`;
+                                return `<span style="color: #dc3545; font-weight: 700;">${priceFormatted}</span>${lmpTri}${purpleTri}`;
                             }
-                            return `<span style="font-weight: 700;">${priceFormatted}</span>`;
+                            return `<span style="font-weight: 700;">${priceFormatted}</span>${lmpTri}${purpleTri}`;
                         },
                         width: 70
                     },
@@ -3917,12 +4289,12 @@
                         sku: sku,
                         sprice: newSprice
                     }]);
-                } else if (field === 'in_roas') {
+                } else if (field === 'in_roas' || field === 'target_roas') {
                     const row = cell.getRow();
                     const rowData = row.getData();
                     const sku = rowData['(Child) sku'];
                     const value = parseFloat(cell.getValue() || 0);
-                    const oldValue = parseFloat(rowData.in_roas || 0);
+                    const oldValue = parseFloat(rowData[field] || rowData.in_roas || 0);
                     $.ajax({
                         url: '{{ route('tiktok.utilized.update') }}',
                         method: 'POST',
@@ -3938,13 +4310,13 @@
                         }),
                         success: function(response) {
                             if (response && response.success) {
-                                showToast('In ROAS updated', 'success');
+                                showToast('Target ROAS updated', 'success');
                             }
                         },
                         error: function(xhr, status, error) {
                             cell.setValue(oldValue);
                             const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr
-                                .responseJSON.message : ('Failed to update In ROAS: ' + (xhr
+                                .responseJSON.message : ('Failed to update Target ROAS: ' + (xhr
                                     .statusText || error));
                             showToast(msg, 'error');
                         }
@@ -4335,6 +4707,11 @@
                     doUploadReport(this, 'L30', 'upload-status-container');
                 }).trigger('click');
             });
+            $('#l1-upload-btn').on('click', function() {
+                $('#l1-upload-file').off('change').on('change', function() {
+                    doUploadReport(this, 'L1', 'upload-status-container');
+                }).trigger('click');
+            });
 
             $('#tt2-sync-api-btn').on('click', function() {
                 if (!TTP_CFG.syncFromApi) return;
@@ -4560,6 +4937,16 @@
                         return ttRowIsMissing(data);
                     });
                 }
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceGtLmpBadge.hasRedTriangle(data, 'TT Price');
+                    });
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceLt80LmpBadge.hasPurpleTriangle(data, 'TT Price');
+                    });
+                }
 
                 // N Map filter — |INV − TT Stock| > 3 only (≤3 is Map)
                 if (invTTStockFilterActive) {
@@ -4703,6 +5090,27 @@
                 updateTtSummaryBadgeStyles();
             }
 
+            if (window.PriceGtLmpBadge) {
+                PriceGtLmpBadge.bind({
+                    badge: '#tiktok-price-gt-lmp-badge',
+                    getActive: function() { return priceGtLmpFilterActive; },
+                    onToggle: function(on) {
+                        priceGtLmpFilterActive = on;
+                        applyFilters();
+                    }
+                });
+            }
+            if (window.PriceLt80LmpBadge) {
+                PriceLt80LmpBadge.bind({
+                    badge: '#tiktok-price-lt80-lmp-badge',
+                    getActive: function() { return priceLt80LmpFilterActive; },
+                    onToggle: function(on) {
+                        priceLt80LmpFilterActive = on;
+                                                applyFilters();
+                    }
+                });
+            }
+
             $('#row-type-filter, #inventory-filter, #gpft-filter, #cvr-filter, #roi-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter, #dil-filter')
                 .on('change', function() {
                     applyFilters();
@@ -4772,7 +5180,81 @@
                 $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
                 $('#roi-percent-badge').text(`ROI%: ${Math.round(avgRoi)}%`);
                 $('#missing-count-badge').text(`Missing L: ${missingCount}`);
+                if (window.PriceGtLmpBadge && table) {
+                    const ttChannel = (TTP_CFG && TTP_CFG.summaryChannel === 'tiktok2') ? 'tiktok2' : 'tiktok';
+                    PriceGtLmpBadge.update('#tiktok-price-gt-lmp-badge', table.getData(), ttChannel, 'TT Price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#tiktok-price-lt80-lmp-badge', table.getData(), ttChannel, 'TT Price');
+                }
+                }
                 $('#inv-tt-stock-badge').text('N Map: ' + invTTStockCount.toLocaleString());
+
+                let sumSpend30 = 0,
+                    sumSpend1 = 0,
+                    sumAdsViews30 = 0,
+                    sumAdsClicks30 = 0,
+                    sumAdsViews1 = 0,
+                    sumAdsClicks1 = 0,
+                    sumAdsSold30 = 0;
+                data.forEach(row => {
+                    sumSpend30 += parseFloat(row.spend_30) || 0;
+                    sumSpend1 += parseFloat(row.spend_1) || 0;
+                    sumAdsViews30 += parseInt(row.ads_views_30, 10) || 0;
+                    sumAdsClicks30 += parseInt(row.ads_clicks_30, 10) || 0;
+                    sumAdsViews1 += parseInt(row.ads_views_1, 10) || 0;
+                    sumAdsClicks1 += parseInt(row.ads_clicks_1, 10) || 0;
+                    sumAdsSold30 += parseInt(row.ads_sold_30, 10) || 0;
+                });
+                const adsCvr30 = sumAdsClicks30 > 0 ? (sumAdsSold30 / sumAdsClicks30) * 100 : 0;
+                $('#tt-spend-30-badge').text('Spend 30: $' + Math.round(sumSpend30).toLocaleString());
+                $('#tt-spend-1-badge').text('Spend 1: $' + Math.round(sumSpend1).toLocaleString());
+                $('#tt-ads-views-30-badge').text('adsViews 30: ' + sumAdsViews30.toLocaleString());
+                $('#tt-ads-clicks-30-badge').text('ads Clicks 30: ' + sumAdsClicks30.toLocaleString());
+                $('#tt-ads-views-1-badge').text('ads view1: ' + sumAdsViews1.toLocaleString());
+                $('#tt-ads-clicks-1-badge').text('ads clicks 1: ' + sumAdsClicks1.toLocaleString());
+                $('#tt-ads-cvr-30-badge').text('ads CVR 30: ' + adsCvr30.toFixed(2) + '%');
+
+                let sumAdsRevenue30 = 0,
+                    sumTargetRoas = 0,
+                    targetRoasCount = 0;
+                data.forEach(row => {
+                    sumAdsRevenue30 += parseFloat(row.ads_revenue_30) || 0;
+                    const tRoas = parseFloat(row.target_roas) || 0;
+                    if (tRoas > 0) {
+                        sumTargetRoas += tRoas;
+                        targetRoasCount++;
+                    }
+                });
+                const adsRoas = sumSpend30 > 0 ? sumAdsRevenue30 / sumSpend30 : 0;
+                const adsAcos = sumAdsRevenue30 > 0 ? (sumSpend30 / sumAdsRevenue30) * 100 : 0;
+                const avgTargetRoas = targetRoasCount > 0 ? sumTargetRoas / targetRoasCount : 0;
+                $('#tt-ads-roas-badge').text('ROAS: ' + adsRoas.toFixed(2));
+                $('#tt-target-roas-badge').text('Target ROAS: ' + avgTargetRoas.toFixed(2));
+                $('#tt-ads-acos-badge').text('Acos%: ' + adsAcos.toFixed(2) + '%');
+
+                let sumGmvAdSoldL30 = 0,
+                    sumGmvAdSoldL1 = 0,
+                    sumGmvAdSalesL30 = 0,
+                    sumGmvAdSalesL1 = 0,
+                    sumGmvSpendL30 = 0,
+                    sumGmvSpendL1 = 0,
+                    sumGmvBudget = 0;
+                data.forEach(row => {
+                    sumGmvAdSoldL30 += parseInt(row.gmv_ad_sold_l30, 10) || 0;
+                    sumGmvAdSoldL1 += parseInt(row.gmv_ad_sold_l1, 10) || 0;
+                    sumGmvAdSalesL30 += parseFloat(row.gmv_ad_sales_l30) || 0;
+                    sumGmvAdSalesL1 += parseFloat(row.gmv_ad_sales_l1) || 0;
+                    sumGmvSpendL30 += parseFloat(row.gmv_spend_l30) || 0;
+                    sumGmvSpendL1 += parseFloat(row.gmv_spend_l1) || 0;
+                    sumGmvBudget += parseFloat(row.gmv_budget) || 0;
+                });
+                $('#tt-gmv-ad-sold-l30-badge').text('GMV Ad sold L30: ' + sumGmvAdSoldL30.toLocaleString());
+                $('#tt-gmv-ad-sold-l1-badge').text('GMV Ad sold L1: ' + sumGmvAdSoldL1.toLocaleString());
+                $('#tt-gmv-ad-sales-l30-badge').text('GMV Ad sales L30: $' + Math.round(sumGmvAdSalesL30).toLocaleString());
+                $('#tt-gmv-ad-sales-l1-badge').text('GMV Ad sales L1: $' + Math.round(sumGmvAdSalesL1).toLocaleString());
+                $('#tt-gmv-spend-l30-badge').text('GMV Spend L30: $' + Math.round(sumGmvSpendL30).toLocaleString());
+                $('#tt-gmv-spend-l1-badge').text('GMV Spend L1: $' + Math.round(sumGmvSpendL1).toLocaleString());
+                $('#tt-gmv-budget-badge').text('GMV Budget: $' + Math.round(sumGmvBudget).toLocaleString());
             }
 
             // Update Ads/Utilized count section (from table data: campaign, NR, spend, etc.)
@@ -4880,8 +5362,8 @@
 
                 // advt
                 if (
-                    /^(ad_cvr_pct|ads_price|budget|spend|ad_sold|ad_clicks|acos|status|campaign_name|video_views|ads_views|affl_views|t_views|TACOS%)$/i.test(f) ||
-                    /\b(ads?\s*cvr|budget|spend|ad\s*sold|ad\s*clicks|acos|campaign|video\s*views|ads\s*views|affl\s*views|^t\s*views$|tacos)\b/i.test(tl) ||
+                    /^(ad_cvr_pct|ads_cvr_30|ads_roas|target_roas|ads_acos_pct|ads_price|budget|spend|spend_30|spend_1|ad_sold|ad_clicks|ads_clicks_30|ads_clicks_1|ads_views_30|ads_views_1|acos|status|campaign_name|video_views|ads_views|affl_views|t_views|TACOS%|gmv_ad_sold_l30|gmv_ad_sold_l1|gmv_ad_sales_l30|gmv_ad_sales_l1|gmv_spend_l30|gmv_spend_l1|gmv_budget|gmv_status|gmv_approval)$/i.test(f) ||
+                    /\b(ads?\s*cvr|target\s*roas|^roas$|budget|spend|ad\s*sold|ad\s*clicks|ads\s*clicks|adsviews|ads\s*view|acos|campaign|video\s*views|ads\s*views|affl\s*views|^t\s*views$|tacos|gmv)\b/i.test(tl) ||
                     /^status$/i.test(tl) ||
                     /^price$/i.test(tl) // ads Price column
                 ) {

@@ -55,6 +55,8 @@
                     <span class="badge bg-primary badge-pricing-stat" id="stat-total">SKUs: 0</span>
                     <span class="badge bg-success badge-pricing-stat" id="stat-priced">With Price: 0</span>
                     <span class="badge bg-info text-dark badge-pricing-stat" id="stat-l30">With L30: 0</span>
+                    @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'depop-price-gt-lmp-badge', 'pglChannelKey' => 'depop', 'pglPriceField' => 'price'])
+                    @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'depop-price-lt80-lmp-badge', 'pltChannelKey' => 'depop', 'pltPriceField' => 'price'])
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -113,6 +115,8 @@
     let increaseModeActive = false;
     let samePriceModeActive = false;
     let selectedSkus = new Set();
+    let priceGtLmpFilterActive = false;
+    let priceLt80LmpFilterActive = false;
 
     function showToast(message, type) {
         type = type || 'info';
@@ -139,6 +143,12 @@
         $('#stat-total').text('SKUs: ' + total.toLocaleString('en-US'));
         $('#stat-priced').text('With Price: ' + priced.toLocaleString('en-US'));
         $('#stat-l30').text('With L30: ' + withL30.toLocaleString('en-US'));
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.update('#depop-price-gt-lmp-badge', table ? table.getData() : rows, 'depop', 'price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#depop-price-lt80-lmp-badge', table ? table.getData() : rows, 'depop', 'price');
+                }
+        }
     }
 
     // Retail .99 rounding (matches Macys / Shopify B2C helpers).
@@ -323,7 +333,10 @@
                     formatter: function(cell) {
                         const v = cell.getValue();
                         if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
-                        return '$' + Number(v).toFixed(2);
+                        const rowData = cell.getRow().getData();
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(v, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(v, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        return '$' + Number(v).toFixed(2) + lmpTri + purpleTri;
                     }
                 },
                 {
@@ -507,6 +520,16 @@
                         return p === currentKey || p === ('PARENT ' + currentKey);
                     });
                 }
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceGtLmpBadge.hasRedTriangle(data, 'price');
+                    });
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
+                    });
+                }
                 return;
             }
 
@@ -517,6 +540,37 @@
                         || (String(row.sku    || '').toLowerCase().includes(q));
                 });
             }
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
+                });
+            }
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#depop-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyDepopFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#depop-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyDepopFilters();
+                }
+            });
         }
         function startDpPlay() {
             dpUniqueParents = buildDpUniqueParents();

@@ -348,6 +348,8 @@
                               class="badge text-center"
                               style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
                               title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'dobawithoutship-price-gt-lmp-badge', 'pglChannelKey' => 'dobawithoutship', 'pglPriceField' => 'self_pick_price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'dobawithoutship-price-lt80-lmp-badge', 'pltChannelKey' => 'dobawithoutship', 'pltPriceField' => 'self_pick_price'])
                         <span id="nmap-count"
                               class="badge text-center"
                               style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
@@ -686,6 +688,8 @@
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         let discVsAmzFilterActive = false; // Track DISC VS AMZ filter state
         let missingBadgeFilterActive = false; // Missing badge: INV > 0 and Doba L30 === 0
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         $(document).ready(function() {
 
@@ -2108,7 +2112,10 @@
                         sorter: "number",
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
-                            return `$${value.toFixed(2)}`;
+                            const rowData = cell.getRow().getData();
+                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                            return `$${value.toFixed(2)}` + lmpTri + purpleTri;
                         }
                     },
                     {
@@ -2400,11 +2407,42 @@
                         return discountPercent > -30;
                     });
                 }
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceGtLmpBadge.hasRedTriangle(data, 'self_pick_price');
+                    });
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                    table.addFilter(function(data) {
+                        return PriceLt80LmpBadge.hasPurpleTriangle(data, 'self_pick_price');
+                    });
+                }
 
                 setTimeout(function() {
                     updateSelectAllCheckbox();
                     updateVisibleRowsCount();
                 }, 100);
+            }
+
+            if (window.PriceGtLmpBadge) {
+                PriceGtLmpBadge.bind({
+                    badge: '#dobawithoutship-price-gt-lmp-badge',
+                    getActive: function() { return priceGtLmpFilterActive; },
+                    onToggle: function(on) {
+                        priceGtLmpFilterActive = on;
+                        applyFilters();
+                    }
+                });
+            }
+            if (window.PriceLt80LmpBadge) {
+                PriceLt80LmpBadge.bind({
+                    badge: '#dobawithoutship-price-lt80-lmp-badge',
+                    getActive: function() { return priceLt80LmpFilterActive; },
+                    onToggle: function(on) {
+                        priceLt80LmpFilterActive = on;
+                                                applyFilters();
+                    }
+                });
             }
 
             function updateVisibleRowsCount() {
@@ -2525,6 +2563,12 @@
                 $('#total-skus').text('Rows: ' + totalSkus.toLocaleString());
                 $('#zero-sold-count').text('0 Sold: ' + l30ZeroSold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
+                if (window.PriceGtLmpBadge && table) {
+                    PriceGtLmpBadge.update('#dobawithoutship-price-gt-lmp-badge', table.getData(), 'dobawithoutship', 'self_pick_price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#dobawithoutship-price-lt80-lmp-badge', table.getData(), 'dobawithoutship', 'self_pick_price');
+                }
+                }
                 $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
             }

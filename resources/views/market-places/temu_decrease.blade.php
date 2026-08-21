@@ -770,6 +770,8 @@
                               class="badge bg-danger text-center"
                               style="font-weight:700; color: white !important; font-size:14px; padding:4px 8px; cursor: pointer;"
                               title="Click to filter 0 sold items (INV>0)">0 Sold 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'temu-price-gt-lmp-badge', 'pglChannelKey' => 'temu', 'pglPriceField' => 'temu_price'])
+                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu-price-lt80-lmp-badge', 'pltChannelKey' => 'temu', 'pltPriceField' => 'temu_price'])
                         {{-- "Views" badge (formerly "Green Alert") removed per product request.
                              temuIsGreenAlert() helper, greenAlertCount, and the cell-color
                              logic on the Temu Price column stay so the green coloring on
@@ -3124,6 +3126,8 @@
         let moreAmzFilterActive = false;
         let redAlertFilterActive = false;
         let spriceLmpAlertFilterActive = false;
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         // 0 Sold badge just toggles the #sold-filter dropdown so the dropdown stays the
         // single source of truth (mirrors Amazon tabulator). Click again to clear.
@@ -4047,6 +4051,12 @@
                 updateTemuRecoveryBadge(totalRevenue);
             }
             $('#zero-sold-count-badge').text('0 Sold ' + zeroSoldCount.toLocaleString());
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#temu-price-gt-lmp-badge', table.getData(), 'temu', 'temu_price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#temu-price-lt80-lmp-badge', table.getData(), 'temu', 'temu_price');
+                }
+            }
             // Use .html() so the FontAwesome <i> renders; .text() would HTML-escape it.
             $('#temu-red-alert-badge').html('<i class="fas fa-triangle-exclamation"></i> ' + redAlertCount.toLocaleString());
             $('#temu-sprice-lmp-alert-badge').html('<i class="fas fa-exclamation-triangle"></i> S PRC ' + spriceLmpAlertCount.toLocaleString());
@@ -4683,14 +4693,16 @@
                         const basePrice = parseFloat(rowData['base_price']) || 0;
                         if (basePrice === 0) return '$0.00';
                         const displayPrice = +temuFullPriceFromBase(basePrice).toFixed(2);
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
 
                         if (temuIsGreenAlert(rowData)) {
-                            return `<span style="color: #28a745; font-weight: 600;" title="Full Temu Price. Green Alert.">$${displayPrice.toFixed(2)}</span>`;
+                            return `<span style="color: #28a745; font-weight: 600;" title="Full Temu Price. Green Alert.">$${displayPrice.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                         }
                         if (temuIsRedAlert(rowData)) {
-                            return `<span style="color: #a00211; font-weight: 600;" title="Full Temu Price. Red Alert.">$${displayPrice.toFixed(2)}</span>`;
+                            return `<span style="color: #a00211; font-weight: 600;" title="Full Temu Price. Red Alert.">$${displayPrice.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                         }
-                        return `<span title="(Base × 1.1364)${(basePrice * TEMU_FULL_PRICE_MULT) <= 26.99 ? ' + $2.99' : ''}">$${displayPrice.toFixed(2)}</span>`;
+                        return `<span title="(Base × 1.1364)${(basePrice * TEMU_FULL_PRICE_MULT) <= 26.99 ? ' + $2.99' : ''}">$${displayPrice.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                     }
                 },
                 {
@@ -5819,6 +5831,16 @@
                     return temuSpriceHasLmpAlert(data);
                 });
             }
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'temu_price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'temu_price');
+                });
+            }
 
             const matchFilter = $('#matchFilterDropdown').data('color') || 'all';
             if (matchFilter && matchFilter !== 'all') {
@@ -5982,6 +6004,27 @@
             }
 
             applySelectedColumnVisibility();
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#temu-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#temu-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyFilters();
+                }
+            });
         }
 
         // ==================== Play/Pause parent navigation (same as pricing-master-cvr) ====================

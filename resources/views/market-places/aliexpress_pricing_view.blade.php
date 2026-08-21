@@ -391,6 +391,8 @@
                             <span class="badge bg-success  fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-profit-badge" data-metric="total_pft"  style="font-weight:700;cursor:pointer;" title="Click or hover (½s) for daily trend">Profit: $0</span>
                             <span class="badge bg-info     fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">GPFT: 0%</span>
                             <span class="badge bg-danger   fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-missing-badge"     data-metric="missing_count" data-filter="missing" style="font-weight:700;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">Missing L: 0</span>
+                            @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'aliexpress-price-gt-lmp-badge', 'pglChannelKey' => 'aliexpress', 'pglPriceField' => 'price'])
+                            @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'aliexpress-price-lt80-lmp-badge', 'pltChannelKey' => 'aliexpress', 'pltPriceField' => 'price'])
                             <span class="badge fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-map-badge"         data-metric="map_count"     data-filter="map" style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click to filter table · Hover ½s for daily trend">Map: 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-nmap-badge"        data-metric="nmap_count"    data-filter="nmap" style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click to filter table · Hover ½s for daily trend">N Map: 0</span>
                             <span class="badge fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-zero-sold-badge"   data-metric="zero_sold"     data-filter="zero_sold" style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click to filter table · Hover ½s for daily trend">0 Sold: 0</span>
@@ -583,6 +585,8 @@
         let aeNMapActive     = false;
         let aeZeroSoldActive = false;
         let aeMoreSoldActive = false;
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
         let aeBadgeHoverTimer = null;
 
         function aeClearBadgeHoverTimer() {
@@ -1077,6 +1081,37 @@
             }
             if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'price');
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
+                });
+            }
+        }
+
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#aliexpress-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    applyFilters();
+                }
+            });
+        }
+        if (window.PriceLt80LmpBadge) {
+            PriceLt80LmpBadge.bind({
+                badge: '#aliexpress-price-lt80-lmp-badge',
+                getActive: function() { return priceLt80LmpFilterActive; },
+                onToggle: function(on) {
+                    priceLt80LmpFilterActive = on;
+                                        applyFilters();
+                }
+            });
         }
 
         function normalizeRows(rowsInput) {
@@ -1159,6 +1194,12 @@
             $('#ae-total-profit-badge').text(`Profit: $${Math.round(totalProfit).toLocaleString()}`);
             $('#ae-avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
             $('#ae-missing-badge').text(`Missing L: ${missingCount.toLocaleString()}`);
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#aliexpress-price-gt-lmp-badge', table.getData(), 'aliexpress', 'price');
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#aliexpress-price-lt80-lmp-badge', table.getData(), 'aliexpress', 'price');
+                }
+            }
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
             $('#ae-nmap-badge').text(`N Map: ${nmapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
@@ -1434,7 +1475,9 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return money(cell.getValue());
+                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(cell.getValue(), d.lmp_price || d.lmp || d.LMP) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(cell.getValue(), d.lmp_price || d.lmp || d.LMP) : '');
+                            return money(cell.getValue()) + lmpTri + purpleTri;
                         }
                     },
                     {
