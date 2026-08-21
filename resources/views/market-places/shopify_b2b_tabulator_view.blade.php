@@ -247,6 +247,8 @@
         #column-dropdown-menu.column-dropdown-multicol,
         #column-dropdown-menu.analytics-col-vis-menu {
             column-count: unset !important;
+            right: 0 !important;
+            left: auto !important;
         }
         #reverb-table {
             width: 100% !important;
@@ -544,7 +546,7 @@
                             title="Columns">
                             <i class="fa fa-eye"></i>
                         </button>
-                        <ul class="dropdown-menu column-dropdown-multicol" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
+                        <ul class="dropdown-menu dropdown-menu-end column-dropdown-multicol" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>

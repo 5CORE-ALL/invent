@@ -8,13 +8,19 @@
 @if($colVisPart === 'css' || $colVisPart === 'all')
         .analytics-col-vis-menu.show,
         .analytics-col-vis-menu.column-dropdown-multicol,
-        #column-dropdown-menu.analytics-col-vis-menu {
+        #column-dropdown-menu.analytics-col-vis-menu,
+        .dropdown-menu.analytics-col-vis-menu {
             min-width: min(92vw, 720px);
             max-width: min(96vw, 780px);
             max-height: 70vh;
             overflow-y: auto;
+            overflow-x: hidden;
             padding: 0.4rem 0.5rem 0.55rem;
             column-count: unset !important;
+            /* Keep the wide 4-group panel on-screen: grow left from the eye button */
+            right: 0 !important;
+            left: auto !important;
+            --bs-position: end;
         }
         .analytics-col-vis-menu > li.col-vis-full,
         .analytics-col-vis-menu > li.column-dropdown-span-all {
@@ -184,7 +190,7 @@
                 const table = inst.getTable();
                 const menu = document.getElementById(inst.menuId);
                 if (!menu || !table || typeof table.getColumns !== 'function') return;
-                menu.classList.add('analytics-col-vis-menu', 'column-dropdown-multicol');
+                menu.classList.add('analytics-col-vis-menu', 'column-dropdown-multicol', 'dropdown-menu-end');
                 const map = (savedMap && typeof savedMap === 'object') ? savedMap : {};
                 const skip = inst.skipFields;
                 const alwaysHidden = inst.alwaysHidden;
@@ -327,7 +333,36 @@
                 const menu = document.getElementById(inst.menuId);
                 if (!menu || menu._analyticsColVisBound) return;
                 menu._analyticsColVisBound = true;
-                menu.classList.add('analytics-col-vis-menu');
+                menu.classList.add('analytics-col-vis-menu', 'dropdown-menu-end');
+
+                function pinMenuInViewport() {
+                    menu.style.removeProperty('transform');
+                    requestAnimationFrame(function () {
+                        const rect = menu.getBoundingClientRect();
+                        const pad = 12;
+                        let dx = 0;
+                        if (rect.right > window.innerWidth - pad) {
+                            dx -= rect.right - (window.innerWidth - pad);
+                        }
+                        if (rect.left + dx < pad) {
+                            dx += pad - (rect.left + dx);
+                        }
+                        if (dx) {
+                            menu.style.transform = 'translateX(' + dx + 'px)';
+                        }
+                    });
+                }
+                const dropdownEl = menu.closest('.dropdown');
+                if (dropdownEl && !dropdownEl._analyticsColVisPin) {
+                    dropdownEl._analyticsColVisPin = true;
+                    dropdownEl.addEventListener('shown.bs.dropdown', pinMenuInViewport);
+                    dropdownEl.addEventListener('hidden.bs.dropdown', function () {
+                        menu.style.removeProperty('transform');
+                    });
+                    window.addEventListener('resize', function () {
+                        if (menu.classList.contains('show')) pinMenuInViewport();
+                    });
+                }
 
                 const toggle = document.querySelector('[data-bs-toggle="dropdown"][aria-labelledby="' + inst.menuId + '"], [aria-controls="' + inst.menuId + '"]');
                 const btn = document.getElementById(inst.menuId.replace('-menu', 'VisibilityDropdown'))
