@@ -1374,10 +1374,10 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\FetchMarketplaceShopifyTrackingJob(250))
-            ->everyTenMinutes()
+            ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('marketplace-fetch-shopify-tracking')
-            ->withoutOverlapping(14)
+            ->withoutOverlapping(4)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncAmazonAddressJob(true, 40))
@@ -2447,10 +2447,10 @@ class Kernel extends ConsoleKernel
 
         // Pull missing tracking numbers onto SOF (Veeqo/GOFO + Temu OpenAPI).
         $schedule->command('sof:pull-missing-tracking --limit=80 --temu-limit=40')
-            ->hourly()
+            ->everyFifteenMinutes()
             ->timezone('America/Los_Angeles')
-            ->name('sof-pull-missing-tracking-hourly')
-            ->withoutOverlapping(55)
+            ->name('sof-pull-missing-tracking')
+            ->withoutOverlapping(14)
             ->runInBackground()
             ->appendOutputTo($log);
 
