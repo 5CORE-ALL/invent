@@ -23,6 +23,7 @@
         }
         .ch-pef-promo-cell.has-val { color: #0f172a; }
         .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"],
+        .tabulator-row .tabulator-cell[tabulator-field="b2b_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="zero_sold_prmt"],
         .tabulator-row .tabulator-cell[tabulator-field="gt_sold_pct"],
         .tabulator-row .tabulator-cell[tabulator-field="sale_event"],
@@ -68,6 +69,14 @@
             align-items: center;
             gap: 2px;
             line-height: 1.15;
+        }
+        #ch-promo-dil-prmt-table .ch-promo-b2b-disc-input {
+            background: #198754;
+            border-color: #198754;
+            color: #fff;
+            font-weight: 700;
+            text-align: right;
+            pointer-events: none;
         }
         #ch-promo-dil-prmt-table .ch-promo-dil-prmt-input,
         #ch-promo-zero-sold-prmt-table .ch-promo-dil-prmt-input,
@@ -321,8 +330,8 @@
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-prmt-btn"
-                            title="Map Dil% slabs to PRMT%. Apply writes PRMT% only (no sale-event push).">
-                            <i class="fas fa-sliders-h"></i> Prmt%
+                            title="{{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount: map Dil% slabs (0–0 → 12 … 22%+ → 0). Auto-fills B2B disc; Apply writes PRMT%.' : 'Map Dil% slabs to PRMT%. Apply writes PRMT% only (no sale-event push).' }}">
+                            <i class="fas fa-sliders-h"></i> {{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount' : 'Prmt%' }}
                         </button>
                         @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
                         <button type="button" class="btn btn-sm dropdown-toggle dropdown-toggle-split" id="ch-promo-prmt-menu-btn"
@@ -490,7 +499,7 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="chPromoDilVsPrmtModalLabel">
-                        <i class="fas fa-sliders-h me-1"></i> Dil vs PRMT
+                        <i class="fas fa-sliders-h me-1"></i> {{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount' : 'Dil vs PRMT' }}
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -505,8 +514,14 @@
                         <table class="table table-sm table-bordered align-middle mb-0" id="ch-promo-dil-prmt-table">
                             <thead class="table-light">
                                 <tr>
+                                    @if($channelPromoChannel === 'shopify_b2b')
+                                    <th style="width:40%;">Dil%</th>
+                                    <th style="width:30%;" class="text-end">B2B disc</th>
+                                    <th style="width:30%;" class="text-end">PRMT %</th>
+                                    @else
                                     <th style="width:55%;">Dil%</th>
                                     <th style="width:45%;" class="text-end">PRMT %</th>
+                                    @endif
                                 </tr>
                             </thead>
                             <tbody id="ch-promo-dil-prmt-tbody"></tbody>
@@ -3443,6 +3458,19 @@
         function chPromoPrmtForDil(dil) {
             return chPromoPrmtForRuleKey(chPromoDilSlabKey(dil));
         }
+        /** Canonical B2B discount from Dil% (0–0 → 12, 0.1–2 → 11, … 22%+ → 0). Independent of saved PRMT. */
+        function chPromoB2bDiscDefaultForKey(key) {
+            const def = CH_PEF_DIL_PRMT_DEFAULTS_EBAY.find(function(r) { return r.key === key; });
+            return def ? Math.max(0, Number(def.prmt) || 0) : 0;
+        }
+        function chPromoB2bDiscForDil(dil) {
+            return chPromoB2bDiscDefaultForKey(chPromoDilSlabKey(dil));
+        }
+        function chPromoB2bDiscForRow(d) {
+            if (!d || d.is_parent_summary || !chPromoIsChildRow(d)) return 0;
+            if (chPromoInv(d) === 0) return 0;
+            return chPromoB2bDiscForDil(chPromoDil(d));
+        }
         /** PRMT% the Dil vs PRMT slabs produce for this row (listing Dil on eBay). */
         function chPromoEbaySlabPrmt(d) {
             if (!d || d.is_parent_summary) return null;
@@ -3755,14 +3783,23 @@
         }
         function renderChPromoDilPrmtModalTable() {
             const $tb = $('#ch-promo-dil-prmt-tbody').empty();
+            const showB2bDisc = CHANNEL_PROMO_CHANNEL === 'shopify_b2b';
             let visibleIdx = 0;
             chPromoDilPrmtRules.forEach(function(r, idx) {
                 if (chPromoIsZeroSoldRuleKey(r.key)) return;
                 const prmt = isFinite(Number(r.prmt)) ? Number(r.prmt) : 0;
                 const first = visibleIdx === 0;
+                const b2bDisc = chPromoB2bDiscDefaultForKey(r.key);
                 $tb.append(
                     '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
                     + '<td>' + String(r.label || r.key) + '</td>'
+                    + (showB2bDisc
+                        ? ('<td class="text-end">'
+                            + '<input type="number" class="form-control form-control-sm ch-promo-b2b-disc-input" '
+                            + 'readonly tabindex="-1" value="' + b2bDisc + '" '
+                            + 'title="Auto from Dil% rule: 0–0% → 12, then −1 each 2% slab (min 0)">'
+                            + '</td>')
+                        : '')
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-input" '
                     + 'min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '"'
@@ -6569,8 +6606,32 @@
             };
         }
 
+        function channelPromoB2bDiscountColumn() {
+            return {
+                title: 'B2B disc',
+                field: 'b2b_discount',
+                width: 78,
+                hozAlign: 'center',
+                vertAlign: 'middle',
+                headerSort: true,
+                headerTooltip: 'Auto from Dil% (0–0% → 12, 0.1–2% → 11, … 22%+ → 0). INV = 0 → 0. Same rule as the B2B discount modal.',
+                formatter: function(cell) {
+                    const d = cell.getRow().getData() || {};
+                    if (d.is_parent_summary || !chPromoIsChildRow(d)) return '';
+                    const val = chPromoB2bDiscForRow(d);
+                    return '<span class="ch-pef-promo-cell has-val" style="color:#198754;" title="Auto B2B discount from Dil%">'
+                        + val + '</span>';
+                },
+                sorter: function(a, b, aRow, bRow) {
+                    const av = chPromoB2bDiscForRow(aRow.getData() || {});
+                    const bv = chPromoB2bDiscForRow(bRow.getData() || {});
+                    return av - bv;
+                },
+            };
+        }
         function channelPromoPricingColumns() {
             return [
+                ...(CHANNEL_PROMO_CHANNEL === 'shopify_b2b' ? [channelPromoB2bDiscountColumn()] : []),
                 {
                     title: 'PRMT %',
                     field: 'prmt_pct',
@@ -7012,6 +7073,15 @@
                             + 'only on selected or visible SKUs with <strong>B2C L30 &gt; 0</strong>. '
                             + 'S PRC = Std × (1 − (PRMT% + cvr%)/100), then auto-pushes when it differs from Price. '
                             + 'If INV is 0, PRMT% is <strong>0</strong>.';
+                    }
+                } else if (CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
+                    const help = document.getElementById('ch-promo-dil-prmt-help');
+                    if (help) {
+                        help.innerHTML = '<strong>B2B disc</strong> auto-fills from Dil% '
+                            + '(<strong>0–0% → 12</strong>, <strong>0.1–2% → 11</strong>, then −1 each 2% slab, '
+                            + '<strong>22%+ → 0</strong>). <strong>Save Rule</strong> stores PRMT% for this channel. '
+                            + '<strong>Apply</strong> fills <strong>PRMT %</strong> from each row’s Dil% / discounts S PRC. '
+                            + 'If <strong>INV = 0</strong>, B2B disc and PRMT% are forced to <strong>0</strong>.';
                     }
                 }
                 renderChPromoDilPrmtModalTable();

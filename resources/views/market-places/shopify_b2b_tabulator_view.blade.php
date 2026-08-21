@@ -639,6 +639,9 @@
                         <span class="badge fs-6 p-2" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of L30 product page views (sessions)">Views: 0</span>
                         <span class="badge fs-6 p-2" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Qty ÷ Views">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-b2b-l30-badge" style="color: black; font-weight: bold;">B2B: 0</span>
+                        <span class="badge fs-6 p-2" id="b2b-discount-badge"
+                              style="background-color:#198754;color:#fff;font-weight:bold;cursor:pointer;"
+                              title="B2B discount: Dil% → 0–0% = 12, 0.1–2% = 11, … 22%+ = 0. Click to open rules. INV = 0 → 0.">B2B discount</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="shopifyb2b-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
@@ -1507,6 +1510,10 @@
             pushSelectedShopifyPrices();
         });
 
+        $('#b2b-discount-badge').on('click', function() {
+            $('#ch-promo-dil-vs-prmt-btn').trigger('click');
+        });
+
         // Badge clicks just toggle the #sold-filter dropdown so the dropdown stays the
         // single source of truth for the Sold filter (mirrors Amazon tabulator behavior).
         // Clicking the same badge twice clears the filter (toggle semantics preserved).
@@ -2341,57 +2348,6 @@
                     }
                 },
                 {
-                    title: "Sku Link LMP",
-                    field: "linked_lmp_skus",
-                    hozAlign: "left",
-                    headerHozAlign: "center",
-                    width: 220,
-                    headerSort: false,
-                    cssClass: "linked-sku-col",
-                    formatter: linkedLmpSkuFormatter,
-                    cellClick: function(e, cell) {
-                        if (e.target.closest('.sku-link-lmp-remove')) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            removeLinkedSkuFromRow(
-                                cell.getRow().getData(),
-                                e.target.closest('.sku-link-lmp-remove').dataset.linkedSku || ''
-                            );
-                        }
-                    },
-                },
-                {
-                    title: "+",
-                    field: "linked_lmp_sku_add",
-                    hozAlign: "center",
-                    headerHozAlign: "center",
-                    width: 52,
-                    headerSort: false,
-                    cssClass: "linked-sku-add-col",
-                    formatter: linkedLmpSkuAddFormatter,
-                    cellClick: function(e, cell) {
-                        if (e.target.closest('.sku-link-lmp-add-btn')) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openLinkedSkuModal(cell.getRow().getData());
-                        }
-                    },
-                },
-                {
-                    title: "A Prc",
-                    field: "A Price",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue());
-                        if (value === null || value === 0 || isNaN(value)) {
-                            return '<span style="color: #6c757d;">-</span>';
-                        }
-                        return `$${value.toFixed(2)}`;
-                    },
-                    width: 70
-                },
-                {
                     title: "GROI%",
                     field: "ROI%",
                     hozAlign: "center",
@@ -2730,6 +2686,43 @@
                         return `<span style="color: ${color}; font-weight: 600;">${snroi.toFixed(0)}%</span>`;
                     },
                     width: 50
+                },
+                {
+                    title: "Sku Link LMP",
+                    field: "linked_lmp_skus",
+                    hozAlign: "left",
+                    headerHozAlign: "center",
+                    width: 220,
+                    headerSort: false,
+                    cssClass: "linked-sku-col",
+                    formatter: linkedLmpSkuFormatter,
+                    cellClick: function(e, cell) {
+                        if (e.target.closest('.sku-link-lmp-remove')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            removeLinkedSkuFromRow(
+                                cell.getRow().getData(),
+                                e.target.closest('.sku-link-lmp-remove').dataset.linkedSku || ''
+                            );
+                        }
+                    },
+                },
+                {
+                    title: "+",
+                    field: "linked_lmp_sku_add",
+                    hozAlign: "center",
+                    headerHozAlign: "center",
+                    width: 52,
+                    headerSort: false,
+                    cssClass: "linked-sku-add-col",
+                    formatter: linkedLmpSkuAddFormatter,
+                    cellClick: function(e, cell) {
+                        if (e.target.closest('.sku-link-lmp-add-btn')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openLinkedSkuModal(cell.getRow().getData());
+                        }
+                    },
                 }
             ]
         });
