@@ -442,8 +442,7 @@ class AliExpressApiService
                 return $parsed;
             }
 
-            $code = $this->extractErrorCode($parsed);
-            if ($code !== 'IncompleteSignature' && $code !== 'IllegalTimestamp') {
+            if (! $this->isSignatureError($parsed)) {
                 return $parsed;
             }
         }
@@ -469,6 +468,21 @@ class AliExpressApiService
         }
 
         return strtoupper(hash_hmac('sha256', $source, $this->appSecret));
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    private function isSignatureError(array $result): bool
+    {
+        $code = strtolower((string) ($this->extractErrorCode($result) ?? ''));
+        if (in_array($code, ['incompletesignature', 'illegaltimestamp', 'invalidsignature', 'sign-check-failure', '25'], true)) {
+            return true;
+        }
+
+        $message = strtolower((string) ($result['message'] ?? ''));
+
+        return $message !== '' && (str_contains($message, 'signature') || str_contains($message, 'sign'));
     }
 
     /**
@@ -1203,27 +1217,16 @@ class AliExpressApiService
      */
     public function getProductDailySales(string $productId, string $startDate, string $endDate, int $page = 1, int $pageSize = 50): array
     {
-        $raw = $this->callSync('aliexpress.data.redefining.queryproductsalesinfoeverydaybyid', [
-            'product_id' => (string) $productId,
-            'start_date' => $startDate,
-            'end_date' => $endDate,
-            'current_page' => $page,
-            'page_size' => $pageSize,
-        ]);
-
-        if (empty($raw['success'])) {
-            return $raw;
-        }
-
-        $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
-        $resultJson = $payload['result'] ?? null;
-        $parsed = is_string($resultJson) ? json_decode($resultJson, true) : (is_array($resultJson) ? $resultJson : $payload);
-
-        return [
-            'success' => true,
-            'data' => is_array($parsed) ? $parsed : [],
-            'request_id' => $raw['request_id'] ?? null,
-        ];
+        return $this->callDataRedefining(
+            'aliexpress.data.redefining.queryproductsalesinfoeverydaybyid',
+            [
+                'product_id' => (string) $productId,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'current_page' => $page,
+                'page_size' => $pageSize,
+            ]
+        );
     }
 
     /**
@@ -1347,7 +1350,9 @@ class AliExpressApiService
      */
     private function callDataRedefining(string $method, array $params): array
     {
-        $raw = $this->callSync($method, $params);
+        // Same /rest HMAC-SHA256 signing as product list / orders.
+        // /sync IOP signing is rejected: "request signature does not conform to platform standards".
+        $raw = $this->callRestGateway($method, $params);
         if (empty($raw['success'])) {
             return $raw;
         }
@@ -1361,7 +1366,7 @@ class AliExpressApiService
         return [
             'success' => true,
             'data' => is_array($parsed) ? $parsed : [],
-            'request_id' => $raw['request_id'] ?? null,
+            'request_id' => $raw['request_id'] ?? $payload['request_id'] ?? null,
         ];
     }
 
@@ -1389,21 +1394,6 @@ class AliExpressApiService
         if (! empty($eval['success'])) {
             $stats = $this->mergeReviewStats($stats, $this->extractReviewStats($eval['data'] ?? []));
             $source = 'evaluation.query';
-        }
-
-        if ($stats['reviews'] === null && $stats['avg_rating'] === null) {
-            $rest = $this->callRestGateway('aliexpress.social.product.evaluation.query', [
-                'product_id' => (string) $productId,
-                'page' => 1,
-                'page_size' => 20,
-            ]);
-            $lastId = $rest['request_id'] ?? $lastId;
-            $lastMessage = $rest['message'] ?? $lastMessage;
-            if (! empty($rest['success'])) {
-                $payload = $this->unwrapSolutionEnvelope($rest['data'] ?? []);
-                $stats = $this->mergeReviewStats($stats, $this->extractReviewStats($payload));
-                $source = 'evaluation.query';
-            }
         }
 
         if ($stats['reviews'] === null || $stats['avg_rating'] === null) {
