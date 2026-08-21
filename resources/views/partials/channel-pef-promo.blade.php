@@ -450,15 +450,18 @@
                     <p class="small text-muted mb-2" id="ch-promo-cvr-cpn-help">
                         @if($channelPromoChannel === 'ebay2op')
                             Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
+                            <strong>Save Rule</strong> stores the slabs.
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
                             (database only — no eBay coupon).
                         @elseif(in_array($channelPromoChannel, ['ebay2', 'ebay3'], true))
                             Map CVR% slabs to <strong>CPN %</strong>.
+                            <strong>Save Rule</strong> stores the slabs.
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
                             (database only — no eBay coupon).
                         @else
-                            Map CVR% slabs to <strong>CPN %</strong>. Apply saves rules and CPN% to the database only
-                            (no eBay coupon).
+                            Map CVR% slabs to <strong>CPN %</strong>.
+                            <strong>Save Rule</strong> stores the slabs.
+                            Apply then writes CPN% to the database only (no eBay coupon).
                         @endif
                     </p>
                     <div class="table-responsive">
@@ -475,8 +478,12 @@
                     <div class="small text-muted mt-2" id="ch-promo-cvr-cpn-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-primary" id="ch-promo-cvr-cpn-save-btn"
+                        title="Save CVR→CPN slab values only (does not write SKU CPN%).">
+                        <i class="fas fa-save me-1"></i>Save Rule
+                    </button>
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-cvr-cpn-apply-btn"
-                        title="{{ in_array($channelPromoChannel, ['ebay2', 'ebay2op', 'ebay3'], true) ? 'Save CVR→CPN rules and write CPN% only on SKUs with E L30 > 0 (database only — no eBay coupon)' : 'Save CVR→CPN rules and CPN% to the database only — does not create eBay coupons' }}">
+                        title="{{ in_array($channelPromoChannel, ['ebay2', 'ebay2op', 'ebay3'], true) ? 'Save CVR→CPN rules, then write CPN% only on SKUs with E L30 > 0 (database only — no eBay coupon)' : 'Save CVR→CPN rules and CPN% to the database only — does not create eBay coupons' }}">
                         Apply
                     </button>
                 </div>
@@ -4420,47 +4427,69 @@
             }
         }
 
+        async function saveChPromoCvrCpnRulesOnly() {
+            const $btn = $('#ch-promo-cvr-cpn-save-btn');
+            const html = $btn.length ? $btn.html() : '';
+            if ($btn.length) $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
+            try {
+                await saveChPromoCvrCpnRules();
+                chPromoToast('success', 'CVR vs CPN rules saved');
+            } catch (xhr) {
+                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+            } finally {
+                if ($btn.length) $btn.prop('disabled', false).html(html || '<i class="fas fa-save me-1"></i>Save Rule');
+            }
+        }
         async function saveAndApplyChPromoCvrCpn() {
-            const selected = collectChPromoSelectedRows();
-            let targets = selected;
+            const $btn = $('#ch-promo-cvr-cpn-apply-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+            try {
+                await saveChPromoCvrCpnRules();
+            } catch (xhr) {
+                $btn.prop('disabled', false).html(html);
+                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                return;
+            }
+
+            let targets = collectChPromoSelectedRows();
             let label = 'selected';
             if (!targets.length) {
                 targets = collectChPromoVisibleRows();
                 label = 'all visible';
-                if (!targets.length) {
-                    chPromoToast('error', 'No rows to apply');
-                    return;
-                }
             }
             if (chPromoSaleGatedApply()) {
                 targets = targets.filter(function(t) {
                     const d = (t.d || (t.row && t.row.getData())) || {};
                     return chPromoHasSaleQty(d);
                 });
-                if (!targets.length) {
-                    chPromoToast('error', 'No rows with ' + chPromoSaleGateLabel() + ' to apply');
-                    return;
-                }
+            }
+            if (!targets.length) {
+                $btn.prop('disabled', false).html(html);
+                chPromoToast(
+                    'success',
+                    (chPromoSaleGatedApply())
+                        ? ('Rules saved. No rows with ' + chPromoSaleGateLabel() + ' to apply.')
+                        : 'Rules saved. No SKUs to apply.'
+                );
+                return;
             }
             if (label === 'all visible') {
                 if (!confirm(
-                    'No rows selected — save rules and apply CVR→CPN % to '
+                    'No rows selected — apply CVR→CPN % to '
                     + targets.length + ' visible row(s)'
                     + ((chPromoSaleGatedApply())
                         ? (' with ' + chPromoSaleGateLabel()) : '')
                     + '?'
                 )) {
+                    $btn.prop('disabled', false).html(html);
                     return;
                 }
             }
-            const $btn = $('#ch-promo-cvr-cpn-apply-btn');
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
             try {
-                await saveChPromoCvrCpnRules();
                 await applyChPromoCvrCpnToTargets(targets, label);
             } catch (xhr) {
-                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                chPromoToast('error', 'Apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
             } finally {
                 $btn.prop('disabled', false).html(html);
             }
@@ -7289,6 +7318,7 @@
                     if (help) {
                         help.innerHTML = 'Map CVR% slabs to <strong>CPN %</strong>. '
                             + (CH_PEF_CVR_CPN_SKIP_ZERO ? 'There is no <strong>0%</strong> CVR slab. ' : '')
+                            + '<strong>Save Rule</strong> stores the slabs. '
                             + '<strong>Apply</strong> writes CPN% only on selected or visible SKUs with '
                             + '<strong>eBay sale (E L30) &gt; 0</strong> (database only — no eBay coupon).';
                     }
@@ -7356,6 +7386,7 @@
             });
 
             if (!CHANNEL_PROMO_HIDE_CVR_CPN) {
+                $('#ch-promo-cvr-cpn-save-btn').off('click.chpromo').on('click.chpromo', saveChPromoCvrCpnRulesOnly);
                 $('#ch-promo-cvr-cpn-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoCvrCpn);
             }
 
