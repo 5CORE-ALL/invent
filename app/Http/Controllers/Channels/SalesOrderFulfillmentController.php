@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Channels;
 use App\Http\Controllers\Controller;
 use App\Models\AlibabaOrderMetric;
 use App\Models\AliexpressOrderMetric;
+use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\BestBuyOrderMetric;
 use App\Models\ChannelMaster;
@@ -58,6 +59,9 @@ class SalesOrderFulfillmentController extends Controller
 
     /** @var list<array<string, mixed>>|null */
     protected ?array $cachedLabelCreatedRows = null;
+
+    /** @var list<array<string, mixed>>|null */
+    protected ?array $cachedPendingRows = null;
 
     public function __construct(
         protected MarketplaceApiConfigService $apiConfig
@@ -137,6 +141,7 @@ class SalesOrderFulfillmentController extends Controller
                 ->orderBy('channel')
                 ->get($columns);
 
+            $this->autoFillMissingChOrdersLinks();
             $managerByMpKey = $this->managerChannelsByMpKey();
             $pendingBySlug = $this->pendingOrderCountsBySlug();
 
@@ -147,7 +152,11 @@ class SalesOrderFulfillmentController extends Controller
                 $hasManager = $slug !== null;
                 $connected = $hasManager ? $this->apiConfig->isConfigured($slug) : false;
                 $pending = $hasManager ? (int) ($pendingBySlug[$slug] ?? 0) : null;
+                $ordersUrl = $slug ? route('marketplace.orders', $slug) : null;
                 $chOrdersLink = $hasChOrdersLink ? trim((string) ($row->ch_orders_link ?? '')) : '';
+                if ($chOrdersLink === '' && $ordersUrl) {
+                    $chOrdersLink = $ordersUrl;
+                }
 
                 return [
                     'id' => $row->id,
@@ -161,7 +170,7 @@ class SalesOrderFulfillmentController extends Controller
                     'has_manager' => $hasManager,
                     'oc_connected' => $connected,
                     'pending_count' => $pending,
-                    'orders_url' => $slug ? route('marketplace.orders', $slug) : null,
+                    'orders_url' => $ordersUrl,
                 ];
             })->values();
 
@@ -198,10 +207,7 @@ class SalesOrderFulfillmentController extends Controller
     public function pendingData(): JsonResponse
     {
         try {
-            $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->scopedToLast30Days($this->pendingOrdersQuery($slug), $slug),
-                false
-            );
+            $rows = $this->warehousePendingOrderRows();
 
             return response()->json([
                 'success' => true,
@@ -831,10 +837,16 @@ class SalesOrderFulfillmentController extends Controller
             return $this->cachedLabelCreatedRows;
         }
 
-        $this->cachedLabelCreatedRows = $this->collectOrderRows(
+        $fromMarketplace = $this->collectOrderRows(
             fn (string $slug) => $this->scopedToLast30Days($this->fulfilledOrdersQuery($slug), $slug),
             true
         );
+        $fromPendingLabeled = [];
+        foreach ($this->pendingAlreadyLabeledRows() as $row) {
+            $row['status_label'] = 'Label Created';
+            $fromPendingLabeled[] = $row;
+        }
+        $this->cachedLabelCreatedRows = $this->mergeOrderRowsById($fromMarketplace, $fromPendingLabeled);
 
         return $this->cachedLabelCreatedRows;
     }
@@ -1018,6 +1030,98 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         return false;
+    }
+
+    /**
+     * Marketplace-status pending rows (UNSHIPPED / NOT_STARTED / …) with tracking overlay.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function pendingMarketplaceOrderRows(): array
+    {
+        if ($this->cachedPendingRows !== null) {
+            return $this->cachedPendingRows;
+        }
+
+        $this->cachedPendingRows = $this->collectOrderRows(
+            fn (string $slug) => $this->scopedToLast30Days($this->pendingOrdersQuery($slug), $slug),
+            false
+        );
+
+        return $this->cachedPendingRows;
+    }
+
+    /**
+     * True when the row already has a real carrier tracking number (label created in Veeqo/GOFO).
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function rowHasLabelTracking(array $row): bool
+    {
+        $tn = trim((string) ($row['tracking_number'] ?? ''));
+
+        return $tn !== '' && $this->looksLikeCarrierTrackingNumber($tn);
+    }
+
+    /**
+     * Still waiting on the warehouse — marketplace unfulfilled and no tracking number yet.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function warehousePendingOrderRows(): array
+    {
+        return array_values(array_filter(
+            $this->pendingMarketplaceOrderRows(),
+            fn (array $r) => ! $this->rowHasLabelTracking($r)
+        ));
+    }
+
+    /**
+     * Marketplace still says pending, but a label/tracking already exists.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function pendingAlreadyLabeledRows(): array
+    {
+        return array_values(array_filter(
+            $this->pendingMarketplaceOrderRows(),
+            fn (array $r) => $this->rowHasLabelTracking($r)
+        ));
+    }
+
+    /**
+     * Pending + Label Created rows that still need a Veeqo/GOFO tracking lookup.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function missingLabelTrackingRows(): array
+    {
+        $out = [];
+        $seen = [];
+        foreach (array_merge($this->warehousePendingOrderRows(), $this->labelCreatedOrderRows()) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = (string) ($row['id'] ?? '');
+            if ($id !== '' && isset($seen[$id])) {
+                continue;
+            }
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            if ($id !== '') {
+                $seen[$id] = true;
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    protected function forgetSofOrderRowCaches(): void
+    {
+        $this->cachedLabelCreatedRows = null;
+        $this->cachedPendingRows = null;
     }
 
     protected function carrierShipmentStatusLabel(string $shipmentStatus): ?string
@@ -1457,7 +1561,9 @@ class SalesOrderFulfillmentController extends Controller
             $slug === 'faire' && $upper === 'DELIVERED' => 'Delivered',
             $slug === 'wayfair' && $lower === 'open' => 'Pending',
             in_array($slug, ['bestbuy', 'macy'], true)
-                && in_array(str_replace([' ', '-'], '_', $upper), ['AWAITING_SHIPMENT', 'SHIPPING'], true) => 'Pending',
+                && str_replace([' ', '-'], '_', $upper) === 'AWAITING_SHIPMENT' => 'Pending',
+            in_array($slug, ['bestbuy', 'macy'], true)
+                && str_replace([' ', '-'], '_', $upper) === 'SHIPPING' => 'In Transit',
             $slug === 'purchasingpower' && str_replace([' ', '-'], '_', $upper) === 'SHIPPING' => 'In Transit',
             $slug === 'purchasingpower'
                 && (
@@ -1679,9 +1785,9 @@ class SalesOrderFulfillmentController extends Controller
 
             // Channel API for Label Created / No Scan rows still without tracking (never Shopify).
             if ($pullChannelApi) {
-                $this->cachedLabelCreatedRows = null;
+                $this->forgetSofOrderRowCaches();
                 $missing = array_values(array_filter(
-                    $hasSelection ? $selected : $this->labelCreatedOrderRows(),
+                    $hasSelection ? $selected : $this->missingLabelTrackingRows(),
                     function ($row) use ($hasSelection, $channel, $selectedKeys) {
                         if (! is_array($row)) {
                             return false;
@@ -1745,7 +1851,7 @@ class SalesOrderFulfillmentController extends Controller
                         $parts[] = (string) $fallback['message'];
                     }
                     $rows = array_merge($rows, $fallback['rows'] ?? []);
-                    $this->cachedLabelCreatedRows = null;
+                    $this->forgetSofOrderRowCaches();
                 }
             }
 
@@ -1768,7 +1874,7 @@ class SalesOrderFulfillmentController extends Controller
                     ];
                 }
             } elseif ($pullChannelApi) {
-                foreach ($this->labelCreatedOrderRows() as $row) {
+                foreach ($this->missingLabelTrackingRows() as $row) {
                     $slug = strtolower((string) ($row['mm_slug'] ?? ''));
                     if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
                         continue;
@@ -1882,27 +1988,25 @@ class SalesOrderFulfillmentController extends Controller
     public function pullMissingLabelCreatedTracking(int $limit = 80): array
     {
         $limit = max(1, min(200, $limit));
-        $candidates = [];
-        foreach ($this->labelCreatedOrderRows() as $row) {
+        $candidates = $this->missingLabelTrackingRows();
+        $filtered = [];
+        foreach ($candidates as $row) {
             if (! is_array($row)) {
-                continue;
-            }
-            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
                 continue;
             }
             $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
             if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
                 continue;
             }
-            $candidates[] = $row;
+            $filtered[] = $row;
         }
 
         $result = $this->pullLabelTrackingFromApis(
-            $candidates,
+            $filtered,
             $limit,
             app(VeeqoShopifyFulfillmentService::class)
         );
-        $result['candidates'] = count($candidates);
+        $result['candidates'] = count($filtered);
 
         return $result;
     }
@@ -2019,6 +2123,8 @@ class SalesOrderFulfillmentController extends Controller
                 },
             ];
         }
+
+        $this->forgetSofOrderRowCaches();
 
         $message = $checked > 0
             ? 'Veeqo/GOFO: checked '.$checked.', found tracking on '.$withTracking.'.'
@@ -2491,9 +2597,15 @@ class SalesOrderFulfillmentController extends Controller
     protected function pendingOrderCountsBySlug(): array
     {
         $counts = [];
-
         foreach (MarketplaceManagerRegistry::slugs() as $slug) {
-            $counts[$slug] = $this->pendingOrderCountForSlug($slug);
+            $counts[$slug] = 0;
+        }
+        foreach ($this->warehousePendingOrderRows() as $row) {
+            $slug = (string) ($row['mm_slug'] ?? '');
+            if ($slug === '') {
+                continue;
+            }
+            $counts[$slug] = ($counts[$slug] ?? 0) + 1;
         }
 
         return $counts;
@@ -2907,6 +3019,10 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(status, ''))) = ?",
                 ['SHIPPING']
             ),
+            'bestbuy', 'macy' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(status, ''))) = ?",
+                ['SHIPPING']
+            ),
             default => null,
         };
     }
@@ -3053,16 +3169,20 @@ class SalesOrderFulfillmentController extends Controller
             'shein' => $base->whereIn('status', [
                 'Pending',
                 'To Be Shipped',
-                'To Be Shipped by SHEIN',
             ]),
             'reverb' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['paid']),
             'aliexpress', 'alibaba' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['WAIT_SELLER_SEND_GOODS']),
             'newegg' => $base->whereIn('status', ['0', 0]),
             'faire' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['PROCESSING', 'NEW']),
-            'amazon' => $base->whereHas('order', fn (Builder $q) => $q->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) = ?",
-                ['UNSHIPPED']
-            )),
+            'amazon' => $base->whereHas('order', function (Builder $q) {
+                $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['UNSHIPPED']);
+                if (Schema::hasColumn('amazon_orders', 'fulfillment_channel')) {
+                    $q->where(function (Builder $q2) {
+                        $q2->whereNull('fulfillment_channel')
+                            ->orWhereRaw("UPPER(TRIM(fulfillment_channel)) != ?", ['AFN']);
+                    });
+                }
+            }),
             'topdawg' => $base->whereRaw(
                 "LOWER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)",
                 ['pending', 'processing', 'saved']
@@ -3078,8 +3198,8 @@ class SalesOrderFulfillmentController extends Controller
             }),
             'wayfair' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['open']),
             'bestbuy', 'macy' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)",
-                ['AWAITING_SHIPMENT', 'SHIPPING']
+                "UPPER(TRIM(COALESCE(status, ''))) = ?",
+                ['AWAITING_SHIPMENT']
             ),
             'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['UNSHIPPED']),
             default => null,
@@ -3311,6 +3431,38 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * When a channel has no saved Ch Orders URL, store the in-app marketplace orders page.
+     */
+    protected function autoFillMissingChOrdersLinks(): void
+    {
+        if (! Schema::hasTable('channel_master') || ! Schema::hasColumn('channel_master', 'ch_orders_link')) {
+            return;
+        }
+
+        try {
+            $managerByMpKey = $this->managerChannelsByMpKey();
+            $rows = ChannelMaster::query()
+                ->where(function ($q) {
+                    $q->whereNull('ch_orders_link')->orWhere('ch_orders_link', '');
+                })
+                ->get(['id', 'channel']);
+
+            foreach ($rows as $row) {
+                $manager = $managerByMpKey[strtolower(trim((string) $row->channel))] ?? null;
+                $slug = $manager['slug'] ?? null;
+                if (! is_string($slug) || $slug === '') {
+                    continue;
+                }
+                ChannelMaster::query()->where('id', $row->id)->update([
+                    'ch_orders_link' => route('marketplace.orders', $slug),
+                ]);
+            }
+        } catch (\Throwable) {
+            // Display still falls back to orders_url / order_url.
+        }
+    }
+
+    /**
      * Resolve channel_master id + Ch Orders link for each Marketplace Manager slug.
      *
      * @return array<string, array{channel_id: ?int, ch_orders_link: ?string}>
@@ -3322,6 +3474,7 @@ class SalesOrderFulfillmentController extends Controller
             return $out;
         }
 
+        $this->autoFillMissingChOrdersLinks();
         $hasChOrdersLink = Schema::hasColumn('channel_master', 'ch_orders_link');
         $select = ['id', 'channel'];
         if ($hasChOrdersLink) {
@@ -3357,6 +3510,9 @@ class SalesOrderFulfillmentController extends Controller
                     $meta = $byName[$key];
                     break;
                 }
+            }
+            if (empty($meta['ch_orders_link'])) {
+                $meta['ch_orders_link'] = route('marketplace.orders', $slug);
             }
             $out[$slug] = $meta;
         }

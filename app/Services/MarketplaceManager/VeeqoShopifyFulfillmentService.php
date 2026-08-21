@@ -29,6 +29,7 @@ use App\Services\FourSellerApiService;
 use App\Services\GofoExpressService;
 use App\Services\VeeqoApiService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -103,6 +104,12 @@ class VeeqoShopifyFulfillmentService
 
         $existing = $this->existingShopifyTracking($shopifyConfig, $shopifyOrderId);
         if ($existing !== null) {
+            $this->cacheTrackingOnShopifyRawOrder(
+                $shopifyOrderId,
+                (string) $existing['tracking'],
+                (string) ($existing['carrier'] ?? '')
+            );
+
             return [
                 'success' => true,
                 'skipped' => true,
@@ -136,6 +143,7 @@ class VeeqoShopifyFulfillmentService
         $source = (string) ($found['source'] ?? 'marketplace');
 
         $carrier = $this->shopifyCarrierName((string) ($found['carrier'] ?? 'Other'), (string) ($found['tracking'] ?? ''));
+        $this->cacheTrackingOnShopifyRawOrder($shopifyOrderId, (string) $found['tracking'], $carrier);
         $written = $this->createShopifyFulfillment(
             $shopifyConfig,
             $shopifyOrderId,
@@ -1552,5 +1560,36 @@ class VeeqoShopifyFulfillmentService
         $walk($data);
 
         return implode(' ', $out);
+    }
+
+    /**
+     * Keep SOF overlays in sync when Veeqo/GOFO finds tracking, even if marketplace status is still unshipped.
+     */
+    protected function cacheTrackingOnShopifyRawOrder(string $shopifyOrderId, string $tracking, string $carrier): void
+    {
+        $sid = trim($shopifyOrderId);
+        $tn = trim($tracking);
+        if ($sid === '' || $tn === '' || ! Schema::hasTable('shopify_raw_orders')) {
+            return;
+        }
+
+        try {
+            $payload = [
+                'tracking_number' => $tn,
+                'updated_at' => now(),
+            ];
+            if (Schema::hasColumn('shopify_raw_orders', 'tracking_company') && trim($carrier) !== '') {
+                $payload['tracking_company'] = trim($carrier);
+            }
+            $query = DB::table('shopify_raw_orders');
+            if (ctype_digit($sid)) {
+                $query->where('order_id', (int) $sid)->update($payload);
+
+                return;
+            }
+            $query->where('order_number', $sid)->update($payload);
+        } catch (\Throwable $e) {
+            Log::debug('cacheTrackingOnShopifyRawOrder failed', ['error' => $e->getMessage()]);
+        }
     }
 }

@@ -298,6 +298,13 @@
         .sof-ch-orders-dot.green:hover {
             box-shadow: 0 0 0 3px rgba(10, 179, 156, 0.35);
         }
+        .sof-ch-orders-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            vertical-align: middle;
+        }
         .sof-tracking-cell {
             display: inline-flex;
             align-items: center;
@@ -1240,7 +1247,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-pending-pane" role="tabpanel" aria-labelledby="sof-pending-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Pending / unfulfilled orders in the selected date range.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Orders still waiting for a shipping label (no tracking number yet) in the selected date range.</p>
                             <div id="sof-pending-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -2807,34 +2814,67 @@
         ensureAllOrderTable();
     }
 
+    function resolveChOrdersHref(row) {
+        const orderUrl = (row.order_url || '').trim();
+        const custom = (row.ch_orders_link || '').trim();
+        const ordersUrl = (row.orders_url || '').trim();
+        if (orderUrl) {
+            return orderUrl;
+        }
+        if (custom) {
+            return custom;
+        }
+        return ordersUrl;
+    }
+
     function formatChOrdersDot(cell) {
-        const row = cell.getRow().getData();
-        const link = (row.ch_orders_link || '').trim();
+        const row = cell.getRow().getData() || {};
+        const href = resolveChOrdersHref(row);
         // Channels tab uses row.id as channel_master id; order tabs use channel_id.
         const channelId = row.channel_id != null ? row.channel_id : row.id;
         const channelName = (row.channel_label || row.alias || row.channel || '').toString().trim();
+        const customLink = (row.ch_orders_link || '').trim();
 
-        if (!channelId) {
-            return '<span class="sof-oc-missing" title="No channel_master match">—</span>';
-        }
+        const wrap = document.createElement('span');
+        wrap.className = 'sof-ch-orders-cell';
 
-        if (link) {
+        if (href) {
             const a = document.createElement('a');
-            a.href = link;
+            a.href = href;
             a.target = '_blank';
             a.rel = 'noopener noreferrer';
             a.className = 'sof-ch-orders-dot green';
-            a.title = link + ' — double-click to edit';
-            a.setAttribute('aria-label', 'Open Ch Orders link');
+            a.title = href + (channelId ? ' — double-click to edit' : '');
+            a.setAttribute('aria-label', 'Open order link');
             a.addEventListener('click', function (ev) {
                 ev.stopPropagation();
             });
-            a.addEventListener('dblclick', function (ev) {
+            if (channelId) {
+                a.addEventListener('dblclick', function (ev) {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    openChOrdersLinkModal(channelId, channelName, customLink || href);
+                });
+            }
+            wrap.appendChild(a);
+
+            const copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.className = 'sof-tracking-copy';
+            copyBtn.title = 'Copy order link';
+            copyBtn.setAttribute('aria-label', 'Copy order link');
+            copyBtn.innerHTML = '<i class="fas fa-copy" aria-hidden="true"></i>';
+            copyBtn.addEventListener('click', function (ev) {
                 ev.preventDefault();
                 ev.stopPropagation();
-                openChOrdersLinkModal(channelId, channelName, link);
+                copyTextToClipboard(href, copyBtn);
             });
-            return a;
+            wrap.appendChild(copyBtn);
+            return wrap;
+        }
+
+        if (!channelId) {
+            return '<span class="sof-oc-missing" title="No channel_master match">—</span>';
         }
 
         const dot = document.createElement('span');
@@ -2846,7 +2886,8 @@
             ev.stopPropagation();
             openChOrdersLinkModal(channelId, channelName, '');
         });
-        return dot;
+        wrap.appendChild(dot);
+        return wrap;
     }
 
     function sofLabelDimsDisplay(v) {
@@ -3083,11 +3124,11 @@
             {
                 title: 'Ch Orders',
                 field: 'ch_orders_link',
-                minWidth: 70,
+                minWidth: 110,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: false,
-                headerTooltip: 'Same Ch Orders link as Channels tab. Double-click red dot to add/edit.',
+                headerTooltip: 'Opens this order. Copy copies the link. Double-click to edit the channel URL.',
                 formatter: formatChOrdersDot,
             },
             {
@@ -3642,11 +3683,11 @@
             {
                 title: 'Ch Orders',
                 field: 'ch_orders_link',
-                width: 90,
+                width: 110,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: false,
-                headerTooltip: 'Double-click red dot to add a channel orders link. Green dot opens the saved link.',
+                headerTooltip: 'Green dot opens the orders page. Copy copies the link. Double-click to edit.',
                 formatter: formatChOrdersDot,
             },
         ],

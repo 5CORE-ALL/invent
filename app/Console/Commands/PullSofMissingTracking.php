@@ -15,10 +15,10 @@ use Illuminate\Support\Facades\Log;
 class PullSofMissingTracking extends Command
 {
     protected $signature = 'sof:pull-missing-tracking
-                            {--limit=80 : Max Label Created rows to look up on Veeqo/GOFO}
+                            {--limit=150 : Max Pending + Label Created rows to look up on Veeqo/GOFO}
                             {--temu-limit=40 : Max Temu parent orders to pull}';
 
-    protected $description = 'Pull missing SOF tracking numbers (Temu API + Veeqo/GOFO) every hour.';
+    protected $description = 'Pull missing SOF tracking numbers (Temu API + Veeqo/GOFO) for Pending and Label Created.';
 
     public function handle(
         SalesOrderFulfillmentController $sof,
