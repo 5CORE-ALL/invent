@@ -3169,10 +3169,12 @@
                 headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
                 data: data,
             }).done(function() {
-                const shouldQueue = queueEnabled && extra.skip_push !== true && (
-                    extra.queue_push === true
-                    || extra.queue_push !== false
-                );
+                let shouldQueue = false;
+                if (queueEnabled) {
+                    if (extra.queue_push === true) shouldQueue = true;
+                    else if (extra.queue_push === false) shouldQueue = false;
+                    else shouldQueue = extra.skip_push !== true;
+                }
                 if (shouldQueue) {
                     enqueueChannelPushSpriceAfterSave(sku, val, extra.row || null);
                 }
@@ -6035,6 +6037,13 @@
             }
             chPromoEbaySpriceAutoBusy = true;
             const pushCount = jobs.filter(function(j) { return !j.skip_push; }).length;
+            if (livePushOn && pushCount && typeof enqueueChannelPushSprice === 'function') {
+                enqueueChannelPushSprice(
+                    jobs.filter(function(j) { return !j.skip_push; })
+                        .map(function(j) { return { sku: j.sku, price: j.price }; }),
+                    { silent: true }
+                );
+            }
             const conc = pushCount ? 3 : ((CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8);
             if (pushCount && silent) {
                 chPromoToast('success', 'S PRC queued: ' + pushCount + ' SKU(s) — page close OK');
@@ -6043,7 +6052,7 @@
                 try {
                     const extra = {
                         skip_push: true,
-                        queue_push: !job.skip_push,
+                        queue_push: false,
                         row: job.row,
                         prmt_pct: job.prmt,
                         cpn_pct: job.cpn,
