@@ -1114,9 +1114,18 @@
      * @param {object} rowData
      * @param {string} priceKey  'eBay Price' for GROI%, 'SPRICE' for S GROI
      */
+    function ebay3SpriceAmount(rowData) {
+        if (typeof chPromoLiveSprice === 'function') {
+            const live = Number(chPromoLiveSprice(rowData));
+            if (isFinite(live) && live > 0) return live;
+        }
+        return 0;
+    }
     function ebay3ComputeGrossRoi(rowData, priceKey) {
         if (!rowData) return null;
-        const price = parseFloat(rowData[priceKey]);
+        const price = priceKey === 'SPRICE'
+            ? ebay3SpriceAmount(rowData)
+            : parseFloat(rowData[priceKey]);
         const lp = parseFloat(rowData.LP_productmaster);
         if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
         const ship = parseFloat(rowData.Ship_productmaster) || 0;
@@ -1128,7 +1137,7 @@
     /** S GPFT / SNPFT use S PRC (SPRICE). */
     function ebay3ComputeSgpftFromSprice(rowData) {
         if (!rowData) return null;
-        const price = parseFloat(rowData.SPRICE);
+        const price = ebay3SpriceAmount(rowData);
         if (!isFinite(price) || price <= 0) return null;
         const lp = parseFloat(rowData.LP_productmaster) || 0;
         const ship = parseFloat(rowData.Ship_productmaster) || 0;
@@ -1146,7 +1155,9 @@
      */
     function ebay3ComputeNetRoi(rowData, priceKey) {
         if (!rowData) return null;
-        const price = parseFloat(rowData[priceKey]);
+        const price = priceKey === 'SPRICE'
+            ? ebay3SpriceAmount(rowData)
+            : parseFloat(rowData[priceKey]);
         const lp = parseFloat(rowData.LP_productmaster);
         if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
         const ship = parseFloat(rowData.Ship_productmaster) || 0;
@@ -1160,9 +1171,7 @@
 
     /** True when S PRC has a saved/entered amount (including when it matches Price). */
     function ebay3HasDistinctSprice(rowData) {
-        if (!rowData) return false;
-        const sprice = parseFloat(rowData.SPRICE);
-        return isFinite(sprice) && sprice > 0;
+        return ebay3SpriceAmount(rowData) > 0;
     }
     const ebay3BadgeDollarMetrics = ['total_pft_amt', 'total_sales_amt', 'total_spend_l30', 'avg_price'];
     const ebay3BadgePctMetrics = ['gpft_percent', 'npft_percent', 'groi_percent', 'nroi_percent', 'tcos_percent', 'cvr_percent'];
@@ -2212,12 +2221,9 @@
             return String(data['(Child) sku'] || '').toUpperCase().includes('PARENT');
         }
         function ebay3RowSpriceForAlert(data) {
-            let sprice = parseFloat(data && data.SPRICE) || 0;
-            if (typeof chPromoSpriceFromStdTPromo === 'function' && !ebay3IsAlertParentRow(data)) {
-                const calc = chPromoSpriceFromStdTPromo(data);
-                if (calc > 0) sprice = calc;
-            }
-            return sprice;
+            if (typeof chPromoLiveSprice === 'function') return chPromoLiveSprice(data);
+            if (typeof chPromoSpriceFromStdTPromo !== 'function' || ebay3IsAlertParentRow(data)) return 0;
+            return chPromoSpriceFromStdTPromo(data) || 0;
         }
         function ebay3IsEndedListing(data) {
             if (!data || ebay3IsAlertParentRow(data)) return false;
@@ -3230,20 +3236,12 @@
                     field: "SPRICE",
                     hozAlign: "center",
                     editable: false,
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + CPN%)/100). Read-only. Blue triangle = S PRC ≠ Price. Red triangle / red text = S PRC > LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. Never stored. Blue triangle = S PRC ≠ Price. Red triangle / red text = S PRC > LMP.",
                     formatter: function(cell) {
-                        const value = cell.getValue();
                         const rowData = cell.getRow().getData();
-                        const hasCustomSprice = rowData.has_custom_sprice;
-                        const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
-                        let sprice = isNaN(spriceNum) ? 0 : spriceNum;
-                        if (typeof chPromoSpriceFromStdTPromo === 'function'
-                            && !rowData.is_parent_summary
-                            && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
-                            const calc = chPromoSpriceFromStdTPromo(rowData);
-                            if (calc > 0) sprice = calc;
-                        }
-
+                        const sprice = (typeof chPromoLiveSprice === 'function')
+                            ? chPromoLiveSprice(rowData)
+                            : 0;
                         if (!(sprice > 0)) return '';
                         const formattedValue = `$${Number(sprice).toFixed(2)}`;
                         const lmp = parseFloat(rowData.lmp_price) || 0;
@@ -3259,9 +3257,6 @@
                                 + formattedValue
                                 + ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;color:#dc3545;" title="S PRC &gt; LMP"></i></span>'
                                 + blueTri;
-                        }
-                        if (hasCustomSprice === false) {
-                            return `<span style="color: #0d6efd; font-weight: 500; white-space:nowrap;">${formattedValue}</span>` + blueTri;
                         }
                         return '<span style="white-space:nowrap;">' + formattedValue + blueTri + '</span>';
                     },
@@ -3282,7 +3277,7 @@
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const sprice = parseFloat(rowData.SPRICE);
+                        const sprice = ebay3SpriceAmount(rowData);
 
                         if (!isFinite(sprice) || sprice <= 0) return '';
 

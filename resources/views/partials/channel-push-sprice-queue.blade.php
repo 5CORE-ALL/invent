@@ -408,12 +408,12 @@
                     if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return;
                     const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
                     if (!sku) return;
-                    let fill = chPushSpriceRound2(d.SPRICE);
-                    const std = chPushSpriceRound2(d.STANDARD_PRICE != null ? d.STANDARD_PRICE : d.standard_price);
-                    if (!(fill > 0) && typeof chPromoSpriceFromStdTPromo === 'function') {
+                    let fill = 0;
+                    if (typeof chPromoLiveSprice === 'function') {
+                        fill = chPushSpriceRound2(chPromoLiveSprice(d));
+                    } else if (typeof chPromoSpriceFromStdTPromo === 'function') {
                         fill = chPushSpriceRound2(chPromoSpriceFromStdTPromo(d));
                     }
-                    if (!(fill > 0) && std > 0) fill = std;
                     if (!(fill > 0)) return;
                     const live = chPushSpriceRound2(d[CH_PUSH_SPRICE_PRICE_FIELD]);
                     if (!(live > 0) || chPushSpriceNearlyEqual(fill, live)) return;

@@ -279,7 +279,9 @@ class EbayThreeController extends Controller
         });
         $skus = array_values($nonParentSkus);
 
-        $ebayMetricsAll = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'l7_views', 'item_id', 'listing_status')
+        $ebayMetricsAll = Ebay3Metric::select(EbayListingEnded::withStatusColumn('ebay_3_metrics', [
+            'sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'l7_views', 'item_id',
+        ]))
             ->whereIn('sku', $allSkus)
             ->get();
         $ebayMetrics = $ebayMetricsAll->keyBy('sku');
@@ -1840,7 +1842,9 @@ class EbayThreeController extends Controller
         // Get all unique SKUs from product master
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $ebayMetricsAll = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'item_id', 'lmp_data', 'lmp_link', 'listing_status')
+        $ebayMetricsAll = Ebay3Metric::select(EbayListingEnded::withStatusColumn('ebay_3_metrics', [
+            'sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'item_id', 'lmp_data', 'lmp_link',
+        ]))
             ->whereIn('sku', $skus)
             ->get();
         $ebayMetrics = $ebayMetricsAll->keyBy('sku');
