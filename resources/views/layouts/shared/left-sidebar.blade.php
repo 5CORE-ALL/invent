@@ -463,6 +463,12 @@
                     aria-controls="sidebarCustomerCare" class="side-nav-link">
                     <i class="ri-customer-service-2-line"></i>
                     <span>Customer Care</span>
+                    @php
+                        $ccMessagesPendingCount = \App\Models\CcMessagesPending::pendingTotal();
+                    @endphp
+                    @if($ccMessagesPendingCount > 0)
+                        <span class="badge rounded-pill ms-auto cc-messages-pending-sidebar-badge" title="Messages pending">{{ number_format($ccMessagesPendingCount) }}</span>
+                    @endif
                     <span class="menu-arrow"></span>
                 </a>
                 <div class="collapse" id="sidebarCustomerCare">
@@ -472,6 +478,20 @@
                         </li>
                         <li>
                             <a href="{{ route('customer.care.cc.messages.returns') }}">CC Message</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.messages.pending') }}"
+                               class="{{ request()->routeIs('customer.care.messages.pending*') ? 'active' : '' }}">
+                                Messages Pending
+                                @php
+                                    $ccMessagesPendingMenuCount = $ccMessagesPendingCount ?? \App\Models\CcMessagesPending::pendingTotal();
+                                @endphp
+                                @if($ccMessagesPendingMenuCount > 0)
+                                    <span class="badge rounded-pill ms-auto cc-messages-pending-sidebar-badge" title="Messages pending">{{ number_format($ccMessagesPendingMenuCount) }}</span>
+                                @else
+                                    <span class="badge rounded-pill ms-auto cc-messages-pending-sidebar-badge" title="Messages pending" style="display:none">0</span>
+                                @endif
+                            </a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.report') }}">Report</a>

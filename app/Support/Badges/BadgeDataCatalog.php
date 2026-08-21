@@ -119,6 +119,7 @@ class BadgeDataCatalog
                 'missing' => 'Missing',
             ],
             'customer-care' => [
+                'pending_messages' => 'Messages pending',
                 'pending_followups' => 'Pending follow-ups',
                 'active_issues' => 'Active issues',
                 'dispatch_issues' => 'Dispatch issues',

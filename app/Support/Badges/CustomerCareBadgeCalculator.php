@@ -3,6 +3,7 @@
 namespace App\Support\Badges;
 
 use App\Contracts\PageBadgeCalculator;
+use App\Models\CcMessagesPending;
 use App\Models\CustomerFollowup;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -25,6 +26,7 @@ class CustomerCareBadgeCalculator implements PageBadgeCalculator
      * KPIs from Follow Up CC + All Issues / issue boards.
      *
      * @return array{
+     *     pending_messages: int,
      *     pending_followups: int,
      *     active_issues: int,
      *     dispatch_issues: int,
@@ -36,6 +38,7 @@ class CustomerCareBadgeCalculator implements PageBadgeCalculator
     public static function calculate(): array
     {
         return [
+            'pending_messages' => CcMessagesPending::pendingTotal(),
             'pending_followups' => Schema::hasTable('customer_followups')
                 ? (int) CustomerFollowup::query()->where('status', 'Pending')->count()
                 : 0,
