@@ -731,17 +731,17 @@ class SalesOrderFulfillmentController extends Controller
                 continue;
             }
             $sid = trim((string) ($row['shopify_order_id'] ?? ''));
-            if ($sid !== '' && ctype_digit($sid)) {
-                $needIds[(int) $sid] = true;
+            $numericId = $this->shopifyNumericOrderId($sid);
+            if ($numericId !== null) {
+                $needIds[$numericId] = true;
             }
             foreach (['order_number', 'order_id', 'order_id_api'] as $k) {
                 $v = trim((string) ($row[$k] ?? ''));
                 if ($v === '') {
                     continue;
                 }
-                $needNumbers[$v] = true;
-                if (! str_starts_with($v, 'Amz') && ! str_contains($v, '-')) {
-                    $needNumbers['Amz'.$v] = true;
+                foreach ($this->shopifyTrackingLookupKeys($v) as $key) {
+                    $needNumbers[$key] = true;
                 }
             }
         }
@@ -782,6 +782,11 @@ class SalesOrderFulfillmentController extends Controller
                 if ($num !== '' && ! isset($byNumber[$num])) {
                     $byNumber[$num] = $payload;
                 }
+                foreach ($this->shopifyTrackingLookupKeys($num) as $key) {
+                    if (! isset($byNumber[$key])) {
+                        $byNumber[$key] = $payload;
+                    }
+                }
             }
         } catch (\Throwable) {
             return $rows;
@@ -793,8 +798,9 @@ class SalesOrderFulfillmentController extends Controller
             }
             $hit = null;
             $sid = trim((string) ($row['shopify_order_id'] ?? ''));
-            if ($sid !== '' && ctype_digit($sid) && isset($byShopifyId[(int) $sid])) {
-                $hit = $byShopifyId[(int) $sid];
+            $numericId = $this->shopifyNumericOrderId($sid);
+            if ($numericId !== null && isset($byShopifyId[$numericId])) {
+                $hit = $byShopifyId[$numericId];
             }
             if ($hit === null) {
                 foreach (['order_number', 'order_id', 'order_id_api'] as $k) {
@@ -802,14 +808,11 @@ class SalesOrderFulfillmentController extends Controller
                     if ($v === '') {
                         continue;
                     }
-                    if (isset($byNumber[$v])) {
-                        $hit = $byNumber[$v];
-                        break;
-                    }
-                    $amz = 'Amz'.$v;
-                    if (isset($byNumber[$amz])) {
-                        $hit = $byNumber[$amz];
-                        break;
+                    foreach ($this->shopifyTrackingLookupKeys($v) as $key) {
+                        if (isset($byNumber[$key])) {
+                            $hit = $byNumber[$key];
+                            break 2;
+                        }
                     }
                 }
             }
@@ -824,6 +827,38 @@ class SalesOrderFulfillmentController extends Controller
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function shopifyTrackingLookupKeys(string $value): array
+    {
+        $v = trim($value);
+        if ($v === '') {
+            return [];
+        }
+        $plain = ltrim($v, '#');
+        $keys = [$v, $plain, '#'.$plain];
+        if ($plain !== '' && ! str_starts_with(strtolower($plain), 'amz')) {
+            $keys[] = 'Amz'.$plain;
+            $keys[] = '#Amz'.$plain;
+        }
+
+        return array_values(array_unique(array_filter($keys, static fn ($k) => $k !== '')));
+    }
+
+    protected function shopifyNumericOrderId(string $shopifyOrderId): ?int
+    {
+        $sid = trim($shopifyOrderId);
+        if ($sid === '') {
+            return null;
+        }
+        if (preg_match('/(\d{6,})$/', $sid, $m) === 1) {
+            return (int) $m[1];
+        }
+
+        return ctype_digit($sid) ? (int) $sid : null;
     }
 
     /**
@@ -1460,7 +1495,7 @@ class SalesOrderFulfillmentController extends Controller
             }
         }
 
-        foreach (['shipment', 'shipping', 'fulfillment', 'packageInfo', 'PackageTrackingDetails'] as $nestedKey) {
+        foreach (['shipment', 'shipping', 'fulfillment', 'packageInfo', 'PackageTrackingDetails', 'FulfillmentData'] as $nestedKey) {
             $nested = $order[$nestedKey] ?? null;
             if (! is_array($nested)) {
                 continue;
@@ -1470,6 +1505,37 @@ class SalesOrderFulfillmentController extends Controller
                     $val = trim((string) $nested[$key]);
                     if ($val !== '') {
                         return $val;
+                    }
+                }
+            }
+            $pkg = $nested['PackageTrackingDetails'] ?? $nested['packageTrackingDetails'] ?? null;
+            if (is_array($pkg)) {
+                foreach (['TrackingNumber', 'tracking_number', 'trackingNumber'] as $key) {
+                    if (! empty($pkg[$key]) && is_scalar($pkg[$key])) {
+                        $val = trim((string) $pkg[$key]);
+                        if ($val !== '') {
+                            return $val;
+                        }
+                    }
+                }
+            }
+        }
+
+        foreach (['fulfillments', 'fulfillmentList', 'Fulfillments'] as $listKey) {
+            $list = $order[$listKey] ?? null;
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                foreach (['tracking_number', 'trackingNumber', 'TrackingNumber', 'tracking'] as $key) {
+                    if (! empty($item[$key]) && is_scalar($item[$key])) {
+                        $val = trim((string) $item[$key]);
+                        if ($val !== '') {
+                            return $val;
+                        }
                     }
                 }
             }
@@ -3440,22 +3506,40 @@ class SalesOrderFulfillmentController extends Controller
                 'tracking_company' => isset($order->carrier_name) ? trim((string) $order->carrier_name) ?: null : null,
                 'show_id' => (int) $order->id,
             ],
-            default => [
-                'status' => (string) ($order->status ?? ''),
-                'order_date' => $order->order_date ?? null,
-                'updated_at' => $order->updated_at ?? null,
-                'sku' => (string) ($order->sku ?? ''),
-                'display_title' => (string) ($order->display_title ?? ''),
-                'quantity' => (int) ($order->quantity ?? 1),
-                'amount' => $order->amount ?? null,
-                'order_id' => (string) ($order->order_id ?? ''),
-                'order_number' => (string) ($order->order_number ?? ''),
-                'import_status' => (string) ($order->import_status ?? ''),
-                'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
-                'raw_payload' => $order->raw_payload ?? null,
-                'tracking_number' => null,
-                'show_id' => (int) $order->id,
-            ],
+            default => (function () use ($order) {
+                $tn = null;
+                foreach (['tracking_number', 'trackingNumber'] as $field) {
+                    if (isset($order->{$field}) && trim((string) $order->{$field}) !== '') {
+                        $tn = trim((string) $order->{$field});
+                        break;
+                    }
+                }
+                $carrier = null;
+                foreach (['tracking_company', 'carrier', 'carrier_name', 'shipping_company'] as $field) {
+                    if (isset($order->{$field}) && trim((string) $order->{$field}) !== '') {
+                        $carrier = trim((string) $order->{$field});
+                        break;
+                    }
+                }
+
+                return [
+                    'status' => (string) ($order->status ?? ''),
+                    'order_date' => $order->order_date ?? null,
+                    'updated_at' => $order->updated_at ?? null,
+                    'sku' => (string) ($order->sku ?? ''),
+                    'display_title' => (string) ($order->display_title ?? ''),
+                    'quantity' => (int) ($order->quantity ?? 1),
+                    'amount' => $order->amount ?? null,
+                    'order_id' => (string) ($order->order_id ?? ''),
+                    'order_number' => (string) ($order->order_number ?? ''),
+                    'import_status' => (string) ($order->import_status ?? ''),
+                    'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
+                    'raw_payload' => $order->raw_payload ?? null,
+                    'tracking_number' => $tn,
+                    'tracking_company' => $carrier,
+                    'show_id' => (int) $order->id,
+                ];
+            })(),
         };
     }
 

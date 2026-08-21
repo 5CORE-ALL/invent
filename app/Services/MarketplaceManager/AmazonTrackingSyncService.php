@@ -75,15 +75,24 @@ class AmazonTrackingSyncService
             }
         }
 
-        if (in_array($status, ['SHIPPED', 'CANCELED', 'CANCELLED'], true)) {
+        $foundTracking = trim((string) ($shopifyFulfillment['tracking'] ?? ''));
+        if ($foundTracking !== '') {
+            $this->persistLocalTracking(
+                $order,
+                $foundTracking,
+                (string) ($shopifyFulfillment['carrier'] ?? '')
+            );
+        }
+
+        if (in_array($status, ['SHIPPED', 'PARTIALLYSHIPPED', 'CANCELED', 'CANCELLED'], true)) {
             return [
                 'success' => true,
                 'skipped' => true,
                 'action' => 'already_shipped',
-                'message' => empty($shopifyFulfillment['tracking'])
+                'message' => $foundTracking === ''
                     ? 'Amazon order is already '.$status.'.'
-                    : 'Shopify tracking '.$shopifyFulfillment['tracking'].' saved. Amazon is already '.$status.'.',
-                'shopify_tracking' => $shopifyFulfillment['tracking'] ?? null,
+                    : 'Shopify tracking '.$foundTracking.' saved for SOF. Amazon is already '.$status.'.',
+                'shopify_tracking' => $foundTracking !== '' ? $foundTracking : null,
                 'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
             ];
         }
@@ -129,6 +138,8 @@ class AmazonTrackingSyncService
         if (empty($result['success'])) {
             $message = (string) ($result['message'] ?? 'Failed to push tracking to Amazon.');
             if ($this->looksLikeAlreadyShipped($message)) {
+                $this->persistLocalTracking($order, $shopifyTracking, $shopifyCarrier);
+
                 return [
                     'success' => true,
                     'skipped' => true,
@@ -153,6 +164,8 @@ class AmazonTrackingSyncService
         if (Schema::hasColumn('amazon_orders', 'status')) {
             $order->update(['status' => 'Shipped']);
         }
+
+        $this->persistLocalTracking($order, $shopifyTracking, $shopifyCarrier);
 
         Log::info('AmazonTrackingSyncService: tracking pushed', [
             'amazon_order_id' => $order->amazon_order_id,
@@ -205,8 +218,16 @@ class AmazonTrackingSyncService
             })
             ->where(function ($q) {
                 $q->whereNull('status')
-                    ->orWhereNotIn('status', ['Shipped', 'Canceled', 'Cancelled']);
+                    ->orWhereRaw("UPPER(TRIM(COALESCE(status, ''))) NOT IN (?, ?, ?, ?)", [
+                        'SHIPPED', 'PARTIALLYSHIPPED', 'CANCELED', 'CANCELLED',
+                    ])
+                    ->orWhere(function ($q2) {
+                        // Label already created on Amazon — still copy Shopify/Veeqo tracking onto SOF.
+                        $q2->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED'])
+                            ->where('updated_at', '>=', now()->subDays(3));
+                    });
             })
+            ->orderByRaw("CASE WHEN UPPER(TRIM(COALESCE(status, ''))) IN ('SHIPPED','PARTIALLYSHIPPED') THEN 1 ELSE 0 END")
             ->orderByDesc('id')
             ->limit($limit)
             ->get();
@@ -322,6 +343,20 @@ class AmazonTrackingSyncService
         }
 
         return ['tracking' => null, 'carrier' => null, 'tracking_url' => null];
+    }
+
+    /**
+     * Copy Shopify/Veeqo tracking onto amazon_orders + shopify_raw_orders so SOF Label Created shows it.
+     */
+    protected function persistLocalTracking(AmazonOrder $order, string $tracking, string $carrier): void
+    {
+        $this->veeqoFulfillment->persistTrackingOntoMarketplaceOrder(
+            'amazon',
+            (int) $order->id,
+            (string) ($order->shopify_order_id ?? ''),
+            $tracking,
+            $carrier
+        );
     }
 
     /**

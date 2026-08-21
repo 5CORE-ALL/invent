@@ -69,12 +69,24 @@ class VeeqoShopifyFulfillmentService
             ];
         }
 
-        return $this->fulfillShopifyFromLabels(
+        $result = $this->fulfillShopifyFromLabels(
             (string) $ctx['shopify_order_id'],
             (array) $ctx['shopify_config'],
             (array) $ctx['refs'],
             is_array($ctx['local_tracking'] ?? null) ? $ctx['local_tracking'] : null
         );
+        $tn = trim((string) ($result['tracking'] ?? ''));
+        if ($tn !== '') {
+            $this->persistTrackingOntoMarketplaceOrder(
+                $marketplace,
+                $orderId,
+                (string) ($ctx['shopify_order_id'] ?? ''),
+                $tn,
+                (string) ($result['carrier'] ?? '')
+            );
+        }
+
+        return $result;
     }
 
     /**
@@ -684,6 +696,11 @@ class VeeqoShopifyFulfillmentService
         }
         if ($shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual')) {
             $refs[] = $shopifyOrderId;
+            foreach ($this->shopifyOrderNumberRefs($shopifyOrderId) as $num) {
+                if (! in_array($num, $refs, true)) {
+                    $refs[] = $num;
+                }
+            }
         }
         if ($shopifyOrderId === '' || $refs === []) {
             return [
@@ -802,6 +819,13 @@ class VeeqoShopifyFulfillmentService
             }
             if (str_starts_with($ref, '#')) {
                 $variants[] = ltrim($ref, '#');
+            }
+            $plain = ltrim($ref, '#');
+            if ($plain !== $ref) {
+                $variants[] = $plain;
+            }
+            if ($plain !== '' && ! str_starts_with(strtolower($plain), 'amz')) {
+                $variants[] = 'Amz'.$plain;
             }
             foreach ($variants as $candidate) {
                 $candidate = trim($candidate);
@@ -1563,6 +1587,193 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * Write found tracking onto the marketplace order + Shopify cache so SOF can show it
+     * even when Amazon/eBay already say SHIPPED/FULFILLED.
+     */
+    public function persistTrackingOntoMarketplaceOrder(
+        string $marketplace,
+        int $orderId,
+        string $shopifyOrderId,
+        string $tracking,
+        string $carrier = ''
+    ): void {
+        $tn = strtoupper(preg_replace('/\s+/', '', $tracking) ?? $tracking);
+        if ($tn === '' || strlen($tn) < 8) {
+            return;
+        }
+        $carrier = trim($carrier);
+
+        $this->rememberShopifyTracking($shopifyOrderId, $tn, $carrier);
+        $this->enrollCarrierTrackingNumber($tn, $carrier);
+
+        try {
+            if ($marketplace === 'amazon') {
+                $order = AmazonOrder::query()->find($orderId);
+                if ($order === null) {
+                    return;
+                }
+                $raw = AmazonOrder::decodeRawPayload($order->raw_data ?? null);
+                $raw['tracking_number'] = $tn;
+                if ($carrier !== '') {
+                    $raw['carrier'] = $carrier;
+                }
+                $order->raw_data = $raw;
+                $order->save();
+
+                return;
+            }
+
+            $row = $this->loadMarketplaceOrder($marketplace, $orderId);
+            if ($row === null) {
+                return;
+            }
+            $class = match ($marketplace) {
+                'temu' => TemuOrder::class,
+                'temu2' => Temu2Order::class,
+                'ebay1' => Ebay1OrderMetric::class,
+                'ebay2' => Ebay2OrderMetric::class,
+                'ebay3' => Ebay3OrderMetric::class,
+                'newegg' => NeweggOrderMetric::class,
+                'shein' => SheinOrderMetric::class,
+                'reverb' => ReverbOrderMetric::class,
+                'faire' => FaireOrderMetric::class,
+                'aliexpress' => AliexpressOrderMetric::class,
+                'alibaba' => AlibabaOrderMetric::class,
+                'topdawg' => TopDawgOrderMetric::class,
+                'bestbuy' => BestBuyOrderMetric::class,
+                'macy' => MacyOrderMetric::class,
+                'wayfair' => WayfairDailyData::class,
+                'purchasingpower' => PurchasingPowerSale::class,
+                'doba' => DobaDailyData::class,
+                default => null,
+            };
+            if ($class === null) {
+                return;
+            }
+            $model = $class::query()->find($orderId);
+            if ($model === null) {
+                return;
+            }
+            if (Schema::hasColumn($model->getTable(), 'tracking_number')) {
+                $model->tracking_number = $tn;
+                if ($carrier !== '' && Schema::hasColumn($model->getTable(), 'carrier')) {
+                    $model->carrier = $carrier;
+                } elseif ($carrier !== '' && Schema::hasColumn($model->getTable(), 'carrier_name')) {
+                    $model->carrier_name = $carrier;
+                } elseif ($carrier !== '' && Schema::hasColumn($model->getTable(), 'shipping_company')) {
+                    $model->shipping_company = $carrier;
+                }
+            }
+            foreach (['raw_payload', 'raw_json', 'raw_data'] as $field) {
+                if (! isset($model->{$field})) {
+                    continue;
+                }
+                $raw = $model->{$field};
+                if (is_string($raw)) {
+                    $decoded = json_decode($raw, true);
+                    $raw = is_array($decoded) ? $decoded : [];
+                }
+                if (! is_array($raw)) {
+                    $raw = [];
+                }
+                $raw['tracking_number'] = $tn;
+                if ($carrier !== '') {
+                    $raw['carrier'] = $carrier;
+                }
+                $model->{$field} = $raw;
+                break;
+            }
+            $model->save();
+        } catch (\Throwable $e) {
+            Log::debug('persistTrackingOntoMarketplaceOrder failed', [
+                'marketplace' => $marketplace,
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function shopifyOrderNumberRefs(string $shopifyOrderId): array
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return [];
+        }
+        $sid = $this->shopifyNumericId($shopifyOrderId);
+        try {
+            $q = DB::table('shopify_raw_orders')->select(['order_number']);
+            if ($sid !== null) {
+                $q->where('order_id', $sid);
+            } else {
+                $q->where('order_number', $shopifyOrderId);
+            }
+            $num = trim((string) ($q->value('order_number') ?? ''));
+        } catch (\Throwable) {
+            return [];
+        }
+        if ($num === '') {
+            return [];
+        }
+        $out = [$num];
+        $plain = ltrim($num, '#');
+        if ($plain !== $num) {
+            $out[] = $plain;
+        }
+
+        return $out;
+    }
+
+    protected function shopifyNumericId(string $shopifyOrderId): ?int
+    {
+        $sid = trim($shopifyOrderId);
+        if ($sid === '') {
+            return null;
+        }
+        if (preg_match('/(\d{6,})$/', $sid, $m) === 1) {
+            return (int) $m[1];
+        }
+
+        return ctype_digit($sid) ? (int) $sid : null;
+    }
+
+    protected function enrollCarrierTrackingNumber(string $tracking, string $carrier): void
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return;
+        }
+        $tn = trim($tracking);
+        if ($tn === '' || strlen($tn) < 8) {
+            return;
+        }
+        try {
+            $now = now();
+            $guessed = \App\Support\TrackingCarrierGuesser::fill(
+                $carrier !== '' ? $carrier : null,
+                $tn
+            ) ?? $carrier;
+            DB::table('carrier_tracking_statuses')->upsert(
+                [[
+                    'tracking_number' => mb_substr($tn, 0, 128),
+                    'carrier' => $guessed !== '' ? mb_substr((string) $guessed, 0, 128) : null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]],
+                ['tracking_number'],
+                ['carrier', 'updated_at']
+            );
+        } catch (\Throwable $e) {
+            Log::debug('enrollCarrierTrackingNumber failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    public function rememberShopifyTracking(string $shopifyOrderId, string $tracking, string $carrier): void
+    {
+        $this->cacheTrackingOnShopifyRawOrder($shopifyOrderId, $tracking, $carrier);
+    }
+
+    /**
      * Keep SOF overlays in sync when Veeqo/GOFO finds tracking, even if marketplace status is still unshipped.
      */
     protected function cacheTrackingOnShopifyRawOrder(string $shopifyOrderId, string $tracking, string $carrier): void
@@ -1582,8 +1793,9 @@ class VeeqoShopifyFulfillmentService
                 $payload['tracking_company'] = trim($carrier);
             }
             $query = DB::table('shopify_raw_orders');
-            if (ctype_digit($sid)) {
-                $query->where('order_id', (int) $sid)->update($payload);
+            $numericId = $this->shopifyNumericId($sid);
+            if ($numericId !== null) {
+                $query->where('order_id', $numericId)->update($payload);
 
                 return;
             }
