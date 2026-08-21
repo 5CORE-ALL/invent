@@ -2211,6 +2211,7 @@ class SalesOrderFulfillmentController extends Controller
     protected function persistPulledChannelTracking(string $slug, int $showId, array $sofRow, string $tracking, string $carrier): void
     {
         $this->writeShopifyRawOrderTracking($sofRow, $tracking, $carrier);
+        $this->enrollCarrierTrackingNumber($tracking, $carrier);
 
         try {
             if ($slug === 'amazon') {
@@ -2302,6 +2303,37 @@ class SalesOrderFulfillmentController extends Controller
                 break;
             }
             $model->save();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Put a pulled tracking number onto the carrier-status queue (USPS / UPS / 17TRACK).
+     */
+    protected function enrollCarrierTrackingNumber(string $tracking, string $carrier): void
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return;
+        }
+        $tn = trim($tracking);
+        if ($tn === '' || strlen($tn) < 8) {
+            return;
+        }
+
+        try {
+            $now = now();
+            $guessed = TrackingCarrierGuesser::fill($carrier !== '' ? $carrier : null, $tn) ?? $carrier;
+            DB::table('carrier_tracking_statuses')->upsert(
+                [[
+                    'tracking_number' => mb_substr($tn, 0, 128),
+                    'carrier' => $guessed !== '' ? mb_substr((string) $guessed, 0, 128) : null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]],
+                ['tracking_number'],
+                ['carrier', 'updated_at']
+            );
         } catch (\Throwable $e) {
             report($e);
         }
@@ -2880,10 +2912,8 @@ class SalesOrderFulfillmentController extends Controller
         $toDt = $b['to_dt'];
 
         return match ($slug) {
-            'amazon' => $query->whereHas('order', function (Builder $q) use ($fromDate, $toDate) {
-                $q->whereDate('order_date', '>=', $fromDate)
-                    ->whereDate('order_date', '<=', $toDate);
-            }),
+            'amazon' => $query->whereDate('order_date', '>=', $fromDate)
+                ->whereDate('order_date', '<=', $toDate),
             'temu', 'temu2' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
                 $q->where(function (Builder $q2) use ($fromDt, $toDt) {
                     $q2->where('parent_order_time', '>=', $fromDt)
@@ -2941,7 +2971,7 @@ class SalesOrderFulfillmentController extends Controller
     protected function applyUpdatedSinceFilter(Builder $query, mixed $since, string $slug): Builder
     {
         return match ($slug) {
-            'amazon' => $query->whereHas('order', fn (Builder $q) => $q->where('updated_at', '>=', $since)),
+            'amazon' => $query->where('updated_at', '>=', $since),
             'temu', 'temu2' => $query->where(function (Builder $q) use ($since) {
                 $q->where('order_update_time', '>=', $since)
                     ->orWhere('parent_order_time', '>=', $since);
@@ -2966,7 +2996,7 @@ class SalesOrderFulfillmentController extends Controller
     protected function orderDateColumn(string $slug): ?string
     {
         return match ($slug) {
-            'amazon' => null, // on related order
+            'amazon' => 'order_date',
             'temu', 'temu2' => 'parent_order_time',
             'bestbuy', 'macy' => 'order_created_at',
             'purchasingpower' => 'date_created',
@@ -2979,7 +3009,7 @@ class SalesOrderFulfillmentController extends Controller
     protected function orderUpdatedColumn(string $slug): ?string
     {
         return match ($slug) {
-            'amazon' => null,
+            'amazon' => 'updated_at',
             'temu', 'temu2' => 'order_update_time',
             'bestbuy', 'macy' => 'order_updated_at',
             'purchasingpower', 'wayfair', 'doba' => 'updated_at',
@@ -3050,18 +3080,13 @@ class SalesOrderFulfillmentController extends Controller
             // Shein / Ali / TopDawg / Mirakl "Shipped" → Shipped/Received tab
             'shein', 'aliexpress', 'alibaba', 'topdawg', 'bestbuy', 'macy' => null,
             'reverb' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['picked_up']),
-            'amazon' => $base->whereHas('order', function (Builder $q) {
-                $q->whereRaw(
-                    "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)",
-                    ['SHIPPED', 'PARTIALLYSHIPPED']
-                );
-                if (Schema::hasColumn('amazon_orders', 'fulfillment_channel')) {
+            'amazon' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED'])
+                ->when(Schema::hasColumn('amazon_orders', 'fulfillment_channel'), function (Builder $q) {
                     $q->where(function (Builder $q2) {
                         $q2->whereNull('fulfillment_channel')
                             ->orWhereRaw("UPPER(TRIM(fulfillment_channel)) != ?", ['AFN']);
                     });
-                }
-            }),
+                }),
             'temu', 'temu2' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['SHIPPED', 'PARTIALLY_SHIPPED']
@@ -3212,8 +3237,8 @@ class SalesOrderFulfillmentController extends Controller
             'newegg' => Schema::hasTable('newegg_order_metrics') ? NeweggOrderMetric::query() : null,
             'faire' => Schema::hasTable('faire_order_metrics') ? FaireOrderMetric::query() : null,
             'topdawg' => Schema::hasTable('topdawg_order_metrics') ? TopDawgOrderMetric::query() : null,
-            'amazon' => Schema::hasTable('amazon_order_items')
-                ? AmazonOrderItem::query()->with('order')
+            'amazon' => Schema::hasTable('amazon_orders')
+                ? AmazonOrder::query()->with('items')
                 : null,
             'temu' => Schema::hasTable('temu_orders') ? TemuOrder::query() : null,
             'temu2' => Schema::hasTable('temu2_orders') ? Temu2Order::query() : null,
@@ -3246,15 +3271,13 @@ class SalesOrderFulfillmentController extends Controller
             'aliexpress', 'alibaba' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['WAIT_SELLER_SEND_GOODS']),
             'newegg' => $base->whereIn('status', ['0', 0]),
             'faire' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['PROCESSING', 'NEW']),
-            'amazon' => $base->whereHas('order', function (Builder $q) {
-                $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['UNSHIPPED']);
-                if (Schema::hasColumn('amazon_orders', 'fulfillment_channel')) {
+            'amazon' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['UNSHIPPED'])
+                ->when(Schema::hasColumn('amazon_orders', 'fulfillment_channel'), function (Builder $q) {
                     $q->where(function (Builder $q2) {
                         $q2->whereNull('fulfillment_channel')
                             ->orWhereRaw("UPPER(TRIM(fulfillment_channel)) != ?", ['AFN']);
                     });
-                }
-            }),
+                }),
             'topdawg' => $base->whereRaw(
                 "LOWER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)",
                 ['pending', 'processing', 'saved']
@@ -3302,24 +3325,34 @@ class SalesOrderFulfillmentController extends Controller
     {
         return match ($slug) {
             'amazon' => (function () use ($order) {
-                $parent = $order->order ?? null;
+                $items = $order->relationLoaded('items') ? $order->items : collect();
+                $skus = $items->pluck('sku')->map(fn ($s) => trim((string) $s))->filter()->unique()->values();
+                $titles = $items->pluck('title')->map(fn ($s) => trim((string) $s))->filter()->values();
+                $qty = (int) $items->sum(fn ($i) => (int) ($i->quantity ?? 0));
+                $sku = $skus->isEmpty() ? '' : (string) $skus->first();
+                if ($skus->count() > 1) {
+                    $sku .= ' +'.($skus->count() - 1);
+                }
+                $decoded = AmazonOrder::decodeRawPayload($order->raw_data ?? null);
+                $tn = trim((string) ($decoded['tracking_number'] ?? ''));
+                $carrier = trim((string) ($decoded['carrier'] ?? ''));
 
                 return [
-                    'status' => (string) ($parent->status ?? ''),
-                    'order_date' => $parent->order_date ?? null,
-                    'updated_at' => $parent->updated_at ?? $order->updated_at ?? null,
-                    'sku' => (string) ($order->sku ?? ''),
-                    'display_title' => (string) ($order->title ?? ''),
-                    'quantity' => (int) ($order->quantity ?? 1),
-                    'amount' => is_numeric($order->price ?? null) ? (float) $order->price : ($parent->total_amount ?? null),
-                    'order_id' => (string) ($parent->amazon_order_id ?? ''),
-                    'order_number' => (string) ($parent->amazon_order_id ?? ''),
-                    'import_status' => '',
-                    'shopify_order_id' => (string) ($parent->shopify_order_id ?? ''),
-                    'raw_payload' => $parent->raw_data ?? $order->raw_data ?? null,
-                    'tracking_number' => null,
-                    'tracking_company' => null,
-                    'show_id' => (int) ($parent->id ?? $order->id),
+                    'status' => (string) ($order->status ?? ''),
+                    'order_date' => $order->order_date ?? null,
+                    'updated_at' => $order->updated_at ?? null,
+                    'sku' => $sku,
+                    'display_title' => (string) ($titles->first() ?? ''),
+                    'quantity' => $qty > 0 ? $qty : 1,
+                    'amount' => is_numeric($order->total_amount ?? null) ? (float) $order->total_amount : null,
+                    'order_id' => (string) ($order->amazon_order_id ?? ''),
+                    'order_number' => (string) ($order->amazon_order_id ?? ''),
+                    'import_status' => (string) ($order->import_status ?? ''),
+                    'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
+                    'raw_payload' => $order->raw_data ?? null,
+                    'tracking_number' => $tn !== '' ? $tn : null,
+                    'tracking_company' => $carrier !== '' ? $carrier : null,
+                    'show_id' => (int) $order->id,
                 ];
             })(),
             'temu', 'temu2' => [
