@@ -233,8 +233,9 @@ class SalesOrderFulfillmentController extends Controller
     {
         try {
             @set_time_limit(90);
+            // Return rows immediately. Live Veeqo/GOFO pulls belong on Pull Tracking —
+            // blocking this endpoint left the tab empty while the badge still showed a count.
             $rows = $this->labelCreatedNoScanRows();
-            $rows = $this->hydrateMissingLabelTrackingOnRows($rows, 40);
 
             return response()->json([
                 'success' => true,

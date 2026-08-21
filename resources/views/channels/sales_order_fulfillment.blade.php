@@ -2848,7 +2848,8 @@
         } else if (tabBtn) {
             tabBtn.click();
         }
-        ensureFulfilledTable();
+        // Table is created on shown.bs.tab so Tabulator gets a visible height.
+        setTimeout(function () { ensureFulfilledTable(); }, 80);
     }
 
     function switchToScanDoneTab() {
@@ -4110,10 +4111,18 @@
     }
 
     function ensureFulfilledTable() {
-        if (fulfilledTable || fulfilledTableLoading) {
-            if (fulfilledTable) {
-                setTimeout(function () { fulfilledTable.redraw(true); }, 50);
-            }
+        const pane = document.getElementById('sof-fulfilled-pane');
+        const paneReady = !pane || pane.classList.contains('show') || pane.classList.contains('active');
+        if (fulfilledTable) {
+            setTimeout(function () {
+                try { fulfilledTable.redraw(true); } catch (e) {}
+                if (!fulfilledTableLoaded) {
+                    try { fulfilledTable.replaceData(); } catch (e2) {}
+                }
+            }, 50);
+            return;
+        }
+        if (fulfilledTableLoading || !paneReady) {
             return;
         }
         fulfilledTableLoading = true;
@@ -4155,9 +4164,18 @@
                 sofUpdateTrackingFilterCounts(fulfilledRows);
                 return fulfilledRows;
             },
+            ajaxError: function () {
+                fulfilledTableLoading = false;
+                fulfilledTableLoaded = false;
+            },
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(fulfilledRows);
                 applyFulfilledFilters();
+                setTimeout(function () {
+                    if (fulfilledTable) {
+                        try { fulfilledTable.redraw(true); } catch (e) {}
+                    }
+                }, 50);
             },
             columns: (function () {
                 const cols = orderListColumns('sof-fulfilled-badge');
