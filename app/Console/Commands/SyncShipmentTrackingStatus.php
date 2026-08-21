@@ -308,6 +308,8 @@ class SyncShipmentTrackingStatus extends Command
             ['purchasing_power_sales', 'carrier'], // may fall back to NULL carrier
             ['doba_daily_data', 'carrier_name'],
             ['shopify_raw_orders', 'tracking_company'], // legacy cache rows only — no Shopify API
+            ['ebay2_daily_data', 'shipping_carrier'],
+            ['ebay3_daily_data', 'shipping_carrier'],
         ];
 
         $total = 0;
@@ -373,7 +375,174 @@ class SyncShipmentTrackingStatus extends Command
             }
         }
 
+        $total += $this->importJsonPayloadTrackingNumbers($limitPerSource);
+
         return $total;
+    }
+
+    /**
+     * Amazon / eBay store tracking inside JSON payloads, not a tracking_number column.
+     */
+    protected function importJsonPayloadTrackingNumbers(?int $limitPerSource = null): int
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses')) {
+            return 0;
+        }
+
+        $limit = max(1, $limitPerSource ?? 2000);
+        $since = now()->subDays(30);
+        $now = now();
+        $total = 0;
+
+        $sources = [
+            ['amazon_orders', 'raw_data', 'order_date'],
+            ['ebay1_order_metrics', 'raw_payload', 'order_date'],
+            ['ebay2_order_metrics', 'raw_payload', 'order_date'],
+            ['ebay3_order_metrics', 'raw_payload', 'order_date'],
+        ];
+
+        foreach ($sources as [$table, $jsonCol, $dateCol]) {
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $jsonCol)) {
+                continue;
+            }
+
+            try {
+                $q = DB::table($table)
+                    ->select([$jsonCol])
+                    ->whereNotNull($jsonCol)
+                    ->where($jsonCol, '!=', '')
+                    ->where($jsonCol, '!=', '[]')
+                    ->where($jsonCol, '!=', '{}');
+                if (Schema::hasColumn($table, $dateCol)) {
+                    $q->where($dateCol, '>=', $since);
+                }
+                $rows = $q->orderByDesc('id')->limit($limit)->get();
+            } catch (\Throwable $e) {
+                Log::warning('tracking:sync-status JSON import failed', [
+                    'table' => $table,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
+
+            $payload = [];
+            $seen = [];
+            foreach ($rows as $row) {
+                $tn = $this->extractTrackingFromPayload($row->{$jsonCol} ?? null);
+                if ($tn === null || isset($seen[$tn])) {
+                    continue;
+                }
+                $seen[$tn] = true;
+                $carrier = (string) (TrackingCarrierGuesser::labelFromNumber($tn) ?? '');
+                $payload[] = [
+                    'tracking_number' => mb_substr($tn, 0, 128),
+                    'carrier' => $carrier !== '' ? mb_substr($carrier, 0, 128) : null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+
+            foreach (array_chunk($payload, 200) as $chunk) {
+                if ($chunk === []) {
+                    continue;
+                }
+                try {
+                    DB::table('carrier_tracking_statuses')->upsert(
+                        $chunk,
+                        ['tracking_number'],
+                        ['carrier', 'updated_at']
+                    );
+                    $total += count($chunk);
+                } catch (\Throwable $e) {
+                    Log::warning('tracking:sync-status JSON upsert failed', [
+                        'table' => $table,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        return $total;
+    }
+
+    protected function extractTrackingFromPayload(mixed $raw): ?string
+    {
+        if (is_string($raw) && trim($raw) !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_string($decoded)) {
+                $decoded = json_decode($decoded, true);
+            }
+            $raw = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($raw)) {
+            return null;
+        }
+
+        $keys = [
+            'tracking_number', 'trackingNumber', 'TrackingNumber', 'shipmentTrackingNumber',
+            'tracking', 'shipping_code', 'logistics_no', 'PackageTrackingDetails',
+        ];
+        $found = $this->firstTrackingInArray($raw, $keys, 0);
+
+        return $found;
+    }
+
+    /**
+     * @param  array<mixed>  $data
+     * @param  list<string>  $keys
+     */
+    protected function firstTrackingInArray(array $data, array $keys, int $depth): ?string
+    {
+        if ($depth > 6) {
+            return null;
+        }
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $val = $data[$key];
+            if (is_scalar($val)) {
+                $tn = strtoupper(preg_replace('/\s+/', '', (string) $val) ?? '');
+                if ($this->looksLikeTrackingNumber($tn)) {
+                    return $tn;
+                }
+            } elseif (is_array($val)) {
+                $nested = $this->firstTrackingInArray($val, $keys, $depth + 1);
+                if ($nested !== null) {
+                    return $nested;
+                }
+            }
+        }
+        foreach ($data as $val) {
+            if (! is_array($val)) {
+                continue;
+            }
+            $nested = $this->firstTrackingInArray($val, $keys, $depth + 1);
+            if ($nested !== null) {
+                return $nested;
+            }
+        }
+
+        return null;
+    }
+
+    protected function looksLikeTrackingNumber(string $value): bool
+    {
+        $v = strtoupper(preg_replace('/\s+/', '', $value) ?? '');
+        if ($v === '' || strlen($v) < 8 || strlen($v) > 40) {
+            return false;
+        }
+        if (preg_match('/^1Z[A-Z0-9]{16}$/', $v) === 1) {
+            return true;
+        }
+        if (preg_match('/^\d{12,22}$/', $v) === 1) {
+            return true;
+        }
+        if (preg_match('/^[A-Z0-9]{10,30}$/', $v) === 1 && preg_match('/[A-Z]/', $v) === 1) {
+            return true;
+        }
+
+        return false;
     }
 
     protected function repairQuotaPoisonedRows(): int
