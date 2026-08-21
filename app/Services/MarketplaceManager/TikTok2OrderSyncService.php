@@ -2,21 +2,67 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Jobs\ImportTikTok2OrderToShopify;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\Tiktok2Order;
 use App\Services\TikTok2ShopService;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Bus\UniqueLock;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 
 class TikTok2OrderSyncService
 {
     use PreservesMarketplaceImportStatus;
 
+    public const AUTO_IMPORT_MAX_AGE_DAYS = 7;
+
+    /** @var list<string> */
+    public const AUTO_IMPORT_STATUSES = [
+        'AWAITING_SHIPMENT',
+        'PARTIALLY_SHIPPING',
+        'AWAITING_COLLECTION',
+        'ON_HOLD',
+        'IN_TRANSIT',
+        'DELIVERED',
+        'COMPLETED',
+    ];
+
     public function __construct(
         protected TikTok2ShopService $tiktokApi
     ) {}
+
+    public function autoImportFromDate(): Carbon
+    {
+        return Carbon::now('America/Los_Angeles')
+            ->subDays(max(1, self::AUTO_IMPORT_MAX_AGE_DAYS))
+            ->startOfDay();
+    }
+
+    public static function normalizeOrderStatus(?string $status): string
+    {
+        return str_replace([' ', '-'], '_', strtoupper(trim((string) $status)));
+    }
+
+    public function isEligibleForAutoImport(Tiktok2Order $order): bool
+    {
+        if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
+            return false;
+        }
+
+        $status = self::normalizeOrderStatus((string) ($order->order_status ?? ''));
+        if ($status === '' || ! in_array($status, self::AUTO_IMPORT_STATUSES, true)) {
+            return false;
+        }
+
+        $created = $order->order_created_at;
+        if (! $created) {
+            return false;
+        }
+
+        return $created->gte($this->autoImportFromDate());
+    }
 
     /**
      * @return array{success: bool, message: string, upserted: int, fetched: int}
@@ -82,30 +128,21 @@ class TikTok2OrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('tiktok2', $settings);
 
-        if ((int) DB::table('jobs')->where('queue', 'mm-tiktok2')->count() === 0) {
-            $this->releaseStuckQueuedImports();
-        }
+        $this->releaseStuckQueuedImports();
 
-        // Unpushed orders still need a Shopify draft even after they leave
-        // AWAITING_SHIPMENT (IN_TRANSIT / DELIVERED / COMPLETED). Never import CANCELLED.
-        $importableStatuses = [
-            'AWAITING_SHIPMENT',
-            'PARTIALLY_SHIPPING',
-            'AWAITING_COLLECTION',
-            'ON_HOLD',
-            'IN_TRANSIT',
-            'DELIVERED',
-            'COMPLETED',
-        ];
+        $cutoff = $this->autoImportFromDate();
 
         $orders = Tiktok2Order::query()
-            ->whereNull('shopify_order_id')
-            ->whereIn('order_status', $importableStatuses)
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
+            ->where('order_created_at', '>=', $cutoff)
             ->where(function ($q) {
                 $q->whereNull('import_status')
                     ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
-            ->orderBy('id')
+            ->orderByDesc('order_created_at')
+            ->orderByDesc('id')
             ->limit(200)
             ->get();
 
@@ -137,12 +174,21 @@ class TikTok2OrderSyncService
                 continue;
             }
 
+            if (! $this->isEligibleForAutoImport($order)) {
+                continue;
+            }
+
             if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('tiktok2', $order)) {
                 continue;
             }
 
             try {
-                \App\Jobs\ImportTikTok2OrderToShopify::dispatch((int) $order->id);
+                $job = new ImportTikTok2OrderToShopify((int) $order->id);
+                (new UniqueLock(app('cache.store')))->release($job);
+                Queue::connection('database')->pushOn(
+                    MarketplaceManagerRegistry::queueFor('tiktok2'),
+                    $job
+                );
                 Tiktok2Order::query()
                     ->where('order_id', $orderId)
                     ->whereNull('shopify_order_id')
@@ -163,7 +209,10 @@ class TikTok2OrderSyncService
     {
         Tiktok2Order::query()
             ->where('import_status', 'queued')
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
+            ->where('order_created_at', '>=', $this->autoImportFromDate())
             ->update(['import_status' => 'ready']);
     }
 

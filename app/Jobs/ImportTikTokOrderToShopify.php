@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\TiktokOrder;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\TikTokOrderPushService;
+use App\Services\MarketplaceManager\TikTokOrderSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -57,6 +58,16 @@ class ImportTikTokOrderToShopify implements ShouldQueue, ShouldBeUnique
         }
 
         if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
+            return;
+        }
+
+        if (! app(TikTokOrderSyncService::class)->isEligibleForAutoImport($order)) {
+            Log::info('ImportTikTokOrderToShopify: skipped (already on Shopify, old, or not importable)', [
+                'id' => $this->tiktokOrderId,
+                'order_id' => $order->order_id,
+                'status' => $order->order_status,
+            ]);
+
             return;
         }
 
