@@ -805,6 +805,22 @@
         .sof-inv-zero-alert i {
             color: #dc3545;
         }
+        .sof-date-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+        .sof-date-late-alert {
+            color: #dc3545;
+            font-size: 0.72rem;
+            line-height: 1;
+            cursor: help;
+            flex-shrink: 0;
+        }
+        .sof-date-late-alert i {
+            color: #dc3545;
+        }
         .sof-label-badge {
             display: inline-block;
             font-weight: 600;
@@ -1635,7 +1651,7 @@
         sortMode: 'local',
         filterMode: 'local',
         paginationSize: 50,
-        paginationSizeSelector: [25, 50, 100, true],
+        paginationSizeSelector: [25, 50, 100, 500, true],
         movableColumns: false,
         headerSortClickElement: 'header',
     };
@@ -2414,6 +2430,87 @@
             }
         } catch (e) {}
         return escapeHtml(v);
+    }
+
+    /** Wall-clock Y-m-d H:i:s in `timeZone` → UTC epoch ms. */
+    function sofWallClockToUtcMs(raw, timeZone) {
+        const m = String(raw || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+        if (!m) {
+            const d = new Date(String(raw || '').replace(' ', 'T'));
+            return isNaN(d.getTime()) ? null : d.getTime();
+        }
+        const y = Number(m[1]);
+        const mo = Number(m[2]);
+        const d = Number(m[3]);
+        const h = Number(m[4] || 0);
+        const mi = Number(m[5] || 0);
+        const s = Number(m[6] || 0);
+        const desired = Date.UTC(y, mo - 1, d, h, mi, s);
+        const dtf = new Intl.DateTimeFormat('en-US', {
+            timeZone: timeZone,
+            hourCycle: 'h23',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        });
+        const wallAsUtc = function (instant) {
+            const parts = dtf.formatToParts(new Date(instant));
+            const get = function (type) {
+                const p = parts.find(function (x) { return x.type === type; });
+                return p ? Number(p.value) : 0;
+            };
+            return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+        };
+        let instant = desired;
+        for (let i = 0; i < 3; i++) {
+            instant = desired - (wallAsUtc(instant) - desired);
+        }
+        return instant;
+    }
+
+    /** True when order Date is before yesterday 3:00 PM Eastern (overdue vs 3pm ET cutoff). */
+    function sofOrderDatePastYesterday3pmEt(raw) {
+        if (!raw) return false;
+        const orderMs = sofWallClockToUtcMs(raw, SOF_TZ);
+        if (orderMs == null) return false;
+        let todayEt;
+        try {
+            todayEt = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/New_York',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+            }).format(new Date());
+        } catch (e) {
+            todayEt = new Date().toISOString().slice(0, 10);
+        }
+        const yesterdayEt = sofShiftYmd(todayEt, -1);
+        const cutoffMs = sofWallClockToUtcMs(yesterdayEt + ' 15:00:00', 'America/New_York');
+        if (cutoffMs == null) return false;
+        return orderMs < cutoffMs;
+    }
+
+    function sofFormatOrderDateCell(cell) {
+        const v = cell.getValue();
+        const text = sofFormatDateCell(cell);
+        if (!v || text === '—') return text;
+        const wrap = document.createElement('span');
+        wrap.className = 'sof-date-cell';
+        const label = document.createElement('span');
+        label.textContent = text;
+        wrap.appendChild(label);
+        if (sofOrderDatePastYesterday3pmEt(v)) {
+            const alert = document.createElement('span');
+            alert.className = 'sof-date-late-alert';
+            alert.title = 'Alert: Date is before yesterday 3:00 PM ET';
+            alert.setAttribute('aria-label', 'Older than yesterday 3:00 PM Eastern');
+            alert.innerHTML = '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i>';
+            wrap.appendChild(alert);
+        }
+        return wrap;
     }
 
     /** Updated + Tracking + Carrier columns inserted after Date on order tabs. */
@@ -3208,11 +3305,12 @@
             {
                 title: 'Date',
                 field: 'order_date',
-                minWidth: 110,
+                minWidth: 128,
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sofDateSorter,
-                formatter: sofFormatDateCell,
+                headerTooltip: 'Red triangle = order date is before yesterday 3:00 PM ET',
+                formatter: sofFormatOrderDateCell,
             },
             {
                 title: 'Status',
@@ -3526,6 +3624,10 @@
             if (deliveredEl) deliveredEl.textContent = deliveredTotal.toLocaleString();
             if (allOrderEl) allOrderEl.textContent = allOrderTotal.toLocaleString();
             loadSofHistoryDots();
+            const pendingTabCount = document.getElementById('sof-pending-tab-count');
+            if (pendingTabCount && !pendingTableLoaded) {
+                pendingTabCount.textContent = pendingTotal.toLocaleString();
+            }
             const fulfilledTabCount = document.getElementById('sof-fulfilled-tab-count');
             if (fulfilledTabCount && !fulfilledTableLoaded) {
                 fulfilledTabCount.textContent = fulfilled24h.toLocaleString();
