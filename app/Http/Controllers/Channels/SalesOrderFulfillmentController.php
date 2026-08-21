@@ -33,6 +33,7 @@ use App\Services\MarketplaceManager\ChannelTrackingApiFallbackService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\Temu2OrderTrackingPullService;
 use App\Services\MarketplaceManager\TemuOrderTrackingPullService;
+use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Support\TrackingCarrierGuesser;
@@ -520,6 +521,7 @@ class SalesOrderFulfillmentController extends Controller
                     'shopify_order_id' => (string) ($n['shopify_order_id'] ?? ''),
                     'ch_orders_link' => $meta['ch_orders_link'],
                     'orders_url' => $ordersUrl,
+                    'show_id' => $showId,
                     'order_url' => route('marketplace.orders.show', [
                         'marketplace' => $slug,
                         'order' => $showId,
@@ -544,6 +546,7 @@ class SalesOrderFulfillmentController extends Controller
         // Tracking comes from channel APIs / order tables only — never Shopify fulfillments.
         // Temu OpenAPI tracking on temu*_orders is already on the row; Sites sheets only fill gaps.
         $rows = $this->attachTemuSitesTrackingToOrderRows($rows);
+        $rows = $this->attachShopifyTrackingToOrderRows($rows);
         $rows = $this->attachShipmentStatusToOrderRows($rows);
 
         return $this->fillCarrierFromTrackingNumbers($rows);
@@ -703,14 +706,117 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * DISABLED: SOF must not read tracking from Shopify / shopify_raw_orders.
-     * Tracking comes from channel APIs and channel order tables only.
+     * Overlay tracking saved locally (shopify_raw_orders cache and pulled label trackings).
+     * Reads the database only — does not call the Shopify API.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     protected function attachShopifyTrackingToOrderRows(array $rows): array
     {
+        if ($rows === [] || ! Schema::hasTable('shopify_raw_orders')) {
+            return $rows;
+        }
+
+        $needIds = [];
+        $needNumbers = [];
+        foreach ($rows as $row) {
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $sid = trim((string) ($row['shopify_order_id'] ?? ''));
+            if ($sid !== '' && ctype_digit($sid)) {
+                $needIds[(int) $sid] = true;
+            }
+            foreach (['order_number', 'order_id', 'order_id_api'] as $k) {
+                $v = trim((string) ($row[$k] ?? ''));
+                if ($v === '') {
+                    continue;
+                }
+                $needNumbers[$v] = true;
+                if (! str_starts_with($v, 'Amz') && ! str_contains($v, '-')) {
+                    $needNumbers['Amz'.$v] = true;
+                }
+            }
+        }
+
+        if ($needIds === [] && $needNumbers === []) {
+            return $rows;
+        }
+
+        $byShopifyId = [];
+        $byNumber = [];
+        try {
+            $q = DB::table('shopify_raw_orders')
+                ->select(['order_id', 'order_number', 'tracking_number', 'tracking_company'])
+                ->whereNotNull('tracking_number')
+                ->where('tracking_number', '!=', '');
+            $q->where(function ($inner) use ($needIds, $needNumbers) {
+                if ($needIds !== []) {
+                    $inner->orWhereIn('order_id', array_keys($needIds));
+                }
+                if ($needNumbers !== []) {
+                    $inner->orWhereIn('order_number', array_keys($needNumbers));
+                }
+            });
+            foreach ($q->get() as $srow) {
+                $tn = trim((string) ($srow->tracking_number ?? ''));
+                if ($tn === '') {
+                    continue;
+                }
+                $payload = [
+                    'tracking_number' => $tn,
+                    'tracking_company' => trim((string) ($srow->tracking_company ?? '')) ?: null,
+                ];
+                $oid = (int) ($srow->order_id ?? 0);
+                if ($oid > 0 && ! isset($byShopifyId[$oid])) {
+                    $byShopifyId[$oid] = $payload;
+                }
+                $num = trim((string) ($srow->order_number ?? ''));
+                if ($num !== '' && ! isset($byNumber[$num])) {
+                    $byNumber[$num] = $payload;
+                }
+            }
+        } catch (\Throwable) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $hit = null;
+            $sid = trim((string) ($row['shopify_order_id'] ?? ''));
+            if ($sid !== '' && ctype_digit($sid) && isset($byShopifyId[(int) $sid])) {
+                $hit = $byShopifyId[(int) $sid];
+            }
+            if ($hit === null) {
+                foreach (['order_number', 'order_id', 'order_id_api'] as $k) {
+                    $v = trim((string) ($row[$k] ?? ''));
+                    if ($v === '') {
+                        continue;
+                    }
+                    if (isset($byNumber[$v])) {
+                        $hit = $byNumber[$v];
+                        break;
+                    }
+                    $amz = 'Amz'.$v;
+                    if (isset($byNumber[$amz])) {
+                        $hit = $byNumber[$amz];
+                        break;
+                    }
+                }
+            }
+            if ($hit === null) {
+                continue;
+            }
+            $row['tracking_number'] = $hit['tracking_number'];
+            if (trim((string) ($row['tracking_company'] ?? '')) === '' && ! empty($hit['tracking_company'])) {
+                $row['tracking_company'] = $hit['tracking_company'];
+            }
+        }
+        unset($row);
+
         return $rows;
     }
 
@@ -1166,6 +1272,7 @@ class SalesOrderFulfillmentController extends Controller
             'tracking_number',
             'trackingNumber',
             'TrackingNumber',
+            'PackageTrackingDetails',
             'logistics_no',
             'tracking',
             'waybillNo',
@@ -1173,6 +1280,7 @@ class SalesOrderFulfillmentController extends Controller
             'expressNo',
             'express_no',
             'billNo',
+            'shipmentTrackingNumber',
         ];
 
         foreach ($scalarKeys as $key) {
@@ -1184,7 +1292,7 @@ class SalesOrderFulfillmentController extends Controller
             }
         }
 
-        foreach (['shipment', 'shipping', 'fulfillment', 'packageInfo'] as $nestedKey) {
+        foreach (['shipment', 'shipping', 'fulfillment', 'packageInfo', 'PackageTrackingDetails'] as $nestedKey) {
             $nested = $order[$nestedKey] ?? null;
             if (! is_array($nested)) {
                 continue;
@@ -1415,6 +1523,7 @@ class SalesOrderFulfillmentController extends Controller
         TemuOrderTrackingPullService $temuPull,
         Temu2OrderTrackingPullService $temu2Pull,
         ChannelTrackingApiFallbackService $channelApiFallback,
+        VeeqoShopifyFulfillmentService $labelTracking,
     ): JsonResponse {
         $limit = max(1, min(100, (int) $request->input('limit', 40)));
         $channel = strtolower(trim((string) $request->input('channel', '')));
@@ -1443,6 +1552,8 @@ class SalesOrderFulfillmentController extends Controller
             $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
             $item = [
                 'mm_slug' => $slug,
+                'row_id' => (int) ($row['row_id'] ?? 0),
+                'show_id' => (int) ($row['show_id'] ?? $row['row_id'] ?? 0),
                 'order_id' => trim((string) ($row['order_id'] ?? '')),
                 'order_id_api' => trim((string) ($row['order_id_api'] ?? '')),
                 'order_number' => trim((string) ($row['order_number'] ?? '')),
@@ -1610,6 +1721,8 @@ class SalesOrderFulfillmentController extends Controller
                     $missing = array_map(static function ($row) {
                         return [
                             'mm_slug' => $row['mm_slug'] ?? '',
+                            'row_id' => (int) ($row['row_id'] ?? 0),
+                            'show_id' => (int) ($row['show_id'] ?? $row['row_id'] ?? 0),
                             'order_id' => $row['order_id'] ?? '',
                             'order_id_api' => $row['order_id_api'] ?? '',
                             'order_number' => $row['order_number'] ?? '',
@@ -1634,6 +1747,51 @@ class SalesOrderFulfillmentController extends Controller
                     $rows = array_merge($rows, $fallback['rows'] ?? []);
                     $this->cachedLabelCreatedRows = null;
                 }
+            }
+
+            $labelCandidates = [];
+            if ($hasSelection) {
+                foreach ($selected as $row) {
+                    $slug = strtolower((string) ($row['mm_slug'] ?? ''));
+                    if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
+                        continue;
+                    }
+                    $labelCandidates[] = [
+                        'mm_slug' => $slug,
+                        'row_id' => (int) ($row['row_id'] ?? 0),
+                        'show_id' => (int) ($row['show_id'] ?? $row['row_id'] ?? 0),
+                        'order_id' => (string) ($row['order_id'] ?? ''),
+                        'order_id_api' => (string) ($row['order_id_api'] ?? ''),
+                        'order_number' => (string) ($row['order_number'] ?? ''),
+                        'shopify_order_id' => (string) ($row['shopify_order_id'] ?? ''),
+                        'tracking_number' => '',
+                    ];
+                }
+            } elseif ($pullChannelApi) {
+                foreach ($this->labelCreatedOrderRows() as $row) {
+                    $slug = strtolower((string) ($row['mm_slug'] ?? ''));
+                    if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
+                        continue;
+                    }
+                    if ($channel !== '' && $slug !== $channel) {
+                        continue;
+                    }
+                    if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                        continue;
+                    }
+                    $labelCandidates[] = $row;
+                }
+            }
+
+            if ($labelCandidates !== []) {
+                $labelPull = $this->pullLabelTrackingFromApis($labelCandidates, $limit, $labelTracking);
+                $checked += (int) ($labelPull['checked'] ?? 0);
+                $updated += (int) ($labelPull['updated'] ?? 0);
+                $withTracking += (int) ($labelPull['with_tracking'] ?? 0);
+                if (($labelPull['message'] ?? '') !== '') {
+                    $parts[] = (string) $labelPull['message'];
+                }
+                $rows = array_merge($rows, $labelPull['rows'] ?? []);
             }
 
             $empty = max(0, $checked - $withTracking);
@@ -1713,6 +1871,271 @@ class SalesOrderFulfillmentController extends Controller
                 ];
             })
             ->all();
+    }
+
+    /**
+     * Pull tracking from Veeqo / GOFO / 4Seller for SOF rows that still have no number.
+     *
+     * @param  list<array<string, mixed>>  $candidateRows
+     * @return array{checked: int, updated: int, with_tracking: int, message: string, rows: list<array<string, mixed>>}
+     */
+    protected function pullLabelTrackingFromApis(array $candidateRows, int $limit, VeeqoShopifyFulfillmentService $labels): array
+    {
+        $limit = max(1, min(100, $limit));
+        $checked = 0;
+        $updated = 0;
+        $withTracking = 0;
+        $outRows = [];
+        $seen = [];
+
+        foreach ($candidateRows as $row) {
+            if ($checked >= $limit) {
+                break;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+            $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
+            if ($slug === '' || in_array($slug, ['temu', 'temu2'], true)) {
+                continue;
+            }
+            $showId = (int) ($row['show_id'] ?? $row['row_id'] ?? 0);
+            $orderKey = strtolower(trim((string) (
+                $row['order_id_api']
+                ?? $row['order_id']
+                ?? $row['order_number']
+                ?? ''
+            )));
+            $dedupe = $slug.'|'.$showId.'|'.$orderKey;
+            if (isset($seen[$dedupe])) {
+                continue;
+            }
+            $seen[$dedupe] = true;
+            $checked++;
+
+            $refs = [];
+            foreach (['order_id', 'order_id_api', 'order_number', 'shopify_order_id'] as $k) {
+                $v = trim((string) ($row[$k] ?? ''));
+                if ($v !== '') {
+                    $refs[] = $v;
+                }
+            }
+
+            $local = null;
+            if ($showId > 0) {
+                $ctx = $labels->contextForMarketplaceOrder($slug, $showId);
+                if (is_array($ctx)) {
+                    foreach ((array) ($ctx['refs'] ?? []) as $ref) {
+                        $refs[] = (string) $ref;
+                    }
+                    $sid = trim((string) ($ctx['shopify_order_id'] ?? ''));
+                    if ($sid !== '') {
+                        $refs[] = $sid;
+                    }
+                    $local = is_array($ctx['local_tracking'] ?? null) ? $ctx['local_tracking'] : null;
+                }
+            }
+
+            $found = $labels->lookupLabelTracking($refs, $local);
+            if ($found === null) {
+                continue;
+            }
+
+            $tn = trim((string) ($found['tracking'] ?? ''));
+            if ($tn === '') {
+                continue;
+            }
+            $carrier = TrackingCarrierGuesser::fill(
+                (string) ($found['carrier'] ?? ''),
+                $tn
+            ) ?? '';
+            $source = (string) ($found['source'] ?? 'label');
+
+            $this->persistPulledChannelTracking($slug, $showId, $row, $tn, $carrier);
+            $withTracking++;
+            $updated++;
+            $outRows[] = [
+                'order_number' => (string) ($row['order_number'] ?? $row['order_id'] ?? ''),
+                'shopify_order_id' => $row['shopify_order_id'] ?? null,
+                'order_id' => (string) ($row['order_id'] ?? ''),
+                'order_id_api' => (string) ($row['order_id_api'] ?? ''),
+                'tracking_number' => $tn,
+                'tracking_company' => $carrier,
+                'fulfillment_status' => strtoupper($source),
+                'shipment_status' => '',
+                'note' => 'Pulled from '.match ($source) {
+                    'veeqo' => 'Veeqo',
+                    'gofo' => 'GOFO',
+                    '4seller' => '4Seller',
+                    default => 'marketplace order',
+                },
+            ];
+        }
+
+        $message = $checked > 0
+            ? 'Veeqo/GOFO: checked '.$checked.', found tracking on '.$withTracking.'.'
+            : '';
+
+        return [
+            'checked' => $checked,
+            'updated' => $updated,
+            'with_tracking' => $withTracking,
+            'message' => $message,
+            'rows' => $outRows,
+        ];
+    }
+
+    /**
+     * Save pulled tracking onto the channel order payload and the local Shopify order cache.
+     *
+     * @param  array<string, mixed>  $sofRow
+     */
+    protected function persistPulledChannelTracking(string $slug, int $showId, array $sofRow, string $tracking, string $carrier): void
+    {
+        $this->writeShopifyRawOrderTracking($sofRow, $tracking, $carrier);
+
+        try {
+            if ($slug === 'amazon') {
+                $order = AmazonOrder::query()->find($showId);
+                if ($order === null && $showId > 0) {
+                    $item = AmazonOrderItem::query()->find($showId);
+                    $order = $item?->order;
+                }
+                if ($order === null) {
+                    $oid = trim((string) ($sofRow['order_id'] ?? $sofRow['order_id_api'] ?? ''));
+                    if ($oid !== '') {
+                        $order = AmazonOrder::query()->where('amazon_order_id', $oid)->first();
+                    }
+                }
+                if ($order !== null) {
+                    $raw = AmazonOrder::decodeRawPayload($order->raw_data ?? null);
+                    $raw['tracking_number'] = $tracking;
+                    $raw['carrier'] = $carrier;
+                    $order->raw_data = $raw;
+                    $order->save();
+                }
+
+                return;
+            }
+
+            if (in_array($slug, ['temu', 'temu2'], true)) {
+                $model = $slug === 'temu2' ? Temu2Order::query()->find($showId) : TemuOrder::query()->find($showId);
+                if ($model !== null) {
+                    $model->tracking_number = $tracking;
+                    if (Schema::hasColumn($model->getTable(), 'carrier')) {
+                        $model->carrier = $carrier !== '' ? $carrier : $model->carrier;
+                    }
+                    $model->save();
+                }
+
+                return;
+            }
+
+            $class = match ($slug) {
+                'ebay1' => Ebay1OrderMetric::class,
+                'ebay2' => Ebay2OrderMetric::class,
+                'ebay3' => Ebay3OrderMetric::class,
+                'newegg' => NeweggOrderMetric::class,
+                'shein' => SheinOrderMetric::class,
+                'reverb' => ReverbOrderMetric::class,
+                'faire' => FaireOrderMetric::class,
+                'aliexpress' => AliexpressOrderMetric::class,
+                'alibaba' => AlibabaOrderMetric::class,
+                'topdawg' => TopDawgOrderMetric::class,
+                'bestbuy' => BestBuyOrderMetric::class,
+                'macy' => MacyOrderMetric::class,
+                'wayfair' => WayfairDailyData::class,
+                'purchasingpower' => PurchasingPowerSale::class,
+                'doba' => DobaDailyData::class,
+                default => null,
+            };
+            if ($class === null || $showId <= 0) {
+                return;
+            }
+            $model = $class::query()->find($showId);
+            if ($model === null) {
+                return;
+            }
+            if (Schema::hasColumn($model->getTable(), 'tracking_number')) {
+                $model->tracking_number = $tracking;
+                if (Schema::hasColumn($model->getTable(), 'carrier')) {
+                    $model->carrier = $carrier !== '' ? $carrier : ($model->carrier ?? null);
+                } elseif (Schema::hasColumn($model->getTable(), 'carrier_name')) {
+                    $model->carrier_name = $carrier !== '' ? $carrier : ($model->carrier_name ?? null);
+                } elseif (Schema::hasColumn($model->getTable(), 'shipping_company')) {
+                    $model->shipping_company = $carrier !== '' ? $carrier : ($model->shipping_company ?? null);
+                }
+            }
+            foreach (['raw_payload', 'raw_json', 'raw_data'] as $field) {
+                if (! isset($model->{$field})) {
+                    continue;
+                }
+                $raw = $model->{$field};
+                if (is_string($raw)) {
+                    $decoded = json_decode($raw, true);
+                    $raw = is_array($decoded) ? $decoded : [];
+                }
+                if (! is_array($raw)) {
+                    $raw = [];
+                }
+                $raw['tracking_number'] = $tracking;
+                $raw['carrier'] = $carrier;
+                $model->{$field} = $raw;
+                break;
+            }
+            $model->save();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $sofRow
+     */
+    protected function writeShopifyRawOrderTracking(array $sofRow, string $tracking, string $carrier): void
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return;
+        }
+
+        try {
+            $now = now();
+            $payload = [
+                'tracking_number' => $tracking,
+                'tracking_company' => $carrier !== '' ? $carrier : null,
+                'updated_at' => $now,
+            ];
+            if (Schema::hasColumn('shopify_raw_orders', 'shipment_checked_at')) {
+                $payload['shipment_checked_at'] = $now;
+            }
+
+            $sid = trim((string) ($sofRow['shopify_order_id'] ?? ''));
+            if ($sid !== '' && ctype_digit($sid)) {
+                $affected = DB::table('shopify_raw_orders')->where('order_id', (int) $sid)->update($payload);
+                if ($affected > 0) {
+                    return;
+                }
+            }
+
+            $candidates = [];
+            foreach (['order_number', 'order_id', 'order_id_api'] as $k) {
+                $v = trim((string) ($sofRow[$k] ?? ''));
+                if ($v === '') {
+                    continue;
+                }
+                $candidates[] = $v;
+                if (! str_starts_with($v, 'Amz')) {
+                    $candidates[] = 'Amz'.$v;
+                }
+            }
+            $candidates = array_values(array_unique($candidates));
+            if ($candidates === []) {
+                return;
+            }
+            DB::table('shopify_raw_orders')->whereIn('order_number', $candidates)->update($payload);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -2652,9 +3075,10 @@ class SalesOrderFulfillmentController extends Controller
                     'order_id' => (string) ($parent->amazon_order_id ?? ''),
                     'order_number' => (string) ($parent->amazon_order_id ?? ''),
                     'import_status' => '',
-                    'shopify_order_id' => '',
+                    'shopify_order_id' => (string) ($parent->shopify_order_id ?? ''),
                     'raw_payload' => $parent->raw_data ?? $order->raw_data ?? null,
                     'tracking_number' => null,
+                    'tracking_company' => null,
                     'show_id' => (int) ($parent->id ?? $order->id),
                 ];
             })(),

@@ -4472,6 +4472,8 @@
         const mapped = {
             id: String(r.id || '').trim(),
             mm_slug: String(r.mm_slug || '').trim(),
+            row_id: Number(r.row_id || 0) || 0,
+            show_id: Number(r.show_id || r.row_id || 0) || 0,
             order_id: String(r.order_id || '').trim(),
             order_id_api: String(r.order_id_api || '').trim(),
             order_number: String(r.order_number || '').trim(),
