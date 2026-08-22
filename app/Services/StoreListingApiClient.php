@@ -40,6 +40,8 @@ class StoreListingApiClient
             $apiKey = $this->apiKey();
             if ($apiKey !== '') {
                 $headers['X-Api-Key'] = $apiKey;
+                $headers['X-Listing-Api-Key'] = $apiKey;
+                $headers['Authorization'] = 'Bearer '.$apiKey;
             }
         }
         $locale = trim((string) config('services.store.locale'));
@@ -61,7 +63,7 @@ class StoreListingApiClient
             $query['locale'] = $query['locale'] ?? $locale;
         }
 
-        return $this->send('GET', $path, $query, null, false);
+        return $this->send('GET', $path, $query, null, $this->apiKey() !== '');
     }
 
     /**
@@ -162,14 +164,27 @@ class StoreListingApiClient
         };
 
         if (! $response->successful()) {
+            $body = mb_substr($response->body(), 0, 500);
             Log::error('Store listing API request failed', [
                 'method' => $method,
                 'url' => $url,
                 'status' => $response->status(),
-                'body' => mb_substr($response->body(), 0, 500),
+                'body' => $body,
             ]);
 
-            throw new RuntimeException('Store API request failed (HTTP '.$response->status().').');
+            $json = $response->json();
+            $storeMessage = is_array($json) ? trim((string) ($json['message'] ?? '')) : '';
+            if ($response->status() === 401) {
+                throw new RuntimeException(
+                    'Store API request failed (HTTP 401)'
+                    .($storeMessage !== '' ? ': '.$storeMessage : '.')
+                    .' Set BUSINESS5CORE_API_KEY in .env to the same value as the store LISTING_API_KEY, then run php artisan config:clear.'
+                );
+            }
+            throw new RuntimeException(
+                'Store API request failed (HTTP '.$response->status().')'
+                .($storeMessage !== '' ? ': '.$storeMessage : '.')
+            );
         }
 
         $json = $response->json();

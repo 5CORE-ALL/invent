@@ -336,6 +336,8 @@ class Shopifyb2bController extends Controller
                 $savedSprice = $valuesArr['SPRICE'] ?? null;
             }
 
+            $processedItem['has_custom_sprice'] = is_numeric($savedSprice) && (float) $savedSprice > 0;
+
             // B2B: S PRC = saved value, else live website Price. Metrics exclude Ship.
             $sprice = (is_numeric($savedSprice) && (float) $savedSprice > 0)
                 ? round((float) $savedSprice, 2)

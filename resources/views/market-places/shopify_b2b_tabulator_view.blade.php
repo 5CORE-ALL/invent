@@ -362,6 +362,20 @@
             font-size: 0.7rem;
             line-height: 1;
         }
+        #shopify-b2b-sprice-q-btn {
+            background: #0d6efd;
+            border-color: #0d6efd;
+            color: #fff;
+        }
+        #shopify-b2b-sprice-q-btn:hover,
+        #shopify-b2b-sprice-q-btn:focus {
+            background: #0b5ed7;
+            border-color: #0a58ca;
+            color: #fff;
+        }
+        #shopify-b2b-sprice-q-btn:disabled {
+            opacity: 0.65;
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2b'])
     </style>
 @endsection
@@ -654,6 +668,11 @@
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
+
+                    <button type="button" class="btn btn-sm" id="shopify-b2b-sprice-q-btn"
+                        title="Fill S PRC = (Std Prc × 0.75) − Ship. Uses selected SKUs if checked; otherwise all visible. Skips parent rows and Std Prc ≤ 0. Saves S PRC (no store push).">
+                        sprice ?
+                    </button>
                 </div>
 
                 <div id="discount-input-container" class="shopify-b2b-row shopify-b2b-row-actions">
@@ -729,6 +748,7 @@
     function shopifyB2bDisplayedSprice(data) {
         if (!data || isShopifyB2bParentRow(data)) return 0;
         const stored = parseFloat(data.SPRICE) || 0;
+        if (data.has_custom_sprice && stored > 0) return stored;
         const std = parseFloat(data.STANDARD_PRICE || data.standard_price) || 0;
         if (std > 0 && typeof chPromoSpriceFromStdTPromo === 'function') {
             const calc = chPromoSpriceFromStdTPromo(data);
@@ -1302,6 +1322,86 @@
         });
         $('#target-gpft-input').on('keypress', function(e) {
             if (e.which === 13) $('#apply-target-gpft-btn').click();
+        });
+
+        /*
+         * sprice ? — S PRC = (Std Prc × 0.75) − Ship
+         * Selected SKUs if any are checked; otherwise all visible child rows.
+         */
+        $('#shopify-b2b-sprice-q-btn').on('click', function () {
+            if (!table) {
+                showToast('Load data first', 'error');
+                return;
+            }
+
+            let rows = [];
+            if (typeof selectedSkus !== 'undefined' && selectedSkus.size > 0) {
+                selectedSkus.forEach(function (sku) {
+                    const found = table.searchRows('(Child) sku', '=', sku);
+                    if (found.length) rows.push(found[0]);
+                });
+            } else {
+                rows = typeof table.getRows === 'function'
+                    ? table.getRows('visible')
+                    : table.getRows();
+            }
+
+            const $btn = $(this);
+            const html = $btn.html();
+            const updates = [];
+            let updatedCount = 0;
+            let skippedNoStd = 0;
+            let skippedBad = 0;
+
+            rows.forEach(function (row) {
+                const rowData = row.getData();
+                if (isShopifyB2bParentRow(rowData)) return;
+
+                const sku = String(rowData['(Child) sku'] || '').trim();
+                if (!sku) return;
+
+                const std = parseFloat(rowData.STANDARD_PRICE || rowData.standard_price) || 0;
+                if (!(std > 0)) {
+                    skippedNoStd++;
+                    return;
+                }
+                const ship = parseFloat(rowData.Ship_productmaster) || 0;
+                const newSprice = Math.round(((std * 0.75) - ship) * 100) / 100;
+                if (!isFinite(newSprice) || newSprice <= 0) {
+                    skippedBad++;
+                    return;
+                }
+
+                const m = shopifyB2bSpriceMetrics(newSprice, rowData.LP_productmaster);
+                row.update({
+                    SPRICE: newSprice,
+                    SGPFT: m.sgpft,
+                    SNPFT: m.snpft,
+                    SROI: m.sroi,
+                    SNROI: m.snroi,
+                    has_custom_sprice: true
+                });
+                updates.push({ sku: sku, sprice: newSprice });
+                updatedCount++;
+            });
+
+            if (updates.length === 0) {
+                showToast('No rows with Std Prc to fill S PRC = (Std × 0.75) − Ship', 'warning');
+                return;
+            }
+
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>…');
+            saveSpriceUpdates(updates);
+            $btn.prop('disabled', false).html(html);
+
+            const notes = [];
+            if (skippedNoStd > 0) notes.push(skippedNoStd + ' no Std Prc');
+            if (skippedBad > 0) notes.push(skippedBad + ' ≤ $0');
+            showToast(
+                'sprice ?: ' + updatedCount + ' filled'
+                    + (notes.length ? ' (' + notes.join(', ') + ')' : ''),
+                'success'
+            );
         });
 
         // Clear SPRICE button
