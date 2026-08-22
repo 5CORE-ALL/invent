@@ -74,6 +74,9 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="cmp-pull-btn">
                         <i class="fas fa-rotate me-1"></i>Pull messages
                     </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="cmp-open-all-btn" title="Open every marketplace messages link in its own tab">
+                        <i class="fas fa-up-right-from-square me-1"></i>Open all marketplace tabs
+                    </button>
                     <span class="small text-muted" id="cmp-pull-status">Counts come from each marketplace API.</span>
                 </div>
             </div>
@@ -220,6 +223,43 @@
         }
 
         next();
+    }
+
+    function collectMarketplaceLinks() {
+        const rows = table ? table.getData() : channels;
+        const seen = {};
+        const urls = [];
+        (rows || []).forEach(function (r) {
+            const url = String(r.messages_link || '').trim();
+            if (!url || seen[url]) return;
+            seen[url] = true;
+            urls.push(url);
+        });
+        return urls;
+    }
+
+    function openAllMarketplaceTabs() {
+        const urls = collectMarketplaceLinks();
+        const $st = $('#cmp-pull-status');
+        if (!urls.length) {
+            $st.text('No marketplace links to open. Add a link on a red arrow first.');
+            return;
+        }
+
+        const stamp = Date.now();
+        let opened = 0;
+        for (let i = 0; i < urls.length; i++) {
+            const win = window.open(urls[i], 'cmp_mp_' + stamp + '_' + i);
+            if (win) opened += 1;
+        }
+
+        if (opened >= urls.length) {
+            $st.text('Opened all ' + opened + ' marketplace tabs.');
+            return;
+        }
+
+        $st.text('Opened ' + opened + ' of ' + urls.length +
+            '. Allow pop-ups for this site in the address bar, then click this same button once to open all remaining tabs.');
     }
 
     const linkModalEl = document.getElementById('cmpLinkModal');
@@ -389,6 +429,9 @@
 
         $('#cmp-pull-btn').on('click', function () {
             pullAll(true);
+        });
+        $('#cmp-open-all-btn').on('click', function () {
+            openAllMarketplaceTabs();
         });
         pullAll(false);
 
