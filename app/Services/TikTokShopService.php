@@ -52,8 +52,14 @@ class TikTokShopService
     /** @var array<string, true> Paths that this shop does not support (no schema / invalid version). */
     protected array $deadInventoryKeys = [];
 
-    /** LIVE listings reject Update Inventory; skip it for the rest of this request. */
+    /** LIVE listings reject Update Inventory 202309; skip that path for the rest of this request. */
     protected bool $skipInventoryUpdateApi = false;
+
+    /** version|status that last succeeded for product search on this request. */
+    protected ?string $workingProductSearchKey = null;
+
+    /** @var array<string, true> Products already activated while pushing inventory. */
+    protected array $activatedForInventory = [];
 
     public function __construct()
     {
@@ -1838,13 +1844,21 @@ class TikTokShopService
 
     /**
      * Extra JSON fields (available_stock, sku_id) make TikTok return "no schema found".
-     * LIVE listings are rejected by 202309 Update Inventory; Partial Edit is the fallback.
+     * LIVE listings are rejected by 202309 Update Inventory; Partial Edit (202509+) is the fallback.
      *
      * @return list<string>
      */
     protected function productDetailApiVersions(): array
     {
-        return ['202309'];
+        return ['202509', '202405', '202312', '202309'];
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function inventoryApiVersions(): array
+    {
+        return $this->productDetailApiVersions();
     }
 
     protected function isProductStatusRestrictionError(string $message): bool
@@ -2024,6 +2038,38 @@ class TikTokShopService
     }
 
     /**
+     * Newer Search Products versions require a status. ALL/LIVE/ACTIVATE cover live listings.
+     *
+     * @return list<array{0: string, 1: array<string, mixed>}>
+     */
+    protected function searchProductAttempts(string $productId): array
+    {
+        $bodies = [
+            ['product_ids' => [$productId], 'status' => 'ALL'],
+            ['product_ids' => [$productId], 'status' => 'LIVE'],
+            ['product_ids' => [$productId], 'status' => 'ACTIVATE'],
+            ['product_ids' => [$productId], 'status' => 'SELLER_DEACTIVATED'],
+            ['product_ids' => [$productId]],
+        ];
+        $attempts = [];
+        if ($this->workingProductSearchKey !== null) {
+            [$version, $status] = array_pad(explode('|', $this->workingProductSearchKey, 2), 2, '');
+            $body = ['product_ids' => [$productId]];
+            if ($status !== '' && $status !== 'none') {
+                $body['status'] = $status;
+            }
+            $attempts[] = [$version !== '' ? $version : '202509', $body];
+        }
+        foreach ($this->productDetailApiVersions() as $version) {
+            foreach ($bodies as $body) {
+                $attempts[] = [$version, $body];
+            }
+        }
+
+        return $attempts;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function searchProductDataById(string $productId): array
@@ -2034,50 +2080,81 @@ class TikTokShopService
         if (array_key_exists($productId, $this->productSearchCache)) {
             return $this->productSearchCache[$productId];
         }
-        try {
-            $response = $this->client->Product->useVersion('202309')->searchProducts(
-                ['page_size' => 20],
-                ['product_ids' => [$productId]]
-            );
-        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
-            if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
-                return [];
-            }
-            throw $e;
-        } catch (\Throwable $e) {
-            $this->rememberIpAllowList($e->getMessage());
-            Log::info('TikTok searchProducts for inventory SKU failed', [
-                'product_id' => $productId,
-                'error' => $e->getMessage(),
-            ]);
 
-            return [];
-        }
-
-        $payload = is_array($response) ? ($response['data'] ?? $response) : [];
-        if (! is_array($payload)) {
-            $payload = [];
-        }
-        $products = $payload['products'] ?? $payload['product_list'] ?? null;
-        if (! is_array($products)) {
-            $products = [];
-        }
-        foreach ($products as $product) {
-            if (! is_array($product)) {
+        $seen = [];
+        $deadVersions = [];
+        foreach ($this->searchProductAttempts($productId) as [$version, $body]) {
+            $status = trim((string) ($body['status'] ?? 'none'));
+            $key = $version.'|'.$status;
+            if (isset($seen[$key]) || isset($deadVersions[$version])) {
                 continue;
             }
-            $id = trim((string) ($product['id'] ?? $product['product_id'] ?? ''));
-            if ($id === $productId) {
-                $this->productSearchCache[$productId] = $product;
+            $seen[$key] = true;
+            try {
+                $response = $this->client->Product->useVersion($version)->searchProducts(
+                    ['page_size' => 20],
+                    $body
+                );
+            } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+                if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
+                    $deadVersions[$version] = true;
+                    continue;
+                }
+                throw $e;
+            } catch (\Throwable $e) {
+                $this->rememberIpAllowList($e->getMessage());
+                if ($this->ipAllowListBlocked) {
+                    return [];
+                }
+                if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
+                    $deadVersions[$version] = true;
+                    continue;
+                }
+                if ($this->isProductStatusRestrictionError($e->getMessage())) {
+                    continue;
+                }
+                Log::info('TikTok searchProducts for inventory SKU failed', [
+                    'product_id' => $productId,
+                    'version' => $version,
+                    'status' => $status,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
 
-                return $product;
+            $payload = is_array($response) ? ($response['data'] ?? $response) : [];
+            if (! is_array($payload)) {
+                $payload = [];
+            }
+            if (is_array($payload) && array_key_exists('code', $payload) && (int) $payload['code'] !== 0) {
+                $message = (string) ($payload['message'] ?? '');
+                if ($this->isProductStatusRestrictionError($message)
+                    || $this->isInvalidApiVersionError($message)
+                    || $this->isNoSchemaError($message)) {
+                    continue;
+                }
+            }
+            $products = $payload['products'] ?? $payload['product_list'] ?? null;
+            if (! is_array($products)) {
+                $products = [];
+            }
+            foreach ($products as $product) {
+                if (! is_array($product)) {
+                    continue;
+                }
+                $id = trim((string) ($product['id'] ?? $product['product_id'] ?? ''));
+                if ($id === $productId) {
+                    $this->workingProductSearchKey = $key;
+                    $this->productSearchCache[$productId] = $product;
+
+                    return $product;
+                }
             }
         }
 
-        $fallback = is_array($products[0] ?? null) ? $products[0] : [];
-        $this->productSearchCache[$productId] = $fallback;
+        $this->productSearchCache[$productId] = [];
 
-        return $fallback;
+        return [];
     }
 
     /**
@@ -2135,71 +2212,233 @@ class TikTokShopService
             }
             $rows[] = $this->inventoryPushRow($row);
         }
+        $rows = $this->ensureInventoryRowsHaveWarehouse($rows);
         if ($rows === []) {
             return ['success' => false, 'message' => 'No TikTok warehouse rows to update.'];
         }
 
-        $inventoryParams = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
         $lastMessage = 'TikTok inventory update failed.';
+        $sawStatusError = false;
 
-        if (! $this->skipInventoryUpdateApi && ! isset($this->deadInventoryKeys['202309|inventory'])) {
-            $result = $this->invokeSdkInventory($productId, $inventoryParams, '202309', 'inventory');
+        foreach ($this->inventoryUpdateAttempts($productId) as $path) {
+            if (isset($this->deadInventoryKeys[$path])) {
+                continue;
+            }
+            [$version, $method] = array_pad(explode('|', $path, 2), 2, 'partial');
+            if ($method === 'inventory' && $this->skipInventoryUpdateApi && $version === '202309') {
+                continue;
+            }
+
+            $params = $method === 'partial'
+                ? $this->partialEditInventoryParams($productId, $skuId, $rows)
+                : ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
+            $result = $this->invokeSdkInventory($productId, $params, $version, $method);
             if (! empty($result['success'])) {
-                $this->workingInventoryPath = '202309|inventory';
+                $this->workingInventoryPath = $path;
 
                 return $result;
             }
+
             $lastMessage = (string) ($result['message'] ?? $lastMessage);
             $this->rememberIpAllowList($lastMessage);
             if ($this->ipAllowListBlocked) {
                 return ['success' => false, 'message' => $lastMessage];
             }
+
+            if ($this->isSalesAttributesError($lastMessage) && $method === 'partial') {
+                $retry = $this->invokeSdkInventory(
+                    $productId,
+                    $this->partialEditInventoryParams($productId, $skuId, $rows, true),
+                    $version,
+                    'partial'
+                );
+                if (! empty($retry['success'])) {
+                    $this->workingInventoryPath = $path;
+
+                    return $retry;
+                }
+                $lastMessage = (string) ($retry['message'] ?? $lastMessage);
+            }
+
             if ($this->isProductStatusRestrictionError($lastMessage)
                 || $this->isNoSchemaError($lastMessage)
                 || $this->isInvalidApiVersionError($lastMessage)) {
-                $this->skipInventoryUpdateApi = true;
-                $this->deadInventoryKeys['202309|inventory'] = true;
-            } elseif (empty($result['retry'])) {
-                return ['success' => false, 'message' => $lastMessage];
+                $this->deadInventoryKeys[$path] = true;
+                if ($method === 'inventory' && $version === '202309') {
+                    $this->skipInventoryUpdateApi = true;
+                }
+                if ($this->isProductStatusRestrictionError($lastMessage)) {
+                    $sawStatusError = true;
+                }
             }
+
             Log::info('TikTok inventory update attempt failed', [
                 'product_id' => $productId,
                 'sku_id' => $skuId,
-                'version' => '202309',
-                'method' => 'inventory',
+                'version' => $version,
+                'method' => $method,
                 'error' => $lastMessage,
             ]);
         }
 
-        $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows);
-        $result = $this->invokeSdkInventory($productId, $partialParams, '202309', 'partial');
-        if (! empty($result['success'])) {
-            $this->workingInventoryPath = '202309|partial';
+        if ($sawStatusError && $this->activateProductForInventory($productId)) {
+            $retryRows = $this->ensureInventoryRowsHaveWarehouse($rows);
+            $retryPaths = $this->workingInventoryPath
+                ? [$this->workingInventoryPath]
+                : ['202509|partial', '202309|inventory'];
+            foreach ($retryPaths as $path) {
+                [$version, $method] = array_pad(explode('|', $path, 2), 2, 'partial');
+                $params = $method === 'partial'
+                    ? $this->partialEditInventoryParams($productId, $skuId, $retryRows, true)
+                    : ['skus' => [['id' => $skuId, 'inventory' => $retryRows]]];
+                $retry = $this->invokeSdkInventory($productId, $params, $version, $method);
+                if (! empty($retry['success'])) {
+                    $this->workingInventoryPath = $path;
 
-            return $result;
-        }
-        $lastMessage = (string) ($result['message'] ?? $lastMessage);
-        $this->rememberIpAllowList($lastMessage);
-        Log::info('TikTok inventory update attempt failed', [
-            'product_id' => $productId,
-            'sku_id' => $skuId,
-            'version' => '202309',
-            'method' => 'partial',
-            'error' => $lastMessage,
-        ]);
-
-        if ($this->isSalesAttributesError($lastMessage)) {
-            $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows, true);
-            $retry = $this->invokeSdkInventory($productId, $partialParams, '202309', 'partial');
-            if (! empty($retry['success'])) {
-                $this->workingInventoryPath = '202309|partial';
-
-                return $retry;
+                    return $retry;
+                }
+                $lastMessage = (string) ($retry['message'] ?? $lastMessage);
             }
-            $lastMessage = (string) ($retry['message'] ?? $lastMessage);
         }
 
         return ['success' => false, 'message' => $lastMessage !== '' ? $lastMessage : 'TikTok inventory update failed.'];
+    }
+
+    /**
+     * LIVE listings need Partial Edit (202509 first). Draft/pending still use Update Inventory.
+     *
+     * @return list<string>
+     */
+    protected function inventoryUpdateAttempts(string $productId): array
+    {
+        $paths = [];
+        if ($this->workingInventoryPath) {
+            $paths[] = $this->workingInventoryPath;
+        }
+
+        $liveLike = $this->productIsLiveLike($productId);
+        $methods = $liveLike ? ['partial', 'inventory'] : ['inventory', 'partial'];
+        foreach ($methods as $method) {
+            foreach ($this->inventoryApiVersions() as $version) {
+                $paths[] = $version.'|'.$method;
+            }
+        }
+
+        return array_values(array_unique($paths));
+    }
+
+    /**
+     * @param  list<array{warehouse_id?: string, quantity: int}>  $rows
+     * @return list<array{warehouse_id?: string, quantity: int}>
+     */
+    protected function ensureInventoryRowsHaveWarehouse(array $rows): array
+    {
+        $missing = false;
+        foreach ($rows as $row) {
+            if (trim((string) ($row['warehouse_id'] ?? '')) === '') {
+                $missing = true;
+                break;
+            }
+        }
+        if (! $missing) {
+            return $rows;
+        }
+
+        $wid = trim((string) ($this->resolveDefaultWarehouseId() ?? ''));
+        if ($wid === '') {
+            return $rows;
+        }
+
+        foreach ($rows as $i => $row) {
+            if (trim((string) ($row['warehouse_id'] ?? '')) === '') {
+                $rows[$i]['warehouse_id'] = $wid;
+            }
+        }
+
+        return $rows;
+    }
+
+    protected function cachedProductStatus(string $productId): string
+    {
+        $data = $this->productSearchCache[$productId] ?? $this->productDetailCache[$productId] ?? [];
+
+        return strtoupper(trim((string) (
+            $data['status'] ?? $data['product_status'] ?? $data['listing_status'] ?? ''
+        )));
+    }
+
+    protected function productIsLiveLike(string $productId): bool
+    {
+        $status = $this->cachedProductStatus($productId);
+
+        return $status === '' || in_array($status, ['LIVE', 'ACTIVATE', 'ACTIVE', 'APPROVED'], true);
+    }
+
+    protected function productIsSellerDeactivated(string $productId): bool
+    {
+        $status = $this->cachedProductStatus($productId);
+
+        return in_array($status, ['SELLER_DEACTIVATED', 'DEACTIVATED', 'INACTIVE'], true);
+    }
+
+    protected function activateProductForInventory(string $productId): bool
+    {
+        $productId = trim($productId);
+        if ($productId === '' || isset($this->activatedForInventory[$productId])) {
+            return false;
+        }
+        if ($this->cachedProductStatus($productId) === '') {
+            $this->searchProductDataById($productId);
+        }
+        if (! $this->productIsSellerDeactivated($productId)) {
+            return false;
+        }
+        $this->activatedForInventory[$productId] = true;
+
+        foreach ($this->productDetailApiVersions() as $version) {
+            try {
+                $response = $this->client->Product->useVersion($version)->activateProducts([$productId]);
+                $this->lastResponse = $response;
+            } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+                if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
+                    continue;
+                }
+                throw $e;
+            } catch (\Throwable $e) {
+                $this->rememberIpAllowList($e->getMessage());
+                if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
+                    continue;
+                }
+                Log::info('TikTok activate product for inventory failed', [
+                    'product_id' => $productId,
+                    'version' => $version,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return false;
+            }
+
+            if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
+                $message = (string) ($response['message'] ?? '');
+                if ($this->isInvalidApiVersionError($message) || $this->isNoSchemaError($message)) {
+                    continue;
+                }
+                Log::info('TikTok activate product for inventory failed', [
+                    'product_id' => $productId,
+                    'version' => $version,
+                    'error' => $message,
+                ]);
+
+                return false;
+            }
+
+            unset($this->productSearchCache[$productId], $this->productDetailCache[$productId]);
+            usleep(200000);
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
