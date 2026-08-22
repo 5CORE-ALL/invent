@@ -2,11 +2,13 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\AmazonDataView;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Temu2DataView;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Pricing;
+use App\Services\LmpSkuGroupService;
 use App\Services\Temu2ApiService;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
@@ -25,6 +27,9 @@ class Temu2ListingPublishService
 
     /** @var array<string, float>|null */
     private ?array $priceByLookupKey = null;
+
+    /** @var array<string, float>|null */
+    private ?array $stdPriceByLookupKey = null;
 
     public function __construct(private Temu2ApiService $api)
     {
@@ -127,7 +132,7 @@ class Temu2ListingPublishService
             }
             $price = $this->resolvePrice($sku);
             if ($price === null || $price <= 0) {
-                return ['success' => false, 'message' => 'No price found for '.$sku.'. Set temu2_pricing.base_price on the master.'];
+                return ['success' => false, 'message' => 'No Std Prc found for '.$sku.'. Set Std Prc on Temu 2 Analytics (/temu2-decrease).'];
             }
             $images = $this->resolveSourceImages($product, $sku);
             foreach ($images as $url) {
@@ -494,7 +499,7 @@ class Temu2ListingPublishService
         }
         $price = $this->resolvePrice($sku);
         if ($price === null || $price <= 0) {
-            return ['status' => 'skipped_no_price', 'reason' => 'No price on master'];
+            return ['status' => 'skipped_no_price', 'reason' => 'No Std Prc'];
         }
         $product = ProductMaster::query()
             ->whereNull('deleted_at')
@@ -715,6 +720,11 @@ class Temu2ListingPublishService
 
     private function resolvePrice(string $sku): ?float
     {
+        $std = $this->standardPrice($sku);
+        if ($this->positivePrice($std)) {
+            return (float) $std;
+        }
+
         foreach ($this->skuLookupKeys($sku) as $key) {
             $mapped = $this->priceLookupMap()[$key] ?? null;
             if ($this->positivePrice($mapped)) {
@@ -794,6 +804,79 @@ class Temu2ListingPublishService
         }
 
         return $this->priceByLookupKey;
+    }
+
+    private function standardPrice(string $sku): ?float
+    {
+        $direct = $this->stdFromMap($sku);
+        if ($direct !== null) {
+            return $direct;
+        }
+
+        try {
+            $lmp = app(LmpSkuGroupService::class);
+            $lmp->prepareForSkus([$sku]);
+            foreach ($lmp->groupContaining($sku) as $member) {
+                $linked = $this->stdFromMap((string) $member);
+                if ($linked !== null) {
+                    return $linked;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return null;
+    }
+
+    private function stdFromMap(string $sku): ?float
+    {
+        foreach ($this->skuLookupKeys($sku) as $key) {
+            $mapped = $this->stdPriceMap()[$key] ?? null;
+            if ($this->positivePrice($mapped)) {
+                return (float) $mapped;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Std Prc from /temu2-decrease (amazon_data_view.STANDARD_PRICE).
+     *
+     * @return array<string, float>
+     */
+    private function stdPriceMap(): array
+    {
+        if ($this->stdPriceByLookupKey !== null) {
+            return $this->stdPriceByLookupKey;
+        }
+
+        $this->stdPriceByLookupKey = [];
+        if (! Schema::hasTable('amazon_data_view')) {
+            return $this->stdPriceByLookupKey;
+        }
+
+        AmazonDataView::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'value'])
+            ->each(function ($row) {
+                $val = is_array($row->value)
+                    ? $row->value
+                    : (json_decode((string) ($row->value ?? ''), true) ?: []);
+                $std = $val['STANDARD_PRICE'] ?? null;
+                if (! $this->positivePrice($std)) {
+                    return;
+                }
+                $value = round((float) $std, 2);
+                foreach ($this->skuLookupKeys((string) $row->sku) as $key) {
+                    if (! isset($this->stdPriceByLookupKey[$key])) {
+                        $this->stdPriceByLookupKey[$key] = $value;
+                    }
+                }
+            });
+
+        return $this->stdPriceByLookupKey;
     }
 
     private function siblingPrice(ProductMaster $product): ?float
