@@ -1011,6 +1011,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('store:sync-prices')
+            ->twiceDaily(10, 18)
+            ->name('store-sync-price-sold-views')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('app:fetch-shopify-b2c-metrics --days=60')
             ->twiceDaily(10, 18)
             ->name('shopify-b2c-metrics')
@@ -2501,7 +2508,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Pull business5core.com prices / views / sold into store_listing_prices.
+        // Pull business5core.com price / sold / views into store_listing_prices.
         $schedule->command('store:sync-prices')
             ->dailyAt('16:30')
             ->timezone('Asia/Kolkata')

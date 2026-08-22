@@ -253,16 +253,17 @@ class Shopifyb2bController extends Controller
             $processedItem['Views'] = $storeRow && $storeRow->views !== null
                 ? (int) $storeRow->views
                 : 0;
-            $processedItem['image_path'] = $storeRow?->base_image;
+            $processedItem['Sold'] = $storeRow && $storeRow->sold !== null
+                ? (int) $storeRow->sold
+                : 0;
+            $processedItem['image_path'] = $this->shopifyB2bImageUrl($storeRow, $shopifyItem, $values, $productMaster);
 
             $b2bOrder = $shopifyB2BOrders[$sku] ?? null;
             $processedItem['B2B L30'] = $b2bOrder ? $b2bOrder->total_quantity : 0;
 
             // NR/REQ stored in shopifyb2b_data_view (no separate listing-status table for B2B)
             $processedItem['nr_req'] = 'REQ';
-            $processedItem['B Link'] = '';
-            $processedItem['S Link'] = '';
-
+            $viewArr = [];
             if (isset($shopifyB2bViewData[$sku])) {
                 $viewArr = is_array($shopifyB2bViewData[$sku]->value)
                     ? $shopifyB2bViewData[$sku]->value
@@ -276,9 +277,15 @@ class Shopifyb2bController extends Controller
                 } elseif ($rlNrl === 'NRL') {
                     $processedItem['nr_req'] = 'NR';
                 }
-                $processedItem['B Link'] = $viewArr['buyer_link'] ?? '';
             }
-            $processedItem['S Link'] = ($storeRow && ! empty($storeRow->url)) ? $storeRow->url : '';
+            $storeUrl = $this->shopifyB2bStoreUrl($storeRow, $shopifyItem);
+            $processedItem['S Link'] = $storeUrl !== ''
+                ? $storeUrl
+                : trim((string) ($viewArr['seller_link'] ?? ''));
+            $processedItem['B Link'] = trim((string) ($viewArr['buyer_link'] ?? ''));
+            if ($processedItem['B Link'] === '') {
+                $processedItem['B Link'] = $processedItem['S Link'];
+            }
 
             $price = $processedItem['Price'];
             $b2bL30 = $processedItem['B2B L30'];
@@ -442,6 +449,7 @@ class Shopifyb2bController extends Controller
             $ovL30 = (float) $rows->sum(fn ($r) => floatval($r['L30'] ?? 0));
             $b2bL30 = (float) $rows->sum(fn ($r) => floatval($r['B2B L30'] ?? 0));
             $views = (float) $rows->sum(fn ($r) => floatval($r['Views'] ?? 0));
+            $sold = (float) $rows->sum(fn ($r) => floatval($r['Sold'] ?? 0));
             $profit = (float) $rows->sum(fn ($r) => floatval($r['Profit'] ?? 0));
             $sales = (float) $rows->sum(fn ($r) => floatval($r['Sales L30'] ?? 0));
             $adSpend = (float) $rows->sum(fn ($r) => floatval($r['googleSpent'] ?? 0));
@@ -454,6 +462,9 @@ class Shopifyb2bController extends Controller
             $hasReqChild = $rows->contains(fn ($r) => ($r['nr_req'] ?? '') === 'REQ');
             $imageRow = $rows->first(fn ($r) => ! empty($r['image_path']));
             $imagePath = is_array($imageRow) ? ($imageRow['image_path'] ?? null) : null;
+            $linkRow = $rows->first(fn ($r) => ! empty($r['S Link']) || ! empty($r['B Link']));
+            $parentSLink = is_array($linkRow) ? (string) ($linkRow['S Link'] ?? '') : '';
+            $parentBLink = is_array($linkRow) ? (string) ($linkRow['B Link'] ?? '') : '';
 
             $finalItems[] = [
                 '(Child) sku' => 'PARENT '.$parent,
@@ -465,11 +476,12 @@ class Shopifyb2bController extends Controller
                 'L30' => $ovL30,
                 'B2B L30' => $b2bL30,
                 'Views' => $views,
+                'Sold' => $sold,
                 'Price' => $childPrices->count() > 0 ? round($childPrices->avg(), 2) : 0,
                 'image_path' => $imagePath,
                 'nr_req' => $hasReqChild ? 'REQ' : 'NR',
-                'B Link' => '',
-                'S Link' => '',
+                'B Link' => $parentBLink,
+                'S Link' => $parentSLink,
                 'GPFT%' => $gpftVals->count() > 0 ? round($gpftVals->avg(), 2) : 0,
                 'ROI%' => $roiVals->count() > 0 ? round($roiVals->avg(), 2) : 0,
                 'NROI%' => $nroiVals->count() > 0 ? round($nroiVals->avg(), 2) : 0,
@@ -528,6 +540,62 @@ class Shopifyb2bController extends Controller
         }
 
         return $out;
+    }
+
+    private function shopifyB2bImageUrl(?StoreListingPrice $storeRow, ?ShopifySku $shopifyItem, array $values, ProductMaster $productMaster): ?string
+    {
+        if ($storeRow && ! empty($storeRow->base_image)) {
+            $fromStore = $this->shopifyB2bAbsoluteUrl((string) $storeRow->base_image, true);
+            if ($fromStore !== null) {
+                return $fromStore;
+            }
+        }
+        if ($shopifyItem && ! empty($shopifyItem->image_src)) {
+            return (string) $shopifyItem->image_src;
+        }
+        $fallback = $values['image_path'] ?? ($productMaster->image_path ?? null);
+
+        return is_string($fallback) && trim($fallback) !== '' ? trim($fallback) : null;
+    }
+
+    private function shopifyB2bStoreUrl(?StoreListingPrice $storeRow, ?ShopifySku $shopifyItem): string
+    {
+        if ($storeRow && ! empty($storeRow->url)) {
+            $url = $this->shopifyB2bAbsoluteUrl((string) $storeRow->url, true);
+            if ($url !== null) {
+                return $url;
+            }
+        }
+        $base = rtrim((string) config('services.store.url'), '/');
+        if ($storeRow && ! empty($storeRow->slug) && $base !== '') {
+            return $base.'/'.ltrim((string) $storeRow->slug, '/');
+        }
+        $productLink = trim((string) ($shopifyItem->product_link ?? ''));
+
+        return $productLink;
+    }
+
+    private function shopifyB2bAbsoluteUrl(string $path, bool $prefixStore = false): ?string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return null;
+        }
+        if (preg_match('#^https?://#i', $path)) {
+            return $path;
+        }
+        if (str_starts_with($path, '//')) {
+            return 'https:'.$path;
+        }
+        if (! $prefixStore) {
+            return $path;
+        }
+        $base = rtrim((string) config('services.store.url'), '/');
+        if ($base === '') {
+            return $path;
+        }
+
+        return $base.'/'.ltrim($path, '/');
     }
 
     /**

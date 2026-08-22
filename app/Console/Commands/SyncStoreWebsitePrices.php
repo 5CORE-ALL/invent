@@ -10,7 +10,9 @@ class SyncStoreWebsitePrices extends Command
     protected $signature = 'store:sync-prices
         {--sku= : Optional SKU (or comma-separated SKUs) to sync from the store API}';
 
-    protected $description = 'Pull FleetCart website prices from /api/listings/prices and match them to product master by SKU';
+    protected $aliases = ['store:sync-price-sold-views'];
+
+    protected $description = 'Pull website price, sold, and views from business5core.com /api/listings/prices and match them to product master by SKU';
 
     public function handle(StorePriceSyncService $sync): int
     {
@@ -18,8 +20,8 @@ class SyncStoreWebsitePrices extends Command
         $sku = $skuOption !== '' ? $skuOption : null;
 
         $this->info($sku
-            ? "Syncing website prices for SKU: {$sku}"
-            : 'Syncing all website prices from '.config('services.store.url'));
+            ? "Syncing website price / sold / views for SKU: {$sku}"
+            : 'Syncing website price / sold / views from '.config('services.store.url'));
 
         try {
             $result = $sync->sync($sku, function (...$args) {

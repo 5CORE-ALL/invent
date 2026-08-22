@@ -1992,6 +1992,23 @@
                     width: 70,
                     minWidth: 70,
                     sorter: "number",
+                    headerTooltip: "Website views from business5core.com (store:sync-prices)",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue() || 0, 10);
+                        if (value === 0) {
+                            return '<span style="color: #6c757d;">0</span>';
+                        }
+                        return `<span style="font-weight: 600;">${value.toLocaleString()}</span>`;
+                    }
+                },
+                {
+                    title: "Sold",
+                    field: "Sold",
+                    hozAlign: "center",
+                    width: 70,
+                    minWidth: 70,
+                    sorter: "number",
+                    headerTooltip: "Website sold units from business5core.com (store:sync-prices)",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue() || 0, 10);
                         if (value === 0) {
