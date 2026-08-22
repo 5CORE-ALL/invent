@@ -73,7 +73,7 @@ class UserAccountStatus
             $user->is_active = true;
             $user->deactivated_at = null;
             $user->save();
-            AttendanceForceLogout::clear($user);
+            UserAccessControl::restore($user);
 
             return;
         }

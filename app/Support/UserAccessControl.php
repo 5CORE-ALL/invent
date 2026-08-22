@@ -33,4 +33,23 @@ class UserAccessControl
         } catch (\Throwable) {
         }
     }
+
+    public static function restore(User $user): void
+    {
+        AttendanceForceLogout::clear($user);
+
+        try {
+            $user->forceFill(['logined' => 1])->save();
+        } catch (\Throwable) {
+        }
+
+        try {
+            if (Schema::hasTable('attendance_devices')) {
+                AttendanceDevice::query()
+                    ->where('user_id', $user->id)
+                    ->update(['is_active' => true]);
+            }
+        } catch (\Throwable) {
+        }
+    }
 }

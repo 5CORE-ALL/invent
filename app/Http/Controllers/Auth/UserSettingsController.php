@@ -44,7 +44,7 @@ class UserSettingsController extends Controller
         $user = $this->findUser($id);
         UserAccountStatus::apply($user, UserAccountStatus::ACTIVE);
 
-        return $this->ok($this->refreshUser($user), 'User activated. They can sign in and appear in Team Monitoring.');
+        return $this->ok($this->refreshUser($user), 'User activated. They can sign in and clock in; the timer will run as usual.');
     }
 
     public function deactivate(int $id): JsonResponse
