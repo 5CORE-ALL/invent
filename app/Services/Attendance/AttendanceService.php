@@ -9,6 +9,8 @@ use App\Models\AttendancePolicy;
 use App\Models\AttendanceSession;
 use App\Models\User;
 use App\Support\AttendanceAccess;
+use App\Support\AttendanceForceLogout;
+use App\Support\UserAccountStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -63,19 +65,46 @@ class AttendanceService
 
     public function clockOut(User $user): ?AttendanceSession
     {
-        $session = $this->activeSession($user);
-        if (! $session) {
-            return null;
+        $closed = $this->clockOutAll($user);
+
+        return $closed[0] ?? null;
+    }
+
+    /**
+     * End every open session so Team Monitoring and the desktop timer stop.
+     *
+     * @return list<AttendanceSession>
+     */
+    public function clockOutAll(User $user): array
+    {
+        $sessions = AttendanceSession::query()
+            ->where('user_id', $user->id)
+            ->whereIn('status', ['active', 'paused'])
+            ->orderByDesc('started_at')
+            ->get();
+
+        if ($sessions->isEmpty()) {
+            return [];
         }
 
-        $session->update([
-            'ended_at' => now(),
-            'status' => 'completed',
-        ]);
+        $closed = [];
+        $dates = [];
+        foreach ($sessions as $session) {
+            $session->update([
+                'ended_at' => now(),
+                'status' => 'completed',
+            ]);
+            $closed[] = $session->fresh() ?: $session;
+            if ($session->started_at) {
+                $dates[$session->started_at->toDateString()] = true;
+            }
+        }
 
-        $this->analysisService->buildDailySummary($user, $session->started_at->toDateString());
+        foreach (array_keys($dates) as $date) {
+            $this->analysisService->buildDailySummary($user, $date);
+        }
 
-        return $session->fresh();
+        return $closed;
     }
 
     public function pause(User $user): ?AttendanceSession
@@ -126,6 +155,16 @@ class AttendanceService
      */
     public function recordHeartbeat(User $user, array $payload): array
     {
+        if (AttendanceForceLogout::isFlagged($user) || UserAccountStatus::for($user) === UserAccountStatus::INACTIVE) {
+            $this->clockOutAll($user);
+
+            return [
+                'ok' => false,
+                'force_logout' => true,
+                'message' => 'You were signed out by an administrator.',
+            ];
+        }
+
         $session = $this->activeSession($user);
         if (! $session) {
             return ['ok' => false, 'message' => 'No active session'];
@@ -224,7 +263,7 @@ class AttendanceService
             'latest_version' => $latest,
             'download_page_url' => $base.'/attendance/agent',
             'download_url' => $base.'/attendance/agent/download',
-            'message' => 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed.',
+            'message' => 'A required 5Core Attendance update is available. Download and run the installer — it closes the old app and updates the same install. You do not need to quit first.',
         ];
     }
 

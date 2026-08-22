@@ -22,15 +22,7 @@ class UserAccessControl
         } catch (\Throwable) {
         }
 
-        try {
-            $user->tokens()->delete();
-        } catch (\Throwable) {
-        }
-
-        try {
-            app(AttendanceService::class)->clockOut($user);
-        } catch (\Throwable) {
-        }
+        app(AttendanceService::class)->clockOutAll($user);
 
         try {
             if (Schema::hasTable('attendance_devices')) {

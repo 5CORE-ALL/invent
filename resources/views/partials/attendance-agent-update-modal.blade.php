@@ -1,4 +1,5 @@
 {{-- Custom modal (does not depend on Bootstrap JS Modal API) --}}
+@once
 @php
     $installed = $agent_installed_version ?? null;
     $latest = $agent_latest_version ?? config('attendance.agent_version', '1.0.0');
@@ -92,10 +93,9 @@
             <span class="badge bg-primary">Latest v{{ $latest }}</span>
         </div>
         <ol class="att-upd-steps">
-            <li>Quit the app from the <strong>system tray</strong> (right‑click → Quit).</li>
-            <li>Download and run the installer.</li>
-            <li>Keep the default install folder — do not choose a new path.</li>
-            <li>Reopen the app; footer must show <strong>v{{ $latest }}</strong>.</li>
+            <li>Click <strong>Download update</strong> and run the installer.</li>
+            <li>You do <strong>not</strong> need to quit the app first — the installer closes it and updates the same install.</li>
+            <li>Keep the default folder. When it finishes, the app reopens on <strong>v{{ $latest }}</strong>.</li>
         </ol>
         <div class="att-upd-actions">
             <button type="button" class="btn btn-light" data-att-upd-close>Later</button>
@@ -160,3 +160,4 @@
     });
 })();
 </script>
+@endonce

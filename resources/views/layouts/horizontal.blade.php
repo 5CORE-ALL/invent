@@ -60,6 +60,11 @@
     @yield('script-after-vite')
 
     @include('components.ai-chat-widget')
+    @auth
+        @if(!empty($agent_update_available))
+            @include('partials.attendance-agent-update-modal')
+        @endif
+    @endauth
 </body>
 
 </html>

@@ -13,6 +13,7 @@ use App\Cache\ResilientFileStore;
 use App\Models\Permission;
 use App\Models\FbaManualData;
 use App\Observers\FbaManualDataObserver;
+use App\Services\Attendance\AttendanceService;
 use App\Support\StoragePathGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
@@ -76,6 +77,7 @@ class AppServiceProvider extends ServiceProvider
 
         View::composer(['layouts.vertical', 'layouts.horizontal'], function (ViewInstance $view) {
             $this->composeLayoutFavicon($view);
+            $this->composeAgentUpdate($view);
         });
 
         $this->app->booted(fn () => $this->registerListingPublishRoutes());
@@ -120,6 +122,31 @@ class AppServiceProvider extends ServiceProvider
         $payload = $this->resolvePageIconFromConfig($data);
         if ($payload !== null) {
             $view->with($payload);
+        }
+    }
+
+    private function composeAgentUpdate(ViewInstance $view): void
+    {
+        if ($view->offsetExists('agent_update_available')) {
+            return;
+        }
+
+        $user = Auth::user();
+        if (! $user) {
+            $view->with('agent_update_available', false);
+            return;
+        }
+
+        try {
+            $status = app(AttendanceService::class)->desktopAgentStatusForUser($user);
+            $view->with([
+                'agent_update_available' => ! empty($status['update_available']),
+                'agent_installed_version' => $status['installed_version'] ?? null,
+                'agent_latest_version' => $status['latest_version'] ?? config('attendance.agent_version'),
+                'agent_download_url' => route('attendance.agent.download'),
+            ]);
+        } catch (\Throwable $e) {
+            $view->with('agent_update_available', false);
         }
     }
 

@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.4.3';
+const AGENT_VERSION = '1.4.4';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
 let lastUpdatePayload = null;
@@ -323,6 +323,10 @@ async function captureLiveFrame() {
 }
 
 function applyLiveWatch(liveWatch) {
+    if (liveWatch?.force_logout) {
+        forceRemoteSignOut(liveWatch.message);
+        return;
+    }
     if (config.live_watch_enabled === false) {
         liveStreaming = false;
         return;
@@ -724,6 +728,11 @@ async function sendHeartbeat(force = false) {
                 agent_version: AGENT_VERSION,
             });
 
+            if (data?.force_logout) {
+                forceRemoteSignOut(data.message);
+                return;
+            }
+
             mergeServerStats(data);
             if (data.config) config = { ...config, ...data.config };
             applyLiveWatch(data.live_watch);
@@ -738,10 +747,6 @@ async function sendHeartbeat(force = false) {
                     activityState = 'idle';
                     lastSessionMeta.activity_state = 'idle';
                 }
-            }
-            if (data.force_logout) {
-                forceRemoteSignOut(data.message);
-                return;
             }
             pushStatsToUi();
         } catch (e) {
@@ -833,6 +838,7 @@ function startTracking() {
     setTimeout(() => { sendHeartbeat(true).catch(() => {}); }, 1500);
     setTimeout(() => { sendScreenshot().catch(() => {}); }, 800);
 
+    startLiveWatchPoll();
     updateTrayTooltip('Tracking active');
 }
 

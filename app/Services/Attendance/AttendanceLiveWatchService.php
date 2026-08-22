@@ -6,6 +6,8 @@ use App\Models\AttendanceLiveSession;
 use App\Models\AttendanceScreenshot;
 use App\Models\AttendanceSession;
 use App\Models\User;
+use App\Support\AttendanceForceLogout;
+use App\Support\UserAccountStatus;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -22,6 +24,8 @@ class AttendanceLiveWatchService
             'requested' => $requested,
             'fps' => max(1, (int) config('attendance.live_fps', 5)),
             'quality' => max(30, min(80, (int) config('attendance.live_quality', 55))),
+            'force_logout' => AttendanceForceLogout::isFlagged($employee)
+                || UserAccountStatus::for($employee) === UserAccountStatus::INACTIVE,
         ];
     }
 

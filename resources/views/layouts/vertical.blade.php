@@ -899,6 +899,9 @@
     </script>
     @auth
         @include('partials.user-incentives')
+        @if(!empty($agent_update_available))
+            @include('partials.attendance-agent-update-modal')
+        @endif
     @endauth
 </body>
 

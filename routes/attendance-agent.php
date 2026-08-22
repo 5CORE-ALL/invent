@@ -31,6 +31,11 @@ Route::prefix('attendance/desktop-api')->name('attendance.desktop-api.')->group(
     Route::post('/login', [AttendanceAgentController::class, 'login'])->name('login');
     Route::post('/google-login', [AttendanceAgentController::class, 'googleLogin'])->name('google-login');
 
+    Route::middleware(['auth:sanctum'])->group(function () {
+        Route::get('/live-command', [AttendanceAgentController::class, 'liveCommand'])->name('live-command');
+        Route::post('/heartbeat', [AttendanceAgentController::class, 'heartbeat'])->name('heartbeat');
+    });
+
     Route::middleware(['auth:sanctum', 'user.active'])->group(function () {
         Route::get('/config', [AttendanceAgentController::class, 'config'])->name('config');
         Route::get('/status', [AttendanceAgentController::class, 'status'])->name('status');
@@ -38,9 +43,7 @@ Route::prefix('attendance/desktop-api')->name('attendance.desktop-api.')->group(
         Route::post('/clock-out', [AttendanceAgentController::class, 'clockOut'])->name('clock-out');
         Route::post('/pause', [AttendanceAgentController::class, 'pause'])->name('pause');
         Route::post('/resume', [AttendanceAgentController::class, 'resume'])->name('resume');
-        Route::post('/heartbeat', [AttendanceAgentController::class, 'heartbeat'])->name('heartbeat');
         Route::post('/screenshot', [AttendanceAgentController::class, 'screenshot'])->name('screenshot');
-        Route::get('/live-command', [AttendanceAgentController::class, 'liveCommand'])->name('live-command');
         Route::post('/live-frame', [AttendanceAgentController::class, 'liveFrame'])->name('live-frame');
     });
 });

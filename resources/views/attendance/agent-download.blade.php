@@ -243,9 +243,8 @@
                         How to update
                     </button>
                     <div class="da-update-box">
-                        <strong>Before you run the installer:</strong>
-                        Quit 5Core Attendance from the system tray (right‑click → Quit).
-                        Then run the downloaded file — the installer replaces the existing app (same Start Menu entry), it does not add a second copy.
+                        <strong>Run the installer as-is.</strong>
+                        You do not need to quit the app first — the installer closes it and updates the same install (same Start Menu entry). It does not add a second copy.
                     </div>
                     <form method="POST" action="{{ route('attendance.agent.mark-uninstalled') }}" class="mt-3 position-relative" style="z-index:1">
                         @csrf
@@ -272,7 +271,7 @@
                     </div>
                     <div class="da-meta mt-2">
                         Already installed? <a href="{{ $download_url }}">Download the update</a>
-                        and run it over the existing app (quit from tray first).
+                        and run it over the existing app — no need to quit first.
                     </div>
                 @endif
             @else

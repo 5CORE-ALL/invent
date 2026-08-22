@@ -269,10 +269,17 @@ class AttendanceAgentController extends Controller
 
     public function config(Request $request): JsonResponse
     {
+        $user = $request->user();
+        $device = $this->resolveDevice($request);
+        $installedVersion = $request->input('agent_version') ?: $device?->agent_version;
+
         return response()->json($this->withLiveWatch([
             'ok' => true,
             'config' => $this->agentConfig(),
-        ], $request->user()));
+            'agent_update' => $this->attendanceService->agentUpdatePayload(
+                is_string($installedVersion) ? $installedVersion : null
+            ),
+        ], $user));
     }
 
     public function status(Request $request): JsonResponse
@@ -426,19 +433,26 @@ class AttendanceAgentController extends Controller
         ]));
 
         $result['config'] = $this->agentConfig($request->user());
+        $payload = $this->withLiveWatch($result, $request->user());
+        $forcedOut = ! empty($payload['force_logout']);
+        $this->forgetAgentTokensAfterForceLogout($request->user(), $payload);
 
         return response()->json(
-            $this->withLiveWatch($result, $request->user()),
-            ($result['ok'] ?? false) ? 200 : 422
+            $payload,
+            ($result['ok'] ?? false) || $forcedOut ? 200 : 422
         );
     }
 
     public function liveCommand(Request $request): JsonResponse
     {
-        return response()->json($this->withLiveWatch([
+        $payload = $this->withLiveWatch([
             'ok' => true,
             'config' => $this->agentConfig(),
-        ], $request->user()));
+        ], $request->user());
+
+        $this->forgetAgentTokensAfterForceLogout($request->user(), $payload);
+
+        return response()->json($payload);
     }
 
     public function liveFrame(Request $request): JsonResponse
@@ -588,8 +602,24 @@ class AttendanceAgentController extends Controller
             'agent_version' => (string) config('attendance.agent_version', '1.0.0'),
             'download_page_url' => $base.'/attendance/agent',
             'download_url' => $base.'/attendance/agent/download',
-            'update_message' => 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed. Your login stays saved.',
+            'update_message' => 'A required 5Core Attendance update is available. Download and run the installer — it closes the old app and updates the same install. You do not need to quit first.',
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function forgetAgentTokensAfterForceLogout(User $user, array $payload): void
+    {
+        if (empty($payload['force_logout'])) {
+            return;
+        }
+
+        $userId = (int) $user->id;
+        dispatch(function () use ($userId) {
+            $fresh = User::withTrashed()->find($userId);
+            $fresh?->tokens()->delete();
+        })->afterResponse();
     }
 
     /**
