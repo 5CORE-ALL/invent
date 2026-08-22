@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ADVMastersData;
+use App\Models\Ebay2Metric;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -46,15 +47,21 @@ class Ebay2MissingAdsController extends Controller
             // Fetch all required data
             $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
             $nrValues = EbayTwoDataView::whereIn('sku', $skus)->pluck('value', 'sku');
-            $ebayMetricData = DB::connection('apicentral')->table('ebay2_metrics')
-                ->select('sku', 'ebay_price', 'item_id')
+            $ebayMetricData = Ebay2Metric::select('sku', 'ebay_price', 'item_id')
                 ->whereIn('sku', $skus)
                 ->get()
                 ->keyBy(fn($item) => $normalizeSku($item->sku));
 
-            $campaignListings = DB::connection('apicentral')
-                ->table('ebay2_campaign_ads_listings')
-                ->select('listing_id', 'bid_percentage')
+            $campaignListings = DB::table('ebay2_campaign_ads as t')
+                ->join(DB::raw('(SELECT listing_id,
+                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                        MAX(id) AS max_id
+                                 FROM ebay2_campaign_ads
+                                 GROUP BY listing_id) x'),
+                    function ($join) {
+                        $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                    })
+                ->select('t.listing_id', 't.bid_percentage')
                 ->get()
                 ->keyBy('listing_id')
                 ->toArray();

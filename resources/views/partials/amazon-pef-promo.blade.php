@@ -3,7 +3,10 @@
   Same rules store + endpoints as /pricing-errors-fix (pef_dil_vs_prmt / pef_cvr_vs_cpn).
   Amazon path: discount SPRICE via /save-amazon-sprice (no eBay Marketing APIs).
 --}}
-@php $amazonPefPromoPart = $amazonPefPromoPart ?? 'all'; @endphp
+@php
+    $amazonPefPromoPart = $amazonPefPromoPart ?? 'all';
+    $amazonPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled('amazon');
+@endphp
 
 @if($amazonPefPromoPart === 'css' || $amazonPefPromoPart === 'all')
         /* Dil vs PRMT / CVR vs CPN — same UX as /pricing-errors-fix */
@@ -184,6 +187,91 @@
             text-overflow: clip !important;
         }
         @include('partials.analytics-column-visibility', ['colVisPart' => 'css'])
+        .amz-reload-push-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+            white-space: nowrap;
+            padding: 4px 10px 4px 12px;
+            border: 1px solid #86efac;
+            border-radius: 999px;
+            background: #f0fdf4;
+            font-size: 12px;
+            font-weight: 700;
+            color: #15803d;
+            line-height: 1.2;
+            cursor: pointer;
+            user-select: none;
+            margin: 0;
+        }
+        .amz-reload-push-switch.is-off {
+            border-color: #cbd5e1;
+            background: #f8fafc;
+            color: #64748b;
+        }
+        .amz-reload-push-switch .amz-reload-push-text {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .amz-reload-push-switch .amz-reload-push-state {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: #16a34a;
+        }
+        .amz-reload-push-switch.is-off .amz-reload-push-state {
+            color: #94a3b8;
+        }
+        .amz-reload-push-switch > input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            position: relative !important;
+            float: none !important;
+            left: auto !important;
+            margin: 0 !important;
+            flex: 0 0 36px;
+            width: 36px;
+            height: 20px;
+            border: 0;
+            border-radius: 999px;
+            background: #86efac;
+            box-shadow: inset 0 0 0 1px #4ade80;
+            cursor: pointer;
+        }
+        .amz-reload-push-switch.is-off > input[type="checkbox"] {
+            background: #cbd5e1;
+            box-shadow: inset 0 0 0 1px #94a3b8;
+        }
+        .amz-reload-push-switch > input[type="checkbox"]::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .25);
+            transition: left .15s ease;
+        }
+        .amz-reload-push-switch > input[type="checkbox"]:checked::after {
+            left: 18px;
+        }
+        @push('page-title-after')
+            <label class="amz-reload-push-switch{{ $amazonPageReloadPushEnabled ? '' : ' is-off' }}"
+                id="amz-reload-push-wrap"
+                title="When ON, this page auto-queues Push Prc on reload for listings whose plan differs from live Price. When OFF, reload does not push. Daily Dil vs PRMT / CVR vs CPN cron still runs either way.">
+                <span class="amz-reload-push-text">
+                    Push on reload
+                    <span class="amz-reload-push-state" id="amz-reload-push-label">{{ $amazonPageReloadPushEnabled ? 'On' : 'Off' }}</span>
+                </span>
+                <input type="checkbox" role="switch" id="amz-reload-push-switch"
+                    {{ $amazonPageReloadPushEnabled ? 'checked' : '' }}>
+            </label>
+        @endpush
 @endif
 
 @if($amazonPefPromoPart === 'buttons' || $amazonPefPromoPart === 'all')
@@ -417,6 +505,7 @@
         let pefDilPrmtRules = PEF_DIL_PRMT_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let pefCvrCpnRules = PEF_CVR_CPN_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzCvrDiscRules = AMZ_CVR_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        let amzPageReloadPushEnabled = @json($amazonPageReloadPushEnabled ?? true);
 
         function amzPefCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -1648,7 +1737,7 @@
         function queueAmzPushPrcItems(items, opts) {
             opts = opts || {};
             if (!items || !items.length) {
-                amzPefToast('error', 'Nothing to queue');
+                if (!opts.silent) amzPefToast('error', 'Nothing to queue');
                 return Promise.resolve(null);
             }
             clearTimeout(setAmzPushPrcProgress._hideTimer);
@@ -1671,11 +1760,18 @@
                 },
                 timeout: 60000,
             }).done(function(resp) {
-                amzPefToast(
-                    'success',
-                    (resp && resp.message)
-                        || ('Queued ' + items.length + ' Push Prc job(s) — safe to refresh')
-                );
+                if (!opts.silent) {
+                    amzPefToast(
+                        'success',
+                        (resp && resp.message)
+                            || ('Queued ' + items.length + ' Push Prc job(s) — safe to refresh')
+                    );
+                } else {
+                    amzPefToast(
+                        'success',
+                        'Reload push: ' + items.length + ' SKU(s) queued'
+                    );
+                }
                 if (resp) {
                     setAmzPushPrcProgress({
                         active: !!resp.active,
@@ -1786,7 +1882,118 @@
             });
         }
 
+        function amzPageReloadPushAllowed() {
+            return amzPageReloadPushEnabled !== false;
+        }
+        function syncAmzReloadPushSwitchUi() {
+            const on = amzPageReloadPushAllowed();
+            const $wrap = $('#amz-reload-push-wrap');
+            const $sw = $('#amz-reload-push-switch');
+            $wrap.toggleClass('is-off', !on);
+            $('#amz-reload-push-label').text(on ? 'On' : 'Off');
+            if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
+        }
+        function saveAmzPageReloadPush(enabled) {
+            amzPageReloadPushEnabled = !!enabled;
+            syncAmzReloadPushSwitchUi();
+            return $.ajax({
+                url: '/channel-promo-pricing/amazon/page-reload-push',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: { _token: amzPefCsrf(), enabled: enabled ? 1 : 0 },
+            });
+        }
+        function amzPefNearlyEqual(a, b) {
+            return Math.abs(Number(a) - Number(b)) < 0.005;
+        }
+        function collectAmzReloadPushItems() {
+            const seen = {};
+            const items = [];
+            function consider(d) {
+                if (!amzPefIsChildRow(d)) return;
+                const sku = amzPefSku(d);
+                const key = sku.toUpperCase();
+                if (!sku || seen[key]) return;
+                const plan = computeAmzPushPrcPlan(d);
+                if (!plan || !(plan.effective > 0)) return;
+                const live = amzPefRound2(Number(d.price) || 0);
+                if (!(live > 0) || amzPefNearlyEqual(plan.effective, live)) return;
+                seen[key] = true;
+                items.push(planToAmzPushPrcQueueItem(d, plan));
+            }
+            if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
+                table.getRows().forEach(function(row) {
+                    consider(row.getData());
+                });
+            }
+            const extra = (typeof allTableData !== 'undefined' && Array.isArray(allTableData))
+                ? allTableData
+                : [];
+            extra.forEach(function(d) { consider(d); });
+            return items;
+        }
+        function amzTryQueuePushOnReload() {
+            if (!amzPageReloadPushAllowed()) {
+                window._amzReloadPushQueued = true;
+                return;
+            }
+            if (window._amzReloadPushQueued) return;
+            if (typeof table === 'undefined' || !table) {
+                setTimeout(amzTryQueuePushOnReload, 400);
+                return;
+            }
+            const n = (typeof table.getDataCount === 'function') ? table.getDataCount() : 0;
+            const extraN = (typeof allTableData !== 'undefined' && Array.isArray(allTableData))
+                ? allTableData.length
+                : 0;
+            if (!(n > 0) && !(extraN > 0)) {
+                setTimeout(amzTryQueuePushOnReload, 400);
+                return;
+            }
+            window._amzReloadPushQueued = true;
+            const items = collectAmzReloadPushItems();
+            if (!items.length) return;
+            queueAmzPushPrcItems(items, { silent: true });
+        }
+        function bindAmzReloadPushOnTable() {
+            if (typeof table === 'undefined' || !table || !table.on) {
+                setTimeout(bindAmzReloadPushOnTable, 400);
+                return;
+            }
+            if (table._amzReloadPushBound) return;
+            table._amzReloadPushBound = true;
+            table.on('dataLoaded', function() {
+                setTimeout(amzTryQueuePushOnReload, 150);
+            });
+            try {
+                if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
+                    setTimeout(amzTryQueuePushOnReload, 150);
+                }
+            } catch (e) { /* wait for dataLoaded */ }
+        }
+
         function initAmazonPefPromoUi() {
+            syncAmzReloadPushSwitchUi();
+            $('#amz-reload-push-switch').off('change.amzReload').on('change.amzReload', function() {
+                const on = !!this.checked;
+                const prev = amzPageReloadPushAllowed();
+                saveAmzPageReloadPush(on)
+                    .done(function() {
+                        amzPefToast(
+                            'success',
+                            on
+                                ? 'Reload push on — this page will auto-queue Push Prc on the next reload. Cron is unchanged.'
+                                : 'Reload push off — this page will not auto-push on reload. Daily Dil vs PRMT / CVR vs CPN cron still runs.'
+                        );
+                    })
+                    .fail(function(xhr) {
+                        amzPageReloadPushEnabled = prev;
+                        syncAmzReloadPushSwitchUi();
+                        amzPefToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Could not save reload-push switch');
+                    });
+            });
+            bindAmzReloadPushOnTable();
+
             // Prefetch Dil / Cpn / CVR Disc rules (CVR Disc store is separate from Cpn%)
             if (typeof loadDilPrmtRules === 'function') loadDilPrmtRules();
             if (typeof loadCvrCpnRules === 'function') {

@@ -267,8 +267,9 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * Per-channel switch: stop S PRC auto-push on analytics page reload only.
-     * Daily cron (channel:push-sprice-daily) is not gated by this.
+     * Per-channel switch: stop S PRC / Push Prc auto-push on analytics page reload only.
+     * Daily cron (channel:push-sprice-daily, amazon:dil-prmt-auto-push, amazon:cvr-cpn-auto-push)
+     * is not gated by this.
      */
     public static function isPageReloadPushEnabled(string $channel): bool
     {
@@ -288,10 +289,17 @@ class ChannelPromoPricingController extends Controller
         return filter_var($vis['enabled'], FILTER_VALIDATE_BOOLEAN);
     }
 
+    private function allowsPageReloadPushChannel(string $channel): bool
+    {
+        return $channel === 'amazon'
+            || $this->promo->isSupported($channel)
+            || in_array($channel, self::PUSH_SPRICE_CHANNELS, true);
+    }
+
     public function pageReloadPushSetting(string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
-        if (! $this->promo->isSupported($channel) && ! in_array($channel, self::PUSH_SPRICE_CHANNELS, true)) {
+        if (! $this->allowsPageReloadPushChannel($channel)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
@@ -305,7 +313,7 @@ class ChannelPromoPricingController extends Controller
     public function savePageReloadPushSetting(Request $request, string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
-        if (! $this->promo->isSupported($channel) && ! in_array($channel, self::PUSH_SPRICE_CHANNELS, true)) {
+        if (! $this->allowsPageReloadPushChannel($channel)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 

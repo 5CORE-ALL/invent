@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class FetchPlsData extends Command
 {
@@ -134,13 +135,23 @@ class FetchPlsData extends Command
             }
         } while ($pageInfo);
 
+        $hasViews = Schema::hasColumn('pls_products', 'views');
+        $existingViews = [];
+        if ($hasViews) {
+            $existingViews = PLSProduct::query()
+                ->whereNotNull('sku')
+                ->pluck('views', 'sku')
+                ->map(fn ($v) => (int) $v)
+                ->all();
+        }
+
         $this->info("Step 3: Truncating and refreshing pls_products table...");
         PLSProduct::truncate();
         
         $this->info("Step 4: Inserting ALL catalog products (with sales data overlayed)...");
         $insertData = [];
         foreach ($catalogProducts as $sku => $data) {
-            $insertData[] = [
+            $row = [
                 'sku'        => $sku,
                 'price'      => $data['price'],
                 'p_l30'      => $data['l30'],
@@ -148,6 +159,10 @@ class FetchPlsData extends Command
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
+            if ($hasViews) {
+                $row['views'] = (int) ($existingViews[$sku] ?? 0);
+            }
+            $insertData[] = $row;
         }
 
         // Bulk insert for better performance

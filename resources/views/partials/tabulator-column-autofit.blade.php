@@ -5,7 +5,8 @@
     window.chPromoAutofitColumns = function(table) {
         if (!table || typeof table.getColumns !== 'function') return;
         const skip = {
-            image_path: 1, image: 1, _select: 1, _push: 1, parent_expand: 1
+            image_path: 1, image: 1, _select: 1, _ae_select: 1, _fr_select: 1, _push: 1,
+            parent_expand: 1, _parent_expand: 1
         };
         table.getColumns().forEach(function(col) {
             try {

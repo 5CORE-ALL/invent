@@ -594,8 +594,7 @@ class ADVMastersData extends Model
             $skus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
             
-            $ebayMetricData = DB::connection('apicentral')->table('ebay2_metrics')
-                ->select('sku', 'ebay_price', 'item_id', 'ebay_l30')
+            $ebayMetricData = Ebay2Metric::select('sku', 'ebay_price', 'item_id', 'ebay_l30')
                 ->whereIn('sku', $skus)
                 ->get()
                 ->keyBy(fn($item) => $normalizeSku($item->sku));
@@ -735,8 +734,7 @@ class ADVMastersData extends Model
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
             $shopifyData = ShopifySku::mapByProductSkus($skus);
             
-            $ebayMetrics = DB::connection('apicentral')->table('ebay2_metrics')
-                ->whereIn('sku', $skus)
+            $ebayMetrics = Ebay2Metric::whereIn('sku', $skus)
                 ->get()
                 ->keyBy('sku');
 

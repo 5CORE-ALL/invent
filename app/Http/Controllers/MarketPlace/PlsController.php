@@ -269,6 +269,7 @@ class PlsController extends Controller
             $row['l60'] = $l60;    // PLS L60 from marketplace
             $row['pls_l30'] = $plsL30;  // PLS marketplace L30 sold
             $row['pls_l60'] = $l60;     // PLS marketplace L60 sold
+            $row['views'] = $plsProduct ? (int) ($plsProduct->views ?? 0) : 0;
             
             // Calculate GPFT (with marketplace percentage)
             $gpft = 0;
@@ -552,7 +553,7 @@ class PlsController extends Controller
             'map' => $map,
             'miss' => $miss,
             'nmap' => $nmap,
-            'total_views' => 0,
+            'total_views' => collect($rows)->sum(fn ($r) => (int) (($r['views'] ?? 0))),
         ];
     }
 

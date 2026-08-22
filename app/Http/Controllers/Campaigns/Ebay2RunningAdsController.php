@@ -8,8 +8,8 @@ use App\Models\EbayTwoDataView;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ADVMastersData;
+use App\Models\Ebay2Metric;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class Ebay2RunningAdsController extends Controller
 {
@@ -36,8 +36,7 @@ class Ebay2RunningAdsController extends Controller
 
         $shopifyData = ShopifySku::mapByProductSkus($productMasters->pluck('sku')->filter()->unique()->values()->all());
 
-        $ebayMetricData = DB::connection('apicentral')->table('ebay2_metrics')
-            ->select('sku', 'ebay_price', 'item_id')
+        $ebayMetricData = Ebay2Metric::select('sku', 'ebay_price', 'item_id')
             ->whereIn('sku', $skus)
             ->get()
             ->keyBy(fn($item) => $normalizeSku($item->sku));

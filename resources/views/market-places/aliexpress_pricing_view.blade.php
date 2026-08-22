@@ -8,21 +8,23 @@
     <style>
         .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 12px; }
         .tabulator .tabulator-header { background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
-
         .tabulator-col .tabulator-col-sorter { display: none !important; }
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);
-            white-space: nowrap; height: 80px; display: flex; align-items: center;
+            white-space: nowrap; height: 78px; display: flex; align-items: center;
             justify-content: center; font-size: 11px; font-weight: 600;
         }
-        .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
-        .tabulator .tabulator-row { min-height: 50px; }
+        .tabulator .tabulator-tableholder { scrollbar-width: thin; scrollbar-color: #c1c1c1 transparent; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar { width: 8px; height: 8px; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-track { background: transparent; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
 
-        /* Parent summary rows — match /shopify-b2b-pricing */
+        /* Parent row – identical to shein-pricing / amazon_tabulator_view */
         .tabulator-row.ae-parent-row,
         .tabulator-row.ae-parent-row .tabulator-cell {
-            background-color: rgba(189, 224, 255, 0.55) !important;
-            font-weight: 600 !important;
+            background-color: #fffef2 !important;
+            font-weight: 700 !important;
             min-height: 48px !important;
         }
         .tabulator-row.ae-parent-row .tabulator-cell {
@@ -33,27 +35,18 @@
         }
         .tabulator-row.ae-parent-row:hover,
         .tabulator-row.ae-parent-row:hover .tabulator-cell {
-            background-color: rgba(189, 224, 255, 0.8) !important;
+            background-color: #93c5fd !important;
         }
 
-        /* Pagination label — match /shopify-b2b-pricing */
         .tabulator-paginator label {
             margin-right: 5px;
         }
-
-        #aliexpress-pricing-table {
-            width: 100% !important;
-        }
-        #aliexpress-pricing-table .tabulator-tableholder {
-            overflow-x: auto !important;
-        }
-        #aliexpress-pricing-table .tabulator-cell {
-            white-space: nowrap !important;
-            text-overflow: clip !important;
-        }
-
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0 !important;
+        }
+        #aliexpress-pricing-table .tabulator-calcs-top,
+        #aliexpress-pricing-table .tabulator-calcs-holder {
+            display: none !important;
         }
 
         /* ── DIL dropdown (identical to TikTok) ── */
@@ -1027,7 +1020,7 @@
                 });
             }
 
-            // Row type last (Amazon): default SKUs hides PARENT* summary rows
+            // Belt-and-suspenders: hide PARENT* rows if any remain in SKUs mode
             if (rowType === 'parents') {
                 table.addFilter(function(d) { return aeIsParentRow(d); });
             } else if (rowType === 'skus') {
@@ -1266,18 +1259,18 @@
                             r.is_parent = true;
                         }
                     });
+                    allTableData = rows;
+                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     summaryDataCache = normalizeRows(rows);
                     updateSummary(summaryDataCache);
                     setTimeout(aeApplyBadgeFilterFromUrl, 0);
                     return rows;
                 },
-                layout: "fitData",
-                layoutColumnsOnNewData: true,
+                layout: "fitDataStretch",
+                height: "calc(100vh - 260px)",
                 pagination: true,
                 paginationSize: 100,
                 paginationSizeSelector: [10, 25, 50, 100, 200],
-                paginationCounter: "rows",
-                columnCalcs: "both",
                 langs: {
                     "default": {
                         "pagination": {
@@ -1286,13 +1279,6 @@
                     }
                 },
                 initialSort: [],
-                columnDefaults: {
-                    hozAlign: "center",
-                    headerHozAlign: "center",
-                    resizable: true,
-                    minWidth: 64,
-                    headerSort: true,
-                },
                 rowFormatter: function(row) {
                     if (typeof aeIsParentRow === 'function' ? aeIsParentRow(row.getData()) : row.getData().is_parent === true) {
                         row.getElement().classList.add('ae-parent-row');
@@ -1305,7 +1291,10 @@
                         field: "_ae_select",
                         hozAlign: "center",
                         headerSort: false,
+                        frozen: true,
                         width: 38,
+                        minWidth: 38,
+                        maxWidth: 42,
                         visible: true,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -1359,7 +1348,6 @@
                         minWidth: 200,
                         frozen: true,
                         headerSort: true,
-                        headerFilter: "input",
                         cssClass: "fw-bold text-primary",
                         formatter: function(cell) {
                             const d   = cell.getRow().getData();
@@ -1770,7 +1758,6 @@
                     allTableData = Array.isArray(data) ? data : [];
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     updateSummary(data);
-                    // Default SKUs mode — hide PARENT* rows (same as Amazon)
                     if (!$('#ae-row-type-filter').val()) {
                         $('#ae-row-type-filter').val('skus');
                     }
@@ -1841,22 +1828,6 @@
             $('#ae-apply-discount-btn').on('click', function() { applyAeDiscount(); });
             $('#ae-discount-input').on('keypress', function(e) { if (e.which === 13) applyAeDiscount(); });
 
-            /*
-             * Target ROI% / Target GPFT% bulk apply (AliExpress, margin = per-row `_margin`)
-             * ----------------------------------------------------------------------------
-             * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered
-             * target. AliExpress's server-side SGPFT / SROI formulas
-             * (AliexpressController::saveSpriceUpdates lines 1555-1556) include shipping:
-             *     SGPFT% = ((sprice * margin − lp − ship) / sprice) * 100
-             *     SROI%  = ((sprice * margin − lp − ship) / lp)     * 100
-             *   → sprice = (lp * (1 + ROI%/100)  + ship) / margin
-             *   → sprice = (lp + ship) / (margin − GPFT%/100)
-             * Optimistic SGPFT / SROI written client-side using the row's `_margin`
-             * (MarketplacePercentage 'Aliexpress' / 100, default 1.0), then the existing
-             * /aliexpress/save-sprice endpoint reconciles them server-side. Plain 2-decimal
-             * rounding — no .99 / .49 retail snapping — because snapping would shift the
-             * achieved SROI / SGPFT off the user-typed target.
-             */
             function aeApplyTargetBackSolve(computeFn, labelPrefix) {
                 if (selectedSkus.size === 0) {
                     aeNotify('Please check at least one SKU first', 'warning');

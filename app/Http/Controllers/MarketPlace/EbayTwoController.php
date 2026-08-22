@@ -483,33 +483,9 @@ class EbayTwoController extends Controller
             }
         }
 
-        // 3c. Fetch campaign listings (bid_percentage, suggested_bid) for PMT Ads
-        $campaignListings = collect();
-        $itemIds = array_keys($itemIdToSku);
-        if (!empty($itemIds)) {
-            try {
-            $campaignListings = DB::connection('apicentral')
-                ->table('ebay2_campaign_ads_listings as t')
-                ->join(DB::raw('(SELECT listing_id,
-                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
-                                        MAX(id) AS max_id
-                                 FROM ebay2_campaign_ads_listings
-                                 GROUP BY listing_id) x'),
-                    function($join) {
-                        $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
-                    })
-                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
-                ->get()
-                ->keyBy('listing_id');
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('ebay2_campaign_ads_listings table missing or query failed: ' . $e->getMessage());
-                $campaignListings = collect();
-            }
-        }
-
         // 3d. Same prioritization as /ebay2/campaign-ads page: latest COST_PER_SALE row per listing
         // (fallback to overall latest), source is the local `ebay2_campaign_ads` table — the page's
-        // own data feed — so ES BID / C BID / PROMOTE here mirror that page exactly.
+        // own data feed — so ES BID / C BID / PROMOTE / PMT bid fields here mirror that page exactly.
         // Key by string listing_id so PHP int-cast of numeric keys cannot miss ebay_2_metrics.item_id.
         $ebay2CampaignAdsByListing = [];
         try {
@@ -806,22 +782,13 @@ class EbayTwoController extends Controller
                 $nrValues->has($dataViewSkuKey) ? $nrValues->get($dataViewSkuKey) : null
             );
 
-            // PMT Ads detail fields (bid_percentage, suggested_bid)
-            if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
-                $listing = $campaignListings->get($ebayMetric->item_id);
-                $row['bid_percentage'] = $listing->bid_percentage ?? null;
-                $row['suggested_bid'] = $listing->suggested_bid ?? null;
-            } else {
-                $row['bid_percentage'] = null;
-                $row['suggested_bid'] = null;
-            }
-
-            // ES BID / C BID / PROMOTE — same source as /ebay2/campaign-ads page (ebay2_campaign_ads table).
+            // PMT + ES BID / C BID / PROMOTE — same local ebay2_campaign_ads source as /ebay2/campaign-ads.
             // Matched by listing_id (= ebay_2_metrics.item_id, i.e. SKU-wise via the metric row).
             // Rows whose SKU has no campaign-ads record stay visible with nulls — formatter renders '—'.
-            $row = array_merge($row, $this->ebay2CampaignAdsFields(
-                $this->lookupEbay2CampaignAd($ebay2CampaignAdsByListing, $ebayMetric->item_id ?? null)
-            ));
+            $caRow = $this->lookupEbay2CampaignAd($ebay2CampaignAdsByListing, $ebayMetric->item_id ?? null);
+            $row['bid_percentage'] = $caRow?->bid_percentage;
+            $row['suggested_bid'] = $caRow?->suggested_bid;
+            $row = array_merge($row, $this->ebay2CampaignAdsFields($caRow));
 
             // PMT clicks
             $row['pmt_clicks_l30'] = $row['PmtClkL30'] ?? 0;
@@ -2892,15 +2859,14 @@ class EbayTwoController extends Controller
             // Match ebay/pmp/ads: prefer COST_PER_SALE row per listing (EbayPMPAdsController)
             $campaignListing = null;
             try {
-                $campaignListing = DB::connection('apicentral')
-                    ->table('ebay2_campaign_ads_listings')
+                $campaignListing = DB::table('ebay2_campaign_ads')
                     ->where('listing_id', $itemId)
                     ->select('listing_id', 'bid_percentage', 'suggested_bid')
                     ->orderByRaw('CASE WHEN funding_strategy = "COST_PER_SALE" THEN 0 ELSE 1 END')
                     ->orderByDesc('id')
                     ->first();
             } catch (\Exception $e) {
-                // apicentral may be unavailable
+                // ebay2_campaign_ads may be unavailable
             }
             $cbid = $campaignListing ? (($campaignListing->bid_percentage !== null && $campaignListing->bid_percentage !== '') ? (float) $campaignListing->bid_percentage : null) : null;
             $esBid = $campaignListing ? (($campaignListing->suggested_bid !== null && $campaignListing->suggested_bid !== '') ? (float) $campaignListing->suggested_bid : null) : null;

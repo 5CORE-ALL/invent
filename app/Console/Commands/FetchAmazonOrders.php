@@ -25,6 +25,13 @@ class FetchAmazonOrders extends Command
     private const DEFAULT_RECENT_DAYS = 35;
 
     /**
+     * LastUpdated lookback for the incremental pass. Cron already re-fetches the
+     * last 3 Pacific days by CreatedAfter; this only needs recent *changes*
+     * (cancel/refund/qty). 35 days here re-pulls almost the whole window every run.
+     */
+    private const DEFAULT_INCREMENTAL_LOOKBACK_HOURS = 168;
+
+    /**
      * Trailing Pacific days (in addition to today) that auto-sync always re-fetches
      * in full, even if already "completed". A day can be marked completed during a
      * mid-day pass (CreatedBefore = now − 2min), which freezes it before the Pacific
@@ -60,7 +67,7 @@ class FetchAmazonOrders extends Command
         {--max-retries=3 : Maximum retries for failed API calls (default: 3)}
         {--incremental-only : Only run LastUpdated-based order refresh}
         {--no-incremental-refresh : Skip LastUpdated refresh after sync}
-        {--incremental-lookback-hours=840 : LastUpdated scan window (default 35 days)}
+        {--incremental-lookback-hours=168 : LastUpdated scan window (default 7 days; use 840 for a 35d catch-up)}
         {--incremental-chunk-hours=24 : Hours per LastUpdated API chunk}
         {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
 
@@ -443,7 +450,7 @@ class FetchAmazonOrders extends Command
         $marketplaceId = config('services.amazon_sp.marketplace_id');
         $delay = (int) ($this->option('delay') ?: 3);
         $maxRetries = (int) ($this->option('max-retries') ?: 3);
-        $lookbackHours = max(1, (int) ($this->option('incremental-lookback-hours') ?: 840));
+        $lookbackHours = max(1, (int) ($this->option('incremental-lookback-hours') ?: self::DEFAULT_INCREMENTAL_LOOKBACK_HOURS));
         $chunkHours = max(1, min(168, (int) ($this->option('incremental-chunk-hours') ?: 24)));
 
         $windowEnd = Carbon::now('America/Los_Angeles')->subMinutes(2);

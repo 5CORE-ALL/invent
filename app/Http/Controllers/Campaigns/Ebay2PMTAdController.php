@@ -125,14 +125,13 @@ class Ebay2PMTAdController extends Controller
             ->whereIn('report_range', ['L60', 'L30', 'L7'])
             ->get();
 
-        // Get campaign listings with bid_percentage. Prioritize COST_PER_SALE rows
-        // since they have bid_percentage, but fallback to latest row if no COST_PER_SALE exists.
-        $campaignListings = DB::connection('apicentral')
-            ->table('ebay2_campaign_ads_listings as t')
+        // Get campaign listings with bid_percentage from local ebay2_campaign_ads
+        // (same table as /ebay2/campaign-ads). Prioritize COST_PER_SALE rows.
+        $campaignListings = DB::table('ebay2_campaign_ads as t')
             ->join(DB::raw('(SELECT listing_id, 
                                     MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
                                     MAX(id) AS max_id
-                             FROM ebay2_campaign_ads_listings 
+                             FROM ebay2_campaign_ads 
                              GROUP BY listing_id) x'), 
                 function($join) {
                     $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));

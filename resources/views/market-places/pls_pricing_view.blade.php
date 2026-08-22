@@ -216,6 +216,9 @@
                         <span class="badge fs-6 p-2" id="qty-sold-badge"
                             style="background-color: #6f42c1; color: white; font-weight: bold;"
                             title="Σ PLS L30 units sold on filtered rows">Qty: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="pls-total-views-badge"
+                            style="color: #111; font-weight: 700;"
+                            title="Σ PLS L30 product page sessions (ShopifyQL)">Views: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge"
                             style="color: black; font-weight: bold;"
                             title="Weighted GPFT% = Σ Profit / Σ Sales × 100">GPFT: 0%</span>
@@ -814,6 +817,18 @@
                     width: 50
                 },
                 {
+                    title: "Views",
+                    field: "views",
+                    hozAlign: "center",
+                    width: 60,
+                    sorter: "number",
+                    headerTooltip: "PLS L30 product page sessions from ShopifyQL (landing_page_type = Product)",
+                    formatter: function(cell) {
+                        const v = parseInt(cell.getValue() || 0);
+                        return `<span style="font-weight:600;">${v.toLocaleString()}</span>`;
+                    }
+                },
+                {
                     title: "PLS INV",
                     field: "pls_inventory",
                     hozAlign: "center",
@@ -1286,10 +1301,12 @@
             let totalSales = 0;
             let totalProfit = 0;
             let totalCogs = 0;
+            let totalViews = 0;
 
             data.forEach(row => {
                 const inv = parseInt(row.inventory) || 0;
                 const plsL30 = parseInt(row.pls_l30) || 0;
+                totalViews += parseInt(row.views) || 0;
                 const price = parseFloat(row.price) || 0;
                 const lp = parseFloat(row.lp) || 0;
                 const ship = parseFloat(row.ship) || 0;
@@ -1331,6 +1348,7 @@
             $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
             $('#total-sales-amt-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
             $('#qty-sold-badge').text('Qty: ' + totalPlsL30.toLocaleString());
+            $('#pls-total-views-badge').text('Views: ' + totalViews.toLocaleString());
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
             $('#groi-percent-badge').text('GROI: ' + Math.round(avgGroi) + '%');

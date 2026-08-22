@@ -14,14 +14,43 @@
             white-space: nowrap; height: 78px; display: flex; align-items: center;
             justify-content: center; font-size: 11px; font-weight: 600;
         }
-        .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
-        .tabulator .tabulator-row { min-height: 50px; }
+        .tabulator .tabulator-tableholder { scrollbar-width: thin; scrollbar-color: #c1c1c1 transparent; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar { width: 8px; height: 8px; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-track { background: transparent; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        .tabulator .tabulator-tableholder::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0 !important;
+        }
+        #faire-pricing-table .tabulator-header .tabulator-col {
+            background: #dbeafe !important;
+            background-color: #dbeafe !important;
+        }
+        #faire-pricing-table .tabulator-header .tabulator-col[tabulator-field="_fr_select"] .tabulator-col-title,
+        #faire-pricing-table .tabulator-header .tabulator-col[tabulator-field="_parent_expand"] .tabulator-col-title {
+            writing-mode: horizontal-tb;
+            transform: none;
+            height: auto;
+        }
         .tabulator-row.fr-parent-row,
         .tabulator-row.fr-parent-row .tabulator-cell {
-            background-color: #d1e7dd !important;
+            background-color: #fffef2 !important;
             font-weight: 700 !important;
             min-height: 48px !important;
-            color: #0f5132;
+            color: #1e3a5f;
+        }
+        .tabulator-row.fr-parent-row .tabulator-cell {
+            min-height: 48px !important; height: 48px !important;
+            padding-top: 8px !important; padding-bottom: 8px !important;
+            overflow: visible !important; vertical-align: middle !important;
+        }
+        .tabulator-row.fr-parent-row:hover,
+        .tabulator-row.fr-parent-row:hover .tabulator-cell {
+            background-color: #93c5fd !important;
+        }
+        #faire-pricing-table .tabulator-calcs-top,
+        #faire-pricing-table .tabulator-calcs-holder {
+            display: none !important;
         }
         .tabulator .tabulator-footer {
             background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important;
@@ -50,9 +79,8 @@
         .fr-toolbar-row .dropdown-menu {
             font-size: 0.8125rem;
         }
-        #faire-pricing-table .tabulator-col[tabulator-field="sku"],
-        #faire-pricing-table .tabulator-cell[tabulator-field="sku"] {
-            transition: width 0.2s ease, min-width 0.2s ease;
+        #faire-pricing-table .tabulator-cell {
+            white-space: nowrap;
         }
         #fr-image-hover-preview {
             pointer-events: auto;
@@ -132,9 +160,9 @@
                             style="width:160px; display:inline-block;" placeholder="Search SKU...">
 
                         <select id="fr-row-type-filter" class="form-select form-select-sm pricing-filter-item">
-                            <option value="all" selected>All Rows</option>
+                            <option value="all">All Rows</option>
                             <option value="parents">Parents</option>
-                            <option value="skus">SKUs</option>
+                            <option value="skus" selected>SKUs</option>
                         </select>
                         <select id="fr-inv-filter" class="form-select form-select-sm pricing-filter-item">
                             <option value="all">INV</option>
@@ -1582,29 +1610,80 @@
         $('#play-forward').on('click', nextFrParent);
         $('#play-backward').on('click', previousFrParent);
 
+        function frIsParentRow(d) {
+            if (!d) return false;
+            if (d.is_parent === true || d.is_parent === 1 || d.is_parent === '1' || d.is_parent === 'true') return true;
+            const sku = String(d.sku || '').trim().toUpperCase();
+            if (/^PARENT\b/.test(sku)) return true;
+            const p = String(d.parent || '').trim().toUpperCase();
+            return /^PARENT\b/.test(p);
+        }
+
+        function frCurrentRowType() {
+            return $('#fr-row-type-filter').val() || 'skus';
+        }
+
+        function frRowsForRowType(rows, rowType) {
+            rowType = rowType || frCurrentRowType();
+            if (!Array.isArray(rows)) return [];
+            if (rowType === 'parents') return rows.filter(frIsParentRow);
+            if (rowType === 'skus') return rows.filter(function(d) { return !frIsParentRow(d); });
+            return rows.slice();
+        }
+
+        let frSyncingRowType = false;
+
         function applyFilters() {
+            if (frSyncingRowType) return;
             if (window.ParentExpand && ParentExpand.isExpanded()) {
                 ParentExpand.beforeFilters(function(){ applyFilters(); });
                 return;
             }
             if (!table) return;
-            table.clearFilter();
 
-            // Play navigation: only show current parent's group
+            const source = (allTableData && allTableData.length) ? allTableData : (table.getData('all') || []);
+
             if (isFrPlayActive && frUniqueParents.length > 0 && currentFrParentIndex >= 0) {
                 const currentKey = frUniqueParents[currentFrParentIndex];
                 if (currentKey) {
-                    table.addFilter(function(d) {
+                    const group = source.filter(function(d) {
                         const p = normalizeFrParentKey(d.parent);
                         return p === currentKey || p === ('PARENT ' + currentKey);
                     });
+                    frSyncingRowType = true;
+                    table.setData(group).then(function() { frSyncingRowType = false; })
+                        .catch(function() { frSyncingRowType = false; });
                 }
                 return;
             }
 
+            const rowType = frCurrentRowType();
+            const desired = frRowsForRowType(source, rowType);
+            const currentAll = (typeof table.getData === 'function' ? table.getData('all') : []) || [];
+            const needsSwap = currentAll.length !== desired.length
+                || (rowType === 'skus' && currentAll.some(frIsParentRow))
+                || (rowType === 'parents' && currentAll.some(function(d) { return !frIsParentRow(d); }))
+                || (rowType === 'all' && currentAll.length !== source.length);
+
+            if (needsSwap && source.length) {
+                frSyncingRowType = true;
+                table.setData(desired).then(function() {
+                    frSyncingRowType = false;
+                    applyMetricFilters();
+                }).catch(function() { frSyncingRowType = false; });
+                return;
+            }
+
+            applyMetricFilters();
+        }
+
+        function applyMetricFilters() {
+            if (!table) return;
+            table.clearFilter();
+
             const skuSearch = ($('#fr-pricing-sku-search').val() || '').toLowerCase().trim();
             const parentSearch = ($('#fr-pricing-parent-search').val() || '').toLowerCase().trim();
-            const rowType = $('#fr-row-type-filter').val();
+            const rowType = frCurrentRowType();
             const invFilter = $('#fr-inv-filter').val();
             const stockFilter = $('#fr-stock-filter').val();
             const gpftFilter = $('#fr-gpft-filter').val();
@@ -1627,14 +1706,20 @@
                 });
             }
             if (rowType === 'parents') {
-                table.addFilter(d => d.is_parent === true);
+                table.addFilter(function(d) { return frIsParentRow(d); });
             } else if (rowType === 'skus') {
-                table.addFilter(d => !d.is_parent);
+                table.addFilter(function(d) { return !frIsParentRow(d); });
             }
             if (invFilter === 'zero') {
-                table.addFilter(d => (parseInt(d.inv, 10) || 0) === 0);
+                table.addFilter(function(d) {
+                    if (frIsParentRow(d)) return rowType !== 'skus';
+                    return (parseInt(d.inv, 10) || 0) === 0;
+                });
             } else if (invFilter === 'more') {
-                table.addFilter(d => (parseInt(d.inv, 10) || 0) > 0);
+                table.addFilter(function(d) {
+                    if (frIsParentRow(d)) return rowType !== 'skus';
+                    return (parseInt(d.inv, 10) || 0) > 0;
+                });
             }
             if (stockFilter === 'zero') {
                 table.addFilter(d => (parseInt(d.ae_stock, 10) || 0) === 0);
@@ -1781,6 +1866,7 @@
                         });
                         frBuildColumnDropdown();
                     }
+                    if (typeof applyFilters === 'function') applyFilters();
                 }
             });
         }
@@ -1868,16 +1954,27 @@
             table = new Tabulator('#faire-pricing-table', {
                 ajaxURL: '/faire/pricing-data',
                 ajaxResponse: function(url, params, response) {
-                    summaryDataCache = normalizeRows(response);
+                    const rows = Array.isArray(response) ? response : [];
+                    rows.forEach(function(r) {
+                        if (!r || typeof r !== 'object') return;
+                        const sku = String(r.sku || '').trim().toUpperCase();
+                        if (r.is_parent === true || r.is_parent === 1 || r.is_parent === '1' || /^PARENT\b/.test(sku)) {
+                            r.is_parent = true;
+                        }
+                    });
+                    allTableData = rows;
+                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+                    summaryDataCache = normalizeRows(rows);
                     updateSummary(summaryDataCache);
-                    return response;
+                    return frRowsForRowType(rows, 'skus');
                 },
                 layout: 'fitDataStretch',
+                height: 'calc(100vh - 260px)',
                 pagination: true,
                 paginationSize: 100,
                 initialSort: [],
                 rowFormatter: function(row) {
-                    if (row.getData().is_parent === true) {
+                    if (frIsParentRow(row.getData())) {
                         row.getElement().classList.add('fr-parent-row');
                     }
                 },
@@ -1924,6 +2021,8 @@
                         hozAlign: 'center',
                         headerSort: false,
                         width: 38,
+                        minWidth: 38,
+                        maxWidth: 42,
                         download: false,
                         visible: false,
                         frozen: true,
@@ -1948,7 +2047,7 @@
                     },
                     ParentExpand.columnDef(),
                     {
-                        title: 'SKU', field: 'sku', minWidth: 200, frozen: true, headerFilter: 'input',
+                        title: 'SKU', field: 'sku', minWidth: 200, frozen: true,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const val = cell.getValue() || '';
@@ -2219,11 +2318,14 @@
                     },
                 ],
                 dataLoaded: function(data) {
-                    allTableData = Array.isArray(data) ? data : [];
-                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+                    if (!allTableData.length && Array.isArray(data)) {
+                        allTableData = data;
+                        if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+                    }
                     frResetSkuColHoverWidth();
                     frRemoveImagePreview();
                     updateSummary(data);
+                    if (!frSyncingRowType && typeof applyFilters === 'function') applyFilters();
                     setTimeout(frUpdatePushButtonVisibility, 50);
                 },
                 dataFiltered: function(filters, rows) { updateSummary(rows); },
@@ -2267,31 +2369,6 @@
 
             table.on('scrollVertical', frRemoveImagePreview);
             table.on('scrollHorizontal', frRemoveImagePreview);
-
-            $('#faire-pricing-table').on('mouseover', function(e) {
-                if (!table || !e.target || typeof e.target.closest !== 'function') return;
-                if (!e.target.closest('[tabulator-field="sku"]')) return;
-                if (frSkuColHoverActive) return;
-                const col = table.getColumn('sku');
-                if (!col) return;
-                frSkuColHoverBase = col.getWidth();
-                if (frSkuColHoverBase <= 0) return;
-                col.setWidth(Math.round(frSkuColHoverBase * 1.2));
-                frSkuColHoverActive = true;
-            });
-
-            $('#faire-pricing-table').on('mouseout', function(e) {
-                if (!table || !frSkuColHoverActive) return;
-                const related = e.relatedTarget;
-                const root = this;
-                if (related && root.contains(related) && typeof related.closest === 'function' && related.closest('[tabulator-field="sku"]')) {
-                    return;
-                }
-                const col = table.getColumn('sku');
-                if (col && frSkuColHoverBase != null) col.setWidth(frSkuColHoverBase);
-                frSkuColHoverActive = false;
-                frSkuColHoverBase = null;
-            });
 
             $(document).on('click', '.fr-copy-sku-btn', function(e) {
                 e.preventDefault();

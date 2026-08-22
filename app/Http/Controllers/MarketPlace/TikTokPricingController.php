@@ -62,8 +62,7 @@ class TikTokPricingController extends Controller
             $data = json_decode($response->getContent(), true);
 
             $rows = $data['data'] ?? [];
-            $this->saveDailySummaryIfNeeded($rows, 'tiktok2');
-            $this->saveSkuDailySnapshotsIfNeeded($rows, 'tiktok2');
+            $this->deferTiktokSnapshotSaves($rows, 'tiktok2');
 
             return response()->json($rows);
         } catch (\Exception $e) {
@@ -121,9 +120,7 @@ class TikTokPricingController extends Controller
             $data = json_decode($response->getContent(), true);
 
             $rows = $data['data'] ?? [];
-            // Auto-save daily summary + per-SKU price snapshots (for Price chart)
-            $this->saveDailySummaryIfNeeded($rows, 'tiktok');
-            $this->saveSkuDailySnapshotsIfNeeded($rows, 'tiktok');
+            $this->deferTiktokSnapshotSaves($rows, 'tiktok');
 
             // Tabulator expects an array; totalDistinctCampaigns is fetched separately via /tiktok-distinct-campaign-count
             return response()->json($rows);
@@ -384,12 +381,11 @@ class TikTokPricingController extends Controller
         $percentage = $marketplaceData ? (float) $marketplaceData->percentage : 0;
         $percentageValue = $percentage / 100;
 
-        // Fetch all product master records (excluding parent rows)
-        $productMasterRows = ProductMaster::all()
-            ->filter(function ($item) {
-                return stripos($item->sku, 'PARENT') === false;
-            })
-            ->keyBy("sku");
+        // Child SKUs only — avoid ProductMaster::all() (also loaded PARENT rows).
+        $productMasterRows = ProductMaster::query()
+            ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
+            ->get()
+            ->keyBy('sku');
 
         // Get all unique SKUs from product master
         $skus = $productMasterRows->pluck("sku")->toArray();
@@ -407,7 +403,8 @@ class TikTokPricingController extends Controller
         }
 
         $promoChannel = $isTiktokTwo ? 'tiktok2' : 'tiktok';
-        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus($promoChannel, $skus);
+        $promoService = app(ChannelPromoPricingService::class);
+        $promoMap = $promoService->mapForSkus($promoChannel, $skus);
         
         // Create uppercase version for TikTok products lookup
         $skusUpper = array_map('strtoupper', $skus);
@@ -433,36 +430,21 @@ class TikTokPricingController extends Controller
         // Fetch reverb view data for SPRICE
         $reverbViewData = ReverbViewData::whereIn("sku", $skus)->get()->keyBy("sku");
         // TikTok 1 / 2 shop JSON (same merge model as eBay ebay_data_view: one row per SKU, value JSON).
-        // Key by normalized SKU so Product Master casing matches shop rows (mirrors Wayfair UPPER(TRIM) lookup).
-        $normSkuList = collect($skus)
-            ->map(fn ($s) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $s))))
-            ->unique()
-            ->filter()
-            ->values()
-            ->all();
         $ttShopDataByNormSku = [];
-        if ($normSkuList !== []) {
-            $ttShopRows = $isTiktokTwo
-                ? TiktokTwoShopDataView::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $normSkuList)
-                    ->get()
-                : TiktokShopDataView::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $normSkuList)
-                    ->get();
-            foreach ($ttShopRows as $row) {
-                $k = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $row->sku)));
-                if ($k !== '') {
-                    $ttShopDataByNormSku[$k] = $row;
-                }
+        $ttShopRows = $isTiktokTwo
+            ? TiktokTwoShopDataView::query()->get(['sku', 'value'])
+            : TiktokShopDataView::query()->get(['sku', 'value']);
+        foreach ($ttShopRows as $row) {
+            $k = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $row->sku)));
+            if ($k !== '') {
+                $ttShopDataByNormSku[$k] = $row;
             }
         }
 
         // Buyer / Seller links from TiktokShopListingStatus.value JSON (keyed by normalized SKU) — TikTok 1 only
         $ttListingLinksByNormSku = [];
-        if (!$isTiktokTwo && $normSkuList !== []) {
-            $linkRows = TiktokShopListingStatus::query()
-                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $normSkuList)
-                ->get();
+        if (!$isTiktokTwo) {
+            $linkRows = TiktokShopListingStatus::query()->get(['sku', 'value']);
             foreach ($linkRows as $lr) {
                 $k = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $lr->sku)));
                 if ($k !== '') {
@@ -480,60 +462,37 @@ class TikTokPricingController extends Controller
         $campaignMapBySku = [];
         $campaignMetricsBySku = [];
         try {
-            $allCampaignsL30 = TiktokCampaignReport::where('report_range', 'L30')
+            $campaignBase = TiktokCampaignReport::query()
+                ->whereIn('report_range', ['L30', 'L7'])
                 ->where('creative_type', 'Product card')
                 ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
                 ->whereNotNull('product_id')->where('product_id', '!=', '')
-                ->select('product_id', 'campaign_name', 'campaign_id', 'creative_type')
-                ->get();
-            $allCampaignsL7 = TiktokCampaignReport::where('report_range', 'L7')
-                ->where('creative_type', 'Product card')
-                ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
-                ->whereNotNull('product_id')->where('product_id', '!=', '')
-                ->select('product_id', 'campaign_name', 'campaign_id', 'creative_type')
-                ->get();
-            $allCampaigns = $allCampaignsL30->concat($allCampaignsL7);
-
-            $campaignMetricsL30 = TiktokCampaignReport::where('report_range', 'L30')
-                ->where('creative_type', 'Product card')
-                ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
-                ->whereNotNull('product_id')->where('product_id', '!=', '')
-                ->get()
-                ->groupBy(function ($item) { return strtoupper(trim($item->campaign_name)); })
-                ->map(function ($group) {
-                    $first = $group->first();
-                    return (object)[
-                        'sku_upper' => strtoupper(trim($group->first()->campaign_name)),
-                        'total_cost' => $group->sum('cost'),
-                        'total_clicks' => $group->sum('product_ad_clicks'),
-                        'total_revenue' => $group->sum('gross_revenue'),
-                        'total_sku_orders' => $group->sum('sku_orders'),
-                        'avg_roi' => $first && $first->roi !== null ? (float)$first->roi : 0,
-                        'avg_in_roas' => $first && $first->in_roas !== null ? (float)$first->in_roas : 0,
-                        'custom_status' => $first && $first->custom_status ? $first->custom_status : null,
-                        'budget' => $first && $first->budget !== null ? (float)$first->budget : null,
-                    ];
-                });
-            $campaignMetricsL7 = TiktokCampaignReport::where('report_range', 'L7')
-                ->where('creative_type', 'Product card')
-                ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
-                ->whereNotNull('product_id')->where('product_id', '!=', '')
-                ->get()
-                ->groupBy(function ($item) { return strtoupper(trim($item->campaign_name)); })
-                ->map(function ($group) {
-                    $first = $group->first();
-                    return (object)[
-                        'sku_upper' => strtoupper(trim($group->first()->campaign_name)),
-                        'total_cost' => $group->sum('cost'),
-                        'total_clicks' => $group->sum('product_ad_clicks'),
-                        'total_revenue' => $group->sum('gross_revenue'),
-                        'total_sku_orders' => $group->sum('sku_orders'),
-                        'avg_roi' => $first && $first->roi !== null ? (float)$first->roi : 0,
-                        'avg_in_roas' => $first && $first->in_roas !== null ? (float)$first->in_roas : 0,
-                        'custom_status' => $first && $first->custom_status ? $first->custom_status : null,
-                        'budget' => $first && $first->budget !== null ? (float)$first->budget : null,
-                    ];
-                });
+                ->get([
+                    'report_range', 'campaign_name', 'product_id', 'cost',
+                    'product_ad_clicks', 'gross_revenue', 'sku_orders',
+                    'roi', 'in_roas', 'custom_status', 'budget',
+                ]);
+            $allCampaigns = $campaignBase;
+            $summarizeCampaigns = function ($group) {
+                $first = $group->first();
+                return (object) [
+                    'sku_upper' => strtoupper(trim((string) $group->first()->campaign_name)),
+                    'total_cost' => $group->sum('cost'),
+                    'total_clicks' => $group->sum('product_ad_clicks'),
+                    'total_revenue' => $group->sum('gross_revenue'),
+                    'total_sku_orders' => $group->sum('sku_orders'),
+                    'avg_roi' => $first && $first->roi !== null ? (float) $first->roi : 0,
+                    'avg_in_roas' => $first && $first->in_roas !== null ? (float) $first->in_roas : 0,
+                    'custom_status' => $first && $first->custom_status ? $first->custom_status : null,
+                    'budget' => $first && $first->budget !== null ? (float) $first->budget : null,
+                ];
+            };
+            $campaignMetricsL30 = $campaignBase->where('report_range', 'L30')
+                ->groupBy(fn ($item) => strtoupper(trim((string) $item->campaign_name)))
+                ->map($summarizeCampaigns);
+            $campaignMetricsL7 = $campaignBase->where('report_range', 'L7')
+                ->groupBy(fn ($item) => strtoupper(trim((string) $item->campaign_name)))
+                ->map($summarizeCampaigns);
 
             foreach ($campaignMetricsL30 as $skuUpper => $metrics) {
                 $campaignMetricsBySku[$skuUpper] = [
@@ -589,14 +548,7 @@ class TikTokPricingController extends Controller
         // Unfiltered tiktok_campaign_reports (same source as /tiktok-1-ads-raw-data).
         $rawAdsBySku = $isTiktokTwo ? [] : $this->tiktok1RawAdsMetricsBySku();
 
-        // Live Shop API L30/L1 → tiktok_gmv_ads when the sheet is empty or stale.
-        if (! $isTiktokTwo) {
-            try {
-                app(\App\Services\TikTokGmvAdsSyncService::class)->syncIfStale();
-            } catch (\Throwable $e) {
-                Log::warning('TikTok GMV ads auto-sync skipped: '.$e->getMessage());
-            }
-        }
+        // GMV ads from cache only — do not call TikTok Shop API on page load.
 
         // GMV ads by SKU (API L30/L1 when present, else latest upload batch).
         $gmvAdsBySku = $isTiktokTwo ? [] : $this->tiktok1GmvAdsMetricsBySku();
@@ -854,23 +806,10 @@ class TikTokPricingController extends Controller
             if ($hasCampaign && (empty($customStatus) || $customStatus === null)) $customStatus = 'Active';
             elseif (empty($customStatus) || $customStatus === null) $customStatus = 'Not Created';
             $processedItem["NR"] = $processedItem["NR"] ?? 'RA';
-            // If INV is 0 or negative, show NRA and auto-save to the per-channel data view
+            // Display-only: do not write NRA on every /tiktok-data-json load (was N+1 firstOrNew/save).
             $inv = (float)($processedItem["INV"] ?? 0);
             if ($inv <= 0) {
                 $processedItem["NR"] = 'NRA';
-                try {
-                    $view = $isTiktokTwo
-                        ? TiktokTwoShopDataView::firstOrNew(['sku' => $sku])
-                        : TiktokShopDataView::firstOrNew(['sku' => $sku]);
-                    $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
-                    if (($values['NR'] ?? null) !== 'NRA') {
-                        $values['NR'] = 'NRA';
-                        $view->value = $values;
-                        $view->save();
-                    }
-                } catch (\Throwable $e) {
-                    Log::warning('TikTok NRA auto-save failed for SKU '.$sku.': '.$e->getMessage());
-                }
             }
             $processedItem["ads_price"] = $processedItem["TT Price"] ?? 0;
             $processedItem["budget"] = isset($metrics['budget']) && $metrics['budget'] !== null ? round((float)$metrics['budget'], 2) : null;
@@ -974,7 +913,7 @@ class TikTokPricingController extends Controller
             }
             $processedItem['STANDARD_PRICE'] = $stdPrc;
             $processedItem['Price'] = $processedItem['TT Price'] ?? 0;
-            $processedItem = app(ChannelPromoPricingService::class)->applyToRow($processedItem, $promoMap, (string) $sku);
+            $processedItem = $promoService->applyToRow($processedItem, $promoMap, (string) $sku);
 
             $mergedLmpEntries = collect();
             $seenLmp = [];
@@ -1014,30 +953,7 @@ class TikTokPricingController extends Controller
             $processedItem['lmp_title'] = $lowestLmp->product_title ?? null;
             $processedItem['lmp_seller'] = $lowestLmp->seller_name ?? null;
             $processedItem['lmp_region'] = $lowestLmp->region ?? null;
-            $processedItem['lmp_entries'] = $mergedLmpEntries
-                ->map(function ($entry) {
-                    return [
-                        'id' => $entry->id,
-                        'product_id' => $entry->product_id ?? null,
-                        'price' => is_numeric($entry->price) ? floatval($entry->price) : null,
-                        'shipping_cost' => is_numeric($entry->shipping_cost ?? null) ? floatval($entry->shipping_cost) : 0,
-                        'min_price' => $entry->min_price !== null && is_numeric($entry->min_price) ? floatval($entry->min_price) : null,
-                        'max_price' => $entry->max_price !== null && is_numeric($entry->max_price) ? floatval($entry->max_price) : null,
-                        'link' => $entry->product_link ?? null,
-                        'product_link' => $entry->product_link ?? null,
-                        'title' => $entry->product_title ?? null,
-                        'product_title' => $entry->product_title ?? null,
-                        'image' => $entry->image ?? null,
-                        'seller_name' => $entry->seller_name ?? null,
-                        'brand_name' => $entry->brand_name ?? null,
-                        'marketplace' => $entry->marketplace ?? 'tiktok',
-                        'region' => $entry->region ?? 'US',
-                        'rating' => $entry->rating ?? null,
-                        'reviews' => $entry->reviews ?? null,
-                        'sold_count' => $entry->sold_count ?? null,
-                    ];
-                })
-                ->toArray();
+            // Modal loads full competitor list via /tiktok/competitors — omit lmp_entries from grid JSON.
             $processedItem['lmp_entries_total'] = $mergedLmpEntries->count();
 
             $processedData[] = $processedItem;
@@ -1943,6 +1859,22 @@ class TikTokPricingController extends Controller
     }
 
     /**
+     * Write daily summary / SKU snapshots after the JSON response is sent
+     * so /tiktok-data-json is not blocked by thousands of updateOrCreate calls.
+     */
+    private function deferTiktokSnapshotSaves(array $rows, string $channel): void
+    {
+        app()->terminating(function () use ($rows, $channel) {
+            try {
+                $this->saveDailySummaryIfNeeded($rows, $channel);
+                $this->saveSkuDailySnapshotsIfNeeded($rows, $channel);
+            } catch (\Throwable $e) {
+                Log::warning('TikTok deferred snapshot save failed: '.$e->getMessage());
+            }
+        });
+    }
+
+    /**
      * Snapshot per-SKU TT Price (and stock/L30) for Price charts — California day.
      * Called on tabulator data load so charts work even before the nightly cron.
      */
@@ -2014,9 +1946,11 @@ class TikTokPricingController extends Controller
         }
         try {
             $today = now()->toDateString();
-            
-            // No cache - always update when page loads
-            
+            $cacheKey = "tiktok_daily_summary_{$channel}_{$today}";
+            if (Cache::has($cacheKey)) {
+                return;
+            }
+
             // Match JS updateSummary(): all non-parent SKU rows (default "All INV" badge set).
             // Do NOT restrict to INV > 0 — that under-counted sales/PFT vs the live ROI%/GPFT badges.
             $filteredData = collect($products)->filter(function ($p) {
@@ -2215,6 +2149,8 @@ class TikTokPricingController extends Controller
                     'notes' => 'Auto-saved daily snapshot (All INV, L30-weighted GPFT/ROI)',
                 ]
             );
+
+            Cache::put($cacheKey, 1, now()->addMinutes(30));
             
             Log::info("Daily TikTok summary snapshot saved for {$today} ({$channel})", [
                 'sku_count' => $totalSkuCount,

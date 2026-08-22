@@ -16,5 +16,6 @@ class PLSProduct extends Model
         'p_l30',
         'p_l60',
         'price',
+        'views',
     ];
 }
