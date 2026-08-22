@@ -2076,54 +2076,6 @@
                     width: 60
                 },
                 {
-                    title: "Std Prc",
-                    field: "STANDARD_PRICE",
-                    hozAlign: "center",
-                    headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Editable; saves to all Sku Link LMP siblings. Dot vs B2B Price.",
-                    editor: "input",
-                    width: 70,
-                    sorter: "number",
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        if (isShopifyB2bParentRow(d)) return false;
-                        const sku = String(d['(Child) sku'] || d.sku || d.SKU || '');
-                        return !!sku && !String(d.Parent || '').toUpperCase().startsWith('PARENT');
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (isShopifyB2bParentRow(rowData)) return '';
-                        const value = cell.getValue();
-                        const std = parseFloat(value) || 0;
-                        if (!value || std <= 0) return '';
-                        const channelPrice = parseFloat(rowData['Price'] || rowData.price || 0) || 0;
-                        const dot = shopifyB2bStdPrcChangeDotHtml(std, channelPrice);
-
-                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                            dot + ('$' + std.toFixed(2)) + '</span>';
-                    }
-                },
-                {
-                    title: "Price",
-                    field: "Price",
-                    hozAlign: "center",
-                    minWidth: 86,
-                    sorter: "number",
-                    headerTooltip: "Live website selling price from business5core.com",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        const rowData = cell.getRow().getData();
-                        
-                        if (value === 0) {
-                            return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
-                        }
-                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
-                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
-                        return `<span style="color: #111827; font-weight: 600;">$${value.toFixed(2)}</span>` + lmpTri + purpleTri;
-                    },
-                    width: 88,
-                    minWidth: 88
-                },
-                {
                     title: "B2B L30",
                     field: "B2B L30",
                     hozAlign: "center",
@@ -2225,6 +2177,54 @@
                             ' style="color:#6c757d;text-decoration:none;cursor:pointer;font-size:11px;" title="Add competitor manually">' +
                             '<i class="fa fa-plus"></i> Add</a>';
                     }
+                },
+                {
+                    title: "Std Prc",
+                    field: "STANDARD_PRICE",
+                    hozAlign: "center",
+                    headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Editable; saves to all Sku Link LMP siblings. Dot vs B2B Price.",
+                    editor: "input",
+                    width: 70,
+                    sorter: "number",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (isShopifyB2bParentRow(d)) return false;
+                        const sku = String(d['(Child) sku'] || d.sku || d.SKU || '');
+                        return !!sku && !String(d.Parent || '').toUpperCase().startsWith('PARENT');
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isShopifyB2bParentRow(rowData)) return '';
+                        const value = cell.getValue();
+                        const std = parseFloat(value) || 0;
+                        if (!value || std <= 0) return '';
+                        const channelPrice = parseFloat(rowData['Price'] || rowData.price || 0) || 0;
+                        const dot = shopifyB2bStdPrcChangeDotHtml(std, channelPrice);
+
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                            dot + ('$' + std.toFixed(2)) + '</span>';
+                    }
+                },
+                {
+                    title: "Price",
+                    field: "Price",
+                    hozAlign: "center",
+                    minWidth: 86,
+                    sorter: "number",
+                    headerTooltip: "Live website selling price from business5core.com",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        const rowData = cell.getRow().getData();
+                        
+                        if (value === 0) {
+                            return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
+                        }
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        return `<span style="color: #111827; font-weight: 600;">$${value.toFixed(2)}</span>` + lmpTri + purpleTri;
+                    },
+                    width: 88,
+                    minWidth: 88
                 },
                 {
                     title: "GROI%",
