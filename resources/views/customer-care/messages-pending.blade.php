@@ -322,7 +322,7 @@
                         const row = cell.getRow().getData() || {};
                         const status = row.fetch_status || '';
                         if (status === 'unsupported') {
-                            return '<span class="text-muted" title="' + escapeHtml(row.fetch_note || 'No messages API') + '">—</span>';
+                            return '<span class="text-muted" title="' + escapeHtml(row.fetch_note || 'No possible API') + '">—</span>';
                         }
                         if (status === 'error') {
                             return '<span class="text-warning" title="' + escapeHtml(row.fetch_note || 'Pull failed') + '"><i class="fas fa-triangle-exclamation"></i></span>';
@@ -343,13 +343,13 @@
                 {
                     title: 'Source',
                     field: 'fetch_status',
-                    width: 150,
+                    width: 170,
                     hozAlign: 'center',
                     formatter: function (cell) {
                         const row = cell.getRow().getData() || {};
                         const status = cell.getValue() || '';
                         if (status === 'ok') return '<span class="text-success" title="Live marketplace API">API</span>';
-                        if (status === 'unsupported') return '<span class="text-muted" title="' + escapeHtml(row.fetch_note || '') + '">No API</span>';
+                        if (status === 'unsupported') return '<span class="text-muted" title="' + escapeHtml(row.fetch_note || 'No possible API') + '">No possible API</span>';
                         if (status === 'error') return '<span class="text-danger" title="' + escapeHtml(row.fetch_note || '') + '">Error</span>';
                         return '<span class="text-muted">Waiting</span>';
                     },

@@ -3318,5 +3318,38 @@ class SheinApiService
             'raw' => $json,
         ];
     }
+
+    /**
+     * Unread seller IM / message-center count, if SHEIN exposes it on this account.
+     *
+     * @return array{success: bool, count: int, possible: bool, message?: string}
+     */
+    public function getPendingMessageCount(): array
+    {
+        $paths = [
+            '/open-api/message/unread-count',
+            '/open-api/cs/im/unread',
+            '/open-api/im/conversation/unread-count',
+            '/open-api/openapi-business-backend/message/unread',
+        ];
+        $last = 'No possible API';
+
+        foreach ($paths as $path) {
+            try {
+                $json = $this->sheinApiPost($path, []);
+            } catch (\Throwable $e) {
+                $last = $e->getMessage();
+                continue;
+            }
+            $info = is_array($json['info'] ?? null) ? $json['info'] : $json;
+            foreach (['unreadCount', 'unread_count', 'count', 'total', 'unReadCount'] as $key) {
+                if (isset($info[$key]) && is_numeric($info[$key])) {
+                    return ['success' => true, 'count' => (int) $info[$key], 'possible' => true];
+                }
+            }
+        }
+
+        return ['success' => false, 'count' => 0, 'possible' => false, 'message' => $last];
+    }
 }
 

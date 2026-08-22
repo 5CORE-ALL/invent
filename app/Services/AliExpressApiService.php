@@ -1114,7 +1114,7 @@ class AliExpressApiService
     /**
      * @param  array<string, mixed>|mixed  $data
      */
-    private function extractPendingMessageTotal($data): ?int
+    protected function extractPendingMessageTotal($data): ?int
     {
         if (! is_array($data)) {
             return null;

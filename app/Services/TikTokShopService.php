@@ -2775,4 +2775,95 @@ class TikTokShopService
 
         return null;
     }
+
+    /**
+     * Unread TikTok Shop customer-service conversations.
+     *
+     * @return array{success: bool, count: int, message?: string}
+     */
+    public function getPendingConversationCount(): array
+    {
+        if (! $this->accessToken || ! $this->clientKey || ! $this->clientSecret) {
+            return ['success' => false, 'count' => 0, 'message' => 'TikTok credentials are missing.'];
+        }
+
+        $this->client->setAccessToken($this->accessToken);
+        $this->ensureShopCipher();
+        $cipher = is_string($this->shopCipher) ? trim($this->shopCipher) : '';
+        if ($cipher === '') {
+            return ['success' => false, 'count' => 0, 'message' => 'TikTok shop_cipher is missing.'];
+        }
+
+        $unread = 0;
+        $pageToken = '';
+        $pages = 0;
+        $base = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
+        $path = '/customer_service/202309/conversations';
+
+        do {
+            $pages++;
+            $query = [
+                'app_key' => (string) $this->clientKey,
+                'timestamp' => (string) time(),
+                'shop_cipher' => $cipher,
+                'page_size' => '50',
+                'locale' => 'en-US',
+            ];
+            if ($pageToken !== '') {
+                $query['page_token'] = $pageToken;
+            }
+            $query['sign'] = $this->signTikTokRequest($path, $query, '');
+
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'x-tts-access-token' => $this->accessToken,
+                        'Content-Type' => 'application/json',
+                    ])
+                    ->timeout(12)
+                    ->connectTimeout(6)
+                    ->get($base.$path, $query);
+            } catch (\Throwable $e) {
+                return ['success' => false, 'count' => 0, 'message' => $e->getMessage()];
+            }
+
+            $json = $response->json() ?? [];
+            $code = (int) ($json['code'] ?? $response->status());
+            if (! $response->successful() || ($code !== 0 && isset($json['code']))) {
+                return [
+                    'success' => false,
+                    'count' => 0,
+                    'message' => (string) ($json['message'] ?? $json['msg'] ?? ('TikTok conversations HTTP '.$response->status())),
+                ];
+            }
+
+            $data = is_array($json['data'] ?? null) ? $json['data'] : $json;
+            foreach ($data['conversations'] ?? [] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $unread += max(0, (int) ($row['unread_count'] ?? $row['unreadCount'] ?? 0));
+            }
+            $pageToken = (string) ($data['next_page_token'] ?? '');
+        } while ($pageToken !== '' && $pages < 10);
+
+        return ['success' => true, 'count' => $unread];
+    }
+
+    /**
+     * @param  array<string, string>  $query
+     */
+    protected function signTikTokRequest(string $path, array $query, string $body): string
+    {
+        unset($query['sign'], $query['access_token']);
+        ksort($query);
+        $concat = '';
+        foreach ($query as $key => $value) {
+            $concat .= $key.$value;
+        }
+        $secret = (string) $this->clientSecret;
+        $source = $secret.$path.$concat.$body.$secret;
+
+        return hash_hmac('sha256', $source, $secret);
+    }
 }

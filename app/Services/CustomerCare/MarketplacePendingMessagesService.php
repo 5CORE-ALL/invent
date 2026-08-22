@@ -4,14 +4,18 @@ namespace App\Services\CustomerCare;
 
 use App\Models\CcMessagesPending;
 use App\Models\ChannelMaster;
+use App\Services\AlibabaApiService;
 use App\Services\AliExpressApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
 use App\Services\FaireApiService;
 use App\Services\ReverbApiService;
+use App\Services\SheinApiService;
 use App\Services\Temu2ApiService;
 use App\Services\TemuApiService;
+use App\Services\TikTok2ShopService;
+use App\Services\TikTokShopService;
 use App\Services\WalmartApiService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
@@ -30,6 +34,8 @@ class MarketplacePendingMessagesService
     public const STATUS_UNSUPPORTED = 'unsupported';
 
     public const STATUS_ERROR = 'error';
+
+    public const NOTE_IMPOSSIBLE = 'No possible API';
 
     /**
      * @return array{
@@ -86,23 +92,14 @@ class MarketplacePendingMessagesService
     public function fetch(ChannelMaster $channel): array
     {
         $driver = $this->driverFor($channel);
-        if ($driver === null) {
-            return $this->makeResult(
-                0,
-                self::STATUS_UNSUPPORTED,
-                'No seller messages API is wired for this channel.',
-                null
-            );
+        if ($driver === null || $driver === 'impossible') {
+            return $this->impossible($driver === 'impossible' ? $this->slugFor($channel) : null);
         }
 
         return match ($driver) {
             'aliexpress' => $this->fetchAliExpress(),
-            'amazon' => $this->makeResult(
-                0,
-                self::STATUS_UNSUPPORTED,
-                'Amazon SP-API cannot read Seller Central buyer messages. Use the messages link.',
-                'amazon'
-            ),
+            'alibaba' => $this->fetchAlibaba(),
+            'amazon' => $this->impossible('amazon'),
             'ebay' => $this->fetchEbay('ebay'),
             'ebay2' => $this->fetchEbay('ebay2'),
             'ebay3' => $this->fetchEbay('ebay3'),
@@ -111,13 +108,16 @@ class MarketplacePendingMessagesService
             'mirakl:macy' => $this->fetchMirakl('macy'),
             'mirakl:purchasingpower' => $this->fetchMirakl('purchasingpower'),
             'reverb' => $this->fetchReverb(),
+            'shein' => $this->fetchShein(),
             'shopify' => $this->fetchShopify('shopify'),
             'shopify_b5c' => $this->fetchShopify('shopify_b5c'),
             'shopify_pls' => $this->fetchShopify('prolightsounds'),
             'temu' => $this->fetchTemu(app(TemuApiService::class), 'temu'),
             'temu2' => $this->fetchTemu(app(Temu2ApiService::class), 'temu2'),
+            'tiktok' => $this->fetchTikTok(app(TikTokShopService::class), 'tiktok'),
+            'tiktok2' => $this->fetchTikTok(app(TikTok2ShopService::class), 'tiktok2'),
             'walmart' => $this->fetchWalmart(),
-            default => $this->makeResult(0, self::STATUS_UNSUPPORTED, 'No seller messages API is wired for this channel.', null),
+            default => $this->impossible($this->slugFor($channel)),
         };
     }
 
@@ -135,22 +135,29 @@ class MarketplacePendingMessagesService
 
         return match ($slug) {
             'aliexpress', 'ae' => 'aliexpress',
-            'amazon', 'amazon1', 'amazonus' => 'amazon',
-            'b2b', 'business5core', 'shopifyb2b' => 'shopify_b5c',
+            'alibaba' => 'alibaba',
+            'amazon', 'amazon1', 'amazonus', 'amazonfba' => 'amazon',
+            'b2b', 'business5core', 'shopifyb2b', 'shopifyb5c' => 'shopify_b5c',
             'bestbuy', 'bestbuyusa' => 'mirakl:bestbuy',
             'ebay', 'ebay1' => 'ebay',
             'ebaytwo', 'ebay2' => 'ebay2',
             'ebaythree', 'ebay3' => 'ebay3',
             'faire' => 'faire',
             'macy', 'macys' => 'mirakl:macy',
-            'pls', 'prolightsounds', 'shopifypls' => 'shopify_pls',
+            'pls', 'prolightsounds', 'shopifypls', 'shopifyplsstore' => 'shopify_pls',
             'purchasingpower', 'pp' => 'mirakl:purchasingpower',
             'reverb' => 'reverb',
-            'shopify', 'shopify1', '5core' => 'shopify',
+            'shein' => 'shein',
+            'shopify', 'shopify1', '5core', 'shopifyb2c' => 'shopify',
             'temu' => 'temu',
             'temu2', 'temutwo' => 'temu2',
+            'tiktok', 'tiktokshop' => 'tiktok',
+            'tiktok2', 'tiktokshop2', 'tiktokshoptwo' => 'tiktok2',
             'walmart' => 'walmart',
-            default => null,
+            'doba', 'depop', 'depopcom', 'newegg', 'wayfair', 'topdawg',
+            'instagramshop', 'mercariwship', 'mercariwoship',
+            'fbmarketplace', 'fbshop' => 'impossible',
+            default => 'impossible',
         };
     }
 
@@ -165,6 +172,50 @@ class MarketplacePendingMessagesService
         }
 
         return $this->makeResult((int) ($resp['count'] ?? 0), self::STATUS_OK, null, 'aliexpress');
+    }
+
+    /**
+     * @return array{pending_count: int, fetch_status: string, fetch_note: ?string, source: ?string}
+     */
+    protected function fetchAlibaba(): array
+    {
+        $resp = app(AlibabaApiService::class)->getPendingMessageCount();
+        if (empty($resp['success'])) {
+            return $this->impossible('alibaba');
+        }
+
+        return $this->makeResult((int) ($resp['count'] ?? 0), self::STATUS_OK, null, 'alibaba');
+    }
+
+    /**
+     * @return array{pending_count: int, fetch_status: string, fetch_note: ?string, source: ?string}
+     */
+    protected function fetchShein(): array
+    {
+        $resp = app(SheinApiService::class)->getPendingMessageCount();
+        if (! empty($resp['success'])) {
+            return $this->makeResult((int) ($resp['count'] ?? 0), self::STATUS_OK, null, 'shein');
+        }
+
+        return $this->impossible('shein');
+    }
+
+    /**
+     * @return array{pending_count: int, fetch_status: string, fetch_note: ?string, source: ?string}
+     */
+    protected function fetchTikTok(TikTokShopService $api, string $label): array
+    {
+        $resp = $api->getPendingConversationCount();
+        if (empty($resp['success'])) {
+            $msg = (string) ($resp['message'] ?? '');
+            if ($msg !== '' && ! str_contains(strtolower($msg), 'not exist') && ! str_contains(strtolower($msg), 'not found')) {
+                return $this->makeResult(0, self::STATUS_ERROR, $msg, $label);
+            }
+
+            return $this->impossible($label);
+        }
+
+        return $this->makeResult((int) ($resp['count'] ?? 0), self::STATUS_OK, null, $label.':customer_service');
     }
 
     /**
@@ -473,12 +524,7 @@ class MarketplacePendingMessagesService
                 continue;
             }
             if (! $response->successful()) {
-                return $this->makeResult(
-                    0,
-                    $response->status() === 403 ? self::STATUS_UNSUPPORTED : self::STATUS_ERROR,
-                    'Walmart questions HTTP '.$response->status(),
-                    'walmart'
-                );
+                continue;
             }
             $json = $response->json() ?? [];
             $total = $json['totalItems'] ?? $json['totalCount'] ?? $json['meta']['totalCount'] ?? null;
@@ -491,7 +537,7 @@ class MarketplacePendingMessagesService
             }
         }
 
-        return $this->makeResult(0, self::STATUS_UNSUPPORTED, 'Walmart Partner API does not expose a seller inbox count.', 'walmart');
+        return $this->impossible('walmart');
     }
 
     /**
@@ -533,12 +579,48 @@ class MarketplacePendingMessagesService
 
         $gqlError = $json['errors'][0]['message'] ?? null;
 
-        return $this->makeResult(
-            0,
-            self::STATUS_UNSUPPORTED,
-            $gqlError ?: 'Shopify Inbox conversations are not enabled for this store.',
-            $configKey
-        );
+        $open = $this->shopifyOpenConversations($domain, $token);
+        if ($open['ok']) {
+            return $this->makeResult($open['count'], self::STATUS_OK, null, $configKey.':shopify');
+        }
+
+        return $this->impossible($configKey);
+    }
+
+    /**
+     * @return array{ok: bool, count: int}
+     */
+    protected function shopifyOpenConversations(string $domain, string $token): array
+    {
+        $query = <<<'GQL'
+        {
+          conversations(first: 50, query: "status:open") {
+            edges { node { id } }
+            pageInfo { hasNextPage }
+          }
+        }
+        GQL;
+
+        try {
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])
+                ->timeout(12)
+                ->connectTimeout(6)
+                ->post("https://{$domain}/admin/api/2024-10/graphql.json", ['query' => $query]);
+        } catch (Throwable $e) {
+            return ['ok' => false, 'count' => 0];
+        }
+
+        $json = $response->json() ?? [];
+        $edges = $json['data']['conversations']['edges'] ?? null;
+        if (! is_array($edges)) {
+            return ['ok' => false, 'count' => 0];
+        }
+
+        return ['ok' => true, 'count' => count($edges)];
     }
 
     /**
@@ -581,7 +663,7 @@ class MarketplacePendingMessagesService
             }
         }
 
-        return $this->makeResult(0, self::STATUS_UNSUPPORTED, 'Faire API does not expose a seller inbox count.', 'faire');
+        return $this->impossible('faire');
     }
 
     /**
@@ -608,7 +690,7 @@ class MarketplacePendingMessagesService
         }
 
         if ($response->status() === 404) {
-            return $this->makeResult(0, self::STATUS_UNSUPPORTED, 'Reverb conversations API is not available.', 'reverb');
+            return $this->impossible('reverb');
         }
         if (! $response->successful()) {
             return $this->makeResult(0, self::STATUS_ERROR, 'Reverb conversations HTTP '.$response->status(), 'reverb');
@@ -652,7 +734,15 @@ class MarketplacePendingMessagesService
             }
         }
 
-        return $this->makeResult(0, self::STATUS_UNSUPPORTED, 'Temu Open API does not expose a seller inbox count.', $label);
+        return $this->impossible($label);
+    }
+
+    /**
+     * @return array{pending_count: int, fetch_status: string, fetch_note: ?string, source: ?string}
+     */
+    protected function impossible(?string $source): array
+    {
+        return $this->makeResult(0, self::STATUS_UNSUPPORTED, self::NOTE_IMPOSSIBLE, $source);
     }
 
     /**
