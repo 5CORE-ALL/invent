@@ -3,16 +3,20 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\AmazonDataView;
+use App\Models\EbayMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Temu2DataView;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Pricing;
+use App\Models\TemuMetric;
 use App\Services\LmpSkuGroupService;
+use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\Temu2ApiService;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -22,8 +26,15 @@ use Illuminate\Support\Facades\Schema;
  */
 class Temu2ListingPublishService
 {
+    private const BRAND_NAME = '5 Core Inc';
+
+    private const MAX_IMAGES = 10;
+
     /** @var array<int, int> */
     private array $parentSpecIdByCat = [];
+
+    /** @var list<string> */
+    private array $attributeHintCorpus = [];
 
     /** @var array<string, float>|null */
     private ?array $priceByLookupKey = null;
@@ -120,7 +131,11 @@ class Temu2ListingPublishService
         $parentKey = $this->groupKeyForProduct($primary);
         $title = $this->resolveTitle($primary, $primarySku);
         if ($title === '') {
-            return ['success' => false, 'message' => 'No title found (product_master title80/title100/title150 or Shopify product_title).'];
+            return ['success' => false, 'message' => 'No Title Master title found. Set title80/title100/title150 on Title Master (not the SKU).'];
+        }
+        $description = $this->resolveDescription($primary, $primarySku);
+        if ($description === '') {
+            return ['success' => false, 'message' => 'No Description Master text found. Set description_1500 or Description Master for this SKU (not the SKU code).'];
         }
 
         $gallerySources = [];
@@ -143,14 +158,15 @@ class Temu2ListingPublishService
                 'product' => $product,
                 'price' => $price,
                 'qty' => $this->resolveQty($sku),
-                'dimensions' => $this->api->getProductDimensions($sku),
+                'dimensions' => $this->resolveDimensions($product),
             ];
         }
 
         $gallerySources = array_values(array_unique($gallerySources));
         if ($gallerySources === []) {
-            return ['success' => false, 'message' => 'No images found on product master (main_image / image1–image19). Add images on CP Master before publishing.'];
+            return ['success' => false, 'message' => 'No Image Master photos found. Add images on Image Master before publishing.'];
         }
+        $gallerySources = array_slice($gallerySources, 0, self::MAX_IMAGES);
 
         $upload = $this->uploadImages($gallerySources);
         if (($upload['error'] ?? null) !== null) {
@@ -163,7 +179,7 @@ class Temu2ListingPublishService
         while (count($hostedImages) < 3) {
             $hostedImages[] = $hostedImages[0];
         }
-        $hostedImages = array_slice($hostedImages, 0, 10);
+        $hostedImages = array_slice($hostedImages, 0, self::MAX_IMAGES);
 
         $catId = $this->resolveCatId($primarySku, $title, $hostedImages[0]);
         if ($catId === null) {
@@ -210,7 +226,7 @@ class Temu2ListingPublishService
             ];
         }
 
-        $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId);
+        $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId, $primary, $primarySku);
         $shipmentLimitDay = max(1, (int) config('services.temu2.shipment_limit_day', 2));
         $goodsOriginInfo = $this->buildGoodsOriginInfo();
         $outGoodsSn = mb_substr($this->sanitizeGoodsName($parentKey !== '' ? $parentKey : $primarySku), 0, 50);
@@ -226,9 +242,9 @@ class Temu2ListingPublishService
                 'goodsName' => $title,
                 'externalGoodsId' => $outGoodsSn,
                 'outGoodsSn' => $outGoodsSn,
-                'goodsDesc' => $this->resolveDescription($primary, $primarySku),
+                'goodsDesc' => $description,
                 'bulletPoints' => $this->resolveBullets($primary, $primarySku),
-                'brand' => ['noTrademark' => true],
+                'brand' => $this->resolveBrand(),
                 'importDesignation' => $goodsOriginInfo['importDesignation'],
                 'goodsGallery' => [
                     'goodsCarouselImage' => $hostedImages,
@@ -509,7 +525,7 @@ class Temu2ListingPublishService
             return ['status' => 'skipped_missing', 'reason' => 'Not in product master'];
         }
         if ($this->resolveSourceImages($product, $sku) === []) {
-            return ['status' => 'skipped_no_image', 'reason' => 'No images on product master'];
+            return ['status' => 'skipped_no_image', 'reason' => 'No Image Master photos'];
         }
 
         return ['status' => 'will_publish', 'reason' => ''];
@@ -639,21 +655,65 @@ class Temu2ListingPublishService
 
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
-        $candidates = [
-            $product->title80 ?? null,
-            $product->title100 ?? null,
-            $product->title150 ?? null,
-            $product->title60 ?? null,
-        ];
-
-        foreach ($candidates as $raw) {
-            $clean = $this->sanitizeGoodsName((string) $raw);
-            if ($clean !== '') {
+        foreach ($this->titleMasterCandidates($product) as $clean) {
+            if ($clean !== '' && ! $this->looksLikeSku($clean, $sku)) {
                 return $clean;
             }
         }
 
-        return $this->sanitizeGoodsName($sku);
+        $parent = $this->parentProductFor($product, $sku);
+        if ($parent) {
+            foreach ($this->titleMasterCandidates($parent) as $clean) {
+                if ($clean !== '' && ! $this->looksLikeSku($clean, $sku)) {
+                    return $clean;
+                }
+            }
+        }
+
+        try {
+            $ebay = EbayMetric::query()->whereIn('sku', $this->skuLookupKeys($sku))->first();
+            $clean = $this->sanitizeGoodsName((string) ($ebay?->ebay_title ?? ''));
+            if ($clean !== '' && ! $this->looksLikeSku($clean, $sku)) {
+                return $clean;
+            }
+        } catch (\Throwable) {
+        }
+
+        $shopify = $this->shopifyRow($sku);
+        $clean = $this->sanitizeGoodsName((string) ($shopify?->product_title ?? ''));
+        if ($clean !== '' && ! $this->looksLikeSku($clean, $sku)) {
+            return $clean;
+        }
+
+        return '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function titleMasterCandidates(ProductMaster $product): array
+    {
+        $out = [];
+        foreach (['title80', 'title100', 'title150', 'title60'] as $col) {
+            $clean = $this->sanitizeGoodsName((string) ($product->{$col} ?? ''));
+            if ($clean !== '') {
+                $out[] = $clean;
+            }
+        }
+
+        return $out;
+    }
+
+    private function looksLikeSku(string $text, string $sku): bool
+    {
+        $norm = static function (string $value): string {
+            return preg_replace('/[^A-Z0-9]/', '', strtoupper(trim($value))) ?? '';
+        };
+
+        $a = $norm($text);
+        $b = $norm($sku);
+
+        return $a !== '' && $b !== '' && $a === $b;
     }
 
     private function sanitizeGoodsName(string $name): string
@@ -670,21 +730,74 @@ class Temu2ListingPublishService
     {
         $metric = $this->metricRow($sku);
         $candidates = [
+            $metric?->description_master,
+            $product->description_1500 ?? null,
             $product->product_description ?? null,
+            $product->description_1000 ?? null,
             $product->description_800 ?? null,
             $product->description_600 ?? null,
-            $product->description_1000 ?? null,
-            $metric?->goods_desc,
-            $metric?->description_master,
         ];
+
+        $parent = $this->parentProductFor($product, $sku);
+        if ($parent) {
+            $candidates = array_merge($candidates, [
+                $parent->description_1500 ?? null,
+                $parent->product_description ?? null,
+                $parent->description_1000 ?? null,
+                $parent->description_800 ?? null,
+                $parent->description_600 ?? null,
+            ]);
+        }
+
         foreach ($candidates as $raw) {
-            $text = trim(strip_tags((string) $raw));
+            $text = $this->cleanDescriptionText((string) $raw, $sku);
             if ($text !== '') {
-                return mb_substr($text, 0, 2000);
+                return $text;
             }
         }
 
-        return $this->resolveTitle($product, $sku);
+        $fromOther = $this->descriptionFromOtherMarketplaces($sku);
+        if ($fromOther !== '') {
+            return $fromOther;
+        }
+
+        return '';
+    }
+
+    private function cleanDescriptionText(string $raw, string $sku): string
+    {
+        $text = trim(strip_tags(html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+        $text = trim($text);
+        if ($text === '' || $this->looksLikeSku($text, $sku)) {
+            return '';
+        }
+
+        return mb_substr($text, 0, 2000);
+    }
+
+    private function descriptionFromOtherMarketplaces(string $sku): string
+    {
+        $keys = $this->skuLookupKeys($sku);
+        if ($keys === []) {
+            return '';
+        }
+
+        foreach (ProductMasterMarketplaceMaps::descriptionTableMap() as $table) {
+            try {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'description_master')) {
+                    continue;
+                }
+                $raw = DB::table($table)->whereIn('sku', $keys)->value('description_master');
+                $text = $this->cleanDescriptionText((string) $raw, $sku);
+                if ($text !== '') {
+                    return $text;
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -969,41 +1082,19 @@ class Temu2ListingPublishService
 
         $this->pushProductMasterImages($product, $push);
 
-        if ($urls === []) {
-            $parentKey = $this->groupKeyForProduct($product);
-            if ($parentKey !== '' && strcasecmp($parentKey, trim($sku)) !== 0) {
-                $parentProduct = ProductMaster::query()
-                    ->whereNull('deleted_at')
-                    ->where('parent', $parentKey)
-                    ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['PARENT%'])
-                    ->first()
-                    ?: ProductMaster::query()
-                        ->whereNull('deleted_at')
-                        ->where('sku', $parentKey)
-                        ->first();
-                if ($parentProduct) {
-                    $this->pushProductMasterImages($parentProduct, $push);
-                }
-            }
-        }
-
-        if ($urls !== []) {
-            return $urls;
+        $parent = $this->parentProductFor($product, $sku);
+        if ($parent) {
+            $this->pushProductMasterImages($parent, $push);
         }
 
         $metric = $this->metricRow($sku);
-        if (! $metric) {
-            return [];
+        if ($metric) {
+            foreach ($this->decodeImageList($metric->image_master_json ?? null) as $url) {
+                $push($url);
+            }
         }
 
-        foreach ($this->decodeImageList($metric->image_master_json ?? null) as $url) {
-            $push($url);
-        }
-        foreach ($this->decodeImageList($metric->image_urls ?? null) as $url) {
-            $push($url);
-        }
-
-        return $urls;
+        return array_slice($urls, 0, self::MAX_IMAGES);
     }
 
     /**
@@ -1013,7 +1104,7 @@ class Temu2ListingPublishService
     {
         $push((string) ($product->main_image ?? ''));
         $push((string) ($product->main_image_brand ?? ''));
-        for ($i = 1; $i <= 19; $i++) {
+        for ($i = 1; $i <= 20; $i++) {
             $col = 'image'.$i;
             $push((string) ($product->{$col} ?? ''));
         }
@@ -1091,7 +1182,7 @@ class Temu2ListingPublishService
     private function uploadImages(array $sourceImages): array
     {
         $hosted = [];
-        foreach (array_slice($sourceImages, 0, 5) as $url) {
+        foreach (array_slice($sourceImages, 0, self::MAX_IMAGES) as $url) {
             if ($this->isTemuHostedImageUrl($url)) {
                 $hosted[] = $url;
                 continue;
@@ -1502,8 +1593,14 @@ class Temu2ListingPublishService
      *
      * @return list<array<string, mixed>>
      */
-    private function buildGoodsProperty(int $catId, string $costTemplateId = ''): array
+    private function buildGoodsProperty(int $catId, string $costTemplateId = '', ?ProductMaster $product = null, string $sku = ''): array
     {
+        if ($product && $sku !== '') {
+            $this->loadAttributeHintCorpus($product, $sku);
+        } else {
+            $this->attributeHintCorpus = [self::BRAND_NAME];
+        }
+
         $props = $this->loadCategoryAttributes($catId, $costTemplateId);
         if ($props === []) {
             Log::warning('Temu2 publish: no category attributes returned', ['catId' => $catId]);
@@ -1614,7 +1711,16 @@ class Temu2ListingPublishService
         }
 
         if (in_array($controlType, [0, 16, 19], true)) {
-            $entry['value'] = $this->defaultInputValueForAttribute($name);
+            $typed = $this->inputValueFromHints($name);
+            if ($typed === '') {
+                Log::info('Temu2 publish: left input attribute for manual fill', [
+                    'name' => $name,
+                    'refPid' => $refPid,
+                ]);
+
+                return null;
+            }
+            $entry['value'] = $typed;
             $units = $prop['valueUnitList'] ?? $prop['attributeValueUnitList'] ?? [];
             if (is_array($units) && $units !== []) {
                 $unitId = $units[0]['valueUnitId'] ?? null;
@@ -1829,17 +1935,24 @@ class Temu2ListingPublishService
             || str_contains($lower, 'voltage');
     }
 
-    private function defaultInputValueForAttribute(string $name): string
+    private function inputValueFromHints(string $name): string
     {
         $lower = strtolower($name);
-        if (str_contains($lower, 'battery') || str_contains($lower, 'wireless')) {
-            return 'No';
-        }
-        if (str_contains($lower, 'power')) {
-            return 'USB';
+        if (str_contains($lower, 'brand')) {
+            return self::BRAND_NAME;
         }
 
-        return 'Generic';
+        foreach ($this->attributeHintCorpus as $hint) {
+            $hint = trim($hint);
+            if ($hint === '' || $this->isGenericHint($hint)) {
+                continue;
+            }
+            if ($this->hintRelatesToAttribute($hint, $lower)) {
+                return mb_substr($hint, 0, 200);
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -1860,10 +1973,8 @@ class Temu2ListingPublishService
         }
 
         $name = strtolower($attributeName);
-        $preferNone = str_contains($name, 'battery') || str_contains($name, 'wireless');
-        $preferPower = str_contains($name, 'power') && ! str_contains($name, 'voltage');
-        $preferred = null;
         $selectedSet = array_map('intval', array_values($allSelectedVids));
+        $hintMatch = null;
 
         foreach ($values as $row) {
             if (! is_array($row)) {
@@ -1885,26 +1996,294 @@ class Temu2ListingPublishService
             }
 
             $value = trim((string) ($row['value'] ?? $row['specName'] ?? $row['name'] ?? $row['attributeValue'] ?? ''));
-            $lower = strtolower($value);
+            if ($value === '') {
+                continue;
+            }
 
-            if ($preferVids !== [] && in_array($vid, $preferVids, true)) {
+            if (str_contains($name, 'brand') && $this->isFiveCoreBrand($value)) {
                 return ['vid' => $vid, 'value' => $value];
             }
-            if (in_array($lower, ['unbranded', 'generic', 'does not apply', 'none', 'other', 'n/a', 'na'], true)) {
+            if ($this->valueMatchesHints($value)) {
                 return ['vid' => $vid, 'value' => $value];
             }
-            if ($preferNone && preg_match('/\b(no|none|not|without|does not|n\/a|wired|non-wireless)\b/i', $value)) {
-                return ['vid' => $vid, 'value' => $value];
-            }
-            if ($preferPower && preg_match('/\b(usb|plug|adapter|mains|ac|dc|electric)\b/i', $value)) {
-                return ['vid' => $vid, 'value' => $value];
-            }
-            if ($preferred === null) {
-                $preferred = ['vid' => $vid, 'value' => $value];
+            if ($hintMatch === null && $preferVids !== [] && in_array($vid, $preferVids, true) && $this->valueMatchesHints($value)) {
+                $hintMatch = ['vid' => $vid, 'value' => $value];
             }
         }
 
-        return $preferred;
+        return $hintMatch;
+    }
+
+    private function isFiveCoreBrand(string $value): bool
+    {
+        $norm = preg_replace('/[^A-Z0-9]/', '', strtoupper($value)) ?? '';
+
+        return in_array($norm, ['5COREINC', '5CORE', 'FIVECOREINC', 'FIVECORE'], true);
+    }
+
+    private function valueMatchesHints(string $value): bool
+    {
+        $value = trim($value);
+        if ($value === '' || $this->isGenericHint($value)) {
+            return false;
+        }
+
+        $needle = strtolower($value);
+        foreach ($this->attributeHintCorpus as $hint) {
+            $hay = strtolower(trim($hint));
+            if ($hay === '') {
+                continue;
+            }
+            if ($hay === $needle) {
+                return true;
+            }
+            if (mb_strlen($needle) >= 3 && (str_contains($hay, $needle) || str_contains($needle, $hay))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isGenericHint(string $value): bool
+    {
+        return in_array(strtolower(trim($value)), [
+            'yes', 'no', 'other', 'generic', 'none', 'n/a', 'na', 'unbranded',
+            'does not apply', 'unknown',
+        ], true);
+    }
+
+    private function hintRelatesToAttribute(string $hint, string $attributeName): bool
+    {
+        $hintLower = strtolower($hint);
+        foreach (preg_split('/[\s\/,-]+/', $attributeName) ?: [] as $token) {
+            $token = trim($token);
+            if (mb_strlen($token) < 4) {
+                continue;
+            }
+            if (str_contains($hintLower, $token)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveBrand(): array
+    {
+        $name = self::BRAND_NAME;
+        $types = [
+            'bg.local.goods.brand.get',
+            'temu.local.goods.brand.get',
+            'bg.goods.brand.get',
+        ];
+        $paramSets = [
+            ['brandName' => $name, 'pageSize' => 20, 'pageNo' => 1, 'language' => 'en'],
+            ['brandNameList' => [$name], 'pageSize' => 20, 'pageNo' => 1, 'language' => 'en'],
+        ];
+
+        foreach ($types as $type) {
+            foreach ($paramSets as $params) {
+                $data = $this->temuCallBody(array_merge(['type' => $type], $params), 30);
+                $result = is_array($data['result'] ?? null) ? $data['result'] : [];
+                $list = $result['brandList'] ?? $result['list'] ?? $result['pageItems'] ?? [];
+                if (! is_array($list)) {
+                    continue;
+                }
+                foreach ($list as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $brandName = trim((string) ($row['brandName'] ?? $row['name'] ?? ''));
+                    if ($brandName === '' || ! $this->isFiveCoreBrand($brandName)) {
+                        continue;
+                    }
+                    $id = $row['brandId'] ?? $row['vid'] ?? $row['id'] ?? null;
+                    if ($id) {
+                        return ['brandId' => (int) $id, 'brandName' => $name];
+                    }
+                }
+            }
+        }
+
+        return ['brandName' => $name];
+    }
+
+    /**
+     * Dim / Wt Items on product_master.Values (inches + lb) converted for Temu packageInfo.
+     *
+     * @return array{weight: string, length: string, width: string, height: string, weightUnit: string, volumeUnit: string}
+     */
+    private function resolveDimensions(ProductMaster $product): array
+    {
+        $values = is_array($product->Values) ? $product->Values : [];
+        $num = static function (array $keys) use ($values): ?float {
+            foreach ($keys as $key) {
+                if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
+                    return (float) $values[$key];
+                }
+            }
+
+            return null;
+        };
+
+        $lengthIn = $num(['l_decl', 'l', 'L', 'length']);
+        $widthIn = $num(['w_decl', 'w', 'W', 'width']);
+        $heightIn = $num(['h_decl', 'h', 'H', 'height']);
+        $weightLb = $num(['wt_decl', 'wt_act', 'weight_lb', 'wt']);
+        $weightKg = $num(['wt_act_kg', 'weight_kg', 'ctn_weight_kg']);
+
+        $toCm = static function (?float $inches): string {
+            if ($inches === null) {
+                return '1';
+            }
+
+            return (string) max(1, round($inches * 2.54, 2));
+        };
+
+        $weightG = '1';
+        if ($weightKg !== null) {
+            $weightG = (string) max(1, round($weightKg * 1000, 2));
+        } elseif ($weightLb !== null) {
+            $weightG = (string) max(1, round($weightLb * 453.592, 2));
+        }
+
+        return [
+            'weight' => $weightG,
+            'length' => $toCm($lengthIn),
+            'width' => $toCm($widthIn),
+            'height' => $toCm($heightIn),
+            'weightUnit' => 'g',
+            'volumeUnit' => 'cm',
+        ];
+    }
+
+    private function parentProductFor(ProductMaster $product, string $sku): ?ProductMaster
+    {
+        $parentKey = $this->groupKeyForProduct($product);
+        if ($parentKey === '' || strcasecmp($parentKey, trim($sku)) === 0) {
+            return null;
+        }
+
+        return ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('parent', $parentKey)
+            ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['PARENT%'])
+            ->first()
+            ?: ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->where('sku', $parentKey)
+                ->first();
+    }
+
+    private function loadAttributeHintCorpus(ProductMaster $product, string $sku): void
+    {
+        $hints = [self::BRAND_NAME, '5Core', '5 Core'];
+        $push = function (mixed $value) use (&$hints): void {
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    $this->flattenHintValues($item, $hints);
+                }
+
+                return;
+            }
+            $text = trim(strip_tags((string) $value));
+            if ($text !== '' && mb_strlen($text) <= 240) {
+                $hints[] = $text;
+            }
+        };
+
+        $values = is_array($product->Values) ? $product->Values : [];
+        $this->flattenHintValues($values, $hints);
+        foreach (['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'] as $col) {
+            $push($product->{$col} ?? '');
+        }
+
+        try {
+            $amazon = AmazonDataView::query()->whereIn('sku', $this->skuLookupKeys($sku))->first();
+            if ($amazon && is_array($amazon->value)) {
+                $this->flattenHintValues($amazon->value, $hints);
+            }
+        } catch (\Throwable) {
+        }
+
+        foreach ([Temu2Metric::class, TemuMetric::class] as $class) {
+            try {
+                $row = $class::query()->whereIn('sku', $this->skuLookupKeys($sku))->first();
+                if ($row) {
+                    foreach (['bullet_points', 'goods_summary', 'goods_desc'] as $col) {
+                        $push($row->{$col} ?? '');
+                    }
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        try {
+            $ebay = EbayMetric::query()->whereIn('sku', $this->skuLookupKeys($sku))->first();
+            $push($ebay?->ebay_title);
+        } catch (\Throwable) {
+        }
+
+        foreach (ProductMasterMarketplaceMaps::metricsTableMap() as $table) {
+            try {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
+                    continue;
+                }
+                $cols = [];
+                foreach (['item_specifics', 'attributes', 'product_attributes', 'goods_property'] as $col) {
+                    if (Schema::hasColumn($table, $col)) {
+                        $cols[] = $col;
+                    }
+                }
+                if ($cols === []) {
+                    continue;
+                }
+                $row = DB::table($table)->whereIn('sku', $this->skuLookupKeys($sku))->first($cols);
+                if (! $row) {
+                    continue;
+                }
+                foreach ($cols as $col) {
+                    $raw = $row->{$col} ?? null;
+                    if (is_string($raw)) {
+                        $decoded = json_decode($raw, true);
+                        if (is_array($decoded)) {
+                            $this->flattenHintValues($decoded, $hints);
+                            continue;
+                        }
+                    }
+                    $push($raw);
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        $this->attributeHintCorpus = array_values(array_unique(array_filter($hints, static fn ($h) => trim((string) $h) !== '')));
+    }
+
+    /**
+     * @param  list<string>  $hints
+     */
+    private function flattenHintValues(mixed $value, array &$hints): void
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                if (is_string($key) && ! is_numeric($key) && mb_strlen($key) <= 80) {
+                    $hints[] = trim($key);
+                }
+                $this->flattenHintValues($item, $hints);
+            }
+
+            return;
+        }
+
+        $text = trim(strip_tags((string) $value));
+        if ($text !== '' && mb_strlen($text) <= 240) {
+            $hints[] = $text;
+        }
     }
 
     /**
