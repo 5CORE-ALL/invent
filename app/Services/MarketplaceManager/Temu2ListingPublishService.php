@@ -233,10 +233,56 @@ class Temu2ListingPublishService
         $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId, $primary, $primarySku);
         $shipmentLimitDay = max(1, (int) config('services.temu2.shipment_limit_day', 2));
         $goodsOriginInfo = $this->buildGoodsOriginInfo();
-        $outGoodsSn = mb_substr($this->sanitizeGoodsName($parentKey !== '' ? $parentKey : $primarySku), 0, 50);
-        if ($outGoodsSn === '') {
-            $outGoodsSn = $primarySku;
+
+        $stillPrepared = [];
+        $stillSkuList = [];
+        foreach ($prepared as $index => $row) {
+            $remote = $this->remoteSkuDuplicate($row['sku']);
+            if ($remote !== null) {
+                $this->api->persistNewListing($row['sku'], $remote['goodsId'], $remote['skuId'] !== '' ? $remote['skuId'] : null);
+                $this->persistExtraListingFields($row['sku'], $row['price'], $row['qty']);
+                continue;
+            }
+            $stillPrepared[] = $row;
+            $stillSkuList[] = $skuList[$index];
         }
+        if ($stillPrepared === []) {
+            $this->forgetListingCaches();
+
+            return [
+                'success' => true,
+                'message' => 'SKU already exists on Temu 2. Linked the existing listing.',
+                'skus' => $skus,
+            ];
+        }
+        $prepared = $stillPrepared;
+        $skuList = $stillSkuList;
+
+        $existingGoodsId = $this->siblingGoodsId($parentKey);
+        if ($existingGoodsId !== '') {
+            $added = $this->addSkusToExistingGoods($existingGoodsId, $skuList);
+            if ($added['success'] ?? false) {
+                $firstSkuId = $this->persistPublishedRows($prepared, $existingGoodsId, $added['data'] ?? []);
+
+                return [
+                    'success' => true,
+                    'message' => 'Added '.count($prepared).' variation(s) to the existing Temu 2 listing.',
+                    'goods_id' => $existingGoodsId,
+                    'sku_id' => $firstSkuId !== '' ? $firstSkuId : null,
+                    'skus' => array_values(array_map(static fn ($row) => $row['sku'], $prepared)),
+                ];
+            }
+            Log::warning('Temu2 publish: add SKU to existing goods failed, creating a new listing', [
+                'parent' => $parentKey,
+                'goods_id' => $existingGoodsId,
+                'message' => $added['message'] ?? '',
+            ]);
+        }
+
+        $outGoodsSn = $this->uniqueOutGoodsSn(
+            $existingGoodsId !== '' ? $primarySku : ($parentKey !== '' ? $parentKey : $primarySku),
+            $primarySku
+        );
 
         $payloadV2 = [
             'type' => (string) config('services.temu2.goods_add_type', 'temu.local.goods.v2.add'),
@@ -284,18 +330,36 @@ class Temu2ListingPublishService
                 $data = $fallback['data'];
             } else {
                 $msg = $this->apiErrorMessage($data);
-                $fallbackMsg = $this->apiErrorMessage($fallback['data'] ?? []);
-                Log::warning('Temu2 publish add failed', [
-                    'parent' => $parentKey,
-                    'skus' => $skus,
-                    'v2' => $msg,
-                    'v1' => $fallbackMsg,
-                ]);
+                $retrySn = $this->uniqueOutGoodsSn($primarySku, $primarySku.'-'.substr(md5($primarySku), 0, 6));
+                if ($this->isDuplicateSkuError($msg) && $retrySn !== '' && strcasecmp($retrySn, $outGoodsSn) !== 0) {
+                    $payloadV2['goodsBasic']['outGoodsSn'] = $retrySn;
+                    $payloadV2['goodsBasic']['externalGoodsId'] = $retrySn;
+                    $retry = $this->temuCallBody($payloadV2, 120);
+                    if ($retry['success'] ?? false) {
+                        $data = $retry;
+                    } else {
+                        $retryFallback = $this->addViaV1($payloadV2);
+                        if ($retryFallback['success'] ?? false) {
+                            $data = $retryFallback['data'];
+                        } else {
+                            $msg = $this->apiErrorMessage($retry);
+                        }
+                    }
+                }
+                if (! ($data['success'] ?? false)) {
+                    $fallbackMsg = $this->apiErrorMessage($fallback['data'] ?? []);
+                    Log::warning('Temu2 publish add failed', [
+                        'parent' => $parentKey,
+                        'skus' => $skus,
+                        'v2' => $msg,
+                        'v1' => $fallbackMsg,
+                    ]);
 
-                return [
-                    'success' => false,
-                    'message' => $msg !== '' ? $msg : 'Temu 2 add-goods API rejected the listing.',
-                ];
+                    return [
+                        'success' => false,
+                        'message' => $msg !== '' ? $msg : 'Temu 2 add-goods API rejected the listing.',
+                    ];
+                }
             }
         }
 
@@ -304,30 +368,7 @@ class Temu2ListingPublishService
             return ['success' => false, 'message' => 'Temu 2 add succeeded but returned no goodsId.'];
         }
 
-        $infoBySku = [];
-        foreach ($data['result']['skuInfoList'] ?? [] as $info) {
-            if (! is_array($info)) {
-                continue;
-            }
-            foreach (['outSkuSn', 'externalSkuId', 'extCode'] as $key) {
-                $code = strtoupper(trim((string) ($info[$key] ?? '')));
-                if ($code !== '') {
-                    $infoBySku[$code] = $info;
-                }
-            }
-        }
-
-        $firstSkuId = '';
-        foreach ($prepared as $index => $row) {
-            $info = $infoBySku[strtoupper($row['sku'])] ?? (($data['result']['skuInfoList'][$index] ?? []) ?: []);
-            $skuId = trim((string) ($info['skuId'] ?? ''));
-            if ($firstSkuId === '' && $skuId !== '') {
-                $firstSkuId = $skuId;
-            }
-            $this->api->persistNewListing($row['sku'], $goodsId, $skuId !== '' ? $skuId : null);
-            $this->persistExtraListingFields($row['sku'], $row['price'], $row['qty']);
-        }
-        $this->forgetListingCaches();
+        $firstSkuId = $this->persistPublishedRows($prepared, $goodsId, $data);
 
         Log::info('Temu2 publish: listed', [
             'parent' => $parentKey,
@@ -656,11 +697,12 @@ class Temu2ListingPublishService
             return '';
         }
 
-        $goodsId = Temu2Metric::query()
-            ->where('sku', $sku)
-            ->orWhere('sku', strtoupper($sku))
-            ->orWhere('sku', strtolower($sku))
-            ->value('goods_id');
+        $keys = $this->skuLookupKeys($sku);
+        if ($keys === []) {
+            return '';
+        }
+
+        $goodsId = Temu2Metric::query()->whereIn('sku', $keys)->value('goods_id');
 
         return trim((string) $goodsId);
     }
@@ -2322,6 +2364,177 @@ class Temu2ListingPublishService
         if ($text !== '' && mb_strlen($text) <= 240) {
             $hints[] = $text;
         }
+    }
+
+    /**
+     * @param  list<array{sku: string, price: float, qty: int}>  $prepared
+     * @param  array<string, mixed>  $data
+     */
+    private function persistPublishedRows(array $prepared, string $goodsId, array $data): string
+    {
+        $infoBySku = [];
+        foreach ($data['result']['skuInfoList'] ?? [] as $info) {
+            if (! is_array($info)) {
+                continue;
+            }
+            foreach (['outSkuSn', 'externalSkuId', 'extCode'] as $key) {
+                $code = strtoupper(trim((string) ($info[$key] ?? '')));
+                if ($code !== '') {
+                    $infoBySku[$code] = $info;
+                }
+            }
+        }
+
+        $firstSkuId = '';
+        foreach ($prepared as $index => $row) {
+            $info = $infoBySku[strtoupper((string) $row['sku'])] ?? (($data['result']['skuInfoList'][$index] ?? []) ?: []);
+            $skuId = trim((string) ($info['skuId'] ?? ''));
+            if ($firstSkuId === '' && $skuId !== '') {
+                $firstSkuId = $skuId;
+            }
+            $this->api->persistNewListing((string) $row['sku'], $goodsId, $skuId !== '' ? $skuId : null);
+            $this->persistExtraListingFields((string) $row['sku'], (float) $row['price'], (int) $row['qty']);
+        }
+        $this->forgetListingCaches();
+
+        return $firstSkuId;
+    }
+
+    private function siblingGoodsId(string $parentKey): string
+    {
+        if ($parentKey === '') {
+            return '';
+        }
+
+        $skus = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where(function ($q) use ($parentKey) {
+                $q->where('parent', $parentKey)->orWhere('sku', $parentKey);
+            })
+            ->pluck('sku')
+            ->all();
+        $skus[] = $parentKey;
+
+        foreach (array_unique(array_map('strval', $skus)) as $sku) {
+            $id = $this->localGoodsId($sku);
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $skuList
+     * @return array{success: bool, data?: array<string, mixed>, message?: string}
+     */
+    private function addSkusToExistingGoods(string $goodsId, array $skuList): array
+    {
+        $attempts = [
+            'bg.local.goods.sku.add',
+            'temu.local.goods.sku.add',
+            'bg.local.goods.update',
+            'temu.local.goods.update',
+            'bg.local.goods.partial.update',
+        ];
+        $lastMsg = '';
+        foreach ($attempts as $type) {
+            $data = $this->temuCallBody([
+                'type' => $type,
+                'language' => 'en',
+                'goodsId' => (int) $goodsId,
+                'skuList' => $skuList,
+            ], 120);
+            if ($data['success'] ?? false) {
+                return ['success' => true, 'data' => $data];
+            }
+            $lastMsg = $this->apiErrorMessage($data);
+            Log::info('Temu2 add SKU to existing goods failed', [
+                'type' => $type,
+                'goods_id' => $goodsId,
+                'message' => $lastMsg,
+            ]);
+        }
+
+        return ['success' => false, 'message' => $lastMsg];
+    }
+
+    private function uniqueOutGoodsSn(string $preferred, string $fallback): string
+    {
+        foreach ([$preferred, $fallback, $fallback.'-'.substr(md5($fallback), 0, 6)] as $raw) {
+            $sn = mb_substr($this->sanitizeGoodsName((string) $raw), 0, 40);
+            if ($sn === '') {
+                continue;
+            }
+            if (! $this->outGoodsSnTaken($sn)) {
+                return $sn;
+            }
+        }
+
+        return mb_substr($this->sanitizeGoodsName($fallback).'-'.time(), 0, 40);
+    }
+
+    private function outGoodsSnTaken(string $sn): bool
+    {
+        foreach (['bg.local.goods.out.sn.check', 'temu.local.goods.out.sn.check'] as $type) {
+            $data = $this->temuCallBody([
+                'type' => $type,
+                'outGoodsSnList' => [$sn],
+                'language' => 'en',
+            ], 30);
+            $list = $data['result']['resultList'] ?? $data['result']['list'] ?? [];
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $row) {
+                if (is_array($row) && ! empty($row['isDuplicate'])) {
+                    return true;
+                }
+            }
+            if ($data['success'] ?? false) {
+                return false;
+            }
+        }
+
+        return $this->siblingGoodsId($sn) !== '';
+    }
+
+    /**
+     * @return array{goodsId: string, skuId: string}|null
+     */
+    private function remoteSkuDuplicate(string $sku): ?array
+    {
+        foreach (['bg.local.goods.sku.out.sn.check', 'temu.local.goods.sku.out.sn.check'] as $type) {
+            $data = $this->temuCallBody([
+                'type' => $type,
+                'outSkuSnList' => [$sku],
+                'language' => 'en',
+            ], 30);
+            $list = $data['result']['resultList'] ?? $data['result']['list'] ?? [];
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $row) {
+                if (! is_array($row) || empty($row['isDuplicate'])) {
+                    continue;
+                }
+                $goodsId = trim((string) ($row['duplicateGoodsId'] ?? $row['goodsId'] ?? ''));
+                $skuId = trim((string) ($row['duplicateSkuId'] ?? $row['skuId'] ?? ''));
+                if ($goodsId !== '') {
+                    return ['goodsId' => $goodsId, 'skuId' => $skuId];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function isDuplicateSkuError(string $message): bool
+    {
+        return str_contains($message, '100010050')
+            || stripos($message, 'sku duplicated') !== false
+            || (stripos($message, 'outskusn') !== false && stripos($message, 'duplicat') !== false);
     }
 
     /**
