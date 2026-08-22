@@ -684,11 +684,16 @@
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
-                        const channel = (cell.getRow().getData().channel || '').trim();
+                        const row = cell.getRow().getData();
+                        const channel = (row.channel || '').trim();
+                        const listingUrl = String(row.listing_url || '').trim();
                         const color = v === 0 ? '#198754' : '#dc3545';
                         const dotColor = v === 0 ? '#198754' : (v > 0 ? '#dc3545' : '#6c757d');
                         const chartIcon = `<i class="fas fa-circle ml-metric-chart-icon ms-1" data-channel="${escapeHtml(channel)}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
-                        return `<span style="color:${color};font-weight:600;">${v.toLocaleString('en-US')}</span>${chartIcon}`;
+                        const countHtml = listingUrl
+                            ? `<a href="${escapeHtml(listingUrl)}?missing=1" class="ml-channel-listing-link" style="color:${color};font-weight:600;" title="Open Missing L SKUs">${v.toLocaleString('en-US')}</a>`
+                            : `<span style="color:${color};font-weight:600;">${v.toLocaleString('en-US')}</span>`;
+                        return `${countHtml}${chartIcon}`;
                     },
                     cellClick: function(e, cell) {
                         if (e.target.classList.contains('ml-metric-chart-icon')) {

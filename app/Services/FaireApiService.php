@@ -164,6 +164,111 @@ class FaireApiService
     }
 
     /**
+     * POST /products
+     *
+     * @param  array<string, mixed>  $body
+     * @return array{success: bool, message?: string, product_id?: string, data?: array<string, mixed>}
+     */
+    public function createProduct(array $body): array
+    {
+        $res = $this->request('POST', '/products', [], $body);
+        if (! empty($res['blocked_by_cloudflare'])) {
+            return ['success' => false, 'message' => 'Blocked by Cloudflare'];
+        }
+        if (empty($res['ok']) || ! is_array($res['json'])) {
+            return ['success' => false, 'message' => $this->errorFromResponse($res)];
+        }
+
+        $product = $res['json']['product'] ?? $res['json'];
+        $productId = trim((string) (is_array($product) ? ($product['id'] ?? '') : ''));
+
+        return [
+            'success' => $productId !== '',
+            'message' => $productId !== '' ? 'Product created.' : $this->errorFromResponse($res),
+            'product_id' => $productId,
+            'data' => is_array($product) ? $product : [],
+        ];
+    }
+
+    /**
+     * POST /products/{id}/variants
+     *
+     * @param  array<string, mixed>  $body
+     * @return array{success: bool, message?: string, variant_id?: string}
+     */
+    public function createVariant(string $productId, array $body): array
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return ['success' => false, 'message' => 'Faire product id is required.'];
+        }
+
+        $res = $this->request('POST', '/products/'.$productId.'/variants', [], $body);
+        if (! empty($res['blocked_by_cloudflare'])) {
+            return ['success' => false, 'message' => 'Blocked by Cloudflare'];
+        }
+        if (empty($res['ok']) || ! is_array($res['json'])) {
+            return ['success' => false, 'message' => $this->errorFromResponse($res)];
+        }
+
+        $variant = $res['json']['variant'] ?? $res['json']['product_variant'] ?? $res['json'];
+        $variantId = trim((string) (is_array($variant) ? ($variant['id'] ?? '') : ''));
+
+        return [
+            'success' => true,
+            'message' => 'Variant created.',
+            'variant_id' => $variantId,
+        ];
+    }
+
+    /**
+     * @return array{success: bool, types?: list<array<string, mixed>>, message?: string}
+     */
+    public function getTaxonomyTypes(): array
+    {
+        foreach (['/products/taxonomy-types', '/taxonomy-types'] as $path) {
+            $res = $this->request('GET', $path);
+            if (empty($res['ok']) || ! is_array($res['json'])) {
+                continue;
+            }
+            $types = $res['json']['taxonomy_types'] ?? $res['json']['types'] ?? $res['json'];
+            if (! is_array($types)) {
+                continue;
+            }
+
+            return ['success' => true, 'types' => array_values($types)];
+        }
+
+        return ['success' => false, 'types' => [], 'message' => 'Could not load Faire taxonomy types.'];
+    }
+
+    /**
+     * @param  array{json?: ?array, error?: ?string, status?: int}  $res
+     */
+    protected function errorFromResponse(array $res): string
+    {
+        $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+        $message = $json['message'] ?? $json['error'] ?? $json['error_description'] ?? null;
+        if (is_string($message) && trim($message) !== '') {
+            return trim($message);
+        }
+        if (isset($json['errors']) && is_array($json['errors'])) {
+            $first = reset($json['errors']);
+            if (is_string($first) && $first !== '') {
+                return $first;
+            }
+            if (is_array($first)) {
+                $nested = $first['message'] ?? $first[0] ?? null;
+                if (is_string($nested) && $nested !== '') {
+                    return $nested;
+                }
+            }
+        }
+
+        return $res['error'] ?? ('Faire API request failed HTTP '.($res['status'] ?? 0));
+    }
+
+    /**
      * PATCH /product-inventory/by-skus
      * Body: { inventories: [{ sku, on_hand_quantity }] }
      *

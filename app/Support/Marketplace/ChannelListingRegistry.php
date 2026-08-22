@@ -200,11 +200,11 @@ class ChannelListingRegistry
             'faire' => [
                 'dataView' => \App\Models\FaireDataView::class,
                 'status' => \App\Models\FaireListingStatus::class,
-                // Listed = present in Faire products API (faire_metric), not sheet prices.
-                'listed' => ['type' => 'column', 'model' => FaireMetric::class, 'column' => 'sku'],
-                'id_field' => 'listing_id',
-                'buyer_tpl' => null,
-                'seller_tpl' => null,
+                // Listed = present in Faire products API (faire_metric).
+                'listed' => ['type' => 'custom', 'method' => 'listedFaire'],
+                'id_field' => 'product_id',
+                'buyer_tpl' => 'https://www.faire.com/product/{id}',
+                'seller_tpl' => 'https://www.faire.com/brand-portal/my-shop/products',
             ],
             'fbmarketplace' => [
                 'dataView' => \App\Models\FBMarketplaceDataView::class,
@@ -417,6 +417,34 @@ class ChannelListingRegistry
                 $skus
             ),
         };
+    }
+
+    /**
+     * Faire Listed = SKU present in faire_metric. Listing id prefers product_id.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedFaire(array $skus): array
+    {
+        if ($skus === [] || ! class_exists(FaireMetric::class)) {
+            return [];
+        }
+
+        $map = [];
+        FaireMetric::query()
+            ->whereIn('sku', $skus)
+            ->get(['sku', 'product_id'])
+            ->each(function ($row) use (&$map) {
+                $sku = trim((string) $row->sku);
+                if ($sku === '') {
+                    return;
+                }
+                $id = trim((string) ($row->product_id ?? ''));
+                $map[strtolower($sku)] = $id !== '' ? $id : $sku;
+            });
+
+        return $map;
     }
 
     /**

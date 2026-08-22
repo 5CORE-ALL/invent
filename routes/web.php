@@ -154,6 +154,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayThreeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayVariationController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingFaireController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingFBMarketplaceController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingFBShopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingInstagramShopController;
@@ -4720,6 +4721,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_temu2/publish-preview', [ListingTemu2Controller::class, 'publishPreview'])->name('listing_temu2.publish.preview');
     Route::get('/listing_temu2/export', [ListingTemu2Controller::class, 'export'])->name('listing_temu2.export');
 
+    Route::get('/listing-faire', [ListingFaireController::class, 'listingFaire'])->name('listing.faire');
+    Route::get('/listing_faire/view-data', [ListingFaireController::class, 'getViewListingFaireData']);
+    Route::post('/listing_faire/save-status', [ListingFaireController::class, 'saveStatus']);
+    Route::post('/listing_faire/import', [ListingFaireController::class, 'import'])->name('listing_faire.import');
+    Route::get('/listing_faire/export', [ListingFaireController::class, 'export'])->name('listing_faire.export');
+
     Route::post('/listing-common/publish-preview', [ListingPublishCommonController::class, 'preview'])->name('listing.common.publish.preview');
     Route::post('/listing-common/publish', [ListingPublishCommonController::class, 'publish'])->name('listing.common.publish');
     Route::post('/listing-publish-preview', [ListingPublishCommonController::class, 'preview']);
@@ -7397,7 +7404,7 @@ Route::get('/css/{path}', function (string $path) {
 // STEP 7: SHOPIFY WILDCARD – MUST BE ABSOLUTELY LAST (catches /{first}/{second} only)
 // =============================================================================
 Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView'])
-    ->where('first', '^(?!listing_temu2$)(?!listing-temu2$)(?!listing-common$).+');
+    ->where('first', '^(?!listing_temu2$)(?!listing-temu2$)(?!listing-common$)(?!listing_faire$)(?!listing-faire$).+');
 
 // Temporary test route to debug On Sea Transit
 Route::get('/test-on-sea', function() {

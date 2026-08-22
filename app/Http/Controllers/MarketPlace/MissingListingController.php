@@ -25,6 +25,11 @@ class MissingListingController extends Controller
 {
     private const TZ = 'America/Los_Angeles';
 
+    /** Default Seller Portal when channel_master.seller_link is empty. */
+    private const DEFAULT_SELLER_PORTALS = [
+        'faire' => 'https://www.faire.com/brand-portal/my-shop/products',
+    ];
+
     public function index()
     {
         return view('market-places.Missing_listing');
@@ -79,7 +84,7 @@ class MissingListingController extends Controller
                             'nrl' => null,
                             'listed' => null,
                             'missing_listing' => null,
-                            'seller_portal' => $hasSellerLink ? ($master->seller_link ?? null) : null,
+                            'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
                         ];
                     }
 
@@ -98,7 +103,7 @@ class MissingListingController extends Controller
                         'nrl' => (int) ($listingCounts['NRL'] ?? 0),
                         'listed' => (int) ($listingCounts['Listed'] ?? 0),
                         'missing_listing' => (int) ($listingCounts['Pending'] ?? 0),
-                        'seller_portal' => $hasSellerLink ? ($master->seller_link ?? null) : null,
+                        'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
                     ];
                 })
                 ->values();
@@ -237,6 +242,29 @@ class MissingListingController extends Controller
 
             return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => []], 500);
         }
+    }
+
+    private function sellerPortalFor(ChannelMaster $master, bool $hasSellerLink): ?string
+    {
+        if (! $hasSellerLink) {
+            return null;
+        }
+
+        $stored = trim((string) ($master->seller_link ?? ''));
+        if ($stored !== '') {
+            return $stored;
+        }
+
+        $key = strtolower(trim((string) $master->channel));
+        $default = self::DEFAULT_SELLER_PORTALS[$key] ?? null;
+        if ($default === null) {
+            return null;
+        }
+
+        $master->seller_link = $default;
+        $master->save();
+
+        return $default;
     }
 
     public function updateSellerPortal(Request $request)

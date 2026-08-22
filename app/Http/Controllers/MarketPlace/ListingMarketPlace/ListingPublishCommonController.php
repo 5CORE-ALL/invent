@@ -12,10 +12,17 @@ class ListingPublishCommonController extends Controller
     {
         $channel = strtolower(trim((string) $request->input('channel', '')));
         $skus = $this->skusFromRequest($request);
-        if ($channel === '' || $skus === []) {
+        if ($skus === []) {
             return response()->json([
                 'success' => false,
                 'message' => 'Select at least one SKU.',
+                'groups' => [],
+            ], 422);
+        }
+        if ($channel === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Marketplace channel is missing. Refresh the page and try Publish again.',
                 'groups' => [],
             ], 422);
         }
@@ -31,10 +38,16 @@ class ListingPublishCommonController extends Controller
 
         $channel = strtolower(trim((string) $request->input('channel', '')));
         $skus = $this->skusFromRequest($request);
-        if ($channel === '' || $skus === []) {
+        if ($skus === []) {
             return response()->json([
                 'success' => false,
                 'message' => 'SKU is required.',
+            ], 422);
+        }
+        if ($channel === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Marketplace channel is missing. Refresh the page and try Publish again.',
             ], 422);
         }
 

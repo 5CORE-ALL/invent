@@ -10,8 +10,10 @@ use Illuminate\Support\Collection;
 
 class ListingVariationPreviewService
 {
-    public function __construct(private Temu2ListingPublishService $temu2)
-    {
+    public function __construct(
+        private Temu2ListingPublishService $temu2,
+        private FaireListingPublishService $faire,
+    ) {
     }
 
     /**
@@ -45,6 +47,9 @@ class ListingVariationPreviewService
         $channel = strtolower(trim($channel));
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
             return $this->temu2->publishSkus($skus, $expandSiblings);
+        }
+        if ($channel === 'faire') {
+            return $this->faire->publishSkus($skus, $expandSiblings);
         }
 
         $label = $this->channelLabel($channel);
@@ -229,6 +234,7 @@ class ListingVariationPreviewService
             'wayfair' => 'Wayfair',
             'walmart' => 'Walmart',
             'macys' => "Macy's",
+            'faire' => 'Faire',
             'pls' => 'PLS',
             'doba' => 'Doba',
             'reverb' => 'Reverb',
