@@ -13,6 +13,7 @@ use App\Models\ShopifySku;
 use App\Models\StoreListingPrice;
 use App\Services\ChannelPromoPricingService;
 use App\Services\StorePricePushService;
+use App\Services\StorePriceSyncService;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -634,7 +635,7 @@ class Shopifyb2bController extends Controller
     /**
      * Push saved S PRC to business5core.com special/selling price.
      */
-    public function pushSpriceToWebsite(Request $request, StorePricePushService $push)
+    public function pushSpriceToWebsite(Request $request, StorePricePushService $push, StorePriceSyncService $sync)
     {
         $sku = trim((string) $request->input('sku'));
         $sprice = $request->input('sprice', $request->input('price'));
@@ -643,9 +644,52 @@ class Shopifyb2bController extends Controller
         }
 
         $result = $push->pushSprice($sku, (float) $sprice);
-        $status = ($result['success'] ?? false) ? 200 : 422;
+        if (! ($result['success'] ?? false)) {
+            return response()->json($result, 422);
+        }
 
-        return response()->json($result, $status);
+        $pulled = [
+            'price' => isset($result['price']) ? (float) $result['price'] : (float) $sprice,
+            'views' => null,
+            'sold' => null,
+        ];
+        try {
+            $sync->sync($sku);
+            $storeRow = StoreListingPrice::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->orderByDesc('is_variant')
+                ->first();
+            if ($storeRow) {
+                if ($storeRow->selling_price !== null) {
+                    $pulled['price'] = (float) $storeRow->selling_price;
+                }
+                $pulled['views'] = $storeRow->views !== null ? (int) $storeRow->views : null;
+                $pulled['sold'] = $storeRow->sold !== null ? (int) $storeRow->sold : null;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Store pull after B2B push failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $sku]);
+        $existing = is_array($dataView->value)
+            ? $dataView->value
+            : (json_decode((string) $dataView->value, true) ?: []);
+        $existing['SPRICE'] = $pulled['price'];
+        $existing['SPRICE_STATUS'] = 'pushed';
+        $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+        $dataView->value = $existing;
+        $dataView->save();
+
+        return response()->json(array_merge($result, [
+            'success' => true,
+            'price' => $pulled['price'],
+            'views' => $pulled['views'],
+            'sold' => $pulled['sold'],
+            'pulled' => true,
+        ]));
     }
 
     private function saveBulkSpriceUpdates(array $updates)

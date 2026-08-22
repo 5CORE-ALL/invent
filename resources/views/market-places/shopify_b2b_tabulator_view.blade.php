@@ -1454,13 +1454,16 @@
             }).done(function (resp) {
                 if (row && resp && resp.success) {
                     const live = parseFloat(resp.price) || sprice;
-                    row.update({
+                    const patch = {
                         Price: live,
                         SPRICE: live,
                         SPRICE_STATUS: 'pushed',
                         PUSH_PRC_STATUS: 'pushed',
                         has_custom_sprice: true
-                    });
+                    };
+                    if (resp.views != null) patch.Views = parseInt(resp.views, 10) || 0;
+                    if (resp.sold != null) patch.Sold = parseInt(resp.sold, 10) || 0;
+                    row.update(patch);
                     try { row.reformat(); } catch (e) { /* ignore */ }
                 }
             }).fail(function (xhr) {
@@ -2423,10 +2426,12 @@
                         if (isShopifyB2bParentRow(rowData)) return '';
                         const sku = String(rowData['(Child) sku'] || '');
                         const status = String(rowData.SPRICE_STATUS || cell.getValue() || '');
+                        if (status === 'pushed') {
+                            return '<i class="fa-solid fa-check-double" style="color:#28a745;font-size:16px;" title="Pushed — live price pulled"></i>';
+                        }
                         let color = '#fd7e14';
                         let tip = 'Push S PRC to website';
-                        if (status === 'pushed') { color = '#198754'; tip = 'Pushed'; }
-                        else if (status === 'error') { color = '#dc3545'; tip = 'Last push failed'; }
+                        if (status === 'error') { color = '#dc3545'; tip = 'Last push failed'; }
                         else if (status === 'processing') { color = '#fd7e14'; tip = 'Pushing…'; }
                         const icon = status === 'processing'
                             ? 'fa-spinner fa-spin'
