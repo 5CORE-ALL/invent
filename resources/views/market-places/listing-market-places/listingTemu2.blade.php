@@ -544,6 +544,7 @@
 
         .temu2-publish-status.is-publish { color: #15803d; }
         .temu2-publish-status.is-skip { color: #64748b; }
+        .temu2-publish-status.is-missing { color: #b45309; }
 
         #temu2-publish-progress {
             font-size: 13px;
@@ -1242,7 +1243,8 @@
                     return '<span class="temu2-publish-status is-publish">Will publish</span>';
                 }
                 const text = reason || 'Skipped';
-                return `<span class="temu2-publish-status is-skip">${escapeHtml(text)}</span>`;
+                const missing = ['skipped_no_title', 'skipped_no_description', 'skipped_no_image', 'skipped_no_dim'].indexOf(status) !== -1;
+                return `<span class="temu2-publish-status ${missing ? 'is-missing' : 'is-skip'}">${escapeHtml(text)}</span>`;
             }
 
             function renderPublishGroups(groups) {
@@ -1261,11 +1263,10 @@
                     html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU (spec)</th><th>INV</th><th>Status</th></tr></thead><tbody>';
                     (group.children || []).forEach(function (child) {
                         const sku = String(child.sku || '');
-                        const listed = child.status === 'skipped_listed' || child.status === 'skipped_parent' || child.status === 'skipped_nrl';
-                        const publishable = child.status === 'will_publish' || child.status === 'skipped_no_price';
+                        const publishable = child.status === 'will_publish';
                         if (publishable) canPublish = true;
                         html += '<tr>';
-                        html += `<td><input type="checkbox" class="temu2-publish-sku-check" data-sku="${escapeHtml(sku)}" ${publishable ? 'checked' : ''}${listed ? ' disabled' : ''}></td>`;
+                        html += `<td><input type="checkbox" class="temu2-publish-sku-check" data-sku="${escapeHtml(sku)}" ${publishable ? 'checked' : ''} ${publishable ? '' : 'disabled'}></td>`;
                         html += `<td><span class="sku-cell"><span class="sku-cell-text">${escapeHtml(sku)}</span><button type="button" class="copy-sku-btn" data-sku="${escapeHtml(sku)}" title="Copy SKU"><i class="fas fa-copy"></i></button></span></td>`;
                         html += `<td>${escapeHtml(String(child.inv ?? 0))}</td>`;
                         html += `<td>${publishStatusLabel(child.status, child.reason)}</td>`;

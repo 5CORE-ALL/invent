@@ -131,11 +131,11 @@ class Temu2ListingPublishService
         $parentKey = $this->groupKeyForProduct($primary);
         $title = $this->resolveTitle($primary, $primarySku);
         if ($title === '') {
-            return ['success' => false, 'message' => 'No Title Master title found. Set title80/title100/title150 on Title Master (not the SKU).'];
+            return ['success' => false, 'message' => $primarySku.': Title missing in Title Master'];
         }
         $description = $this->resolveDescription($primary, $primarySku);
         if ($description === '') {
-            return ['success' => false, 'message' => 'No Description Master text found. Set description_1500 or Description Master for this SKU (not the SKU code).'];
+            return ['success' => false, 'message' => $primarySku.': Description missing in Description Master'];
         }
 
         $gallerySources = [];
@@ -144,6 +144,10 @@ class Temu2ListingPublishService
             $product = $products->get($sku);
             if (! $product) {
                 return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
+            }
+            $blocked = $this->classifyChildSku($sku);
+            if (($blocked['status'] ?? '') !== 'will_publish') {
+                return ['success' => false, 'message' => $sku.': '.($blocked['reason'] !== '' ? $blocked['reason'] : 'Masters are not ready')];
             }
             $price = $this->resolvePrice($sku);
             if ($price === null || $price <= 0) {
@@ -486,7 +490,7 @@ class Temu2ListingPublishService
                 'status' => $classified['status'],
                 'reason' => $classified['reason'],
             ];
-            if (in_array($classified['status'], ['will_publish', 'skipped_no_price'], true)) {
+            if (($classified['status'] ?? '') === 'will_publish') {
                 $publishSkus[] = $sku;
             }
         }
@@ -524,11 +528,30 @@ class Temu2ListingPublishService
         if (! $product) {
             return ['status' => 'skipped_missing', 'reason' => 'Not in product master'];
         }
+
+        return $this->masterReadiness($product, $sku)
+            ?? ['status' => 'will_publish', 'reason' => ''];
+    }
+
+    /**
+     * @return array{status: string, reason: string}|null
+     */
+    private function masterReadiness(ProductMaster $product, string $sku): ?array
+    {
+        if ($this->resolveTitle($product, $sku) === '') {
+            return ['status' => 'skipped_no_title', 'reason' => 'Title missing in Title Master'];
+        }
+        if ($this->resolveDescription($product, $sku) === '') {
+            return ['status' => 'skipped_no_description', 'reason' => 'Description missing in Description Master'];
+        }
         if ($this->resolveSourceImages($product, $sku) === []) {
-            return ['status' => 'skipped_no_image', 'reason' => 'No Image Master photos'];
+            return ['status' => 'skipped_no_image', 'reason' => 'Images missing in Image Master'];
+        }
+        if (! $this->hasDimWt($product)) {
+            return ['status' => 'skipped_no_dim', 'reason' => 'Dimensions missing in Dim/Wt'];
         }
 
-        return ['status' => 'will_publish', 'reason' => ''];
+        return null;
     }
 
     /**
@@ -541,7 +564,7 @@ class Temu2ListingPublishService
         $parent = null;
         foreach ($this->uniqueTrimmedSkus($skus) as $sku) {
             $status = $this->classifyChildSku($sku)['status'] ?? '';
-            if (! in_array($status, ['will_publish', 'skipped_no_price'], true)) {
+            if ($status !== 'will_publish') {
                 continue;
             }
             $product = ProductMaster::query()
@@ -670,21 +693,6 @@ class Temu2ListingPublishService
             }
         }
 
-        try {
-            $ebay = EbayMetric::query()->whereIn('sku', $this->skuLookupKeys($sku))->first();
-            $clean = $this->sanitizeGoodsName((string) ($ebay?->ebay_title ?? ''));
-            if ($clean !== '' && ! $this->looksLikeSku($clean, $sku)) {
-                return $clean;
-            }
-        } catch (\Throwable) {
-        }
-
-        $shopify = $this->shopifyRow($sku);
-        $clean = $this->sanitizeGoodsName((string) ($shopify?->product_title ?? ''));
-        if ($clean !== '' && ! $this->looksLikeSku($clean, $sku)) {
-            return $clean;
-        }
-
         return '';
     }
 
@@ -728,40 +736,32 @@ class Temu2ListingPublishService
 
     private function resolveDescription(ProductMaster $product, string $sku): string
     {
-        $metric = $this->metricRow($sku);
-        $candidates = [
-            $metric?->description_master,
-            $product->description_1500 ?? null,
-            $product->product_description ?? null,
-            $product->description_1000 ?? null,
-            $product->description_800 ?? null,
-            $product->description_600 ?? null,
-        ];
-
+        $rows = [$product];
         $parent = $this->parentProductFor($product, $sku);
         if ($parent) {
-            $candidates = array_merge($candidates, [
-                $parent->description_1500 ?? null,
-                $parent->product_description ?? null,
-                $parent->description_1000 ?? null,
-                $parent->description_800 ?? null,
-                $parent->description_600 ?? null,
-            ]);
+            $rows[] = $parent;
         }
 
-        foreach ($candidates as $raw) {
-            $text = $this->cleanDescriptionText((string) $raw, $sku);
-            if ($text !== '') {
-                return $text;
+        foreach ($rows as $row) {
+            $rowSku = trim((string) ($row->sku ?? ''));
+            $metric = $rowSku !== '' ? $this->metricRow($rowSku) : null;
+            foreach ([
+                $metric?->description_master,
+                $row->description_1500 ?? null,
+                $row->product_description ?? null,
+                $row->description_html ?? null,
+                $row->description_1000 ?? null,
+                $row->description_800 ?? null,
+                $row->description_600 ?? null,
+            ] as $raw) {
+                $text = $this->cleanDescriptionText((string) $raw, $sku);
+                if ($text !== '') {
+                    return $text;
+                }
             }
         }
 
-        $fromOther = $this->descriptionFromOtherMarketplaces($sku);
-        if ($fromOther !== '') {
-            return $fromOther;
-        }
-
-        return '';
+        return $this->descriptionFromOtherMarketplaces([$sku]);
     }
 
     private function cleanDescriptionText(string $raw, string $sku): string
@@ -776,9 +776,18 @@ class Temu2ListingPublishService
         return mb_substr($text, 0, 2000);
     }
 
-    private function descriptionFromOtherMarketplaces(string $sku): string
+    /**
+     * @param  list<string>  $skus
+     */
+    private function descriptionFromOtherMarketplaces(array $skus): string
     {
-        $keys = $this->skuLookupKeys($sku);
+        $keys = [];
+        foreach ($skus as $sku) {
+            foreach ($this->skuLookupKeys((string) $sku) as $key) {
+                $keys[] = $key;
+            }
+        }
+        $keys = array_values(array_unique(array_filter($keys)));
         if ($keys === []) {
             return '';
         }
@@ -788,8 +797,12 @@ class Temu2ListingPublishService
                 if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'description_master')) {
                     continue;
                 }
-                $raw = DB::table($table)->whereIn('sku', $keys)->value('description_master');
-                $text = $this->cleanDescriptionText((string) $raw, $sku);
+                $raw = DB::table($table)
+                    ->whereIn('sku', $keys)
+                    ->whereNotNull('description_master')
+                    ->where('description_master', '!=', '')
+                    ->value('description_master');
+                $text = $this->cleanDescriptionText((string) $raw, (string) ($skus[0] ?? ''));
                 if ($text !== '') {
                     return $text;
                 }
@@ -2113,11 +2126,9 @@ class Temu2ListingPublishService
     }
 
     /**
-     * Dim / Wt Items on product_master.Values (inches + lb) converted for Temu packageInfo.
-     *
-     * @return array{weight: string, length: string, width: string, height: string, weightUnit: string, volumeUnit: string}
+     * @return array{length: ?float, width: ?float, height: ?float, weight_lb: ?float, weight_kg: ?float}
      */
-    private function resolveDimensions(ProductMaster $product): array
+    private function dimWtValues(ProductMaster $product): array
     {
         $values = is_array($product->Values) ? $product->Values : [];
         $num = static function (array $keys) use ($values): ?float {
@@ -2130,11 +2141,38 @@ class Temu2ListingPublishService
             return null;
         };
 
-        $lengthIn = $num(['l_decl', 'l', 'L', 'length']);
-        $widthIn = $num(['w_decl', 'w', 'W', 'width']);
-        $heightIn = $num(['h_decl', 'h', 'H', 'height']);
-        $weightLb = $num(['wt_decl', 'wt_act', 'weight_lb', 'wt']);
-        $weightKg = $num(['wt_act_kg', 'weight_kg', 'ctn_weight_kg']);
+        return [
+            'length' => $num(['l_decl', 'l', 'L', 'length']),
+            'width' => $num(['w_decl', 'w', 'W', 'width']),
+            'height' => $num(['h_decl', 'h', 'H', 'height']),
+            'weight_lb' => $num(['wt_decl', 'wt_act', 'weight_lb', 'wt']),
+            'weight_kg' => $num(['wt_act_kg', 'weight_kg', 'ctn_weight_kg']),
+        ];
+    }
+
+    private function hasDimWt(ProductMaster $product): bool
+    {
+        $dims = $this->dimWtValues($product);
+
+        return $dims['length'] !== null
+            && $dims['width'] !== null
+            && $dims['height'] !== null
+            && ($dims['weight_lb'] !== null || $dims['weight_kg'] !== null);
+    }
+
+    /**
+     * Dim / Wt Items on product_master.Values (inches + lb) converted for Temu packageInfo.
+     *
+     * @return array{weight: string, length: string, width: string, height: string, weightUnit: string, volumeUnit: string}
+     */
+    private function resolveDimensions(ProductMaster $product): array
+    {
+        $dims = $this->dimWtValues($product);
+        $lengthIn = $dims['length'];
+        $widthIn = $dims['width'];
+        $heightIn = $dims['height'];
+        $weightLb = $dims['weight_lb'];
+        $weightKg = $dims['weight_kg'];
 
         $toCm = static function (?float $inches): string {
             if ($inches === null) {
@@ -2354,10 +2392,11 @@ class Temu2ListingPublishService
             return null;
         }
 
-        return Temu2Metric::query()
-            ->where('sku', $sku)
-            ->orWhere('sku', strtoupper($sku))
-            ->orWhere('sku', strtolower($sku))
-            ->first();
+        $keys = $this->skuLookupKeys($sku);
+        if ($keys === []) {
+            return null;
+        }
+
+        return Temu2Metric::query()->whereIn('sku', $keys)->first();
     }
 }
