@@ -766,6 +766,46 @@
             $('#data-loader').fadeIn(100);
         }
 
+        function copySkuToClipboard(text, btn) {
+            const done = function () {
+                showNotification('success', 'Copied: ' + text);
+                if (!btn) return;
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.classList.remove('fa-copy');
+                    icon.classList.add('fa-check');
+                    setTimeout(function () {
+                        icon.classList.remove('fa-check');
+                        icon.classList.add('fa-copy');
+                    }, 1200);
+                }
+            };
+            const fallback = function () {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed';
+                ta.style.top = '0';
+                ta.style.left = '0';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                try {
+                    document.execCommand('copy');
+                    done();
+                } catch (err) {
+                    showNotification('danger', 'Could not copy SKU');
+                }
+                document.body.removeChild(ta);
+            };
+            if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(fallback);
+            } else {
+                fallback();
+            }
+        }
+
         function hideLoader() {
             $('#data-loader').fadeOut(100);
         }
@@ -1057,8 +1097,19 @@
                         field: 'sku',
                         hozAlign: 'left',
                         headerHozAlign: 'center',
-                        minWidth: 160,
-                        widthGrow: 1.2
+                        minWidth: 180,
+                        widthGrow: 1.2,
+                        formatter: function (cell) {
+                            const sku = String(cell.getValue() || '').trim();
+                            if (!sku) return '';
+                            const safe = escapeHtml(sku);
+                            return `<span class="sku-cell"><span class="sku-cell-text">${safe}</span><button type="button" class="copy-sku-btn" data-sku="${safe}" title="Copy SKU"><i class="fas fa-copy"></i></button></span>`;
+                        },
+                        cellClick: function (e) {
+                            if (e.target.closest && e.target.closest('.copy-sku-btn')) {
+                                e.stopPropagation();
+                            }
+                        }
                     },
                     {
                         title: 'INV',
@@ -1210,11 +1261,12 @@
                     html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU (spec)</th><th>INV</th><th>Status</th></tr></thead><tbody>';
                     (group.children || []).forEach(function (child) {
                         const sku = String(child.sku || '');
-                        const publishable = child.status === 'will_publish';
+                        const listed = child.status === 'skipped_listed' || child.status === 'skipped_parent' || child.status === 'skipped_nrl';
+                        const publishable = child.status === 'will_publish' || child.status === 'skipped_no_price';
                         if (publishable) canPublish = true;
                         html += '<tr>';
-                        html += `<td><input type="checkbox" class="temu2-publish-sku-check" data-sku="${escapeHtml(sku)}" ${publishable ? 'checked' : 'disabled'}></td>`;
-                        html += `<td>${escapeHtml(sku)}</td>`;
+                        html += `<td><input type="checkbox" class="temu2-publish-sku-check" data-sku="${escapeHtml(sku)}" ${publishable ? 'checked' : ''}${listed ? ' disabled' : ''}></td>`;
+                        html += `<td><span class="sku-cell"><span class="sku-cell-text">${escapeHtml(sku)}</span><button type="button" class="copy-sku-btn" data-sku="${escapeHtml(sku)}" title="Copy SKU"><i class="fas fa-copy"></i></button></span></td>`;
                         html += `<td>${escapeHtml(String(child.inv ?? 0))}</td>`;
                         html += `<td>${publishStatusLabel(child.status, child.reason)}</td>`;
                         html += '</tr>';
@@ -1319,6 +1371,14 @@
                     timeout: 180000
                 });
             }
+
+            $(document).on('click', '.copy-sku-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                const sku = String($(this).attr('data-sku') || '').trim();
+                if (sku) copySkuToClipboard(sku, this);
+            });
 
             $(document).on('click', '.temu2-publish-btn', function (e) {
                 e.preventDefault();
@@ -1456,5 +1516,5 @@
             publishUrl: '/listing_temu2/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=4"></script>
 @endsection

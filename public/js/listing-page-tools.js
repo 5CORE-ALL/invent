@@ -120,7 +120,7 @@
                 }, 1200);
             }
         };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
+        if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(done).catch(fallback);
         } else {
             fallback();
@@ -130,9 +130,12 @@
             const ta = document.createElement('textarea');
             ta.value = text;
             ta.setAttribute('readonly', '');
-            ta.style.position = 'absolute';
-            ta.style.left = '-9999px';
+            ta.style.position = 'fixed';
+            ta.style.top = '0';
+            ta.style.left = '0';
+            ta.style.opacity = '0';
             document.body.appendChild(ta);
+            ta.focus();
             ta.select();
             try {
                 document.execCommand('copy');

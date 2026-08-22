@@ -23,6 +23,9 @@ class Temu2ListingPublishService
     /** @var array<int, int> */
     private array $parentSpecIdByCat = [];
 
+    /** @var array<string, float>|null */
+    private ?array $priceByLookupKey = null;
+
     public function __construct(private Temu2ApiService $api)
     {
     }
@@ -462,7 +465,7 @@ class Temu2ListingPublishService
                 'status' => $classified['status'],
                 'reason' => $classified['reason'],
             ];
-            if ($classified['status'] === 'will_publish') {
+            if (in_array($classified['status'], ['will_publish', 'skipped_no_price'], true)) {
                 $publishSkus[] = $sku;
             }
         }
@@ -516,7 +519,8 @@ class Temu2ListingPublishService
         $out = [];
         $parent = null;
         foreach ($this->uniqueTrimmedSkus($skus) as $sku) {
-            if (($this->classifyChildSku($sku)['status'] ?? '') !== 'will_publish') {
+            $status = $this->classifyChildSku($sku)['status'] ?? '';
+            if (! in_array($status, ['will_publish', 'skipped_no_price'], true)) {
                 continue;
             }
             $product = ProductMaster::query()
@@ -711,19 +715,145 @@ class Temu2ListingPublishService
 
     private function resolvePrice(string $sku): ?float
     {
-        if (Schema::hasTable('temu2_pricing')) {
-            $p = Temu2Pricing::query()->where('sku', $sku)->value('base_price');
-            if ($p !== null && (float) $p > 0) {
-                return (float) $p;
+        foreach ($this->skuLookupKeys($sku) as $key) {
+            $mapped = $this->priceLookupMap()[$key] ?? null;
+            if ($this->positivePrice($mapped)) {
+                return (float) $mapped;
             }
         }
 
         $metricPrice = $this->api->getProductPrice($sku);
-        if ($metricPrice !== null && $metricPrice > 0) {
-            return $metricPrice;
+        if ($this->positivePrice($metricPrice)) {
+            return (float) $metricPrice;
+        }
+
+        $shopify = $this->shopifyRow($sku);
+        if ($shopify && $this->positivePrice($shopify->price ?? null)) {
+            return (float) $shopify->price;
+        }
+
+        $product = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('sku', $sku)
+            ->first();
+        if ($product) {
+            $fromValues = $this->priceFromProductValues($product);
+            if ($fromValues !== null) {
+                return $fromValues;
+            }
+
+            $sibling = $this->siblingPrice($product);
+            if ($sibling !== null) {
+                return $sibling;
+            }
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function priceLookupMap(): array
+    {
+        if ($this->priceByLookupKey !== null) {
+            return $this->priceByLookupKey;
+        }
+
+        $this->priceByLookupKey = [];
+        $remember = function (string $sku, $price): void {
+            if (! $this->positivePrice($price)) {
+                return;
+            }
+            $value = (float) $price;
+            foreach ($this->skuLookupKeys($sku) as $key) {
+                if (! isset($this->priceByLookupKey[$key])) {
+                    $this->priceByLookupKey[$key] = $value;
+                }
+            }
+        };
+
+        if (Schema::hasTable('temu2_pricing')) {
+            Temu2Pricing::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['sku', 'base_price'])
+                ->each(function ($row) use ($remember) {
+                    $remember((string) $row->sku, $row->base_price);
+                });
+        }
+
+        if (Schema::hasTable('temu2_metrics')) {
+            Temu2Metric::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['sku', 'base_price'])
+                ->each(function ($row) use ($remember) {
+                    $remember((string) $row->sku, $row->base_price);
+                });
+        }
+
+        return $this->priceByLookupKey;
+    }
+
+    private function siblingPrice(ProductMaster $product): ?float
+    {
+        $parent = $this->groupKeyForProduct($product);
+        if ($parent === '') {
+            return null;
+        }
+
+        $siblings = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('parent', $parent)
+            ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
+            ->pluck('sku');
+
+        foreach ($siblings as $siblingSku) {
+            foreach ($this->skuLookupKeys((string) $siblingSku) as $key) {
+                $mapped = $this->priceLookupMap()[$key] ?? null;
+                if ($this->positivePrice($mapped)) {
+                    return (float) $mapped;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function priceFromProductValues(ProductMaster $product): ?float
+    {
+        $values = is_array($product->Values) ? $product->Values : [];
+        foreach (['temu2_price', 'temu_price', 'base_price', 'sprice', 'SPRICE', 'lp'] as $key) {
+            if ($this->positivePrice($values[$key] ?? null)) {
+                return (float) $values[$key];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function skuLookupKeys(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $upper = strtoupper($sku);
+        $upper = (string) preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $upper);
+        $spaced = (string) preg_replace('/\s+/', ' ', $upper);
+        $loose = (string) preg_replace('/[^A-Z0-9]/', '', $spaced);
+
+        return array_values(array_unique(array_filter([$sku, $upper, $spaced, $loose], fn ($k) => $k !== '')));
+    }
+
+    private function positivePrice($price): bool
+    {
+        return $price !== null && $price !== '' && is_numeric($price) && (float) $price > 0;
     }
 
     private function resolveQty(string $sku): int
