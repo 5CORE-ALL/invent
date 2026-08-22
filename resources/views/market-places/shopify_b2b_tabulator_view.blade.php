@@ -376,6 +376,30 @@
         #shopify-b2b-sprice-q-btn:disabled {
             opacity: 0.65;
         }
+        #shopify-b2b-push-price-btn {
+            background: #fd7e14;
+            border-color: #fd7e14;
+            color: #fff;
+        }
+        #shopify-b2b-push-price-btn:hover,
+        #shopify-b2b-push-price-btn:focus {
+            background: #e96b02;
+            border-color: #dc6502;
+            color: #fff;
+        }
+        #shopify-b2b-push-price-btn:disabled {
+            opacity: 0.65;
+        }
+        .shopify-b2b-push-row-btn {
+            border: 0;
+            background: transparent;
+            color: #fd7e14;
+            padding: 0 4px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .shopify-b2b-push-row-btn:hover { color: #dc6502; }
+        .shopify-b2b-push-row-btn:disabled { opacity: 0.5; cursor: wait; }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2b'])
     </style>
 @endsection
@@ -672,6 +696,10 @@
                     <button type="button" class="btn btn-sm" id="shopify-b2b-sprice-q-btn"
                         title="Fill S PRC = (Std Prc × 0.75) − Ship. Uses selected SKUs if checked; otherwise all visible. Skips parent rows and Std Prc ≤ 0. Saves S PRC (no store push).">
                         sprice ?
+                    </button>
+                    <button type="button" class="btn btn-sm" id="shopify-b2b-push-price-btn"
+                        title="Push S PRC to business5core.com as the live special / selling price. Selected SKUs if checked; otherwise all visible with S PRC > 0.">
+                        <i class="fas fa-upload"></i> Push Price
                     </button>
                 </div>
 
@@ -1402,6 +1430,128 @@
                     + (notes.length ? ' (' + notes.join(', ') + ')' : ''),
                 'success'
             );
+        });
+
+        function shopifyB2bPushRows() {
+            if (!table) return [];
+            if (typeof selectedSkus !== 'undefined' && selectedSkus.size > 0) {
+                const rows = [];
+                selectedSkus.forEach(function (sku) {
+                    const found = table.searchRows('(Child) sku', '=', sku);
+                    if (found.length) rows.push(found[0]);
+                });
+                return rows;
+            }
+            return typeof table.getRows === 'function' ? table.getRows('visible') : table.getRows();
+        }
+
+        function shopifyB2bPushWebsiteSprice(sku, sprice, row) {
+            return $.ajax({
+                url: '/shopify-b2b/push-website-sprice',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { sku: sku, sprice: sprice }
+            }).done(function (resp) {
+                if (row && resp && resp.success) {
+                    const live = parseFloat(resp.price) || sprice;
+                    row.update({
+                        Price: live,
+                        SPRICE: live,
+                        SPRICE_STATUS: 'pushed',
+                        PUSH_PRC_STATUS: 'pushed',
+                        has_custom_sprice: true
+                    });
+                    try { row.reformat(); } catch (e) { /* ignore */ }
+                }
+            }).fail(function (xhr) {
+                if (row) {
+                    row.update({ SPRICE_STATUS: 'error', PUSH_PRC_STATUS: 'error' });
+                    try { row.reformat(); } catch (e) { /* ignore */ }
+                }
+                const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                    || 'Push failed for ' + sku;
+                showToast(msg, 'error');
+            });
+        }
+
+        function shopifyB2bPushPriceBulk() {
+            if (!table) {
+                showToast('Load data first', 'error');
+                return;
+            }
+            const ready = [];
+            shopifyB2bPushRows().forEach(function (row) {
+                const d = row.getData();
+                if (isShopifyB2bParentRow(d)) return;
+                const sku = String(d['(Child) sku'] || '').trim();
+                const sprice = shopifyB2bDisplayedSprice(d);
+                if (!sku || !(sprice > 0)) return;
+                ready.push({ row: row, sku: sku, sprice: sprice });
+            });
+            if (!ready.length) {
+                showToast('No rows with S PRC > 0 to push', 'warning');
+                return;
+            }
+            if (!confirm('Push S PRC to business5core.com for ' + ready.length + ' SKU(s)?')) return;
+
+            const $btn = $('#shopify-b2b-push-price-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing…');
+            let i = 0;
+            let ok = 0;
+            let fail = 0;
+            function next() {
+                if (i >= ready.length) {
+                    $btn.prop('disabled', false).html(html);
+                    showToast('Push Price: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : ''), fail && !ok ? 'error' : 'success');
+                    return;
+                }
+                const item = ready[i++];
+                item.row.update({ SPRICE_STATUS: 'processing', PUSH_PRC_STATUS: 'processing' });
+                try { item.row.reformat(); } catch (e) { /* ignore */ }
+                shopifyB2bPushWebsiteSprice(item.sku, item.sprice, item.row)
+                    .done(function (resp) {
+                        if (resp && resp.success) ok++;
+                        else fail++;
+                    })
+                    .fail(function () { fail++; })
+                    .always(next);
+            }
+            next();
+        }
+
+        $('#shopify-b2b-push-price-btn').on('click', function () {
+            shopifyB2bPushPriceBulk();
+        });
+        $(document).on('click', '.shopify-b2b-push-header-btn', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            shopifyB2bPushPriceBulk();
+        });
+        $(document).on('click', '.shopify-b2b-push-row-btn', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!table) return;
+            const $btn = $(this);
+            if ($btn.prop('disabled')) return;
+            const sku = String($btn.attr('data-sku') || '').trim();
+            const rows = table.searchRows('(Child) sku', '=', sku);
+            if (!rows.length) {
+                showToast('Row not found', 'error');
+                return;
+            }
+            const row = rows[0];
+            const sprice = shopifyB2bDisplayedSprice(row.getData());
+            if (!(sprice > 0)) {
+                showToast('S PRC is required to push', 'warning');
+                return;
+            }
+            $btn.prop('disabled', true);
+            row.update({ SPRICE_STATUS: 'processing', PUSH_PRC_STATUS: 'processing' });
+            try { row.reformat(); } catch (err) { /* ignore */ }
+            shopifyB2bPushWebsiteSprice(sku, sprice, row).always(function () {
+                $btn.prop('disabled', false);
+            });
         });
 
         // Clear SPRICE button
@@ -2256,6 +2406,35 @@
                         return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                     },
                     width: 92
+                },
+                {
+                    title: "Push",
+                    field: "PUSH_PRC_STATUS",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 56,
+                    minWidth: 56,
+                    headerTooltip: "Push this row's S PRC to business5core.com",
+                    titleFormatter: function() {
+                        return '<button type="button" class="btn btn-sm py-0 px-1 shopify-b2b-push-header-btn" title="Push selected / visible S PRC to the website" style="background:#fd7e14;border-color:#fd7e14;color:#fff;font-size:11px;line-height:1.2;"><i class="fas fa-upload"></i></button>';
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isShopifyB2bParentRow(rowData)) return '';
+                        const sku = String(rowData['(Child) sku'] || '');
+                        const status = String(rowData.SPRICE_STATUS || cell.getValue() || '');
+                        let color = '#fd7e14';
+                        let tip = 'Push S PRC to website';
+                        if (status === 'pushed') { color = '#198754'; tip = 'Pushed'; }
+                        else if (status === 'error') { color = '#dc3545'; tip = 'Last push failed'; }
+                        else if (status === 'processing') { color = '#fd7e14'; tip = 'Pushing…'; }
+                        const icon = status === 'processing'
+                            ? 'fa-spinner fa-spin'
+                            : 'fa-upload';
+                        return '<button type="button" class="shopify-b2b-push-row-btn" data-sku="'
+                            + sku.replace(/"/g, '&quot;') + '" title="' + tip
+                            + '" style="color:' + color + ';"><i class="fas ' + icon + '"></i></button>';
+                    }
                 },
                 {
                     title: "Sroi",
