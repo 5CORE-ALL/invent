@@ -510,21 +510,22 @@ class EbayTwoController extends Controller
         // 3d. Same prioritization as /ebay2/campaign-ads page: latest COST_PER_SALE row per listing
         // (fallback to overall latest), source is the local `ebay2_campaign_ads` table — the page's
         // own data feed — so ES BID / C BID / PROMOTE here mirror that page exactly.
+        // Key by string listing_id so PHP int-cast of numeric keys cannot miss ebay_2_metrics.item_id.
         $ebay2CampaignAdsByListing = [];
         try {
-            $ebay2CampaignAdsByListing = DB::table('ebay2_campaign_ads as t')
-                ->join(DB::raw('(SELECT listing_id,
-                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
-                                        MAX(id) AS max_id
-                                 FROM ebay2_campaign_ads
-                                 GROUP BY listing_id) x'),
-                    function ($join) {
-                        $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
-                    })
-                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid', 't.promote_with_ad')
-                ->get()
-                ->keyBy('listing_id')
-                ->toArray();
+            $ebay2CampaignAdsByListing = $this->indexEbay2CampaignAdsByListingId(
+                DB::table('ebay2_campaign_ads as t')
+                    ->join(DB::raw('(SELECT listing_id,
+                                            MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                            MAX(id) AS max_id
+                                     FROM ebay2_campaign_ads
+                                     GROUP BY listing_id) x'),
+                        function ($join) {
+                            $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                        })
+                    ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid', 't.promote_with_ad')
+                    ->get()
+            );
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('ebay2_campaign_ads unavailable: ' . $e->getMessage());
         }
@@ -818,12 +819,9 @@ class EbayTwoController extends Controller
             // ES BID / C BID / PROMOTE — same source as /ebay2/campaign-ads page (ebay2_campaign_ads table).
             // Matched by listing_id (= ebay_2_metrics.item_id, i.e. SKU-wise via the metric row).
             // Rows whose SKU has no campaign-ads record stay visible with nulls — formatter renders '—'.
-            $caRow = ($ebayMetric && isset($ebay2CampaignAdsByListing[$ebayMetric->item_id]))
-                ? $ebay2CampaignAdsByListing[$ebayMetric->item_id]
-                : null;
-            $row['ca_bid_percentage']  = $caRow->bid_percentage  ?? null;
-            $row['ca_suggested_bid']   = $caRow->suggested_bid   ?? null;
-            $row['ca_promote_with_ad'] = $caRow->promote_with_ad ?? null;
+            $row = array_merge($row, $this->ebay2CampaignAdsFields(
+                $this->lookupEbay2CampaignAd($ebay2CampaignAdsByListing, $ebayMetric->item_id ?? null)
+            ));
 
             // PMT clicks
             $row['pmt_clicks_l30'] = $row['PmtClkL30'] ?? 0;
@@ -1070,10 +1068,10 @@ class EbayTwoController extends Controller
                 $row['pmt_clicks_l30'] = 0;
                 $row['pmt_clicks_l7'] = 0;
 
-                // Campaign-Ads defaults (ES BID / C BID / PROMOTE)
-                $row['ca_bid_percentage']  = null;
-                $row['ca_suggested_bid']   = null;
-                $row['ca_promote_with_ad'] = null;
+                // Campaign-Ads — same listing_id = item_id lookup as product-master SKUs.
+                $row = array_merge($row, $this->ebay2CampaignAdsFields(
+                    $this->lookupEbay2CampaignAd($ebay2CampaignAdsByListing, $metric->item_id ?? null)
+                ));
                 
                 $price = floatval($row["eBay Price"] ?? 0);
                 $units_ordered_l30 = floatval($row["eBay L30"] ?? 0);
@@ -1348,7 +1346,41 @@ class EbayTwoController extends Controller
             ];
         };
 
-        $applyAggToParent = static function (array $parentRow, array $agg, string $displayKey) use ($percentage): array {
+        $pickChildCampaignAds = static function (array $children): array {
+            $picked = null;
+            foreach ($children as $child) {
+                $has = ($child['ca_bid_percentage'] ?? null) !== null
+                    || ($child['ca_suggested_bid'] ?? null) !== null
+                    || ! empty($child['ca_promote_with_ad']);
+                if (! $has) {
+                    continue;
+                }
+                if (($child['ca_promote_with_ad'] ?? '') === 'AD_ALREADY_CREATED') {
+                    $picked = $child;
+                    break;
+                }
+                if ($picked === null) {
+                    $picked = $child;
+                }
+            }
+            if ($picked === null) {
+                return [];
+            }
+
+            $fields = [
+                'ca_bid_percentage' => $picked['ca_bid_percentage'] ?? null,
+                'ca_suggested_bid' => $picked['ca_suggested_bid'] ?? null,
+                'ca_promote_with_ad' => $picked['ca_promote_with_ad'] ?? null,
+            ];
+            if (empty($picked['eBay_item_id'] ?? null)) {
+                return $fields;
+            }
+            $fields['eBay_item_id'] = $picked['eBay_item_id'];
+
+            return $fields;
+        };
+
+        $applyAggToParent = static function (array $parentRow, array $agg, string $displayKey, array $children) use ($percentage, $pickChildCampaignAds): array {
             $parentRow['Parent'] = $displayKey;
             $parentRow['(Child) sku'] = 'PARENT ' . $displayKey;
             $parentRow['is_parent_row'] = true;
@@ -1359,6 +1391,16 @@ class EbayTwoController extends Controller
                     continue;
                 }
                 $parentRow[$k] = $v;
+            }
+
+            // Campaign-ads live on child listings. Default view is Parents — copy ES BID /
+            // C BID / PROMOTE from the in-campaign child (else first child with ad data)
+            // so S BID can use ES Bid when family EL30 = 0.
+            foreach ($pickChildCampaignAds($children) as $caKey => $caVal) {
+                if ($caKey === 'eBay_item_id' && ! empty($parentRow['eBay_item_id'])) {
+                    continue;
+                }
+                $parentRow[$caKey] = $caVal;
             }
 
             // SPRICE defaults to avg eBay price when blank (same as ebay3 parent rows)
@@ -1396,7 +1438,7 @@ class EbayTwoController extends Controller
             $agg = $aggregateChildren($children);
 
             if (isset($parentRowsByKey[$ukey])) {
-                $enrichedParents[] = $applyAggToParent($parentRowsByKey[$ukey], $agg, $displayKey);
+                $enrichedParents[] = $applyAggToParent($parentRowsByKey[$ukey], $agg, $displayKey, $children);
             } else {
                 // Synthetic PARENT row when product_masters has children but no PARENT sku
                 $synthetic = [
@@ -1436,7 +1478,7 @@ class EbayTwoController extends Controller
                     'pmt_clicks_l7' => 0,
                     'nrp' => '',
                 ];
-                $enrichedParents[] = $applyAggToParent($synthetic, $agg, $displayKey);
+                $enrichedParents[] = $applyAggToParent($synthetic, $agg, $displayKey, $children);
             }
         }
 
@@ -1455,6 +1497,58 @@ class EbayTwoController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Index campaign-ads rows by string listing_id so PHP does not int-cast numeric keys
+     * and miss ebay_2_metrics.item_id (string) lookups.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return array<string, object>
+     */
+    private function indexEbay2CampaignAdsByListingId($rows): array
+    {
+        $byListing = [];
+        foreach ($rows as $row) {
+            $listingId = trim((string) ($row->listing_id ?? ''));
+            if ($listingId === '') {
+                continue;
+            }
+            $byListing[$listingId] = $row;
+        }
+
+        return $byListing;
+    }
+
+    private function lookupEbay2CampaignAd(array $byListing, $itemId): ?object
+    {
+        $key = trim((string) ($itemId ?? ''));
+        if ($key === '' || ! isset($byListing[$key])) {
+            return null;
+        }
+        $row = $byListing[$key];
+
+        return is_object($row) ? $row : (object) $row;
+    }
+
+    /**
+     * @return array{ca_bid_percentage: mixed, ca_suggested_bid: mixed, ca_promote_with_ad: mixed}
+     */
+    private function ebay2CampaignAdsFields(?object $caRow): array
+    {
+        if ($caRow === null) {
+            return [
+                'ca_bid_percentage' => null,
+                'ca_suggested_bid' => null,
+                'ca_promote_with_ad' => null,
+            ];
+        }
+
+        return [
+            'ca_bid_percentage' => $caRow->bid_percentage ?? $caRow->ca_bid_percentage ?? null,
+            'ca_suggested_bid' => $caRow->suggested_bid ?? $caRow->ca_suggested_bid ?? null,
+            'ca_promote_with_ad' => $caRow->promote_with_ad ?? $caRow->ca_promote_with_ad ?? null,
+        ];
     }
 
     public function updateAllEbay2Skus(Request $request)

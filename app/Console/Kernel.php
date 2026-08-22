@@ -2140,6 +2140,8 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L30', 'temu-ads-data-sync-l30', '15:40');
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L60', 'temu-ads-data-sync-l60', '15:50');
         $retryFiveTimesUntil('temu:fetch-ads-api-reports --period=L7', 'temu-ads-api-reports-l7', '15:55');
+        // Status column only — not Pause/Run. Picks up ads created on Temu Seller Center.
+        $retryFiveTimesUntil('temu:refresh-ad-status', 'temu-ads-refresh-status', '19:30');
         // After L7 reports: pause Active ads that match L7 clicks / Stop ROAS.
         // Toggle from Ad rules modal (temu_ads_auto_pause_cron). Command also no-ops when paused.
         $retryFiveTimesUntil('temu:auto-pause-ads', 'temu-ads-auto-pause', '16:10');
