@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Listing Temu 2', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Listing Faire', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -10,13 +10,13 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* ========== TABLE SHELL ========== */
-        #temu2-listing-wrap {
+        #faire-listing-wrap {
             overflow-x: auto;
             overflow-y: visible;
             width: 100%;
         }
 
-        #temu2-listing-wrap .tabulator {
+        #faire-listing-wrap .tabulator {
             border: 1px solid #dee2e6;
             border-radius: 8px;
             font-size: 13px;
@@ -24,33 +24,33 @@
             width: 100% !important;
         }
 
-        .card-body:has(#temu2-listing-toolbar) {
+        .card-body:has(#faire-listing-toolbar) {
             width: 100%;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-tableholder {
+        #faire-listing-wrap .tabulator .tabulator-tableholder {
             background: #fff;
         }
 
         /* ========== HEADER ========== */
-        #temu2-listing-wrap .tabulator .tabulator-header {
+        #faire-listing-wrap .tabulator .tabulator-header {
             background: #00d5d5;
             border-bottom: 1px solid #ffffff;
         }
 
-        #temu2-listing-wrap .tabulator-col .tabulator-col-sorter {
+        #faire-listing-wrap .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
-        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+        #faire-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
+        #faire-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
             white-space: normal !important;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+        #faire-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
@@ -68,13 +68,13 @@
             color: #000 !important;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+        #faire-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
             height: auto !important;
             min-height: 34px;
             padding: 0;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col {
+        #faire-listing-wrap .tabulator .tabulator-header .tabulator-col {
             height: auto !important;
             min-height: 34px;
             vertical-align: middle;
@@ -84,13 +84,13 @@
             font-weight: bold;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
+        #faire-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
             padding-left: 2px !important;
             padding-right: 2px !important;
         }
 
         /* Header filters */
-        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+        #faire-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
             width: 100%;
             border: 1px solid #cbd5e1;
             border-radius: 6px;
@@ -101,26 +101,26 @@
             box-shadow: none;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
+        #faire-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
         /* ========== ROWS / CELLS ========== */
-        #temu2-listing-wrap .tabulator .tabulator-row {
+        #faire-listing-wrap .tabulator .tabulator-row {
             min-height: 36px;
             border-bottom: 1px solid #f1f5f9;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-row .tabulator-cell {
+        #faire-listing-wrap .tabulator .tabulator-row .tabulator-cell {
             padding: 5px 6px !important;
             border-right: 1px solid #f1f5f9;
             vertical-align: middle;
         }
 
-        #temu2-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
-        #temu2-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
+        #faire-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
+        #faire-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
             width: 16px;
             height: 16px;
             cursor: pointer;
@@ -129,38 +129,38 @@
             vertical-align: middle;
         }
 
-        #temu2-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
+        #faire-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
             display: none;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-row:hover {
+        #faire-listing-wrap .tabulator .tabulator-row:hover {
             background-color: #f8fafc !important;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
+        #faire-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
             background-color: #fcfcfd;
         }
 
-        #temu2-listing-wrap .tabulator-row.parent-row,
-        #temu2-listing-wrap .tabulator-row.parent-row .tabulator-cell {
+        #faire-listing-wrap .tabulator-row.parent-row,
+        #faire-listing-wrap .tabulator-row.parent-row .tabulator-cell {
             background-color: #fffef2 !important;
             font-weight: 700 !important;
             color: #0f172a;
         }
 
-        #temu2-listing-wrap .tabulator-row.parent-row:hover,
-        #temu2-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
+        #faire-listing-wrap .tabulator-row.parent-row:hover,
+        #faire-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
             background-color: #fefce8 !important;
         }
 
         /* ========== FOOTER / PAGINATION ========== */
-        #temu2-listing-wrap .tabulator .tabulator-footer {
+        #faire-listing-wrap .tabulator .tabulator-footer {
             background: #f8fafc !important;
             border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
+        #faire-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -168,14 +168,14 @@
             flex-wrap: wrap;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
+        #faire-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
             margin-right: 6px;
             font-size: 12px;
             color: #475569;
             font-weight: 600;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
+        #faire-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             padding: 4px 8px;
@@ -185,7 +185,7 @@
             min-height: 36px;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+        #faire-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
             font-size: 14px !important;
             font-weight: 500 !important;
             min-width: 36px !important;
@@ -201,13 +201,13 @@
             text-align: center !important;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+        #faire-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
             background: #f1f5f9 !important;
             border-color: #cbd5e1 !important;
             color: #1e293b !important;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+        #faire-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
             background: #4361ee !important;
             border-color: #4361ee !important;
             color: #fff !important;
@@ -215,19 +215,19 @@
             box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
+        #faire-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
             opacity: 0.4 !important;
             cursor: not-allowed !important;
         }
 
-        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
+        #faire-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
             margin: 0 0.5rem;
             font-size: 12px;
             color: #334155;
         }
 
         /* ========== TOOLBAR (badges + filters, one line, autofit page) ========== */
-        #temu2-listing-toolbar {
+        #faire-listing-toolbar {
             background: transparent;
             border: none;
             border-radius: 0;
@@ -237,7 +237,7 @@
             box-sizing: border-box;
         }
 
-        #temu2-listing-toolbar .temu2-listing-toolbar-row {
+        #faire-listing-toolbar .faire-listing-toolbar-row {
             display: flex;
             flex-wrap: nowrap;
             align-items: center;
@@ -248,7 +248,7 @@
             box-sizing: border-box;
         }
 
-        #temu2-listing-toolbar .listing-stat-badges {
+        #faire-listing-toolbar .listing-stat-badges {
             display: inline-flex;
             flex: 0 0 auto;
             align-items: stretch;
@@ -257,22 +257,22 @@
             padding: 0;
         }
 
-        #temu2-listing-toolbar .listing-stat-badge {
+        #faire-listing-toolbar .listing-stat-badge {
             flex: 0 0 auto;
             justify-content: center;
             margin: 0 !important;
             border-radius: 0;
         }
 
-        #temu2-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
+        #faire-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
             border-radius: 8px 0 0 8px;
         }
 
-        #temu2-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
+        #faire-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
             border-radius: 0 8px 8px 0;
         }
 
-        #temu2-listing-toolbar .filter-select {
+        #faire-listing-toolbar .filter-select {
             flex: 0 0 auto;
             min-width: 0;
             width: 92px !important;
@@ -288,38 +288,20 @@
             line-height: 1.2;
         }
 
-        #temu2-listing-toolbar .filter-select:focus {
+        #faire-listing-toolbar .filter-select:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
-        #temu2-listing-toolbar .toolbar-actions {
+        #faire-listing-toolbar .toolbar-actions {
             display: flex;
             flex: 0 0 auto;
             align-items: center;
-            gap: 4px;
             margin-left: 0;
         }
 
-        #temu2-listing-toolbar .temu2-bulk-publish-btn {
-            height: 30px;
-            padding: 0 10px;
-            border-radius: 5px;
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        #temu2-listing-toolbar .temu2-bulk-publish-btn:disabled {
-            opacity: 0.65;
-            cursor: wait;
-        }
-
-        #temu2-listing-toolbar .listing-io-btn {
+        #faire-listing-toolbar .listing-io-btn {
             border-radius: 5px;
             font-weight: 600;
             font-size: 14px;
@@ -332,16 +314,16 @@
             line-height: 1;
         }
 
-        #temu2-listing-toolbar .listing-io-btn::after {
+        #faire-listing-toolbar .listing-io-btn::after {
             display: none;
         }
 
-        #temu2-listing-toolbar .listing-io-menu {
+        #faire-listing-toolbar .listing-io-menu {
             min-width: 42px;
             padding: 4px;
         }
 
-        #temu2-listing-toolbar .listing-io-menu .dropdown-item {
+        #faire-listing-toolbar .listing-io-menu .dropdown-item {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -352,7 +334,7 @@
             font-size: 14px;
         }
 
-        #temu2-listing-toolbar .listing-io-menu .dropdown-item:hover {
+        #faire-listing-toolbar .listing-io-menu .dropdown-item:hover {
             background: #f1f5f9;
         }
 
@@ -396,8 +378,8 @@
         .listing-stat-badge--rows { background: #334155; color: #fff; }
 
         /* ========== DROPDOWNS ========== */
-        #temu2-listing-wrap select.nr-req-dropdown,
-        #temu2-listing-wrap select.listed-dropdown {
+        #faire-listing-wrap select.nr-req-dropdown,
+        #faire-listing-wrap select.listed-dropdown {
             border: 1px solid transparent;
             border-radius: 6px;
             font-weight: 700;
@@ -408,32 +390,32 @@
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        #temu2-listing-wrap select.nr-req-dropdown:focus,
-        #temu2-listing-wrap select.listed-dropdown:focus {
+        #faire-listing-wrap select.nr-req-dropdown:focus,
+        #faire-listing-wrap select.listed-dropdown:focus {
             outline: none;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
         }
 
-        #temu2-listing-wrap select.nr-req-dropdown[data-val="REQ"],
-        #temu2-listing-wrap select.nr-req-dropdown option.req-option {
+        #faire-listing-wrap select.nr-req-dropdown[data-val="REQ"],
+        #faire-listing-wrap select.nr-req-dropdown option.req-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #temu2-listing-wrap select.nr-req-dropdown[data-val="NR"],
-        #temu2-listing-wrap select.nr-req-dropdown option.nr-option {
+        #faire-listing-wrap select.nr-req-dropdown[data-val="NR"],
+        #faire-listing-wrap select.nr-req-dropdown option.nr-option {
             background-color: #dc3545;
             color: #fff;
         }
 
-        #temu2-listing-wrap select.listed-dropdown[data-val="Listed"],
-        #temu2-listing-wrap select.listed-dropdown option.listed-option {
+        #faire-listing-wrap select.listed-dropdown[data-val="Listed"],
+        #faire-listing-wrap select.listed-dropdown option.listed-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #temu2-listing-wrap select.listed-dropdown[data-val="Pending"],
-        #temu2-listing-wrap select.listed-dropdown option.pending-option {
+        #faire-listing-wrap select.listed-dropdown[data-val="Pending"],
+        #faire-listing-wrap select.listed-dropdown option.pending-option {
             background-color: #dc3545;
             color: #fff;
         }
@@ -476,90 +458,14 @@
             line-height: 1;
         }
 
-        .temu2-publish-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            padding: 3px 10px;
-            border: 0;
-            border-radius: 6px;
-            background: #0d6efd;
-            color: #fff;
-            font-size: 12px;
-            font-weight: 700;
-            line-height: 1.3;
-            cursor: pointer;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-        }
-
-        .temu2-publish-btn:hover {
-            background: #0b5ed7;
-            color: #fff;
-        }
-
-        .temu2-publish-btn:disabled,
-        .temu2-publish-btn.is-publishing {
-            opacity: 0.75;
-            cursor: wait;
-        }
-
-        .temu2-publish-modal-note {
-            font-size: 13px;
-            color: #475569;
-            margin-bottom: 12px;
-        }
-
-        .temu2-publish-group {
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            margin-bottom: 12px;
-            overflow: hidden;
-        }
-
-        .temu2-publish-group-head {
-            background: #f8fafc;
-            padding: 8px 12px;
-            font-weight: 700;
-            font-size: 13px;
-            color: #0f172a;
-        }
-
-        .temu2-publish-group table {
-            width: 100%;
-            margin: 0;
-            font-size: 12px;
-        }
-
-        .temu2-publish-group th,
-        .temu2-publish-group td {
-            padding: 6px 10px;
-            vertical-align: middle;
-        }
-
-        .temu2-publish-status {
-            font-weight: 700;
-            white-space: nowrap;
-        }
-
-        .temu2-publish-status.is-publish { color: #15803d; }
-        .temu2-publish-status.is-skip { color: #64748b; }
-        .temu2-publish-status.is-missing { color: #b45309; }
-
-        #temu2-publish-progress {
-            font-size: 13px;
-            color: #334155;
-            min-height: 1.2em;
-        }
-
         /* ========== LINK CELL ========== */
-        #temu2-listing-wrap a.listing-item-link {
+        #faire-listing-wrap a.listing-item-link {
             font-weight: 600;
             color: #0d6efd;
             text-decoration: none;
         }
 
-        #temu2-listing-wrap a.listing-item-link:hover {
+        #faire-listing-wrap a.listing-item-link:hover {
             color: #1d4ed8 !important;
             text-decoration: underline;
         }
@@ -592,7 +498,7 @@
         }
 
         /* ========== PLACEHOLDER ========== */
-        #temu2-listing-wrap .tabulator-placeholder {
+        #faire-listing-wrap .tabulator-placeholder {
             color: #64748b;
             font-weight: 600;
             padding: 24px;
@@ -602,14 +508,14 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Listing Temu 2', 'sub_title' => 'Temu'])
+    @include('layouts.shared/page-title', ['page_title' => 'Listing Faire', 'sub_title' => 'Faire'])
 
     <div class="row">
         <div class="col-12">
             <div class="card position-relative">
                 <div class="card-body">
-                    <div id="temu2-listing-toolbar" class="mb-3">
-                        <div class="temu2-listing-toolbar-row">
+                    <div id="faire-listing-toolbar" class="mb-3">
+                        <div class="faire-listing-toolbar-row">
                             <div class="listing-stat-badges">
                                 <span class="listing-stat-badge listing-stat-badge--req">REQ:<span id="req-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
@@ -644,7 +550,7 @@
                                 <option value="Pending">Missing L</option>
                             </select>
                             <button type="button"
-                                class="btn btn-sm btn-primary temu2-bulk-publish-btn"
+                                class="btn btn-sm btn-primary listing-page-tools-btn"
                                 id="bulk-publish-btn"
                                 title="Publish selected SKUs as parent variations">
                                 <i class="fas fa-cloud-upload-alt"></i> Publish selected
@@ -686,33 +592,11 @@
                         </div>
                     </div>
 
-                    <div class="modal fade" id="temu2PublishModal" tabindex="-1" aria-labelledby="temu2PublishModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title" id="temu2PublishModalLabel">Publish as variation</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <p class="temu2-publish-modal-note">
-                                        Each parent becomes one Temu listing. Missing L siblings are included automatically.
-                                        Already listed SKUs are skipped. Uncheck a child to leave it off this listing.
-                                    </p>
-                                    <div id="temu2-publish-groups"></div>
-                                    <div id="temu2-publish-progress"></div>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                    <button type="button" class="btn btn-primary" id="temu2-publish-confirm">
-                                        <i class="fas fa-cloud-upload-alt"></i> Publish variation(s)
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    @include('market-places.listing-market-places._listing_publish_modal')
 
-                    <div id="temu2-listing-wrap">
-                        <div id="temu2Listing-table"></div>
+
+                    <div id="faire-listing-wrap">
+                        <div id="faireListing-table"></div>
                     </div>
 
                     <div id="data-loader" class="card-loader-overlay" style="display: none;">
@@ -735,7 +619,7 @@
     <script>
         document.body.style.zoom = "80%";
 
-        let temu2ListingTable = null;
+        let faireListingTable = null;
         let allListingData = [];
 
         function isParentSku(sku) {
@@ -760,51 +644,11 @@
                 </div>
             `);
             $('body').append(notification);
-            setTimeout(() => notification.find('.alert').alert('close'), type === 'danger' ? 10000 : 4000);
+            setTimeout(() => notification.find('.alert').alert('close'), 3000);
         }
 
         function showLoader() {
             $('#data-loader').fadeIn(100);
-        }
-
-        function copySkuToClipboard(text, btn) {
-            const done = function () {
-                showNotification('success', 'Copied: ' + text);
-                if (!btn) return;
-                const icon = btn.querySelector('i');
-                if (icon) {
-                    icon.classList.remove('fa-copy');
-                    icon.classList.add('fa-check');
-                    setTimeout(function () {
-                        icon.classList.remove('fa-check');
-                        icon.classList.add('fa-copy');
-                    }, 1200);
-                }
-            };
-            const fallback = function () {
-                const ta = document.createElement('textarea');
-                ta.value = text;
-                ta.setAttribute('readonly', '');
-                ta.style.position = 'fixed';
-                ta.style.top = '0';
-                ta.style.left = '0';
-                ta.style.opacity = '0';
-                document.body.appendChild(ta);
-                ta.focus();
-                ta.select();
-                try {
-                    document.execCommand('copy');
-                    done();
-                } catch (err) {
-                    showNotification('danger', 'Could not copy SKU');
-                }
-                document.body.removeChild(ta);
-            };
-            if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(done).catch(fallback);
-            } else {
-                fallback();
-            }
         }
 
         function hideLoader() {
@@ -814,10 +658,10 @@
         function normalizeListingRows(rows) {
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
-                const goodsId = String(item.goods_id || item.listing_id || item.eBay_item_id || '').trim();
-                // Automated: NRL from Temu2DataView; Listed from temu2_metrics.goods_id (API)
+                const itemId = String(item.eBay_item_id || '').trim();
+                // Automated: NRL from EbayTwoDataView; Listed from faire_metric.product_id
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                const listed = goodsId ? 'Listed' : 'Pending';
+                const listed = itemId ? 'Listed' : 'Pending';
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',
@@ -826,8 +670,7 @@
                     L30: parseFloat(item.L30) || 0,
                     nr_req: nrReq,
                     listed: listed,
-                    goods_id: goodsId || null,
-                    eBay_item_id: goodsId || null,
+                    eBay_item_id: itemId || null,
                     buyer_link: item.buyer_link || '',
                     seller_link: item.seller_link || '',
                     is_parent: isParentSku(item.sku)
@@ -845,12 +688,12 @@
 
         function calculateTotals() {
             try {
-                if (!temu2ListingTable) {
+                if (!faireListingTable) {
                     resetMetricsToZero();
                     return;
                 }
 
-                const rows = temu2ListingTable.getData('active') || [];
+                const rows = faireListingTable.getData('active') || [];
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -866,8 +709,8 @@
 
                         if (item.nr_req === 'REQ') {
                             metrics.reqTotal++;
-                            // No Link: REQ rows with no Temu goods_id (dynamic buyer link unavailable)
-                            if (!String(item.goods_id || item.eBay_item_id || '').trim()) {
+                            // No Link: REQ rows with no Faire product id (dynamic link unavailable)
+                            if (!String(item.eBay_item_id || '').trim()) {
                                 metrics.withoutLinkTotal++;
                             }
                         }
@@ -907,7 +750,7 @@
         }
 
         function applyListingFilters() {
-            if (!temu2ListingTable) return;
+            if (!faireListingTable) return;
 
             const dataType = $('#row-data-type').val();
             const invFilter = $('#inv-filter').val();
@@ -915,7 +758,7 @@
             const linkFilter = $('#link-filter').val();
             const listedFilter = $('#listed-filter').val();
 
-            temu2ListingTable.setFilter(function (data) {
+            faireListingTable.setFilter(function (data) {
                 if (dataType === 'parent' && !data.is_parent) return false;
                 if (dataType === 'sku' && data.is_parent) return false;
 
@@ -968,80 +811,57 @@
             }
         }
 
-        function formatTemuItemLink(cell, type) {
+        function formatEbayItemLink(cell, type) {
             const data = cell.getRow().getData();
-            if (data.is_parent) return '';
-
             const isBuyer = type === 'buyer';
-            const goodsId = String(data.goods_id || data.listing_id || data.eBay_item_id || '').trim();
-
-            if (!goodsId) {
-                return '<span class="text-muted" title="No Temu goods_id">—</span>';
+            const stored = String(isBuyer ? (data.buyer_link || '') : (data.seller_link || '')).trim();
+            const productId = String(data.eBay_item_id || data.listing_id || data.product_id || '').trim();
+            const sku = String(data.sku || '').trim();
+            let href = stored;
+            if (!href && isBuyer && productId && productId.toLowerCase() !== sku.toLowerCase()) {
+                href = 'https://www.faire.com/product/' + productId;
             }
-
-            // Stable URLs (session/refer params omitted)
-            const href = isBuyer
-                ? ('https://www.temu.com/goods.html?_bg_fs=1&goods_id=' + encodeURIComponent(goodsId))
-                : ('https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id=' + encodeURIComponent(goodsId));
-            const label = isBuyer ? 'Buyer' : 'Seller';
-            const title = isBuyer
-                ? ('Buyer — Temu goods_id ' + goodsId)
-                : ('Seller — Temu product-info goods_id ' + goodsId);
-
-            return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
-                title="${escapeHtml(title)}" onclick="event.stopPropagation();">
-                <i class="fas fa-external-link-alt me-1"></i>${label}
+            if (!href && !isBuyer && productId) {
+                href = 'https://www.faire.com/brand-portal/my-shop/products';
+            }
+            if (href) {
+                const label = isBuyer ? 'Buyer' : 'Seller';
+                return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
+                title="${escapeHtml(label + ' link')}" onclick="event.stopPropagation();">
+                <i class="fas fa-external-link-alt"></i> ${label}
             </a>`;
+            }
+            return '<span class="listing-link-empty">—</span>';
         }
 
         function formatBuyerLink(cell) {
-            return formatTemuItemLink(cell, 'buyer');
+            return formatEbayItemLink(cell, 'buyer');
         }
 
         function formatSellerLink(cell) {
-            return formatTemuItemLink(cell, 'seller');
+            return formatEbayItemLink(cell, 'seller');
         }
 
         function formatListed(cell) {
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
 
-            const goodsId = String(data.goods_id || data.eBay_item_id || '').trim();
-            if (goodsId) {
-                return `<span class="listing-listed-tick" title="Listed (temu2_metrics.goods_id)" aria-label="Listed">
+            // Missing Listing: channel listing id / price signal = Listed
+            const itemId = String(data.eBay_item_id || '').trim();
+            if (itemId) {
+                return `<span class="listing-listed-tick" title="Listed (faire_metric.product_id)" aria-label="Listed">
                     <i class="fas fa-check"></i>
                 </span>`;
             }
-            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Temu goods_id">Missing L</span>`;
-        }
-
-        function formatPublishToTemu2(cell) {
-            const data = cell.getRow().getData();
-            if (data.is_parent) return '';
-
-            const goodsId = String(data.goods_id || data.listing_id || data.eBay_item_id || '').trim();
-            if (goodsId) {
-                return '<span class="text-muted" title="Already listed on Temu 2">—</span>';
-            }
-
-            const nrReq = String(data.nr_req || 'REQ');
-            if (nrReq === 'NR' || nrReq === 'NRL') {
-                return '<span class="text-muted" title="NRL SKUs are not published">—</span>';
-            }
-
-            const sku = String(data.sku || '').trim();
-            if (!sku) return '';
-
-            return `<button type="button" class="temu2-publish-btn" data-sku="${escapeHtml(sku)}" title="Review variations for ${escapeHtml(sku)} then publish to Temu 2">
-                <i class="fas fa-cloud-upload-alt"></i> Publish
-            </button>`;
+            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Faire product id">Missing L</span>`;
         }
 
         $(document).ready(function () {
             showLoader();
+            let missingLFilterActive = false;
 
-            temu2ListingTable = new Tabulator('#temu2Listing-table', {
-                ajaxURL: '/listing_temu2/view-data',
+            faireListingTable = new Tabulator('#faireListing-table', {
+                ajaxURL: '/listing_faire/view-data',
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
                     allListingData = normalizeListingRows(rows);
@@ -1098,19 +918,8 @@
                         field: 'sku',
                         hozAlign: 'left',
                         headerHozAlign: 'center',
-                        minWidth: 180,
-                        widthGrow: 1.2,
-                        formatter: function (cell) {
-                            const sku = String(cell.getValue() || '').trim();
-                            if (!sku) return '';
-                            const safe = escapeHtml(sku);
-                            return `<span class="sku-cell"><span class="sku-cell-text">${safe}</span><button type="button" class="copy-sku-btn" data-sku="${safe}" title="Copy SKU"><i class="fas fa-copy"></i></button></span>`;
-                        },
-                        cellClick: function (e) {
-                            if (e.target.closest && e.target.closest('.copy-sku-btn')) {
-                                e.stopPropagation();
-                            }
-                        }
+                        minWidth: 160,
+                        widthGrow: 1.2
                     },
                     {
                         title: 'INV',
@@ -1136,24 +945,24 @@
                     },
                     {
                         title: 'Buyer Link',
-                        field: 'goods_id',
+                        field: 'eBay_item_id',
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
                         minWidth: 100,
                         widthGrow: 1,
-                        headerTooltip: 'Dynamic buyer link: https://www.temu.com/goods.html?_bg_fs=1&goods_id={goods_id}',
+                        headerTooltip: 'Faire product page or stored buyer link',
                         formatter: formatBuyerLink
                     },
                     {
                         title: 'Seller Link',
-                        field: 'seller_link',
+                        field: 'seller_item_link',
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
                         minWidth: 100,
                         widthGrow: 1,
-                        headerTooltip: 'Dynamic seller link: https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id={goods_id}',
+                        headerTooltip: 'Faire brand portal / stored seller link',
                         formatter: formatSellerLink
                     },
                     {
@@ -1163,30 +972,30 @@
                         headerHozAlign: 'center',
                         headerSort: false,
                         width: 130,
-                        headerTooltip: 'Automatic from temu2_metrics.goods_id (Missing L when REQ and no goods_id)',
+                        headerTooltip: 'Automatic from channel listing signal (Faire Missing L (faire_metric))',
                         formatter: formatListed
-                    },
-                    {
-                        title: 'Publish to Temu2',
-                        field: 'publish_to_temu2',
-                        hozAlign: 'center',
-                        headerHozAlign: 'center',
-                        headerSort: false,
-                        width: 150,
-                        headerTooltip: 'Review parent variations, then publish Missing L SKUs to Temu 2',
-                        formatter: formatPublishToTemu2
                     }
                 ]
             });
 
-            temu2ListingTable.on('dataProcessed', function () {
+            faireListingTable.on('dataProcessed', function () {
                 hideLoader();
+                if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__faireMissingApplied) {
+                    window.__faireMissingApplied = true;
+                    $('#row-data-type').val('sku');
+                    $('#inv-filter').val('inv-only');
+                    $('#nr-req-filter').val('REQ');
+                    $('#link-filter').val('all');
+                    $('#listed-filter').val('Pending');
+                    $('#missing-l-badge').addClass('is-active');
+                    missingLFilterActive = true;
+                }
                 applyListingFilters();
             });
-            temu2ListingTable.on('dataFiltered', function () {
+            faireListingTable.on('dataFiltered', function () {
                 calculateTotals();
             });
-            temu2ListingTable.on('dataLoadError', function () {
+            faireListingTable.on('dataLoadError', function () {
                 hideLoader();
                 showNotification('danger', 'Failed to load data. Please try again.');
             });
@@ -1194,7 +1003,6 @@
             $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
 
             // Missing L badge → filter table to unlisted REQ SKUs (toggle)
-            let missingLFilterActive = false;
             function applyMissingLBadgeFilter(forceOff) {
                 if (forceOff === true) {
                     missingLFilterActive = false;
@@ -1238,222 +1046,6 @@
                 }
             });
 
-            function publishStatusLabel(status, reason) {
-                if (status === 'will_publish') {
-                    return '<span class="temu2-publish-status is-publish">Will publish</span>';
-                }
-                const text = reason || 'Skipped';
-                const missing = ['skipped_no_title', 'skipped_no_description', 'skipped_no_image', 'skipped_no_dim'].indexOf(status) !== -1;
-                return `<span class="temu2-publish-status ${missing ? 'is-missing' : 'is-skip'}">${escapeHtml(text)}</span>`;
-            }
-
-            function renderPublishGroups(groups) {
-                if (!groups || !groups.length) {
-                    $('#temu2-publish-groups').html('<p class="text-muted mb-0">No Missing L children to publish.</p>');
-                    $('#temu2-publish-confirm').prop('disabled', true);
-                    return;
-                }
-                let html = '';
-                let canPublish = false;
-                groups.forEach(function (group, gi) {
-                    const parent = String(group.parent || 'Standalone');
-                    const count = Number(group.publish_count || 0);
-                    html += `<div class="temu2-publish-group" data-group-index="${gi}">`;
-                    html += `<div class="temu2-publish-group-head">${escapeHtml(parent)} · ${count} variation${count === 1 ? '' : 's'}</div>`;
-                    html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU (spec)</th><th>INV</th><th>Status</th></tr></thead><tbody>';
-                    (group.children || []).forEach(function (child) {
-                        const sku = String(child.sku || '');
-                        const publishable = child.status === 'will_publish';
-                        if (publishable) canPublish = true;
-                        html += '<tr>';
-                        html += `<td><input type="checkbox" class="temu2-publish-sku-check" data-sku="${escapeHtml(sku)}" ${publishable ? 'checked' : ''} ${publishable ? '' : 'disabled'}></td>`;
-                        html += `<td><span class="sku-cell"><span class="sku-cell-text">${escapeHtml(sku)}</span><button type="button" class="copy-sku-btn" data-sku="${escapeHtml(sku)}" title="Copy SKU"><i class="fas fa-copy"></i></button></span></td>`;
-                        html += `<td>${escapeHtml(String(child.inv ?? 0))}</td>`;
-                        html += `<td>${publishStatusLabel(child.status, child.reason)}</td>`;
-                        html += '</tr>';
-                    });
-                    html += '</tbody></table></div>';
-                });
-                $('#temu2-publish-groups').html(html);
-                $('#temu2-publish-confirm').prop('disabled', !canPublish);
-                $('#temu2-publish-progress').text('');
-            }
-
-            function selectedPublishGroups() {
-                const groups = [];
-                $('#temu2-publish-groups .temu2-publish-group').each(function () {
-                    const parent = $(this).find('.temu2-publish-group-head').text().split(' · ')[0] || '';
-                    const skus = [];
-                    $(this).find('.temu2-publish-sku-check:checked:not(:disabled)').each(function () {
-                        const sku = String($(this).attr('data-sku') || '').trim();
-                        if (sku) skus.push(sku);
-                    });
-                    if (skus.length) {
-                        groups.push({ parent: parent, skus: skus });
-                    }
-                });
-                return groups;
-            }
-
-            function markRowsListed(skus, goodsId) {
-                if (!temu2ListingTable || !skus || !skus.length) return;
-                const want = {};
-                skus.forEach(function (sku) { want[String(sku).trim()] = true; });
-                (temu2ListingTable.getRows() || []).forEach(function (row) {
-                    const data = row.getData() || {};
-                    if (!want[String(data.sku || '').trim()]) return;
-                    row.update({
-                        goods_id: goodsId,
-                        listing_id: goodsId,
-                        eBay_item_id: goodsId,
-                        listed: 'Listed'
-                    });
-                });
-                calculateTotals();
-            }
-
-            function openPublishPreview(skus) {
-                const unique = [];
-                const seen = {};
-                (skus || []).forEach(function (sku) {
-                    sku = String(sku || '').trim();
-                    if (!sku || seen[sku]) return;
-                    seen[sku] = true;
-                    unique.push(sku);
-                });
-                if (!unique.length) {
-                    showNotification('danger', 'Select at least one SKU.');
-                    return;
-                }
-                $('#temu2-publish-groups').html('<p class="text-muted mb-0">Loading variation preview…</p>');
-                $('#temu2-publish-confirm').prop('disabled', true);
-                $('#temu2-publish-progress').text('');
-                showBsModal('temu2PublishModal');
-                $.ajax({
-                    url: "{{ url('/listing_temu2/save-status') }}",
-                    type: 'POST',
-                    data: { skus: unique, preview: 1, channel: 'temu2' },
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                    success: function (response) {
-                        renderPublishGroups((response && response.groups) || []);
-                    },
-                    error: function (xhr) {
-                        hideBsModal('temu2PublishModal');
-                        let msg = 'Could not build variation preview.';
-                        if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
-                        showNotification('danger', msg);
-                    }
-                });
-            }
-
-            function publishAjaxError(xhr) {
-                if (xhr.status === 0) {
-                    return 'Publish timed out or the connection dropped. Try again.';
-                }
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    return xhr.responseJSON.message;
-                }
-                if (xhr.responseJSON && xhr.responseJSON.errors) {
-                    const first = Object.values(xhr.responseJSON.errors)[0];
-                    return Array.isArray(first) ? String(first[0]) : String(first);
-                }
-                if (xhr.status === 419) {
-                    return 'Session expired. Refresh the page and try Publish again.';
-                }
-                return 'Publish to Temu 2 failed.';
-            }
-
-            function publishGroup(skus) {
-                return $.ajax({
-                    url: "{{ url('/listing_temu2/save-status') }}",
-                    type: 'POST',
-                    data: { skus: skus, confirmed: 1, publish: 1, channel: 'temu2' },
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                    timeout: 180000
-                });
-            }
-
-            $(document).on('click', '.copy-sku-btn', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                const sku = String($(this).attr('data-sku') || '').trim();
-                if (sku) copySkuToClipboard(sku, this);
-            });
-
-            $(document).on('click', '.temu2-publish-btn', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const sku = String($(this).attr('data-sku') || $(this).data('sku') || '').trim();
-                if (!sku) {
-                    showNotification('danger', 'SKU is missing.');
-                    return;
-                }
-                openPublishPreview([sku]);
-            });
-
-            $('#bulk-publish-btn').on('click', function () {
-                if (!temu2ListingTable) return;
-                const selected = (temu2ListingTable.getSelectedData() || [])
-                    .map(function (row) { return String(row.sku || '').trim(); })
-                    .filter(function (sku) { return sku && !isParentSku(sku); });
-                if (!selected.length) {
-                    showNotification('danger', 'Select one or more SKUs first.');
-                    return;
-                }
-                openPublishPreview(selected);
-            });
-
-            $('#temu2-publish-confirm').on('click', function () {
-                const $btn = $(this);
-                if ($btn.prop('disabled')) return;
-                const groups = selectedPublishGroups();
-                if (!groups.length) {
-                    showNotification('danger', 'No Missing L children selected to publish.');
-                    return;
-                }
-                const originalHtml = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Publishing');
-                $('#temu2PublishModal .btn-close, #temu2PublishModal [data-bs-dismiss="modal"]').prop('disabled', true);
-
-                let index = 0;
-                const ok = [];
-                const fail = [];
-
-                function next() {
-                    if (index >= groups.length) {
-                        $btn.prop('disabled', false).html(originalHtml);
-                        $('#temu2PublishModal .btn-close, #temu2PublishModal [data-bs-dismiss="modal"]').prop('disabled', false);
-                        if (ok.length) {
-                            showNotification('success', ok.join(' '));
-                        }
-                        if (fail.length) {
-                            showNotification('danger', fail.join(' '));
-                        }
-                        if (ok.length && !fail.length) {
-                            hideBsModal('temu2PublishModal');
-                        }
-                        return;
-                    }
-                    const group = groups[index];
-                    index += 1;
-                    $('#temu2-publish-progress').text('Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…');
-                    publishGroup(group.skus).done(function (response) {
-                        const goodsId = String((response && response.goods_id) || '').trim();
-                        const listedSkus = (response && response.skus) || group.skus;
-                        if (goodsId) {
-                            markRowsListed(listedSkus, goodsId);
-                        }
-                        ok.push((response && response.message) ? response.message : ('Published ' + group.parent + '.'));
-                        next();
-                    }).fail(function (xhr) {
-                        fail.push(group.parent + ': ' + publishAjaxError(xhr));
-                        next();
-                    });
-                }
-                next();
-            });
-
             $('#import-btn').on('click', function () {
                 showBsModal('importModal');
             });
@@ -1470,7 +1062,7 @@
 
                 showLoader();
                 $.ajax({
-                    url: "{{ route('listing_temu2.import') }}",
+                    url: "{{ route('listing_faire.import') }}",
                     type: 'POST',
                     data: formData,
                     processData: false,
@@ -1490,7 +1082,7 @@
                             }
                         }
                         showNotification('success', message);
-                        temu2ListingTable.setData('/listing_temu2/view-data');
+                        faireListingTable.setData('/listing_faire/view-data');
                     },
                     error: function (xhr) {
                         hideLoader();
@@ -1508,14 +1100,14 @@
 
     <script>
         window.listingPageConfig = {
-            wrap: '#temu2-listing-wrap',
-            tableId: 'temu2Listing-table',
-            exportName: 'temu2_listing',
-            channel: 'temu2',
-            channelLabel: "Temu 2",
-            previewUrl: '/listing_temu2/save-status',
-            publishUrl: '/listing_temu2/save-status'
+            wrap: '#faire-listing-wrap',
+            tableId: 'faireListing-table',
+            exportName: 'faire_listing',
+            channel: 'faire',
+            channelLabel: "Faire",
+            previewUrl: '/listing_faire/save-status',
+            publishUrl: '/listing_faire/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=4"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
 @endsection

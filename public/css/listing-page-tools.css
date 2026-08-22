@@ -44,6 +44,26 @@
 }
 [id$="-listing-wrap"] .copy-sku-btn:hover { color: #0f172a; }
 [id$="-listing-wrap"] .copy-sku-btn.is-copied { color: #16a34a; }
+#temu2PublishModal .sku-cell,
+#listingPublishModal .sku-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+#temu2PublishModal .copy-sku-btn,
+#listingPublishModal .copy-sku-btn {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    padding: 0;
+    line-height: 1;
+    cursor: pointer;
+}
+#temu2PublishModal .copy-sku-btn:hover,
+#listingPublishModal .copy-sku-btn:hover { color: #0f172a; }
+#temu2PublishModal .copy-sku-btn.is-copied,
+#listingPublishModal .copy-sku-btn.is-copied { color: #16a34a; }
 .listing-mp-publish-btn {
     display: inline-flex;
     align-items: center;

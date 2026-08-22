@@ -154,7 +154,19 @@ class TikTokSyncController extends Controller
 
         @set_time_limit(0);
 
-        $days = max(1, min(90, (int) $request->input('days', 60)));
+        $auto = $request->boolean('auto');
+        if ($auto && \Illuminate\Support\Facades\Cache::add('tiktok_orders_autofetch_lock', 1, now()->addMinutes(5)) === false) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Auto-fetch already running.',
+                'skipped' => true,
+            ]);
+        }
+
+        $days = max(1, min(90, (int) $request->input('days', $auto ? 2 : 60)));
+        if ($auto) {
+            $days = min($days, 2);
+        }
 
         try {
             $service = app(TikTokOrderSyncService::class);

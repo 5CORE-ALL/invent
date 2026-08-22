@@ -842,6 +842,7 @@ return [
         'token_url' => env('FAIRE_TOKEN_URL', 'https://www.faire.com/api/external-api-oauth2/token'),
         'http_timeout' => (int) env('FAIRE_HTTP_TIMEOUT', 60),
         'connect_timeout' => (int) env('FAIRE_CONNECT_TIMEOUT', 15),
+        'taxonomy_type_id' => env('FAIRE_TAXONOMY_TYPE_ID'),
     ],
 
     /*

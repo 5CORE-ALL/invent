@@ -341,18 +341,13 @@ class TikTokListingsPageBuilder
     {
         @set_time_limit(300);
 
-        $settings = MarketplaceSyncSettings::getFor($this->channel);
-        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
-            return [
-                'success' => false,
-                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
-            ];
-        }
-
         $liveService = $this->liveService();
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        $mismatch = $this->mismatchSkusForSync($scope);
         $offset = max(0, (int) $request->input('offset', 0));
+        if ($offset === 0) {
+            $this->forgetMismatchSkuCache();
+        }
+        $mismatch = $this->mismatchSkusForSync($scope);
         $limit = max(1, min(10, (int) $request->input('limit', 5)));
         $total = count($mismatch);
         $batch = array_slice($mismatch, $offset, $limit);
@@ -657,7 +652,7 @@ class TikTokListingsPageBuilder
 
         try {
             $cached = Cache::get($this->mismatchSkuCacheKey());
-            if (is_array($cached)) {
+            if (is_array($cached) && $cached !== []) {
                 return array_values(array_filter(array_map('strval', $cached)));
             }
         } catch (\Throwable $e) {

@@ -143,7 +143,7 @@ class ListingChannelCounts
         'tiktok' => '/listing-tiktokshop',
         'tiktokshop2' => '/listing-tiktokshop2',
         'tiktok2' => '/listing-tiktokshop2',
-        'faire' => null, // counts-only (no listing page route)
+        'faire' => '/listing-faire',
         'mercariwoship' => '/listing-mercariwoship',
         'mercariwship' => null,
         'shopifywholesale' => null,

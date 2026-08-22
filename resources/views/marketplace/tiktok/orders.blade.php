@@ -120,6 +120,33 @@ document.querySelectorAll('.btn-push-order').forEach(btn => {
     });
 });
 
+(function autoFetchUnpushed() {
+    const out = document.getElementById('fetch-status');
+    if (!out) return;
+    out.textContent = 'Fetching new orders and pushing to Shopify…';
+    fetch(@json(route('marketplace.manager.tiktok.fetch.orders')), {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ days: 2, import: true, auto: true }),
+    }).then(function (res) { return res.json(); }).then(function (data) {
+        if (data && data.skipped) {
+            out.textContent = '';
+            return;
+        }
+        out.className = 'small mb-2 ' + (data && data.success ? 'text-success' : 'text-danger');
+        out.textContent = (data && data.message) || '';
+        if (data && data.success && !data.skipped) {
+            setTimeout(function () { location.reload(); }, 800);
+        }
+    }).catch(function () {
+        out.textContent = '';
+    });
+})();
+
 document.getElementById('btn-fetch-orders')?.addEventListener('click', async function () {
     const btn = this;
     const out = document.getElementById('fetch-status');

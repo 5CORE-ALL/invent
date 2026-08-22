@@ -2,15 +2,21 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\AmazonDataView;
+use App\Models\EbayMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Temu2DataView;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Pricing;
+use App\Models\TemuMetric;
+use App\Services\LmpSkuGroupService;
+use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\Temu2ApiService;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -20,8 +26,21 @@ use Illuminate\Support\Facades\Schema;
  */
 class Temu2ListingPublishService
 {
+    private const BRAND_NAME = '5 Core Inc';
+
+    private const MAX_IMAGES = 10;
+
     /** @var array<int, int> */
     private array $parentSpecIdByCat = [];
+
+    /** @var list<string> */
+    private array $attributeHintCorpus = [];
+
+    /** @var array<string, float>|null */
+    private ?array $priceByLookupKey = null;
+
+    /** @var array<string, float>|null */
+    private ?array $stdPriceByLookupKey = null;
 
     public function __construct(private Temu2ApiService $api)
     {
@@ -112,7 +131,11 @@ class Temu2ListingPublishService
         $parentKey = $this->groupKeyForProduct($primary);
         $title = $this->resolveTitle($primary, $primarySku);
         if ($title === '') {
-            return ['success' => false, 'message' => 'No title found (product_master title80/title100/title150 or Shopify product_title).'];
+            return ['success' => false, 'message' => $primarySku.': Title missing in Title Master'];
+        }
+        $description = $this->resolveDescription($primary, $primarySku);
+        if ($description === '') {
+            return ['success' => false, 'message' => $primarySku.': Description missing in Description Master'];
         }
 
         $gallerySources = [];
@@ -122,9 +145,13 @@ class Temu2ListingPublishService
             if (! $product) {
                 return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
             }
+            $blocked = $this->classifyChildSku($sku);
+            if (($blocked['status'] ?? '') !== 'will_publish') {
+                return ['success' => false, 'message' => $sku.': '.($blocked['reason'] !== '' ? $blocked['reason'] : 'Masters are not ready')];
+            }
             $price = $this->resolvePrice($sku);
             if ($price === null || $price <= 0) {
-                return ['success' => false, 'message' => 'No price found for '.$sku.'. Set temu2_pricing.base_price on the master.'];
+                return ['success' => false, 'message' => 'No Std Prc found for '.$sku.'. Set Std Prc on Temu 2 Analytics (/temu2-decrease).'];
             }
             $images = $this->resolveSourceImages($product, $sku);
             foreach ($images as $url) {
@@ -135,14 +162,15 @@ class Temu2ListingPublishService
                 'product' => $product,
                 'price' => $price,
                 'qty' => $this->resolveQty($sku),
-                'dimensions' => $this->api->getProductDimensions($sku),
+                'dimensions' => $this->resolveDimensions($product),
             ];
         }
 
         $gallerySources = array_values(array_unique($gallerySources));
         if ($gallerySources === []) {
-            return ['success' => false, 'message' => 'No images found on product master (main_image / image1–image19). Add images on CP Master before publishing.'];
+            return ['success' => false, 'message' => 'No Image Master photos found. Add images on Image Master before publishing.'];
         }
+        $gallerySources = array_slice($gallerySources, 0, self::MAX_IMAGES);
 
         $upload = $this->uploadImages($gallerySources);
         if (($upload['error'] ?? null) !== null) {
@@ -155,7 +183,7 @@ class Temu2ListingPublishService
         while (count($hostedImages) < 3) {
             $hostedImages[] = $hostedImages[0];
         }
-        $hostedImages = array_slice($hostedImages, 0, 10);
+        $hostedImages = array_slice($hostedImages, 0, self::MAX_IMAGES);
 
         $catId = $this->resolveCatId($primarySku, $title, $hostedImages[0]);
         if ($catId === null) {
@@ -202,13 +230,59 @@ class Temu2ListingPublishService
             ];
         }
 
-        $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId);
+        $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId, $primary, $primarySku);
         $shipmentLimitDay = max(1, (int) config('services.temu2.shipment_limit_day', 2));
         $goodsOriginInfo = $this->buildGoodsOriginInfo();
-        $outGoodsSn = mb_substr($this->sanitizeGoodsName($parentKey !== '' ? $parentKey : $primarySku), 0, 50);
-        if ($outGoodsSn === '') {
-            $outGoodsSn = $primarySku;
+
+        $stillPrepared = [];
+        $stillSkuList = [];
+        foreach ($prepared as $index => $row) {
+            $remote = $this->remoteSkuDuplicate($row['sku']);
+            if ($remote !== null) {
+                $this->api->persistNewListing($row['sku'], $remote['goodsId'], $remote['skuId'] !== '' ? $remote['skuId'] : null);
+                $this->persistExtraListingFields($row['sku'], $row['price'], $row['qty']);
+                continue;
+            }
+            $stillPrepared[] = $row;
+            $stillSkuList[] = $skuList[$index];
         }
+        if ($stillPrepared === []) {
+            $this->forgetListingCaches();
+
+            return [
+                'success' => true,
+                'message' => 'SKU already exists on Temu 2. Linked the existing listing.',
+                'skus' => $skus,
+            ];
+        }
+        $prepared = $stillPrepared;
+        $skuList = $stillSkuList;
+
+        $existingGoodsId = $this->siblingGoodsId($parentKey);
+        if ($existingGoodsId !== '') {
+            $added = $this->addSkusToExistingGoods($existingGoodsId, $skuList);
+            if ($added['success'] ?? false) {
+                $firstSkuId = $this->persistPublishedRows($prepared, $existingGoodsId, $added['data'] ?? []);
+
+                return [
+                    'success' => true,
+                    'message' => 'Added '.count($prepared).' variation(s) to the existing Temu 2 listing.',
+                    'goods_id' => $existingGoodsId,
+                    'sku_id' => $firstSkuId !== '' ? $firstSkuId : null,
+                    'skus' => array_values(array_map(static fn ($row) => $row['sku'], $prepared)),
+                ];
+            }
+            Log::warning('Temu2 publish: add SKU to existing goods failed, creating a new listing', [
+                'parent' => $parentKey,
+                'goods_id' => $existingGoodsId,
+                'message' => $added['message'] ?? '',
+            ]);
+        }
+
+        $outGoodsSn = $this->uniqueOutGoodsSn(
+            $existingGoodsId !== '' ? $primarySku : ($parentKey !== '' ? $parentKey : $primarySku),
+            $primarySku
+        );
 
         $payloadV2 = [
             'type' => (string) config('services.temu2.goods_add_type', 'temu.local.goods.v2.add'),
@@ -218,9 +292,9 @@ class Temu2ListingPublishService
                 'goodsName' => $title,
                 'externalGoodsId' => $outGoodsSn,
                 'outGoodsSn' => $outGoodsSn,
-                'goodsDesc' => $this->resolveDescription($primary, $primarySku),
+                'goodsDesc' => $description,
                 'bulletPoints' => $this->resolveBullets($primary, $primarySku),
-                'brand' => ['noTrademark' => true],
+                'brand' => $this->resolveBrand(),
                 'importDesignation' => $goodsOriginInfo['importDesignation'],
                 'goodsGallery' => [
                     'goodsCarouselImage' => $hostedImages,
@@ -256,18 +330,36 @@ class Temu2ListingPublishService
                 $data = $fallback['data'];
             } else {
                 $msg = $this->apiErrorMessage($data);
-                $fallbackMsg = $this->apiErrorMessage($fallback['data'] ?? []);
-                Log::warning('Temu2 publish add failed', [
-                    'parent' => $parentKey,
-                    'skus' => $skus,
-                    'v2' => $msg,
-                    'v1' => $fallbackMsg,
-                ]);
+                $retrySn = $this->uniqueOutGoodsSn($primarySku, $primarySku.'-'.substr(md5($primarySku), 0, 6));
+                if ($this->isDuplicateSkuError($msg) && $retrySn !== '' && strcasecmp($retrySn, $outGoodsSn) !== 0) {
+                    $payloadV2['goodsBasic']['outGoodsSn'] = $retrySn;
+                    $payloadV2['goodsBasic']['externalGoodsId'] = $retrySn;
+                    $retry = $this->temuCallBody($payloadV2, 120);
+                    if ($retry['success'] ?? false) {
+                        $data = $retry;
+                    } else {
+                        $retryFallback = $this->addViaV1($payloadV2);
+                        if ($retryFallback['success'] ?? false) {
+                            $data = $retryFallback['data'];
+                        } else {
+                            $msg = $this->apiErrorMessage($retry);
+                        }
+                    }
+                }
+                if (! ($data['success'] ?? false)) {
+                    $fallbackMsg = $this->apiErrorMessage($fallback['data'] ?? []);
+                    Log::warning('Temu2 publish add failed', [
+                        'parent' => $parentKey,
+                        'skus' => $skus,
+                        'v2' => $msg,
+                        'v1' => $fallbackMsg,
+                    ]);
 
-                return [
-                    'success' => false,
-                    'message' => $msg !== '' ? $msg : 'Temu 2 add-goods API rejected the listing.',
-                ];
+                    return [
+                        'success' => false,
+                        'message' => $msg !== '' ? $msg : 'Temu 2 add-goods API rejected the listing.',
+                    ];
+                }
             }
         }
 
@@ -276,30 +368,7 @@ class Temu2ListingPublishService
             return ['success' => false, 'message' => 'Temu 2 add succeeded but returned no goodsId.'];
         }
 
-        $infoBySku = [];
-        foreach ($data['result']['skuInfoList'] ?? [] as $info) {
-            if (! is_array($info)) {
-                continue;
-            }
-            foreach (['outSkuSn', 'externalSkuId', 'extCode'] as $key) {
-                $code = strtoupper(trim((string) ($info[$key] ?? '')));
-                if ($code !== '') {
-                    $infoBySku[$code] = $info;
-                }
-            }
-        }
-
-        $firstSkuId = '';
-        foreach ($prepared as $index => $row) {
-            $info = $infoBySku[strtoupper($row['sku'])] ?? (($data['result']['skuInfoList'][$index] ?? []) ?: []);
-            $skuId = trim((string) ($info['skuId'] ?? ''));
-            if ($firstSkuId === '' && $skuId !== '') {
-                $firstSkuId = $skuId;
-            }
-            $this->api->persistNewListing($row['sku'], $goodsId, $skuId !== '' ? $skuId : null);
-            $this->persistExtraListingFields($row['sku'], $row['price'], $row['qty']);
-        }
-        $this->forgetListingCaches();
+        $firstSkuId = $this->persistPublishedRows($prepared, $goodsId, $data);
 
         Log::info('Temu2 publish: listed', [
             'parent' => $parentKey,
@@ -462,7 +531,7 @@ class Temu2ListingPublishService
                 'status' => $classified['status'],
                 'reason' => $classified['reason'],
             ];
-            if ($classified['status'] === 'will_publish') {
+            if (($classified['status'] ?? '') === 'will_publish') {
                 $publishSkus[] = $sku;
             }
         }
@@ -491,7 +560,7 @@ class Temu2ListingPublishService
         }
         $price = $this->resolvePrice($sku);
         if ($price === null || $price <= 0) {
-            return ['status' => 'skipped_no_price', 'reason' => 'No price on master'];
+            return ['status' => 'skipped_no_price', 'reason' => 'No Std Prc'];
         }
         $product = ProductMaster::query()
             ->whereNull('deleted_at')
@@ -500,11 +569,30 @@ class Temu2ListingPublishService
         if (! $product) {
             return ['status' => 'skipped_missing', 'reason' => 'Not in product master'];
         }
+
+        return $this->masterReadiness($product, $sku)
+            ?? ['status' => 'will_publish', 'reason' => ''];
+    }
+
+    /**
+     * @return array{status: string, reason: string}|null
+     */
+    private function masterReadiness(ProductMaster $product, string $sku): ?array
+    {
+        if ($this->resolveTitle($product, $sku) === '') {
+            return ['status' => 'skipped_no_title', 'reason' => 'Title missing in Title Master'];
+        }
+        if ($this->resolveDescription($product, $sku) === '') {
+            return ['status' => 'skipped_no_description', 'reason' => 'Description missing in Description Master'];
+        }
         if ($this->resolveSourceImages($product, $sku) === []) {
-            return ['status' => 'skipped_no_image', 'reason' => 'No images on product master'];
+            return ['status' => 'skipped_no_image', 'reason' => 'Images missing in Image Master'];
+        }
+        if (! $this->hasDimWt($product)) {
+            return ['status' => 'skipped_no_dim', 'reason' => 'Dimensions missing in Dim/Wt'];
         }
 
-        return ['status' => 'will_publish', 'reason' => ''];
+        return null;
     }
 
     /**
@@ -516,7 +604,8 @@ class Temu2ListingPublishService
         $out = [];
         $parent = null;
         foreach ($this->uniqueTrimmedSkus($skus) as $sku) {
-            if (($this->classifyChildSku($sku)['status'] ?? '') !== 'will_publish') {
+            $status = $this->classifyChildSku($sku)['status'] ?? '';
+            if ($status !== 'will_publish') {
                 continue;
             }
             $product = ProductMaster::query()
@@ -608,11 +697,12 @@ class Temu2ListingPublishService
             return '';
         }
 
-        $goodsId = Temu2Metric::query()
-            ->where('sku', $sku)
-            ->orWhere('sku', strtoupper($sku))
-            ->orWhere('sku', strtolower($sku))
-            ->value('goods_id');
+        $keys = $this->skuLookupKeys($sku);
+        if ($keys === []) {
+            return '';
+        }
+
+        $goodsId = Temu2Metric::query()->whereIn('sku', $keys)->value('goods_id');
 
         return trim((string) $goodsId);
     }
@@ -630,21 +720,50 @@ class Temu2ListingPublishService
 
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
-        $candidates = [
-            $product->title80 ?? null,
-            $product->title100 ?? null,
-            $product->title150 ?? null,
-            $product->title60 ?? null,
-        ];
-
-        foreach ($candidates as $raw) {
-            $clean = $this->sanitizeGoodsName((string) $raw);
-            if ($clean !== '') {
+        foreach ($this->titleMasterCandidates($product) as $clean) {
+            if ($clean !== '' && ! $this->looksLikeSku($clean, $sku)) {
                 return $clean;
             }
         }
 
-        return $this->sanitizeGoodsName($sku);
+        $parent = $this->parentProductFor($product, $sku);
+        if ($parent) {
+            foreach ($this->titleMasterCandidates($parent) as $clean) {
+                if ($clean !== '' && ! $this->looksLikeSku($clean, $sku)) {
+                    return $clean;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function titleMasterCandidates(ProductMaster $product): array
+    {
+        $out = [];
+        foreach (['title80', 'title100', 'title150', 'title60'] as $col) {
+            $clean = $this->sanitizeGoodsName((string) ($product->{$col} ?? ''));
+            if ($clean !== '') {
+                $out[] = $clean;
+            }
+        }
+
+        return $out;
+    }
+
+    private function looksLikeSku(string $text, string $sku): bool
+    {
+        $norm = static function (string $value): string {
+            return preg_replace('/[^A-Z0-9]/', '', strtoupper(trim($value))) ?? '';
+        };
+
+        $a = $norm($text);
+        $b = $norm($sku);
+
+        return $a !== '' && $b !== '' && $a === $b;
     }
 
     private function sanitizeGoodsName(string $name): string
@@ -659,23 +778,81 @@ class Temu2ListingPublishService
 
     private function resolveDescription(ProductMaster $product, string $sku): string
     {
-        $metric = $this->metricRow($sku);
-        $candidates = [
-            $product->product_description ?? null,
-            $product->description_800 ?? null,
-            $product->description_600 ?? null,
-            $product->description_1000 ?? null,
-            $metric?->goods_desc,
-            $metric?->description_master,
-        ];
-        foreach ($candidates as $raw) {
-            $text = trim(strip_tags((string) $raw));
-            if ($text !== '') {
-                return mb_substr($text, 0, 2000);
+        $rows = [$product];
+        $parent = $this->parentProductFor($product, $sku);
+        if ($parent) {
+            $rows[] = $parent;
+        }
+
+        foreach ($rows as $row) {
+            $rowSku = trim((string) ($row->sku ?? ''));
+            $metric = $rowSku !== '' ? $this->metricRow($rowSku) : null;
+            foreach ([
+                $metric?->description_master,
+                $row->description_1500 ?? null,
+                $row->product_description ?? null,
+                $row->description_html ?? null,
+                $row->description_1000 ?? null,
+                $row->description_800 ?? null,
+                $row->description_600 ?? null,
+            ] as $raw) {
+                $text = $this->cleanDescriptionText((string) $raw, $sku);
+                if ($text !== '') {
+                    return $text;
+                }
             }
         }
 
-        return $this->resolveTitle($product, $sku);
+        return $this->descriptionFromOtherMarketplaces([$sku]);
+    }
+
+    private function cleanDescriptionText(string $raw, string $sku): string
+    {
+        $text = trim(strip_tags(html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+        $text = trim($text);
+        if ($text === '' || $this->looksLikeSku($text, $sku)) {
+            return '';
+        }
+
+        return mb_substr($text, 0, 2000);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    private function descriptionFromOtherMarketplaces(array $skus): string
+    {
+        $keys = [];
+        foreach ($skus as $sku) {
+            foreach ($this->skuLookupKeys((string) $sku) as $key) {
+                $keys[] = $key;
+            }
+        }
+        $keys = array_values(array_unique(array_filter($keys)));
+        if ($keys === []) {
+            return '';
+        }
+
+        foreach (ProductMasterMarketplaceMaps::descriptionTableMap() as $table) {
+            try {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'description_master')) {
+                    continue;
+                }
+                $raw = DB::table($table)
+                    ->whereIn('sku', $keys)
+                    ->whereNotNull('description_master')
+                    ->where('description_master', '!=', '')
+                    ->value('description_master');
+                $text = $this->cleanDescriptionText((string) $raw, (string) ($skus[0] ?? ''));
+                if ($text !== '') {
+                    return $text;
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -711,19 +888,223 @@ class Temu2ListingPublishService
 
     private function resolvePrice(string $sku): ?float
     {
-        if (Schema::hasTable('temu2_pricing')) {
-            $p = Temu2Pricing::query()->where('sku', $sku)->value('base_price');
-            if ($p !== null && (float) $p > 0) {
-                return (float) $p;
+        $std = $this->standardPrice($sku);
+        if ($this->positivePrice($std)) {
+            return (float) $std;
+        }
+
+        foreach ($this->skuLookupKeys($sku) as $key) {
+            $mapped = $this->priceLookupMap()[$key] ?? null;
+            if ($this->positivePrice($mapped)) {
+                return (float) $mapped;
             }
         }
 
         $metricPrice = $this->api->getProductPrice($sku);
-        if ($metricPrice !== null && $metricPrice > 0) {
-            return $metricPrice;
+        if ($this->positivePrice($metricPrice)) {
+            return (float) $metricPrice;
+        }
+
+        $shopify = $this->shopifyRow($sku);
+        if ($shopify && $this->positivePrice($shopify->price ?? null)) {
+            return (float) $shopify->price;
+        }
+
+        $product = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('sku', $sku)
+            ->first();
+        if ($product) {
+            $fromValues = $this->priceFromProductValues($product);
+            if ($fromValues !== null) {
+                return $fromValues;
+            }
+
+            $sibling = $this->siblingPrice($product);
+            if ($sibling !== null) {
+                return $sibling;
+            }
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function priceLookupMap(): array
+    {
+        if ($this->priceByLookupKey !== null) {
+            return $this->priceByLookupKey;
+        }
+
+        $this->priceByLookupKey = [];
+        $remember = function (string $sku, $price): void {
+            if (! $this->positivePrice($price)) {
+                return;
+            }
+            $value = (float) $price;
+            foreach ($this->skuLookupKeys($sku) as $key) {
+                if (! isset($this->priceByLookupKey[$key])) {
+                    $this->priceByLookupKey[$key] = $value;
+                }
+            }
+        };
+
+        if (Schema::hasTable('temu2_pricing')) {
+            Temu2Pricing::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['sku', 'base_price'])
+                ->each(function ($row) use ($remember) {
+                    $remember((string) $row->sku, $row->base_price);
+                });
+        }
+
+        if (Schema::hasTable('temu2_metrics')) {
+            Temu2Metric::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['sku', 'base_price'])
+                ->each(function ($row) use ($remember) {
+                    $remember((string) $row->sku, $row->base_price);
+                });
+        }
+
+        return $this->priceByLookupKey;
+    }
+
+    private function standardPrice(string $sku): ?float
+    {
+        $direct = $this->stdFromMap($sku);
+        if ($direct !== null) {
+            return $direct;
+        }
+
+        try {
+            $lmp = app(LmpSkuGroupService::class);
+            $lmp->prepareForSkus([$sku]);
+            foreach ($lmp->groupContaining($sku) as $member) {
+                $linked = $this->stdFromMap((string) $member);
+                if ($linked !== null) {
+                    return $linked;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return null;
+    }
+
+    private function stdFromMap(string $sku): ?float
+    {
+        foreach ($this->skuLookupKeys($sku) as $key) {
+            $mapped = $this->stdPriceMap()[$key] ?? null;
+            if ($this->positivePrice($mapped)) {
+                return (float) $mapped;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Std Prc from /temu2-decrease (amazon_data_view.STANDARD_PRICE).
+     *
+     * @return array<string, float>
+     */
+    private function stdPriceMap(): array
+    {
+        if ($this->stdPriceByLookupKey !== null) {
+            return $this->stdPriceByLookupKey;
+        }
+
+        $this->stdPriceByLookupKey = [];
+        if (! Schema::hasTable('amazon_data_view')) {
+            return $this->stdPriceByLookupKey;
+        }
+
+        AmazonDataView::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'value'])
+            ->each(function ($row) {
+                $val = is_array($row->value)
+                    ? $row->value
+                    : (json_decode((string) ($row->value ?? ''), true) ?: []);
+                $std = $val['STANDARD_PRICE'] ?? null;
+                if (! $this->positivePrice($std)) {
+                    return;
+                }
+                $value = round((float) $std, 2);
+                foreach ($this->skuLookupKeys((string) $row->sku) as $key) {
+                    if (! isset($this->stdPriceByLookupKey[$key])) {
+                        $this->stdPriceByLookupKey[$key] = $value;
+                    }
+                }
+            });
+
+        return $this->stdPriceByLookupKey;
+    }
+
+    private function siblingPrice(ProductMaster $product): ?float
+    {
+        $parent = $this->groupKeyForProduct($product);
+        if ($parent === '') {
+            return null;
+        }
+
+        $siblings = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('parent', $parent)
+            ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
+            ->pluck('sku');
+
+        foreach ($siblings as $siblingSku) {
+            foreach ($this->skuLookupKeys((string) $siblingSku) as $key) {
+                $mapped = $this->priceLookupMap()[$key] ?? null;
+                if ($this->positivePrice($mapped)) {
+                    return (float) $mapped;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function priceFromProductValues(ProductMaster $product): ?float
+    {
+        $values = is_array($product->Values) ? $product->Values : [];
+        foreach (['temu2_price', 'temu_price', 'base_price', 'sprice', 'SPRICE', 'lp'] as $key) {
+            if ($this->positivePrice($values[$key] ?? null)) {
+                return (float) $values[$key];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function skuLookupKeys(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $upper = strtoupper($sku);
+        $upper = (string) preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $upper);
+        $spaced = (string) preg_replace('/\s+/', ' ', $upper);
+        $loose = (string) preg_replace('/[^A-Z0-9]/', '', $spaced);
+
+        return array_values(array_unique(array_filter([$sku, $upper, $spaced, $loose], fn ($k) => $k !== '')));
+    }
+
+    private function positivePrice($price): bool
+    {
+        return $price !== null && $price !== '' && is_numeric($price) && (float) $price > 0;
     }
 
     private function resolveQty(string $sku): int
@@ -756,41 +1137,19 @@ class Temu2ListingPublishService
 
         $this->pushProductMasterImages($product, $push);
 
-        if ($urls === []) {
-            $parentKey = $this->groupKeyForProduct($product);
-            if ($parentKey !== '' && strcasecmp($parentKey, trim($sku)) !== 0) {
-                $parentProduct = ProductMaster::query()
-                    ->whereNull('deleted_at')
-                    ->where('parent', $parentKey)
-                    ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['PARENT%'])
-                    ->first()
-                    ?: ProductMaster::query()
-                        ->whereNull('deleted_at')
-                        ->where('sku', $parentKey)
-                        ->first();
-                if ($parentProduct) {
-                    $this->pushProductMasterImages($parentProduct, $push);
-                }
-            }
-        }
-
-        if ($urls !== []) {
-            return $urls;
+        $parent = $this->parentProductFor($product, $sku);
+        if ($parent) {
+            $this->pushProductMasterImages($parent, $push);
         }
 
         $metric = $this->metricRow($sku);
-        if (! $metric) {
-            return [];
+        if ($metric) {
+            foreach ($this->decodeImageList($metric->image_master_json ?? null) as $url) {
+                $push($url);
+            }
         }
 
-        foreach ($this->decodeImageList($metric->image_master_json ?? null) as $url) {
-            $push($url);
-        }
-        foreach ($this->decodeImageList($metric->image_urls ?? null) as $url) {
-            $push($url);
-        }
-
-        return $urls;
+        return array_slice($urls, 0, self::MAX_IMAGES);
     }
 
     /**
@@ -800,7 +1159,7 @@ class Temu2ListingPublishService
     {
         $push((string) ($product->main_image ?? ''));
         $push((string) ($product->main_image_brand ?? ''));
-        for ($i = 1; $i <= 19; $i++) {
+        for ($i = 1; $i <= 20; $i++) {
             $col = 'image'.$i;
             $push((string) ($product->{$col} ?? ''));
         }
@@ -878,7 +1237,7 @@ class Temu2ListingPublishService
     private function uploadImages(array $sourceImages): array
     {
         $hosted = [];
-        foreach (array_slice($sourceImages, 0, 5) as $url) {
+        foreach (array_slice($sourceImages, 0, self::MAX_IMAGES) as $url) {
             if ($this->isTemuHostedImageUrl($url)) {
                 $hosted[] = $url;
                 continue;
@@ -1289,8 +1648,14 @@ class Temu2ListingPublishService
      *
      * @return list<array<string, mixed>>
      */
-    private function buildGoodsProperty(int $catId, string $costTemplateId = ''): array
+    private function buildGoodsProperty(int $catId, string $costTemplateId = '', ?ProductMaster $product = null, string $sku = ''): array
     {
+        if ($product && $sku !== '') {
+            $this->loadAttributeHintCorpus($product, $sku);
+        } else {
+            $this->attributeHintCorpus = [self::BRAND_NAME];
+        }
+
         $props = $this->loadCategoryAttributes($catId, $costTemplateId);
         if ($props === []) {
             Log::warning('Temu2 publish: no category attributes returned', ['catId' => $catId]);
@@ -1401,7 +1766,16 @@ class Temu2ListingPublishService
         }
 
         if (in_array($controlType, [0, 16, 19], true)) {
-            $entry['value'] = $this->defaultInputValueForAttribute($name);
+            $typed = $this->inputValueFromHints($name);
+            if ($typed === '') {
+                Log::info('Temu2 publish: left input attribute for manual fill', [
+                    'name' => $name,
+                    'refPid' => $refPid,
+                ]);
+
+                return null;
+            }
+            $entry['value'] = $typed;
             $units = $prop['valueUnitList'] ?? $prop['attributeValueUnitList'] ?? [];
             if (is_array($units) && $units !== []) {
                 $unitId = $units[0]['valueUnitId'] ?? null;
@@ -1616,17 +1990,24 @@ class Temu2ListingPublishService
             || str_contains($lower, 'voltage');
     }
 
-    private function defaultInputValueForAttribute(string $name): string
+    private function inputValueFromHints(string $name): string
     {
         $lower = strtolower($name);
-        if (str_contains($lower, 'battery') || str_contains($lower, 'wireless')) {
-            return 'No';
-        }
-        if (str_contains($lower, 'power')) {
-            return 'USB';
+        if (str_contains($lower, 'brand')) {
+            return self::BRAND_NAME;
         }
 
-        return 'Generic';
+        foreach ($this->attributeHintCorpus as $hint) {
+            $hint = trim($hint);
+            if ($hint === '' || $this->isGenericHint($hint)) {
+                continue;
+            }
+            if ($this->hintRelatesToAttribute($hint, $lower)) {
+                return mb_substr($hint, 0, 200);
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -1647,10 +2028,8 @@ class Temu2ListingPublishService
         }
 
         $name = strtolower($attributeName);
-        $preferNone = str_contains($name, 'battery') || str_contains($name, 'wireless');
-        $preferPower = str_contains($name, 'power') && ! str_contains($name, 'voltage');
-        $preferred = null;
         $selectedSet = array_map('intval', array_values($allSelectedVids));
+        $hintMatch = null;
 
         foreach ($values as $row) {
             if (! is_array($row)) {
@@ -1672,26 +2051,490 @@ class Temu2ListingPublishService
             }
 
             $value = trim((string) ($row['value'] ?? $row['specName'] ?? $row['name'] ?? $row['attributeValue'] ?? ''));
-            $lower = strtolower($value);
+            if ($value === '') {
+                continue;
+            }
 
-            if ($preferVids !== [] && in_array($vid, $preferVids, true)) {
+            if (str_contains($name, 'brand') && $this->isFiveCoreBrand($value)) {
                 return ['vid' => $vid, 'value' => $value];
             }
-            if (in_array($lower, ['unbranded', 'generic', 'does not apply', 'none', 'other', 'n/a', 'na'], true)) {
+            if ($this->valueMatchesHints($value)) {
                 return ['vid' => $vid, 'value' => $value];
             }
-            if ($preferNone && preg_match('/\b(no|none|not|without|does not|n\/a|wired|non-wireless)\b/i', $value)) {
-                return ['vid' => $vid, 'value' => $value];
-            }
-            if ($preferPower && preg_match('/\b(usb|plug|adapter|mains|ac|dc|electric)\b/i', $value)) {
-                return ['vid' => $vid, 'value' => $value];
-            }
-            if ($preferred === null) {
-                $preferred = ['vid' => $vid, 'value' => $value];
+            if ($hintMatch === null && $preferVids !== [] && in_array($vid, $preferVids, true) && $this->valueMatchesHints($value)) {
+                $hintMatch = ['vid' => $vid, 'value' => $value];
             }
         }
 
-        return $preferred;
+        return $hintMatch;
+    }
+
+    private function isFiveCoreBrand(string $value): bool
+    {
+        $norm = preg_replace('/[^A-Z0-9]/', '', strtoupper($value)) ?? '';
+
+        return in_array($norm, ['5COREINC', '5CORE', 'FIVECOREINC', 'FIVECORE'], true);
+    }
+
+    private function valueMatchesHints(string $value): bool
+    {
+        $value = trim($value);
+        if ($value === '' || $this->isGenericHint($value)) {
+            return false;
+        }
+
+        $needle = strtolower($value);
+        foreach ($this->attributeHintCorpus as $hint) {
+            $hay = strtolower(trim($hint));
+            if ($hay === '') {
+                continue;
+            }
+            if ($hay === $needle) {
+                return true;
+            }
+            if (mb_strlen($needle) >= 3 && (str_contains($hay, $needle) || str_contains($needle, $hay))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isGenericHint(string $value): bool
+    {
+        return in_array(strtolower(trim($value)), [
+            'yes', 'no', 'other', 'generic', 'none', 'n/a', 'na', 'unbranded',
+            'does not apply', 'unknown',
+        ], true);
+    }
+
+    private function hintRelatesToAttribute(string $hint, string $attributeName): bool
+    {
+        $hintLower = strtolower($hint);
+        foreach (preg_split('/[\s\/,-]+/', $attributeName) ?: [] as $token) {
+            $token = trim($token);
+            if (mb_strlen($token) < 4) {
+                continue;
+            }
+            if (str_contains($hintLower, $token)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveBrand(): array
+    {
+        $name = self::BRAND_NAME;
+        $types = [
+            'bg.local.goods.brand.get',
+            'temu.local.goods.brand.get',
+            'bg.goods.brand.get',
+        ];
+        $paramSets = [
+            ['brandName' => $name, 'pageSize' => 20, 'pageNo' => 1, 'language' => 'en'],
+            ['brandNameList' => [$name], 'pageSize' => 20, 'pageNo' => 1, 'language' => 'en'],
+        ];
+
+        foreach ($types as $type) {
+            foreach ($paramSets as $params) {
+                $data = $this->temuCallBody(array_merge(['type' => $type], $params), 30);
+                $result = is_array($data['result'] ?? null) ? $data['result'] : [];
+                $list = $result['brandList'] ?? $result['list'] ?? $result['pageItems'] ?? [];
+                if (! is_array($list)) {
+                    continue;
+                }
+                foreach ($list as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $brandName = trim((string) ($row['brandName'] ?? $row['name'] ?? ''));
+                    if ($brandName === '' || ! $this->isFiveCoreBrand($brandName)) {
+                        continue;
+                    }
+                    $id = $row['brandId'] ?? $row['vid'] ?? $row['id'] ?? null;
+                    if ($id) {
+                        return ['brandId' => (int) $id, 'brandName' => $name];
+                    }
+                }
+            }
+        }
+
+        return ['brandName' => $name];
+    }
+
+    /**
+     * @return array{length: ?float, width: ?float, height: ?float, weight_lb: ?float, weight_kg: ?float}
+     */
+    private function dimWtValues(ProductMaster $product): array
+    {
+        $values = is_array($product->Values) ? $product->Values : [];
+        $num = static function (array $keys) use ($values): ?float {
+            foreach ($keys as $key) {
+                if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
+                    return (float) $values[$key];
+                }
+            }
+
+            return null;
+        };
+
+        return [
+            'length' => $num(['l_decl', 'l', 'L', 'length']),
+            'width' => $num(['w_decl', 'w', 'W', 'width']),
+            'height' => $num(['h_decl', 'h', 'H', 'height']),
+            'weight_lb' => $num(['wt_decl', 'wt_act', 'weight_lb', 'wt']),
+            'weight_kg' => $num(['wt_act_kg', 'weight_kg', 'ctn_weight_kg']),
+        ];
+    }
+
+    private function hasDimWt(ProductMaster $product): bool
+    {
+        $dims = $this->dimWtValues($product);
+
+        return $dims['length'] !== null
+            && $dims['width'] !== null
+            && $dims['height'] !== null
+            && ($dims['weight_lb'] !== null || $dims['weight_kg'] !== null);
+    }
+
+    /**
+     * Dim / Wt Items on product_master.Values (inches + lb) converted for Temu packageInfo.
+     *
+     * @return array{weight: string, length: string, width: string, height: string, weightUnit: string, volumeUnit: string}
+     */
+    private function resolveDimensions(ProductMaster $product): array
+    {
+        $dims = $this->dimWtValues($product);
+        $lengthIn = $dims['length'];
+        $widthIn = $dims['width'];
+        $heightIn = $dims['height'];
+        $weightLb = $dims['weight_lb'];
+        $weightKg = $dims['weight_kg'];
+
+        $toCm = static function (?float $inches): string {
+            if ($inches === null) {
+                return '1';
+            }
+
+            return (string) max(1, round($inches * 2.54, 2));
+        };
+
+        $weightG = '1';
+        if ($weightKg !== null) {
+            $weightG = (string) max(1, round($weightKg * 1000, 2));
+        } elseif ($weightLb !== null) {
+            $weightG = (string) max(1, round($weightLb * 453.592, 2));
+        }
+
+        return [
+            'weight' => $weightG,
+            'length' => $toCm($lengthIn),
+            'width' => $toCm($widthIn),
+            'height' => $toCm($heightIn),
+            'weightUnit' => 'g',
+            'volumeUnit' => 'cm',
+        ];
+    }
+
+    private function parentProductFor(ProductMaster $product, string $sku): ?ProductMaster
+    {
+        $parentKey = $this->groupKeyForProduct($product);
+        if ($parentKey === '' || strcasecmp($parentKey, trim($sku)) === 0) {
+            return null;
+        }
+
+        return ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('parent', $parentKey)
+            ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['PARENT%'])
+            ->first()
+            ?: ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->where('sku', $parentKey)
+                ->first();
+    }
+
+    private function loadAttributeHintCorpus(ProductMaster $product, string $sku): void
+    {
+        $hints = [self::BRAND_NAME, '5Core', '5 Core'];
+        $push = function (mixed $value) use (&$hints): void {
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    $this->flattenHintValues($item, $hints);
+                }
+
+                return;
+            }
+            $text = trim(strip_tags((string) $value));
+            if ($text !== '' && mb_strlen($text) <= 240) {
+                $hints[] = $text;
+            }
+        };
+
+        $values = is_array($product->Values) ? $product->Values : [];
+        $this->flattenHintValues($values, $hints);
+        foreach (['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'] as $col) {
+            $push($product->{$col} ?? '');
+        }
+
+        try {
+            $amazon = AmazonDataView::query()->whereIn('sku', $this->skuLookupKeys($sku))->first();
+            if ($amazon && is_array($amazon->value)) {
+                $this->flattenHintValues($amazon->value, $hints);
+            }
+        } catch (\Throwable) {
+        }
+
+        foreach ([Temu2Metric::class, TemuMetric::class] as $class) {
+            try {
+                $row = $class::query()->whereIn('sku', $this->skuLookupKeys($sku))->first();
+                if ($row) {
+                    foreach (['bullet_points', 'goods_summary', 'goods_desc'] as $col) {
+                        $push($row->{$col} ?? '');
+                    }
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        try {
+            $ebay = EbayMetric::query()->whereIn('sku', $this->skuLookupKeys($sku))->first();
+            $push($ebay?->ebay_title);
+        } catch (\Throwable) {
+        }
+
+        foreach (ProductMasterMarketplaceMaps::metricsTableMap() as $table) {
+            try {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
+                    continue;
+                }
+                $cols = [];
+                foreach (['item_specifics', 'attributes', 'product_attributes', 'goods_property'] as $col) {
+                    if (Schema::hasColumn($table, $col)) {
+                        $cols[] = $col;
+                    }
+                }
+                if ($cols === []) {
+                    continue;
+                }
+                $row = DB::table($table)->whereIn('sku', $this->skuLookupKeys($sku))->first($cols);
+                if (! $row) {
+                    continue;
+                }
+                foreach ($cols as $col) {
+                    $raw = $row->{$col} ?? null;
+                    if (is_string($raw)) {
+                        $decoded = json_decode($raw, true);
+                        if (is_array($decoded)) {
+                            $this->flattenHintValues($decoded, $hints);
+                            continue;
+                        }
+                    }
+                    $push($raw);
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        $this->attributeHintCorpus = array_values(array_unique(array_filter($hints, static fn ($h) => trim((string) $h) !== '')));
+    }
+
+    /**
+     * @param  list<string>  $hints
+     */
+    private function flattenHintValues(mixed $value, array &$hints): void
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                if (is_string($key) && ! is_numeric($key) && mb_strlen($key) <= 80) {
+                    $hints[] = trim($key);
+                }
+                $this->flattenHintValues($item, $hints);
+            }
+
+            return;
+        }
+
+        $text = trim(strip_tags((string) $value));
+        if ($text !== '' && mb_strlen($text) <= 240) {
+            $hints[] = $text;
+        }
+    }
+
+    /**
+     * @param  list<array{sku: string, price: float, qty: int}>  $prepared
+     * @param  array<string, mixed>  $data
+     */
+    private function persistPublishedRows(array $prepared, string $goodsId, array $data): string
+    {
+        $infoBySku = [];
+        foreach ($data['result']['skuInfoList'] ?? [] as $info) {
+            if (! is_array($info)) {
+                continue;
+            }
+            foreach (['outSkuSn', 'externalSkuId', 'extCode'] as $key) {
+                $code = strtoupper(trim((string) ($info[$key] ?? '')));
+                if ($code !== '') {
+                    $infoBySku[$code] = $info;
+                }
+            }
+        }
+
+        $firstSkuId = '';
+        foreach ($prepared as $index => $row) {
+            $info = $infoBySku[strtoupper((string) $row['sku'])] ?? (($data['result']['skuInfoList'][$index] ?? []) ?: []);
+            $skuId = trim((string) ($info['skuId'] ?? ''));
+            if ($firstSkuId === '' && $skuId !== '') {
+                $firstSkuId = $skuId;
+            }
+            $this->api->persistNewListing((string) $row['sku'], $goodsId, $skuId !== '' ? $skuId : null);
+            $this->persistExtraListingFields((string) $row['sku'], (float) $row['price'], (int) $row['qty']);
+        }
+        $this->forgetListingCaches();
+
+        return $firstSkuId;
+    }
+
+    private function siblingGoodsId(string $parentKey): string
+    {
+        if ($parentKey === '') {
+            return '';
+        }
+
+        $skus = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where(function ($q) use ($parentKey) {
+                $q->where('parent', $parentKey)->orWhere('sku', $parentKey);
+            })
+            ->pluck('sku')
+            ->all();
+        $skus[] = $parentKey;
+
+        foreach (array_unique(array_map('strval', $skus)) as $sku) {
+            $id = $this->localGoodsId($sku);
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $skuList
+     * @return array{success: bool, data?: array<string, mixed>, message?: string}
+     */
+    private function addSkusToExistingGoods(string $goodsId, array $skuList): array
+    {
+        $attempts = [
+            'bg.local.goods.sku.add',
+            'temu.local.goods.sku.add',
+            'bg.local.goods.update',
+            'temu.local.goods.update',
+            'bg.local.goods.partial.update',
+        ];
+        $lastMsg = '';
+        foreach ($attempts as $type) {
+            $data = $this->temuCallBody([
+                'type' => $type,
+                'language' => 'en',
+                'goodsId' => (int) $goodsId,
+                'skuList' => $skuList,
+            ], 120);
+            if ($data['success'] ?? false) {
+                return ['success' => true, 'data' => $data];
+            }
+            $lastMsg = $this->apiErrorMessage($data);
+            Log::info('Temu2 add SKU to existing goods failed', [
+                'type' => $type,
+                'goods_id' => $goodsId,
+                'message' => $lastMsg,
+            ]);
+        }
+
+        return ['success' => false, 'message' => $lastMsg];
+    }
+
+    private function uniqueOutGoodsSn(string $preferred, string $fallback): string
+    {
+        foreach ([$preferred, $fallback, $fallback.'-'.substr(md5($fallback), 0, 6)] as $raw) {
+            $sn = mb_substr($this->sanitizeGoodsName((string) $raw), 0, 40);
+            if ($sn === '') {
+                continue;
+            }
+            if (! $this->outGoodsSnTaken($sn)) {
+                return $sn;
+            }
+        }
+
+        return mb_substr($this->sanitizeGoodsName($fallback).'-'.time(), 0, 40);
+    }
+
+    private function outGoodsSnTaken(string $sn): bool
+    {
+        foreach (['bg.local.goods.out.sn.check', 'temu.local.goods.out.sn.check'] as $type) {
+            $data = $this->temuCallBody([
+                'type' => $type,
+                'outGoodsSnList' => [$sn],
+                'language' => 'en',
+            ], 30);
+            $list = $data['result']['resultList'] ?? $data['result']['list'] ?? [];
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $row) {
+                if (is_array($row) && ! empty($row['isDuplicate'])) {
+                    return true;
+                }
+            }
+            if ($data['success'] ?? false) {
+                return false;
+            }
+        }
+
+        return $this->siblingGoodsId($sn) !== '';
+    }
+
+    /**
+     * @return array{goodsId: string, skuId: string}|null
+     */
+    private function remoteSkuDuplicate(string $sku): ?array
+    {
+        foreach (['bg.local.goods.sku.out.sn.check', 'temu.local.goods.sku.out.sn.check'] as $type) {
+            $data = $this->temuCallBody([
+                'type' => $type,
+                'outSkuSnList' => [$sku],
+                'language' => 'en',
+            ], 30);
+            $list = $data['result']['resultList'] ?? $data['result']['list'] ?? [];
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $row) {
+                if (! is_array($row) || empty($row['isDuplicate'])) {
+                    continue;
+                }
+                $goodsId = trim((string) ($row['duplicateGoodsId'] ?? $row['goodsId'] ?? ''));
+                $skuId = trim((string) ($row['duplicateSkuId'] ?? $row['skuId'] ?? ''));
+                if ($goodsId !== '') {
+                    return ['goodsId' => $goodsId, 'skuId' => $skuId];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function isDuplicateSkuError(string $message): bool
+    {
+        return str_contains($message, '100010050')
+            || stripos($message, 'sku duplicated') !== false
+            || (stripos($message, 'outskusn') !== false && stripos($message, 'duplicat') !== false);
     }
 
     /**
@@ -1762,10 +2605,11 @@ class Temu2ListingPublishService
             return null;
         }
 
-        return Temu2Metric::query()
-            ->where('sku', $sku)
-            ->orWhere('sku', strtoupper($sku))
-            ->orWhere('sku', strtolower($sku))
-            ->first();
+        $keys = $this->skuLookupKeys($sku);
+        if ($keys === []) {
+            return null;
+        }
+
+        return Temu2Metric::query()->whereIn('sku', $keys)->first();
     }
 }
