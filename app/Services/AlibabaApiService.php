@@ -42,4 +42,28 @@ class AlibabaApiService extends AliExpressApiService
             FILTER_VALIDATE_BOOL
         );
     }
+
+    /**
+     * Alibaba.com ICBU unread / undealt messages, then AliExpress-style message APIs.
+     *
+     * @return array{success: bool, count: int, message?: string}
+     */
+    public function getPendingMessageCount(): array
+    {
+        $methods = [
+            'alibaba.icbu.message.count',
+            'alibaba.icbu.msg.unread.count',
+            'alibaba.icbu.messagebox.count',
+        ];
+        foreach ($methods as $method) {
+            $raw = $this->debugCallRest($method, []);
+            $json = is_array($raw['response']['json'] ?? null) ? $raw['response']['json'] : [];
+            $count = $this->extractPendingMessageTotal($json);
+            if ($count !== null) {
+                return ['success' => true, 'count' => $count];
+            }
+        }
+
+        return parent::getPendingMessageCount();
+    }
 }
