@@ -266,6 +266,62 @@ class ChannelPromoPricingController extends Controller
         ]));
     }
 
+    /**
+     * Per-channel switch: stop S PRC auto-push on analytics page reload only.
+     * Daily cron (channel:push-sprice-daily) is not gated by this.
+     */
+    public static function isPageReloadPushEnabled(string $channel): bool
+    {
+        $channel = strtolower(trim($channel));
+        try {
+            $row = ChannelTabulatorColumnSetting::query()
+                ->where('channel_name', $channel.'_page_reload_push')
+                ->first();
+        } catch (\Throwable) {
+            return true;
+        }
+        $vis = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($vis) || ! array_key_exists('enabled', $vis)) {
+            return true;
+        }
+
+        return filter_var($vis['enabled'], FILTER_VALIDATE_BOOLEAN);
+    }
+
+    public function pageReloadPushSetting(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! $this->promo->isSupported($channel) && ! in_array($channel, self::PUSH_SPRICE_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'channel' => $channel,
+            'enabled' => self::isPageReloadPushEnabled($channel),
+        ]);
+    }
+
+    public function savePageReloadPushSetting(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! $this->promo->isSupported($channel) && ! in_array($channel, self::PUSH_SPRICE_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $enabled = filter_var($request->input('enabled'), FILTER_VALIDATE_BOOLEAN);
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => $channel.'_page_reload_push'],
+            ['visibility' => ['enabled' => $enabled], 'column_order' => []]
+        );
+
+        return response()->json([
+            'success' => true,
+            'channel' => $channel,
+            'enabled' => $enabled,
+        ]);
+    }
+
     public function pushSpriceJobStatus(string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
@@ -1204,7 +1260,7 @@ class ChannelPromoPricingController extends Controller
 
         return $this->loadRules(
             $channel.'_zero_sold_prc',
-            $this->defaultZeroSoldPrcRules(),
+            $this->defaultZeroSoldPrcRules($channel),
             'groi'
         );
     }
@@ -1223,7 +1279,7 @@ class ChannelPromoPricingController extends Controller
 
         $rules = $this->persistRules(
             $channel.'_zero_sold_prc',
-            $this->defaultZeroSoldPrcRules(),
+            $this->defaultZeroSoldPrcRules($channel),
             $incoming,
             'groi'
         );
@@ -1378,13 +1434,22 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * 0 Sold Dil% slabs (10% steps) → Target ROI% / GROI% for suggested SPRICE.
-     * eBay 2 uses this as Target SNROI%; Reverb uses Target GROI%.
+     * 0 Sold Dil → Target ROI% for suggested SPRICE.
+     * AliExpress uses 3 Dil color slabs (Red / Green / Pink).
+     * eBay 2 Open Box / Reverb use 10% Dil steps.
      *
      * @return list<array{key:string,label:string,groi:float|int}>
      */
-    private function defaultZeroSoldPrcRules(): array
+    private function defaultZeroSoldPrcRules(string $channel = ''): array
     {
+        if (in_array($channel, ['aliexpress'], true)) {
+            return [
+                ['key' => 'red', 'label' => 'Red Dil (<25%)', 'groi' => 40],
+                ['key' => 'green', 'label' => 'Green Dil (25–50%)', 'groi' => 25],
+                ['key' => 'pink', 'label' => 'Pink Dil (50%+)', 'groi' => 10],
+            ];
+        }
+
         return [
             ['key' => '0-10', 'label' => '0–10%', 'groi' => 40],
             ['key' => '10-20', 'label' => '10–20%', 'groi' => 35],

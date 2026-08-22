@@ -2500,6 +2500,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Pull business5core.com prices / views / sold into store_listing_prices.
+        $schedule->command('store:sync-prices')
+            ->dailyAt('16:30')
+            ->timezone('Asia/Kolkata')
+            ->name('store-sync-website-prices-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // S PRC → live eBay listing price (ebay1 / ebay2 / ebay3). Page not required.
         $schedule->command('channel:push-sprice-daily')
             ->dailyAt('17:00')

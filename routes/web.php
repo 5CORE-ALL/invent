@@ -3837,6 +3837,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-b2b-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'getColumnVisibility'])->name('shopify.b2b.pricing.column.get');
     Route::post('/shopify-b2b-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'setColumnVisibility'])->name('shopify.b2b.pricing.column.set');
     Route::post('/shopify-b2b/save-sprice', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'saveSpriceToDatabase'])->name('shopify.b2b.save.sprice');
+    Route::post('/shopify-b2b/push-website-sprice', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'pushSpriceToWebsite'])->name('shopify.b2b.push.website.sprice');
 
     // eBay 2 Sales Routes
     Route::get('/ebay2/daily-sales-data', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getData'])->name('ebay2.daily.sales.data');
@@ -5389,6 +5390,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'saveZeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'gtSoldPrcRules'])->name('channel.promo.gt-sold-prc.get');
     Route::post('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'saveGtSoldPrcRules'])->name('channel.promo.gt-sold-prc.save');
+    Route::get('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'pageReloadPushSetting'])->name('channel.promo.page-reload-push.get');
+    Route::post('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'savePageReloadPushSetting'])->name('channel.promo.page-reload-push.save');
     Route::post('/channel-push-prc/{channel}', [ChannelPromoPricingController::class, 'queuePushPrc'])->name('channel.push-prc.queue');
     Route::get('/channel-push-prc/{channel}/status', [ChannelPromoPricingController::class, 'pushPrcJobStatus'])->name('channel.push-prc.status');
     Route::post('/channel-push-prc/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushPrc'])->name('channel.push-prc.cancel');

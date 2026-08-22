@@ -219,9 +219,12 @@ return [
     |--------------------------------------------------------------------------
     */
     'store' => [
-        'url' => env('STORE_API_URL', 'https://business5core.com'),
-        'api_key' => env('STORE_API_KEY', ''),
+        'url' => env('BUSINESS5CORE_API_URL', env('STORE_API_URL', 'https://business5core.com')),
+        'api_key' => env('BUSINESS5CORE_API_KEY', env('STORE_API_KEY', '')),
+        'timeout' => (int) env('BUSINESS5CORE_TIMEOUT', env('STORE_API_TIMEOUT', 30)),
         'locale' => env('STORE_API_LOCALE', 'en'),
+        'price_update_method' => env('STORE_API_PRICE_UPDATE_METHOD', 'PUT'),
+        'price_update_path' => env('STORE_API_PRICE_UPDATE_PATH', '/api/listings/prices/{id}'),
     ],
 
     /*

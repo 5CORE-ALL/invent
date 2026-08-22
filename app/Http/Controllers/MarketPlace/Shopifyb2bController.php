@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
-use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\GoogleSkuCompetitor;
 use App\Models\MarketplacePercentage;
@@ -11,18 +10,21 @@ use App\Models\ProductMaster;
 use App\Models\ShopifyB2BDailyData;
 use App\Models\ShopifyB2BDataView;
 use App\Models\ShopifySku;
+use App\Models\StoreListingPrice;
 use App\Services\ChannelPromoPricingService;
+use App\Services\StorePricePushService;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class Shopifyb2bController extends Controller
 {
     /**
      * Business Analytics tabulator (Shopify B2B; mirrors /shopify-b2c-pricing).
      * Sales from shopify_b2b_daily_data (same source as /shopify-b2b/daily-sales).
-     * Price / SPRICE aligned with /pricing-master-cvr sb2b (b2b_price + shopifyb2b_data_view).
+     * Price / views from FleetCart store_listing_prices (business5core.com), not shopify_skus.b2b_price.
      */
     public function shopifyB2bTabulatorView()
     {
@@ -49,9 +51,6 @@ class Shopifyb2bController extends Controller
 
         return response()->json([
             'data' => $data,
-            'campaign_totals' => [
-                'google_spend_L30' => 0,
-            ],
         ]);
     }
 
@@ -154,7 +153,22 @@ class Shopifyb2bController extends Controller
 
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
+        $storeByNorm = [];
+        if (Schema::hasTable('store_listing_prices')) {
+            foreach (StoreListingPrice::query()->get() as $storeRow) {
+                $storeKey = ShopifySku::normalizeSkuForShopifyLookup((string) $storeRow->sku);
+                if ($storeKey === '') {
+                    continue;
+                }
+                $existing = $storeByNorm[$storeKey] ?? null;
+                if ($existing === null || ($storeRow->is_variant && ! $existing->is_variant)) {
+                    $storeByNorm[$storeKey] = $storeRow;
+                }
+            }
+        }
+
+        // OV L30 — overall sold units from shopify_skus.quantity (same as /shopify-b2c-pricing)
+        $shopifySkuMap = ShopifySku::mapByProductSkus($skus);
 
         // Same source as /shopify-b2b/daily-sales
         $shopifyB2BOrders = ShopifyB2BDailyData::whereIn('sku', $skus)
@@ -165,7 +179,13 @@ class Shopifyb2bController extends Controller
             ->get()
             ->keyBy('sku');
 
-        $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+        // PRMT%/CPN%/DSC%/Appr/Push Prc — shopify_b2b_promo_pricing (site-specific)
+        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('shopify_b2b', $skus);
+
+        // SPRICE / NR from shopifyb2b_data_view (same store as /pricing-master-cvr sb2b)
+        $shopifyB2bViewData = ShopifyB2BDataView::whereIn('sku', $skus)
+            ->get()
+            ->keyBy('sku');
 
         // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
         $amazonStandardPrices = [];
@@ -178,14 +198,6 @@ class Shopifyb2bController extends Controller
                 $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
             }
         }
-
-        // PRMT%/CPN%/DSC%/Appr/Push Prc — shopify_b2b_promo_pricing (site-specific)
-        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('shopify_b2b', $skus);
-
-        // SPRICE / NR from shopifyb2b_data_view (same store as /pricing-master-cvr sb2b)
-        $shopifyB2bViewData = ShopifyB2BDataView::whereIn('sku', $skus)
-            ->get()
-            ->keyBy('sku');
 
         $googleLmpDetails = collect();
         try {
@@ -223,28 +235,27 @@ class Shopifyb2bController extends Controller
             $processedItem['LP_productmaster'] = $lp;
             $processedItem['Ship_productmaster'] = $ship;
 
-            $shopifyItem = $shopifyData[$sku] ?? null;
-            if ($shopifyItem) {
-                $processedItem['INV'] = $shopifyItem->inv ?? 0;
-                $processedItem['L30'] = $shopifyItem->quantity ?? 0;
-                // Price from b2b_price — same as /pricing-master-cvr sb2b
-                $processedItem['Price'] = floatval($shopifyItem->b2b_price ?? 0);
-                $processedItem['Views'] = $shopifyItem->views ?? 0;
-                $processedItem['image_path'] = $shopifyItem->image_src ?? ($values['image_path'] ?? ($productMaster->image_path ?? null));
-                $processedItem['Missing'] = '';
-            } else {
-                $processedItem['INV'] = 0;
-                $processedItem['L30'] = 0;
-                $processedItem['Price'] = 0;
-                $processedItem['Views'] = 0;
-                $processedItem['image_path'] = $values['image_path'] ?? ($productMaster->image_path ?? null);
-                $processedItem['Missing'] = 'M';
-            }
+            $storeRow = $storeByNorm[ShopifySku::normalizeSkuForShopifyLookup((string) $sku)] ?? null;
+
+            $processedItem['INV'] = $storeRow && $storeRow->qty !== null ? (int) $storeRow->qty : 0;
+            $shopifyItem = $shopifySkuMap->get($sku);
+            $processedItem['L30'] = $shopifyItem ? (int) ($shopifyItem->quantity ?? 0) : 0;
+            $processedItem['Price'] = $storeRow && $storeRow->selling_price !== null
+                ? floatval($storeRow->selling_price)
+                : 0;
+            $processedItem['website_regular_price'] = $storeRow && $storeRow->price !== null
+                ? floatval($storeRow->price)
+                : null;
+            $processedItem['website_special_price'] = $storeRow && $storeRow->special_price !== null
+                ? floatval($storeRow->special_price)
+                : null;
+            $processedItem['Views'] = $storeRow && $storeRow->views !== null
+                ? (int) $storeRow->views
+                : 0;
+            $processedItem['image_path'] = $storeRow?->base_image;
 
             $b2bOrder = $shopifyB2BOrders[$sku] ?? null;
             $processedItem['B2B L30'] = $b2bOrder ? $b2bOrder->total_quantity : 0;
-
-            $processedItem['A Price'] = isset($amazonData[$sku]) ? ($amazonData[$sku]->price ?? 0) : 0;
 
             // NR/REQ stored in shopifyb2b_data_view (no separate listing-status table for B2B)
             $processedItem['nr_req'] = 'REQ';
@@ -265,16 +276,16 @@ class Shopifyb2bController extends Controller
                     $processedItem['nr_req'] = 'NR';
                 }
                 $processedItem['B Link'] = $viewArr['buyer_link'] ?? '';
-                $processedItem['S Link'] = $viewArr['seller_link'] ?? '';
             }
+            $processedItem['S Link'] = ($storeRow && ! empty($storeRow->url)) ? $storeRow->url : '';
 
             $price = $processedItem['Price'];
             $b2bL30 = $processedItem['B2B L30'];
             $ovL30 = $processedItem['L30'];
 
-            // Include Ship — aligned with SPRICE = (Price × 0.75) − Ship
+            // B2B P&L excludes Ship (same as daily-sales / S PRC metrics). No channel ads.
             if ($price > 0) {
-                $grossProfit = ($price * $percentageValue) - $lp - floatval($ship);
+                $grossProfit = ($price * $percentageValue) - floatval($lp);
                 $processedItem['GPFT%'] = ($grossProfit / $price) * 100;
                 $processedItem['ROI%'] = $lp > 0 ? ($grossProfit / $lp) * 100 : 0;
                 if ($b2bL30 > 0) {
@@ -302,7 +313,7 @@ class Shopifyb2bController extends Controller
             $processedItem['ADS%'] = 0;
 
             if ($price > 0 && floatval($lp) > 0) {
-                $unitGross = ($price * $percentageValue) - floatval($lp) - floatval($ship);
+                $unitGross = ($price * $percentageValue) - floatval($lp);
                 $adSpendUnit = $price * ($channelAdsPct / 100);
                 $processedItem['NROI%'] = (($unitGross - $adSpendUnit) / floatval($lp)) * 100;
             } else {
@@ -316,31 +327,35 @@ class Shopifyb2bController extends Controller
             $processedItem['SNROI'] = 0;
             $processedItem['SPRICE_STATUS'] = null;
 
-            // Always calculate SPRICE = (Price × 0.75) − Ship
-            if ($price > 0) {
-                $calcSprice = max(0.01, round(($price * 0.75) - floatval($ship), 2));
-                $processedItem['SPRICE'] = $calcSprice;
-                $sGross = ($calcSprice * $percentageValue) - floatval($lp) - floatval($ship);
-                $processedItem['SGPFT'] = $calcSprice > 0 ? ($sGross / $calcSprice) * 100 : 0;
-                $processedItem['SNPFT'] = (float) $processedItem['SGPFT'] - $channelAdsPct;
-                $processedItem['SROI'] = floatval($lp) > 0 ? ($sGross / floatval($lp)) * 100 : 0;
-                $adSpendUnit = $calcSprice * ($channelAdsPct / 100);
-                $processedItem['SNROI'] = floatval($lp) > 0
-                    ? (($sGross - $adSpendUnit) / floatval($lp)) * 100
-                    : 0;
-            }
-
+            $savedSprice = null;
             if (isset($shopifyB2bViewData[$sku])) {
                 $valuesArr = is_array($shopifyB2bViewData[$sku]->value)
                     ? $shopifyB2bViewData[$sku]->value
                     : (json_decode($shopifyB2bViewData[$sku]->value, true) ?: []);
                 $processedItem['SPRICE_STATUS'] = $valuesArr['SPRICE_STATUS'] ?? null;
+                $savedSprice = $valuesArr['SPRICE'] ?? null;
+            }
+
+            // B2B: S PRC = saved value, else live website Price. Metrics exclude Ship.
+            $sprice = (is_numeric($savedSprice) && (float) $savedSprice > 0)
+                ? round((float) $savedSprice, 2)
+                : ($price > 0 ? round((float) $price, 2) : 0);
+
+            if ($sprice > 0) {
+                $processedItem['SPRICE'] = $sprice;
+                $sGross = ($sprice * $percentageValue) - floatval($lp);
+                $processedItem['SGPFT'] = ($sGross / $sprice) * 100;
+                $processedItem['SNPFT'] = (float) $processedItem['SGPFT'] - $channelAdsPct;
+                $processedItem['SROI'] = floatval($lp) > 0 ? ($sGross / floatval($lp)) * 100 : 0;
+                $adSpendUnit = $sprice * ($channelAdsPct / 100);
+                $processedItem['SNROI'] = floatval($lp) > 0
+                    ? (($sGross - $adSpendUnit) / floatval($lp)) * 100
+                    : 0;
             }
 
             $linkedLmpSkus = $this->shopifyB2bLinkedLmpSkusFor($lmpGroupService, (string) $sku);
             $processedItem['linked_lmp_skus'] = $linkedLmpSkus;
 
-            // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
             $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
             if ($stdPrc === null) {
                 foreach ($linkedLmpSkus as $linkedSku) {
@@ -352,6 +367,7 @@ class Shopifyb2bController extends Controller
                 }
             }
             $processedItem['STANDARD_PRICE'] = $stdPrc;
+
             $processedItem = app(ChannelPromoPricingService::class)->applyToRow($processedItem, $promoMap, (string) $sku);
 
             $mergedLmpEntries = collect();
@@ -428,7 +444,6 @@ class Shopifyb2bController extends Controller
             $adSpend = (float) $rows->sum(fn ($r) => floatval($r['googleSpent'] ?? 0));
 
             $childPrices = $rows->pluck('Price')->filter(fn ($p) => is_numeric($p) && $p > 0);
-            $childAmzPrices = $rows->pluck('A Price')->filter(fn ($p) => is_numeric($p) && $p > 0);
             $gpftVals = $rows->pluck('GPFT%')->filter(fn ($v) => is_numeric($v));
             $roiVals = $rows->pluck('ROI%')->filter(fn ($v) => is_numeric($v));
             $nroiVals = $rows->pluck('NROI%')->filter(fn ($v) => is_numeric($v));
@@ -448,9 +463,7 @@ class Shopifyb2bController extends Controller
                 'B2B L30' => $b2bL30,
                 'Views' => $views,
                 'Price' => $childPrices->count() > 0 ? round($childPrices->avg(), 2) : 0,
-                'A Price' => $childAmzPrices->count() > 0 ? round($childAmzPrices->avg(), 2) : 0,
                 'image_path' => $imagePath,
-                'Missing' => '',
                 'nr_req' => $hasReqChild ? 'REQ' : 'NR',
                 'B Link' => '',
                 'S Link' => '',
@@ -547,6 +560,23 @@ class Shopifyb2bController extends Controller
         return response()->json(['error' => $result['error']], 400);
     }
 
+    /**
+     * Push saved S PRC to business5core.com special/selling price.
+     */
+    public function pushSpriceToWebsite(Request $request, StorePricePushService $push)
+    {
+        $sku = trim((string) $request->input('sku'));
+        $sprice = $request->input('sprice', $request->input('price'));
+        if ($sku === '' || ! is_numeric($sprice) || (float) $sprice <= 0) {
+            return response()->json(['success' => false, 'message' => 'SKU and S PRC > 0 are required.'], 400);
+        }
+
+        $result = $push->pushSprice($sku, (float) $sprice);
+        $status = ($result['success'] ?? false) ? 200 : 422;
+
+        return response()->json($result, $status);
+    }
+
     private function saveBulkSpriceUpdates(array $updates)
     {
         $successCount = 0;
@@ -589,20 +619,11 @@ class Shopifyb2bController extends Controller
             : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
 
         $lp = $values['lp'] ?? ($productMaster->lp ?? 0);
-        $ship = 0.0;
-        foreach ($values as $k => $v) {
-            if (strtolower((string) $k) === 'ship') {
-                $ship = floatval($v);
-                break;
-            }
-        }
-        if ($ship <= 0 && isset($productMaster->ship)) {
-            $ship = floatval($productMaster->ship);
-        }
 
         $percentage = $this->getShopifyB2bMargin();
-        // SPRICE metrics include Ship (aligned with SPRICE = Price×0.75 − Ship)
-        $grossProfit = ($sprice * $percentage) - $lp - $ship;
+        $sprice = floatval($sprice);
+        // B2B SPRICE metrics exclude Ship (same as Target ROI% / daily-sales PFT)
+        $grossProfit = ($sprice * $percentage) - floatval($lp);
 
         $sgpft = $sprice > 0 ? ($grossProfit / $sprice) * 100 : 0;
         $sroi = $lp > 0 ? ($grossProfit / $lp) * 100 : 0;

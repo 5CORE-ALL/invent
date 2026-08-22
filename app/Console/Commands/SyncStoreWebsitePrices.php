@@ -22,8 +22,12 @@ class SyncStoreWebsitePrices extends Command
             : 'Syncing all website prices from '.config('services.store.url'));
 
         try {
-            $result = $sync->sync($sku, function (int $page, int $lastPage, int $count) {
-                $this->line("  Page {$page}/{$lastPage}: {$count} listing(s)");
+            $result = $sync->sync($sku, function (...$args) {
+                $source = is_string($args[0] ?? null) ? (string) $args[0] : 'listings';
+                $page = (int) ($args[1] ?? $args[0] ?? 0);
+                $lastPage = (int) ($args[2] ?? $args[1] ?? 0);
+                $count = (int) ($args[3] ?? $args[2] ?? 0);
+                $this->line("  {$source} {$page}/{$lastPage}: {$count} item(s)");
             });
         } catch (\Throwable $e) {
             $this->error('Failed: '.$e->getMessage());
@@ -37,6 +41,9 @@ class SyncStoreWebsitePrices extends Command
                 ['Fetched', $result['fetched']],
                 ['Stored', $result['stored']],
                 ['Matched', $result['matched']],
+                ['With views', $result['with_views'] ?? 0],
+                ['With sold', $result['with_sold'] ?? 0],
+                ['With qty', $result['with_qty'] ?? 0],
                 ['Unmatched', count($result['unmatched'])],
                 ['Failed', count($result['failed'])],
             ]

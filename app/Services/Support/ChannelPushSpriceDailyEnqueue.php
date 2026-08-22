@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Page-less daily enqueue: listed SKUs whose S PRC ≠ live Price.
+ * Never consult the analytics "Reload push" switch — that flag only
+ * stops auto-push on page reload. This cron always runs.
  */
 class ChannelPushSpriceDailyEnqueue
 {

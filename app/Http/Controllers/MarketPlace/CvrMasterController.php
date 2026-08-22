@@ -43,6 +43,7 @@ use App\Models\MacyDataView;
 use App\Models\ReverbViewData;
 use App\Models\Shopifyb2cDataView;
 use App\Models\ShopifyB2BDataView;
+use App\Services\StorePricePushService;
 use App\Models\DobaMetric;
 use App\Models\WalmartPriceData;
 use App\Models\WalmartOrderData;
@@ -8365,84 +8366,51 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Push price to Shopify B2B
-     * Note: Shopify B2B pricing may require catalog-specific API (Shopify Plus)
-     * For now, updates local b2b_price field
+     * Push S PRC to business5core.com special/selling price
+     * (same listing shown on GET /api/listings/prices).
      */
     private function pushToShopifyB2B($sku, $price)
     {
         try {
-            // Get record from shopify_skus table
-            $shopifyRecord = ShopifySku::where('sku', $sku)->first();
-            
-            if (!$shopifyRecord) {
+            $push = app(StorePricePushService::class)->pushSprice((string) $sku, (float) $price);
+            if (! ($push['success'] ?? false)) {
                 $this->savePricePushStatus($sku, 'shopifyb2b', 'error', $price);
-                
-                Log::error('CVR Master - Shopify B2B SKU not found', [
-                    'sku' => $sku
-                ]);
-                
+
                 return response()->json([
                     'success' => false,
-                    'message' => "SKU: $sku not found in Shopify.",
-                    'errors' => [['message' => 'SKU not found in Shopify listings']]
-                ], 404);
-            }
-            
-            // Update local b2b_price field
-            // Note: Full B2B catalog API integration requires Shopify Plus
-            try {
-                DB::beginTransaction();
-                
-                $shopifyRecord->b2b_price = $price;
-                $shopifyRecord->save();
-                
-                DB::commit();
-                
-                // Save success status
-                $this->savePricePushStatus($sku, 'shopifyb2b', 'pushed', $price);
-                
-                Log::info('CVR Master - Shopify B2B price updated (local)', [
-                    'sku' => $sku,
-                    'b2b_price' => $price
-                ]);
-                
-                return response()->json([
-                    'success' => true,
-                    'message' => "B2B Price $" . number_format($price, 2) . " updated locally for SKU: $sku",
-                    'note' => 'B2B price stored locally. Catalog API push requires Shopify Plus.'
-                ]);
-                
-            } catch (\Exception $e) {
-                DB::rollBack();
-                
-                $this->savePricePushStatus($sku, 'shopifyb2b', 'error', $price);
-                
-                Log::error('CVR Master - Shopify B2B local DB update failed', [
-                    'sku' => $sku,
-                    'error' => $e->getMessage()
-                ]);
-                
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to update B2B price: ' . $e->getMessage(),
-                    'errors' => [['message' => 'DB update failed']]
-                ], 500);
+                    'message' => $push['message'] ?? 'Failed to push S PRC to business5core.com',
+                    'errors' => [['message' => $push['message'] ?? 'Store price push failed']],
+                ], 422);
             }
 
+            $live = (float) ($push['price'] ?? $price);
+            $shopifyRecord = ShopifySku::where('sku', $sku)->first()
+                ?: ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $sku))])->first();
+            if ($shopifyRecord) {
+                $shopifyRecord->b2b_price = $live;
+                $shopifyRecord->save();
+            }
+
+            $this->savePricePushStatus($sku, 'shopifyb2b', 'pushed', $live);
+
+            return response()->json([
+                'success' => true,
+                'message' => $push['message'],
+                'price' => $live,
+                'ebay_price' => $live,
+            ]);
         } catch (\Exception $e) {
             $this->savePricePushStatus($sku, 'shopifyb2b', 'error', $price);
-            
-            Log::error('CVR Master - Shopify B2B push exception', [
+
+            Log::error('CVR Master - Shopify B2B website push exception', [
                 'sku' => $sku,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
             ]);
-            
+
             return response()->json([
                 'success' => false,
-                'message' => 'Shopify B2B error: ' . $e->getMessage(),
-                'errors' => [['message' => 'Exception: ' . $e->getMessage()]]
+                'message' => 'Shopify B2B website push failed: '.$e->getMessage(),
+                'errors' => [['message' => $e->getMessage()]],
             ], 500);
         }
     }

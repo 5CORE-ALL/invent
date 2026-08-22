@@ -11,7 +11,9 @@
     $channelPromoHideCvrCpn = !empty($channelPromoHideCvrCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoShowZeroSoldDilRule = in_array($channelPromoChannel, ['ebay2op'], true);
+    $channelPromoShowZeroSoldDilRule = in_array($channelPromoChannel, ['ebay2op', 'aliexpress'], true);
+    $channelPromoZeroSoldDilColorSlabs = in_array($channelPromoChannel, ['aliexpress'], true);
+    $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
 @endphp
 
 @if($channelPromoPart === 'css' || $channelPromoPart === 'all')
@@ -149,6 +151,79 @@
         #ch-promo-sprice-recalc-btn:disabled,
         #ch-promo-sprice-vs-tpromo-btn:disabled {
             opacity: 0.65;
+        }
+        .ch-promo-reload-push-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+            white-space: nowrap;
+            padding: 4px 10px 4px 12px;
+            border: 1px solid #86efac;
+            border-radius: 999px;
+            background: #f0fdf4;
+            font-size: 12px;
+            font-weight: 700;
+            color: #15803d;
+            line-height: 1.2;
+            cursor: pointer;
+            user-select: none;
+            margin: 0;
+        }
+        .ch-promo-reload-push-switch.is-off {
+            border-color: #cbd5e1;
+            background: #f8fafc;
+            color: #64748b;
+        }
+        .ch-promo-reload-push-switch .ch-promo-reload-push-text {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .ch-promo-reload-push-switch .ch-promo-reload-push-state {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: #16a34a;
+        }
+        .ch-promo-reload-push-switch.is-off .ch-promo-reload-push-state {
+            color: #94a3b8;
+        }
+        .ch-promo-reload-push-switch > input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            position: relative !important;
+            float: none !important;
+            left: auto !important;
+            margin: 0 !important;
+            flex: 0 0 36px;
+            width: 36px;
+            height: 20px;
+            border: 0;
+            border-radius: 999px;
+            background: #86efac;
+            box-shadow: inset 0 0 0 1px #4ade80;
+            cursor: pointer;
+        }
+        .ch-promo-reload-push-switch.is-off > input[type="checkbox"] {
+            background: #cbd5e1;
+            box-shadow: inset 0 0 0 1px #94a3b8;
+        }
+        .ch-promo-reload-push-switch > input[type="checkbox"]::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .25);
+            transition: left .15s ease;
+        }
+        .ch-promo-reload-push-switch > input[type="checkbox"]:checked::after {
+            left: 18px;
         }
         #ch-promo-sprice-vs-tpromo-btn {
             background: #0d6efd;
@@ -324,6 +399,18 @@
             text-overflow: clip !important;
         }
         @include('partials.analytics-column-visibility', ['colVisPart' => 'css'])
+        @push('page-title-after')
+            <label class="ch-promo-reload-push-switch{{ $channelPromoPageReloadPushEnabled ? '' : ' is-off' }}"
+                id="ch-promo-reload-push-wrap"
+                title="When ON, this page auto-pushes price on reload. When OFF, reload does not push. Daily cron still pushes either way.">
+                <span class="ch-promo-reload-push-text">
+                    Push on reload
+                    <span class="ch-promo-reload-push-state" id="ch-promo-reload-push-label">{{ $channelPromoPageReloadPushEnabled ? 'On' : 'Off' }}</span>
+                </span>
+                <input type="checkbox" role="switch" id="ch-promo-reload-push-switch"
+                    {{ $channelPromoPageReloadPushEnabled ? 'checked' : '' }}>
+            </label>
+        @endpush
 @endif
 
 @if($channelPromoPart === 'buttons' || $channelPromoPart === 'all')
@@ -426,6 +513,12 @@
                     @endif
                     @endif
                     @endunless
+                    @if($channelPromoShowZeroSoldDilRule && $channelPromoChannel === 'aliexpress')
+                    <button type="button" class="btn btn-sm" id="ch-promo-zero-sold-vs-dil-btn"
+                        title="0 Sold vs ROI: Red / Green / Pink Dil → Target ROI%. Autopopulate S PRC for AL30 = 0 (INV &gt; 0). Pause stops mid-run. No marketplace push.">
+                        0 sold vs ROI
+                    </button>
+                    @endif
                     <div id="ch-promo-push-prc-progress" aria-live="polite" title="Push progress">
                         <div class="ch-promo-push-prc-progress-head">
                             <i class="fas fa-spinner fa-spin" id="ch-promo-push-prc-progress-spin"></i>
@@ -556,11 +649,29 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="chPromoZeroSoldVsDilModalLabel">
+                        @if($channelPromoZeroSoldDilColorSlabs)
+                        <i class="fas fa-sliders-h me-1"></i> 0 sold vs ROI
+                        @else
                         <i class="fas fa-sliders-h me-1"></i> 0 sold Vs Dil Rule
+                        @endif
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
+                    @if($channelPromoZeroSoldDilColorSlabs)
+                    <p class="small text-muted mb-2" id="ch-promo-zero-sold-dil-help">
+                        Map <strong>Dil color</strong> to <strong>Target ROI%</strong>
+                        (<strong style="color:#a00211;">Red &lt;25%</strong>,
+                        <strong style="color:#28a745;">Green 25–50%</strong>,
+                        <strong style="color:#e83e8c;">Pink 50%+</strong>).
+                        Dil = <strong>OV L30 ÷ INV</strong>.
+                        <strong>Autopopulate</strong> writes <strong>S PRC</strong> on selected or visible SKUs with
+                        <strong>AL30 = 0</strong>, <strong>INV &gt; 0</strong>, and <strong>LP &gt; 0</strong>
+                        so <strong>SROI = Target ROI%</strong>
+                        (<code>S PRC = (LP × (1 + ROI%/100) + Ship) / margin</code>).
+                        Use <strong>Pause</strong> to stop mid-run. No marketplace push.
+                    </p>
+                    @else
                     <p class="small text-muted mb-2" id="ch-promo-zero-sold-dil-help">
                         Map Dil% slabs (<strong>0–10%</strong> … <strong>&gt; 100%</strong>) to
                         <strong>Target ROI%</strong>. Dil is <strong>OV L30 ÷ INV</strong> (same Dil column).
@@ -570,11 +681,12 @@
                         (<code>S PRC = (LP × (1 + ROI%/100) + Ship) / margin</code>).
                         No marketplace push.
                     </p>
+                    @endif
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="ch-promo-zero-sold-dil-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width:55%;">Dil%</th>
+                                    <th style="width:55%;">{{ $channelPromoZeroSoldDilColorSlabs ? 'Dil Color' : 'Dil%' }}</th>
                                     <th style="width:45%;" class="text-end">Target ROI%</th>
                                 </tr>
                             </thead>
@@ -582,12 +694,28 @@
                         </table>
                     </div>
                     <div class="small text-muted mt-2" id="ch-promo-zero-sold-dil-status"></div>
+                    <div class="small fw-semibold mt-1" id="ch-promo-zero-sold-dil-progress" style="display:none;"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
+                    @if($channelPromoZeroSoldDilColorSlabs)
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="ch-promo-zero-sold-dil-save-btn"
+                        title="Save Dil color → Target ROI% rules only (does not write S PRC)">
+                        <i class="fas fa-save me-1"></i> Save Rule
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="ch-promo-zero-sold-dil-apply-btn"
+                        title="Save rules, then autopopulate S PRC on 0 Sold (AL30 = 0) SKUs from Dil→Target ROI%">
+                        <i class="fas fa-magic me-1"></i> Autopopulate
+                    </button>
+                    <button type="button" class="btn btn-sm btn-warning" id="ch-promo-zero-sold-dil-pause-btn"
+                        title="Pause Autopopulate" disabled>
+                        <i class="fas fa-pause me-1"></i> Pause
+                    </button>
+                    @else
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-zero-sold-dil-apply-btn"
                         title="Save Dil→Target GROI% rules, then set S PRC so GROI = Target on 0 Sold (E L30 = 0) SKUs">
                         Apply
                     </button>
+                    @endif
                 </div>
             </div>
         </div>
@@ -725,10 +853,12 @@
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
 
         const CHANNEL_PROMO_CHANNEL = @json($channelPromoChannel ?? 'ebay1');
+        let chPromoPageReloadPushEnabled = @json($channelPromoPageReloadPushEnabled ?? true);
         const CHANNEL_PROMO_HIDE_CVR_CPN = @json($channelPromoHideCvrCpn);
         const CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES = @json($channelPromoShowZeroSoldRules);
         const CHANNEL_PROMO_SHOW_GT_SOLD_RULES = @json($channelPromoShowGtSoldRules);
         const CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE = @json($channelPromoShowZeroSoldDilRule);
+        const CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS = @json($channelPromoZeroSoldDilColorSlabs);
         const CHANNEL_PROMO_CFG = {
             ebay1: {
                 label: 'eBay',
@@ -2637,20 +2767,36 @@
 
         let chPromoDilPrmtRules = CH_PEF_DIL_PRMT_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chPromoCvrCpnRules = CH_PEF_CVR_CPN_DEFAULTS.map(function(r) { return Object.assign({}, r); });
-        const CH_PEF_ZERO_SOLD_DIL_DEFAULTS = [
-            { key: '0-10', label: '0–10%', groi: 40 },
-            { key: '10-20', label: '10–20%', groi: 35 },
-            { key: '20-30', label: '20–30%', groi: 30 },
-            { key: '30-40', label: '30–40%', groi: 25 },
-            { key: '40-50', label: '40–50%', groi: 20 },
-            { key: '50-60', label: '50–60%', groi: 15 },
-            { key: '60-70', label: '60–70%', groi: 12 },
-            { key: '70-80', label: '70–80%', groi: 10 },
-            { key: '80-90', label: '80–90%', groi: 8 },
-            { key: '90-100', label: '90–100%', groi: 5 },
-            { key: 'gt-100', label: '> 100%', groi: 0 },
-        ];
+        const CH_PEF_ZERO_SOLD_DIL_DEFAULTS = CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS
+            ? [
+                { key: 'red', label: 'Red Dil (<25%)', groi: 40 },
+                { key: 'green', label: 'Green Dil (25–50%)', groi: 25 },
+                { key: 'pink', label: 'Pink Dil (50%+)', groi: 10 },
+            ]
+            : [
+                { key: '0-10', label: '0–10%', groi: 40 },
+                { key: '10-20', label: '10–20%', groi: 35 },
+                { key: '20-30', label: '20–30%', groi: 30 },
+                { key: '30-40', label: '30–40%', groi: 25 },
+                { key: '40-50', label: '40–50%', groi: 20 },
+                { key: '50-60', label: '50–60%', groi: 15 },
+                { key: '60-70', label: '60–70%', groi: 12 },
+                { key: '70-80', label: '70–80%', groi: 10 },
+                { key: '80-90', label: '80–90%', groi: 8 },
+                { key: '90-100', label: '90–100%', groi: 5 },
+                { key: 'gt-100', label: '> 100%', groi: 0 },
+            ];
         let chPromoZeroSoldDilRules = CH_PEF_ZERO_SOLD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        let chPromoZeroSoldDilRun = {
+            active: false,
+            paused: false,
+            jobs: [],
+            index: 0,
+            ok: 0,
+            fail: 0,
+            skipped: 0,
+            label: '',
+        };
         const CH_PEF_GT_SOLD_PRC_DEFAULTS = [
             { key: 'gt-sold-red', label: 'Red Dil (<25%)', pct: 0, dir: 'increase' },
             { key: 'gt-sold-green', label: 'Green Dil (25–50%)', pct: 0, dir: 'increase' },
@@ -3617,22 +3763,31 @@
             return max;
         }
         function chPromoLp(d) {
-            const lp = Number(d && (d.LP_productmaster != null ? d.LP_productmaster : d.LP));
+            const lp = Number(d && (
+                d.LP_productmaster != null ? d.LP_productmaster
+                : (d.LP != null ? d.LP : d.lp)
+            ));
             return (isFinite(lp) && lp > 0) ? lp : 0;
         }
         function chPromoShipCost(d) {
-            const raw = d && (d.Ship_productmaster != null && d.Ship_productmaster !== ''
-                ? d.Ship_productmaster
-                : (d.ebay2_ship != null ? d.ebay2_ship : d.Ship));
+            const raw = d && (
+                d.Ship_productmaster != null && d.Ship_productmaster !== ''
+                    ? d.Ship_productmaster
+                    : (d.ebay2_ship != null
+                        ? d.ebay2_ship
+                        : (d.Ship != null ? d.Ship : d.ship))
+            );
             const n = Number(raw);
             return isFinite(n) && n > 0 ? n : 0;
         }
         function chPromoTakehomeMargin(d) {
-            const raw = Number(d && d.percentage);
-            if (isFinite(raw) && raw > 0) return raw;
+            let raw = Number(d && d._margin);
+            if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
+            raw = Number(d && d.percentage);
+            if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
             if (typeof EBAY2_TAKEHOME !== 'undefined') {
                 const t = Number(EBAY2_TAKEHOME);
-                if (isFinite(t) && t > 0) return t;
+                if (isFinite(t) && t > 0) return t > 1 ? (t / 100) : t;
             }
             return 1;
         }
@@ -3643,7 +3798,9 @@
             return 0;
         }
         function chPromoRoiForZeroSoldDil(dil) {
-            const key = chPromoDilSlabKey(dil);
+            const key = CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS
+                ? chPromoDilColorBand(dil)
+                : chPromoDilSlabKey(dil);
             const rule = chPromoZeroSoldDilRules.find(function(r) { return r.key === key; });
             const n = rule ? Number(rule.groi) : 0;
             return isFinite(n) ? n : 0;
@@ -4612,12 +4769,19 @@
             const $tb = $('#ch-promo-zero-sold-dil-tbody').empty();
             chPromoZeroSoldDilRules.forEach(function(r, idx) {
                 const groi = isFinite(Number(r.groi)) ? Number(r.groi) : 0;
+                let labelHtml = String(r.label || r.key);
+                if (CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS) {
+                    const hex = chPromoDilColorHex(r.key);
+                    labelHtml = '<span style="color:' + hex + ';font-weight:700;">'
+                        + '<i class="fas fa-circle me-1" style="font-size:0.65em;"></i>'
+                        + String(r.label || r.key) + '</span>';
+                }
                 $tb.append(
                     '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
-                    + '<td>' + String(r.label || r.key) + '</td>'
+                    + '<td>' + labelHtml + '</td>'
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm ch-promo-zero-sold-dil-roi-input" '
-                    + 'step="0.1" value="' + groi + '" data-idx="' + idx + '" title="Target GROI% for this Dil slab">'
+                    + 'step="0.1" value="' + groi + '" data-idx="' + idx + '" title="Target ROI% for this Dil slab">'
                     + '</td></tr>'
                 );
             });
@@ -4647,8 +4811,11 @@
                 }
                 renderChPromoZeroSoldDilModalTable();
                 $('#ch-promo-zero-sold-dil-status').text(res && res.is_default
-                    ? 'Using first-time defaults. Apply to save & set S PRC on 0 Sold rows.'
-                    : 'Loaded saved 0 Sold vs Dil rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.');
+                    ? (CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS
+                        ? 'Using first-time Dil color defaults. Autopopulate to save & set S PRC on 0 Sold (AL30 = 0).'
+                        : 'Using first-time defaults. Apply to save & set S PRC on 0 Sold rows.')
+                    : 'Loaded saved 0 Sold vs ' + (CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS ? 'ROI' : 'Dil')
+                        + ' rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.');
             } catch (e) {
                 renderChPromoZeroSoldDilModalTable();
                 $('#ch-promo-zero-sold-dil-status').text('Could not load saved rules — showing defaults.');
@@ -4670,6 +4837,12 @@
                 return res;
             });
         }
+        function chPromoZeroSoldGateLabel() {
+            if (CHANNEL_PROMO_CHANNEL === 'aliexpress') return 'AL30 = 0';
+            if (chPromoIsEbayChannel()) return 'E L30 = 0';
+            if (chPromoCfg.soldField) return chPromoSoldFieldLabel() + ' = 0';
+            return '0 Sold';
+        }
         function collectChPromoZeroSoldDilTargets() {
             let targets = collectChPromoSelectedRows();
             let label = 'selected';
@@ -4680,16 +4853,94 @@
             const ready = targets.filter(function(t) {
                 const d = (t.d || (t.row && t.row.getData())) || {};
                 return chPromoIsChildRow(d)
-                    && chPromoEbayListingSaleQty(d) <= 0
+                    && !chPromoHasSaleQty(d)
                     && chPromoInv(d) > 0
                     && chPromoLp(d) > 0;
             });
             return { targets: ready, label: label, selectedCount: targets.length };
         }
+        function chPromoZeroSoldDilSetProgress(text, show) {
+            const $p = $('#ch-promo-zero-sold-dil-progress');
+            if (!$p.length) return;
+            if (show === false) {
+                $p.hide().text('');
+                return;
+            }
+            $p.show().text(text || '');
+        }
+        function chPromoZeroSoldDilSetRunUi(state) {
+            const $apply = $('#ch-promo-zero-sold-dil-apply-btn');
+            const $pause = $('#ch-promo-zero-sold-dil-pause-btn');
+            const colorMode = CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS;
+            if (state === 'running') {
+                $apply.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Running…');
+                $pause.prop('disabled', false).html('<i class="fas fa-pause me-1"></i> Pause');
+                $('#ch-promo-zero-sold-dil-save-btn').prop('disabled', true);
+            } else if (state === 'paused') {
+                $apply.prop('disabled', false).html('<i class="fas fa-play me-1"></i> Resume');
+                $pause.prop('disabled', true).html('<i class="fas fa-pause me-1"></i> Paused');
+                $('#ch-promo-zero-sold-dil-save-btn').prop('disabled', false);
+            } else {
+                $apply.prop('disabled', false).html(
+                    colorMode
+                        ? '<i class="fas fa-magic me-1"></i> Autopopulate'
+                        : 'Apply'
+                );
+                $pause.prop('disabled', true).html('<i class="fas fa-pause me-1"></i> Pause');
+                $('#ch-promo-zero-sold-dil-save-btn').prop('disabled', false);
+            }
+        }
+        async function chPromoZeroSoldDilProcessNext() {
+            const run = chPromoZeroSoldDilRun;
+            if (!run.active) return;
+            if (run.paused) {
+                chPromoZeroSoldDilSetRunUi('paused');
+                chPromoZeroSoldDilSetProgress(
+                    'Paused at ' + run.index + '/' + run.jobs.length
+                    + ' (ok ' + run.ok + ', fail ' + run.fail + '). Click Resume to continue.'
+                );
+                return;
+            }
+            if (run.index >= run.jobs.length) {
+                run.active = false;
+                chPromoZeroSoldDilSetRunUi('idle');
+                if (typeof table !== 'undefined' && table) table.redraw(true);
+                chPromoZeroSoldDilSetProgress('', false);
+                const title = CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS ? '0 sold vs ROI' : '0 sold Vs Dil Rule';
+                chPromoToast(
+                    run.fail && !run.ok ? 'error' : 'success',
+                    title + ' (' + run.label + '): S PRC from Dil→Target ROI% → ' + run.ok + ' row(s)'
+                        + (run.fail ? (', ' + run.fail + ' failed') : '')
+                        + (run.skipped ? (', ' + run.skipped + ' skipped') : '') + '.'
+                );
+                $('#ch-promo-zero-sold-dil-status').text(
+                    'Done: ' + run.ok + ' saved'
+                    + (run.fail ? (', ' + run.fail + ' failed') : '')
+                    + (run.skipped ? (', ' + run.skipped + ' skipped') : '') + '.'
+                );
+                return;
+            }
+            const job = run.jobs[run.index];
+            chPromoZeroSoldDilSetProgress(
+                'Autopopulating ' + (run.index + 1) + '/' + run.jobs.length
+                + ' — ' + (job.sku || '') + ' → $' + Number(job.price).toFixed(2)
+                + ' (Target ROI ' + Math.round(job.roi) + '%)'
+            );
+            try {
+                const saveRes = await Promise.resolve(saveChannelSprice(job.sku, job.price, true, { skip_push: true }));
+                chPromoApplySpriceSavePatch(job.row, job.price, saveRes);
+                run.ok++;
+            } catch (e) {
+                chPromoApplySpriceSavePatch(job.row, job.price, null);
+                run.fail++;
+            }
+            run.index++;
+            setTimeout(function() { chPromoZeroSoldDilProcessNext(); }, 40);
+        }
         async function applyChPromoZeroSoldDilToTargets(targets, label) {
             readChPromoZeroSoldDilRulesFromModal();
             if (!targets.length) {
-                chPromoToast('error', 'No 0 Sold rows (E L30 = 0, INV > 0, LP > 0) to price');
+                chPromoToast('error', 'No 0 Sold rows (' + chPromoZeroSoldGateLabel() + ', INV > 0, LP > 0) to price');
                 return;
             }
             const jobs = [];
@@ -4704,9 +4955,17 @@
                     const roi = chPromoRoiForZeroSoldDil(chPromoDil(d));
                     const fill = chPromoSpriceFromTargetRoi(d, roi);
                     if (!(fill > 0)) { skipped++; continue; }
+                    const sgpft = fill > 0
+                        ? Math.round(((fill * chPromoTakehomeMargin(d) - chPromoLp(d) - chPromoShipCost(d)) / fill) * 100)
+                        : 0;
+                    const sroi = chPromoLp(d) > 0
+                        ? Math.round(((fill * chPromoTakehomeMargin(d) - chPromoLp(d) - chPromoShipCost(d)) / chPromoLp(d)) * 100)
+                        : 0;
                     item.row.update(Object.assign({
                         ZERO_SOLD_PRC_APPLIED: true,
                         ZERO_SOLD_PRC_GROI: roi,
+                        sgpft: sgpft,
+                        sroi: sroi,
                     }, chPromoSpricePatch(fill)));
                     jobs.push({ row: item.row, sku: chPromoSku(d), price: fill, roi: roi });
                 }
@@ -4717,6 +4976,24 @@
                 chPromoToast('error', 'No 0 Sold rows could be priced (need LP, take-home margin, and Target ROI)');
                 return;
             }
+
+            // Color-slab channels: sequential Autopopulate with Pause/Resume
+            if (CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS) {
+                chPromoZeroSoldDilRun = {
+                    active: true,
+                    paused: false,
+                    jobs: jobs,
+                    index: 0,
+                    ok: 0,
+                    fail: 0,
+                    skipped: skipped,
+                    label: label,
+                };
+                chPromoZeroSoldDilSetRunUi('running');
+                chPromoZeroSoldDilProcessNext();
+                return;
+            }
+
             let ok = 0;
             let fail = 0;
             const conc = (CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8;
@@ -4739,34 +5016,55 @@
             );
         }
         async function saveAndApplyChPromoZeroSoldDil() {
+            const run = chPromoZeroSoldDilRun;
+            if (run.active && run.paused) {
+                run.paused = false;
+                chPromoZeroSoldDilSetRunUi('running');
+                chPromoZeroSoldDilProcessNext();
+                return;
+            }
+            if (run.active && !run.paused) return;
+
             const collected = collectChPromoZeroSoldDilTargets();
             const targets = collected.targets;
             const label = collected.label;
             if (!targets.length) {
                 chPromoToast('error', collected.selectedCount > 0
-                    ? 'Selected rows are not 0 Sold (need E L30 = 0, INV > 0, LP > 0)'
-                    : 'No 0 Sold rows (E L30 = 0, INV > 0, LP > 0) to price');
+                    ? ('Selected rows are not 0 Sold (need ' + chPromoZeroSoldGateLabel() + ', INV > 0, LP > 0)')
+                    : ('No 0 Sold rows (' + chPromoZeroSoldGateLabel() + ', INV > 0, LP > 0) to price'));
                 return;
             }
             if (label === 'all visible') {
+                const action = CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS ? 'autopopulate S PRC' : 'set S PRC';
                 if (!confirm(
-                    'No rows selected — save rules and set S PRC from Dil→Target ROI% on '
-                    + targets.length + ' visible 0 Sold row(s) (E L30 = 0)?'
+                    'No rows selected — save rules and ' + action + ' from Dil→Target ROI% on '
+                    + targets.length + ' visible 0 Sold row(s) (' + chPromoZeroSoldGateLabel() + ')?'
                 )) {
                     return;
                 }
             }
             const $btn = $('#ch-promo-zero-sold-dil-apply-btn');
             const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
             try {
                 await saveChPromoZeroSoldDilRules();
                 await applyChPromoZeroSoldDilToTargets(targets, label);
             } catch (xhr) {
                 chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                chPromoZeroSoldDilSetRunUi('idle');
             } finally {
-                $btn.prop('disabled', false).html(html);
+                if (!chPromoZeroSoldDilRun.active) {
+                    $btn.prop('disabled', false).html(html);
+                }
             }
+        }
+        function pauseChPromoZeroSoldDilRun() {
+            if (!chPromoZeroSoldDilRun.active || chPromoZeroSoldDilRun.paused) return;
+            chPromoZeroSoldDilRun.paused = true;
+            chPromoZeroSoldDilSetRunUi('paused');
+            chPromoZeroSoldDilSetProgress(
+                'Pausing… will stop after the current SKU.'
+            );
         }
 
         function chPromoNearlyEqual(a, b) {
@@ -6268,8 +6566,33 @@
             chPromoTryQueueAfterSlabs();
         }, 4000);
         /** Calc + store S PRC after Dil/CVR slabs load (Amazon-style). Live push stays off on local. */
+        function chPromoPageReloadPushAllowed() {
+            return chPromoPageReloadPushEnabled !== false;
+        }
+        function syncChPromoReloadPushSwitchUi() {
+            const on = chPromoPageReloadPushAllowed();
+            const $wrap = $('#ch-promo-reload-push-wrap');
+            const $sw = $('#ch-promo-reload-push-switch');
+            $wrap.toggleClass('is-off', !on);
+            $('#ch-promo-reload-push-label').text(on ? 'On' : 'Off');
+            if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
+        }
+        function saveChPromoPageReloadPush(enabled) {
+            chPromoPageReloadPushEnabled = !!enabled;
+            syncChPromoReloadPushSwitchUi();
+            return $.ajax({
+                url: CH_PROMO_RULES_BASE + '/page-reload-push',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
+                data: { _token: chPromoCsrf(), enabled: enabled ? 1 : 0 },
+            });
+        }
         function chPromoTryQueueAfterSlabs() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
+            if (!chPromoPageReloadPushAllowed()) {
+                window._chPushSpriceSlabsQueued = true;
+                return;
+            }
             if (!chPromoEbaySpriceSlabsReady()) return;
             if (window._chPushSpriceSlabsQueued) return;
             if (typeof table === 'undefined' || !table) {
@@ -7162,6 +7485,25 @@
         }
 
         function initChannelPromoPricingUi() {
+            syncChPromoReloadPushSwitchUi();
+            $('#ch-promo-reload-push-switch').off('change.chpromoReload').on('change.chpromoReload', function() {
+                const on = !!this.checked;
+                const prev = chPromoPageReloadPushAllowed();
+                saveChPromoPageReloadPush(on)
+                    .done(function() {
+                        chPromoToast(
+                            'success',
+                            on
+                                ? 'Reload push on — this page will auto-push S PRC on the next reload. Cron is unchanged.'
+                                : 'Reload push off — this page will not auto-push on reload. Daily cron still pushes.'
+                        );
+                    })
+                    .fail(function(xhr) {
+                        chPromoPageReloadPushEnabled = prev;
+                        syncChPromoReloadPushSwitchUi();
+                        chPromoToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Could not save reload-push switch');
+                    });
+            });
             if (typeof loadChPromoDilPrmtRules === 'function') loadChPromoDilPrmtRules();
             if (!CHANNEL_PROMO_HIDE_CVR_CPN && typeof loadChPromoCvrCpnRules === 'function') {
                 Promise.resolve(loadChPromoCvrCpnRules()).catch(function() { /* defaults */ });
@@ -7644,9 +7986,29 @@
                     if (!modalEl) return;
                     renderChPromoZeroSoldDilModalTable();
                     loadChPromoZeroSoldDilRules();
+                    chPromoZeroSoldDilSetRunUi('idle');
+                    chPromoZeroSoldDilSetProgress('', false);
                     bootstrap.Modal.getOrCreateInstance(modalEl).show();
                 });
                 $('#ch-promo-zero-sold-dil-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoZeroSoldDil);
+                $('#ch-promo-zero-sold-dil-save-btn').off('click.chpromo').on('click.chpromo', async function(e) {
+                    e.preventDefault();
+                    const $btn = $(this);
+                    const html = $btn.html();
+                    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+                    try {
+                        await saveChPromoZeroSoldDilRules();
+                        chPromoToast('success', '0 sold vs ROI rules saved.');
+                    } catch (xhr) {
+                        chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                    } finally {
+                        $btn.prop('disabled', false).html(html);
+                    }
+                });
+                $('#ch-promo-zero-sold-dil-pause-btn').off('click.chpromo').on('click.chpromo', function(e) {
+                    e.preventDefault();
+                    pauseChPromoZeroSoldDilRun();
+                });
             }
             bindEbaySpriceAutofill();
             if (chPromoPrmtCpnComboEnabled() || chPromoEbayStdMinusPrmtCpnEnabled()) {

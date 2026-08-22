@@ -1433,7 +1433,7 @@
                                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
                                 <div class="modal-body">
-                                    <p class="text-muted mb-3">Pulls live listing prices from the FleetCart store (business5core.com) on the server. Matched by SKU.</p>
+                                    <p class="text-muted mb-3">Pulls live listing prices, views, stock, images, and sold (when the store API sends it) from business5core.com. Matched by SKU.</p>
                                     <div class="input-group mb-3">
                                         <input type="text" id="syncWebsitePricesSku" class="form-control" placeholder="Optional SKU (leave blank to sync all)">
                                         <button type="button" class="btn btn-outline-secondary" id="syncWebsitePricesOneBtn">Sync this SKU</button>
@@ -6808,6 +6808,8 @@
                                 ['Fetched', body.fetched ?? 0, 'bg-secondary'],
                                 ['Stored', body.stored ?? 0, 'bg-primary'],
                                 ['Matched', body.matched ?? 0, 'bg-success'],
+                                ['Views', body.with_views ?? 0, 'bg-info'],
+                                ['Sold', body.with_sold ?? 0, 'bg-dark'],
                                 ['Unmatched', body.unmatched_count ?? 0, 'bg-warning text-dark'],
                                 ['Failed', body.failed_count ?? 0, 'bg-danger'],
                             ].map(([label, count, cls]) =>

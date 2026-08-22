@@ -9,38 +9,20 @@
         .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 12px; }
         .tabulator .tabulator-header { background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
 
-        /* Root overflow:hidden breaks position:sticky when the page scrolls */
-        #aliexpress-pricing-table.tabulator {
-            overflow: visible !important;
-        }
-        .card:has(#aliexpress-pricing-table),
-        .card-body:has(#aliexpress-pricing-table) {
-            overflow: visible;
-        }
-        /* Keep column headers under the sticky topbar while scrolling */
-        #aliexpress-pricing-table.tabulator .tabulator-header {
-            position: sticky !important;
-            top: var(--tz-topbar-height, 70px) !important;
-            z-index: 24 !important;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-        }
-        #aliexpress-pricing-table.tabulator .tabulator-header .tabulator-frozen {
-            z-index: 26;
-        }
         .tabulator-col .tabulator-col-sorter { display: none !important; }
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);
-            white-space: nowrap; height: 78px; display: flex; align-items: center;
+            white-space: nowrap; height: 80px; display: flex; align-items: center;
             justify-content: center; font-size: 11px; font-weight: 600;
         }
         .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
         .tabulator .tabulator-row { min-height: 50px; }
 
-        /* ── Parent row – identical to amazon_tabulator_view ── */
+        /* Parent summary rows — match /shopify-b2b-pricing */
         .tabulator-row.ae-parent-row,
         .tabulator-row.ae-parent-row .tabulator-cell {
-            background-color: #fffef2 !important;
-            font-weight: 700 !important;
+            background-color: rgba(189, 224, 255, 0.55) !important;
+            font-weight: 600 !important;
             min-height: 48px !important;
         }
         .tabulator-row.ae-parent-row .tabulator-cell {
@@ -51,81 +33,25 @@
         }
         .tabulator-row.ae-parent-row:hover,
         .tabulator-row.ae-parent-row:hover .tabulator-cell {
-            background-color: #93c5fd !important;
+            background-color: rgba(189, 224, 255, 0.8) !important;
         }
 
-        /* ── Pagination – match amazon_tabulator_view ── */
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-counter {
-            display: none !important;
+        /* Pagination label — match /shopify-b2b-pricing */
+        .tabulator-paginator label {
+            margin-right: 5px;
         }
-        .tabulator .tabulator-footer {
-            background: #f8fafc !important;
-            border-top: 1px solid #e2e8f0 !important;
-            padding: 10px 16px !important;
+
+        #aliexpress-pricing-table {
+            width: 100% !important;
         }
-        .tabulator .tabulator-footer .tabulator-paginator {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 4px;
+        #aliexpress-pricing-table .tabulator-tableholder {
+            overflow-x: auto !important;
         }
-        .tabulator .tabulator-footer .tabulator-paginator label {
-            margin: 0 6px 0 0;
-            font-size: 13px;
-            font-weight: 500;
-            color: #64748b;
+        #aliexpress-pricing-table .tabulator-cell {
+            white-space: nowrap !important;
+            text-overflow: clip !important;
         }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
-            height: 36px !important;
-            min-width: 72px !important;
-            padding: 0 8px !important;
-            margin-right: 8px !important;
-            border-radius: 8px !important;
-            border: 1px solid #e2e8f0 !important;
-            background: #fff !important;
-            color: #475569 !important;
-            font-size: 13px !important;
-            font-weight: 500 !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
-            font-size: 14px !important;
-            font-weight: 500 !important;
-            min-width: 36px !important;
-            height: 36px !important;
-            line-height: 36px !important;
-            padding: 0 10px !important;
-            border-radius: 8px !important;
-            border: 1px solid #e2e8f0 !important;
-            background: #fff !important;
-            color: #475569 !important;
-            cursor: pointer;
-            transition: all 0.15s ease !important;
-            text-align: center !important;
-            box-shadow: none !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
-            background: #f1f5f9 !important;
-            border-color: #cbd5e1 !important;
-            color: #1e293b !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
-            background: #4361ee !important;
-            border-color: #4361ee !important;
-            color: #fff !important;
-            font-weight: 600 !important;
-            box-shadow: 0 2px 6px rgba(67,97,238,0.3) !important;
-        }
-        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
-            opacity: 0.4 !important;
-            cursor: not-allowed !important;
-        }
-        #ae-table-row-counter {
-            font-size: 13px;
-            font-weight: 500;
-            color: #64748b;
-            margin: 0 0 8px;
-        }
+
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0 !important;
         }
@@ -449,8 +375,9 @@
                         </div>
                     </div>
 
-                    <div id="ae-table-row-counter">Showing 0 rows</div>
-                    <div id="aliexpress-pricing-table"></div>
+                    <div id="aliexpress-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
+                        <div id="aliexpress-pricing-table" style="flex: 1;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -939,10 +866,11 @@
             if (!d) return false;
             if (d.is_parent === true || d.is_parent === 1 || d.is_parent === '1' || d.is_parent === 'true') return true;
             if (d.is_parent_summary === true || d.is_parent_row === true) return true;
+            // Hide summary rows whose SKU starts with PARENT (e.g. "PARENT 04 CS")
             const sku = String(d.sku || '').trim().toUpperCase();
-            if (sku.indexOf('PARENT') !== -1) return true;
+            if (/^PARENT\b/.test(sku)) return true;
             const p = String(d.parent || '').trim().toUpperCase();
-            return p.indexOf('PARENT ') === 0;
+            return /^PARENT\b/.test(p);
         }
 
         function applyFilters() {
@@ -979,13 +907,6 @@
 
             if (skuSearch) {
                 table.addFilter(d => (d.sku || '').toLowerCase().includes(skuSearch));
-            }
-
-            // Row type filter (All / Parents / SKUs) – hide PARENT rows when SKUs selected
-            if (rowType === 'parents') {
-                table.addFilter(d => aeIsParentRow(d));
-            } else if (rowType === 'skus') {
-                table.addFilter(d => !aeIsParentRow(d));
             }
 
             // Inventory filter
@@ -1105,6 +1026,15 @@
                     return aeHasBlueTriangle(data);
                 });
             }
+
+            // Row type last (Amazon): default SKUs hides PARENT* summary rows
+            if (rowType === 'parents') {
+                table.addFilter(function(d) { return aeIsParentRow(d); });
+            } else if (rowType === 'skus') {
+                table.addFilter(function(d) { return !aeIsParentRow(d); });
+            }
+
+            try { table.setPage(1); } catch (e) {}
         }
 
         if (window.LmpMissingBadge) {
@@ -1328,18 +1258,39 @@
             table = new Tabulator("#aliexpress-pricing-table", {
                 ajaxURL: "/aliexpress/pricing-data",
                 ajaxResponse: function(url, params, response) {
-                    summaryDataCache = normalizeRows(response);
+                    const rows = Array.isArray(response) ? response : [];
+                    rows.forEach(function(r) {
+                        if (!r || typeof r !== 'object') return;
+                        const sku = String(r.sku || '').trim().toUpperCase();
+                        if (r.is_parent === true || r.is_parent === 1 || r.is_parent === '1' || /^PARENT\b/.test(sku)) {
+                            r.is_parent = true;
+                        }
+                    });
+                    summaryDataCache = normalizeRows(rows);
                     updateSummary(summaryDataCache);
                     setTimeout(aeApplyBadgeFilterFromUrl, 0);
-                    return response;
+                    return rows;
                 },
-                layout: "fitDataStretch",
+                layout: "fitData",
+                layoutColumnsOnNewData: true,
                 pagination: true,
                 paginationSize: 100,
-                paginationSizeSelector: [25, 50, 100, 200, 500, 1000, true], // true = All (Amazon-style)
+                paginationSizeSelector: [10, 25, 50, 100, 200],
                 paginationCounter: "rows",
+                columnCalcs: "both",
+                langs: {
+                    "default": {
+                        "pagination": {
+                            "page_size": "SKU Count"
+                        }
+                    }
+                },
                 initialSort: [],
                 columnDefaults: {
+                    hozAlign: "center",
+                    headerHozAlign: "center",
+                    resizable: true,
+                    minWidth: 64,
                     headerSort: true,
                 },
                 rowFormatter: function(row) {
@@ -1819,10 +1770,24 @@
                     allTableData = Array.isArray(data) ? data : [];
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     updateSummary(data);
-                    // Apply default SKUs filter (and any other active filters) after data arrives
+                    // Default SKUs mode — hide PARENT* rows (same as Amazon)
+                    if (!$('#ae-row-type-filter').val()) {
+                        $('#ae-row-type-filter').val('skus');
+                    }
                     setTimeout(function() {
                         if (typeof applyFilters === 'function') applyFilters();
                     }, 0);
+                    if (typeof window.chPromoAutofitColumns === 'function') {
+                        window.chPromoAutofitColumns(table);
+                    }
+                },
+                tableBuilt: function() {
+                    if (!$('#ae-row-type-filter').val()) {
+                        $('#ae-row-type-filter').val('skus');
+                    }
+                    setTimeout(function() {
+                        if (typeof applyFilters === 'function') applyFilters();
+                    }, 50);
                 },
                 dataFiltered: function(filters, rows) {
                     updateSummary(rows);
@@ -1832,22 +1797,6 @@
                 },
                 renderComplete: function() {
                     updateSummary();
-                    try {
-                        const totalRows = table.getDataCount('active');
-                        const pageSize = table.getPageSize();
-                        const showAll = pageSize === true || pageSize === 'true'
-                            || (typeof pageSize === 'number' && pageSize >= totalRows && totalRows > 0);
-                        if (totalRows === 0) {
-                            $('#ae-table-row-counter').text('No rows');
-                        } else if (showAll) {
-                            $('#ae-table-row-counter').text('Showing all ' + totalRows + ' rows');
-                        } else {
-                            const currentPage = table.getPage() || 1;
-                            const start = (currentPage - 1) * pageSize + 1;
-                            const end = Math.min(currentPage * pageSize, totalRows);
-                            $('#ae-table-row-counter').text('Showing ' + start + '-' + end + ' of ' + totalRows + ' rows');
-                        }
-                    } catch (e) { /* ignore */ }
                 }
             });
 

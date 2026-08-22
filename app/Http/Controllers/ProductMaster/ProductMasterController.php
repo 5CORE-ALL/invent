@@ -313,6 +313,9 @@ class ProductMasterController extends Controller
             $row['website_price'] = $storePrice?->price;
             $row['website_special_price'] = $storePrice?->special_price;
             $row['website_selling_price'] = $storePrice?->selling_price;
+            $row['website_views'] = $storePrice?->views;
+            $row['website_sold'] = $storePrice?->sold;
+            $row['website_qty'] = $storePrice?->qty;
             $row['website_slug'] = $storePrice?->slug;
 
             $shopifyImage = $shopifySkus[$normalizedSku]->image_src ?? null;
@@ -1869,7 +1872,7 @@ class ProductMasterController extends Controller
     public function syncWebsitePrices(Request $request, StorePriceSyncService $sync)
     {
         $sku = trim((string) $request->input('sku', ''));
-        @set_time_limit(180);
+        @set_time_limit(600);
 
         try {
             $result = $sync->sync($sku !== '' ? $sku : null);
@@ -1877,11 +1880,14 @@ class ProductMasterController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => $sku !== ''
-                    ? 'Website prices synced for SKU '.$sku
-                    : 'Website prices synced',
+                    ? 'Website listing data synced for SKU '.$sku
+                    : 'Website listing data synced',
                 'fetched' => $result['fetched'],
                 'stored' => $result['stored'],
                 'matched' => $result['matched'],
+                'with_views' => $result['with_views'] ?? 0,
+                'with_sold' => $result['with_sold'] ?? 0,
+                'with_qty' => $result['with_qty'] ?? 0,
                 'unmatched_count' => count($result['unmatched']),
                 'unmatched' => $result['unmatched'],
                 'failed_count' => count($result['failed']),
