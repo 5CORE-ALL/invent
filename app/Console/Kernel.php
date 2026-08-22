@@ -1970,11 +1970,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
-        $schedule->command('tiktok:sync-orders --days=2 --import')
-            ->everyThirtyMinutes()
+        $schedule->command('tiktok:sync-orders --days=7 --import')
+            ->everyTenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('tiktok-sync-orders')
-            ->withoutOverlapping(28)
+            ->withoutOverlapping(9)
             ->runInBackground()
             ->appendOutputTo($log);
 

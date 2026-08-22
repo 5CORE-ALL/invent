@@ -70,7 +70,7 @@ class TikTokInventorySyncService
                 $skipped++;
                 continue;
             }
-            $outcome = $this->pushMetric($metric, $shopifyQty, $qtyPercent, $maxQty, false);
+            $outcome = $this->pushMetric($metric, $shopifyQty, $qtyPercent, $maxQty, false, $exactShopifyQty);
             $updated += $outcome['updated'];
             $failed += $outcome['failed'];
             $skipped += $outcome['skipped'];
@@ -238,7 +238,8 @@ class TikTokInventorySyncService
         array $shopifyQty,
         int $qtyPercent,
         mixed $maxQty,
-        bool $dryRun
+        bool $dryRun,
+        bool $exactShopifyQty = false
     ): array {
         $empty = ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'error' => null];
         $sku = trim((string) $metric->sku);
@@ -252,21 +253,26 @@ class TikTokInventorySyncService
         }
 
         $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
-        $pushQty = $shopifyStock === null
-            ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-            : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+        $pushQty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
+            $shopifyStock,
+            $exactShopifyQty,
+            $qtyPercent,
+            $maxQty
+        );
         $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 
-        if ($metric->stock !== null && (int) $metric->stock === $pushQty) {
-            $empty['skipped'] = 1;
+        if (! $exactShopifyQty) {
+            if ($metric->stock !== null && (int) $metric->stock === $pushQty) {
+                $empty['skipped'] = 1;
 
-            return $empty;
-        }
-        if ($shopifyStock !== null && $shopifyStock > 0
-            && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $metric->stock !== null ? (int) $metric->stock : null)) {
-            $empty['skipped'] = 1;
+                return $empty;
+            }
+            if ($shopifyStock !== null && $shopifyStock > 0
+                && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $metric->stock !== null ? (int) $metric->stock : null)) {
+                $empty['skipped'] = 1;
 
-            return $empty;
+                return $empty;
+            }
         }
 
         if ($dryRun) {
