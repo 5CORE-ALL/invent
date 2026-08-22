@@ -24,7 +24,8 @@ class Shopifyb2bController extends Controller
     /**
      * Business Analytics tabulator (Shopify B2B; mirrors /shopify-b2c-pricing).
      * Sales from shopify_b2b_daily_data (same source as /shopify-b2b/daily-sales).
-     * Price / views from FleetCart store_listing_prices (business5core.com), not shopify_skus.b2b_price.
+     * INV / L30 from shopify_skus (same as other marketplaces).
+     * Price / views from FleetCart store_listing_prices (business5core.com).
      */
     public function shopifyB2bTabulatorView()
     {
@@ -237,8 +238,8 @@ class Shopifyb2bController extends Controller
 
             $storeRow = $storeByNorm[ShopifySku::normalizeSkuForShopifyLookup((string) $sku)] ?? null;
 
-            $processedItem['INV'] = $storeRow && $storeRow->qty !== null ? (int) $storeRow->qty : 0;
             $shopifyItem = $shopifySkuMap->get($sku);
+            $processedItem['INV'] = $shopifyItem ? (int) ($shopifyItem->inv ?? 0) : 0;
             $processedItem['L30'] = $shopifyItem ? (int) ($shopifyItem->quantity ?? 0) : 0;
             $processedItem['Price'] = $storeRow && $storeRow->selling_price !== null
                 ? floatval($storeRow->selling_price)
