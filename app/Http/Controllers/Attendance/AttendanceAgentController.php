@@ -11,6 +11,8 @@ use App\Services\Attendance\AttendanceLiveWatchService;
 use App\Services\Attendance\AttendanceScreenshotService;
 use App\Services\Attendance\AttendanceService;
 use App\Support\AttendanceAccess;
+use App\Support\AttendanceForceLogout;
+use App\Support\UserAccountStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -48,28 +50,7 @@ class AttendanceAgentController extends Controller
             throw ValidationException::withMessages(['email' => ['Invalid credentials.']]);
         }
 
-        abort_unless(AttendanceAccess::isInternalEmployee($user), 403, 'Attendance agent is for internal team members only.');
-
-        $device = $this->deviceService->registerOrUpdate($user, $validated);
-
-        $user->tokens()->where('name', 'like', 'attendance-agent-%')->where('created_at', '<', now()->subDays(90))->delete();
-
-        $token = $user->createToken('attendance-agent-'.$device->machine_id, ['attendance:agent'])->plainTextToken;
-
-        return response()->json([
-            'ok' => true,
-            'token' => $token,
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-            ],
-            'device' => [
-                'id' => $device->id,
-                'machine_id' => $device->machine_id,
-            ],
-            'config' => $this->agentConfig(),
-        ]);
+        return $this->issueAgentToken($user, $validated);
     }
 
     /**
@@ -257,6 +238,10 @@ class AttendanceAgentController extends Controller
      */
     private function issueAgentToken(User $user, array $validated): JsonResponse
     {
+        if (UserAccountStatus::for($user) === UserAccountStatus::INACTIVE) {
+            throw ValidationException::withMessages(['email' => ['This account is inactive. Contact an administrator.']]);
+        }
+
         abort_unless(AttendanceAccess::isInternalEmployee($user), 403, 'Attendance agent is for internal team members only.');
 
         $device = $this->deviceService->registerOrUpdate($user, $validated);
@@ -264,6 +249,7 @@ class AttendanceAgentController extends Controller
         $user->tokens()->where('name', 'like', 'attendance-agent-%')->where('created_at', '<', now()->subDays(90))->delete();
 
         $token = $user->createToken('attendance-agent-'.$device->machine_id, ['attendance:agent'])->plainTextToken;
+        AttendanceForceLogout::clear($user);
 
         return response()->json([
             'ok' => true,
@@ -613,6 +599,11 @@ class AttendanceAgentController extends Controller
     private function withLiveWatch(array $payload, User $user): array
     {
         $payload['live_watch'] = $this->liveWatchService->commandForUser($user);
+        $payload['force_logout'] = AttendanceForceLogout::isFlagged($user)
+            || UserAccountStatus::for($user) === UserAccountStatus::INACTIVE;
+        if ($payload['force_logout']) {
+            $payload['message'] = 'You were signed out by an administrator.';
+        }
 
         return $payload;
     }

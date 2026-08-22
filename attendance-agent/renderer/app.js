@@ -298,6 +298,14 @@ async function init() {
         window.agent.onUpdateAvailable((payload) => showUpdateOverlay(payload));
     }
 
+    if (typeof window.agent.onForcedSignOut === 'function') {
+        window.agent.onForcedSignOut((payload) => {
+            syncFromServer({ session: null, today: null });
+            showView('login');
+            showError($('loginError'), payload?.message || 'You were signed out by an administrator.');
+        });
+    }
+
     const openUpdate = async (btn) => {
         if (btn) btn.disabled = true;
         try {

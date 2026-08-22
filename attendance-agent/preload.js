@@ -31,4 +31,7 @@ contextBridge.exposeInMainWorld('agent', {
     onUpdateAvailable: (cb) => {
         ipcRenderer.on('update-available', (_e, data) => cb(data));
     },
+    onForcedSignOut: (cb) => {
+        ipcRenderer.on('forced-sign-out', (_e, data) => cb(data));
+    },
 });

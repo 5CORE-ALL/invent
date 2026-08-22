@@ -24,8 +24,9 @@ class EnsureUserIsActive
         if ($request->expectsJson() || $request->is('attendance/desktop-api/*')) {
             return response()->json([
                 'ok' => false,
+                'force_logout' => true,
                 'message' => 'This account is inactive. Contact an administrator.',
-            ], 403);
+            ], 401);
         }
 
         Auth::logout();

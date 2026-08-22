@@ -29,20 +29,17 @@ class CheckUserLoggedIn
                 if ($request->expectsJson() || $request->is('attendance/desktop-api/*')) {
                     return response()->json([
                         'ok' => false,
+                        'force_logout' => true,
                         'message' => 'This account is inactive. Contact an administrator.',
-                    ], 403);
+                    ], 401);
                 }
 
                 return redirect()->route('login')
                     ->withErrors(['email' => 'This account is inactive. Contact an administrator.']);
             }
 
-            // Users marked stay_logged_in keep their session through auto-logout
-            if ($user->staysLoggedIn()) {
-                if (isset($user->logined) && (int) $user->logined === 0) {
-                    $user->forceFill(['logined' => 1])->save();
-                }
-
+            // Stay-logged-in survives idle/browser close, not an admin kick.
+            if ($user->staysLoggedIn() && (! isset($user->logined) || (int) $user->logined !== 0)) {
                 return $next($request);
             }
             

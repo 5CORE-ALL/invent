@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.4.2';
+const AGENT_VERSION = '1.4.3';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
 let lastUpdatePayload = null;
@@ -133,6 +133,30 @@ function uploadApi(timeoutMs = 120000) {
 
 function api() {
     return jsonApi(15000);
+}
+
+function isAuthFailure(err) {
+    const status = err?.response?.status;
+    return status === 401 || status === 403 || err?.response?.data?.force_logout === true;
+}
+
+function forceRemoteSignOut(message) {
+    const hadSession = !!(store.get('token') || lastSessionMeta);
+    store.delete('token');
+    store.delete('user');
+    lastSessionMeta = null;
+    localStats = { active: 0, idle: 0, break: 0 };
+    stopLiveWatchPoll();
+    stopTracking();
+    updateTray();
+    updateTrayTooltip('Signed out');
+    if (!hadSession) return;
+    const payload = { message: message || 'You were signed out by an administrator.' };
+    if (win && !win.isDestroyed()) {
+        win.webContents.send('forced-sign-out', payload);
+        win.show();
+        win.focus();
+    }
 }
 
 let config = {
@@ -327,10 +351,16 @@ async function pollLiveCommand() {
     if (!store.get('token')) return;
     try {
         const { data } = await jsonApi(8000).get('/live-command');
+        if (data?.force_logout) {
+            forceRemoteSignOut(data.message);
+            return;
+        }
         if (data?.config) config = { ...config, ...data.config };
         applyLiveWatch(data?.live_watch);
-    } catch (_) {
-        // keep last state; next poll retries
+    } catch (err) {
+        if (isAuthFailure(err)) {
+            forceRemoteSignOut(err.response?.data?.message);
+        }
     }
 }
 
@@ -709,8 +739,16 @@ async function sendHeartbeat(force = false) {
                     lastSessionMeta.activity_state = 'idle';
                 }
             }
+            if (data.force_logout) {
+                forceRemoteSignOut(data.message);
+                return;
+            }
             pushStatsToUi();
         } catch (e) {
+            if (isAuthFailure(e)) {
+                forceRemoteSignOut(e.response?.data?.message);
+                return;
+            }
             console.error('heartbeat failed', e.message);
         }
     });
@@ -847,9 +885,8 @@ async function fetchSessionState() {
             || (err.code === 'ECONNREFUSED' ? 'Cannot reach server. Is Laravel running?' : null)
             || err.message
             || 'Could not load session';
-        if (status === 401) {
-            store.delete('token');
-            store.delete('user');
+        if (status === 401 || status === 403 || err.response?.data?.force_logout) {
+            forceRemoteSignOut(message);
             return { loggedIn: false, error: message };
         }
         const today = todayPayload();
@@ -879,11 +916,17 @@ function buildTrayMenu() {
         {
             label: 'Clock In',
             click: async () => {
-                const { data } = await api().post('/clock-in', { work_location: 'wfh' });
-                resetLocalStats(data.session, data.today);
-                startTracking();
-                updateTray();
-                pushStatsToUi();
+                try {
+                    const { data } = await api().post('/clock-in', { work_location: 'wfh' });
+                    resetLocalStats(data.session, data.today);
+                    startTracking();
+                    updateTray();
+                    pushStatsToUi();
+                } catch (err) {
+                    if (isAuthFailure(err)) {
+                        forceRemoteSignOut(err.response?.data?.message);
+                    }
+                }
             },
         },
         {
@@ -1249,6 +1292,9 @@ ipcMain.handle('clockIn', async (_e, { work_location } = {}) => {
         pushStatsToUi();
         return { ok: true, session: data.session };
     } catch (err) {
+        if (isAuthFailure(err)) {
+            forceRemoteSignOut(err.response?.data?.message);
+        }
         const msg = err.response?.data?.message || err.message || 'Clock in failed';
         return { ok: false, message: msg };
     }

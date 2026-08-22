@@ -15,6 +15,8 @@ class UserAccessControl
 {
     public static function revoke(User $user): void
     {
+        AttendanceForceLogout::flag($user);
+
         try {
             $user->forceFill(['logined' => 0])->save();
         } catch (\Throwable) {
