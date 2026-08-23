@@ -122,24 +122,29 @@ class ListingManagerAmazonHydrator
             : ['html' => '', 'images' => [], 'title' => '', 'source' => 'none'];
 
         $title = self::firstNonEmpty([
-            $mainStore['title'] ?? null,
-            $listing?->item_name,
-            self::rawGet($raw, 'item-name', 'item_name', 'title'),
             $pm['title80'] ?? null,
             $pm['title100'] ?? null,
             $pm['title150'] ?? null,
+            $pm['title60'] ?? null,
+            $listing?->item_name,
+            self::rawGet($raw, 'item-name', 'item_name', 'title'),
+            $mainStore['title'] ?? null,
             $sku,
         ]);
 
         $description = self::firstNonEmpty([
-            $mainStore['html'] ?? null,
+            self::descriptionMasterFromMetrics($sku),
+            $pm['description_1500'] ?? null,
             $pm['description_html'] ?? null,
+            $pm['product_description'] ?? null,
+            $pm['description_1000'] ?? null,
+            $pm['description_800'] ?? null,
+            $pm['description_600'] ?? null,
+            $pm['description_v2_description'] ?? null,
             $pm['amazon_aplus_content'] ?? null,
             $listing?->product_description,
             self::rawGet($raw, 'item-description', 'item_description', 'description'),
-            $pm['product_description'] ?? null,
-            $pm['description_1500'] ?? null,
-            $pm['description_v2_description'] ?? null,
+            $mainStore['html'] ?? null,
         ]);
 
         $bullets = self::bullets($listing?->bullet_point);
@@ -161,7 +166,8 @@ class ListingManagerAmazonHydrator
             $listing?->quantity,
             self::rawGet($raw, 'quantity', 'pending-quantity'),
         ]);
-        $quantity = $qtyRaw !== '' ? (int) $qtyRaw : null;
+        $shopifyQty = self::shopifyQuantity($sku, false);
+        $quantity = $shopifyQty !== null ? $shopifyQty : ($qtyRaw !== '' ? (int) $qtyRaw : null);
 
         $images = self::collectImages($listing, $raw, $pm, $sku);
         foreach (($mainStore['images'] ?? []) as $u) {
@@ -170,15 +176,13 @@ class ListingManagerAmazonHydrator
                 $images[] = $u;
             }
         }
+        $images = ListingManagerImageStore::applyToList($images);
         $dims = self::dimensions($listing?->item_dimensions, $pm);
 
-        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
-        $brand = self::firstNonEmpty([
-            $listing?->brand,
-            $pm['brand'] ?? null,
-            self::rawGet($raw, 'brand'),
-            $defaultBrand,
-        ]) ?: $defaultBrand;
+        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc')) ?: '5 Core Inc';
+        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc')) ?: '5 Core Inc';
+        $brand = $defaultBrand;
+        $manufacturer = $defaultManufacturer;
 
         $upc = self::upcFromCpMaster($sku, $pm, $listing, $raw);
 
@@ -200,6 +204,7 @@ class ListingManagerAmazonHydrator
             'description' => $description,
             'sku' => $sku,
             'brand' => $brand,
+            'manufacturer' => $manufacturer,
             'mpn' => $sku,
             'upc' => $upc,
             'condition' => $condition,
@@ -240,13 +245,15 @@ class ListingManagerAmazonHydrator
     {
         $defaults = [];
         $key = ListingChannelCounts::normalize((string) $channelKey);
-        if (in_array($key, ['ebay2', 'ebaytwo'], true)) {
+        if (in_array($key, ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'], true)) {
             $defaults = (array) config('listing_manager.ebay2_defaults', []);
         }
 
-        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc')) ?: '5 Core Inc';
+        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc')) ?: '5 Core Inc';
         $sku = trim((string) ($hydrated['sku'] ?? $hydrated['mpn'] ?? ''));
-        $brand = trim((string) ($hydrated['brand'] ?: ($existingDetails['brand'] ?? ''))) ?: $defaultBrand;
+        $brand = trim((string) ($existingDetails['brand'] ?? '')) ?: $defaultBrand;
+        $manufacturer = trim((string) ($existingDetails['manufacturer'] ?? ($hydrated['manufacturer'] ?? ''))) ?: $defaultManufacturer;
         $mpn = trim((string) ($existingDetails['mpn'] ?? '')) ?: $sku;
         $upc = trim((string) ($existingDetails['upc'] ?? '')) ?: trim((string) ($hydrated['upc'] ?? ''));
         if ($upc === '' && $sku !== '') {
@@ -258,6 +265,7 @@ class ListingManagerAmazonHydrator
             : [];
         $specifics = array_merge($existingSpecifics, array_filter([
             'Brand' => $brand,
+            'Manufacturer' => $manufacturer,
             'MPN' => $mpn,
             'UPC' => $upc,
         ]));
@@ -267,6 +275,7 @@ class ListingManagerAmazonHydrator
             'description' => $hydrated['description'] ?: ($existingDetails['description'] ?? ''),
             'condition' => $hydrated['condition'] ?: ($existingDetails['condition'] ?? 'New'),
             'brand' => $brand,
+            'manufacturer' => $manufacturer,
             'mpn' => $mpn,
             'upc' => $upc,
             'category' => $hydrated['product_type'] ?: ($existingDetails['category'] ?? ''),
@@ -369,6 +378,82 @@ class ListingManagerAmazonHydrator
     /**
      * @param  array<int, mixed>|null  $values
      */
+    /**
+     * Current Shopify inventory for a SKU. Live refresh hits Admin API and writes through shopify_skus.
+     */
+    public static function shopifyQuantity(string $sku, bool $live = false): ?int
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        try {
+            $row = \App\Models\ShopifySku::firstForProductSku($sku);
+            if ($live && $row) {
+                $row = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::refreshShopifyRowFromLiveVariantApi($row);
+            } elseif ($live && ! $row) {
+                $liveMap = app(\App\Services\ShopifyApiService::class)->getInventoryQuantitiesBySku([$sku]);
+                foreach ($liveMap as $key => $qty) {
+                    if (strcasecmp(trim((string) $key), $sku) === 0
+                        || \App\Models\ShopifySku::normalizeSkuForShopifyLookup((string) $key)
+                            === \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku)) {
+                        return max(0, (int) $qty);
+                    }
+                }
+            }
+
+            $qty = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::shopifyQtyFromRow($row);
+            if ($qty !== null) {
+                return max(0, $qty);
+            }
+
+            $map = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus([$sku]);
+            $upper = strtoupper($sku);
+            if (isset($map[$upper])) {
+                return max(0, (int) $map[$upper]);
+            }
+            $norm = \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && isset($map[$norm])) {
+                return max(0, (int) $map[$norm]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager Shopify qty failed: '.$e->getMessage(), ['sku' => $sku]);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, int>
+     */
+    public static function shopifyQuantities(array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map('trim', $skus))));
+        if ($skus === []) {
+            return [];
+        }
+
+        $out = [];
+        try {
+            $map = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+            foreach ($skus as $sku) {
+                $upper = strtoupper($sku);
+                $norm = \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if (isset($map[$upper])) {
+                    $out[$sku] = max(0, (int) $map[$upper]);
+                } elseif ($norm !== '' && isset($map[$norm])) {
+                    $out[$sku] = max(0, (int) $map[$norm]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager Shopify qty batch failed: '.$e->getMessage());
+        }
+
+        return $out;
+    }
+
     private static function firstNonEmpty(array $values): string
     {
         foreach ($values as $v) {
@@ -425,10 +510,20 @@ class ListingManagerAmazonHydrator
      */
     private static function collectImages(?AmazonListingRaw $listing, array $raw, array $pm, string $sku): array
     {
+        $cached = ListingManagerImageStore::cachedForSku($sku);
+        if ($cached !== []) {
+            return $cached;
+        }
+
         $images = [];
         $push = function ($url) use (&$images) {
             $url = trim((string) $url);
-            if ($url === '' || ! preg_match('#^https?://#i', $url)) {
+            if ($url === '') {
+                return;
+            }
+            $isRemote = (bool) preg_match('#^https?://#i', $url);
+            $isStored = ListingManagerImageStore::isStored($url) || str_starts_with($url, '/storage/');
+            if (! $isRemote && ! $isStored) {
                 return;
             }
             if (! in_array($url, $images, true)) {
@@ -436,15 +531,18 @@ class ListingManagerAmazonHydrator
             }
         };
 
-        $push($listing?->thumbnail_image);
-        $push(self::rawGet($raw, 'image-url', 'image_url', 'main_image'));
-
         foreach (['main_image', 'image_url', 'main_image_brand'] as $k) {
             $push($pm[$k] ?? null);
         }
         for ($i = 1; $i <= 20; $i++) {
             $push($pm['image'.$i] ?? null);
         }
+        foreach (self::imageMasterFromMetrics($sku) as $url) {
+            $push($url);
+        }
+
+        $push($listing?->thumbnail_image);
+        $push(self::rawGet($raw, 'image-url', 'image_url', 'main_image'));
 
         if (Schema::hasTable('amazon_metrics') && Schema::hasColumn('amazon_metrics', 'image_urls')) {
             $row = DB::table('amazon_metrics')->where('sku', $sku)->value('image_urls');
@@ -546,5 +644,77 @@ class ListingManagerAmazonHydrator
             '1', 'Used' => 'Used',
             default => $raw !== '' ? $raw : 'New',
         };
+    }
+
+    private static function descriptionMasterFromMetrics(string $sku): string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return '';
+        }
+
+        foreach (\App\Services\Support\ProductMasterMarketplaceMaps::descriptionTableMap() as $table) {
+            try {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'description_master')) {
+                    continue;
+                }
+                $raw = DB::table($table)
+                    ->where('sku', $sku)
+                    ->whereNotNull('description_master')
+                    ->where('description_master', '!=', '')
+                    ->value('description_master');
+                $text = trim((string) $raw);
+                if ($text !== '') {
+                    return $text;
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function imageMasterFromMetrics(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $images = [];
+        foreach (\App\Services\Support\ProductMasterMarketplaceMaps::metricsTableMap() as $table) {
+            try {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'image_master_json')) {
+                    continue;
+                }
+                $raw = DB::table($table)->where('sku', $sku)->value('image_master_json');
+                $decoded = is_string($raw) ? json_decode($raw, true) : $raw;
+                if (! is_array($decoded)) {
+                    continue;
+                }
+                foreach ($decoded as $item) {
+                    $url = is_array($item)
+                        ? trim((string) ($item['url'] ?? $item['link'] ?? ''))
+                        : trim((string) $item);
+                    $ok = $url !== '' && (
+                        preg_match('#^https?://#i', $url)
+                        || ListingManagerImageStore::isStored($url)
+                        || str_starts_with($url, '/storage/')
+                    );
+                    if ($ok && ! in_array($url, $images, true)) {
+                        $images[] = $url;
+                    }
+                }
+                if ($images !== []) {
+                    return $images;
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return $images;
     }
 }

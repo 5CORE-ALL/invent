@@ -3933,6 +3933,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/price-lt-80-lmp/report', [\App\Http\Controllers\MarketPlace\PriceLt80LmpController::class, 'report'])->name('price.lt80.lmp.report');
 
     // Listing Manager — Amazon catalog + multi-channel drafts
+    Route::get('/listing-manager/media/{file}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'media'])->name('listing.manager.media')->where('file', '[A-Za-z0-9._-]+');
     Route::get('/listing-manager', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'index'])->name('listing.manager');
     Route::get('/listing-manager/data', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'data'])->name('listing.manager.data');
     Route::get('/listing-manager/product', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'showProduct'])->name('listing.manager.product');
@@ -3944,6 +3945,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-manager/drafts/{id}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'showDraft'])->name('listing.manager.drafts.show');
     Route::put('/listing-manager/drafts/{id}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'updateDraft'])->name('listing.manager.drafts.update');
     Route::post('/listing-manager/drafts/{id}/publish', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'publishDraft'])->name('listing.manager.drafts.publish');
+    Route::post('/listing-manager/drafts/{id}/copy-siblings', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'copyToSiblings'])->name('listing.manager.drafts.copy-siblings');
     Route::post('/listing-manager/drafts/{id}/reload-store', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'reloadDraftFromStore'])->name('listing.manager.drafts.reload');
     Route::post('/listing-manager/drafts/{id}/load-description', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadDescriptionFromStore'])->name('listing.manager.drafts.load-description');
     Route::post('/listing-manager/drafts/{id}/images', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'uploadDraftImage'])->name('listing.manager.drafts.images');
