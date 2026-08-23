@@ -1701,63 +1701,24 @@
         border-left: 4px solid #198754 !important;
     }
 
-    #tasks-table .tabulator-row .tabulator-cell.tasks-col-status {
-        overflow: visible;
-        padding-top: 8px !important;
-        padding-bottom: 8px !important;
-    }
-    .task-status-done-wrap {
-        position: relative;
-        display: inline-block;
-        width: 104px;
-        height: 40px;
-        vertical-align: middle;
-    }
-    .task-status-done-art {
-        display: block;
-        position: relative;
-        width: 104px;
-        height: 40px;
-        border-radius: 16px;
-        overflow: hidden;
-        background: #000;
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-    }
-    .task-status-done-art img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-    }
-    .task-status-done-art-label {
-        position: absolute;
+    #task-done-celebration {
+        display: none;
+        position: fixed;
         inset: 0;
-        display: flex;
+        z-index: 20000;
         align-items: center;
         justify-content: center;
-        color: #fff;
-        font-weight: 800;
-        font-size: 11px;
-        letter-spacing: 0.02em;
-        text-shadow: 0 1px 2px #000, 0 0 8px rgba(0, 0, 0, 0.9);
         pointer-events: none;
-        line-height: 1;
+        background: rgba(0, 0, 0, 0.28);
     }
-    .task-status-done-wrap .status-select {
-        position: absolute;
-        inset: 0;
-        width: 100% !important;
-        height: 100% !important;
-        opacity: 0;
-        cursor: pointer;
-        padding: 0 !important;
-        margin: 0 !important;
-        border: 0 !important;
+    #task-done-celebration.is-visible {
+        display: flex;
     }
-    .mobile-task-badge.task-status-done-art {
-        width: 104px;
-        height: 40px;
-        padding: 0;
+    #task-done-celebration img {
+        width: 220px;
+        height: auto;
+        border-radius: 12px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
     }
 
     </style>
@@ -2222,6 +2183,9 @@
       </div>
     </div>
 
+    <div id="task-done-celebration" aria-hidden="true">
+        <img src="{{ asset('assets/images/task-done-celebration.gif') }}" alt="Task done">
+    </div>
 @endsection
 
 @section('modal')
@@ -3223,15 +3187,6 @@
             var taskManagerSessionUserFocus = @json(trim((string) ($selectedUserName ?? '')));
             var taskBusinessToday = @json($taskBusinessToday ?? '');
             var taskBusinessTzShort = @json($taskBusinessTzShort ?? 'PT');
-            var taskDoneCelebrationUrl = @json(asset('assets/images/task-done-celebration.gif'));
-
-            function taskDoneStatusArtHtml(cacheBust) {
-                var src = taskDoneCelebrationUrl + (cacheBust ? ('?t=' + Date.now()) : '');
-                return '<span class="task-status-done-art" title="Done — Good Job">'
-                    + '<img src="' + src + '" alt="Good Job">'
-                    + '<span class="task-status-done-art-label">Good Job</span>'
-                    + '</span>';
-            }
             var taskBusinessTzLabel = @json($taskBusinessTzLabel ?? 'California (PT)');
 
             function currentUserIsAssigneeOnTask(rowData) {
@@ -3675,9 +3630,7 @@
                                 <div style="flex: 1;">
                                     <div class="mobile-task-title">${overdueAlert}${task.title || 'No Title'}</div>
                                     <div class="mobile-task-meta">
-                                        ${task.status === 'Done'
-                                            ? taskDoneStatusArtHtml(false)
-                                            : `<span class="badge ${statusBadge} mobile-task-badge">${statusText}</span>`}
+                                        <span class="badge ${statusBadge} mobile-task-badge">${statusText}</span>
                                         <span class="badge ${priorityClass} mobile-task-badge">${priorityLabel}</span>
                                     </div>
                                 </div>
@@ -4395,9 +4348,8 @@
                     cols.push({
                         title: "STATUS", 
                         field: "status", 
-                        width: 128,
+                        width: 118,
                         hozAlign: "center",
-                        cssClass: "tasks-col-status",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var value = cell.getValue();
@@ -4423,25 +4375,6 @@
                                 'Rework': {bg: '#f5576c', text: '#fff'}
                             };
                             var currentStatus = statuses[value] || {bg: '#6c757d', text: '#fff'};
-
-                            if (value === 'Done') {
-                                var art = taskDoneStatusArtHtml(false);
-                                if (!canUpdateStatus) {
-                                    return art;
-                                }
-                                return '<div class="task-status-done-wrap">'
-                                    + art
-                                    + '<select class="form-select form-select-sm status-select" data-task-id="' + taskId + '" data-current-status="Done" aria-label="Change status">'
-                                    + '<option value="Todo">Todo</option>'
-                                    + '<option value="Done" selected>Done</option>'
-                                    + '<option value="Need Help">Need Help</option>'
-                                    + '<option value="Need Approval">Need Approval</option>'
-                                    + '<option value="Dependent">Dependent</option>'
-                                    + '<option value="Approved">Approved</option>'
-                                    + '<option value="Hold">Hold</option>'
-                                    + '<option value="Rework">Rework</option>'
-                                    + '</select></div>';
-                            }
                             
                             if (!canUpdateStatus) {
                                 return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 4.8px 9.6px; border-radius: 16px; font-size: 8.8px; font-weight: 700; display: inline-block; white-space: nowrap;">' + displayText + '</span>';
@@ -7599,32 +7532,20 @@
                 }
             };
 
-            function showTaskDoneCelebration(taskId) {
-                var src = taskDoneCelebrationUrl + '?t=' + Date.now();
-                function replayIn(root) {
-                    if (!root) return;
-                    root.querySelectorAll('.task-status-done-art img').forEach(function (img) {
-                        img.src = src;
-                    });
-                }
+            function showTaskDoneCelebration() {
+                var el = document.getElementById('task-done-celebration');
+                var img = el ? el.querySelector('img') : null;
+                if (!el || !img) return;
+                el.classList.add('is-visible');
+                el.setAttribute('aria-hidden', 'false');
                 try {
-                    if (typeof table !== 'undefined' && table && taskId) {
-                        var row = table.getRow(taskId);
-                        if (row) {
-                            var cell = row.getCell('status');
-                            replayIn(cell ? cell.getElement() : null);
-                            return;
-                        }
-                    }
+                    img.src = img.src.split('?')[0] + '?t=' + Date.now();
                 } catch (e) {}
-                replayIn(document);
-            }
-
-            function refreshTasksThenCelebrate(taskId) {
-                var doneId = taskId;
-                Promise.resolve(table.replaceData()).then(function () {
-                    showTaskDoneCelebration(doneId);
-                });
+                clearTimeout(showTaskDoneCelebration._timer);
+                showTaskDoneCelebration._timer = setTimeout(function() {
+                    el.classList.remove('is-visible');
+                    el.setAttribute('aria-hidden', 'true');
+                }, 3000);
             }
 
             $(document).on('change', '.status-select', function() {
@@ -7754,7 +7675,8 @@
                     success: function(response) {
                         $('#doneModal').modal('hide');
                         resetDoneModalUi();
-                        refreshTasksThenCelebrate(currentTaskId);
+                        table.replaceData();
+                        showTaskDoneCelebration();
 
                         var alertHtml = `
                             <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -7848,10 +7770,9 @@
                     data: data,
                         success: function(response) {
                             // Update table data without page reload
+                            table.replaceData();
                             if (status === 'Done') {
-                                refreshTasksThenCelebrate(taskId);
-                            } else {
-                                table.replaceData();
+                                showTaskDoneCelebration();
                             }
                             
                             // Show success message
