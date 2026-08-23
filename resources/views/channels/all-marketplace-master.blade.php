@@ -331,6 +331,34 @@
         #summary-stats .summary-trend-dot.down { background: #ef4444; }
         #summary-stats .summary-trend-dot.flat,
         #summary-stats .summary-trend-dot.none { background: #9ca3af; }
+
+        .amm-window-tabs {
+            border-bottom: 1px solid #dee2e6;
+            padding: 0 12px;
+            background: #fff;
+        }
+        .amm-window-tabs .nav-link {
+            font-weight: 600;
+            font-size: 13px;
+            color: #495057;
+            border: 0;
+            border-bottom: 2px solid transparent;
+            border-radius: 0;
+            padding: 10px 16px;
+        }
+        .amm-window-tabs .nav-link.active {
+            color: #0d6efd;
+            background: transparent;
+            border-bottom-color: #0d6efd;
+        }
+        #amm-yesterday-frame {
+            width: 100%;
+            height: calc(100vh - 210px);
+            min-height: 480px;
+            border: 0;
+            background: #f5f7fa;
+            display: block;
+        }
     </style>
 @endsection
 
@@ -344,6 +372,20 @@
 
     <div class="row">
         <div class="card shadow-sm">
+            <ul class="nav nav-tabs amm-window-tabs" id="ammWindowTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="amm-l30-tab" data-bs-toggle="tab"
+                        data-bs-target="#amm-l30-pane" type="button" role="tab"
+                        aria-controls="amm-l30-pane" aria-selected="true">L30</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="amm-yesterday-tab" data-bs-toggle="tab"
+                        data-bs-target="#amm-yesterday-pane" type="button" role="tab"
+                        aria-controls="amm-yesterday-pane" aria-selected="false">Yesterday</button>
+                </li>
+            </ul>
+            <div class="tab-content">
+            <div class="tab-pane fade show active" id="amm-l30-pane" role="tabpanel" aria-labelledby="amm-l30-tab">
             <div class="card-body py-3">
 
                 <div class="d-flex align-items-center flex-wrap gap-2">
@@ -384,10 +426,6 @@
                         title="Yesterday by marketplace" aria-label="Yesterday by marketplace">
                         <i class="fas fa-eye" style="color: #000;"></i>
                     </button>
-                    <a href="{{ route('yesterday.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
-                        title="Yesterday Channel Master — GPFT / GROI from Pacific yesterday only" aria-label="Yesterday Channel Master">
-                        <i class="fas fa-calendar-day" style="color: #000;"></i>
-                    </a>
                     <a href="{{ route('l7.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
                         title="7-Day Channel Master — same metrics as Yesterday over 7 complete days" aria-label="7-Day Channel Master">
                         <i class="fas fa-calendar-week" style="color: #000;"></i>
@@ -466,6 +504,12 @@
                 <div id="marketplace-table-wrapper" style="width: 100%;">
                     <div id="marketplace-table"></div>
                 </div>
+            </div>
+            </div>
+            <div class="tab-pane fade" id="amm-yesterday-pane" role="tabpanel" aria-labelledby="amm-yesterday-tab">
+                <iframe id="amm-yesterday-frame" title="Active Channel Yesterday"
+                    data-src="{{ route('yesterday.marketplace.master', ['embed' => 1]) }}"></iframe>
+            </div>
             </div>
         </div>
     </div>
@@ -998,6 +1042,49 @@
 
 @section('script-bottom')
     <script>
+        (function () {
+            var frame = document.getElementById('amm-yesterday-frame');
+            var yTab = document.getElementById('amm-yesterday-tab');
+            var l30Tab = document.getElementById('amm-l30-tab');
+            function loadYesterdayFrame() {
+                if (frame && !frame.getAttribute('src') && frame.dataset.src) {
+                    frame.src = frame.dataset.src;
+                }
+            }
+            function setTabQuery(tab) {
+                try {
+                    var url = new URL(window.location.href);
+                    if (tab === 'yesterday') url.searchParams.set('tab', 'yesterday');
+                    else url.searchParams.delete('tab');
+                    history.replaceState({}, '', url.pathname + url.search + url.hash);
+                } catch (e) {}
+            }
+            if (yTab) {
+                yTab.addEventListener('shown.bs.tab', function () {
+                    loadYesterdayFrame();
+                    setTabQuery('yesterday');
+                });
+            }
+            if (l30Tab) {
+                l30Tab.addEventListener('shown.bs.tab', function () {
+                    setTabQuery('l30');
+                    if (table && table.redraw) {
+                        setTimeout(function () { table.redraw(true); }, 50);
+                    }
+                });
+            }
+            var openYesterday = new URLSearchParams(window.location.search).get('tab') === 'yesterday'
+                || window.location.hash === '#yesterday';
+            if (openYesterday && yTab) {
+                if (window.bootstrap && bootstrap.Tab) {
+                    bootstrap.Tab.getOrCreateInstance(yTab).show();
+                } else {
+                    yTab.click();
+                }
+                loadYesterdayFrame();
+            }
+        })();
+
         let table = null;
         var channelMetricDotTrendsUrl = "{{ url('channel-metric-dot-trends') }}";
         var dotTrendsLoadedOnce = false;

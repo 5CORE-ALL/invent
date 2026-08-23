@@ -100,6 +100,71 @@
     .es-table tbody tr.es-selected { background: #eff6ff; }
     .es-table tbody tr.es-selected:hover { background: #dbeafe; }
     .es-name { font-weight: 600; color: #0f172a; }
+    .es-tm-col,
+    .es-ts-col { text-align: center; width: 3.2rem; }
+    .es-table thead th.es-tm-col,
+    .es-table thead th.es-ts-col {
+        background: #e8f1fc;
+        color: #0f172a;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-transform: none;
+    }
+    .task-summary-tm-badge {
+        flex-shrink: 0;
+        width: 1.4rem;
+        height: 1.4rem;
+        padding: 0;
+        margin: 0;
+        border: none;
+        border-radius: 7px;
+        background: linear-gradient(135deg, #b45309, #f59e0b);
+        color: #fff;
+        text-decoration: none;
+        font-size: 0.6rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        line-height: 1;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        vertical-align: middle;
+        box-shadow: 0 1px 3px rgba(245, 158, 11, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+        transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+    .task-summary-tm-badge:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(245, 158, 11, 0.5), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+        background: linear-gradient(135deg, #92400e, #b45309);
+        color: #fff;
+        text-decoration: none;
+    }
+    .task-summary-tm-badge:focus-visible {
+        outline: 2px solid #b45309;
+        outline-offset: 2px;
+    }
+    .task-summary-tm-badge.task-summary-tm-badge-director {
+        background: linear-gradient(135deg, #4338ca, #6366f1);
+        box-shadow: 0 1px 3px rgba(99, 102, 241, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+    }
+    .task-summary-tm-badge.task-summary-tm-badge-director:hover {
+        background: linear-gradient(135deg, #3730a3, #4f46e5);
+    }
+    .task-summary-tm-badge.task-summary-tm-badge-mgr {
+        background: linear-gradient(135deg, #0e7490, #06b6d4);
+        box-shadow: 0 1px 3px rgba(6, 182, 212, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+    }
+    .task-summary-tm-badge.task-summary-tm-badge-mgr:hover {
+        background: linear-gradient(135deg, #155e75, #0e7490);
+    }
+    .task-summary-tm-badge.task-summary-tm-badge-exec {
+        background: linear-gradient(135deg, #b45309, #f59e0b);
+        box-shadow: 0 1px 3px rgba(245, 158, 11, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+    }
+    .task-summary-tm-badge.task-summary-tm-badge-exec:hover {
+        background: linear-gradient(135deg, #92400e, #b45309);
+    }
     .es-time-col { text-align: center; }
     .es-time-btn {
         appearance: none; border: 0; background: #f0fdfa; color: #0d9488;
@@ -109,6 +174,13 @@
     }
     .es-time-btn:hover { background: #ccfbf1; color: #0f766e; }
     .es-time-btn i { font-size: 1rem; line-height: 1; }
+    .es-time-btn .task-magnify-icon {
+        width: 18px;
+        height: 18px;
+        object-fit: contain;
+        display: block;
+        pointer-events: none;
+    }
     .tl-modal-legend { display: flex; flex-wrap: wrap; gap: .75rem; font-size: .72rem; color: #64748b; }
     .tl-modal-legend span { display: inline-flex; align-items: center; gap: .3rem; }
     .tl-modal-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
@@ -430,6 +502,8 @@
                             <tr>
                                 <th class="es-avatar-col" style="width:5%">Image</th>
                                 <th class="es-sort is-asc" data-sort="name" data-type="text" style="width:13%" aria-sort="ascending">Employee</th>
+                                <th class="es-tm-col" style="width:4%" title="TM — open Task Manager for this employee as assignee (new tab)">TM</th>
+                                <th class="es-ts-col" style="width:4%" title="TS — open Task Summary for this employee (new tab)">TS</th>
                                 <th class="es-time-col" style="width:5%">Time</th>
                                 <th class="es-sort es-live-col" data-sort="live" data-type="num" style="width:6%">Live</th>
                                 <th class="es-sort es-shot-col" data-sort="lastImage" data-type="num" style="width:9%">Last Image</th>
@@ -468,10 +542,44 @@
                                 <td>
                                     <div class="es-name">{{ $row['name'] }}</div>
                                 </td>
+                                <td class="es-tm-col">
+                                    @php
+                                        $tmLevel = strtolower((string) ($row['org_level'] ?? ''));
+                                        $tmBadgeMod = $tmLevel === 'director'
+                                            ? 'task-summary-tm-badge-director'
+                                            : ($tmLevel === 'mgr'
+                                                ? 'task-summary-tm-badge-mgr'
+                                                : 'task-summary-tm-badge-exec');
+                                        $tmUrl = $row['tm_url'] ?? route('tasks.index', array_filter([
+                                            'assignee' => $row['name'],
+                                            'user_id' => (int) ($row['user_id'] ?? 0),
+                                        ]));
+                                    @endphp
+                                    <a href="{{ $tmUrl }}"
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       class="task-summary-tm-badge {{ $tmBadgeMod }}"
+                                       title="Open Task Manager for {{ e($row['name']) }} (assignee filter)"
+                                       aria-label="Open Task Manager for {{ e($row['name']) }} as assignee">TM</a>
+                                </td>
+                                <td class="es-ts-col">
+                                    @php
+                                        $tsUrl = $row['ts_url'] ?? route('tasks.summary', array_filter([
+                                            'member' => $row['name'],
+                                            'user_id' => (int) ($row['user_id'] ?? 0),
+                                        ]));
+                                    @endphp
+                                    <a href="{{ $tsUrl }}"
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       class="task-summary-tm-badge {{ $tmBadgeMod }}"
+                                       title="Open Task Summary for {{ e($row['name']) }}"
+                                       aria-label="Open Task Summary for {{ e($row['name']) }}">TS</a>
+                                </td>
                                 <td class="es-time-col">
                                     <a href="{{ $row['timeline_url'] }}" target="_blank" rel="noopener"
                                         class="es-time-btn" title="Open timeline in a new tab">
-                                        <i class="ri-search-line" aria-hidden="true"></i>
+                                        <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                     </a>
                                 </td>
                                 <td class="es-live-col">
@@ -524,7 +632,7 @@
                             @endforeach
                             @if(count($rows) === 0)
                             <tr class="es-empty-row">
-                                <td colspan="12" class="text-center text-muted py-4">No employees match the current filters.</td>
+                                <td colspan="14" class="text-center text-muted py-4">No employees match the current filters.</td>
                             </tr>
                             @endif
                         </tbody>
@@ -904,12 +1012,47 @@
         return '<div class="es-shot-row">' + thumb + dot + '</div>' + time;
     }
 
+    function tmBadgeClass(level) {
+        const l = String(level || '').toLowerCase();
+        if (l === 'director') return 'task-summary-tm-badge-director';
+        if (l === 'mgr') return 'task-summary-tm-badge-mgr';
+        return 'task-summary-tm-badge-exec';
+    }
+
+    function tmCell(row) {
+        let href = row.tm_url || '';
+        if (!href) {
+            const params = new URLSearchParams();
+            if (row.name) params.set('assignee', row.name);
+            if (row.user_id) params.set('user_id', String(row.user_id));
+            href = '{{ route('tasks.index') }}' + (params.toString() ? '?' + params.toString() : '');
+        }
+        const name = row.name || 'employee';
+        return '<a href="' + escapeAttr(href) + '" target="_blank" rel="noopener noreferrer" class="task-summary-tm-badge ' +
+            tmBadgeClass(row.org_level) + '" title="Open Task Manager for ' + escapeAttr(name) +
+            ' (assignee filter)" aria-label="Open Task Manager for ' + escapeAttr(name) + ' as assignee">TM</a>';
+    }
+
+    function tsCell(row) {
+        let href = row.ts_url || '';
+        if (!href) {
+            const params = new URLSearchParams();
+            if (row.name) params.set('member', row.name);
+            if (row.user_id) params.set('user_id', String(row.user_id));
+            href = '{{ route('tasks.summary') }}' + (params.toString() ? '?' + params.toString() : '');
+        }
+        const name = row.name || 'employee';
+        return '<a href="' + escapeAttr(href) + '" target="_blank" rel="noopener noreferrer" class="task-summary-tm-badge ' +
+            tmBadgeClass(row.org_level) + '" title="Open Task Summary for ' + escapeAttr(name) +
+            '" aria-label="Open Task Summary for ' + escapeAttr(name) + '">TS</a>';
+    }
+
     function renderRows(rows) {
         const body = document.getElementById('summaryBody');
         if (!body) return;
         const selectedId = String(executiveSelect?.value || 0);
         if (!rows.length) {
-            body.innerHTML = '<tr class="es-empty-row"><td colspan="12" class="text-center text-muted py-4">No employees match the current filters.</td></tr>';
+            body.innerHTML = '<tr class="es-empty-row"><td colspan="14" class="text-center text-muted py-4">No employees match the current filters.</td></tr>';
             return;
         }
         body.innerHTML = rows.map(row => `
@@ -918,7 +1061,9 @@
                 <td>
                     <div class="es-name">${row.name}</div>
                 </td>
-                <td class="es-time-col"><a href="${escapeAttr(row.timeline_url || '#')}" target="_blank" rel="noopener" class="es-time-btn" title="Open timeline in a new tab"><i class="ri-search-line" aria-hidden="true"></i></a></td>
+                <td class="es-tm-col">${tmCell(row)}</td>
+                <td class="es-ts-col">${tsCell(row)}</td>
+                <td class="es-time-col"><a href="${escapeAttr(row.timeline_url || '#')}" target="_blank" rel="noopener" class="es-time-btn" title="Open timeline in a new tab"><img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true"></a></td>
                 <td class="es-live-col"><button type="button" class="es-live-btn" data-live-url="${escapeAttr(row.live_url || '')}" data-name="${escapeAttr(row.name || '')}" title="Watch live screen and record — ${escapeAttr(row.live_label || 'Absent')}"><span class="es-live-status ${row.live_status || 'absent'}"></span></button></td>
                 <td class="es-shot-col">${lastImageCell(row)}</td>
                 <td>

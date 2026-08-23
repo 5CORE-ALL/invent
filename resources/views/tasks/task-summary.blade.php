@@ -199,6 +199,18 @@
             font-size: 1.15rem;
             line-height: 1;
         }
+        .task-magnify-icon {
+            width: 22px;
+            height: 22px;
+            object-fit: contain;
+            display: inline-block;
+            vertical-align: middle;
+            pointer-events: none;
+        }
+        .task-summary-monitor-btn .task-magnify-icon {
+            width: 20px;
+            height: 20px;
+        }
         .task-summary-monitor-btn:hover {
             background: rgba(15, 23, 42, 0.08);
             color: #0f172a;
@@ -390,6 +402,16 @@
         .task-summary-table tbody tr.task-summary-row.is-ts-playback-focus > td {
             background-color: #eff6ff !important;
             box-shadow: inset 3px 0 0 #2563eb;
+        }
+        .task-summary-table th.task-summary-col-snooze,
+        .task-summary-table td.task-summary-col-snooze {
+            width: 1%;
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
+        }
+        .task-summary-col-snooze .ts-member-actions {
+            margin-left: 0;
+            justify-content: center;
         }
         .ts-member-actions {
             display: inline-flex;
@@ -750,13 +772,13 @@
             flex-shrink: 0;
         }
         /* Indent leaf rows visually based on their hierarchy depth */
-        .task-summary-table tbody tr.task-summary-row[data-depth="1"] td:first-child {
+        .task-summary-table tbody tr.task-summary-row[data-depth="1"] td.task-summary-col-member {
             padding-left: 1.5rem;
         }
-        .task-summary-table tbody tr.task-summary-row[data-depth="2"] td:first-child {
+        .task-summary-table tbody tr.task-summary-row[data-depth="2"] td.task-summary-col-member {
             padding-left: 2.5rem;
         }
-        .task-summary-table tbody tr.task-summary-row[data-depth="3"] td:first-child {
+        .task-summary-table tbody tr.task-summary-row[data-depth="3"] td.task-summary-col-member {
             padding-left: 3.5rem;
         }
         .task-summary-table tbody tr.task-summary-row[data-depth="1"] .task-summary-member-cell-inner::before,
@@ -956,6 +978,12 @@
                         <table class="table table-hover table-striped table-bordered mb-0 task-summary-table">
                             <thead class="table-light">
                                 <tr>
+                                    <th scope="col" class="task-summary-col-snooze" title="Snooze — hide this member until midnight PT">
+                                        <i class="ri-timer-line" aria-hidden="true"></i>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="member" data-sort-type="text" title="Team — sort by team member" role="button" tabindex="0">
+                                        Team <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
                                     <th scope="col" class="task-summary-th-sort task-summary-col-member" data-sort-key="member" data-sort-type="text" title="Member — sort by team member name" role="button" tabindex="0">
                                         Member <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
@@ -964,9 +992,6 @@
                                     </th>
                                     <th scope="col" title="Monitor — open Team Monitoring for this employee (new tab)">
                                         Monitor
-                                    </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="member" data-sort-type="text" title="Team — sort by team member" role="button" tabindex="0">
-                                        Team <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="designation" data-sort-type="text" title="Sort by designation" role="button" tabindex="0">
                                         Designation <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
@@ -1062,32 +1087,25 @@
                                                     ? 'task-summary-tm-badge-mgr'
                                                     : ($tmLevel === 'exec' ? 'task-summary-tm-badge-exec' : ''));
                                         @endphp
+                                        <td class="task-summary-col-snooze text-center">
+                                            <span class="ts-member-actions" role="group" aria-label="Member row actions">
+                                                <button type="button" class="ts-member-snooze-btn" title="Hide until midnight PT (PST/PDT)" aria-label="Snooze {{ e($row['team_member']) }} until midnight PT">
+                                                    <i class="ri-timer-line" aria-hidden="true"></i>
+                                                </button>
+                                            </span>
+                                        </td>
+                                        <td class="task-summary-avatar-cell">
+                                            <span class="task-summary-avatar-wrap">
+                                                <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar" loading="lazy" />
+                                            </span>
+                                        </td>
                                         <td class="task-summary-col-member">
                                             <span class="task-summary-member-cell-inner">
                                                 <span class="task-summary-member-name">{{ $row['team_member'] }}</span>
-                                                <button type="button"
-                                                        class="task-summary-tm-profile-btn"
-                                                        data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
-                                                        data-user-name="{{ e($row['team_member']) }}"
-                                                        title="Open team member profile (large image, scores, juniors)"
-                                                        aria-label="Open profile for {{ e($row['team_member']) }}">
-                                                    <i class="ri-search-eye-line" style="font-size:1rem;" aria-hidden="true"></i>
-                                                </button>
-                                                <span class="ts-member-actions" role="group" aria-label="Member row actions">
-                                                    <button type="button" class="ts-member-expand-btn" title="Expand member panel" aria-label="Expand {{ e($row['team_member']) }}">
-                                                        <i class="ri-fullscreen-line" aria-hidden="true"></i>
-                                                    </button>
-                                                    <button type="button" class="ts-member-minimize-btn" title="Minimize member" aria-label="Minimize {{ e($row['team_member']) }}">
-                                                        <i class="ri-subtract-line" aria-hidden="true"></i>
-                                                    </button>
-                                                    <button type="button" class="ts-member-snooze-btn" title="Hide until midnight PT (PST/PDT)" aria-label="Snooze {{ e($row['team_member']) }} until midnight PT">
-                                                        <i class="ri-timer-line" aria-hidden="true"></i>
-                                                    </button>
-                                                </span>
                                             </span>
                                         </td>
                                         <td class="task-summary-col-tm text-center">
-                                            <a href="{{ route('tasks.index', ['assignee' => $row['team_member']]) }}"
+                                            <a href="{{ route('tasks.index', array_filter(['assignee' => $row['team_member'], 'user_id' => (int) ($row['user_id'] ?? 0)])) }}"
                                                target="_blank"
                                                rel="noopener noreferrer"
                                                class="task-summary-tm-badge task-summary-user-tasks-dot {{ $tmBadgeMod }}"
@@ -1104,18 +1122,13 @@
                                                    class="task-summary-monitor-btn"
                                                    title="Open Team Monitoring for {{ e($row['team_member']) }}"
                                                    aria-label="Open Team Monitoring for {{ e($row['team_member']) }}">
-                                                    <i class="mdi mdi-magnify" aria-hidden="true"></i>
+                                                    <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                                 </a>
                                             @else
                                                 <span class="task-summary-monitor-btn is-disabled" title="No user record found for this row" aria-hidden="true">
-                                                    <i class="mdi mdi-magnify"></i>
+                                                    <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon">
                                                 </span>
                                             @endif
-                                        </td>
-                                        <td class="task-summary-avatar-cell">
-                                            <span class="task-summary-avatar-wrap">
-                                                <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar" loading="lazy" />
-                                            </span>
                                         </td>
                                         @php
                                             // Compact display: "Manager" → "Mgr", "Executive" → "Exc".
@@ -1205,7 +1218,7 @@
                                                     @if($rrDisabled) disabled @endif
                                                     title="{{ $rrLockedTitle }}"
                                                     aria-label="Open R&R for {{ e($row['team_member']) }}">
-                                                <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
+                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                             </button>
                                         </td>
                                         <td class="task-summary-clrr-cell text-center">
@@ -1224,7 +1237,7 @@
                                                     @if($rrDisabled) disabled @endif
                                                     title="{{ $clrrLockedTitle }}"
                                                     aria-label="Open CL R&R for {{ e($row['team_member']) }}">
-                                                <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
+                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                             </button>
                                             @unless($rrDisabled)
                                                 <span class="cl-score-chip is-clrr" title="CL R&R score">{{ (int) ($row['score_clrr'] ?? 0) }}%</span>
@@ -1256,7 +1269,7 @@
                                                     @if($rrDisabled) disabled @endif
                                                     title="{{ $clmgrLockedTitle }}"
                                                     aria-label="Open CL Mgr for {{ e($row['team_member']) }}">
-                                                <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
+                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                             </button>
                                             @unless($rrDisabled)
                                                 <span class="cl-score-chip is-clmgr" title="CL Mgr own score (combined includes juniors — open modal)">{{ (int) ($row['score_clmgr'] ?? 0) }}%</span>
@@ -1290,7 +1303,7 @@
                                                     @if($clgenDisabled) disabled @endif
                                                     title="{{ $clgenTitle }}"
                                                     aria-label="Open General Checklist for {{ e($row['team_member']) }}">
-                                                <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
+                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                             </button>
                                             @if($rrUserId > 0)
                                                 <span class="cl-score-chip is-clgen" title="CL Gen (global) score">{{ (int) ($row['score_clgen'] ?? 0) }}%</span>
@@ -1364,7 +1377,7 @@
                                                     data-kpi="{{ e(json_encode($kpiData)) }}"
                                                     title="Open dashboard for {{ e($row['team_member']) }} (own metrics + tagged juniors)"
                                                     aria-label="Open dashboard for {{ e($row['team_member']) }}">
-                                                <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
+                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                             </button>
                                         </td>
                                         <td class="task-summary-kpi-badges-cell text-center">
@@ -1376,7 +1389,7 @@
                                                     data-badge-count="{{ (int) ($row['kpi_count'] ?? 0) }}"
                                                     @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="Manage KPI badges for {{ e($row['team_member']) }}" @endif
                                                     aria-label="Open KPI badges for {{ e($row['team_member']) }}">
-                                                <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>@if((int) ($row['kpi_count'] ?? 0) > 0)<span class="kpi-badges-count">{{ (int) $row['kpi_count'] }}</span>@endif
+                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">@if((int) ($row['kpi_count'] ?? 0) > 0)<span class="kpi-badges-count">{{ (int) $row['kpi_count'] }}</span>@endif
                                             </button>
                                         </td>
                                         <td class="text-center">
@@ -1394,7 +1407,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="23" class="text-center text-muted py-4">
+                                        <td colspan="24" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1405,7 +1418,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="23" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="24" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -2029,6 +2042,43 @@
                 input.addEventListener('input', runFilter);
                 input.addEventListener('search', runFilter);
             }
+
+            (function applyUrlMemberPreset() {
+                var params = new URLSearchParams(window.location.search);
+                var uid = parseInt(params.get('user_id') || '0', 10);
+                var member = (params.get('member') || '').trim();
+                if (!(uid > 0) && !member) {
+                    return;
+                }
+                var rows = getDataRows();
+                var shown = 0;
+                var focusRow = null;
+                rows.forEach(function (tr) {
+                    var rid = parseInt(tr.getAttribute('data-user-id'), 10) || 0;
+                    var name = (tr.getAttribute('data-sort-member') || '').toLowerCase();
+                    var match = uid > 0
+                        ? rid === uid
+                        : name === member.toLowerCase();
+                    tr.classList.toggle('d-none', !match);
+                    tr.classList.toggle('is-ts-playback-focus', !!match);
+                    if (match) {
+                        shown++;
+                        if (!focusRow) {
+                            focusRow = tr;
+                        }
+                    }
+                });
+                if (emptyRow) {
+                    emptyRow.classList.toggle('d-none', shown !== 0);
+                }
+                if (input && (member || (focusRow && focusRow.getAttribute('data-sort-member')))) {
+                    input.value = member || focusRow.getAttribute('data-sort-member') || '';
+                }
+                if (focusRow && typeof focusRow.scrollIntoView === 'function') {
+                    focusRow.scrollIntoView({ block: 'center' });
+                }
+                recomputeAnalyticsBadges();
+            })();
 
             var tsTasksDataUrl = @json(route('tasks.data'));
             var tsTaskShowBase = @json(rtrim(url('/tasks'), '/'));
@@ -3054,7 +3104,7 @@
                 tr.setAttribute('data-level', level); // 'director' | 'mgr' | 'others'
                 tr.setAttribute('data-collapsed', 'false');
                 var td = document.createElement('td');
-                td.setAttribute('colspan', '23');
+                td.setAttribute('colspan', '24');
                 td.innerHTML =
                     '<div class="task-summary-group-header-inner">'
                     + '<button type="button" class="task-summary-group-chevron" data-action="toggle-group" aria-label="Toggle group">'

@@ -989,6 +989,13 @@ class TaskController extends Controller
             }));
         }
 
+        $focusUserId = (int) request()->query('user_id', 0);
+        if ($focusUserId > 0) {
+            $rows = array_values(array_filter($rows, function (array $r) use ($focusUserId) {
+                return (int) ($r['user_id'] ?? 0) === $focusUserId;
+            }));
+        }
+
         $taskDashboardStats = $this->getTaskDashboardAggregates();
 
         $orgGraphQuery = ManagerJunior::query();
@@ -1154,13 +1161,18 @@ class TaskController extends Controller
         $tasksQuery = $this->taskManagerVisibilityQuery();
 
         $userNameFilter = trim((string) $request->query('user_name', ''));
-        if ($userNameFilter !== '') {
+        $userIdFilter = (int) $request->query('user_id', 0);
+        $filterUser = null;
+        if ($userIdFilter > 0) {
+            $filterUser = $this->activeTeamUsersQuery()->where('id', $userIdFilter)->first();
+        } elseif ($userNameFilter !== '') {
             $filterUser = $this->activeTeamUsersQuery()->where('name', $userNameFilter)->first();
+        }
+        if ($userIdFilter > 0 || $userNameFilter !== '') {
             if ($filterUser && $filterUser->email) {
                 $email = $filterUser->email;
                 $tasksQuery->where(function ($q) use ($email) {
-                    $q->where('assignor', $email)
-                        ->orWhere('assign_to', 'LIKE', '%' . $email . '%');
+                    $q->where('assign_to', 'LIKE', '%' . $email . '%');
                 });
             } else {
                 $tasksQuery->whereRaw('1 = 0');

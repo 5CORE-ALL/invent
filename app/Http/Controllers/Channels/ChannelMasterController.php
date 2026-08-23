@@ -150,6 +150,9 @@ class ChannelMasterController extends Controller
 {
     protected $apiController;
 
+    /** @var array<string, float|null> */
+    private static array $pacificDayYSalesCache = [];
+
     public function __construct(ApiController $apiController)
     {
         $this->apiController = $apiController;
@@ -4981,9 +4984,13 @@ class ChannelMasterController extends Controller
     /**
      * Yesterday-only Active Channel page (GPFT / GROI from Pacific yesterday, not L30).
      */
-    public function yesterdayMarketplaceMaster()
+    public function yesterdayMarketplaceMaster(Request $request)
     {
-        return view('channels.yesterday-marketplace-master');
+        if (! $request->boolean('embed')) {
+            return redirect()->route('all.marketplace.master', ['tab' => 'yesterday']);
+        }
+
+        return view('channels.yesterday-marketplace-master', ['embed' => true]);
     }
 
     public function l7MarketplaceMaster()
@@ -5144,6 +5151,12 @@ class ChannelMasterController extends Controller
                     $this->persistL7WindowSnapshots($data);
                 } catch (\Throwable $e) {
                     Log::warning('persistL7WindowSnapshots failed: '.$e->getMessage());
+                }
+            } elseif ($days === 1) {
+                try {
+                    $this->persistYesterdayWindowSnapshots($data);
+                } catch (\Throwable $e) {
+                    Log::warning('persistYesterdayWindowSnapshots failed: '.$e->getMessage());
                 }
             }
 
@@ -15034,7 +15047,9 @@ class ChannelMasterController extends Controller
             }
             $metric = $request->input('metric', 'l30_sales');
             $days = intval($request->input('days', 32));
-            $useL7Window = intval($request->input('window', 0)) >= 7 || $metric === 'l7_sales';
+            $requestedWindow = intval($request->input('window', 0));
+            $useDailyWindow = $requestedWindow === 1;
+            $useL7Window = $requestedWindow >= 7 || $metric === 'l7_sales';
 
             if (!$channel) {
                 return response()->json(['success' => false, 'message' => 'Channel is required'], 400);
@@ -15077,6 +15092,24 @@ class ChannelMasterController extends Controller
             $metricKey = $metricMap[$metric] ?? $metric;
             $isAll = ($channel === 'all');
 
+            // Yesterday-page charts: one point per Pacific day from 1-day sources,
+            // never L30 rolling snapshots (those mixed ~43k L30 with a 1.5k last day).
+            $dailyChartMetrics = ['y_sales', 'l30_orders', 'qty', 'total_views', 'cvr', 'gprofit', 'groi', 'ad_spend', 'ads_pct', 'npft', 'nroi'];
+            if ($useDailyWindow && in_array($metric, $dailyChartMetrics, true)) {
+                $chartData = $metric === 'y_sales'
+                    ? $this->buildDailyYSalesChart($channel, $days, $isAll)
+                    : $this->buildDailyWindowChart($channel, $metric, $days, $isAll);
+                $badgeValue = $request->input('badge_value');
+                if (! empty($chartData) && $badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue)) {
+                    $lastIdx = array_key_last($chartData);
+                    if ($lastIdx !== null) {
+                        $chartData[$lastIdx]['value'] = round((float) $badgeValue, 2);
+                    }
+                }
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
             if ($metric === 'tat' && !$isAll) {
                 return response()->json(['success' => true, 'data' => []]);
             }
@@ -15118,7 +15151,12 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => []]);
             }
 
-            if ($useL7Window) {
+            if ($useDailyWindow) {
+                $fromYmd = now('America/Los_Angeles')->subDays(max(1, $days) + 2)->toDateString();
+                $toYmd = now('America/Los_Angeles')->subDay()->toDateString();
+                $this->preloadAmazonPacificDayYSales($fromYmd, $toYmd);
+                $this->applyDailyWindowToChannelSummaries($history);
+            } elseif ($useL7Window) {
                 $this->applyL7WindowToChannelSummaries($history);
             }
 
@@ -15139,15 +15177,15 @@ class ChannelMasterController extends Controller
 
                 // Listing-only / map-miss writers can create a day with no l30_sales.
                 // Those rows plot as $0 on every metric — skip them.
-                $fullRows = $rows->filter(function ($row) use ($useL7Window) {
+                $fullRows = $rows->filter(function ($row) use ($useL7Window, $useDailyWindow) {
                     $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
                     if (array_key_exists('l30_sales', $sd)) {
                         return true;
                     }
 
-                    return $useL7Window && (
+                    return ($useL7Window && (
                         array_key_exists('l7_sales', $sd) || array_key_exists('y_sales', $sd)
-                    );
+                    )) || ($useDailyWindow && array_key_exists('y_sales', $sd));
                 });
                 if ($fullRows->isEmpty()) {
                     continue;
@@ -15177,7 +15215,7 @@ class ChannelMasterController extends Controller
 
                     foreach ($rows as $row) {
                         $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
-                        if ($metric === 'cvr' || $metric === 'total_views') {
+                        if (! $useDailyWindow && ($metric === 'cvr' || $metric === 'total_views')) {
                             $rowChannel = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row->channel ?? ''))));
                             $cvrM = ChannelMasterViewsGuard::metricsFromSummary($sd);
                             $carry = $viewsCarryByChannel[$rowChannel] ?? null;
@@ -15244,6 +15282,10 @@ class ChannelMasterController extends Controller
                         } elseif ($shouldAvg) {
                             $totalVal += floatval($sd[$metricKey] ?? 0);
                         } else {
+                            if ($useDailyWindow && $metricKey !== null && ! array_key_exists($metricKey, $sd)
+                                && in_array($metric, ['total_views', 'l30_orders', 'qty', 'ad_spend'], true)) {
+                                continue;
+                            }
                             $totalVal += floatval($sd[$metricKey] ?? 0);
                         }
                     }
@@ -15292,6 +15334,22 @@ class ChannelMasterController extends Controller
                         // Y Sales can still be filled from orders below when listing-copy
                         // days omitted the key, so do not continue here for y_sales.
                         if ($metric === 'l7_sales' && !$hasMetricData) continue;
+                        if ($useDailyWindow && $metric === 'y_sales') {
+                            $totalVal = 0;
+                            $anyY = false;
+                            foreach ($rows as $yRow) {
+                                $yCh = $this->allMarketplaceSnapshotKey((string) ($yRow->channel ?? ''));
+                                $realY = $this->realPacificDayYSales($yCh, $dateKey);
+                                if ($realY === null) {
+                                    continue;
+                                }
+                                $totalVal += $realY;
+                                $anyY = true;
+                            }
+                            if (! $anyY && ! $hasMetricData) {
+                                continue;
+                            }
+                        }
                         $value = round($totalVal, 2);
                     } elseif ($useL7Window && $metricKey !== null && !$hasMetricData) {
                         continue;
@@ -15304,13 +15362,18 @@ class ChannelMasterController extends Controller
                     // Single channel
                     $row = $rows->first();
                     $summaryData = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
-                    $cvrM = ChannelMasterViewsGuard::metricsFromSummary($summaryData);
-                    if ($cvrCarryViews !== null && ChannelMasterViewsGuard::isCollapsed($cvrM['views'], $cvrCarryViews, $cvrM['qty'], $cvrCarryQty ?? 0.0)) {
-                        $summaryData = ChannelMasterViewsGuard::carrySummary($summaryData, $cvrCarryViews);
+                    if (! $useDailyWindow) {
                         $cvrM = ChannelMasterViewsGuard::metricsFromSummary($summaryData);
-                    } elseif ($cvrM['views'] > 0) {
-                        $cvrCarryViews = $cvrM['views'];
-                        $cvrCarryQty = $cvrM['qty'];
+                        if ($cvrCarryViews !== null && ChannelMasterViewsGuard::isCollapsed($cvrM['views'], $cvrCarryViews, $cvrM['qty'], $cvrCarryQty ?? 0.0)) {
+                            $summaryData = ChannelMasterViewsGuard::carrySummary($summaryData, $cvrCarryViews);
+                            $cvrM = ChannelMasterViewsGuard::metricsFromSummary($summaryData);
+                        } elseif ($cvrM['views'] > 0) {
+                            $cvrCarryViews = $cvrM['views'];
+                            $cvrCarryQty = $cvrM['qty'];
+                        }
+                    }
+                    if ($useDailyWindow && $metric === 'total_views' && ! array_key_exists('total_views', $summaryData)) {
+                        continue;
                     }
 
                     if ($metric === 'acos') {
@@ -15380,20 +15443,27 @@ class ChannelMasterController extends Controller
 
                 // Y Sales is stored on the snapshot (channel_master_daily_data.y_sales).
                 // Recalculate from orders only when that day was a listing-copy / missing key.
+                // Yesterday-page charts (window=1) always use that Pacific day's orders
+                // so the series is daily sales, not an L30 snapshot.
                 if ($metric === 'y_sales' && ! $isAll) {
                     $snapRow = $rows->first();
                     $sdForY = $summaryData ?? \App\Models\ChannelMasterSummary::decodeSummaryData($snapRow->summary_data ?? []);
                     $storedY = array_key_exists('y_sales', $sdForY) ? (float) $sdForY['y_sales'] : null;
-                    // $0 / listing-copy days are holes (eBay Aug 14 stored $0 while orders were $1,762).
-                    if ($storedY === null || $storedY <= 0 || $this->channelSnapshotYSalesIsInherited($snapRow, $sdForY)) {
-                        $realY = $this->realPacificDayYSales($channel, $dateKey);
+                    $realY = $this->realPacificDayYSales($channel, $dateKey);
+                    if ($useDailyWindow) {
+                        if ($realY !== null) {
+                            $value = $realY;
+                        } elseif ($storedY === null || $storedY <= 0) {
+                            continue;
+                        }
+                    } elseif ($storedY === null || $storedY <= 0 || $this->channelSnapshotYSalesIsInherited($snapRow, $sdForY)) {
                         if ($realY !== null) {
                             $value = $realY;
                         } elseif ($storedY === null) {
                             continue;
                         }
                     }
-                } elseif ($metric === 'y_sales' && $isAll && ! ($hasMetricData ?? false)) {
+                } elseif ($metric === 'y_sales' && $isAll && ! ($hasMetricData ?? false) && ! $useDailyWindow) {
                     continue;
                 }
 
@@ -15476,6 +15546,32 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'channels' => (object)[]]);
             }
 
+            $requestedWindow = intval($request->input('window', 0));
+            $useDailyWindow = $requestedWindow === 1;
+            $useL7Window = $requestedWindow >= 7;
+
+            if ($useDailyWindow) {
+                $svc = app(YesterdayMarketplaceMetricsService::class);
+                $d2 = now('America/Los_Angeles')->subDay()->toDateString();
+                $d1 = now('America/Los_Angeles')->subDays(2)->toDateString();
+                $dailyMetrics = ['y_sales', 'l30_orders', 'qty', 'total_views', 'cvr', 'gprofit', 'groi', 'ad_spend', 'ads_pct', 'npft', 'nroi'];
+                $out = [];
+                foreach ($channelKeys as $channel) {
+                    foreach ($dailyMetrics as $metric) {
+                        $out[$channel][$metric] = [null, null];
+                    }
+                    $m1 = $svc->metricsForPacificDate($channel, $d1);
+                    $m2 = $svc->metricsForPacificDate($channel, $d2);
+                    foreach ($dailyMetrics as $metric) {
+                        $v1 = $m1 ? $this->aggregateDailyMetricRows($metric, [$m1]) : null;
+                        $v2 = $m2 ? $this->aggregateDailyMetricRows($metric, [$m2]) : null;
+                        $out[$channel][$metric] = [$v1, $v2];
+                    }
+                }
+
+                return response()->json(['success' => true, 'channels' => $out]);
+            }
+
             // Same metricMap as getChannelMetricChartData so value extraction matches chart exactly
             $metricMap = [
                 'l60_sales' => 'l60_sales',
@@ -15500,7 +15596,9 @@ class ChannelMasterController extends Controller
                 'tat' => 'tat',
             ];
             $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'l7_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
-            $useL7Window = intval($request->input('window', 0)) >= 7;
+            $requestedWindow = intval($request->input('window', 0));
+            $useDailyWindow = $requestedWindow === 1;
+            $useL7Window = $requestedWindow >= 7;
             $out = [];
 
             // Today's snapshot is included in the comparison: saveChannelDailySummaries
@@ -15524,6 +15622,12 @@ class ChannelMasterController extends Controller
             // differs from today's.
             $snapshotWindow = $useL7Window ? 36 : 30;
             $historyFrom = now('America/Los_Angeles')->subDays($snapshotWindow + 10)->toDateString();
+            if ($useDailyWindow) {
+                $this->preloadAmazonPacificDayYSales(
+                    $historyFrom,
+                    now('America/Los_Angeles')->subDay()->toDateString()
+                );
+            }
             $lookupKeys = [];
             foreach ($channelKeys as $key) {
                 foreach ($this->allMarketplaceSnapshotLookupKeys($key) as $alias) {
@@ -15557,19 +15661,21 @@ class ChannelMasterController extends Controller
                     })
                     ->values()
                     ->take($snapshotWindow)
-                    ->filter(function ($row) use ($useL7Window) {
+                    ->filter(function ($row) use ($useL7Window, $useDailyWindow) {
                         if ($row->isFullChannelSnapshot()) {
                             return true;
                         }
                         $sd = $row->summaryArray();
 
-                        return $useL7Window && (
+                        return ($useL7Window && (
                             array_key_exists('l7_sales', $sd) || array_key_exists('y_sales', $sd)
-                        );
+                        )) || ($useDailyWindow && array_key_exists('y_sales', $sd));
                     })
                     ->values();
 
-                if ($useL7Window) {
+                if ($useDailyWindow) {
+                    $this->applyDailyWindowToChannelSummaries($cmsRows);
+                } elseif ($useL7Window) {
                     $this->applyL7WindowToChannelSummaries($cmsRows);
                 }
 
@@ -15989,39 +16095,38 @@ class ChannelMasterController extends Controller
      */
     private function realPacificDayYSales(string $channel, string $ymd): ?float
     {
-        static $cache = [];
         $rawKey = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
         $channel = $this->allMarketplaceSnapshotKey($channel);
         $key = ($rawKey === 'shopify' ? 'shopify' : $channel).'|'.$ymd;
-        if (array_key_exists($key, $cache)) {
-            return $cache[$key];
+        if (array_key_exists($key, self::$pacificDayYSalesCache)) {
+            return self::$pacificDayYSalesCache[$key];
         }
 
         try {
             if ($rawKey === 'shopify') {
-                $cache[$key] = $this->shopifyRawNetSalesForPacificDate($ymd);
+                self::$pacificDayYSalesCache[$key] = $this->shopifyRawNetSalesForPacificDate($ymd);
 
-                return $cache[$key];
+                return self::$pacificDayYSalesCache[$key];
             }
             if ($channel === 'shopifyb2c') {
-                $cache[$key] = $this->shopifyB2xSalesForPacificDate(false, $ymd);
+                self::$pacificDayYSalesCache[$key] = $this->shopifyB2xSalesForPacificDate(false, $ymd);
 
-                return $cache[$key];
+                return self::$pacificDayYSalesCache[$key];
             }
             if ($channel === 'shopifyb2b') {
-                $cache[$key] = $this->shopifyB2xSalesForPacificDate(true, $ymd);
+                self::$pacificDayYSalesCache[$key] = $this->shopifyB2xSalesForPacificDate(true, $ymd);
 
-                return $cache[$key];
+                return self::$pacificDayYSalesCache[$key];
             }
 
             if ($channel === 'amazon') {
                 $day = Carbon::parse($ymd, 'America/Los_Angeles');
-                $cache[$key] = round((float) AmazonOrder::productSalesByOrderDate(
+                self::$pacificDayYSalesCache[$key] = round((float) AmazonOrder::productSalesByOrderDate(
                     $day->copy()->startOfDay()->utc(),
                     $day->copy()->endOfDay()->utc()
                 ), 2);
 
-                return $cache[$key];
+                return self::$pacificDayYSalesCache[$key];
             }
 
             $ebayWhich = match ($channel) {
@@ -16031,29 +16136,29 @@ class ChannelMasterController extends Controller
                 default => null,
             };
             if ($ebayWhich !== null) {
-                $cache[$key] = EbayChannelMetricsService::sumSalesForPacificDates($ebayWhich, $ymd, $ymd);
+                self::$pacificDayYSalesCache[$key] = EbayChannelMetricsService::sumSalesForPacificDates($ebayWhich, $ymd, $ymd);
 
-                return $cache[$key];
+                return self::$pacificDayYSalesCache[$key];
             }
 
             if ($channel === 'temu') {
                 $day = Carbon::parse($ymd, TemuShopifySalesService::PST);
-                $cache[$key] = (float) TemuShopifySalesService::computeMetricsFromOrders(
+                self::$pacificDayYSalesCache[$key] = (float) TemuShopifySalesService::computeMetricsFromOrders(
                     $day->copy()->startOfDay(),
                     $day->copy()->endOfDay()
                 )['base_sales'];
 
-                return $cache[$key];
+                return self::$pacificDayYSalesCache[$key];
             }
 
-            $cache[$key] = app(YesterdayMarketplaceMetricsService::class)
+            self::$pacificDayYSalesCache[$key] = app(YesterdayMarketplaceMetricsService::class)
                 ->salesForPacificDate($channel, $ymd);
         } catch (\Throwable $e) {
             Log::warning("realPacificDayYSales {$channel} {$ymd}: ".$e->getMessage());
-            $cache[$key] = null;
+            self::$pacificDayYSalesCache[$key] = null;
         }
 
-        return $cache[$key];
+        return self::$pacificDayYSalesCache[$key];
     }
 
     /**
@@ -16443,6 +16548,347 @@ class ChannelMasterController extends Controller
             }
 
             $row->summary_data = $sd;
+        }
+    }
+
+    /**
+     * Store the live 1-day dashboard window on today's Pacific snapshot so
+     * /yesterday-marketplace-master charts/dots read daily history, not L30.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function persistYesterdayWindowSnapshots(array $rows): void
+    {
+        foreach ($rows as $row) {
+            $key = (string) ($row['snapshot_key'] ?? $this->allMarketplaceSnapshotKey($row['Channel '] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+
+            $fields = [
+                'y_sales' => floatval($row['Y Sales'] ?? 0),
+                'y_orders' => floatval($row['L30 Orders'] ?? 0),
+                'y_qty' => floatval($row['Qty'] ?? 0),
+                'y_ad_spend' => floatval($row['Total Ad Spend'] ?? 0),
+                'y_ad_sales' => floatval($row['Ad Sales'] ?? 0),
+                'y_cogs' => floatval($row['cogs'] ?? 0),
+                'y_pft' => floatval($row['Total PFT'] ?? 0),
+            ];
+
+            $optional = [
+                'y_views' => $row['Total Views'] ?? null,
+                'y_listing_cvr' => $row['CVR'] ?? null,
+                'y_gprofit_percent' => $row['Gprofit%'] ?? null,
+                'y_groi_percent' => $row['G Roi'] ?? null,
+                'y_npft_percent' => $row['N PFT'] ?? null,
+                'y_nroi_percent' => $row['N ROI'] ?? null,
+                'y_tcos_percent' => $row['Ads%'] ?? null,
+            ];
+            foreach ($optional as $field => $value) {
+                if ($value === null || $value === '') {
+                    continue;
+                }
+                $fields[$field] = floatval(preg_replace('/[^0-9.\-]/', '', (string) $value));
+            }
+
+            \App\Models\ChannelMasterSummary::mergeTodaySummary($key, $fields, 'Yesterday window snapshot');
+        }
+    }
+
+    /**
+     * Rewrite in-memory snapshot rows so yesterday-page charts plot 1-day values
+     * (orders / stored y_* / channel_yesterday_views) instead of L30 rolling totals.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\ChannelMasterSummary>  $history
+     */
+    private function applyDailyWindowToChannelSummaries($history): void
+    {
+        $viewsByChannelDate = $this->dailyViewsByChannelDate($history);
+
+        $overlay = [
+            'l30_orders' => 'y_orders',
+            'total_quantity' => 'y_qty',
+            'total_views' => 'y_views',
+            'total_ad_spend' => 'y_ad_spend',
+            'gprofit_percent' => 'y_gprofit_percent',
+            'groi_percent' => 'y_groi_percent',
+            'npft_percent' => 'y_npft_percent',
+            'nroi_percent' => 'y_nroi_percent',
+            'tcos_percent' => 'y_tcos_percent',
+            'cogs' => 'y_cogs',
+            'total_pft' => 'y_pft',
+            'ad_sales' => 'y_ad_sales',
+            'listing_cvr' => 'y_listing_cvr',
+        ];
+
+        foreach ($history as $row) {
+            $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+            $channel = $this->allMarketplaceSnapshotKey((string) ($row->channel ?? ''));
+            $asOf = Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->subDay()->toDateString();
+
+            $realY = $channel !== '' ? $this->realPacificDayYSales($channel, $asOf) : null;
+            if ($realY !== null) {
+                $sd['y_sales'] = $realY;
+            }
+
+            $viewsKey = $this->yesterdayViewsLookupKey($channel);
+            if ($viewsKey !== '' && isset($viewsByChannelDate[$viewsKey][$asOf])) {
+                $sd['y_views'] = $viewsByChannelDate[$viewsKey][$asOf];
+            }
+
+            foreach ($overlay as $pageKey => $yKey) {
+                if (array_key_exists($yKey, $sd) && $sd[$yKey] !== null && $sd[$yKey] !== '') {
+                    $sd[$pageKey] = $sd[$yKey];
+                } else {
+                    unset($sd[$pageKey]);
+                }
+            }
+
+            $row->summary_data = $sd;
+        }
+    }
+
+    /**
+     * Daily listing views keyed by yesterday-views channel + Pacific date.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\ChannelMasterSummary>  $history
+     * @return array<string, array<string, int>>
+     */
+    private function dailyViewsByChannelDate($history): array
+    {
+        $map = [];
+        if (! Schema::hasTable('channel_yesterday_views')) {
+            return $map;
+        }
+
+        $from = now('America/Los_Angeles')->subDays(40)->toDateString();
+        foreach ($history as $row) {
+            $snap = Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->subDays(2)->toDateString();
+            if ($snap < $from) {
+                $from = $snap;
+            }
+        }
+
+        foreach (\App\Models\ChannelYesterdayView::query()->whereDate('snapshot_date', '>=', $from)->get() as $row) {
+            $key = $this->yesterdayViewsLookupKey((string) $row->channel);
+            if ($key === '') {
+                continue;
+            }
+            $date = $row->snapshot_date instanceof \DateTimeInterface
+                ? $row->snapshot_date->format('Y-m-d')
+                : (string) $row->snapshot_date;
+            $map[$key][$date] = (int) $row->views;
+        }
+
+        return $map;
+    }
+
+    private function yesterdayViewsLookupKey(string $channel): string
+    {
+        $k = strtolower((string) preg_replace('/[^a-z0-9]/', '', $channel));
+
+        return match ($k) {
+            'ebaytwo', 'ebay2' => 'ebay2',
+            'ebaythree', 'ebay3' => 'ebay3',
+            'shopifyb2c', 'shopify' => 'shopify',
+            'tiktokshop' => 'tiktok',
+            'tiktokshop2' => 'tiktok2',
+            'bestbuyusa' => 'bestbuy',
+            'fbmarketplace', 'facebookmarketplace' => 'fbmarketplace',
+            default => $k,
+        };
+    }
+
+    /**
+     * Continuous daily Y Sales series for /yesterday-marketplace-master.
+     *
+     * @return array<int, array{date: string, value: float}>
+     */
+    private function buildDailyYSalesChart(string $channel, int $days, bool $isAll): array
+    {
+        $end = now('America/Los_Angeles')->subDay();
+        $span = $days > 0 ? $days : 30;
+        $start = $end->copy()->subDays($span - 1);
+        $this->preloadAmazonPacificDayYSales($start->toDateString(), $end->toDateString());
+
+        $channels = $isAll
+            ? ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                ->pluck('channel')
+                ->map(fn ($name) => $this->allMarketplaceSnapshotKey((string) $name))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all()
+            : [$this->allMarketplaceSnapshotKey($channel)];
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $ymd = $cursor->toDateString();
+            $sum = 0.0;
+            $any = false;
+            foreach ($channels as $ch) {
+                if ($ch === '') {
+                    continue;
+                }
+                $value = $this->realPacificDayYSales($ch, $ymd);
+                if ($value === null) {
+                    continue;
+                }
+                $sum += $value;
+                $any = true;
+            }
+            if ($any) {
+                $out[] = [
+                    'date' => $cursor->format('M d'),
+                    'value' => round($sum, 2),
+                ];
+            }
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * Continuous 1-day series for yesterday-page metrics (orders, qty, views, CVR, profit, spend).
+     *
+     * @return array<int, array{date: string, value: float}>
+     */
+    private function buildDailyWindowChart(string $channel, string $metric, int $days, bool $isAll): array
+    {
+        $end = now('America/Los_Angeles')->subDay();
+        $span = $days > 0 ? $days : 30;
+        $start = $end->copy()->subDays($span - 1);
+        $svc = app(YesterdayMarketplaceMetricsService::class);
+
+        $channels = $isAll
+            ? ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                ->pluck('channel')
+                ->map(fn ($name) => $this->allMarketplaceSnapshotKey((string) $name))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all()
+            : [$this->allMarketplaceSnapshotKey($channel)];
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $ymd = $cursor->toDateString();
+            $rows = [];
+            foreach ($channels as $ch) {
+                if ($ch === '') {
+                    continue;
+                }
+                $row = $svc->metricsForPacificDate($ch, $ymd);
+                if ($row !== null) {
+                    $rows[] = $row;
+                }
+            }
+            $value = $this->aggregateDailyMetricRows($metric, $rows);
+            if ($value !== null) {
+                $out[] = [
+                    'date' => $cursor->format('M d'),
+                    'value' => $value,
+                ];
+            }
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function aggregateDailyMetricRows(string $metric, array $rows): ?float
+    {
+        if ($rows === []) {
+            return null;
+        }
+
+        $sumSales = 0.0;
+        $sumPft = 0.0;
+        $sumCogs = 0.0;
+        $sumAd = 0.0;
+        $sumOrders = 0.0;
+        $sumQty = 0.0;
+        $sumViews = 0.0;
+        $hasViews = false;
+        foreach ($rows as $row) {
+            $sumSales += (float) ($row['sales'] ?? 0);
+            $sumPft += (float) ($row['pft'] ?? 0);
+            $sumCogs += (float) ($row['cogs'] ?? 0);
+            $sumAd += (float) ($row['ad_spend'] ?? 0);
+            $sumOrders += (float) ($row['orders'] ?? 0);
+            $sumQty += (float) ($row['qty'] ?? 0);
+            if (isset($row['views']) && $row['views'] !== null && $row['views'] !== '') {
+                $sumViews += (float) $row['views'];
+                $hasViews = true;
+            }
+        }
+
+        return match ($metric) {
+            'y_sales' => round($sumSales, 2),
+            'l30_orders' => round($sumOrders, 2),
+            'qty' => round($sumQty, 2),
+            'ad_spend' => round($sumAd, 2),
+            'total_views' => $hasViews ? round($sumViews, 2) : null,
+            'cvr' => $hasViews && $sumViews > 0 ? round(($sumQty / $sumViews) * 100, 2) : null,
+            'gprofit' => $sumSales > 0 ? round(($sumPft / $sumSales) * 100, 1) : null,
+            'groi' => $sumCogs > 0 ? round(($sumPft / $sumCogs) * 100, 1) : null,
+            'ads_pct' => $sumSales > 0 ? round(($sumAd / $sumSales) * 100, 1) : null,
+            'npft' => $sumSales > 0 ? round((($sumPft / $sumSales) * 100) - (($sumAd / $sumSales) * 100), 1) : null,
+            'nroi' => $sumCogs > 0 ? round((($sumPft - $sumAd) / $sumCogs) * 100, 1) : null,
+            default => null,
+        };
+    }
+
+    /**
+     * Fill the Y Sales cache for Amazon from one grouped order query.
+     */
+    private function preloadAmazonPacificDayYSales(string $fromYmd, string $toYmd): void
+    {
+        if ($fromYmd === '' || $toYmd === '' || $fromYmd > $toYmd) {
+            return;
+        }
+        if (! Schema::hasTable('amazon_orders') || ! Schema::hasTable('amazon_order_items')) {
+            return;
+        }
+
+        try {
+            $start = Carbon::parse($fromYmd, 'America/Los_Angeles')->startOfDay()->utc();
+            $end = Carbon::parse($toYmd, 'America/Los_Angeles')->endOfDay()->utc();
+            $rows = DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where('o.order_date', '>=', $start)
+                ->where('o.order_date', '<=', $end)
+                ->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                })
+                ->select('o.id', 'o.order_date', DB::raw('SUM(COALESCE(i.price, 0)) as sales'))
+                ->groupBy('o.id', 'o.order_date')
+                ->get();
+        } catch (\Throwable $e) {
+            Log::warning('preloadAmazonPacificDayYSales failed: '.$e->getMessage());
+
+            return;
+        }
+
+        $byDay = [];
+        foreach ($rows as $row) {
+            $d = Carbon::parse($row->order_date)->timezone('America/Los_Angeles')->toDateString();
+            $byDay[$d] = ($byDay[$d] ?? 0) + (float) $row->sales;
+        }
+
+        $cursor = Carbon::parse($fromYmd, 'America/Los_Angeles');
+        $endDay = Carbon::parse($toYmd, 'America/Los_Angeles');
+        while ($cursor->lte($endDay)) {
+            $d = $cursor->toDateString();
+            self::$pacificDayYSalesCache['amazon|'.$d] = round((float) ($byDay[$d] ?? 0), 2);
+            $cursor->addDay();
         }
     }
 

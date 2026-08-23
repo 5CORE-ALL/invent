@@ -434,6 +434,13 @@
             .task-toolbar-actions .task-playback-group .btn i {
                 font-size: 14px !important;
             }
+            .task-magnify-icon {
+                width: 16px;
+                height: 16px;
+                object-fit: contain;
+                display: inline-block;
+                vertical-align: middle;
+            }
             .task-toolbar-actions #filter-duplicates-btn {
                 display: inline-flex;
                 align-items: center;
@@ -1694,6 +1701,26 @@
         border-left: 4px solid #198754 !important;
     }
 
+    #task-done-celebration {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 20000;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        background: rgba(0, 0, 0, 0.28);
+    }
+    #task-done-celebration.is-visible {
+        display: flex;
+    }
+    #task-done-celebration img {
+        width: 220px;
+        height: auto;
+        border-radius: 12px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    }
+
     </style>
 @endsection
 
@@ -1890,8 +1917,8 @@
                                         <span>Refresh</span>
                                     </button>
 
-                                    <button type="button" class="mobile-action-btn btn-outline-secondary" id="filter-duplicates-btn-mobile" title="Show duplicate tasks from the current filtered list">
-                                        <i class="mdi mdi-magnify"></i>
+                                    <button type="button" class="mobile-action-btn btn-outline-secondary" id="filter-duplicates-btn-mobile" title="Show duplicate tasks (same title, assignor, and assignee) from the current filtered list">
+                                        <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                         <span>Duplicate</span>
                                     </button>
                                 </div>
@@ -1969,8 +1996,8 @@
                                     <i class="mdi mdi-refresh"></i>
                                 </button>
 
-                                <button type="button" class="btn btn-outline-secondary" id="filter-duplicates-btn" title="Show duplicate tasks from the current filtered list">
-                                    <i class="mdi mdi-magnify"></i> Duplicate
+                                <button type="button" class="btn btn-outline-secondary" id="filter-duplicates-btn" title="Show duplicate tasks (same title, assignor, and assignee) from the current filtered list">
+                                    <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true"> Duplicate
                                 </button>
 
                                 <div class="btn-group task-playback-group task-playback-assignor" role="group" aria-label="Assignor playback">
@@ -2154,6 +2181,10 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <div id="task-done-celebration" aria-hidden="true">
+        <img src="{{ asset('assets/images/task-done-celebration.gif') }}" alt="Task done">
     </div>
 @endsection
 
@@ -3844,7 +3875,18 @@
                     headerHozAlign: "center",
                 },
                 ajaxURL: "{{ route('tasks.data') }}",
-                ajaxParams: {},
+                ajaxParams: function () {
+                    var params = {};
+                    var urlParams = new URLSearchParams(window.location.search);
+                    var uid = parseInt(urlParams.get('user_id') || '0', 10);
+                    var assignee = (urlParams.get('assignee') || '').trim();
+                    if (uid > 0) {
+                        params.user_id = uid;
+                    } else if (assignee) {
+                        params.user_name = assignee;
+                    }
+                    return params;
+                },
                 ajaxContentType: "json",
                 ajaxResponse: function(url, params, response) {
                     console.log('===== TASK MANAGER DEBUG =====');
@@ -4768,6 +4810,55 @@
                     .toLowerCase();
             }
 
+            function normalizeDuplicatePerson(value) {
+                return String(value || '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .toLowerCase();
+            }
+
+            function duplicateAssignorKey(task) {
+                var email = normalizeDuplicatePerson(task.assignor_email || task.assignor || '');
+                if (email && email !== '-') {
+                    return 'e:' + email;
+                }
+                if (task.assignor_id) {
+                    return 'id:' + String(task.assignor_id);
+                }
+                var name = normalizeDuplicatePerson(task.assignor_name || '');
+                return name && name !== '-' ? 'n:' + name : 'none';
+            }
+
+            function duplicateAssigneeKey(task) {
+                var emailsRaw = String(task.assignee_email || task.assign_to || '').trim();
+                if (emailsRaw && emailsRaw !== '-') {
+                    var emails = emailsRaw.split(',').map(function (e) {
+                        return normalizeDuplicatePerson(e);
+                    }).filter(function (e) { return e && e !== '-'; }).sort();
+                    if (emails.length) {
+                        return 'e:' + emails.join(',');
+                    }
+                }
+                var ids = Array.isArray(task.assignee_ids) ? task.assignee_ids.slice() : [];
+                if (task.assignee_id && !ids.length) {
+                    ids = [task.assignee_id];
+                }
+                ids = ids.map(function (id) { return parseInt(id, 10); }).filter(function (id) { return id > 0; }).sort(function (a, b) { return a - b; });
+                if (ids.length) {
+                    return 'id:' + ids.join(',');
+                }
+                var name = normalizeDuplicatePerson(task.assignee_name || '');
+                return name && name !== '-' ? 'n:' + name : 'none';
+            }
+
+            function duplicateGroupKey(task) {
+                return [
+                    normalizeDuplicateTitle(task && task.title),
+                    duplicateAssignorKey(task || {}),
+                    duplicateAssigneeKey(task || {})
+                ].join('|');
+            }
+
             function syncDuplicateFilterButtons() {
                 $('#filter-duplicates-btn, #filter-duplicates-btn-mobile').toggleClass('active', duplicateFilterActive);
             }
@@ -4779,14 +4870,14 @@
                 var visible = flattenVisibleTasks(table.getData('active'));
                 var counts = {};
                 visible.forEach(function (t) {
-                    var key = normalizeDuplicateTitle(t.title);
-                    if (!key) return;
+                    var key = duplicateGroupKey(t);
+                    if (!key || key.indexOf('|') === 0) return;
                     counts[key] = (counts[key] || 0) + 1;
                 });
                 var dupIds = {};
                 visible.forEach(function (t) {
-                    var key = normalizeDuplicateTitle(t.title);
-                    if (key && counts[key] > 1 && t.id != null) {
+                    var key = duplicateGroupKey(t);
+                    if (key && key.indexOf('|') !== 0 && counts[key] > 1 && t.id != null) {
                         dupIds[String(t.id)] = true;
                     }
                 });
@@ -4878,7 +4969,8 @@
                 
                 // Assignee filter (including NULL check); skipped when session user focus is active
                 var assigneeValue = $('#filter-assignee').val();
-                if (!focusActive && assigneeValue) {
+                var urlUserId = parseInt(new URLSearchParams(window.location.search).get('user_id') || '0', 10);
+                if (!focusActive && assigneeValue && !(urlUserId > 0)) {
                     if (assigneeValue === '__NULL__') {
                         console.log('🔴 NO ASSIGNEE FILTER TRIGGERED');
                         
@@ -4990,12 +5082,19 @@
             function applyUrlAssigneePreset() {
                 var params = new URLSearchParams(window.location.search);
                 var name = (params.get('assignee') || '').trim();
-                if (!name) {
+                var userId = parseInt(params.get('user_id') || '0', 10);
+                if (!name && !(userId > 0)) {
                     return false;
                 }
+                if (!name && userId > 0) {
+                    var $byId = $('#filter-assignee option[data-user-id="' + userId + '"]').first();
+                    if ($byId.length) {
+                        name = String($byId.val() || '').trim();
+                    }
+                }
                 var $sel = $('#filter-assignee');
-                if (!$sel.find('option').filter(function () { return String($(this).val()) === name; }).length) {
-                    $sel.append($('<option>', { value: name, text: name }));
+                if (name && !$sel.find('option').filter(function () { return String($(this).val()) === name; }).length) {
+                    $sel.append($('<option>', { value: name, text: name, 'data-user-id': userId || '' }));
                 }
                 $('#filter-search').val('');
                 $('#filter-ca').val('');
@@ -5007,7 +5106,9 @@
                 taskManagerSessionUserFocus = '';
                 suppressAssignFilterApply = true;
                 $('#filter-assignor').val('').trigger('change');
-                $sel.val(name).trigger('change');
+                if (name) {
+                    $sel.val(name).trigger('change');
+                }
                 suppressAssignFilterApply = false;
                 return true;
             }
@@ -7431,6 +7532,22 @@
                 }
             };
 
+            function showTaskDoneCelebration() {
+                var el = document.getElementById('task-done-celebration');
+                var img = el ? el.querySelector('img') : null;
+                if (!el || !img) return;
+                el.classList.add('is-visible');
+                el.setAttribute('aria-hidden', 'false');
+                try {
+                    img.src = img.src.split('?')[0] + '?t=' + Date.now();
+                } catch (e) {}
+                clearTimeout(showTaskDoneCelebration._timer);
+                showTaskDoneCelebration._timer = setTimeout(function() {
+                    el.classList.remove('is-visible');
+                    el.setAttribute('aria-hidden', 'true');
+                }, 3000);
+            }
+
             $(document).on('change', '.status-select', function() {
                 var select = $(this);
                 newStatusValue = select.val();
@@ -7559,6 +7676,7 @@
                         $('#doneModal').modal('hide');
                         resetDoneModalUi();
                         table.replaceData();
+                        showTaskDoneCelebration();
 
                         var alertHtml = `
                             <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -7653,6 +7771,9 @@
                         success: function(response) {
                             // Update table data without page reload
                             table.replaceData();
+                            if (status === 'Done') {
+                                showTaskDoneCelebration();
+                            }
                             
                             // Show success message
                             var message = (status === 'Rework' && reworkReason) ? 'Task marked for rework' : 'Status updated successfully!';

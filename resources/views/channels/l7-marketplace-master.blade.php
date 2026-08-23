@@ -189,7 +189,7 @@
                     <input type="text" id="channel-search" class="form-control form-control-sm"
                         placeholder="Search Channel..." style="width: 150px; display: inline-block;">
 
-                    <a href="{{ route('yesterday.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
+                    <a href="{{ route('all.marketplace.master', ['tab' => 'yesterday']) }}" class="btn btn-sm btn-outline-dark"
                         title="Open Active Channel Yesterday">
                         <i class="fas fa-calendar-day me-1"></i> Yesterday
                     </a>

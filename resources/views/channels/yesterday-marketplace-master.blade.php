@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Active Channel Yesterday', 'sidenav' => 'condensed'])
+@extends(request()->boolean('embed') ? 'layouts.embed' : 'layouts.vertical', ['title' => 'Active Channel Yesterday', 'sidenav' => 'condensed'])
 
 @php
     $yesterdayLabel = now('America/Los_Angeles')->subDays(2)->format('M j, Y');
@@ -174,20 +174,23 @@
 @endsection
 
 @section('content')
+    @unless(request()->boolean('embed'))
     @include('layouts.shared.page-title', [
         'page_title' => 'Active Channel Yesterday',
         'sub_title' => $yesterdayLabel . ' (latest complete day — sales, orders, qty, spend)',
     ])
+    @endunless
 
     <div class="toast-container"></div>
 
     <div class="row">
-        <div class="card shadow-sm">
+        <div class="card shadow-sm {{ request()->boolean('embed') ? 'mb-0 border-0 shadow-none' : '' }}">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <input type="text" id="channel-search" class="form-control form-control-sm"
                         placeholder="Search Channel..." style="width: 150px; display: inline-block;">
 
+                    @unless(request()->boolean('embed'))
                     <a href="{{ route('l7.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
                         title="Open Active Channel 7 Days">
                         <i class="fas fa-calendar-week me-1"></i> L7 Master
@@ -196,6 +199,7 @@
                         title="Open Active Channel Master (L30)">
                         <i class="fas fa-table me-1"></i> L30 Master
                     </a>
+                    @endunless
                     <span class="badge" style="background-color:#17a2b8;color:#fff;font-weight:600;">
                         Complete day: {{ $yesterdayLabel }} PT
                     </span>
@@ -268,7 +272,7 @@
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="adChartModalTitle">Metric trend — Rolling window</span>
+                        <span id="adChartModalTitle">Metric trend — Daily</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="adChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
@@ -336,6 +340,7 @@
         var currentMetricKey = '';
         var currentChartMetric = '';
         var currentChartDays = 30;
+        var chartWindowDays = 1;
         var currentCellValue = null;
         var adBreakdownChartInstance = null;
         var adChartAjax = null;
@@ -540,7 +545,7 @@
             currentCellValue = (cellValue !== undefined && cellValue !== null && !isNaN(cellValue)) ? cellValue : null;
             $('#adChartRangeSelect').val('30');
             const titleName = displayName || channel || 'All';
-            $('#adChartModalTitle').text(`${titleName} - ${metricLabels[metricKey] || metricKey} (Rolling ${adChartRangeLabel(30)})`);
+            $('#adChartModalTitle').text(`${titleName} - ${metricLabels[metricKey] || metricKey} (Daily ${adChartRangeLabel(30)})`);
             new bootstrap.Modal(document.getElementById('adBreakdownChartModal')).show();
             loadMetricChart();
         }
@@ -549,7 +554,7 @@
             $('#adChartNoData').hide();
             $('#adBreakdownChartContainer').hide();
             $('#adChartLoading').show();
-            const params = { channel: currentChartChannel, metric: currentMetricKey, days: currentChartDays };
+            const params = { channel: currentChartChannel, metric: currentMetricKey, days: currentChartDays, window: chartWindowDays };
             if (currentCellValue !== null) params.badge_value = currentCellValue;
             adChartAjax = $.ajax({
                 url: '/channel-metric-chart-data',
@@ -679,7 +684,7 @@
             $.ajax({
                 url: channelMetricDotTrendsUrl,
                 type: 'GET',
-                data: { channels: channelKeys.join(',') },
+                data: { channels: channelKeys.join(','), window: chartWindowDays },
                 dataType: 'json'
             }).done(function(response) {
                 var inverted = ['ads_pct'];
@@ -1020,7 +1025,7 @@
                 if (days === currentChartDays) return;
                 currentChartDays = days;
                 const titleEl = $('#adChartModalTitle');
-                titleEl.text(titleEl.text().replace(/\(Rolling [^)]+\)/, `(Rolling ${adChartRangeLabel(days)})`));
+                titleEl.text(titleEl.text().replace(/\((?:Rolling|Daily) [^)]+\)/, `(Daily ${adChartRangeLabel(days)})`));
                 loadMetricChart();
             });
             $('#adBreakdownChartModal').on('hidden.bs.modal', function() {

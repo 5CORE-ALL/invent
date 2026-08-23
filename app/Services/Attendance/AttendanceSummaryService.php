@@ -124,7 +124,16 @@ class AttendanceSummaryService
                 'user_id' => $employee->id,
                 'name' => $employee->name,
                 'email' => $employee->email,
+                'org_level' => $employee->org_level,
                 'designation' => $employee->designation,
+                'tm_url' => route('tasks.index', array_filter([
+                    'assignee' => $employee->name,
+                    'user_id' => $employee->id,
+                ])),
+                'ts_url' => route('tasks.summary', array_filter([
+                    'member' => $employee->name,
+                    'user_id' => $employee->id,
+                ])),
                 'avatar_url' => ! empty($employee->avatar)
                     ? asset('storage/'.$employee->avatar)
                     : asset('images/users/avatar-2.jpg'),

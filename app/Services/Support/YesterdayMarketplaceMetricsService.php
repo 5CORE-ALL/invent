@@ -6,6 +6,7 @@ use App\Http\Controllers\ShopifyRawDataController;
 use App\Models\AmazonOrder;
 use App\Models\ChannelMaster;
 use App\Models\ChannelMasterCalculatedData;
+use App\Models\ChannelYesterdayView;
 use App\Models\DobaDailyData;
 use App\Models\Ebay2Order;
 use App\Models\Ebay3DailyData;
@@ -47,6 +48,15 @@ class YesterdayMarketplaceMetricsService
 
     /** 1 = yesterday complete day; 7 = that day plus the prior 6 days. */
     private int $windowDays = 1;
+
+    /** @var array<string, array<string, mixed>|null> */
+    private array $metricsByDayCache = [];
+
+    /** @var array<string, mixed> */
+    private array $orderCollectionCache = [];
+
+    /** @var array<string, array<string, int>>|null */
+    private ?array $viewsByDateCache = null;
 
     public function build(int $days = 1): array
     {
@@ -155,6 +165,54 @@ class YesterdayMarketplaceMetricsService
     }
 
     /**
+     * Full 1-day row for a Pacific calendar date (sales, orders, qty, spend, profit, views).
+     * Does not shift to the latest-complete-day window. Returns null when uncomputed.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function metricsForPacificDate(string $channelKey, string $ymd): ?array
+    {
+        $this->windowDays = 1;
+        $this->alignLatestCompleteDay = false;
+        $day = Carbon::parse($ymd, self::TZ);
+        $date = $day->toDateString();
+        $cacheKey = $this->key($channelKey).'|'.$date;
+        if (array_key_exists($cacheKey, $this->metricsByDayCache)) {
+            return $this->metricsByDayCache[$cacheKey];
+        }
+
+        try {
+            $m = $this->forChannel(
+                $channelKey,
+                $day->copy()->startOfDay(),
+                $day->copy()->endOfDay(),
+                $date
+            );
+        } catch (\Throwable $e) {
+            Log::warning('metricsForPacificDate failed for '.$channelKey.' '.$date.': '.$e->getMessage());
+            $this->metricsByDayCache[$cacheKey] = null;
+
+            return null;
+        }
+
+        $views = $this->storedViewsForDate($channelKey, $date);
+        if ($views !== null) {
+            $m['views'] = $views;
+        }
+
+        if (! ($m['computed'] ?? false) && ($m['views'] ?? null) === null) {
+            $this->metricsByDayCache[$cacheKey] = null;
+
+            return null;
+        }
+
+        $row = $this->formatRow($channelKey, $m);
+        $this->metricsByDayCache[$cacheKey] = $row;
+
+        return $row;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function forChannel(string $name, Carbon $start, Carbon $end, string $date): array
@@ -166,7 +224,7 @@ class YesterdayMarketplaceMetricsService
             'ebay3' => $this->ebay3($date),
             'temu' => $this->temu($start, $end, $date),
             'temu2' => $this->temu2($start, $end, $date),
-            'shopify' => $this->shopify($start, $end),
+            'shopify', 'shopifyb2c' => $this->shopify($start, $end),
             'doba' => $this->doba($start, $end),
             'bestbuy', 'bestbuyusa' => $this->mirakl('Best Buy USA', 'BestbuyUSA', 80, 'ship_bb', $start, $end),
             'macys', 'macysinc' => $this->mirakl("Macy's, Inc.", 'Macys', 76, 'ship', $start, $end),
@@ -260,7 +318,11 @@ class YesterdayMarketplaceMetricsService
             $date = $window[2];
         }
 
-        $orders = $model::with('items')->where('period', 'l30')->get();
+        $cacheKey = 'ebay_orders_'.$which;
+        if (! isset($this->orderCollectionCache[$cacheKey])) {
+            $this->orderCollectionCache[$cacheKey] = $model::with('items')->where('period', 'l30')->get();
+        }
+        $orders = $this->orderCollectionCache[$cacheKey];
 
         $orderSales = 0.0;
         $merch = 0.0;
@@ -331,7 +393,10 @@ class YesterdayMarketplaceMetricsService
             $date = $window[2];
         }
 
-        $rows = Ebay3DailyData::where('period', 'l30')->get();
+        if (! isset($this->orderCollectionCache['ebay3_l30'])) {
+            $this->orderCollectionCache['ebay3_l30'] = Ebay3DailyData::where('period', 'l30')->get();
+        }
+        $rows = $this->orderCollectionCache['ebay3_l30'];
         $byOrder = [];
         $merch = 0.0;
         $pft = 0.0;
@@ -1610,6 +1675,36 @@ class YesterdayMarketplaceMetricsService
         $tWeight = $wt * $quantity;
 
         return $tWeight < 20 ? $ship / $quantity : $ship;
+    }
+
+    private function storedViewsForDate(string $name, string $ymd): ?int
+    {
+        if ($this->viewsByDateCache === null) {
+            $this->viewsByDateCache = [];
+            if (Schema::hasTable('channel_yesterday_views')) {
+                foreach (ChannelYesterdayView::query()->get(['channel', 'snapshot_date', 'views']) as $row) {
+                    $key = $this->key((string) $row->channel);
+                    $date = $row->snapshot_date instanceof \DateTimeInterface
+                        ? $row->snapshot_date->format('Y-m-d')
+                        : (string) $row->snapshot_date;
+                    if ($key !== '' && $date !== '') {
+                        $this->viewsByDateCache[$key][$date] = (int) $row->views;
+                    }
+                }
+            }
+        }
+
+        $key = $this->key($name);
+        $lookup = match ($key) {
+            'shopifyb2c', 'shopify' => 'shopify',
+            default => $key,
+        };
+
+        if (! isset($this->viewsByDateCache[$lookup][$ymd])) {
+            return null;
+        }
+
+        return $this->viewsByDateCache[$lookup][$ymd];
     }
 
     /**
