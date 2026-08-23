@@ -121,6 +121,9 @@ echo "  ✓ Views cached"
 # ─── Step 5: Run migrations (if any) ────────────────────────────────────────
 echo ""
 echo "[5/8] Running database migrations..."
+# Restored dumps often drop AUTO_INCREMENT on migrations.id. The schema change
+# then succeeds, but Laravel cannot insert the migrations row (1364 Field 'id').
+${PHP_BIN} ${ARTISAN} migrate:repair-autoincrement
 ${PHP_BIN} ${ARTISAN} migrate --force
 echo "  ✓ Migrations complete"
 
