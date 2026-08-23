@@ -2,11 +2,11 @@
 <style>
     .kpi-status-dot {
         display: inline-block;
-        width: 0.65rem;
-        height: 0.65rem;
+        width: 6px;
+        height: 6px;
         border-radius: 50%;
-        margin-right: 0.4rem;
-        vertical-align: 0.05em;
+        margin-right: 0.22rem;
+        vertical-align: 0.08em;
         box-shadow: 0 0 0 1px rgba(255,255,255,0.35);
         flex: 0 0 auto;
         cursor: pointer;

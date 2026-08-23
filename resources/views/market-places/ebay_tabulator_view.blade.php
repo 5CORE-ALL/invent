@@ -547,11 +547,20 @@
         }
 
         #summary-stats .summary-trend-dot {
+            display: inline-block;
             width: 6px !important;
             height: 6px !important;
-            margin-left: 3px !important;
+            margin-left: 0 !important;
+            margin-right: 0.22rem !important;
+            border-radius: 50%;
             flex-shrink: 0;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.85);
         }
+        #summary-stats .summary-trend-dot.up { background: #22c55e; }
+        #summary-stats .summary-trend-dot.down { background: #ef4444; }
+        #summary-stats .summary-trend-dot.flat,
+        #summary-stats .summary-trend-dot.none { background: #9ca3af; }
 
         .manual-dropdown-container {
             position: relative;
@@ -4199,16 +4208,15 @@
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase()
                                 .startsWith('PARENT');
                             if (!isParent) {
-                                let arrowColor = '#6c757d';
+                                let arrowColor = '#ffc107';
                                 let arrowIcon = 'fa-minus';
-                                if (val > cvr60 + tol) {
+                                if (val === 0 || val < cvr60 - tol) {
+                                    arrowColor = '#a00211';
+                                    arrowIcon = 'fa-arrow-down';
+                                } else if (val > cvr60 + tol) {
                                     // CVR 30 > CVR 60 (improving)
                                     arrowColor = '#28a745';
                                     arrowIcon = 'fa-arrow-up';
-                                } else if (val < cvr60 - tol) {
-                                    // CVR 60 > CVR 30 (declining)
-                                    arrowColor = '#a00211';
-                                    arrowIcon = 'fa-arrow-down';
                                 }
                                 arrowHtml =
                                     ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
@@ -5956,7 +5964,7 @@
 
                 // Pricing
                 if (
-                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|dsc|appr|push_prc)$/i.test(f) ||
+                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|cvr_up_dn|t_discounts|dsc|appr|push_prc)$/i.test(f) ||
                     /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|prmt|cpn|dsc|appr|push\s*prc|push\s*std\s*prc|sale\s*event|push\s*cpn)\b/i.test(tl) ||
                     /^\+$/i.test(t)
                 ) {
@@ -6475,6 +6483,8 @@
                 'SCVR': 'CVR 30',
                 'CVR_45': 'CVR 45',
                 'CVR_60': 'CVR 60',
+                'cvr_up_dn': 'CVR Up/Dn',
+                't_discounts': 'T Discounts',
                 'ebay2_ship': 'eBay2 Ship',
                 'LP_productmaster': 'LP',
                 'ca_suggested_bid': 'ES BID',

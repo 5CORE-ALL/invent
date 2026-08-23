@@ -316,6 +316,7 @@ class CalculateChannelMasterData extends Command
         \Cache::put('channel_master_summary_data', [
             'inventory_value_amazon' => $response['inventory_value_amazon'] ?? 0,
             'inv_at_lp' => $response['inv_at_lp'] ?? 0,
+            'inv_at_sp' => $response['inv_at_sp'] ?? 0,
             'shopify_inv_sum' => $response['shopify_inv_sum'] ?? 0,
             'shopify_weighted_avg_lp' => $response['shopify_weighted_avg_lp'] ?? 0,
             'inventory_by_color' => $response['inventory_by_color'] ?? [],

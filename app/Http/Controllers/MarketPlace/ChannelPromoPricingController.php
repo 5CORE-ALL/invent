@@ -1370,6 +1370,125 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
+     * Channels that expose CVR UP/DN rules on analytics pages.
+     *
+     * @var list<string>
+     */
+    private const CVR_UP_DN_CHANNELS = ['amazon', 'ebay1', 'temu', 'temu2'];
+
+    /**
+     * Default first rules: any CVR drop → +3, any CVR up → −3.
+     *
+     * @return array{down: list<array{min:float,disc:float}>, up: list<array{min:float,disc:float}>}
+     */
+    public static function defaultCvrUpDnRules(): array
+    {
+        return [
+            'down' => [['min' => 0.0, 'disc' => 3.0]],
+            'up' => [['min' => 0.0, 'disc' => -3.0]],
+        ];
+    }
+
+    /**
+     * @param  mixed  $incoming
+     * @return array{down: list<array{min:float,disc:float}>, up: list<array{min:float,disc:float}>}
+     */
+    public static function normalizeCvrUpDnRules(mixed $incoming): array
+    {
+        $defaults = self::defaultCvrUpDnRules();
+        $out = ['down' => [], 'up' => []];
+        $src = is_array($incoming) ? $incoming : [];
+        foreach (['down', 'up'] as $side) {
+            $rows = is_array($src[$side] ?? null) ? $src[$side] : [];
+            foreach ($rows as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $min = is_numeric($item['min'] ?? null) ? round((float) $item['min'], 2) : 0.0;
+                if ($min < 0) {
+                    $min = 0.0;
+                }
+                $disc = is_numeric($item['disc'] ?? null) ? round((float) $item['disc'], 2) : 0.0;
+                $disc = max(-99.99, min(99.99, $disc));
+                $out[$side][] = ['min' => $min, 'disc' => $disc];
+            }
+            if ($out[$side] === []) {
+                $out[$side] = $defaults[$side];
+            }
+            usort($out[$side], static fn (array $a, array $b): int => $a['min'] <=> $b['min']);
+        }
+
+        return $out;
+    }
+
+    public function cvrUpDnRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::CVR_UP_DN_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $defaults = self::defaultCvrUpDnRules();
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $channel.'_cvr_up_dn')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($saved) || $saved === []) {
+            return response()->json([
+                'success' => true,
+                'is_default' => true,
+                'channel' => $channel,
+                'rules' => $defaults,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_default' => false,
+            'channel' => $channel,
+            'rules' => self::normalizeCvrUpDnRules($saved),
+        ]);
+    }
+
+    public function saveCvrUpDnRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::CVR_UP_DN_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $incoming = $request->input('rules');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules object required'], 422);
+        }
+
+        $rules = self::normalizeCvrUpDnRules($incoming);
+
+        try {
+            ChannelTabulatorColumnSetting::query()->updateOrCreate(
+                ['channel_name' => $channel.'_cvr_up_dn'],
+                [
+                    'visibility' => $rules,
+                    'column_order' => ['down', 'up'],
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::error('CVR UP/DN save failed', [
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Save failed',
+                'rules' => $rules,
+            ], 500);
+        }
+
+        return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
+    }
+
+    /**
      * Same slabs as PEF_DIL_PRMT_DEFAULTS / pefDefaultDilPrmtRules.
      *
      * @return list<array{key:string,label:string,prmt:float|int}>

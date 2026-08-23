@@ -288,6 +288,17 @@
             .mobile-action-btn.btn-info {
                 background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%);
             }
+
+            .mobile-action-btn.btn-outline-secondary {
+                background: #f8f9fa;
+                color: #495057;
+                border: 1px solid #ced4da;
+            }
+            .mobile-action-btn.btn-outline-secondary.active {
+                background: #0d6efd;
+                color: #fff;
+                border-color: #0d6efd;
+            }
             
             /* Selected count badge on mobile */
             #selected-count-mobile {
@@ -422,6 +433,17 @@
             }
             .task-toolbar-actions .task-playback-group .btn i {
                 font-size: 14px !important;
+            }
+            .task-toolbar-actions #filter-duplicates-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                white-space: nowrap;
+            }
+            .task-toolbar-actions #filter-duplicates-btn.active {
+                background-color: #0d6efd !important;
+                border-color: #0d6efd !important;
+                color: #fff !important;
             }
             .task-toolbar-wrap .task-toolbar-filters {
                 display: flex !important;
@@ -565,9 +587,10 @@
         
         .mobile-task-meta {
             display: flex;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             gap: 8px;
             margin-bottom: 10px;
+            align-items: center;
         }
         
         .mobile-task-badge {
@@ -576,6 +599,7 @@
             border-radius: 12px;
             font-weight: 600;
             text-shadow: none;
+            white-space: nowrap;
         }
         
         /* Better badge colors with good contrast */
@@ -958,11 +982,12 @@
         }
         .stats-row .stat-content {
             flex-direction: row;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             align-items: baseline;
             justify-content: center;
             column-gap: 5px;
             row-gap: 0;
+            white-space: nowrap;
         }
         .stats-row .stat-card .stat-label,
         .stats-row .stat-card .stat-value,
@@ -973,9 +998,11 @@
             font-size: 13px;
             opacity: 0.95;
             margin-bottom: 0;
+            white-space: nowrap;
         }
         .stats-row .stat-card .stat-value {
             font-size: 13px;
+            white-space: nowrap;
         }
         /* Keep label + value on the same line. */
         .stats-row .stat-card .stat-unit {
@@ -1455,6 +1482,7 @@
             padding: 5px 10px !important;
             font-weight: 600 !important;
             border-width: 2px !important;
+            white-space: nowrap !important;
         }
 
         .status-select:focus {
@@ -1861,6 +1889,11 @@
                                         <i class="mdi mdi-refresh"></i>
                                         <span>Refresh</span>
                                     </button>
+
+                                    <button type="button" class="mobile-action-btn btn-outline-secondary" id="filter-duplicates-btn-mobile" title="Show duplicate tasks from the current filtered list">
+                                        <i class="mdi mdi-magnify"></i>
+                                        <span>Duplicate</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1936,6 +1969,10 @@
                                     <i class="mdi mdi-refresh"></i>
                                 </button>
 
+                                <button type="button" class="btn btn-outline-secondary" id="filter-duplicates-btn" title="Show duplicate tasks from the current filtered list">
+                                    <i class="mdi mdi-magnify"></i> Duplicate
+                                </button>
+
                                 <div class="btn-group task-playback-group task-playback-assignor" role="group" aria-label="Assignor playback">
                                     <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" title="Previous assignor" disabled>
                                         <i class="mdi mdi-skip-previous"></i>
@@ -1973,7 +2010,7 @@
                             </div>
                             <div class="col-12 mb-2 toolbar-field toolbar-field-ca">
                                 <select id="filter-ca" class="form-select form-select-sm" title="Corrective Action">
-                                    <option value="">CA</option>
+                                    <option value="">All</option>
                                     <option value="1">Yes</option>
                                     <option value="0">No</option>
                                 </select>
@@ -2033,7 +2070,7 @@
                             </div>
                             <div class="col-12 mb-2 toolbar-field toolbar-field-select">
                                 <select id="filter-status" class="form-select form-select-sm">
-                                    <option value="">Status</option>
+                                    <option value="">Status All</option>
                                     <option value="Todo">Todo</option>
                                     <option value="Done">Done</option>
                                     <option value="Need Help">Need Help</option>
@@ -2048,7 +2085,7 @@
                             
                             <div class="col-12 mb-2 toolbar-field toolbar-field-select d-none d-md-block">
                                 <select id="filter-priority" class="form-select form-select-sm">
-                                    <option value="">Priority</option>
+                                    <option value="">Priority All</option>
                                     <option value="low">Low</option>
                                     <option value="normal">Normal</option>
                                     <option value="high">Urgent</option>
@@ -3552,11 +3589,15 @@
                         }
                     }
                     
+                    const overdueAlert = isOverdueByBusinessTid(task)
+                        ? '<i class="mdi mdi-alert" title="Overdue" style="color:#dc3545;font-size:16px;margin-right:4px;vertical-align:middle;"></i>'
+                        : '';
+
                     html += `
                         <div class="mobile-task-card ${statusClass}">
                             <div class="mobile-task-header">
                                 <div style="flex: 1;">
-                                    <div class="mobile-task-title">${task.title || 'No Title'}</div>
+                                    <div class="mobile-task-title">${overdueAlert}${task.title || 'No Title'}</div>
                                     <div class="mobile-task-meta">
                                         <span class="badge ${statusBadge} mobile-task-badge">${statusText}</span>
                                         <span class="badge ${priorityClass} mobile-task-badge">${priorityLabel}</span>
@@ -4066,7 +4107,7 @@
                                 var designation = row.assignor_designation || '';
                                 var designationAttr = designation ? ' title="' + String(designation).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '"' : '';
                                 return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap"' + designationAttr + '>' +
-                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle task-avatar-hover" style="width:24px;height:24px;object-fit:cover;flex-shrink:0;transition:all 0.2s ease;cursor:pointer;">' +
+                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle task-avatar-hover" style="width:19px;height:19px;object-fit:cover;flex-shrink:0;transition:all 0.2s ease;cursor:pointer;">' +
                                     '<div style="text-align: left;"><strong style="font-size: 11px;">' + nameEsc + '</strong></div>' +
                                     '</div>';
                             }
@@ -4096,7 +4137,7 @@
                                 var designation = row.assignee_designation || '';
                                 var designationAttr = designation ? ' title="' + String(designation).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '"' : '';
                                 return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap"' + designationAttr + '>' +
-                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle task-avatar-hover" style="width:24px;height:24px;object-fit:cover;flex-shrink:0;transition:all 0.2s ease;cursor:pointer;">' +
+                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle task-avatar-hover" style="width:19px;height:19px;object-fit:cover;flex-shrink:0;transition:all 0.2s ease;cursor:pointer;">' +
                                     '<div style="text-align: left;"><strong style="font-size: 11px; line-height: 1.4;">' + nameEsc + '</strong></div>' +
                                     '</div>';
                             }
@@ -4128,8 +4169,12 @@
                                 }
                                 var label = fp.label;
                                 var titleFull = fp.title + ' (' + taskBusinessTzShort + ')';
-                                var textColor = isOverdueByBusinessTid(rowData) ? '#dc3545' : '#0d6efd';
-                                return '<span style="color: ' + textColor + '; font-weight: 600; font-size: 11px;" title="' + titleFull + '">' + label + '</span>';
+                                var overdue = isOverdueByBusinessTid(rowData);
+                                var textColor = overdue ? '#dc3545' : '#0d6efd';
+                                var overdueIcon = overdue
+                                    ? '<i class="mdi mdi-alert" title="Overdue" style="color:#dc3545;font-size:12px;margin-right:2px;vertical-align:middle;"></i>'
+                                    : '';
+                                return overdueIcon + '<span style="color: ' + textColor + '; font-weight: 600; font-size: 11px;" title="' + titleFull + '">' + label + '</span>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
@@ -4261,7 +4306,7 @@
                     cols.push({
                         title: "STATUS", 
                         field: "status", 
-                        width: 100,
+                        width: 118,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
@@ -4290,14 +4335,14 @@
                             var currentStatus = statuses[value] || {bg: '#6c757d', text: '#fff'};
                             
                             if (!canUpdateStatus) {
-                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 4.8px 9.6px; border-radius: 16px; font-size: 8.8px; font-weight: 700; display: inline-block;">' + displayText + '</span>';
+                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 4.8px 9.6px; border-radius: 16px; font-size: 8.8px; font-weight: 700; display: inline-block; white-space: nowrap;">' + displayText + '</span>';
                             }
                             
                             return `
                                 <select class="form-select form-select-sm status-select" 
                                         data-task-id="${taskId}" 
                                         data-current-status="${value}"
-                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 700; font-size: 8.8px; border-radius: 16px; padding: 4.8px 9.6px;">
+                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 700; font-size: 8.8px; border-radius: 16px; padding: 4.8px 9.6px; white-space: nowrap;">
                                     <option value="Todo" ${value === 'Todo' ? 'selected' : ''}>Todo</option>
                                     ${value === 'Working' ? '<option value="Working" selected>Working</option>' : ''}
                                     ${value === 'Archived' ? '<option value="Archived" selected>Archived</option>' : ''}
@@ -4701,6 +4746,55 @@
                 }
             }
 
+            var duplicateFilterActive = false;
+
+            function flattenVisibleTasks(rows) {
+                var out = [];
+                (rows || []).forEach(function (t) {
+                    if (!t) return;
+                    out.push(t);
+                    if (t._children && t._children.length) {
+                        out = out.concat(flattenVisibleTasks(t._children));
+                    }
+                });
+                return out;
+            }
+
+            function normalizeDuplicateTitle(title) {
+                return String(title || '')
+                    .replace(/\s*\[Auto:\s*\d{1,2}-[A-Za-z]{3}-\d{2}\]\s*$/i, '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .toLowerCase();
+            }
+
+            function syncDuplicateFilterButtons() {
+                $('#filter-duplicates-btn, #filter-duplicates-btn-mobile').toggleClass('active', duplicateFilterActive);
+            }
+
+            function applyDuplicateTitleFilter() {
+                if (!duplicateFilterActive) {
+                    return;
+                }
+                var visible = flattenVisibleTasks(table.getData('active'));
+                var counts = {};
+                visible.forEach(function (t) {
+                    var key = normalizeDuplicateTitle(t.title);
+                    if (!key) return;
+                    counts[key] = (counts[key] || 0) + 1;
+                });
+                var dupIds = {};
+                visible.forEach(function (t) {
+                    var key = normalizeDuplicateTitle(t.title);
+                    if (key && counts[key] > 1 && t.id != null) {
+                        dupIds[String(t.id)] = true;
+                    }
+                });
+                table.addFilter(function (data) {
+                    return !!(data && data.id != null && dupIds[String(data.id)]);
+                });
+            }
+
             function isAutomatedTask(rowData) {
                 var v = rowData && rowData.is_automate_task;
                 return v == 1 || v === true || String(v) === '1';
@@ -4711,6 +4805,7 @@
                     return task;
                 }
                 task.is_automate_task = isAutomatedTask(task) ? 1 : 0;
+                task.is_corrective_action = taskIsCorrectiveAction(task) ? 1 : 0;
                 return task;
             }
 
@@ -4733,14 +4828,10 @@
                 var filters = [];
                 var focusActive = !!(taskManagerSessionUserFocus && String(taskManagerSessionUserFocus).trim());
                 
-                // CA filter
+                // CA filter — Tabulator only accepts {field,type,value} objects in this array
                 var caValue = $('#filter-ca').val();
                 if (caValue === '1' || caValue === '0') {
-                    var wantCa = caValue === '1';
-                    filters.push(function (data) {
-                        var marked = data.is_corrective_action === true || data.is_corrective_action === 1 || data.is_corrective_action === '1';
-                        return wantCa ? marked : !marked;
-                    });
+                    filters.push({field: 'is_corrective_action', type: '=', value: caValue === '1' ? 1 : 0});
                 }
 
                 // Group filter
@@ -4766,6 +4857,7 @@
                         });
                         appendTaskTypeFilter(filters);
                         table.setFilter(filters);
+                        applyDuplicateTitleFilter();
                         console.log('✓ Filter applied: No Assignor');
                         applyTaskOrdering();
                         setTimeout(function () {
@@ -4807,6 +4899,7 @@
                         filters.push({field:"assignee_name", type:"=", value:"-"});
                         appendTaskTypeFilter(filters);
                         table.setFilter(filters);
+                        applyDuplicateTitleFilter();
                         
                         console.log('✅ Filter applied: assignee_name = "-"');
                         console.log('📊 Filtered tasks showing:', table.getDataCount('active'));
@@ -4876,6 +4969,7 @@
                 if (filters.length > 0) {
                     table.setFilter(filters);
                 }
+                applyDuplicateTitleFilter();
 
                 applyTaskOrdering();
 
@@ -4893,12 +4987,37 @@
                 persistTaskIndexFilters();
             }
 
+            function applyUrlAssigneePreset() {
+                var params = new URLSearchParams(window.location.search);
+                var name = (params.get('assignee') || '').trim();
+                if (!name) {
+                    return false;
+                }
+                var $sel = $('#filter-assignee');
+                if (!$sel.find('option').filter(function () { return String($(this).val()) === name; }).length) {
+                    $sel.append($('<option>', { value: name, text: name }));
+                }
+                $('#filter-search').val('');
+                $('#filter-ca').val('');
+                $('#filter-group').val('');
+                $('#filter-task').val('');
+                $('#filter-status').val('');
+                $('#filter-priority').val('');
+                $('#filter-task-type').val('');
+                taskManagerSessionUserFocus = '';
+                suppressAssignFilterApply = true;
+                $('#filter-assignor').val('').trigger('change');
+                $sel.val(name).trigger('change');
+                suppressAssignFilterApply = false;
+                return true;
+            }
+
             var taskIndexFiltersRestored = false;
             table.on('dataLoaded', function () {
                 if (taskIndexFiltersRestored) return;
                 taskIndexFiltersRestored = true;
                 restoreTaskIndexFilters();
-                if (taskManagerSessionUserFocus) {
+                if (!applyUrlAssigneePreset() && taskManagerSessionUserFocus) {
                     suppressAssignFilterApply = true;
                     $('#filter-assignor').val('').trigger('change');
                     $('#filter-assignee').val(taskManagerSessionUserFocus).trigger('change');
@@ -4963,6 +5082,12 @@
             $('#filter-status, #filter-task-type').on('change', applyFilters);
             $('#filter-priority').on('change', applyFilters);
             $('#filter-ca').on('change', applyFilters);
+
+            $('#filter-duplicates-btn, #filter-duplicates-btn-mobile').on('click', function () {
+                duplicateFilterActive = !duplicateFilterActive;
+                syncDuplicateFilterButtons();
+                applyFilters();
+            });
 
             // Reload table from server only; keep filter inputs and reapply Tabulator filters
             $('#tasks-refresh-table-btn, #tasks-refresh-table-btn-mobile').on('click', function () {

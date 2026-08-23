@@ -1,6 +1,6 @@
 {{--
-  Dil vs PRMT / CVR vs CPN + PRMT% / CPN% / CVR Disc. / Push Prc for Amazon tabulator.
-  Same rules store + endpoints as /pricing-errors-fix (pef_dil_vs_prmt / pef_cvr_vs_cpn).
+  Dil vs PRMT + PRMT% / CVR Disc. / Push Prc for Amazon tabulator.
+  Dil vs PRMT rules store is shared with /pricing-errors-fix (pef_dil_vs_prmt).
   Amazon path: discount SPRICE via /save-amazon-sprice (no eBay Marketing APIs).
 --}}
 @php
@@ -9,7 +9,7 @@
 @endphp
 
 @if($amazonPefPromoPart === 'css' || $amazonPefPromoPart === 'all')
-        /* Dil vs PRMT / CVR vs CPN — same UX as /pricing-errors-fix */
+        /* Dil vs PRMT / CVR Disc — same UX as /pricing-errors-fix */
         .amz-pef-promo-cell {
             font-size: inherit;
             font-weight: 600;
@@ -17,11 +17,10 @@
         }
         .amz-pef-promo-cell.has-val { color: #0f172a; }
         .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"],
-        .tabulator-row .tabulator-cell[tabulator-field="cpn_pct"],
         .tabulator-row .tabulator-cell[tabulator-field="cvr_discount"] {
             padding: 2px 4px !important;
         }
-        /* Badge style aligned with CVR vs CPN menu (mint %) */
+        /* Mint badge for CVR Disc. */
         .amz-cvr-discount-badge {
             display: inline-flex;
             align-items: center;
@@ -45,7 +44,6 @@
             color: #adb5bd !important;
         }
         #pef-dil-prmt-table .pef-dil-prmt-input,
-        #pef-cvr-cpn-table .pef-cvr-cpn-input,
         #amz-cvr-disc-table .amz-cvr-disc-input {
             max-width: 90px;
             margin-left: auto;
@@ -64,15 +62,11 @@
             border-color: #146c43;
             color: #fff;
         }
-        #amz-cpn-menu-btn,
         #amz-cvr-disc-menu-btn {
             background: #20c997;
             border-color: #20c997;
             color: #fff;
         }
-        #amz-cpn-menu-btn:hover,
-        #amz-cpn-menu-btn:focus,
-        #amz-cpn-menu-btn.show,
         #amz-cvr-disc-menu-btn:hover,
         #amz-cvr-disc-menu-btn:focus,
         #amz-cvr-disc-menu-btn.show {
@@ -94,6 +88,7 @@
         #amz-sprice-recalc-btn:disabled {
             opacity: 0.65;
         }
+        @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'css', 'cvrUpDnChannel' => 'amazon'])
         /* Push Prc job progress — yellow while running, green at 100% */
         #amz-push-prc-progress {
             display: none;
@@ -159,25 +154,6 @@
         }
         #amz-push-prc-progress.has-fail.done .amz-push-prc-bar > span {
             background: linear-gradient(90deg, #22c55e 70%, #f59e0b 100%);
-        }
-        /* CVR vs CPN modal — light purple background */
-        #pefCvrVsCpnModal .modal-content {
-            background: #f3e8ff;
-            border-color: #e9d5ff;
-        }
-        #pefCvrVsCpnModal .modal-header,
-        #pefCvrVsCpnModal .modal-footer {
-            background: #f3e8ff;
-            border-color: #e9d5ff;
-        }
-        #pefCvrVsCpnModal .modal-body {
-            background: #f3e8ff;
-        }
-        #pefCvrVsCpnModal .table {
-            background: #fff;
-        }
-        #pefCvrVsCpnModal .table thead.table-light th {
-            background: #ede9fe;
         }
         .tabulator .tabulator-tableholder {
             overflow-x: auto !important;
@@ -263,7 +239,7 @@
         @push('page-title-after')
             <label class="amz-reload-push-switch{{ $amazonPageReloadPushEnabled ? '' : ' is-off' }}"
                 id="amz-reload-push-wrap"
-                title="When ON, this page auto-queues Push Prc on reload for listings whose plan differs from live Price. When OFF, reload does not push. Daily Dil vs PRMT / CVR vs CPN cron still runs either way.">
+                title="When ON, this page auto-queues Push Prc on reload for listings whose plan differs from live Price. When OFF, reload does not push. Daily Dil vs PRMT cron still runs either way.">
                 <span class="amz-reload-push-text">
                     Push on reload
                     <span class="amz-reload-push-state" id="amz-reload-push-label">{{ $amazonPageReloadPushEnabled ? 'On' : 'Off' }}</span>
@@ -297,7 +273,7 @@
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm dropdown-toggle" id="amz-cvr-disc-menu-btn"
                             data-bs-toggle="dropdown" aria-expanded="false"
-                            title="CVR Disc. column rules (separate from Cpn%)">
+                            title="CVR Disc. column rules">
                             CVR Disc
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="amz-cvr-disc-menu-btn">
@@ -308,25 +284,7 @@
                             </li>
                         </ul>
                     </div>
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-sm dropdown-toggle" id="amz-cpn-menu-btn"
-                            data-bs-toggle="dropdown" aria-expanded="false"
-                            title="Cpn% column — CVR vs CPN rules + Push CPN% (separate from CVR Disc)">
-                            Cpn%
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="amz-cpn-menu-btn">
-                            <li>
-                                <a class="dropdown-item" href="#" id="amz-cvr-vs-cpn-btn">
-                                    CVR vs CPN…
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item" href="#" id="amz-push-cpn-btn">
-                                    <i class="fas fa-upload me-1" style="color:#20c997;"></i> Push CPN%
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
+                    @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'buttons', 'cvrUpDnChannel' => 'amazon'])
                     <div id="amz-push-prc-progress" aria-live="polite" title="Push Prc background job — survives refresh; you can queue more SKUs anytime">
                         <div class="amz-push-prc-progress-meta">
                             <span id="amz-push-prc-progress-pct">0%</span>
@@ -341,7 +299,7 @@
 @endif
 
 @if($amazonPefPromoPart === 'modals' || $amazonPefPromoPart === 'all')
-    {{-- CVR Disc: Amazon-only rules store amazon_cvr_vs_disc (NOT shared with Cpn%) --}}
+    {{-- CVR Disc: Amazon-only rules store amazon_cvr_vs_disc --}}
     <div class="modal fade" id="amzCvrDiscModal" tabindex="-1" aria-labelledby="amzCvrDiscModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-md">
             <div class="modal-content">
@@ -353,7 +311,7 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
-                        Map CVR% slabs to <strong>CVR Disc.</strong> %. Separate from <strong>Cpn%</strong> / CVR vs CPN.
+                        Map CVR% slabs to <strong>CVR Disc.</strong> %.
                         Used by the CVR Disc. column and Push Prc Sale discount.
                     </p>
                     <div class="table-responsive">
@@ -379,42 +337,7 @@
         </div>
     </div>
 
-    {{-- CVR vs CPN: same model/datasource as /pricing-errors-fix (Cpn% column only) --}}
-    <div class="modal fade" id="pefCvrVsCpnModal" tabindex="-1" aria-labelledby="pefCvrVsCpnModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-md">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title fs-6" id="pefCvrVsCpnModalLabel">
-                        CVR vs CPN
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body py-2">
-                    <p class="small text-muted mb-2">
-                        Map CVR% slabs to <strong>CPN %</strong>. Separate from <strong>CVR Disc</strong> rules.
-                    </p>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-0" id="pef-cvr-cpn-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:55%;">CVR%</th>
-                                    <th style="width:45%;" class="text-end">CPN %</th>
-                                </tr>
-                            </thead>
-                            <tbody id="pef-cvr-cpn-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div class="small text-muted mt-2" id="pef-cvr-cpn-status"></div>
-                </div>
-                <div class="modal-footer py-2 flex-wrap gap-1">
-                    <button type="button" class="btn btn-sm btn-primary" id="pef-cvr-cpn-apply-btn"
-                        title="Save CVR→CPN rules, then apply CPN% — selected rows if checked, otherwise all visible">
-                        Apply
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+    @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'modals', 'cvrUpDnChannel' => 'amazon'])
 
     {{-- Dil vs PRMT: same model/datasource as /pricing-errors-fix --}}
     <div class="modal fade" id="pefDilVsPrmtModal" tabindex="-1" aria-labelledby="pefDilVsPrmtModalLabel" aria-hidden="true">
@@ -460,7 +383,7 @@
 @if($amazonPefPromoPart === 'script' || $amazonPefPromoPart === 'all')
         @include('partials.tabulator-column-autofit')
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
-        // ==================== Dil vs PRMT / CVR vs CPN (same as /pricing-errors-fix) ====================
+        // ==================== Dil vs PRMT / CVR Disc (same Dil store as /pricing-errors-fix) ====================
         const PEF_DIL_PRMT_DEFAULTS = [
             { key: '0-10', label: '0–10%', prmt: 10 },
             { key: '10-20', label: '10–20%', prmt: 9 },
@@ -474,20 +397,6 @@
             { key: '90-100', label: '90–100%', prmt: 1 },
             { key: 'gt-100', label: '> 100%', prmt: 0 },
         ];
-        const PEF_CVR_CPN_DEFAULTS = [
-            { key: 'eq-0', label: '0%', cpn: 10 },
-            { key: '0.01-1', label: '0.01–1%', cpn: 9 },
-            { key: '1-1.5', label: '1–1.5%', cpn: 8 },
-            { key: '1.5-2', label: '1.5–2%', cpn: 7 },
-            { key: '2-3', label: '2–3%', cpn: 6 },
-            { key: '3-4', label: '3–4%', cpn: 5 },
-            { key: '4-5', label: '4–5%', cpn: 4 },
-            { key: '5-6', label: '5–6%', cpn: 3 },
-            { key: '6-6.5', label: '6–6.5%', cpn: 2 },
-            { key: '6.5-7', label: '6.5–7%', cpn: 1 },
-            { key: 'gt-7', label: '> 7%', cpn: 0 },
-        ];
-        // Amazon CVR Disc. column — separate defaults/store from Cpn% (pef_cvr_vs_cpn)
         const AMZ_CVR_DISC_DEFAULTS = [
             { key: 'eq-0', label: '0%', disc: 10 },
             { key: '0.01-1', label: '0.01–1%', disc: 9 },
@@ -503,7 +412,6 @@
         ];
 
         let pefDilPrmtRules = PEF_DIL_PRMT_DEFAULTS.map(function(r) { return Object.assign({}, r); });
-        let pefCvrCpnRules = PEF_CVR_CPN_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzCvrDiscRules = AMZ_CVR_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzPageReloadPushEnabled = @json($amazonPageReloadPushEnabled ?? true);
 
@@ -579,15 +487,14 @@
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
         }
-        /** Colored history dot (PDT daily roll-on) for PRMT% / CPN% columns */
+        /** Colored history dot (PDT daily roll-on) for PRMT% / Push Prc columns */
         function amzPefPromoHistoryDotHtml(sku, metric, pct) {
             if (!sku) return '';
             const n = Number(pct);
             const has = isFinite(n) && n > 0;
             let color = '#adb5bd';
             let label = metric;
-            if (metric === 'cpn') { color = has ? '#20c997' : '#adb5bd'; label = 'CPN%'; }
-            else if (metric === 'prmt') { color = has ? '#0d6efd' : '#adb5bd'; label = 'PRMT%'; }
+            if (metric === 'prmt') { color = has ? '#0d6efd' : '#adb5bd'; label = 'PRMT%'; }
             else if (metric === 'push_prc') { color = has ? '#FF9900' : '#adb5bd'; label = 'Push Prc'; }
             const tip = label
                 + (has ? (metric === 'push_prc' ? (' = $' + Number(n).toFixed(2)) : (' = ' + n + '%')) : '')
@@ -613,10 +520,7 @@
             if (extra.prmt_pct !== undefined && extra.prmt_pct !== null) {
                 payload.prmt_pct = Number(extra.prmt_pct) || 0;
             }
-            if (extra.cpn_pct !== undefined && extra.cpn_pct !== null) {
-                payload.cpn_pct = Number(extra.cpn_pct) || 0;
-            }
-            if (payload.sprice === undefined && payload.prmt_pct === undefined && payload.cpn_pct === undefined) {
+            if (payload.sprice === undefined && payload.prmt_pct === undefined) {
                 return;
             }
             $.ajax({
@@ -634,10 +538,6 @@
                     if (response.prmt_pct !== undefined && response.prmt_pct !== null) {
                         updates.prmt_pct = String(response.prmt_pct);
                         updates._prmt_pct_applied = Number(response.prmt_pct) || 0;
-                    }
-                    if (response.cpn_pct !== undefined && response.cpn_pct !== null) {
-                        updates.cpn_pct = String(response.cpn_pct);
-                        updates._cpn_pct_applied = Number(response.cpn_pct) || 0;
                     }
                     if (Object.keys(updates).length) row.update(updates);
                     if (!silent) amzPefToast('success', 'S PRC updated');
@@ -705,14 +605,7 @@
             if (n >= 1) return '1-1.5';
             return '0.01-1';
         }
-        function pefCpnForCvr(cvr) {
-            const key = pefCvrSlabKey(cvr);
-            const rule = pefCvrCpnRules.find(function(r) { return r.key === key; });
-            if (!rule) return 0;
-            const n = Number(rule.cpn);
-            return isFinite(n) && n >= 0 ? n : 0;
-        }
-        /** CVR → Disc% from amazon_cvr_vs_disc (CVR Disc column / Push Prc). Not Cpn%. */
+        /** CVR → Disc% from amazon_cvr_vs_disc (CVR Disc column / Push Prc). */
         function amzDiscForCvr(cvr) {
             const key = pefCvrSlabKey(cvr);
             const rule = amzCvrDiscRules.find(function(r) { return r.key === key; });
@@ -775,7 +668,7 @@
                 renderAmzCvrDiscModalTable();
                 $('#amz-cvr-disc-status').text(res && res.is_default
                     ? 'Using defaults (not saved yet).'
-                    : 'Loaded saved CVR Disc rules (separate from Cpn%).');
+                    : 'Loaded saved CVR Disc rules.');
             } catch (e) {
                 renderAmzCvrDiscModalTable();
                 $('#amz-cvr-disc-status').text('Could not load saved rules — using defaults.');
@@ -880,69 +773,6 @@
             });
         }
 
-        function renderCvrCpnModalTable() {
-            const $tb = $('#pef-cvr-cpn-tbody').empty();
-            pefCvrCpnRules.forEach(function(r, idx) {
-                const cpn = isFinite(Number(r.cpn)) ? Number(r.cpn) : 0;
-                $tb.append(
-                    '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
-                    + '<td>' + String(r.label || r.key) + '</td>'
-                    + '<td class="text-end">'
-                    + '<input type="number" class="form-control form-control-sm pef-cvr-cpn-input" '
-                    + 'min="0" step="0.1" value="' + cpn + '" data-idx="' + idx + '">'
-                    + '</td></tr>'
-                );
-            });
-        }
-        function readCvrCpnRulesFromModal() {
-            $('#pef-cvr-cpn-tbody tr').each(function() {
-                const key = String($(this).attr('data-key') || '');
-                const val = parseFloat($(this).find('.pef-cvr-cpn-input').val());
-                const rule = pefCvrCpnRules.find(function(r) { return r.key === key; });
-                if (!rule) return;
-                rule.cpn = (isFinite(val) && val >= 0) ? val : 0;
-            });
-            return pefCvrCpnRules.map(function(r) {
-                return { key: r.key, label: r.label, cpn: Number(r.cpn) || 0 };
-            });
-        }
-        async function loadCvrCpnRules() {
-            $('#pef-cvr-cpn-status').text('Loading…');
-            try {
-                const res = await $.ajax({
-                    url: '/pricing-errors-fix-cvr-cpn',
-                    method: 'GET',
-                    dataType: 'json',
-                });
-                if (res && Array.isArray(res.rules) && res.rules.length) {
-                    pefCvrCpnRules = res.rules.map(function(r) { return Object.assign({}, r); });
-                }
-                renderCvrCpnModalTable();
-                $('#pef-cvr-cpn-status').text(res && res.is_default
-                    ? 'Using first-time defaults (0–10). Apply to save & apply.'
-                    : 'Loaded saved CVR vs CPN rules (shared with pricing-errors-fix).');
-            } catch (e) {
-                renderCvrCpnModalTable();
-                $('#pef-cvr-cpn-status').text('Could not load saved rules — showing defaults.');
-            }
-        }
-        function saveCvrCpnRules() {
-            const rules = readCvrCpnRulesFromModal();
-            return $.ajax({
-                url: '/pricing-errors-fix-cvr-cpn',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                data: { rules: rules, _token: amzPefCsrf() },
-            }).then(function(res) {
-                if (res && Array.isArray(res.rules)) {
-                    pefCvrCpnRules = res.rules.map(function(r) { return Object.assign({}, r); });
-                    renderCvrCpnModalTable();
-                }
-                $('#pef-cvr-cpn-status').text('Saved (shared with pricing-errors-fix).');
-                return res;
-            });
-        }
-
         async function saveAndApplyDilPrmt() {
             const selected = collectAmzPefSelectedRows();
             let targets = selected;
@@ -964,34 +794,6 @@
             try {
                 await saveDilPrmtRules();
                 await applyDilPrmtToTargets(targets, label);
-            } catch (xhr) {
-                amzPefToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
-            } finally {
-                $btn.prop('disabled', false).html(html);
-            }
-        }
-
-        async function saveAndApplyCvrCpn() {
-            const selected = collectAmzPefSelectedRows();
-            let targets = selected;
-            let label = 'selected';
-            if (!targets.length) {
-                targets = collectAmzPefVisibleRows();
-                label = 'all visible';
-                if (!targets.length) {
-                    amzPefToast('error', 'No rows to apply');
-                    return;
-                }
-                if (!confirm('No rows selected — save rules and apply CVR→CPN % to all ' + targets.length + ' visible row(s)?')) {
-                    return;
-                }
-            }
-            const $btn = $('#pef-cvr-cpn-apply-btn');
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
-            try {
-                await saveCvrCpnRules();
-                await applyCvrCpnToTargets(targets, label);
             } catch (xhr) {
                 amzPefToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
             } finally {
@@ -1034,46 +836,6 @@
             amzPefToast(
                 (ok ? 'success' : 'error'),
                 'Dil vs PRMT (' + label + '): PRMT % → ' + ok + ' row(s)'
-                    + (skipped ? ('; skipped ' + skipped) : '') + '.'
-            );
-            if (table) table.redraw(true);
-        }
-
-        async function applyCvrCpnToTargets(targets, label) {
-            readCvrCpnRulesFromModal();
-            if (!targets.length) {
-                amzPefToast('error', 'No rows to apply');
-                return;
-            }
-            let ok = 0;
-            let skipped = 0;
-            for (let i = 0; i < targets.length; i++) {
-                const item = targets[i];
-                const d = item.row.getData();
-                if (!amzPefIsChildRow(d)) { skipped++; continue; }
-                const cvr = amzPefCvr(d);
-                const cpn = amzPefInv(d) === 0 ? 0 : pefCpnForCvr(cvr);
-                if (!(cpn > 0)) {
-                    item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
-                    saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, { cpn_pct: cpn });
-                    skipped++;
-                    continue;
-                }
-                const promo = { type: 'percent', value: cpn };
-                const base = getAmzDiscountBase(d, '_cpn_pct_applied');
-                const newPrice = applyAmzPromoToSpriceBase(base, promo);
-                if (!(base > 0) || !(newPrice > 0)) { skipped++; continue; }
-                item.row.update({
-                    cpn_pct: String(cpn),
-                    _cpn_pct_applied: cpn,
-                    SPRICE: newPrice,
-                });
-                saveAmzSpriceFromPromo(item.row, newPrice, true, { cpn_pct: cpn });
-                ok++;
-            }
-            amzPefToast(
-                (ok ? 'success' : 'error'),
-                'CVR vs CPN (' + label + '): CPN % → ' + ok + ' row(s)'
                     + (skipped ? ('; skipped ' + skipped) : '') + '.'
             );
             if (table) table.redraw(true);
@@ -1150,7 +912,6 @@
         async function applyAmzPefPromoFromCell(cell, kind) {
             const fieldMeta = {
                 prmt: { field: 'prmt_pct', appliedKey: '_prmt_pct_applied', label: 'PRMT %', allowZero: true },
-                cpn: { field: 'cpn_pct', appliedKey: '_cpn_pct_applied', label: 'CPN %', allowZero: true },
                 dsc: { field: 'dsc', appliedKey: '_dsc_applied', label: 'DSC %', allowZero: false },
             }[kind];
             if (!fieldMeta) return;
@@ -1187,10 +948,8 @@
                         patch._appr_lmp = null;
                     }
                     item.row.update(patch);
-                    if (kind === 'prmt' || kind === 'cpn') {
-                        const extra = {};
-                        extra[kind === 'prmt' ? 'prmt_pct' : 'cpn_pct'] = 0;
-                        saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, extra);
+                    if (kind === 'prmt') {
+                        saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, { prmt_pct: 0 });
                     }
                     skipped++;
                     continue;
@@ -1209,7 +968,6 @@
                 item.row.update(patch);
                 const extra = {};
                 if (kind === 'prmt') extra.prmt_pct = promo.value;
-                if (kind === 'cpn') extra.cpn_pct = promo.value;
                 saveAmzSpriceFromPromo(item.row, newPrice, true, extra);
                 ok++;
             }
@@ -1254,44 +1012,13 @@
                     },
                 },
                 {
-                    title: 'CPN %',
-                    field: 'cpn_pct',
-                    width: 70,
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    headerSort: false,
-                    editable: function(cell) {
-                        return amzPefIsChildRow(cell.getRow().getData());
-                    },
-                    editor: 'input',
-                    headerTooltip: '% less on S PRC. Also filled by CVR vs CPN. Dot = PDT daily history.',
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent_summary) return '';
-                        const sku = amzPefSku(d);
-                        const val = cell.getValue();
-                        const dot = amzPefPromoHistoryDotHtml(sku, 'cpn', val);
-                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:3px;">'
-                            + dot + fmtAmzPefPromoCell(val, '%') + '</span>';
-                    },
-                    cellClick: function(e) {
-                        if (e.target.closest('.view-sku-chart') || e.target.closest('.amz-pef-hist-dot')) {
-                            e.stopPropagation();
-                            return false;
-                        }
-                    },
-                    cellEdited: function(cell) {
-                        applyAmzPefPromoFromCell(cell, 'cpn');
-                    },
-                },
-                {
                     title: 'CVR Disc.',
                     field: 'cvr_discount',
                     width: 64,
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'CVR Disc. — from CVR vs CPN rules. INV=0 → 0%. Read-only.',
+                    headerTooltip: 'CVR Disc. — from CVR Disc rules. INV=0 → 0%. Read-only.',
                     sorter: function(a, b, aRow, bRow) {
                         const av = computeAmzCvrDiscountPct(aRow.getData()) || 0;
                         const bv = computeAmzCvrDiscountPct(bRow.getData()) || 0;
@@ -1314,6 +1041,8 @@
                             + fmtAmzCvrDiscountBadge(pct) + '</span>';
                     },
                 },
+                ...(typeof cvrUpDnColumn === 'function' ? [cvrUpDnColumn()] : []),
+                ...(typeof tDiscountsColumn === 'function' ? [tDiscountsColumn(computeAmzTDiscountsPct)] : []),
                 {
                     title: 'Push Prc',
                     field: 'push_prc',
@@ -1321,7 +1050,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
-                    headerTooltip: 'Push Prc: Your=Std; Sale=Std−(PRMT%+CVR Disc%); Max=Std×1.10; Min=Sale×0.95; Business=Sale×0.95. Dot = PDT history.',
+                    headerTooltip: 'Push Prc: Your=Std; Sale=Std−T Discounts; T Discounts=PRMT%+CVR Disc.+CVR Up/Dn. Max=Std×1.10; Min=Sale×0.95; Business=Sale×0.95. Dot = PDT history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (!amzPefIsChildRow(d)) return '';
@@ -1339,7 +1068,8 @@
                         let tip = 'Your $' + plan.std.toFixed(2)
                             + (plan.sale != null
                                 ? ('; · Sale $' + plan.sale.toFixed(2)
-                                    + ' [PRMT ' + plan.prmt + '% + CVR Disc ' + plan.cvrDisc + '%]')
+                                    + ' [PRMT ' + plan.prmt + '% + CVR Disc ' + plan.cvrDisc + '%'
+                                    + (plan.cvrUpDn ? (' + CVR Up/Dn ' + plan.cvrUpDn + '%') : '') + ']')
                                 : '')
                             + ' · Max $' + plan.max.toFixed(2)
                             + ' · Min $' + plan.min.toFixed(2)
@@ -1408,14 +1138,20 @@
          *  5) Business = Sale × 0.95 (if no Sale → Std × 0.95) — B2B our_price
          *  6) Coupon API — not available via SP-API (skipped)
          */
+        function computeAmzTDiscountsPct(d) {
+            const prmt = Math.max(0, Number(d && (d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied)) || 0);
+            const cvrDisc = Math.max(0, Number(typeof computeAmzCvrDiscountPct === 'function' ? computeAmzCvrDiscountPct(d) : 0) || 0);
+            const upDn = (typeof computeCvrUpDnPct === 'function') ? (Number(computeCvrUpDnPct(d)) || 0) : 0;
+            return amzPefRound2(Math.min(99.99, Math.max(0, prmt + cvrDisc + upDn)));
+        }
         function computeAmzPushPrcPlan(d) {
             const std = Number(d.STANDARD_PRICE) || 0;
             if (!(std > 0)) return null;
             const prmt = Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
-            const cpn = Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
             const cvrDiscRaw = computeAmzCvrDiscountPct(d);
             const cvrDisc = Math.max(0, Number(cvrDiscRaw) || 0);
-            const totalDisc = Math.min(99.99, prmt + cvrDisc);
+            const cvrUpDn = (typeof computeCvrUpDnPct === 'function') ? (Number(computeCvrUpDnPct(d)) || 0) : 0;
+            const totalDisc = Math.min(99.99, Math.max(0, prmt + cvrDisc + cvrUpDn));
             let sale = null;
             if (totalDisc > 0 && totalDisc < 100) {
                 sale = amzPefRound2(std * (1 - (totalDisc / 100)));
@@ -1434,8 +1170,8 @@
                 business: business,
                 prmt: prmt,
                 cvrDisc: cvrDisc,
+                cvrUpDn: cvrUpDn,
                 totalDisc: totalDisc,
-                cpn: cpn,
                 effective: effective,
             };
         }
@@ -1452,9 +1188,7 @@
                 has_custom_sprice: true,
                 PUSH_PRC_VALUE: plan.effective,
                 prmt_pct: String(plan.prmt),
-                cpn_pct: String(plan.cpn),
                 _prmt_pct_applied: plan.prmt,
-                _cpn_pct_applied: plan.cpn,
             };
             if (saveRes && saveRes.sgpft_percent !== undefined) updates.SGPFT = saveRes.sgpft_percent;
             if (saveRes && saveRes.spft_percent !== undefined) updates['Spft%'] = saveRes.spft_percent;
@@ -1470,7 +1204,6 @@
                 sku: sku,
                 sprice: plan.effective,
                 prmt_pct: plan.prmt,
-                cpn_pct: plan.cpn,
                 _token: amzPefCsrf(),
             };
             if (opts.recordPushPrc) data.record_push_prc = 1;
@@ -1593,7 +1326,7 @@
                 business: plan.business,
                 effective: plan.effective,
                 prmt: plan.prmt,
-                cpn: plan.cpn,
+                cpn: 0,
                 cvr_disc: plan.cvrDisc,
             };
         }
@@ -1983,7 +1716,7 @@
                             'success',
                             on
                                 ? 'Reload push on — this page will auto-queue Push Prc on the next reload. Cron is unchanged.'
-                                : 'Reload push off — this page will not auto-push on reload. Daily Dil vs PRMT / CVR vs CPN cron still runs.'
+                                : 'Reload push off — this page will not auto-push on reload. Daily Dil vs PRMT cron still runs.'
                         );
                     })
                     .fail(function(xhr) {
@@ -1994,11 +1727,8 @@
             });
             bindAmzReloadPushOnTable();
 
-            // Prefetch Dil / Cpn / CVR Disc rules (CVR Disc store is separate from Cpn%)
+            // Prefetch Dil / CVR Disc rules
             if (typeof loadDilPrmtRules === 'function') loadDilPrmtRules();
-            if (typeof loadCvrCpnRules === 'function') {
-                Promise.resolve(loadCvrCpnRules()).catch(function() { /* defaults */ });
-            }
             if (typeof loadAmzCvrDiscRules === 'function') {
                 Promise.resolve(loadAmzCvrDiscRules()).then(function() {
                     if (table) {
@@ -2107,84 +1837,6 @@
             });
             $('#amz-cvr-disc-apply-btn').off('click.amzpef').on('click.amzpef', saveAndApplyAmzCvrDisc);
 
-            // Cpn% badge → pef_cvr_vs_cpn rules (column CPN %)
-            $('#amz-cvr-vs-cpn-btn').off('click.amzpef').on('click.amzpef', function(e) {
-                e.preventDefault();
-                const modalEl = document.getElementById('pefCvrVsCpnModal');
-                if (!modalEl) return;
-                renderCvrCpnModalTable();
-                loadCvrCpnRules();
-                bootstrap.Modal.getOrCreateInstance(modalEl).show();
-            });
-
-            // Push CPN% → CVR vs CPN rules only (not CVR Disc)
-            $('#amz-push-cpn-btn').off('click.amzpef').on('click.amzpef', function(e) {
-                e.preventDefault();
-                if (!table) {
-                    amzPefToast('error', 'Load data first');
-                    return;
-                }
-                const selected = collectAmzPefSelectedRows();
-                let skus = selected.map(function(t) { return amzPefSku(t.d); }).filter(Boolean);
-                let scopeLabel = 'selected';
-                if (!skus.length) {
-                    skus = collectAmzPefVisibleRows().map(function(t) { return amzPefSku(t.d); }).filter(Boolean);
-                    scopeLabel = 'all visible';
-                }
-                if (!skus.length) {
-                    amzPefToast('error', 'No rows to push');
-                    return;
-                }
-                if (!confirm(
-                    'Push CPN% to Amazon for ' + skus.length + ' ' + scopeLabel + ' SKU(s)?\n\n'
-                    + 'Uses CVR vs CPN rules, snaps to coupons 5% / 10% (1 coupon per day),\n'
-                    + 'then pushes via Amazon Listings API.\n'
-                    + 'Unchanged prices are skipped.'
-                )) return;
-
-                const $btn = $('#amz-cpn-menu-btn');
-                const html = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing…');
-                $.ajax({
-                    url: '/amazon-cvr-cpn-push',
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                    data: { skus: skus, _token: amzPefCsrf() },
-                    timeout: 0,
-                }).done(function(res) {
-                    const st = (res && res.stats) || {};
-                    amzPefToast(
-                        (st.push_failed > 0 && !(st.pushed > 0)) ? 'error' : 'success',
-                        (res && res.message) || 'Push CPN% done'
-                    );
-                    if (table && Array.isArray(skus)) {
-                        skus.forEach(function(sku) {
-                            const row = table.getRows().find(function(r) {
-                                return amzPefSku(r.getData()) === sku;
-                            });
-                            if (!row) return;
-                            const d = row.getData();
-                            const cvr = amzPefCvr(d);
-                            let cpn = amzPefInv(d) === 0 ? 0 : pefCpnForCvr(cvr);
-                            // Snap to Amazon coupon tiers {0, 5, 10}
-                            if (cpn > 0 && cpn <= 5) cpn = 5;
-                            else if (cpn > 5) cpn = 10;
-                            else cpn = 0;
-                            row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
-                        });
-                        table.redraw(true);
-                    }
-                }).fail(function(xhr) {
-                    amzPefToast('error', 'Push CPN% failed: ' + (
-                        (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error)) || 'error'
-                    ));
-                }).always(function() {
-                    $btn.prop('disabled', false).html(html);
-                });
-            });
-
-            $('#pef-cvr-cpn-apply-btn').off('click.amzpef').on('click.amzpef', saveAndApplyCvrCpn);
-
             $(document).off('change.amzpef', '.amz-pef-appr-cb').on('change.amzpef', '.amz-pef-appr-cb', function() {
                 if (!table) return;
                 const sku = String($(this).attr('data-sku') || '');
@@ -2224,4 +1876,6 @@
                 clearAndAutopopulateAmzSprice();
             });
         }
+
+        @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'script', 'cvrUpDnChannel' => 'amazon'])
 @endif

@@ -1074,12 +1074,18 @@ return [
 
     // Raw Images page only — high-quality product image generation.
     'raw_images_ai' => [
+        'gemini_key' => env('GEMINI_API_KEY', env('GOOGLE_GEMINI_API_KEY')),
+        'gemini_model' => env('RAW_IMAGES_GEMINI_IMAGE_MODEL', 'gemini-3.1-flash-image-preview'),
         'openai_key' => \App\Support\OpenAiRequest::normalizeApiKey(
             env('RAW_IMAGES_OPENAI_API_KEY', env('OPENAI_API_KEY'))
         ),
         'image_model' => env('RAW_IMAGES_OPENAI_IMAGE_MODEL', 'gpt-image-1'),
         'image_quality' => env('RAW_IMAGES_OPENAI_IMAGE_QUALITY', 'high'),
         'image_size' => env('RAW_IMAGES_OPENAI_IMAGE_SIZE', '1024x1024'),
+    ],
+
+    'gemini' => [
+        'key' => env('GEMINI_API_KEY', env('GOOGLE_GEMINI_API_KEY')),
     ],
 
     'anthropic' => [

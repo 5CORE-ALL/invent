@@ -137,7 +137,7 @@ class ChannelMasterCalculatedData extends Model
         return self::max('calculated_at');
     }
 
-    public const FAST_PAYLOAD_CACHE_PREFIX = 'amm_fast_payload_v2';
+    public const FAST_PAYLOAD_CACHE_PREFIX = 'amm_fast_payload_v4';
 
     public const FAST_PAYLOAD_CACHE_VERSION_KEY = 'amm_fast_payload_ver';
 

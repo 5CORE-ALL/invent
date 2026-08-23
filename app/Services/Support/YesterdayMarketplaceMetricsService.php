@@ -808,7 +808,12 @@ class YesterdayMarketplaceMetricsService
      */
     private function tiktok2(Carbon $start, Carbon $end): array
     {
-        if (Schema::hasTable('tiktok_sales_two')) {
+        $latestPacific = Tiktok2Order::tableReady() ? Tiktok2Order::latestActiveCreatedAt() : null;
+        if ($latestPacific) {
+            $endDay = $latestPacific->copy()->subDay();
+            $end = $endDay->copy()->endOfDay();
+            $start = $endDay->copy()->subDays(max(1, $this->windowDays) - 1)->startOfDay();
+        } elseif (Schema::hasTable('tiktok_sales_two')) {
             $latest = DB::table('tiktok_sales_two')->whereNotNull('order_date')->max('order_date');
             $window = $this->latestCompleteDay($latest, 'to_pacific');
             if ($window !== null) {

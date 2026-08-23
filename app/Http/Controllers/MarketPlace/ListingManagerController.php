@@ -8,7 +8,6 @@ use App\Models\ChannelMaster;
 use App\Models\ListingManagerChannelDraft;
 use App\Models\ListingManagerEnabledChannel;
 use App\Models\ProductMaster;
-use App\Models\ProductRawImage;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
@@ -140,23 +139,11 @@ class ListingManagerController extends Controller
                     $thumb = ListingManagerImageStore::localUrlIfCached($thumb) ?? $thumb;
                 }
                 $hero = $imageLookups['hero'][$sku] ?? ($thumb !== '' ? $thumb : null);
-                $rawInfo = $imageLookups['raw'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
-                $rawAi = $imageLookups['raw_ai'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
-                $rawBatch = $imageLookups['raw_batch'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
 
                 return [
                     'id' => $row->id,
                     'thumbnail' => $thumb !== '' ? $thumb : null,
                     'hero_image' => $hero,
-                    'raw_ai_image' => $rawAi['url'],
-                    'raw_ai_image_count' => (int) $rawAi['count'],
-                    'raw_ai_image_previewable' => (bool) $rawAi['previewable'],
-                    'raw_image' => $rawInfo['url'],
-                    'raw_image_count' => (int) $rawInfo['count'],
-                    'raw_image_previewable' => (bool) $rawInfo['previewable'],
-                    'raw_batch_image' => $rawBatch['url'],
-                    'raw_batch_image_count' => (int) $rawBatch['count'],
-                    'raw_batch_image_previewable' => (bool) $rawBatch['previewable'],
                     'name' => trim((string) ($row->item_name ?: $rawName ?: $row->seller_sku)),
                     'sku' => $sku,
                     'asin' => $row->asin1 ?: ($raw['asin1'] ?? null),
@@ -416,16 +403,6 @@ class ListingManagerController extends Controller
             ];
         }
 
-        $shopifyAdminUrl = null;
-        $pid = $shopify['product_id'] ?? null;
-        if ($pid) {
-            $domain = rtrim(preg_replace('#^https?://#', '', (string) (config('services.shopify.store_url') ?: config('services.shopify.domain') ?: '')), '/');
-            $numeric = preg_replace('/\D+/', '', (string) $pid);
-            if ($domain && $numeric !== '') {
-                $shopifyAdminUrl = 'https://'.$domain.'/admin/products/'.$numeric;
-            }
-        }
-
         return response()->json([
             'success' => true,
             'product' => [
@@ -478,7 +455,6 @@ class ListingManagerController extends Controller
                 'not_listed_on' => $enabledChannels,
                 'drafts' => $drafts,
                 'changelog' => $changelog,
-                'shopify_admin_url' => $shopifyAdminUrl,
                 'shopify_ok' => (bool) ($shopify['success'] ?? false),
                 'amazon_media_ok' => $images !== [],
                 'updated_at' => $listing?->updated_at?->toDateTimeString(),
@@ -886,19 +862,7 @@ class ListingManagerController extends Controller
         $data = $rows->map(function (ListingManagerChannelDraft $d) use ($imageLookups) {
             $row = $this->serializeDraft($d);
             $sku = trim((string) ($row['sku'] ?? ''));
-            $rawInfo = $imageLookups['raw'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
-            $rawAi = $imageLookups['raw_ai'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
-            $rawBatch = $imageLookups['raw_batch'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
             $row['hero_image'] = $imageLookups['hero'][$sku] ?? ($row['thumbnail'] ?? null);
-            $row['raw_ai_image'] = $rawAi['url'];
-            $row['raw_ai_image_count'] = (int) $rawAi['count'];
-            $row['raw_ai_image_previewable'] = (bool) $rawAi['previewable'];
-            $row['raw_image'] = $rawInfo['url'];
-            $row['raw_image_count'] = (int) $rawInfo['count'];
-            $row['raw_image_previewable'] = (bool) $rawInfo['previewable'];
-            $row['raw_batch_image'] = $rawBatch['url'];
-            $row['raw_batch_image_count'] = (int) $rawBatch['count'];
-            $row['raw_batch_image_previewable'] = (bool) $rawBatch['previewable'];
 
             return $row;
         })->values();
@@ -1931,29 +1895,23 @@ class ListingManagerController extends Controller
     }
 
     /**
-     * Image Master hero + Raw Images lookups for listing-manager columns.
+     * Image Master hero lookups for listing-manager columns.
      *
      * @param  list<string>  $skus
-     * @return array{hero: array<string, string>, raw: array<string, array{url: ?string, count: int, previewable: bool}>, raw_ai: array<string, array{url: ?string, count: int, previewable: bool}>, raw_batch: array<string, array{url: ?string, count: int, previewable: bool}>, pm_images: array<string, list<string>>}
+     * @return array{hero: array<string, string>, pm_images: array<string, list<string>>}
      */
     private function imageLookupsForSkus(array $skus): array
     {
         $hero = [];
-        $raw = [];
-        $rawAi = [];
-        $rawBatch = [];
         $pmImages = [];
         $skus = array_values(array_filter(array_map(static fn ($s) => trim((string) $s), $skus)));
         if ($skus === []) {
-            return ['hero' => $hero, 'raw' => $raw, 'raw_ai' => $rawAi, 'raw_batch' => $rawBatch, 'pm_images' => $pmImages];
+            return ['hero' => $hero, 'pm_images' => $pmImages];
         }
 
         $skuSet = array_fill_keys($skus, true);
         $heroByNorm = [];
         $pmByNorm = [];
-        $rawByNorm = [];
-        $rawAiByNorm = [];
-        $rawBatchByNorm = [];
 
         if (Schema::hasTable('product_master')) {
             $select = ['sku', 'Values'];
@@ -2000,24 +1958,6 @@ class ListingManagerController extends Controller
             }
         }
 
-        if (Schema::hasTable('product_raw_images')) {
-            $hasKind = Schema::hasColumn('product_raw_images', 'kind');
-            foreach (ProductRawImage::query()->whereIn('sku', $skus)->orderBy('id')->get() as $img) {
-                $sku = trim((string) $img->sku);
-                if ($sku === '') {
-                    continue;
-                }
-                $isBatch = $hasKind && $img->isBatchKind();
-                if ($isBatch) {
-                    $this->accumulateRawLookup($rawBatch, $rawBatchByNorm, $sku, $img);
-                } elseif ($img->isAiGenerated()) {
-                    $this->accumulateRawLookup($rawAi, $rawAiByNorm, $sku, $img);
-                } else {
-                    $this->accumulateRawLookup($raw, $rawByNorm, $sku, $img);
-                }
-            }
-        }
-
         foreach ($skus as $sku) {
             if (! isset($skuSet[$sku])) {
                 continue;
@@ -2032,43 +1972,9 @@ class ListingManagerController extends Controller
             if (! isset($pmImages[$sku]) && isset($pmByNorm[$norm])) {
                 $pmImages[$sku] = $pmByNorm[$norm];
             }
-            if (! isset($raw[$sku]) && isset($rawByNorm[$norm])) {
-                $raw[$sku] = $rawByNorm[$norm];
-            }
-            if (! isset($rawAi[$sku]) && isset($rawAiByNorm[$norm])) {
-                $rawAi[$sku] = $rawAiByNorm[$norm];
-            }
-            if (! isset($rawBatch[$sku]) && isset($rawBatchByNorm[$norm])) {
-                $rawBatch[$sku] = $rawBatchByNorm[$norm];
-            }
         }
 
-        return ['hero' => $hero, 'raw' => $raw, 'raw_ai' => $rawAi, 'raw_batch' => $rawBatch, 'pm_images' => $pmImages];
-    }
-
-    /**
-     * @param  array<string, array{url: ?string, count: int, previewable: bool}>  $map
-     * @param  array<string, array{url: ?string, count: int, previewable: bool}>  $byNorm
-     */
-    private function accumulateRawLookup(array &$map, array &$byNorm, string $sku, ProductRawImage $img): void
-    {
-        if (! isset($map[$sku])) {
-            $ui = $img->toUiArray();
-            $map[$sku] = [
-                'url' => $ui['url'] ?? null,
-                'count' => 0,
-                'previewable' => (bool) ($ui['previewable'] ?? false),
-            ];
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm !== '' && ! isset($byNorm[$norm])) {
-                $byNorm[$norm] = $map[$sku];
-            }
-        }
-        $map[$sku]['count']++;
-        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-        if ($norm !== '' && isset($byNorm[$norm])) {
-            $byNorm[$norm]['count'] = $map[$sku]['count'];
-        }
+        return ['hero' => $hero, 'pm_images' => $pmImages];
     }
 
     /**

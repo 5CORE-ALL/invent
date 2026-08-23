@@ -557,8 +557,6 @@ class AttendanceTimelineService
 
     [$dayStart, $dayEnd] = $this->dayWindow($date, $timezone, $dayReset);
 
-    $screenshotPage = $this->employeeScreenshots($employee, $date, 1, $timezone, $dayReset);
-
     [$segStart, $segEnd] = $this->calendarWindow($date, $timezone);
 
     $appUsage = $this->aggregateDesktopApps($employee->id, $segStart, $segEnd, 10);
@@ -579,10 +577,10 @@ class AttendanceTimelineService
       ],
       'is_live' => $row['is_live'] ?? false,
       'live_state' => $row['live_state'] ?? null,
-      'screenshots' => $screenshotPage['screenshots'],
-      'screenshot_total' => $screenshotPage['total'],
-      'screenshot_has_more' => $screenshotPage['has_more'],
-      'screenshot_per_page' => $screenshotPage['per_page'],
+      'screenshots' => [],
+      'screenshot_total' => 0,
+      'screenshot_has_more' => false,
+      'screenshot_per_page' => 0,
       'app_usage' => $appUsage,
     ];
   }

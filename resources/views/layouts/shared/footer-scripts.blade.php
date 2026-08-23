@@ -112,6 +112,8 @@
     })();
 </script>
 
+<script src="{{ asset('js/freeze-table-headers.js') }}?v=1"></script>
+
 {{-- Global: any badge with a light background gets black text for readability --}}
 <script>
     (function () {
@@ -153,6 +155,68 @@
             });
             obs.observe(document.body, { childList: true, subtree: true });
         }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    })();
+</script>
+
+{{-- Global: inject the standard rolling-history dot on KPI badges that are missing one --}}
+<script>
+    (function () {
+        const DOT_SEL = '.summary-trend-dot, .kpi-status-dot, .pef-kpi-dot, .amz-vv-trend-dot';
+        const BADGE_SEL = [
+            '#summary-stats .badge',
+            '.badge-chart-link',
+            '.amz-badge-chart',
+            '.tt-badge-chart',
+            '.pef-metric-badge',
+            '.dashboard-badge-panel__badges > .badge',
+            '.ebay2-summary-badge-row .badge'
+        ].join(',');
+        const SKIP_IDS = {
+            'rows-count-badge': 1
+        };
+
+        function ensureDot(badge) {
+            if (!badge || badge.nodeType !== 1) return;
+            if (SKIP_IDS[badge.id]) return;
+            if (badge.closest && badge.closest('#dashCardPlaybackStage')) return;
+            const text = (badge.textContent || '').replace(/\s+/g, ' ').trim();
+            if (/^complete (day|7 days)/i.test(text)) return;
+            if (!/\d/.test(text)) return;
+            if (badge.querySelector(DOT_SEL)) return;
+
+            const dot = document.createElement('span');
+            dot.className = 'summary-trend-dot none';
+            dot.title = 'Rolling history';
+            const metric = badge.getAttribute('data-metric');
+            if (metric) dot.setAttribute('data-metric', metric);
+            badge.insertBefore(dot, badge.firstChild);
+        }
+
+        function ensureAll(root) {
+            (root || document).querySelectorAll(BADGE_SEL).forEach(ensureDot);
+        }
+
+        function init() {
+            ensureAll();
+            if (!document.body) return;
+            const obs = new MutationObserver(function (muts) {
+                muts.forEach(function (m) {
+                    (m.addedNodes || []).forEach(function (n) {
+                        if (n.nodeType !== 1) return;
+                        if (n.matches && n.matches(BADGE_SEL)) ensureDot(n);
+                        if (n.querySelectorAll) n.querySelectorAll(BADGE_SEL).forEach(ensureDot);
+                    });
+                });
+            });
+            obs.observe(document.body, { childList: true, subtree: true });
+        }
+
+        window.ensureBadgeTrendDots = ensureAll;
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {

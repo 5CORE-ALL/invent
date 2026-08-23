@@ -12,6 +12,7 @@
     $aiPromptSaveUrl = $aiPromptSaveUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt.save') : route('raw.images.ai.prompt.save'));
     $cachedImageUrl = $cachedImageUrl ?? route('raw.images.cached.image');
     $savedAiPrompt = $savedAiPrompt ?? "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.";
+    $savedAiPkgPrompt = $savedAiPkgPrompt ?? "Make a raw packaging photo from the Hero image and put it in the Pkg Raw column.\nThe size should be 2000x2000px.\nShow the product as a realistic packaged / item-pkg raw shoot, natural lighting, no text, no watermark.\nIf the product is dark then use a light background or vice-versa.";
 @endphp
 @extends('layouts.vertical', ['title' => $pageTitle, 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
@@ -85,6 +86,19 @@
         display: flex;
         align-items: center;
         justify-content: center;
+    }
+
+    .ri-ai-loading {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 4px;
+        background: linear-gradient(135deg, rgba(124, 58, 237, .1), rgba(37, 99, 235, .1));
+        border: 1px solid #c4b5fd;
+        color: #7c3aed;
+        font-size: 16px;
     }
 
     .ri-plus-tile {
@@ -215,6 +229,76 @@
         color: #fff !important;
     }
     .ri-ai-btn:hover, .ri-ai-btn:focus { filter: brightness(1.08); }
+
+    #raw-images-table .tabulator-cell[tabulator-field="barcode"] {
+        overflow: visible !important;
+        padding: 8px 4px !important;
+    }
+    .ri-barcode-square {
+        width: 130px;
+        min-height: 118px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        background: #fff;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 6px;
+        box-sizing: border-box;
+        gap: 4px;
+        cursor: pointer;
+        vertical-align: middle;
+    }
+    .ri-barcode-square:hover { box-shadow: 0 0 0 2px #4dd0e1; }
+    .ri-barcode-square img,
+    .ri-barcode-square svg {
+        width: 110px;
+        height: 48px;
+        max-width: 110px;
+        max-height: 48px;
+        object-fit: contain;
+        display: block;
+        flex-shrink: 0;
+        background: #fff;
+    }
+    .ri-barcode-sku {
+        font-size: 10px;
+        font-weight: 700;
+        color: #1a3d7c;
+        line-height: 1.2;
+        text-align: center;
+        width: 100%;
+        word-break: break-word;
+        max-height: 2.4em;
+        overflow: hidden;
+    }
+    .ri-barcode-code {
+        font-size: 10px;
+        font-weight: 600;
+        color: #374151;
+        line-height: 1.2;
+        text-align: center;
+        width: 100%;
+        word-break: break-all;
+    }
+    .ri-barcode-empty {
+        width: 130px;
+        min-height: 118px;
+        border: 1px dashed #cbd5e1;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: 11px;
+        background: #f8fafc;
+    }
+    #riBarcodeModal .modal-content { border-radius: 14px; border: 1px solid #c5d4ea; }
+    #riBarcodeModalSku { font-size: 22px; font-weight: 700; color: #1a3d7c; word-break: break-word; }
+    #riBarcodeModalCode { font-size: 16px; font-weight: 600; color: #1a3d7c; letter-spacing: .04em; word-break: break-all; }
+    #riBarcodeModalMedia { min-height: 120px; display: flex; align-items: center; justify-content: center; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; background: #fff; }
+    #riBarcodeModalMedia img, #riBarcodeModalMedia svg { max-width: 100%; max-height: 160px; }
 </style>
 @endsection
 
@@ -234,6 +318,9 @@
                     <div class="d-flex align-items-center flex-wrap gap-2">
                         <button type="button" class="btn btn-sm ri-ai-btn" id="riAiBtn" title="Ask AI">
                             <i class="fas fa-wand-magic-sparkles me-1"></i> AI
+                        </button>
+                        <button type="button" class="btn btn-sm ri-ai-btn" id="riAiPkgBtn" title="Ask AI for Pkg Raw">
+                            <i class="fas fa-wand-magic-sparkles me-1"></i> AI Raw Pkg
                         </button>
                         <div class="dropdown">
                             <button class="btn btn-sm btn-warning dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -290,15 +377,12 @@
                         <div class="p-2 bg-light border-bottom">
                             <div class="row g-2">
                                 <div class="col-md-4">
-                                    <input type="text" id="general-search" class="form-control form-control-sm" placeholder="Search all columns...">
-                                </div>
-                                <div class="col-md-3">
                                     <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Search Parent... (0)">
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="Search SKU... (0)">
                                 </div>
-                                <div class="col-md-2">
+                                <div class="col-md-4">
                                     <select id="filterRawImages" class="form-control form-control-sm">
                                         <option value="all">All SKUs</option>
                                         <option value="available">Available Images</option>
@@ -422,13 +506,13 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-wand-magic-sparkles me-2"></i>AI prompt</h5>
+                    <h5 class="modal-title"><i class="fas fa-wand-magic-sparkles me-2"></i><span id="riAiModalTitle">AI prompt</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <label class="form-label fw-semibold" for="riAiPrompt">Prompt</label>
                     <textarea class="form-control" id="riAiPrompt" rows="8" maxlength="8000">{{ $savedAiPrompt }}</textarea>
-                    <div class="form-text">Edits are saved automatically. This page uses a high-quality image API on selected rows only. Ctrl / ⌘ + Enter to save and close.</div>
+                    <div class="form-text" id="riAiFormHint">Edits are saved automatically. Gemini generates a raw-shoot image for selected rows only. Ctrl / ⌘ + Enter to save and close.</div>
                     <div id="riAiSelectedHint" class="small mt-2 text-muted"></div>
                     <div id="riAiResult" class="small mt-3"></div>
                 </div>
@@ -441,10 +525,27 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="riBarcodeModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title mb-0 text-muted">Barcode</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center d-flex flex-column align-items-center gap-3">
+                    <div id="riBarcodeModalSku"></div>
+                    <div id="riBarcodeModalMedia"></div>
+                    <div id="riBarcodeModalCode"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     <script>
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         const rawImagesDataUrl = @json($dataUrl);
@@ -457,6 +558,10 @@
         const rawImagesCachedImageUrl = @json($cachedImageUrl ?? route('raw.images.cached.image'));
         const rawImagesPageTitle = @json($pageTitle);
         const riImageWarm = new Set();
+
+        function isParentRow(item) {
+            return !!(item && item.SKU && String(item.SKU).toUpperCase().includes('PARENT'));
+        }
 
         function cachedImageSrc(url, thumbUrl) {
             if (thumbUrl && String(thumbUrl).indexOf('/storage/image-cache/') !== -1) {
@@ -474,28 +579,47 @@
             return url;
         }
 
+        function rawImageSourceImages(row, source) {
+            if (source === 'ai') return Array.isArray(row.raw_ai_images) ? row.raw_ai_images : [];
+            if (source === 'pkg_ai') return Array.isArray(row.pkg_ai_images) ? row.pkg_ai_images : [];
+            if (source === 'pkg') return Array.isArray(row.pkg_raw_images) ? row.pkg_raw_images : [];
+            return Array.isArray(row.raw_images) ? row.raw_images : [];
+        }
+
         function rawImageCellHtml(row, source) {
             const sku = row.SKU || '';
-            const isAi = source === 'ai';
-            const images = Array.isArray(isAi ? row.raw_ai_images : row.raw_images)
-                ? (isAi ? row.raw_ai_images : row.raw_images)
-                : [];
-            const title = isAi ? 'View AI raw images' : 'View / add raw images';
+            const isAi = source === 'ai' || source === 'pkg_ai';
+            const isPkg = source === 'pkg';
+            const images = rawImageSourceImages(row, source);
+            const titles = {
+                ai: 'View AI raw images',
+                pkg_ai: 'View Pkg Raw Image AI',
+                pkg: 'View / add pkg raw images',
+                manual: 'View / add raw images'
+            };
+            const title = titles[source] || titles.manual;
+            if (source === 'ai' && (row.ai_generating || riAiLoadingSkus.has(sku))) {
+                return '<span class="ri-ai-loading" title="Generating AI image…"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i></span>';
+            }
+            if (source === 'pkg_ai' && (row.pkg_ai_generating || riPkgAiLoadingSkus.has(sku))) {
+                return '<span class="ri-ai-loading" title="Generating pkg raw image…"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i></span>';
+            }
             if (!images.length) {
                 if (isAi) {
-                    return '<span class="text-muted" title="Generate with the AI button">—</span>';
+                    return '<span class="text-muted" title="' + (source === 'pkg_ai' ? 'Generate with the AI Raw Pkg button' : 'Generate with the AI button') + '">—</span>';
                 }
-                return '<button type="button" class="ri-cell-plus js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" data-source="manual" title="Add raw image">+</button>';
+                return '<button type="button" class="ri-cell-plus js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" data-source="' + (isPkg ? 'pkg' : 'manual') + '" title="' + (isPkg ? 'Add pkg raw image' : 'Add raw image') + '">+</button>';
             }
             const first = images[0];
             const count = images.length;
+            const alt = source === 'pkg_ai' ? 'Pkg Raw AI' : (source === 'ai' ? 'Raw AI' : (isPkg ? 'Pkg Raw' : 'Raw'));
             let inner;
             if (first.previewable && (first.thumb_url || first.url)) {
-                inner = thumbHtml(cachedImageSrc(first.url, first.thumb_url), isAi ? 'Raw AI' : 'Raw');
+                inner = thumbHtml(cachedImageSrc(first.url, first.thumb_url), alt);
             } else {
                 inner = '<i class="fas fa-file-image" style="font-size:22px;color:#2c6ed5;"></i>';
             }
-            return '<button type="button" class="btn btn-link p-0 js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" data-source="' + (isAi ? 'ai' : 'manual') + '" title="' + title + '" style="position:relative;display:inline-flex;">'
+            return '<button type="button" class="btn btn-link p-0 js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" data-source="' + escapeHtml(source) + '" title="' + title + '" style="position:relative;display:inline-flex;">'
                 + inner
                 + (count > 1 ? '<span class="ri-cell-count">' + count + '</span>' : '')
                 + '</button>';
@@ -511,8 +635,76 @@
             if (!href) return img;
             return '<a href="' + escapeHtml(href) + '" target="_blank" title="Image Master / Images tab">' + img + '</a>';
         }
+
+        function barcodeCellHtml(row) {
+            const sku = String(row.SKU || '').trim();
+            const code = String(row.barcode || row.upc || '').trim();
+            const img = String(row.barcode_image || '').trim();
+            if (!code && !img) {
+                return '<div class="ri-barcode-empty">No barcode</div>';
+            }
+            const media = code
+                ? '<svg class="ri-barcode-svg" data-barcode="' + escapeHtml(code) + '"></svg>'
+                : '<img src="' + escapeHtml(img) + '" alt="Barcode">';
+            return '<div class="ri-barcode-open ri-barcode-square" role="button" tabindex="0" title="View barcode"'
+                + ' data-sku="' + escapeHtml(sku) + '" data-code="' + escapeHtml(code) + '" data-img="' + escapeHtml(img) + '">'
+                + '<div class="ri-barcode-sku">' + escapeHtml(sku || '—') + '</div>'
+                + media
+                + '<div class="ri-barcode-code">' + escapeHtml(code || '—') + '</div>'
+                + '</div>';
+        }
+
+        function paintBarcodeSvg(svg, code, large) {
+            if (!svg || !code || typeof JsBarcode !== 'function') return;
+            const digits = String(code).replace(/\D/g, '');
+            const format = (digits.length === 11 || digits.length === 12) ? 'UPC' : 'CODE128';
+            const opts = {
+                format: format,
+                displayValue: false,
+                margin: 0,
+                width: large ? 2.6 : 1.4,
+                height: large ? 140 : 48,
+                background: '#ffffff',
+                lineColor: '#111827'
+            };
+            try {
+                JsBarcode(svg, format === 'UPC' ? digits : code, opts);
+            } catch (e) {
+                try {
+                    JsBarcode(svg, code, Object.assign({}, opts, { format: 'CODE128' }));
+                } catch (e2) {}
+            }
+        }
+
+        function paintBarcodeSvgs(root) {
+            (root || document).querySelectorAll('.ri-barcode-svg').forEach(function (svg) {
+                paintBarcodeSvg(svg, (svg.getAttribute('data-barcode') || '').trim(), false);
+            });
+        }
+
+        function openBarcodeModal(el) {
+            const sku = el.getAttribute('data-sku') || '';
+            const code = el.getAttribute('data-code') || '';
+            const img = el.getAttribute('data-img') || '';
+            document.getElementById('riBarcodeModalSku').textContent = sku || '—';
+            document.getElementById('riBarcodeModalCode').textContent = code || '—';
+            const media = document.getElementById('riBarcodeModalMedia');
+            if (code && typeof JsBarcode === 'function') {
+                media.innerHTML = '<svg id="riBarcodeModalSvg"></svg>';
+                paintBarcodeSvg(document.getElementById('riBarcodeModalSvg'), code, true);
+            } else if (img) {
+                media.innerHTML = '<img src="' + escapeHtml(img) + '" alt="Barcode">';
+            } else {
+                media.innerHTML = '<span class="text-muted">No barcode</span>';
+            }
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('riBarcodeModal')).show();
+        }
         let riAiSaveTimer = null;
         let riAiLastSaved = @json($savedAiPrompt);
+        let riPkgAiLastSaved = @json($savedAiPkgPrompt);
+        let riAiTarget = 'raw';
+        const riAiLoadingSkus = new Set();
+        const riPkgAiLoadingSkus = new Set();
         let tableData = [];
         let table;
         let rawImageModal;
@@ -548,7 +740,7 @@
                         updateCounts();
                         updateSelectedCount();
                         hideLoader();
-                        return response.data;
+                        return response.data.filter(function (row) { return !isParentRow(row); });
                     }
                     hideLoader();
                     return [];
@@ -556,6 +748,9 @@
                 ajaxError: function () {
                     hideLoader();
                     alert('Failed to load ' + rawImagesPageTitle + ' data.');
+                },
+                renderComplete: function () {
+                    paintBarcodeSvgs(document.getElementById('raw-images-table'));
                 },
                 layout: 'fitData',
                 pagination: true,
@@ -619,6 +814,19 @@
                                 + '<span>' + escapeHtml(sku) + '</span>'
                                 + '<button type="button" class="btn btn-sm btn-link p-0 copy-sku-btn" data-sku="' + escapeHtml(sku) + '" title="Copy SKU">'
                                 + '<i class="fas fa-copy"></i></button></div>';
+                        }
+                    },
+                    {
+                        title: 'Barcode',
+                        field: 'barcode',
+                        width: 160,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        formatter: function (cell) {
+                            const html = barcodeCellHtml(cell.getData());
+                            const el = cell.getElement();
+                            setTimeout(function () { paintBarcodeSvgs(el); }, 0);
+                            return html;
                         }
                     },
                     {
@@ -699,6 +907,26 @@
                         formatter: function (cell) {
                             return rawImageCellHtml(cell.getData(), 'manual');
                         }
+                    },
+                    {
+                        title: 'Pkg Raw Image AI',
+                        field: 'has_pkg_ai_image',
+                        width: 110,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        formatter: function (cell) {
+                            return rawImageCellHtml(cell.getData(), 'pkg_ai');
+                        }
+                    },
+                    {
+                        title: 'Pkg Raw',
+                        field: 'has_pkg_raw_image',
+                        width: 90,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        formatter: function (cell) {
+                            return rawImageCellHtml(cell.getData(), 'pkg');
+                        }
                     }
                 ]
             });
@@ -727,6 +955,12 @@
                     copyToClipboard(copyBtn.getAttribute('data-sku') || '', null, 'SKU copied.');
                     return;
                 }
+                const barcodeBtn = e.target.closest('.ri-barcode-open');
+                if (barcodeBtn) {
+                    e.preventDefault();
+                    openBarcodeModal(barcodeBtn);
+                    return;
+                }
                 const openBtn = e.target.closest('.js-open-raw-modal');
                 if (openBtn) {
                     e.preventDefault();
@@ -736,7 +970,6 @@
         }
 
         function setupSearchHandlers() {
-            document.getElementById('general-search').addEventListener('input', applyFilters);
             document.getElementById('parentSearch').addEventListener('input', applyFilters);
             document.getElementById('skuSearch').addEventListener('input', applyFilters);
             document.getElementById('filterRawImages').addEventListener('change', function () {
@@ -810,23 +1043,39 @@
             });
         }
 
+        function resolveModalSource(source) {
+            if (source === 'ai' || source === 'pkg_ai' || source === 'pkg') return source;
+            return 'manual';
+        }
+
+        function isAiModalSource(source) {
+            return source === 'ai' || source === 'pkg_ai';
+        }
+
         function openRawImageModal(sku, source) {
-            currentModalSource = source === 'ai' ? 'ai' : 'manual';
+            currentModalSource = resolveModalSource(source);
             const item = tableData.find(function (d) { return d.SKU === sku; });
-            const images = item
-                ? (currentModalSource === 'ai' ? (item.raw_ai_images || []) : (item.raw_images || []))
-                : [];
+            const images = item ? rawImageSourceImages(item, currentModalSource) : [];
             document.getElementById('modalSku').value = sku || '';
             document.getElementById('modalSkuLabel').textContent = sku || '';
             document.getElementById('modalSkuText').textContent = sku || '';
             document.getElementById('modalParentText').textContent = (item && item.Parent) ? item.Parent : '—';
             const kindLabel = document.getElementById('modalKindLabel');
-            if (kindLabel) kindLabel.textContent = currentModalSource === 'ai' ? 'Raw Images AI' : rawImagesPageTitle;
+            if (kindLabel) {
+                const labels = {
+                    ai: 'Raw Images AI',
+                    pkg_ai: 'Pkg Raw Image AI',
+                    pkg: 'Pkg Raw'
+                };
+                kindLabel.textContent = labels[currentModalSource] || rawImagesPageTitle;
+            }
             const hint = document.getElementById('rawUploadHint');
             if (hint) {
                 hint.textContent = currentModalSource === 'ai'
                     ? 'These images are created by the AI button on selected rows.'
-                    : 'JPG, PNG, WEBP, or camera RAW files. Max 50 MB each.';
+                    : (currentModalSource === 'pkg_ai'
+                        ? 'These images are created by the AI Raw Pkg button on selected rows.'
+                        : 'JPG, PNG, WEBP, or camera RAW files. Max 50 MB each.');
             }
             renderModalGrid(images);
             setUploadMsg('');
@@ -857,9 +1106,9 @@
                 html += '</div></div>';
             });
 
-            if (currentModalSource !== 'ai') {
+            if (!isAiModalSource(currentModalSource)) {
                 const plusClass = list.length ? 'ri-plus-tile ri-plus-tile-sm' : 'ri-plus-tile';
-                const plusLabel = list.length ? 'Add more' : 'Add raw image';
+                const plusLabel = list.length ? 'Add more' : (currentModalSource === 'pkg' ? 'Add pkg raw image' : 'Add raw image');
                 html += '<div class="' + plusClass + '" title="' + plusLabel + '">'
                     + '<span class="ri-plus-icon">+</span>'
                     + '<span class="small fw-semibold">' + plusLabel + '</span>'
@@ -870,8 +1119,10 @@
         }
 
         function uploadRawFiles(fileList) {
-            if (currentModalSource === 'ai') {
-                setUploadErr('AI images are created with the AI button.');
+            if (isAiModalSource(currentModalSource)) {
+                setUploadErr(currentModalSource === 'pkg_ai'
+                    ? 'Pkg AI images are created with the AI Raw Pkg button.'
+                    : 'AI images are created with the AI button.');
                 return;
             }
             const sku = document.getElementById('modalSku').value;
@@ -882,6 +1133,9 @@
 
             const form = new FormData();
             form.append('sku', sku);
+            if (currentModalSource === 'pkg') {
+                form.append('image_kind', 'pkg');
+            }
             Array.from(fileList).forEach(function (file) {
                 form.append('files[]', file);
             });
@@ -907,7 +1161,7 @@
                 }
                 setUploadErr('');
                 setUploadMsg(result.data.message || 'Uploaded.');
-                applyImagesToSku(sku, result.data.images || [], 'manual');
+                applyImagesToSku(sku, result.data.images || [], currentModalSource === 'pkg' ? 'pkg' : 'manual');
             })
             .catch(function (err) {
                 setUploadMsg('');
@@ -943,21 +1197,35 @@
         }
 
         function applyImagesToSku(sku, images, source) {
-            const isAi = (source || currentModalSource) === 'ai';
+            const resolved = source || currentModalSource;
             const item = tableData.find(function (d) { return d.SKU === sku; });
-            const patch = isAi
-                ? {
+            const patches = {
+                ai: {
                     raw_ai_images: images,
                     raw_ai_image_count: images.length,
                     has_raw_ai_image: images.length > 0,
                     raw_ai_image_url: images.length ? images[0].url : null
-                }
-                : {
+                },
+                pkg_ai: {
+                    pkg_ai_images: images,
+                    pkg_ai_image_count: images.length,
+                    has_pkg_ai_image: images.length > 0,
+                    pkg_ai_image_url: images.length ? images[0].url : null
+                },
+                pkg: {
+                    pkg_raw_images: images,
+                    pkg_raw_image_count: images.length,
+                    has_pkg_raw_image: images.length > 0,
+                    pkg_raw_image_url: images.length ? images[0].url : null
+                },
+                manual: {
                     raw_images: images,
                     raw_image_count: images.length,
                     has_raw_image: images.length > 0,
                     raw_image_url: images.length ? images[0].url : null
-                };
+                }
+            };
+            const patch = patches[resolved] || patches.manual;
             if (item) {
                 Object.assign(item, patch);
             }
@@ -976,18 +1244,13 @@
         function applyFilters() {
             if (!table) return;
 
-            const generalFilter = document.getElementById('general-search').value.toLowerCase();
             const parentFilter = document.getElementById('parentSearch').value.toLowerCase();
             const skuFilter = document.getElementById('skuSearch').value.toLowerCase();
             const filterMode = document.getElementById('filterRawImages').value;
-            const filters = [];
+            const filters = [
+                function (data) { return !isParentRow(data); }
+            ];
 
-            if (generalFilter) {
-                filters.push(function (data) {
-                    return (data.Parent && String(data.Parent).toLowerCase().includes(generalFilter))
-                        || (data.SKU && String(data.SKU).toLowerCase().includes(generalFilter));
-                });
-            }
             if (parentFilter) {
                 filters.push({ field: 'Parent', type: 'like', value: parentFilter });
             }
@@ -1116,11 +1379,31 @@
             hintEl.textContent = 'This will run only on ' + n + ' selected image' + (n === 1 ? '' : 's') + '.';
         }
 
-        function applyAiBySku(bySku) {
+        function applyAiBySku(bySku, target) {
             if (!bySku || typeof bySku !== 'object') return;
+            const source = target === 'pkg' ? 'pkg_ai' : 'ai';
             Object.keys(bySku).forEach(function (sku) {
-                applyImagesToSku(sku, bySku[sku] || [], 'ai');
+                applyImagesToSku(sku, bySku[sku] || [], source);
             });
+        }
+
+        function openAiPromptModal(target) {
+            const promptEl = document.getElementById('riAiPrompt');
+            const resultEl = document.getElementById('riAiResult');
+            const titleEl = document.getElementById('riAiModalTitle');
+            const hintEl = document.getElementById('riAiFormHint');
+            riAiTarget = target === 'pkg' ? 'pkg' : 'raw';
+            if (titleEl) titleEl.textContent = riAiTarget === 'pkg' ? 'AI Raw Pkg' : 'AI prompt';
+            if (hintEl) {
+                hintEl.textContent = riAiTarget === 'pkg'
+                    ? 'Edits are saved automatically. Gemini generates a pkg raw image for selected rows only. Ctrl / ⌘ + Enter to save and close.'
+                    : 'Edits are saved automatically. Gemini generates a raw-shoot image for selected rows only. Ctrl / ⌘ + Enter to save and close.';
+            }
+            promptEl.value = riAiTarget === 'pkg' ? riPkgAiLastSaved : riAiLastSaved;
+            if (resultEl) resultEl.innerHTML = '';
+            updateAiSelectionHint();
+            riAiModal.show();
+            setTimeout(function () { promptEl.focus(); }, 200);
         }
 
         function setupAiHandlers() {
@@ -1129,16 +1412,16 @@
             const submitBtn = document.getElementById('riAiSubmitBtn');
 
             document.getElementById('riAiBtn').addEventListener('click', function () {
-                resultEl.innerHTML = '';
-                updateAiSelectionHint();
-                riAiModal.show();
-                setTimeout(function () { promptEl.focus(); }, 200);
+                openAiPromptModal('raw');
+            });
+            document.getElementById('riAiPkgBtn').addEventListener('click', function () {
+                openAiPromptModal('pkg');
             });
 
             promptEl.addEventListener('input', function () {
                 clearTimeout(riAiSaveTimer);
                 riAiSaveTimer = setTimeout(function () {
-                    saveAiPrompt(promptEl.value, false);
+                    saveAiPrompt(promptEl.value, false).catch(function () {});
                 }, 500);
             });
 
@@ -1171,6 +1454,7 @@
                 resultEl.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>Saving…</div>';
 
                 saveAiPrompt(prompt, true)
+                    .catch(function () {})
                     .then(function () {
                         resultEl.innerHTML = '';
                         riAiModal.hide();
@@ -1180,7 +1464,7 @@
                         return runAiOnSelected(selected, prompt);
                     })
                     .catch(function (err) {
-                        resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(err.message || 'Could not save the prompt.') + '</div>';
+                        resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(err.message || 'AI request failed.') + '</div>';
                     })
                     .finally(function () {
                         submitBtn.disabled = false;
@@ -1188,7 +1472,52 @@
             }
         }
 
+        function setAiGenerating(skus, loading, target) {
+            const isPkg = target === 'pkg';
+            const loadingSet = isPkg ? riPkgAiLoadingSkus : riAiLoadingSkus;
+            const field = isPkg ? 'pkg_ai_generating' : 'ai_generating';
+            (skus || []).forEach(function (sku) {
+                if (!sku) return;
+                if (loading) {
+                    loadingSet.add(sku);
+                } else {
+                    loadingSet.delete(sku);
+                }
+                const item = tableData.find(function (d) { return d.SKU === sku; });
+                if (item) {
+                    item[field] = !!loading;
+                }
+                if (table) {
+                    const patch = {};
+                    patch[field] = !!loading;
+                    table.searchRows('SKU', '=', sku).forEach(function (row) {
+                        row.update(patch);
+                    });
+                }
+            });
+            if (loading && table && skus[0]) {
+                const first = table.searchRows('SKU', '=', skus[0])[0];
+                if (first && first.getElement) {
+                    first.getElement().scrollIntoView({ block: 'center', behavior: 'smooth' });
+                }
+            }
+        }
+
         function runAiOnSelected(selected, prompt) {
+            const target = riAiTarget === 'pkg' ? 'pkg' : 'raw';
+            const skus = (selected || []).map(function (row) { return row.sku; }).filter(Boolean);
+            const aiBtn = document.getElementById('riAiBtn');
+            const pkgBtn = document.getElementById('riAiPkgBtn');
+            setAiGenerating(skus, true, target);
+            if (aiBtn) aiBtn.disabled = true;
+            if (pkgBtn) pkgBtn.disabled = true;
+            const body = {
+                prompt: prompt,
+                selected: selected
+            };
+            if (target === 'pkg') {
+                body.image_kind = 'pkg';
+            }
             return fetch(rawImagesAiPromptUrl, {
                 method: 'POST',
                 headers: {
@@ -1197,15 +1526,12 @@
                     'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify({
-                    prompt: prompt,
-                    selected: selected
-                })
+                body: JSON.stringify(body)
             })
             .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
             .then(function (result) {
                 const d = result.data || {};
-                applyAiBySku(d.by_sku);
+                applyAiBySku(d.by_sku, target);
                 const errors = Array.isArray(d.errors) ? d.errors : [];
                 if (!result.ok || !d.success) {
                     const extra = errors.length ? '\n' + errors.join('\n') : '';
@@ -1222,15 +1548,30 @@
             })
             .catch(function (err) {
                 alert(err.message || 'AI request failed.');
+            })
+            .finally(function () {
+                setAiGenerating(skus, false, target);
+                if (aiBtn) aiBtn.disabled = false;
+                if (pkgBtn) pkgBtn.disabled = false;
             });
         }
 
         function saveAiPrompt(prompt, force) {
             const next = String(prompt || '');
-            if (!force && next === riAiLastSaved) {
+            const isPkg = riAiTarget === 'pkg';
+            const last = isPkg ? riPkgAiLastSaved : riAiLastSaved;
+            if (!force && next === last) {
                 return Promise.resolve();
             }
-            riAiLastSaved = next;
+            if (isPkg) {
+                riPkgAiLastSaved = next;
+            } else {
+                riAiLastSaved = next;
+            }
+            const body = { prompt: next };
+            if (isPkg) {
+                body.image_kind = 'pkg';
+            }
             return fetch(rawImagesAiPromptSaveUrl, {
                 method: 'POST',
                 headers: {
@@ -1239,10 +1580,14 @@
                     'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify({ prompt: next })
+                body: JSON.stringify(body)
             }).then(function (res) {
-                if (!res.ok) {
+                if (!res.ok && force) {
                     throw new Error('Could not save the prompt.');
+                }
+            }).catch(function (err) {
+                if (force) {
+                    throw err;
                 }
             });
         }
@@ -1262,7 +1607,6 @@
             }
             if (type === 'filter_all') {
                 document.getElementById('filterRawImages').value = 'all';
-                document.getElementById('general-search').value = '';
                 document.getElementById('parentSearch').value = '';
                 document.getElementById('skuSearch').value = '';
                 missingFilterOn = false;
@@ -1272,9 +1616,8 @@
                 return;
             }
             if (type === 'search' && query) {
-                document.getElementById('general-search').value = field === 'general' ? query : '';
                 document.getElementById('parentSearch').value = field === 'parent' ? query : '';
-                document.getElementById('skuSearch').value = field === 'sku' ? query : '';
+                document.getElementById('skuSearch').value = (field === 'sku' || field === 'general') ? query : '';
                 applyFilters();
                 return;
             }

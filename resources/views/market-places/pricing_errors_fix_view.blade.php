@@ -256,8 +256,8 @@
         }
         .pef-kpi-dot {
             display: inline-block;
-            width: 0.65rem;
-            height: 0.65rem;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
             flex: 0 0 auto;
             cursor: pointer;

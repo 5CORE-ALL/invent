@@ -5406,6 +5406,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/dil-bump', [ChannelPromoPricingController::class, 'saveDilBumpRules'])->name('channel.promo.dil-bump.save');
     Route::get('/channel-promo-pricing/{channel}/cvr-cpn', [ChannelPromoPricingController::class, 'cvrCpnRules'])->name('channel.promo.cvr-cpn.get');
     Route::post('/channel-promo-pricing/{channel}/cvr-cpn', [ChannelPromoPricingController::class, 'saveCvrCpnRules'])->name('channel.promo.cvr-cpn.save');
+    Route::get('/channel-promo-pricing/{channel}/cvr-up-dn', [ChannelPromoPricingController::class, 'cvrUpDnRules'])->name('channel.promo.cvr-up-dn.get');
+    Route::post('/channel-promo-pricing/{channel}/cvr-up-dn', [ChannelPromoPricingController::class, 'saveCvrUpDnRules'])->name('channel.promo.cvr-up-dn.save');
     Route::get('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'zeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.get');
     Route::post('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'saveZeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'gtSoldPrcRules'])->name('channel.promo.gt-sold-prc.get');
@@ -7100,7 +7102,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/payroll', [AttendancePayrollController::class, 'index'])->name('payroll.index');
         Route::get('/payroll/export', [AttendancePayrollController::class, 'export'])->name('payroll.export');
         Route::post('/payroll/lines/{user}', [AttendancePayrollController::class, 'saveLine'])->name('payroll.lines');
+        Route::get('/employee/{user}/timeline', [AttendanceMonitorController::class, 'employeeTimeline'])->name('employee.timeline');
         Route::get('/employee/{user}/screenshots', [AttendanceMonitorController::class, 'employeeScreenshots'])->name('employee.screenshots');
+        Route::get('/employee/{user}/captures', [AttendanceMonitorController::class, 'employeeCaptures'])->name('employee.captures');
         Route::get('/employee/{user}', [AttendanceMonitorController::class, 'employeeDetail'])->name('employee');
         Route::post('/employee/{user}/analyze', [AttendanceMonitorController::class, 'analyzeDay'])->name('analyze');
         Route::post('/flags/{flag}/review', [AttendanceMonitorController::class, 'reviewFlag'])->name('flags.review');

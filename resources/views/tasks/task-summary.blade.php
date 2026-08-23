@@ -181,6 +181,39 @@
             outline: 2px solid #0d9488;
             outline-offset: 2px;
         }
+        .task-summary-monitor-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.55rem;
+            height: 1.55rem;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #334155;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+        }
+        .task-summary-monitor-btn i {
+            font-size: 1.15rem;
+            line-height: 1;
+        }
+        .task-summary-monitor-btn:hover {
+            background: rgba(15, 23, 42, 0.08);
+            color: #0f172a;
+            text-decoration: none;
+            transform: scale(1.1);
+        }
+        .task-summary-monitor-btn:focus-visible {
+            outline: 2px solid #334155;
+            outline-offset: 2px;
+        }
+        .task-summary-monitor-btn.is-disabled {
+            opacity: 0.35;
+            cursor: default;
+            pointer-events: none;
+        }
         #taskSummaryUserPanel.offcanvas-end {
             width: min(560px, 100vw);
         }
@@ -926,8 +959,11 @@
                                     <th scope="col" class="task-summary-th-sort task-summary-col-member" data-sort-key="member" data-sort-type="text" title="Member — sort by team member name" role="button" tabindex="0">
                                         Member <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" title="TM — open this member's task panel (badge colour reflects their org level)">
+                                    <th scope="col" title="TM — open Task Manager for this member as assignee (new tab)">
                                         TM
+                                    </th>
+                                    <th scope="col" title="Monitor — open Team Monitoring for this employee (new tab)">
+                                        Monitor
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="member" data-sort-type="text" title="Team — sort by team member" role="button" tabindex="0">
                                         Team <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
@@ -1051,11 +1087,30 @@
                                             </span>
                                         </td>
                                         <td class="task-summary-col-tm text-center">
-                                            <button type="button"
-                                                    class="task-summary-tm-badge task-summary-user-tasks-dot {{ $tmBadgeMod }}"
-                                                    data-user-name="{{ e($row['team_member']) }}"
-                                                    title="View tasks panel for {{ e($row['team_member']) }}"
-                                                    aria-label="View tasks panel for {{ e($row['team_member']) }}">TM</button>
+                                            <a href="{{ route('tasks.index', ['assignee' => $row['team_member']]) }}"
+                                               target="_blank"
+                                               rel="noopener noreferrer"
+                                               class="task-summary-tm-badge task-summary-user-tasks-dot {{ $tmBadgeMod }}"
+                                               data-user-name="{{ e($row['team_member']) }}"
+                                               title="Open Task Manager for {{ e($row['team_member']) }} (assignee filter)"
+                                               aria-label="Open Task Manager for {{ e($row['team_member']) }} as assignee">TM</a>
+                                        </td>
+                                        <td class="task-summary-col-monitor text-center">
+                                            @php $monitorUserId = (int) ($row['user_id'] ?? 0); @endphp
+                                            @if($monitorUserId > 0)
+                                                <a href="{{ route('attendance.summary', ['executive' => $monitorUserId]) }}"
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   class="task-summary-monitor-btn"
+                                                   title="Open Team Monitoring for {{ e($row['team_member']) }}"
+                                                   aria-label="Open Team Monitoring for {{ e($row['team_member']) }}">
+                                                    <i class="mdi mdi-magnify" aria-hidden="true"></i>
+                                                </a>
+                                            @else
+                                                <span class="task-summary-monitor-btn is-disabled" title="No user record found for this row" aria-hidden="true">
+                                                    <i class="mdi mdi-magnify"></i>
+                                                </span>
+                                            @endif
                                         </td>
                                         <td class="task-summary-avatar-cell">
                                             <span class="task-summary-avatar-wrap">
@@ -1339,7 +1394,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="22" class="text-center text-muted py-4">
+                                        <td colspan="23" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1350,7 +1405,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="22" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="23" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -2249,18 +2304,7 @@
                 tsOpenTmBtn.addEventListener('click', function (e) {
                     e.preventDefault();
                     if (!tsUserPanelName) return;
-                    var fd = new FormData();
-                    fd.append('_token', tsCsrfToken);
-                    fd.append('user_name', tsUserPanelName);
-                    fetch(tsSetSelectedUserUrl, {
-                        method: 'POST',
-                        body: fd,
-                        headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
-                        credentials: 'same-origin'
-                    })
-                        .finally(function () {
-                            window.location.href = tsTasksIndexUrl;
-                        });
+                    window.open(tsTasksIndexUrl + '?assignee=' + encodeURIComponent(tsUserPanelName), '_blank', 'noopener');
                 });
             }
 
@@ -2269,63 +2313,16 @@
                 if (!btn || !tbody.contains(btn)) {
                     return;
                 }
-                e.preventDefault();
                 e.stopPropagation();
                 var name = (btn.getAttribute('data-user-name') || '').trim();
                 if (!name) {
                     return;
                 }
-                var tr = btn.closest('tr');
-                if (!tr) {
+                if (btn.tagName === 'A' && btn.getAttribute('href')) {
                     return;
                 }
-                var panel = tsGetUserPanelOffcanvas();
-                if (!panel) {
-                    var fd0 = new FormData();
-                    fd0.append('_token', tsCsrfToken);
-                    fd0.append('user_name', name);
-                    fetch(tsSetSelectedUserUrl, {
-                        method: 'POST',
-                        body: fd0,
-                        headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
-                        credentials: 'same-origin'
-                    }).finally(function () {
-                        window.location.href = tsTasksIndexUrl;
-                    });
-                    return;
-                }
-                tsUserPanelName = name;
-                var titleEl = document.getElementById('taskSummaryUserPanelLabel');
-                var desEl = document.getElementById('ts-user-panel-designation');
-                var emailEl = document.getElementById('ts-user-panel-email');
-                var avEl = document.getElementById('ts-user-panel-avatar');
-                if (titleEl) titleEl.textContent = name;
-                var des = (tr.getAttribute('data-sort-designation') || '').trim();
-                if (desEl) {
-                    desEl.textContent = des || '—';
-                    desEl.classList.toggle('d-none', !des);
-                }
-                var em = (tr.getAttribute('data-user-email') || '').trim();
-                if (emailEl) {
-                    emailEl.textContent = em || '';
-                    emailEl.classList.toggle('d-none', !em);
-                }
-                if (avEl) {
-                    var img = tr.querySelector('.task-summary-avatar');
-                    var src = img && img.getAttribute('src');
-                    if (src) {
-                        avEl.setAttribute('src', src);
-                        avEl.classList.remove('d-none');
-                    } else {
-                        avEl.classList.add('d-none');
-                    }
-                }
-                tsSetUserPanelStatsLoading();
-                tsRenderUserPanelKpi(tsGetRowKpiList(tr));
-                if (tsSearchPanel) tsSearchPanel.value = '';
-                tsUserPanelTasks = [];
-                panel.show();
-                tsLoadUserTasks(name);
+                e.preventDefault();
+                window.open(tsTasksIndexUrl + '?assignee=' + encodeURIComponent(name), '_blank', 'noopener');
             });
 
             var sortState = { key: null, dir: 'asc' };
@@ -3057,7 +3054,7 @@
                 tr.setAttribute('data-level', level); // 'director' | 'mgr' | 'others'
                 tr.setAttribute('data-collapsed', 'false');
                 var td = document.createElement('td');
-                td.setAttribute('colspan', '22');
+                td.setAttribute('colspan', '23');
                 td.innerHTML =
                     '<div class="task-summary-group-header-inner">'
                     + '<button type="button" class="task-summary-group-chevron" data-action="toggle-group" aria-label="Toggle group">'

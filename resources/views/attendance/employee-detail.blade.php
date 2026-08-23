@@ -95,6 +95,10 @@
     .shot-end { padding: .75rem; text-align: center; font-size: .78rem; color: #94a3b8; }
     .act-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: .2rem; animation: actPulse 2s infinite; vertical-align: middle; }
     @keyframes actPulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+    .shot-open-dot {
+        width: 10px; height: 10px; border-radius: 50%; background: #0d9488;
+        box-shadow: 0 0 0 3px rgba(13,148,136,.2); display: inline-block;
+    }
 </style>
 @endsection
 
@@ -113,7 +117,7 @@
             <div class="act-card p-3">
                 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
                     <div>
-                        <a href="{{ route('attendance.summary', array_filter(['team' => request('team'), 'range' => $period_key ?? 'custom', 'from' => $from, 'to' => $to, 'timezone' => $timezone, 'day_reset' => $day_reset])) }}" class="small text-muted">← Team Monitoring</a>
+                        <a href="{{ route('attendance.summary', array_filter(['team' => request('team'), 'executive' => request('executive'), 'range' => $period_key ?? 'custom', 'from' => $from, 'to' => $to, 'timezone' => $timezone, 'day_reset' => $day_reset])) }}" class="small text-muted">← Team Monitoring</a>
                         <h4 class="mb-0 mt-1">
                             @if($day['is_live'])
                                 <span class="act-live-dot"></span>
@@ -278,46 +282,12 @@
     <div class="row mb-3" id="screenshots">
         <div class="col-12">
             <div class="act-card p-3">
-                <h6 class="mb-3"><i class="ri-camera-line me-1"></i> Screen captures
-                    @if($from !== $to)
-                    <span class="text-muted fw-normal small">— {{ \Carbon\Carbon::parse($date)->format('M j, Y') }}</span>
-                    @endif
-                    <span class="text-muted fw-normal" id="shotCountLabel">(<span id="shotLoadedCount">{{ count($day['screenshots']) }}</span>{{ ($day['screenshot_total'] ?? 0) > 0 ? ' of '.$day['screenshot_total'] : '' }} — latest first)</span>
-                </h6>
-                @if(($day['screenshot_total'] ?? 0) > 0)
-                <div class="shot-grid" id="shotGrid"
-                     data-url="{{ route('attendance.employee.screenshots', $employee) }}"
-                     data-page="1"
-                     data-has-more="{{ ($day['screenshot_has_more'] ?? false) ? '1' : '0' }}"
-                     data-total="{{ $day['screenshot_total'] ?? 0 }}"
-                     data-date="{{ $date }}"
-                     data-timezone="{{ $timezone }}"
-                     data-day-reset="{{ $day_reset }}">
-                    @foreach($day['screenshots'] as $shot)
-                    @php
-                        $pct = $shot['active_percent'];
-                        $barColor = $pct >= 70 ? '#22c55e' : ($pct >= 40 ? '#eab308' : '#94a3b8');
-                    @endphp
-                    <a href="{{ $shot['image_url'] }}" target="_blank" class="shot-card" title="{{ $shot['captured_label'] }} — {{ $shot['app'] }}">
-                        <img src="{{ $shot['thumb_url'] ?? $shot['image_url'] }}" alt="" loading="lazy">
-                        <div class="shot-body">
-                            <div class="shot-time">{{ $shot['captured_at'] }}</div>
-                            <div class="shot-app" title="{{ $shot['app'] }}">{{ $shot['app'] }}</div>
-                            <div class="shot-bar"><span style="width:{{ $pct }}%;background:{{ $barColor }}"></span></div>
-                            <div class="shot-pct">{{ $pct }}% active</div>
-                        </div>
-                    </a>
-                    @endforeach
-                </div>
-                <div id="shotLoader" class="shot-loader d-none" aria-live="polite">
-                    <span class="spinner" aria-hidden="true"></span>
-                    <span>Loading more…</span>
-                </div>
-                <div id="shotSentinel" style="height:1px"></div>
-                <div id="shotEnd" class="shot-end {{ ($day['screenshot_has_more'] ?? false) ? 'd-none' : '' }}">All screenshots loaded</div>
-                @else
-                <p class="text-muted small mb-0" id="shotEmpty">No screenshots for this day. The desktop agent captures screens while the employee is clocked in.</p>
-                @endif
+                <a href="{{ url('/attendance/employee/'.$employee->id.'/captures').'?'.http_build_query(['date' => $date, 'timezone' => $timezone, 'day_reset' => $day_reset]) }}"
+                   target="_blank" rel="noopener" class="d-inline-flex align-items-center gap-2 text-decoration-none">
+                    <span class="shot-open-dot" aria-hidden="true"></span>
+                    <span><i class="ri-camera-line me-1"></i> Open all screen captures</span>
+                    <span class="text-muted fw-normal small">— {{ \Carbon\Carbon::parse($date)->format('M j, Y') }} (new tab)</span>
+                </a>
             </div>
         </div>
     </div>
@@ -364,80 +334,6 @@
     });
 
     toggleCustomRangeFields();
-
-    const shotGrid = document.getElementById('shotGrid');
-    const shotLoader = document.getElementById('shotLoader');
-    const shotSentinel = document.getElementById('shotSentinel');
-    const shotEnd = document.getElementById('shotEnd');
-    const shotLoadedCount = document.getElementById('shotLoadedCount');
-
-    if (shotGrid && shotSentinel) {
-        let loading = false;
-
-        function barColor(pct) {
-            return pct >= 70 ? '#22c55e' : (pct >= 40 ? '#eab308' : '#94a3b8');
-        }
-
-        function shotCardHtml(shot) {
-            const pct = shot.active_percent || 0;
-            const color = barColor(pct);
-            const img = shot.thumb_url || shot.image_url;
-            return '<a href="' + shot.image_url + '" target="_blank" class="shot-card" title="' +
-                shot.captured_label + ' — ' + shot.app + '">' +
-                '<img src="' + img + '" alt="" loading="lazy">' +
-                '<div class="shot-body">' +
-                '<div class="shot-time">' + shot.captured_at + '</div>' +
-                '<div class="shot-app" title="' + shot.app + '">' + shot.app + '</div>' +
-                '<div class="shot-bar"><span style="width:' + pct + '%;background:' + color + '"></span></div>' +
-                '<div class="shot-pct">' + pct + '% active</div>' +
-                '</div></a>';
-        }
-
-        async function loadMoreShots() {
-            if (loading || shotGrid.dataset.hasMore !== '1') return;
-            loading = true;
-            shotLoader?.classList.remove('d-none');
-
-            const nextPage = parseInt(shotGrid.dataset.page || '1', 10) + 1;
-            const params = new URLSearchParams({
-                page: String(nextPage),
-                date: shotGrid.dataset.date || '',
-                timezone: shotGrid.dataset.timezone || '',
-                day_reset: shotGrid.dataset.dayReset || '',
-            });
-
-            try {
-                const r = await fetch(shotGrid.dataset.url + '?' + params.toString(), {
-                    headers: { Accept: 'application/json' },
-                });
-                if (!r.ok) return;
-                const data = await r.json();
-                if (data.screenshots?.length) {
-                    shotGrid.insertAdjacentHTML('beforeend', data.screenshots.map(shotCardHtml).join(''));
-                    shotGrid.dataset.page = String(data.page);
-                    if (shotLoadedCount) {
-                        shotLoadedCount.textContent = String(shotGrid.querySelectorAll('.shot-card').length);
-                    }
-                }
-                shotGrid.dataset.hasMore = data.has_more ? '1' : '0';
-                if (!data.has_more) {
-                    shotEnd?.classList.remove('d-none');
-                }
-            } catch (_) {}
-            finally {
-                loading = false;
-                shotLoader?.classList.add('d-none');
-            }
-        }
-
-        const observer = new IntersectionObserver((entries) => {
-            if (entries.some(e => e.isIntersecting)) {
-                loadMoreShots();
-            }
-        }, { rootMargin: '200px' });
-
-        observer.observe(shotSentinel);
-    }
 })();
 </script>
 @endsection

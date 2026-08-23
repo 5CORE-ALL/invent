@@ -50,6 +50,7 @@ use App\Models\AliexpressDailyData;
 use App\Models\AliexpressListingStatus;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\AmazonProductReview;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Http\Controllers\Sales\TikTokSalesController;
@@ -114,6 +115,7 @@ use App\Models\Temu2DailyDataL60;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
 use App\Models\TiktokCampaignReport;
+use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
 use App\Models\TiktokSalesTwo;
 use App\Models\TiktokShopListingStatus;
@@ -895,6 +897,50 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Fast-path Temu / Temu 2 L30 + Y/L7 sales only (no map/miss tabulator rebuild).
+     */
+    private function overlayLiveTemuSalesOnChannelRows(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name !== 'Temu' && $name !== 'Temu 2') {
+                continue;
+            }
+
+            $isTemu2 = $name === 'Temu 2';
+            try {
+                $liveSales = $this->getTemuLiveSalesSummaryFromTabulator($isTemu2);
+            } catch (\Throwable $e) {
+                Log::warning('Fast-path Temu sales overlay failed: '.$e->getMessage(), ['temu2' => $isTemu2]);
+                $liveSales = null;
+            }
+
+            if ($liveSales) {
+                $l30Sales = (float) $liveSales['total_revenue'];
+                $row['L30 Sales'] = (int) round($l30Sales);
+                $row['L30 Orders'] = (int) $liveSales['total_orders'];
+                $row['Qty'] = (int) $liveSales['total_quantity'];
+            }
+
+            try {
+                $ySales = $this->computeTemuYSalesLikeAmazon($isTemu2);
+                if ($ySales !== null) {
+                    $row['Y Sales'] = $ySales;
+                }
+                $l7Sales = $this->computeTemuL7SalesLikeAmazon($isTemu2);
+                if ($l7Sales !== null) {
+                    $row['L7 Sales'] = $l7Sales;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Fast-path Temu Y/L7 overlay failed: '.$e->getMessage(), ['temu2' => $isTemu2]);
+            }
+        }
+        unset($row);
+
+        return $this->overlayLiveTemu1AdsOnChannelRows($rows);
+    }
+
+    /**
      * Temu 1 ads on /all-marketplace-master — same Active L30 source as /temu/ads and /temu-decrease.
      *
      * @param  array<int, array<string, mixed>>  $rows
@@ -1022,21 +1068,24 @@ class ChannelMasterController extends Controller
      * Overlay live eBay 1/2/3 L30 (marketplace_daily_metrics) + L60 (orders / ebay3 dates)
      * so cached channel_master_calculated_data stays fast but sales match latest fetch + metrics sync.
      */
+    private function ebayWhichFromChannelName(string $name): ?int
+    {
+        return match ($this->allMarketplaceSnapshotKey($name)) {
+            'ebay' => 1,
+            'ebaytwo' => 2,
+            'ebaythree' => 3,
+            default => null,
+        };
+    }
+
     private function overlayLiveEbayMetricsOnChannelRows(array $rows): array
     {
-        $displayToWhich = [
-            'eBay' => 1,
-            'EbayTwo' => 2,
-            'EbayThree' => 3,
-        ];
-
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if ($name === '' || ! isset($displayToWhich[$name])) {
+            $which = $this->ebayWhichFromChannelName($name);
+            if ($which === null) {
                 continue;
             }
-
-            $which = $displayToWhich[$name];
             $live = EbayChannelMetricsService::liveChannelSummary($which);
             if ($live === null) {
                 continue;
@@ -1111,6 +1160,107 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Fast-path Amazon L30 Sales / Orders / Qty — same Pacific window as
+     * /amazon/daily-sales so the Active Channel row moves when new orders land.
+     */
+    private function overlayLiveAmazonL30SalesOnChannelRows(array $rows): array
+    {
+        try {
+            $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
+            $endToday = $yesterdayPacific->copy()->endOfDay();
+            $days = AmazonSalesController::DAILY_SALES_WINDOW_DAYS;
+            $start = $yesterdayPacific->copy()->subDays($days - 1)->startOfDay();
+            $l60Start = $yesterdayPacific->copy()->subDays(59)->startOfDay();
+            $l60End = $yesterdayPacific->copy()->subDays(30)->endOfDay();
+
+            $active = function ($q) {
+                $q->where(function ($w) {
+                    $w->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                });
+            };
+
+            $l30Sales = AmazonOrder::badgeTotalSalesByOrderDate($start, $endToday);
+            $l30Orders = (int) DB::table('amazon_orders as o')
+                ->where('o.order_date', '>=', $start)
+                ->where('o.order_date', '<=', $endToday)
+                ->where($active)
+                ->count(DB::raw('DISTINCT o.amazon_order_id'));
+            $qty = (int) (DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where('o.order_date', '>=', $start)
+                ->where('o.order_date', '<=', $endToday)
+                ->where($active)
+                ->selectRaw('COALESCE(SUM(i.quantity), 0) as total_qty')
+                ->value('total_qty') ?? 0);
+            $l60Sales = AmazonOrder::badgeTotalSalesByOrderDate($l60Start, $l60End);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Amazon L30 Sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'amazon') {
+                continue;
+            }
+            if ($l30Orders > 0 || $l30Sales > 0) {
+                $row['L30 Sales'] = (int) round($l30Sales);
+                $row['L30 Orders'] = $l30Orders;
+                $row['Qty'] = $qty;
+            }
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+            break;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Live sales overlays for /all-marketplace-master fast path (cache hit and miss).
+     * Calculated-table L30/Y Sales stay frozen until channel:calculate-data; these
+     * cheap reads keep the Sales badge and column moving with the source pages.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function applyFastPathLiveSalesOverlays(array $rows): array
+    {
+        $steps = [
+            'amazon_l30' => fn (array $r) => $this->overlayLiveAmazonL30SalesOnChannelRows($r),
+            'amazon_y' => fn (array $r) => $this->overlayLiveAmazonYSalesOnChannelRows($r),
+            'ebay_l30' => fn (array $r) => $this->overlayLiveEbayMetricsOnChannelRows($r),
+            'ebay_y' => fn (array $r) => $this->overlayLiveEbayYSalesOnChannelRows($r),
+            'shopify_l30' => fn (array $r) => $this->overlayLiveShopifyDirectMetricsOnChannelRows($r),
+            'shopify_y' => fn (array $r) => $this->overlayLiveShopifyYSalesOnChannelRows($r),
+            'shopify_b2b' => fn (array $r) => $this->overlayLiveShopifyB2BMetricsOnChannelRows($r),
+            'temu_l30' => fn (array $r) => $this->overlayLiveTemuSalesOnChannelRows($r),
+            'tiktok_l30' => fn (array $r) => $this->overlayLiveTiktokShopSalesOnChannelRows($r),
+            'walmart_l30' => fn (array $r) => $this->overlayLiveWalmartSalesOnChannelRows($r),
+            'pp_l30' => fn (array $r) => $this->overlayLivePurchasingPowerMetricsOnChannelRows($r),
+            'fb_l30' => fn (array $r) => $this->overlayLiveFbMarketplaceMetricsOnChannelRows($r),
+            'tiktok2_l30' => fn (array $r) => $this->overlayLiveTiktokTwoMetricsOnChannelRows($r),
+            'faire_l30' => fn (array $r) => $this->overlayLiveFaireMetricsOnChannelRows($r),
+            'stale_y' => fn (array $r) => $this->overlayLiveStaleYSalesOnChannelRows($r),
+        ];
+
+        foreach ($steps as $name => $fn) {
+            try {
+                $rows = $fn($rows);
+            } catch (\Throwable $e) {
+                Log::warning('Fast-path live sales overlay failed ('.$name.'): '.$e->getMessage());
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
      * Fast-path Shopify / B2C / B2B Y Sales from orders (Pacific yesterday).
      */
     private function overlayLiveShopifyYSalesOnChannelRows(array $rows): array
@@ -1142,19 +1292,12 @@ class ChannelMasterController extends Controller
      */
     private function overlayLiveEbayYSalesOnChannelRows(array $rows): array
     {
-        $displayToWhich = [
-            'eBay' => 1,
-            'EbayTwo' => 2,
-            'EbayThree' => 3,
-        ];
-
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if ($name === '' || ! isset($displayToWhich[$name])) {
+            $which = $this->ebayWhichFromChannelName($name);
+            if ($which === null) {
                 continue;
             }
-
-            $which = $displayToWhich[$name];
             $ySales = $this->computeEbayYSalesLikeAmazon($which);
             if ($ySales !== null) {
                 $row['Y Sales'] = $ySales;
@@ -1195,6 +1338,72 @@ class ChannelMasterController extends Controller
                 }
             } catch (\Throwable $e) {
                 Log::warning('Live Y Sales overlay failed for '.$name.': '.$e->getMessage());
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Fast-path Faire L30 / L60 / Y / L7 from shopify_raw_orders (same as /faire-tabulator).
+     */
+    private function overlayLiveFaireMetricsOnChannelRows(array $rows): array
+    {
+        try {
+            $pst = 'America/Los_Angeles';
+            $todayPst = Carbon::now($pst);
+            $l30 = $this->computeFaireMetricsFromShopify(
+                $todayPst->copy()->subDays(29)->startOfDay(),
+                $todayPst->copy()->endOfDay()
+            );
+            $l60 = $this->computeFaireMetricsFromShopify(
+                $todayPst->copy()->subDays(59)->startOfDay(),
+                $todayPst->copy()->subDays(30)->endOfDay()
+            );
+            $ySales = $this->computeFaireYSalesLikeAmazon();
+            $l7Sales = $this->computeFaireL7SalesLikeAmazon();
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Faire sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        $l30Sales = (float) $l30['sales'];
+        $l60Sales = (float) $l60['sales'];
+        $totalPft = (float) $l30['pft'];
+        $totalCogs = (float) $l30['cogs'];
+        $gpftPct = $l30Sales > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
+        $groi = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'faire') {
+                continue;
+            }
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) $l30['orders'];
+            $row['Qty'] = (int) $l30['qty'];
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) $l60['orders'];
+            $row['Total PFT'] = round($totalPft, 2);
+            $row['cogs'] = round($totalCogs, 2);
+            $row['Gprofit%'] = round($gpftPct, 1).'%';
+            $row['G Roi'] = round($groi, 1);
+            $row['N PFT'] = round($gpftPct, 1).'%';
+            $row['N ROI'] = round($groi, 1);
+            $row['Total Ad Spend'] = 0;
+            $row['Ads%'] = '0%';
+            $row['TACOS %'] = '0%';
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
             }
         }
         unset($row);
@@ -1947,8 +2156,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Overlay /tiktok-two/daily-sales L30 / GPFT / ROI onto the "TikTok 2" row
-     * so /all-marketplace-master matches that page's data source (tiktok_sales_two).
+     * Overlay /tiktok-two/daily-sales L30 / GPFT / ROI onto the "TikTok 2" row.
+     * Y Sales / L7 come from tiktok2_orders (API), same clock as TikTok Shop.
      */
     private function overlayLiveTiktokTwoMetricsOnChannelRows(array $rows): array
     {
@@ -2001,6 +2210,113 @@ class ChannelMasterController extends Controller
             }
             if ($l7Sales !== null) {
                 $row['L7 Sales'] = $l7Sales;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Fast-path TikTok Shop L30 / Y / L7 from tiktok_orders (same window as getTiktokChannelData).
+     */
+    private function overlayLiveTiktokShopSalesOnChannelRows(array $rows): array
+    {
+        if (! TiktokOrder::tableReady()) {
+            return $rows;
+        }
+
+        try {
+            [$l30Start, $l30End] = TiktokOrder::californiaDaysWindow(30);
+            $l60End = $l30Start->copy()->subSecond();
+            $l60Start = $l60End->copy()->subDays(29)->startOfDay();
+            $l30Sales = TiktokOrder::salesAmountBetween($l30Start, $l30End);
+            $l30Orders = TiktokOrder::orderCountBetween($l30Start, $l30End);
+            $l60Sales = TiktokOrder::salesAmountBetween($l60Start, $l60End);
+            $ySales = $this->computeTiktokShopYSalesFromOrders();
+            $l7Sales = $this->computeTiktokShopL7SalesFromOrders();
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path TikTok Shop sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'tiktokshop') {
+                continue;
+            }
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = $l30Orders;
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Fast-path Walmart L30 from walmart_daily_data (same window as getWalmartChannelData).
+     */
+    private function overlayLiveWalmartSalesOnChannelRows(array $rows): array
+    {
+        try {
+            $latestDate = \App\Models\WalmartDailyData::max('order_date');
+            if (! $latestDate) {
+                return $rows;
+            }
+
+            $latest = Carbon::parse($latestDate);
+            $l30End = $latest->copy()->endOfDay();
+            $l30Start = $latest->copy()->subDays(30)->startOfDay();
+            $l60End = $l30Start->copy()->subDay()->endOfDay();
+            $l60Start = $l60End->copy()->subDays(30)->startOfDay();
+
+            $agg = function (Carbon $start, Carbon $end) {
+                return \App\Models\WalmartDailyData::query()
+                    ->where('period', 'l30')
+                    ->whereBetween('order_date', [$start, $end])
+                    ->where('fulfillment_option', 'DELIVERY')
+                    ->where('status', '!=', 'Cancelled')
+                    ->selectRaw('COALESCE(SUM(quantity * unit_price), 0) as sales')
+                    ->selectRaw("COUNT(DISTINCT COALESCE(customer_order_id, purchase_order_id, CONCAT('WM-', id))) as orders")
+                    ->selectRaw('COALESCE(SUM(quantity), 0) as qty')
+                    ->first();
+            };
+
+            $l30 = $agg($l30Start, $l30End);
+            $l60 = $agg($l60Start, $l60End);
+            $l30Sales = (float) ($l30->sales ?? 0);
+            $l60Sales = (float) ($l60->sales ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Walmart sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'walmart') {
+                continue;
+            }
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) ($l30->orders ?? 0);
+            $row['Qty'] = (int) ($l30->qty ?? 0);
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) ($l60->orders ?? 0);
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
             }
         }
         unset($row);
@@ -2137,6 +2453,153 @@ class ChannelMasterController extends Controller
             }
             $row['Total Views'] = $snap['total_views'];
             $row['CVR'] = $snap['cvr_pct'];
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Overlay live Shopify B2B L30 sales / profit from shopify_b2b_daily_data
+     * (same source as /shopify-b2b-pricing badges) onto the Active Channel row.
+     */
+    private function overlayLiveShopifyB2BMetricsOnChannelRows(array $rows): array
+    {
+        try {
+            $live = app(\App\Http\Controllers\MarketPlace\Shopifyb2bController::class)->l30SnapshotForMaster();
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2B live metrics overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        if (! is_array($live) || ((float) ($live['l30_sales'] ?? 0) <= 0 && (int) ($live['l30_orders'] ?? 0) <= 0)) {
+            return $rows;
+        }
+
+        $l30Sales = (float) ($live['l30_sales'] ?? 0);
+        $totalPft = (float) ($live['total_pft'] ?? 0);
+        $totalCogs = (float) ($live['total_cogs'] ?? 0);
+        $gpftPct = (float) ($live['gpft_pct'] ?? ($l30Sales > 0 ? ($totalPft / $l30Sales) * 100 : 0));
+        $groi = (float) ($live['groi_pct'] ?? ($totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0));
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if (strcasecmp($name, 'Shopify B2B') !== 0 && strcasecmp($name, 'ShopifyB2B') !== 0) {
+                continue;
+            }
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) ($live['l30_orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['Total PFT'] = round($totalPft, 2);
+            $row['cogs'] = round($totalCogs, 2);
+            $row['Gprofit%'] = round($gpftPct, 1).'%';
+            $row['G Roi'] = round($groi, 1);
+            $row['N PFT'] = round($gpftPct, 1).'%';
+            $row['N ROI'] = round($groi, 1);
+            $row['Total Ad Spend'] = 0;
+            $row['Ads%'] = '0%';
+            $row['TACOS %'] = '0%';
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Reverb bump fees are Ads% / spend — persist them as Total Ad Spend so the
+     * toolbar Spend / Ads% / NPFT badges include Reverb.
+     */
+    private function overlayLiveReverbSpendOnChannelRows(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if (strcasecmp($name, 'Reverb') !== 0) {
+                continue;
+            }
+
+            $spend = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? 0));
+            $l30 = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
+            $adsPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Ads%'] ?? $row['TACOS %'] ?? $row['TACOS'] ?? 0));
+
+            if ($spend <= 0 && $adsPct > 0 && $l30 > 0) {
+                $spend = round(($adsPct / 100) * $l30, 2);
+                $row['Total Ad Spend'] = $spend;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Product ratings / review counts from amazon_product_reviews for the Reviews badge.
+     *
+     * @return array<string, array{Avg Rating: float, Total Reviews: int}>
+     */
+    private function getChannelReviewsFromProductReviews(): array
+    {
+        if (! Schema::hasTable('amazon_product_reviews')) {
+            return [];
+        }
+
+        try {
+            $rows = AmazonProductReview::query()
+                ->selectRaw("COALESCE(NULLIF(TRIM(channel), ''), 'Amazon') as ch, SUM(review_count) as reviews, SUM(product_rating * review_count) as rating_sum")
+                ->where('review_count', '>', 0)
+                ->where('product_rating', '>', 0)
+                ->groupByRaw("COALESCE(NULLIF(TRIM(channel), ''), 'Amazon')")
+                ->get();
+        } catch (\Throwable $e) {
+            Log::warning('Channel reviews overlay failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        $acc = [];
+        foreach ($rows as $rr) {
+            $key = $this->canonicalChannelKey((string) ($rr->ch ?? 'Amazon'));
+            if ($key === '') {
+                $key = 'amazon';
+            }
+            $acc[$key] = [
+                'rating_sum' => (float) ($rr->rating_sum ?? 0),
+                'reviews' => (int) ($rr->reviews ?? 0),
+            ];
+        }
+
+        $out = [];
+        foreach ($acc as $key => $v) {
+            $out[$key] = [
+                'Avg Rating' => $v['reviews'] > 0 ? round($v['rating_sum'] / $v['reviews'], 1) : 0.0,
+                'Total Reviews' => $v['reviews'],
+            ];
+        }
+
+        return $out;
+    }
+
+    private function overlayLiveReviewsOnChannelRows(array $rows): array
+    {
+        $byChannel = $this->getChannelReviewsFromProductReviews();
+        if ($byChannel === []) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            $key = $this->canonicalChannelKey($name);
+            $stats = $byChannel[$key] ?? null;
+            if ($stats === null && $key === 'amazon') {
+                $stats = $byChannel['amazon'] ?? null;
+            }
+            if ($stats === null) {
+                continue;
+            }
+            $row['Avg Rating'] = $stats['Avg Rating'];
+            $row['Total Reviews'] = $stats['Total Reviews'];
+            $row['Reviews'] = $stats;
         }
         unset($row);
 
@@ -2864,17 +3327,19 @@ class ChannelMasterController extends Controller
      * Shopify inventory + LP from product_master Values JSON (same matching as Inv@LP).
      * Only includes ACTIVE status SKUs from product_master.
      *
-     * @return array{inv_sum: float, inv_at_lp: float, weighted_avg_lp: float}
+     * @return array{inv_sum: float, inv_at_lp: float, inv_at_sp: float, weighted_avg_lp: float}
      */
     private function getShopifyInvLpMetrics(): array
     {
+        $empty = ['inv_sum' => 0.0, 'inv_at_lp' => 0.0, 'inv_at_sp' => 0.0, 'weighted_avg_lp' => 0.0];
+
         // Get active SKUs from product_master (excluding deleted and non-active)
         $productMasters = ProductMaster::whereNull('deleted_at')
             ->whereRaw('LOWER(JSON_UNQUOTE(JSON_EXTRACT(`Values`, "$.status"))) = ?', ['active'])
             ->get();
             
         if ($productMasters->isEmpty()) {
-            return ['inv_sum' => 0.0, 'inv_at_lp' => 0.0, 'weighted_avg_lp' => 0.0];
+            return $empty;
         }
         
         $activeSkus = $productMasters->pluck('sku')->unique()->filter()->values()->toArray();
@@ -2885,15 +3350,31 @@ class ChannelMasterController extends Controller
             ->get(['sku', 'inv']);
             
         if ($shopifySkus->isEmpty()) {
-            return ['inv_sum' => 0.0, 'inv_at_lp' => 0.0, 'weighted_avg_lp' => 0.0];
+            return $empty;
         }
         
         $pmBySku = $productMasters->keyBy(function ($item) {
             return strtoupper(trim((string) $item->sku));
         });
 
+        $stdBySku = [];
+        try {
+            foreach (AmazonDataView::whereIn('sku', $activeSkus)->get(['sku', 'value']) as $adv) {
+                $val = is_array($adv->value)
+                    ? $adv->value
+                    : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                $std = $val['STANDARD_PRICE'] ?? $val['standard_price'] ?? null;
+                if (is_numeric($std) && (float) $std > 0) {
+                    $stdBySku[strtoupper(trim((string) $adv->sku))] = (float) $std;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Inv@SP standard price lookup failed: '.$e->getMessage());
+        }
+
         $invSum = 0.0;
         $invAtLp = 0.0;
+        $invAtSp = 0.0;
         foreach ($shopifySkus as $row) {
             $sku = trim((string) $row->sku);
             if ($sku === '') {
@@ -2920,14 +3401,54 @@ class ChannelMasterController extends Controller
                 $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($pm->lp) ? (float) $pm->lp : 0);
             }
             $invAtLp += $inv * $lp;
+            $invAtSp += $inv * ($stdBySku[strtoupper($sku)] ?? 0.0);
         }
         $weightedAvgLp = $invSum > 0 ? round($invAtLp / $invSum, 2) : 0.0;
 
         return [
             'inv_sum' => round($invSum, 2),
             'inv_at_lp' => round($invAtLp, 2),
+            'inv_at_sp' => round($invAtSp, 2),
             'weighted_avg_lp' => $weightedAvgLp,
         ];
+    }
+
+    /**
+     * Fill inventory extras on the fast-path payload when the daily cache is empty.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function ensureInventoryExtrasOnPayload(array $payload): array
+    {
+        $missingInv = ! array_key_exists('inventory_value_amazon', $payload) || $payload['inventory_value_amazon'] === null || $payload['inventory_value_amazon'] === '';
+        if ($missingInv || (float) $payload['inventory_value_amazon'] <= 0) {
+            try {
+                $payload['inventory_value_amazon'] = round($this->getInventoryValueAmazon(), 2);
+            } catch (\Throwable $e) {
+                $payload['inventory_value_amazon'] = (float) ($payload['inventory_value_amazon'] ?? 0);
+            }
+        }
+
+        $missingSp = ! array_key_exists('inv_at_sp', $payload) || $payload['inv_at_sp'] === null || $payload['inv_at_sp'] === '';
+        $missingLp = ! array_key_exists('inv_at_lp', $payload) || $payload['inv_at_lp'] === null || $payload['inv_at_lp'] === '';
+        if ($missingSp || $missingLp) {
+            try {
+                $shopifyMetrics = $this->getShopifyInvLpMetrics();
+                if ($missingLp) {
+                    $payload['inv_at_lp'] = $shopifyMetrics['inv_at_lp'];
+                    $payload['shopify_inv_sum'] = $shopifyMetrics['inv_sum'];
+                    $payload['shopify_weighted_avg_lp'] = $shopifyMetrics['weighted_avg_lp'];
+                }
+                if ($missingSp) {
+                    $payload['inv_at_sp'] = $shopifyMetrics['inv_at_sp'] ?? 0;
+                }
+            } catch (\Throwable $e) {
+                $payload['inv_at_sp'] = (float) ($payload['inv_at_sp'] ?? 0);
+            }
+        }
+
+        return $payload;
     }
 
     /**
@@ -4685,9 +5206,10 @@ class ChannelMasterController extends Controller
         if (empty($payload['inventory_value_amazon'])) {
             $payload['inventory_value_amazon'] = $this->getInventoryValueAmazon();
         }
-        if (empty($payload['inv_at_lp']) || empty($payload['shopify_inv_sum'])) {
+        if (empty($payload['inv_at_lp']) || empty($payload['shopify_inv_sum']) || empty($payload['inv_at_sp'])) {
             $shopifyMetrics = $this->getShopifyInvLpMetrics();
             $payload['inv_at_lp'] = $payload['inv_at_lp'] ?: $shopifyMetrics['inv_at_lp'];
+            $payload['inv_at_sp'] = $payload['inv_at_sp'] ?: ($shopifyMetrics['inv_at_sp'] ?? 0);
             $payload['shopify_inv_sum'] = $payload['shopify_inv_sum'] ?: $shopifyMetrics['inv_sum'];
             $payload['shopify_weighted_avg_lp'] = $payload['shopify_weighted_avg_lp'] ?: $shopifyMetrics['weighted_avg_lp'];
         }
@@ -4874,8 +5396,11 @@ class ChannelMasterController extends Controller
             ]);
             $cachedPayload = \Cache::get($cacheKey);
             if (is_array($cachedPayload) && ($cachedPayload['status'] ?? null) === 200) {
-                $cachedPayload['data'] = $this->overlayLiveTemu1AdsOnChannelRows($cachedPayload['data'] ?? []);
+                $cachedPayload['data'] = $this->applyFastPathLiveSalesOverlays($cachedPayload['data'] ?? []);
                 $cachedPayload['data'] = $this->overlaySnapshotApiViewsOnChannelRows($cachedPayload['data'] ?? []);
+                $cachedPayload['data'] = $this->overlayLiveReverbSpendOnChannelRows($cachedPayload['data'] ?? []);
+                $cachedPayload['data'] = $this->overlayLiveReviewsOnChannelRows($cachedPayload['data'] ?? []);
+                $cachedPayload = $this->ensureInventoryExtrasOnPayload($cachedPayload);
 
                 return response()->json($cachedPayload);
             }
@@ -5056,6 +5581,12 @@ class ChannelMasterController extends Controller
                     
                     'Account health' => $channel->account_health['data'] ?? null,
                     'Reviews' => $channel->reviews_data['data'] ?? null,
+                    'Avg Rating' => is_array($channel->reviews_data['data'] ?? null)
+                        ? (float) (($channel->reviews_data['data']['Avg Rating'] ?? $channel->reviews_data['data']['avg_rating'] ?? 0))
+                        : 0,
+                    'Total Reviews' => is_array($channel->reviews_data['data'] ?? null)
+                        ? (int) (($channel->reviews_data['data']['Total Reviews'] ?? $channel->reviews_data['data']['total_reviews'] ?? 0))
+                        : 0,
                 ];
             })->toArray();
 
@@ -5063,12 +5594,10 @@ class ChannelMasterController extends Controller
             // eBay Y/L7 is a small date-window read of ebay{1,2}_order_metrics so a
             // missed daily fetch cannot leave yesterday at $0 until the next rebuild.
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
-            $formattedData = $this->overlayLiveTemu1AdsOnChannelRows($formattedData);
+            $formattedData = $this->applyFastPathLiveSalesOverlays($formattedData);
             $formattedData = $this->overlaySnapshotApiViewsOnChannelRows($formattedData);
-            $formattedData = $this->overlayLiveAmazonYSalesOnChannelRows($formattedData);
-            $formattedData = $this->overlayLiveEbayYSalesOnChannelRows($formattedData);
-            $formattedData = $this->overlayLiveShopifyYSalesOnChannelRows($formattedData);
-            $formattedData = $this->overlayLiveStaleYSalesOnChannelRows($formattedData);
+            $formattedData = $this->overlayLiveReverbSpendOnChannelRows($formattedData);
+            $formattedData = $this->overlayLiveReviewsOnChannelRows($formattedData);
 
             if (! $section && ! $paginate) {
                 \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::syncNmapFromChannelRows($formattedData);
@@ -5084,6 +5613,7 @@ class ChannelMasterController extends Controller
                 'total_count' => $total,
                 'inventory_value_amazon' => $summaryData['inventory_value_amazon'] ?? 0,
                 'inv_at_lp' => $summaryData['inv_at_lp'] ?? 0,
+                'inv_at_sp' => $summaryData['inv_at_sp'] ?? 0,
                 'shopify_inv_sum' => $summaryData['shopify_inv_sum'] ?? 0,
                 'shopify_weighted_avg_lp' => $summaryData['shopify_weighted_avg_lp'] ?? 0,
                 'inventory_by_color' => $summaryData['inventory_by_color'] ?? [],
@@ -5094,6 +5624,7 @@ class ChannelMasterController extends Controller
                 'ad_spend_by_color_by_channel' => $summaryData['ad_spend_by_color_by_channel'] ?? [],
                 'calculated_at' => $summaryData['calculated_at'] ?? null,
             ];
+            $payload = $this->ensureInventoryExtrasOnPayload($payload);
 
             try {
                 \Cache::put($cacheKey, $payload, now()->addSeconds(90));
@@ -5742,8 +6273,17 @@ class ChannelMasterController extends Controller
                     $row['N ROI'] = round($nRoiRecalculated, 2);
                 }
             } else {
-                // Reverb: Ads%/TACOS stay as Bump%; N PFT/N ROI already Amazon-style from getReverbChannelData.
+                // Reverb: Ads%/TACOS stay as Bump%; expose bump fees as Total Ad Spend
+                // so the toolbar Spend / Ads% / NPFT badges include Reverb.
                 $row['TACOS %'] = $row['TACOS %'] ?? $row['Ads%'] ?? '0%';
+                $existingSpend = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? 0));
+                if ($existingSpend <= 0) {
+                    $l30SalesVal = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
+                    $bumpPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Ads%'] ?? $row['TACOS %'] ?? 0));
+                    if ($l30SalesVal > 0 && $bumpPct > 0) {
+                        $row['Total Ad Spend'] = round(($bumpPct / 100) * $l30SalesVal, 2);
+                    }
+                }
             }
 
             $row['clicks'] = $clicks;
@@ -5805,6 +6345,9 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($finalData);
         // Shopify B2C: overlay CVR + Total Views from /shopify-b2c-pricing CVR% badge
         $finalData = $this->overlayLiveShopifyB2CCvrOnChannelRows($finalData);
+        $finalData = $this->overlayLiveShopifyB2BMetricsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveReverbSpendOnChannelRows($finalData);
+        $finalData = $this->overlayLiveReviewsOnChannelRows($finalData);
         // FB Marketplace: overlay live Sales / GPFT / ROI from /facebook-marketplace
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
@@ -5849,6 +6392,7 @@ class ChannelMasterController extends Controller
             'data'    => $finalData,
             'inventory_value_amazon' => round($inventoryValueAmazon, 2),
             'inv_at_lp' => round($invAtLp, 2),
+            'inv_at_sp' => round($shopifyInvLp['inv_at_sp'] ?? 0, 2),
             'shopify_inv_sum' => $shopifyInvLp['inv_sum'],
             'shopify_weighted_avg_lp' => $shopifyInvLp['weighted_avg_lp'],
             'inventory_by_color' => $inventoryByColor,
@@ -6093,16 +6637,10 @@ class ChannelMasterController extends Controller
         // pipeline as the all-marketplace-master Faire row and /faire-tabulator page.
         // Previously this queried `faire_daily_data` (manual Excel uploads) which had a
         // different latest-order anchor and could disagree with the L30/L60 numbers.
-        $faireWhere = function ($q) {
-            $q->where('source_name', 'faire')
-              ->orWhere('source_name', 'LIKE', '%faire%')
-              ->orWhere('tags', 'LIKE', '%Faire%');
-        };
-
         [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
         $sum = (float) DB::table('shopify_raw_orders')
-            ->where($faireWhere)
+            ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
             ->where('order_date', '>=', $yStartPacific)
             ->where('order_date', '<=', $yEndPacific)
             ->where('quantity', '>', 0)
@@ -6174,10 +6712,26 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * TikTok 2: tiktok_sales_two unit_price × quantity (day before latest order_date).
+     * TikTok 2: tiktok2_orders line sales (sale_price × qty) for the Pacific day
+     * before the latest *active* order — same rule as TikTok Shop. A cancelled
+     * order must not move the window. Falls back to tiktok_sales_two if API is empty.
      */
     private function computeTiktokTwoYSalesLikeAmazon(): ?float
     {
+        if (Tiktok2Order::tableReady()) {
+            $latestPacific = Tiktok2Order::latestActiveCreatedAt();
+            if ($latestPacific) {
+                $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
+                $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+
+                return round(Tiktok2Order::salesAmountBetween($yStartPacific, $yEndPacific), 2);
+            }
+        }
+
+        if (! Schema::hasTable('tiktok_sales_two')) {
+            return null;
+        }
+
         $latestRaw = DB::table('tiktok_sales_two')->whereNotNull('order_date')->max('order_date');
         if (!$latestRaw) {
             return null;
@@ -6693,21 +7247,16 @@ class ChannelMasterController extends Controller
 
     private function computeFaireL7SalesLikeAmazon(): ?float
     {
-        $latestRaw = DB::table('faire_daily_data')->whereNotNull('order_date')->max('order_date');
-        if (!$latestRaw) {
-            return null;
-        }
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
-
-        $sum = (float) DB::table('faire_daily_data')
+        $sum = (float) DB::table('shopify_raw_orders')
             ->where('order_date', '>=', $l7StartPacific)
             ->where('order_date', '<=', $l7EndPacific)
+            ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
             ->where('quantity', '>', 0)
-            ->selectRaw(
-                'COALESCE(SUM((CASE WHEN COALESCE(wholesale_price, 0) > 0 THEN wholesale_price ELSE COALESCE(retail_price, 0) END) * quantity), 0) as revenue'
-            )
+            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
             ->value('revenue');
 
         return round($sum, 2);
@@ -6727,6 +7276,19 @@ class ChannelMasterController extends Controller
 
     private function computeTiktokTwoL7SalesLikeAmazon(): ?float
     {
+        if (Tiktok2Order::tableReady()) {
+            $latestPacific = Tiktok2Order::latestActiveCreatedAt();
+            if ($latestPacific) {
+                [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+
+                return round(Tiktok2Order::salesAmountBetween($l7StartPacific, $l7EndPacific), 2);
+            }
+        }
+
+        if (! Schema::hasTable('tiktok_sales_two')) {
+            return null;
+        }
+
         $latestRaw = DB::table('tiktok_sales_two')->whereNotNull('order_date')->max('order_date');
         if (!$latestRaw) {
             return null;
@@ -8715,7 +9277,7 @@ class ChannelMasterController extends Controller
             'PMT Spent'  => 0,
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
-            'Total Ad Spend' => 0,
+            'Total Ad Spend' => round($totalBumpFees, 2),
             // Ads%/TACOS = Bump%; NPFT/NROI cut Ads% like Amazon /reverb-pricing.
             'Ads%'       => round($bumpPercentage, 2) . '%',
             'TACOS %'    => round($bumpPercentage, 2) . '%',
@@ -10367,11 +10929,7 @@ class ChannelMasterController extends Controller
     {
         $rows = DB::table('shopify_raw_orders')
             ->whereBetween('order_date', [$startDate, $endDate])
-            ->where(function ($q) {
-                $q->where('source_name', 'faire')
-                  ->orWhere('source_name', 'LIKE', '%faire%')
-                  ->orWhere('tags', 'LIKE', '%Faire%');
-            })
+            ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
             ->get(['order_number', 'sku', 'quantity', 'price']);
 
         if ($rows->isEmpty()) {
@@ -13045,22 +13603,29 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated)
+        // Live L30 from shopify_b2b_daily_data — same source as /shopify-b2b-pricing.
+        $live = [];
+        try {
+            $live = app(\App\Http\Controllers\MarketPlace\Shopifyb2bController::class)->l30SnapshotForMaster();
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2B live snapshot failed: '.$e->getMessage());
+        }
+
         $metrics = MarketplaceDailyMetric::where('channel', 'Shopify B2B')->latest('date')->first();
         
         // L60 will be 0 until we have historical data with proper dates
         $l60Orders = 0;
         $l60Sales = 0;
 
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $nPftValue = $metrics->n_pft ?? $totalProfit;
-        $nRoi = $metrics->n_roi ?? $gRoi;
+        $l30Sales = (float) ($live['l30_sales'] ?? $metrics->total_sales ?? 0);
+        $l30Orders = (int) ($live['l30_orders'] ?? $metrics->total_orders ?? 0);
+        $totalQuantity = (int) ($live['qty'] ?? $metrics->total_quantity ?? 0);
+        $totalProfit = (float) ($live['total_pft'] ?? $metrics->total_pft ?? 0);
+        $totalCogs = (float) ($live['total_cogs'] ?? $metrics->total_cogs ?? 0);
+        $gProfitPct = (float) ($live['gpft_pct'] ?? $metrics->pft_percentage ?? 0);
+        $gRoi = (float) ($live['groi_pct'] ?? $metrics->roi_percentage ?? 0);
+        $nPftValue = $totalProfit;
+        $nRoi = $gRoi;
         
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
@@ -13103,6 +13668,8 @@ class ChannelMasterController extends Controller
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
             'Total Ad Spend' => 0,
+            'Ads%'       => '0%',
+            'TACOS %'    => '0%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -14930,8 +15497,9 @@ class ChannelMasterController extends Controller
                 'clicks' => 'clicks',
                 'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
+                'tat' => 'tat',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'l7_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'l7_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
             $useL7Window = intval($request->input('window', 0)) >= 7;
             $out = [];
 
@@ -15010,12 +15578,20 @@ class ChannelMasterController extends Controller
                     return $stabilizedById[$row->id] ?? \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
                 };
 
+                $metricValue = function (string $metric, $row) use ($channel, $metricMap, $summaryForRow): ?float {
+                    $sd = $summaryForRow($row);
+                    if ($metric === 'y_sales') {
+                        return $this->ySalesValueForDotRow($channel, $row, $sd);
+                    }
+
+                    return $this->getMetricValueFromSummaryData($channel, $metric, $sd, $metricMap, true);
+                };
+
                 if ($cmsRows->count() >= 2) {
-                    $newerSd = $summaryForRow($cmsRows->get(0));
                     foreach ($metrics as $metric) {
                         // Dot trends: allow legacy qty÷views fallback for CVR so Shopify/Temu/Reverb
                         // don't stay permanently gray while only today has listing_cvr persisted.
-                        $v2 = $this->getMetricValueFromSummaryData($channel, $metric, $newerSd, $metricMap, true);
+                        $v2 = $metricValue($metric, $cmsRows->get(0));
                         if ($v2 === null) continue;
 
                         // Walk back until we find a snapshot whose metric value differs
@@ -15023,21 +15599,9 @@ class ChannelMasterController extends Controller
                         // matches exactly, fall back to the immediate prior value so we
                         // still emit a [v, v] pair (which renders as a grey "no change"
                         // dot — same as before for genuinely-flat metrics).
-                        $v1 = $this->getMetricValueFromSummaryData(
-                            $channel,
-                            $metric,
-                            $summaryForRow($cmsRows->get(1)),
-                            $metricMap,
-                            true
-                        );
+                        $v1 = $metricValue($metric, $cmsRows->get(1));
                         for ($i = 1; $i < $cmsRows->count(); $i++) {
-                            $candidate = $this->getMetricValueFromSummaryData(
-                                $channel,
-                                $metric,
-                                $summaryForRow($cmsRows->get($i)),
-                                $metricMap,
-                                true
-                            );
+                            $candidate = $metricValue($metric, $cmsRows->get($i));
                             if ($candidate === null) continue;
                             // Use the same equality check the frontend uses (===) but with
                             // a tiny epsilon to ignore float-rounding noise from snapshot
@@ -15051,9 +15615,8 @@ class ChannelMasterController extends Controller
                         $out[$channel][$metric] = [$v1, $v2];
                     }
                 } elseif ($cmsRows->count() === 1) {
-                    $sd = $summaryForRow($cmsRows->get(0));
                     foreach ($metrics as $metric) {
-                        $v = $this->getMetricValueFromSummaryData($channel, $metric, $sd, $metricMap, true);
+                        $v = $metricValue($metric, $cmsRows->get(0));
                         $out[$channel][$metric] = $v !== null ? [$v, $v] : [null, null];
                     }
                 }
@@ -15509,6 +16072,28 @@ class ChannelMasterController extends Controller
         $snap = Carbon::parse($row->snapshot_date)->toDateString();
 
         return $calc !== '' && $calc < $snap;
+    }
+
+    /**
+     * Y Sales for table/badge dots — same fill as the Y Sales chart:
+     * listing-copy / missing / $0 snapshot days are replaced with that Pacific day's orders.
+     * Without this, today's unset or copied y_sales leaves [null,null] and every Y Sales
+     * dot stays gray.
+     *
+     * @param  array<string, mixed>  $sd
+     */
+    private function ySalesValueForDotRow(string $channel, $row, array $sd): ?float
+    {
+        $storedY = array_key_exists('y_sales', $sd) ? (float) $sd['y_sales'] : null;
+        $needsReal = $storedY === null || $storedY <= 0 || $this->channelSnapshotYSalesIsInherited($row, $sd);
+        if (! $needsReal) {
+            return $storedY;
+        }
+
+        $asOf = Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->subDay()->toDateString();
+        $realY = $this->realPacificDayYSales($channel, $asOf);
+
+        return $realY !== null ? $realY : $storedY;
     }
 
     /**

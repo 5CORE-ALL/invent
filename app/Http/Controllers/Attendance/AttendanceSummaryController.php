@@ -28,27 +28,25 @@ class AttendanceSummaryController extends Controller
 
         $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
         $dayReset = $request->input('day_reset', AttendanceTimelineService::defaultDayReset($timezone));
-        $team = $request->input('team', 'all');
-
-        [$from, $to, $rangeKey] = $this->resolveRange($request, $timezone);
-
-        [$employees, $teams] = $this->filteredEmployees($team);
-
-        $summary = $this->summaryService->teamSummary($employees, $from, $to, $timezone);
+        $payload = $this->buildSummary($request, $timezone);
 
         return view('attendance.summary', [
             'title' => 'Team Monitoring',
-            'from' => $from,
-            'to' => $to,
-            'range_key' => $rangeKey,
-            'team' => $team,
+            'from' => $payload['from'],
+            'to' => $payload['to'],
+            'range_key' => $payload['range_key'],
+            'team' => $payload['team'],
+            'executive' => $payload['executive'],
             'timezone' => $timezone,
             'day_reset' => $dayReset,
-            'teams' => $teams,
-            'rows' => $summary['rows'],
-            'totals' => $summary['totals'],
-            'not_logged' => $summary['not_logged'],
-            'total_employees' => $summary['total_employees'],
+            'teams' => $payload['teams'],
+            'executives' => $payload['executives'],
+            'rows' => $payload['rows'],
+            'totals' => $payload['l30_totals'],
+            'l30_from' => $payload['l30_from'],
+            'l30_to' => $payload['l30_to'],
+            'not_logged' => $payload['not_logged'],
+            'total_employees' => $payload['total_employees'],
         ]);
     }
 
@@ -57,13 +55,8 @@ class AttendanceSummaryController extends Controller
         abort_unless(AttendanceAccess::canMonitor(), 403);
 
         $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
-        $team = $request->input('team', 'all');
-        [$from, $to] = $this->resolveRange($request, $timezone);
 
-        [$employees] = $this->filteredEmployees($team);
-        $summary = $this->summaryService->teamSummary($employees, $from, $to, $timezone);
-
-        return response()->json($summary);
+        return response()->json($this->buildSummary($request, $timezone));
     }
 
     public function export(Request $request): StreamedResponse
@@ -71,16 +64,65 @@ class AttendanceSummaryController extends Controller
         abort_unless(AttendanceAccess::canMonitor(), 403);
 
         $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
-        $team = $request->input('team', 'all');
-        [$from, $to] = $this->resolveRange($request, $timezone);
-
-        [$employees] = $this->filteredEmployees($team);
-        $summary = $this->summaryService->teamSummary($employees, $from, $to, $timezone);
-        $csv = $this->summaryService->toCsv($summary['rows'], $from, $to);
+        $payload = $this->buildSummary($request, $timezone);
+        $csv = $this->summaryService->toCsv($payload['rows'], $payload['from'], $payload['to']);
 
         return response()->streamDownload(function () use ($csv) {
             echo $csv;
-        }, 'employee-summary_'.$from.'_'.$to.'.csv', ['Content-Type' => 'text/csv']);
+        }, 'employee-summary_'.$payload['from'].'_'.$payload['to'].'.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * Table follows the chosen day/range. Top badges are always L30 for the
+     * selected executive (or the current team when none is selected).
+     *
+     * @return array<string, mixed>
+     */
+    private function buildSummary(Request $request, string $timezone): array
+    {
+        $team = (string) $request->input('team', 'all');
+        $executiveId = (int) $request->input('executive', 0);
+        [$from, $to, $rangeKey] = $this->resolveRange($request, $timezone);
+        [$employees, $teams] = $this->filteredEmployees($team);
+
+        $executive = $employees->first(fn (User $u) => (int) $u->id === $executiveId);
+        $executiveId = $executive?->id ?? 0;
+        $tableEmployees = $executive
+            ? collect([$executive])
+            : $employees;
+
+        [$l30From, $l30To] = $this->summaryService->l30DateRange($timezone, $to);
+        $kpiOnly = $request->boolean('kpi_only');
+
+        $summary = $kpiOnly
+            ? ['rows' => [], 'totals' => null, 'not_logged' => 0, 'total_employees' => $tableEmployees->count()]
+            : $this->summaryService->teamSummary($tableEmployees, $from, $to, $timezone);
+
+        if (! $kpiOnly && $from === $l30From && $to === $l30To) {
+            $l30Totals = $summary['totals'];
+        } else {
+            $l30Totals = $this->summaryService->kpiTotals($tableEmployees, $l30From, $l30To, $timezone);
+        }
+
+        return [
+            'rows' => $summary['rows'],
+            'totals' => $summary['totals'] ?? $l30Totals,
+            'l30_totals' => $l30Totals,
+            'l30_from' => $l30From,
+            'l30_to' => $l30To,
+            'not_logged' => $summary['not_logged'],
+            'total_employees' => $summary['total_employees'],
+            'from' => $from,
+            'to' => $to,
+            'range_key' => $rangeKey,
+            'team' => $team,
+            'executive' => $executiveId,
+            'teams' => $teams,
+            'executives' => $employees->map(fn (User $u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+            ])->values(),
+        ];
     }
 
     /**
@@ -106,8 +148,13 @@ class AttendanceSummaryController extends Controller
     {
         $now = now()->timezone($timezone);
         $today = $now->toDateString();
-        $range = $request->input('range', 'custom');
+        $range = $request->input('range', 'l30');
 
+        if ($range === 'l30') {
+            [$from, $to] = $this->summaryService->l30DateRange($timezone);
+
+            return [$from, $to, 'l30'];
+        }
         if ($range === 'today') {
             return [$today, $today, 'today'];
         }

@@ -98,6 +98,24 @@ class TiktokOrder extends Model
     }
 
     /**
+     * Latest non-cancelled order as California Carbon.
+     * Use this to anchor Y Sales so a cancelled row does not skip the last real sales day.
+     */
+    public static function latestActiveCreatedAt(): ?Carbon
+    {
+        if (! static::tableReady()) {
+            return null;
+        }
+
+        $raw = static::activeQuery()->whereNotNull('order_created_at')->max('order_created_at');
+        if (! $raw) {
+            return null;
+        }
+
+        return Carbon::parse($raw, 'UTC')->timezone(self::TZ);
+    }
+
+    /**
      * Last N calendar days in California ending today (CA), as CA Carbon bounds.
      *
      * @return array{0: Carbon, 1: Carbon}

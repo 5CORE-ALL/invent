@@ -125,6 +125,9 @@ class AttendanceSummaryService
                 'name' => $employee->name,
                 'email' => $employee->email,
                 'designation' => $employee->designation,
+                'avatar_url' => ! empty($employee->avatar)
+                    ? asset('storage/'.$employee->avatar)
+                    : asset('images/users/avatar-2.jpg'),
                 'is_live' => $isLive,
                 'live_status' => $live['status'],
                 'live_label' => $live['label'],
@@ -155,7 +158,9 @@ class AttendanceSummaryService
                 'including_idle_clock' => $this->formatClock($workTime),
                 'has_worked' => $worked > 0 || $manualSeconds > 0,
                 'detail_url' => route('attendance.employee', $employee).'?period=custom&from='.$from.'&to='.$to,
-                'timeline_url' => route('attendance.employee', $employee).'?period=custom&from='.$from.'&to='.$to,
+                'timeline_url' => url('/attendance/employee/'.$employee->id).'?period=custom&from='.$from.'&to='.$to.'&timezone='.$timezone,
+                'timeline_api' => url('/attendance/employee/'.$employee->id.'/timeline'),
+                'captures_url' => url('/attendance/employee/'.$employee->id.'/captures').'?date='.$to.'&timezone='.$timezone,
                 'live_url' => route('attendance.live.show', $employee),
             ];
         }
@@ -166,16 +171,92 @@ class AttendanceSummaryService
 
         return [
             'rows' => $rows,
-            'totals' => [
-                'time_worked' => $this->formatDurationLong($totals['worked_seconds']),
-                'timer_active' => $this->formatDurationLong($totals['active_seconds']),
-                'manual_entry' => $this->formatDurationLong($totals['manual_seconds']),
-                'meeting_hours' => $this->formatDurationLong($totals['meeting_seconds']),
-                'idle_time' => $this->formatDurationLong($totals['idle_seconds']),
-                'employees_worked' => $totals['employees_worked'],
-            ],
+            'totals' => $this->formatKpiTotals($totals),
             'not_logged' => $notLogged,
             'total_employees' => count($rows),
+        ];
+    }
+
+    /**
+     * KPI totals only (no live/screenshot/row payload). Used for L30 badges.
+     *
+     * @param  Collection<int, User>  $employees
+     * @return array<string, mixed>
+     */
+    public function kpiTotals(
+        Collection $employees,
+        string $from,
+        string $to,
+        ?string $timezone = null,
+    ): array {
+        $timezone = $timezone ?: AttendanceTimelineService::defaultTimezone();
+        $userIds = $employees->pluck('id')->all();
+
+        $manualByUser = $userIds === []
+            ? collect()
+            : AttendancePayrollPeriodLine::query()
+                ->whereIn('user_id', $userIds)
+                ->where('period_from', $from)
+                ->where('period_to', $to)
+                ->get()
+                ->keyBy('user_id');
+
+        $totals = [
+            'worked_seconds' => 0,
+            'active_seconds' => 0,
+            'manual_seconds' => 0,
+            'meeting_seconds' => 0,
+            'idle_seconds' => 0,
+            'employees_worked' => 0,
+        ];
+
+        foreach ($employees as $employee) {
+            $stats = $this->timelineService->employeePeriodStats($employee, $from, $to, $timezone);
+            $manualSeconds = (int) ($manualByUser->get($employee->id)?->manual_seconds ?? 0);
+            $active = (int) $stats['active_seconds'];
+            $idle = (int) $stats['idle_seconds'];
+            $worked = $active + $idle;
+
+            if ($worked > 0 || $manualSeconds > 0) {
+                $totals['employees_worked']++;
+            }
+
+            $totals['worked_seconds'] += $worked + $manualSeconds;
+            $totals['active_seconds'] += $active;
+            $totals['manual_seconds'] += $manualSeconds;
+            $totals['idle_seconds'] += $idle;
+        }
+
+        return $this->formatKpiTotals($totals);
+    }
+
+    /**
+     * Rolling last-30-days window ending on $asOf (any calendar day).
+     *
+     * @return array{0: string, 1: string}
+     */
+    public function l30DateRange(?string $timezone = null, ?string $asOf = null): array
+    {
+        $timezone = $timezone ?: AttendanceTimelineService::defaultTimezone();
+        $to = Carbon::parse($asOf ?: now()->timezone($timezone)->toDateString(), $timezone)->toDateString();
+        $from = Carbon::parse($to, $timezone)->subDays(30)->toDateString();
+
+        return [$from, $to];
+    }
+
+    /**
+     * @param  array<string, int>  $totals
+     * @return array<string, mixed>
+     */
+    private function formatKpiTotals(array $totals): array
+    {
+        return [
+            'time_worked' => $this->formatDurationLong($totals['worked_seconds']),
+            'timer_active' => $this->formatDurationLong($totals['active_seconds']),
+            'manual_entry' => $this->formatDurationLong($totals['manual_seconds']),
+            'meeting_hours' => $this->formatDurationLong($totals['meeting_seconds']),
+            'idle_time' => $this->formatDurationLong($totals['idle_seconds']),
+            'employees_worked' => $totals['employees_worked'],
         ];
     }
 
@@ -347,10 +428,6 @@ class AttendanceSummaryService
 
     public function defaultDateRange(?string $timezone = null): array
     {
-        $timezone = $timezone ?: AttendanceTimelineService::defaultTimezone();
-        $to = now()->timezone($timezone)->toDateString();
-        $from = Carbon::parse($to, $timezone)->subDays(30)->toDateString();
-
-        return [$from, $to];
+        return $this->l30DateRange($timezone);
     }
 }

@@ -97,8 +97,8 @@
         .amz-stat-badge--archived-extra { background: #6b7280; cursor: pointer; }
         .amz-stat-badge--archived-extra.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #6b7280; }
         .amz-stat-badge--issues .amz-vv-trend-dot {
-            display: inline-block; width: 10px; height: 10px; border-radius: 50%;
-            margin-left: 8px; vertical-align: middle; cursor: pointer; flex-shrink: 0;
+            display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+            margin-left: 4px; vertical-align: middle; cursor: pointer; flex-shrink: 0;
             box-shadow: 0 0 0 1px rgba(255,255,255,0.65);
             background: rgba(255,255,255,0.35);
         }

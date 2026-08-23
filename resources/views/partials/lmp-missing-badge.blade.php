@@ -6,10 +6,27 @@
     data-lmp-channel="{{ $lmpChannelKey }}"
     style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
     title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click to show only those rows.">
-    LMP M. 0
+    <span class="summary-trend-dot none" title="Rolling history"></span>LMP M. 0
 </span>
 @once
-<script src="{{ asset('js/lmp-missing-badge.js') }}?v=1"></script>
+<style>
+    .summary-trend-dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        margin-right: 0.22rem;
+        vertical-align: 0.08em;
+        flex-shrink: 0;
+        cursor: pointer;
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.85);
+    }
+    .summary-trend-dot.up { background: #22c55e; }
+    .summary-trend-dot.down { background: #ef4444; }
+    .summary-trend-dot.flat,
+    .summary-trend-dot.none { background: #9ca3af; }
+</style>
+<script src="{{ asset('js/lmp-missing-badge.js') }}?v=2"></script>
 <script>
     window.LMP_MISSING_REPORT_URL = @json(route('lmp.missing.report'));
 </script>

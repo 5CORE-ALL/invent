@@ -3596,7 +3596,8 @@
             if (!(std > 0)) return null;
             const prmt = Math.max(0, parseFloat(row.prmt_pct != null ? row.prmt_pct : row._prmt_pct_applied) || 0);
             const cpn = Math.max(0, parseFloat(row.cpn_pct != null ? row.cpn_pct : row._cpn_pct_applied) || 0);
-            const totalDisc = Math.min(99.99, prmt + cpn);
+            const adj = (typeof computeCvrUpDnPct === 'function') ? (Number(computeCvrUpDnPct(row)) || 0) : 0;
+            const totalDisc = Math.min(99.99, Math.max(0, prmt + cpn + adj));
             const sprice = totalDisc > 0
                 ? +(std * (1 - (totalDisc / 100))).toFixed(2)
                 : +std.toFixed(2);
@@ -4460,22 +4461,17 @@
                         const cvr60 = parseFloat(rowData.cvr_60) || 0;
                         const tol = 0.1;
                         let arrowHtml = '';
-                        let arrowColor = '#6c757d';
+                        let arrowColor = '#ffc107';
                         let arrowIcon = 'fa-minus';
-                        let dotColor = '#008000'; // green by default
-                        if (val > cvr60 + tol) {
-                            // CVR 30 > CVR 60 (improving)
-                            arrowColor = '#28a745';
-                            arrowIcon = 'fa-arrow-up';
-                            dotColor = '#28a745'; // green
-                        } else if (val < cvr60 - tol) {
-                            // CVR 60 > CVR 30 (declining)
+                        let dotColor = '#ffc107';
+                        if (val === 0 || val < cvr60 - tol) {
                             arrowColor = '#a00211';
                             arrowIcon = 'fa-arrow-down';
-                            dotColor = '#a00211'; // red
-                        } else {
-                            // CVR 30 equals CVR 60 (within tolerance)
-                            dotColor = '#ffc107'; // yellow
+                            dotColor = '#a00211';
+                        } else if (val > cvr60 + tol) {
+                            arrowColor = '#28a745';
+                            arrowIcon = 'fa-arrow-up';
+                            dotColor = '#28a745';
                         }
                         arrowHtml = ` <span title="CVR 30 vs CVR 60: ${formatCvrPct(cvr60)}" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
                         const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
@@ -7017,7 +7013,7 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|r_pft|r_npft|s_profit|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|lmp_diff_pct|lmp_match|linked_lmp_skus|linked_lmp_sku_add|sprice|s_r_pft|s_r_npft|s_recovery|_push|stemu_price|sgprft_percent|spft_percent|sroi_percent|sgroi_percent|lp|temu_ship|prmt_pct|cpn_pct|push_cpn|dsc|appr|push_prc)$/i.test(f) ||
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|r_pft|r_npft|s_profit|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|lmp_diff_pct|lmp_match|linked_lmp_skus|linked_lmp_sku_add|sprice|s_r_pft|s_r_npft|s_recovery|_push|stemu_price|sgprft_percent|spft_percent|sroi_percent|sgroi_percent|lp|temu_ship|prmt_pct|cpn_pct|cvr_up_dn|t_discounts|push_cpn|dsc|appr|push_prc)$/i.test(f) ||
                 /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|match|s\s*prc|sgprft|spft|sroi|lp|ship|push|recovery|prmt|cpn|dsc|appr|push\s*prc|push\s*cpn)\b/i.test(tl)
             ) {
                 return 'pricing';

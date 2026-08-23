@@ -202,6 +202,28 @@ class AttendanceMonitorController extends Controller
         ];
     }
 
+    public function employeeTimeline(Request $request, User $user): JsonResponse
+    {
+        abort_unless(AttendanceAccess::canViewUser($user->id), 403);
+
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
+        $dayReset = $request->input('day_reset', AttendanceTimelineService::defaultDayReset($timezone));
+        [$from, $to] = $this->resolveEmployeePeriod($request, $timezone);
+        $activity = $this->timelineService->employeePeriodDayRows($user, $from, $to, $timezone, $dayReset);
+
+        return response()->json([
+            'name' => $user->name,
+            'from' => $from,
+            'to' => $to,
+            'timezone' => $timezone,
+            'day_reset' => $dayReset,
+            'full_url' => route('attendance.employee', $user).'?period=custom&from='.$from.'&to='.$to,
+            'days' => $activity['days'] ?? [],
+            'axis_hours' => $activity['axis_hours'] ?? [],
+            'range_label' => $activity['range_label'] ?? '',
+        ]);
+    }
+
     public function employeeScreenshots(Request $request, User $user): JsonResponse
     {
         abort_unless(AttendanceAccess::canViewUser($user->id), 403);
@@ -214,6 +236,29 @@ class AttendanceMonitorController extends Controller
         return response()->json(
             $this->timelineService->employeeScreenshots($user, $date, $page, $timezone, $dayReset)
         );
+    }
+
+    public function employeeCaptures(Request $request, User $user)
+    {
+        abort_unless(AttendanceAccess::canViewUser($user->id), 403);
+
+        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
+        $dayReset = $request->input('day_reset', AttendanceTimelineService::defaultDayReset($timezone));
+        $date = (string) $request->input('date', now()->timezone($timezone)->toDateString());
+        $page = $this->timelineService->employeeScreenshots($user, $date, 1, $timezone, $dayReset);
+
+        return view('attendance.employee-captures', [
+            'title' => $user->name.' — Screen captures',
+            'employee' => $user,
+            'date' => $date,
+            'timezone' => $timezone,
+            'day_reset' => $dayReset,
+            'screenshots' => $page['screenshots'],
+            'screenshot_total' => $page['total'],
+            'screenshot_has_more' => $page['has_more'],
+            'timeline_url' => url('/attendance/employee/'.$user->id).'?period=custom&from='.$date.'&to='.$date.'&timezone='.$timezone.'&day_reset='.$dayReset,
+            'shots_api' => url('/attendance/employee/'.$user->id.'/screenshots'),
+        ]);
     }
 
     public function agentDownload(Request $request)

@@ -109,12 +109,7 @@
             color: var(--lc-blue); font-weight: 600; text-decoration: none; cursor: pointer;
             display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
         }
-        .lm-hero-wrap, .lm-raw-wrap { position: relative; display: inline-flex; cursor: pointer; }
-        .lm-raw-count {
-            position: absolute; top: -6px; right: -8px; background: #2c6ed5; color: #fff;
-            border-radius: 10px; font-size: 10px; font-weight: 700; min-width: 16px; height: 16px;
-            padding: 0 4px; display: flex; align-items: center; justify-content: center;
-        }
+        .lm-hero-wrap { position: relative; display: inline-flex; cursor: pointer; }
         .lm-name-link:hover { text-decoration: underline; }
         .lm-status-pill {
             display: inline-block; border-radius: 999px; padding: .18rem .55rem;
@@ -783,9 +778,6 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 <h5 class="modal-title flex-grow-1" id="lm-prod-title">Product</h5>
                 <div class="d-flex gap-2">
-                    <a href="#" class="btn-lc btn-lc-ghost btn-sm d-none" id="lm-prod-edit-shopify" target="_blank" rel="noopener">
-                        <i class="fab fa-shopify me-1"></i>Edit On Shopify
-                    </a>
                     <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-prod-update-btn">
                         <i class="fas fa-sync-alt me-1"></i>Update from Store
                     </button>
@@ -1169,12 +1161,6 @@
         currentProduct = p;
         currentProductSku = p.sku || '';
         $('#lm-prod-title').text(p.title || p.sku || 'Product');
-        const $edit = $('#lm-prod-edit-shopify');
-        if (p.shopify_admin_url) {
-            $edit.removeClass('d-none').attr('href', p.shopify_admin_url);
-        } else {
-            $edit.addClass('d-none').attr('href', '#');
-        }
         renderProductInfo(p);
         const images = p.images || p.amazon_images || [];
         if (p.hero_image && images[0] !== p.hero_image) {
@@ -1726,51 +1712,6 @@
                     }
                 },
                 {
-                    title: 'Raw Images AI', field: 'raw_ai_image', width: 100, hozAlign: 'center', headerSort: false,
-                    formatter: (cell) => {
-                        const row = cell.getRow().getData();
-                        const src = cell.getValue();
-                        const count = Number(row.raw_ai_image_count || 0);
-                        const previewable = row.raw_ai_image_previewable !== false;
-                        if (!src) return '<span class="lm-thumb-empty" title="No AI raw image"><i class="fas fa-wand-magic-sparkles"></i></span>';
-                        const inner = previewable
-                            ? `<img class="lm-thumb" src="${escapeHtml(src)}" alt="Raw AI">`
-                            : '<span class="lm-thumb-empty"><i class="fas fa-wand-magic-sparkles"></i></span>';
-                        return `<span class="lm-raw-wrap" title="Open Raw Images AI">${inner}${count > 1 ? `<span class="lm-raw-count">${count}</span>` : ''}</span>`;
-                    },
-                    cellClick: () => { window.location.href = "{{ url('/raw-images') }}"; }
-                },
-                {
-                    title: 'Raw Image', field: 'raw_image', width: 88, hozAlign: 'center', headerSort: false,
-                    formatter: (cell) => {
-                        const row = cell.getRow().getData();
-                        const src = cell.getValue();
-                        const count = Number(row.raw_image_count || 0);
-                        const previewable = row.raw_image_previewable !== false;
-                        if (!src) return '<span class="lm-thumb-empty" title="No raw image"><i class="fas fa-file-image"></i></span>';
-                        const inner = previewable
-                            ? `<img class="lm-thumb" src="${escapeHtml(src)}" alt="Raw">`
-                            : '<span class="lm-thumb-empty"><i class="fas fa-file-image"></i></span>';
-                        return `<span class="lm-raw-wrap" title="Open Raw Images">${inner}${count > 1 ? `<span class="lm-raw-count">${count}</span>` : ''}</span>`;
-                    },
-                    cellClick: () => { window.location.href = "{{ url('/raw-images') }}"; }
-                },
-                {
-                    title: 'Batch +COO', field: 'raw_batch_image', width: 96, hozAlign: 'center', headerSort: false,
-                    formatter: (cell) => {
-                        const row = cell.getRow().getData();
-                        const src = cell.getValue();
-                        const count = Number(row.raw_batch_image_count || 0);
-                        const previewable = row.raw_batch_image_previewable !== false;
-                        if (!src) return '<span class="lm-thumb-empty" title="No Batch +COO raw image"><i class="fas fa-file-image"></i></span>';
-                        const inner = previewable
-                            ? `<img class="lm-thumb" src="${escapeHtml(src)}" alt="Batch +COO">`
-                            : '<span class="lm-thumb-empty"><i class="fas fa-file-image"></i></span>';
-                        return `<span class="lm-raw-wrap" title="Open Batch +COO raw images">${inner}${count > 1 ? `<span class="lm-raw-count">${count}</span>` : ''}</span>`;
-                    },
-                    cellClick: () => { window.location.href = "{{ url('/raw-images-batch-coo') }}"; }
-                },
-                {
                     title: 'Name', field: 'name', minWidth: 220, widthGrow: 4,
                     formatter: (cell) => {
                         const row = cell.getRow().getData();
@@ -1844,51 +1785,6 @@
                         const sku = String(cell.getRow().getData().sku || '').trim();
                         if (sku) openProductModal(sku, 'images');
                     }
-                },
-                {
-                    title: 'Raw Images AI', field: 'raw_ai_image', width: 100, hozAlign: 'center', headerSort: false,
-                    formatter: (cell) => {
-                        const row = cell.getRow().getData();
-                        const src = cell.getValue();
-                        const count = Number(row.raw_ai_image_count || 0);
-                        const previewable = row.raw_ai_image_previewable !== false;
-                        if (!src) return '<span class="lm-thumb-empty" title="No AI raw image"><i class="fas fa-wand-magic-sparkles"></i></span>';
-                        const inner = previewable
-                            ? `<img class="lm-thumb" src="${escapeHtml(src)}" alt="Raw AI">`
-                            : '<span class="lm-thumb-empty"><i class="fas fa-wand-magic-sparkles"></i></span>';
-                        return `<span class="lm-raw-wrap" title="Open Raw Images AI">${inner}${count > 1 ? `<span class="lm-raw-count">${count}</span>` : ''}</span>`;
-                    },
-                    cellClick: () => { window.location.href = "{{ url('/raw-images') }}"; }
-                },
-                {
-                    title: 'Raw Image', field: 'raw_image', width: 88, hozAlign: 'center', headerSort: false,
-                    formatter: (cell) => {
-                        const row = cell.getRow().getData();
-                        const src = cell.getValue();
-                        const count = Number(row.raw_image_count || 0);
-                        const previewable = row.raw_image_previewable !== false;
-                        if (!src) return '<span class="lm-thumb-empty" title="No raw image"><i class="fas fa-file-image"></i></span>';
-                        const inner = previewable
-                            ? `<img class="lm-thumb" src="${escapeHtml(src)}" alt="Raw">`
-                            : '<span class="lm-thumb-empty"><i class="fas fa-file-image"></i></span>';
-                        return `<span class="lm-raw-wrap" title="Open Raw Images">${inner}${count > 1 ? `<span class="lm-raw-count">${count}</span>` : ''}</span>`;
-                    },
-                    cellClick: () => { window.location.href = "{{ url('/raw-images') }}"; }
-                },
-                {
-                    title: 'Batch +COO', field: 'raw_batch_image', width: 96, hozAlign: 'center', headerSort: false,
-                    formatter: (cell) => {
-                        const row = cell.getRow().getData();
-                        const src = cell.getValue();
-                        const count = Number(row.raw_batch_image_count || 0);
-                        const previewable = row.raw_batch_image_previewable !== false;
-                        if (!src) return '<span class="lm-thumb-empty" title="No Batch +COO raw image"><i class="fas fa-file-image"></i></span>';
-                        const inner = previewable
-                            ? `<img class="lm-thumb" src="${escapeHtml(src)}" alt="Batch +COO">`
-                            : '<span class="lm-thumb-empty"><i class="fas fa-file-image"></i></span>';
-                        return `<span class="lm-raw-wrap" title="Open Batch +COO raw images">${inner}${count > 1 ? `<span class="lm-raw-count">${count}</span>` : ''}</span>`;
-                    },
-                    cellClick: () => { window.location.href = "{{ url('/raw-images-batch-coo') }}"; }
                 },
                 {
                     title: '', field: 'id', width: 42, hozAlign: 'center', headerSort: false,

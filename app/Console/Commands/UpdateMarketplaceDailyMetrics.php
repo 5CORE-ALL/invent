@@ -25,7 +25,6 @@ use App\Models\VintedSalesData;
 use App\Models\MiraklDailyData;
 use App\Models\DobaDailyData;
 use App\Models\WayfairDailyData;
-use App\Models\FaireDailyData;
 use App\Models\PurchasingPowerSale;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
@@ -2822,11 +2821,17 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     /**
      * Faire — same source and per-line economics as FaireController::getDailyData (faire-tabulator).
-     * Wholesale price preferred over retail; PFT per unit = (price × 0.75) − LP.
+     * Last 30 Pacific days from shopify_raw_orders (not the Excel faire_daily_data dump).
      */
     private function calculateFaireMetrics($date)
     {
-        $data = FaireDailyData::query()->orderBy('id')->get();
+        $start = Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
+        $end = Carbon::now('America/Los_Angeles')->endOfDay();
+        $data = DB::table('shopify_raw_orders')
+            ->whereBetween('order_date', [$start, $end])
+            ->where(fn ($q) => \App\Http\Controllers\MarketPlace\FaireController::applyFaireShopifyOrderFilter($q))
+            ->where('quantity', '>', 0)
+            ->get(['order_number', 'sku', 'quantity', 'price']);
 
         if ($data->isEmpty()) {
             return null;
@@ -2837,7 +2842,10 @@ class UpdateMarketplaceDailyMetrics extends Command
             ? ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku')
             : collect();
 
-        $totalOrders = $data->count();
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Faire')->first();
+        $keepRate = ($marketplaceData ? (float) $marketplaceData->percentage : 75) / 100;
+
+        $orderSet = [];
         $totalQuantity = 0;
         $totalRevenue = 0.0;
         $totalWeightedPrice = 0.0;
@@ -2867,9 +2875,7 @@ class UpdateMarketplaceDailyMetrics extends Command
                 }
             }
 
-            $wholesale = (float) ($item->wholesale_price ?? 0) ?: 0.0;
-            $retail = (float) ($item->retail_price ?? 0) ?: 0.0;
-            $price = $wholesale > 0 ? $wholesale : $retail;
+            $price = (float) ($item->price ?? 0);
             $quantity = (int) ($item->quantity ?? 0);
 
             if ($quantity <= 0) {
@@ -2879,16 +2885,21 @@ class UpdateMarketplaceDailyMetrics extends Command
             $lineRevenue = $price * $quantity;
             $totalRevenue += $lineRevenue;
             $totalQuantity += $quantity;
+            if (! empty($item->order_number)) {
+                $orderSet[$item->order_number] = true;
+            }
 
             if ($price > 0) {
                 $totalWeightedPrice += $price * $quantity;
                 $totalQuantityForPrice += $quantity;
             }
 
-            $pftEach = ($price * 0.75) - $lp;
+            $pftEach = ($price * $keepRate) - $lp;
             $totalPft += $pftEach * $quantity;
             $totalCogs += $lp * $quantity;
         }
+
+        $totalOrders = count($orderSet);
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0.0;

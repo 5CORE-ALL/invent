@@ -204,51 +204,51 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Yesterday summary metrics">
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
-                            Channels: <span id="total-channels">0</span>
+                            <span class="summary-trend-dot none" title="Channel count"></span>Channels: <span id="total-channels">0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;"
                             title="Sum of 1-day sales. Click for trend + date range.">
-                            Y Sales: <span id="total-y-sales">$0</span>
+                            <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;"
                             title="Sum of yesterday orders. Click for trend + date range.">
-                            Orders: <span id="total-orders">0</span>
+                            <span class="summary-trend-dot none" data-metric="l30_orders" title="Rolling history"></span>Orders: <span id="total-orders">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;"
                             title="Sum of yesterday units. Click for trend + date range.">
-                            Qty: <span id="total-qty">0</span>
+                            <span class="summary-trend-dot none" data-metric="qty" title="Rolling history"></span>Qty: <span id="total-qty">0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;"
                             title="Yesterday listing views. Click for trend + date range.">
-                            Views: <span id="total-views">—</span>
+                            <span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span>Views: <span id="total-views">—</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;"
                             title="Yesterday CVR. Click for trend + date range.">
-                            CVR: <span id="avg-cvr">—</span>
+                            <span class="summary-trend-dot none" data-metric="cvr" title="Rolling history"></span>CVR: <span id="avg-cvr">—</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;"
                             title="Yesterday blended GPFT%. Click for trend + date range.">
-                            GPFT: <span id="avg-gprofit">0%</span>
+                            <span class="summary-trend-dot none" data-metric="gprofit" title="Rolling history"></span>GPFT: <span id="avg-gprofit">0%</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;"
                             title="Yesterday blended GROI%. Click for trend + date range.">
-                            G ROI: <span id="avg-groi">0%</span>
+                            <span class="summary-trend-dot none" data-metric="groi" title="Rolling history"></span>G ROI: <span id="avg-groi">0%</span>
                         </span>
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;"
                             title="Yesterday ad spend. Click for trend + date range.">
-                            Spend: <span id="total-ad-spend">$0</span>
+                            <span class="summary-trend-dot none" data-metric="ad_spend" title="Rolling history"></span>Spend: <span id="total-ad-spend">$0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;"
                             title="Yesterday Ads% (TACOS). Click for trend + date range.">
-                            Ads: <span id="ads-percent-badge">0%</span>
+                            <span class="summary-trend-dot none" data-metric="ads_pct" title="Rolling history"></span>Ads: <span id="ads-percent-badge">0%</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="npft" style="color: black; font-weight: bold; cursor:pointer;"
                             title="Yesterday NPFT%. Click for trend + date range.">
-                            NPFT: <span id="avg-npft">0%</span>
+                            <span class="summary-trend-dot none" data-metric="npft" title="Rolling history"></span>NPFT: <span id="avg-npft">0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;"
                             title="Yesterday NROI%. Click for trend + date range.">
-                            NROI: <span id="avg-nroi">0%</span>
+                            <span class="summary-trend-dot none" data-metric="nroi" title="Rolling history"></span>NROI: <span id="avg-nroi">0%</span>
                         </span>
                     </div>
                 </div>

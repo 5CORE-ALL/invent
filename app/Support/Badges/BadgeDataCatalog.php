@@ -57,6 +57,7 @@ class BadgeDataCatalog
                 'missing_l' => 'Missing L',
                 'inventory_value_amazon' => 'Inv',
                 'inv_at_lp' => 'Inv@LP',
+                'inv_at_sp' => 'Inv@SP',
                 'tat' => 'TAT',
                 'avg_rating' => 'Reviews',
                 'total_reviews' => 'Review count',
@@ -311,10 +312,9 @@ class BadgeDataCatalog
             'channels', 'l30_orders', 'clicks', 'map', 'nmap', 'missing_l', 'total_reviews', 'seller_total_reviews'
                 => number_format((int) round($n)),
             'y_sales' => $n > 0 ? '$'.number_format((int) round($n)) : 'NYS',
-            'l30_sales', 'ad_spend', 'net_profit', 'inventory_value_amazon', 'inv_at_lp'
+            'l30_sales', 'ad_spend', 'net_profit', 'inventory_value_amazon', 'inv_at_lp', 'inv_at_sp'
                 => '$'.number_format((int) round($n)),
-            'gprofit_pct', 'ads_pct', 'npft_pct' => number_format($n, 1).'%',
-            'g_roi', 'n_roi' => number_format((int) round($n)).'%',
+            'gprofit_pct', 'ads_pct', 'npft_pct', 'g_roi', 'n_roi' => number_format($n, 1).'%',
             'cvr_pct' => $value === null ? '-' : number_format($n, 2).'%',
             'tat' => $n > 0 ? number_format($n, 2) : '0',
             'avg_rating', 'seller_avg_rating' => number_format($n, 1).' ★',

@@ -81,19 +81,19 @@
             display: none !important;
         }
 
-        /* Root overflow:hidden breaks position:sticky on the header when the page scrolls */
-        #marketplace-table.tabulator {
-            overflow: visible;
+        /* Freeze header + left columns inside the table viewport */
+        #marketplace-table-wrapper {
+            height: calc(100vh - 290px);
+            min-height: 360px;
+            width: 100%;
         }
-
-        /* Keep header visible under the fixed topbar while scrolling long tables */
+        #marketplace-table.tabulator {
+            height: 100%;
+        }
         #marketplace-table.tabulator .tabulator-header {
-            position: sticky;
-            top: var(--tz-topbar-height, 70px);
             z-index: 24;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
         }
-
         #marketplace-table.tabulator .tabulator-header .tabulator-frozen {
             z-index: 26;
         }
@@ -309,6 +309,28 @@
             text-align: center;
             white-space: nowrap;
         }
+        #summary-stats .summary-trend-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 0.22rem;
+            margin-left: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+            vertical-align: 0.08em;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.85);
+            position: relative;
+            z-index: 2;
+        }
+        #summary-stats .summary-trend-dot:hover {
+            transform: scale(1.25);
+            box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.25);
+        }
+        #summary-stats .summary-trend-dot.up { background: #22c55e; }
+        #summary-stats .summary-trend-dot.down { background: #ef4444; }
+        #summary-stats .summary-trend-dot.flat,
+        #summary-stats .summary-trend-dot.none { background: #9ca3af; }
     </style>
 @endsection
 
@@ -377,61 +399,64 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
-                            Channels: <span id="total-channels">0</span>
+                            <span class="summary-trend-dot none" title="Channel count"></span>Channels: <span id="total-channels">0</span>
                         </span>
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amz = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific (same window &amp; AMAZON_SALES_TOTAL_MODE as Amz Daily Sales). Other channels vary.">
-                            Sales: <span id="total-l30-sales">$0</span>
+                            <span class="summary-trend-dot none" data-metric="l30_sales" title="Rolling history"></span>Sales: <span id="total-l30-sales">$0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
-                            Y Sales: <span id="total-y-sales">$0</span>
+                            <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amz = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amz Daily Sales); other channels vary.">
-                            Orders: <span id="total-l30-orders">0</span>
+                            <span class="summary-trend-dot none" data-metric="l30_orders" title="Rolling history"></span>Orders: <span id="total-l30-orders">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link d-none" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Qty items: <span id="total-qty">0</span>
+                            <span class="summary-trend-dot none" data-metric="qty" title="Rolling history"></span>Qty items: <span id="total-qty">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="Blended Gprofit% = sum(Sales×G%) / sum(Sales) using each channel’s rolling Sales column; matches GPFT column footer">
-                            GPFT: <span id="avg-gprofit">0%</span>
+                            <span class="summary-trend-dot none" data-metric="gprofit" title="Rolling history"></span>GPFT: <span id="avg-gprofit">0.0%</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 d-none" style="color: black; font-weight: bold; border: 1px solid rgba(0,0,0,.25);" title="Gross profit $ = sum of (rolling Sales × Gprofit%) per channel; matches Gross PFT column (show column to verify)">
-                            GPFT: <span id="total-gross-pft">$0</span>
+                            <span class="summary-trend-dot none" data-metric="gprofit" title="Rolling history"></span>GPFT: <span id="total-gross-pft">$0</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            G ROI: <span id="avg-groi">0%</span>
+                            <span class="summary-trend-dot none" data-metric="groi" title="Rolling history"></span>G ROI: <span id="avg-groi">0.0%</span>
                         </span>
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Spend: <span id="total-ad-spend">$0</span>
+                            <span class="summary-trend-dot none" data-metric="ad_spend" title="Rolling history"></span>Spend: <span id="total-ad-spend">$0</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="Ads % = Total Ad Spend / Total L30 Sales × 100 (blended across channels — same as the Ads % column)">
-                            Ads: <span id="ads-percent-badge">0%</span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="Ads % = Total Ad Spend / Total L30 Sales × 100 (blended across channels — same as the Ads % column). Reverb bump fees count as spend.">
+                            <span class="summary-trend-dot none" data-metric="ads_pct" title="Rolling history"></span>Ads: <span id="ads-percent-badge">0%</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Total Views (listing/Map traffic)">
-                            Clicks: <span id="total-views-badge">0</span>
+                            <span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span>Clicks: <span id="total-views-badge">0</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of Qty) ÷ (sum of Total Views) × 100. Qty = units sold (not order count) — matches the per-channel /temu-decrease formula. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or qty windows differ by channel (e.g. Amz {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day units vs views from live tabulator).">
-                            CVR: <span id="cvr-pct-badge">0%</span>
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): weighted from each channel's listing CVR × views (same as the CVR column). Falls back to Qty ÷ Views when a channel has no listing CVR.">
+                            <span class="summary-trend-dot none" data-metric="cvr" title="Rolling history"></span>CVR: <span id="cvr-pct-badge">0.00%</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(rolling Sales×Gprofit% − Ad spend); same as Sales × (G% − Ad Spend/Sales) per channel">
-                            NPFT: <span id="total-pft">$0</span>
+                            <span class="summary-trend-dot none" data-metric="pft" title="Rolling history"></span>NPFT: <span id="total-pft">$0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="npft" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
-                            NPFT: <span id="avg-npft">0%</span>
+                            <span class="summary-trend-dot none" data-metric="npft" title="Rolling history"></span>NPFT: <span id="avg-npft">0.0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            NROI: <span id="avg-nroi">0%</span>
+                            <span class="summary-trend-dot none" data-metric="nroi" title="Rolling history"></span>NROI: <span id="avg-nroi">0.0%</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amz Price)">
-                            inv: <span id="inventory-value-amazon">0</span>
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="inventory" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of (Inventory × Amz Price)">
+                            <span class="summary-trend-dot none" data-metric="inventory" title="Rolling history"></span>inv: <span id="inventory-value-amazon">0</span>
+                        </span>
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="inv_at_sp" style="color: black; font-weight: bold; cursor:pointer;" title="Inventory Sum = Shopify INV × Standard Price (amazon_data_view.STANDARD_PRICE) for active SKUs">
+                            <span class="summary-trend-dot none" data-metric="inv_at_sp" title="Rolling history"></span>Inv@SP: <span id="inv-at-sp">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
-                            Inv@LP: <span id="inv-at-lp">0</span>
+                            <span class="summary-trend-dot none" data-metric="inv_at_lp" title="Rolling history"></span>Inv@LP: <span id="inv-at-lp">0</span>
                         </span>
-                        <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="View trend - inv ÷ Sales (months of stock at current sales)">
-                            TAT: <span id="tat-badge">0</span>
+                        <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="TAT = inv ÷ L30 Sales (months of stock at current sales)">
+                            <span class="summary-trend-dot none" data-metric="tat" title="Rolling history"></span>TAT: <span id="tat-badge">0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of ratings (weighted avg), average of reviews">
-                            Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="reviews" style="color: black; font-weight: bold; cursor:pointer;" title="Weighted average product rating and total review count across channels (amazon_product_reviews).">
+                            <span class="summary-trend-dot none" data-metric="reviews" title="Rolling history"></span>Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
                         </span>
                     </div>
                 </div>
@@ -1208,12 +1233,23 @@
 
         $(document).ready(function() {
             // Initialize Tabulator
+            function marketplaceTableHeight() {
+                const wrap = document.getElementById('marketplace-table-wrapper');
+                if (!wrap) return 400;
+                const top = wrap.getBoundingClientRect().top;
+                return Math.max(360, Math.floor(window.innerHeight - top - 12));
+            }
+            (function sizeMarketplaceTableWrap() {
+                const wrap = document.getElementById('marketplace-table-wrapper');
+                if (wrap) wrap.style.height = marketplaceTableHeight() + 'px';
+            })();
+
             table = new Tabulator("#marketplace-table", {
                 ajaxURL: "/channels-master-data",
                 ajaxParams: { size: 10000, page: 1 },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
-                height: false,
+                height: "100%",
                 pagination: false,
                 columnCalcs: "both",
                 initialSort: [{
@@ -1226,10 +1262,10 @@
                             showToast('info', response.message || 'No channels to display.');
                         }
                         updateSummaryStats(response.data);
-                        // Update inv badge — compact e.g. 1.7M
-                        const invValEl = document.getElementById('inventory-value-amazon');
-                        if (invValEl && response.inventory_value_amazon != null) {
-                            const val = Math.round(parseFloat(response.inventory_value_amazon) || 0);
+                        function setCompactInvBadge(elId, rawVal, titlePrefix) {
+                            const el = document.getElementById(elId);
+                            if (!el || rawVal == null) return 0;
+                            const val = Math.round(parseFloat(rawVal) || 0);
                             let compact;
                             if (Math.abs(val) >= 1000000) {
                                 compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
@@ -1238,35 +1274,32 @@
                             } else {
                                 compact = String(val);
                             }
-                            invValEl.textContent = compact;
-                            const badge = invValEl.closest('.badge');
+                            el.textContent = compact;
+                            const badge = el.closest('.badge');
                             if (badge) {
-                                badge.title = 'Sum of (Inventory × Amz Price): $' + val.toLocaleString('en-US');
-                            }
-                        }
-                        // Update Inv@LP badge (Shopify inv × LP) — compact e.g. 557K
-                        const invAtLpEl = document.getElementById('inv-at-lp');
-                        if (invAtLpEl && response.inv_at_lp != null) {
-                            const val = Math.round(parseFloat(response.inv_at_lp) || 0);
-                            let compact;
-                            if (Math.abs(val) >= 1000000) {
-                                compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-                            } else if (Math.abs(val) >= 1000) {
-                                compact = Math.round(val / 1000) + 'K';
-                            } else {
-                                compact = String(val);
-                            }
-                            invAtLpEl.textContent = compact;
-                            const badge = invAtLpEl.closest('.badge');
-                            if (badge) {
-                                badge.title = 'View trend - Sum of (Shopify inventory × LP): $' + val.toLocaleString('en-US');
+                                badge.title = titlePrefix + ': $' + val.toLocaleString('en-US');
                                 badge.setAttribute('data-exact-value', String(val));
                             }
+                            return val;
                         }
-                        // Update TAT badge (inv / Sales)
+                        const invVal = setCompactInvBadge(
+                            'inventory-value-amazon',
+                            response.inventory_value_amazon,
+                            'Sum of (Inventory × Amz Price)'
+                        );
+                        setCompactInvBadge(
+                            'inv-at-lp',
+                            response.inv_at_lp,
+                            'View trend - Sum of (Shopify inventory × LP)'
+                        );
+                        setCompactInvBadge(
+                            'inv-at-sp',
+                            response.inv_at_sp,
+                            'Inventory Sum — Shopify INV × Standard Price'
+                        );
+                        // TAT = inv ÷ L30 Sales (months of cover)
                         const tatEl = document.getElementById('tat-badge');
-                        if (tatEl && response.inventory_value_amazon != null && response.data && response.data.length) {
-                            const invVal = parseFloat(response.inventory_value_amazon) || 0;
+                        if (tatEl && response.data && response.data.length) {
                             let totalSales = 0;
                             response.data.forEach(function(row) {
                                 const s = (row['L30 Sales'] || 0);
@@ -1274,10 +1307,11 @@
                             });
                             const tat = totalSales > 0 ? invVal / totalSales : 0;
                             const tatRounded = tat > 0 ? parseFloat(tat.toFixed(2)) : 0;
-                            tatEl.textContent = tat > 0 ? tat.toFixed(2) : '0';
+                            tatEl.textContent = tat > 0 ? tat.toFixed(2) : '0.00';
                             const tatBadge = tatEl.closest('.badge');
                             if (tatBadge) {
                                 tatBadge.setAttribute('data-exact-value', String(tatRounded));
+                                tatBadge.title = 'TAT = inv ÷ L30 Sales (months of stock): ' + tatRounded.toFixed(2);
                             }
                         }
                         if (!dotTrendsLoadedOnce) {
@@ -1862,7 +1896,7 @@
                             }
                             const dotColor = getMetricDotColor(channel, 'cvr');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View CVR trend"></i>`;
-                            return `<span style="font-weight:600;color:${dotColor};">${Math.round(pct)}%</span>${chartIcon}`;
+                            return `<span style="font-weight:600;color:${dotColor};">${(Math.round(pct * 100) / 100).toFixed(2)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -1880,7 +1914,7 @@
                                 totalViews += parseNumber(row['Total Views'] || 0);
                             });
                             if (totalViews === 0) return '-';
-                            return '<strong>' + Math.round((totalQty / totalViews) * 100) + '%</strong>';
+                            return '<strong>' + ((totalQty / totalViews) * 100).toFixed(2) + '%</strong>';
                         }
                     },
                     {
@@ -1956,7 +1990,7 @@
                                 style = 'color:#8000ff;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -1990,7 +2024,7 @@
                                 style = 'color:#e83e8c;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -2010,7 +2044,7 @@
                         },
                         bottomCalcFormatter: function(cell) {
                             const v = parseNumber(cell.getValue());
-                            return `<strong>${v.toFixed(0)}%</strong>`;
+                            return `<strong>${v.toFixed(1)}%</strong>`;
                         }
                     },
                     {
@@ -2133,7 +2167,7 @@
                                 style = 'color:#8000ff;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -2166,7 +2200,7 @@
                                 style = 'color:#e83e8c;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -3318,8 +3352,12 @@
                         visible: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const avg = parseNumber(rowData['Avg Rating'] || 0);
-                            const total = parseNumber(rowData['Total Reviews'] || 0);
+                            let avg = parseNumber(rowData['Avg Rating'] || 0);
+                            let total = parseNumber(rowData['Total Reviews'] || 0);
+                            if ((!total || total <= 0) && rowData['Reviews'] && typeof rowData['Reviews'] === 'object') {
+                                avg = parseNumber(rowData['Reviews']['Avg Rating'] || rowData['Reviews']['avg_rating'] || 0);
+                                total = parseNumber(rowData['Reviews']['Total Reviews'] || rowData['Reviews']['total_reviews'] || 0);
+                            }
                             if ((avg == null || isNaN(avg)) && (total == null || isNaN(total) || total === 0)) return '-';
                             const r = (!isNaN(avg) && avg > 0) ? avg.toFixed(1) + ' ★' : '';
                             const rev = (!isNaN(total) && total > 0) ? total.toLocaleString('en-US') : '';
@@ -3464,8 +3502,14 @@
                 ]
             });
 
+            $(window).on('resize.ammFreezeHeader', function() {
+                const wrap = document.getElementById('marketplace-table-wrapper');
+                if (wrap) wrap.style.height = marketplaceTableHeight() + 'px';
+                if (table && typeof table.redraw === 'function') table.redraw(true);
+            });
+
             // Initial load only: set column dot color from last different snapshot (same walk-back as chart).
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             function loadMetricDotTrends(tableData) {
                 if (typeof lastDotColorByKey === 'undefined') return;
                 var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
@@ -3490,7 +3534,8 @@
                                 var pair = metrics[metric];
                                 var v1 = pair[0] != null ? parseFloat(pair[0]) : null;
                                 var v2 = pair[1] != null ? parseFloat(pair[1]) : null;
-                                if (v1 == null || v2 == null) {
+                                lastDotPairByKey[channel + '_' + metric] = [v1, v2];
+                                if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) {
                                     lastDotColorByKey[channel + '_' + metric] = (typeof DEFAULT_DOT_GRAY !== 'undefined' ? DEFAULT_DOT_GRAY : '#6c757d');
                                     return;
                                 }
@@ -3512,6 +3557,7 @@
                     saveDotColorsToStorage();
                     function redrawDots() {
                         if (typeof table !== 'undefined' && table.redraw) table.redraw(true);
+                        colorSummaryBadgeDots(channelKeys);
                     }
                     redrawDots();
                     setTimeout(redrawDots, 100);
@@ -3525,6 +3571,43 @@
                     }
                     saveDotColorsToStorage();
                     if (typeof table !== 'undefined' && table.redraw) table.redraw(true);
+                    colorSummaryBadgeDots(channelKeys);
+                });
+            }
+
+            function colorSummaryBadgeDots(channelKeys) {
+                $('#summary-stats .summary-trend-dot[data-metric]').each(function() {
+                    var metric = $(this).attr('data-metric');
+                    if (!metric) return;
+                    // Y Sales badge is a sum — color from Σ yesterday vs Σ prior day,
+                    // not a majority of per-channel dots (most NYS channels stay gray).
+                    if (metric === 'y_sales') {
+                        var s1 = 0, s2 = 0, n = 0;
+                        (channelKeys || []).forEach(function(ch) {
+                            var p = lastDotPairByKey[ch + '_' + metric];
+                            if (!p || p[0] == null || p[1] == null || isNaN(p[0]) || isNaN(p[1])) return;
+                            s1 += p[0];
+                            s2 += p[1];
+                            n++;
+                        });
+                        var yCls = 'none';
+                        if (n > 0) {
+                            yCls = s2 === s1 ? 'flat' : (s2 > s1 ? 'up' : 'down');
+                        }
+                        $(this).removeClass('up down flat none').addClass(yCls);
+                        return;
+                    }
+                    var up = 0, down = 0;
+                    (channelKeys || []).forEach(function(ch) {
+                        var c = lastDotColorByKey[ch + '_' + metric];
+                        if (c === '#28a745') up++;
+                        else if (c === '#dc3545') down++;
+                    });
+                    var cls = 'none';
+                    if (up > down) cls = 'up';
+                    else if (down > up) cls = 'down';
+                    else if (up > 0 || down > 0) cls = 'flat';
+                    $(this).removeClass('up down flat none').addClass(cls);
                 });
             }
 
@@ -3565,8 +3648,15 @@
                     const missCount = parseNumber(row['Miss'] || 0);
                     const nmapCount = parseNumber(row['NMap'] || 0);
 
-                    // Use Total Ad Spend directly (already computed correctly per channel)
-                    const adSpend = parseNumber(row['Total Ad Spend'] || 0);
+                    // Use Total Ad Spend directly (already computed correctly per channel).
+                    // Reverb stores bump fees in Ads% when Total Ad Spend was historically 0.
+                    let adSpend = parseNumber(row['Total Ad Spend'] || 0);
+                    if (adSpend <= 0 && channel.indexOf('reverb') !== -1) {
+                        const bumpPct = parseNumber(row['Ads%'] || row['TACOS %'] || row['TACOS'] || 0);
+                        if (bumpPct > 0 && l30Sales > 0) {
+                            adSpend = (bumpPct / 100) * l30Sales;
+                        }
+                    }
                     const views = parseNumber(row['Total Views'] || 0);
 
                     totalL30Sales += l30Sales;
@@ -3662,17 +3752,20 @@
                     $el.text(val.toLocaleString('en-US'));
                     setBadgeExact($el, val);
                 })();
+                function pct1(n) {
+                    return Math.round(n * 10) / 10;
+                }
                 (function() {
-                    const val = Math.round(avgGprofit);
+                    const val = pct1(avgGprofit);
                     const $el = $('#avg-gprofit');
-                    $el.text(val + '%');
+                    $el.text(val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 $('#total-gross-pft').text('$' + Math.round(totalPft).toLocaleString('en-US'));
                 (function() {
-                    const val = Math.round(avgGroi);
+                    const val = pct1(avgGroi);
                     const $el = $('#avg-groi');
-                    $el.text(val + '%');
+                    $el.text(val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 (function() {
@@ -3697,16 +3790,29 @@
                         'View trend - Total Views (listing/Map traffic): ' + val.toLocaleString('en-US'));
                     setBadgeExact($el, val);
                 })();
-                // Listing CVR (overall): Σ Qty / Σ Total Views — units-based to match the per-channel
-                // /temu-decrease badge (qty / views), not ad conversion; see badge title.
-                // 2 decimals so the badge value shifts day-over-day instead of holding the same
-                // rounded number for 3+ days (rolling-window CVR moves <0.05% per day).
-                const cvrPct = totalViews > 0 ? (totalQty / totalViews) * 100 : null;
+                // Listing CVR: prefer each channel's listing CVR × views (same as the CVR column /
+                // /temu-decrease / Shopify / Reverb badges). Fallback to Qty ÷ Views.
+                // 2 decimals so the badge value shifts day-over-day.
+                let cvrUnits = 0;
+                let cvrViews = 0;
+                data.forEach(row => {
+                    const views = parseNumber(row['Total Views'] || 0);
+                    if (views <= 0) return;
+                    const serverCvr = row['CVR'];
+                    if (serverCvr !== undefined && serverCvr !== null && serverCvr !== '') {
+                        cvrUnits += (parseNumber(serverCvr) / 100) * views;
+                        cvrViews += views;
+                    } else {
+                        cvrUnits += parseNumber(row['Qty'] || 0);
+                        cvrViews += views;
+                    }
+                });
+                const cvrPct = cvrViews > 0 ? (cvrUnits / cvrViews) * 100 : null;
                 (function() {
                     const $el = $('#cvr-pct-badge');
                     if (cvrPct !== null) {
-                        const val = Math.round(cvrPct);
-                        $el.text(val + '%');
+                        const val = Math.round(cvrPct * 100) / 100;
+                        $el.text(val.toFixed(2) + '%');
                         setBadgeExact($el, val);
                     } else {
                         $el.text('-');
@@ -3723,15 +3829,15 @@
                     setBadgeExact($el, val);
                 })();
                 (function() {
-                    const val = Math.round(avgNpft);
+                    const val = pct1(avgNpft);
                     const $el = $('#avg-npft');
-                    $el.text(val + '%');
+                    $el.text(val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 (function() {
-                    const val = Math.round(avgNroi);
+                    const val = pct1(avgNroi);
                     const $el = $('#avg-nroi');
-                    $el.text(val + '%');
+                    $el.text(val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 (function() {
@@ -3750,13 +3856,19 @@
                 // Reviews badge: weighted avg rating (sum(rating*reviews)/sum(reviews)), total reviews (sum)
                 let ratingSum = 0, reviewsSum = 0;
                 data.forEach(row => {
-                    const r = parseNumber(row['Avg Rating'] || 0);
-                    const rev = parseNumber(row['Total Reviews'] || 0);
+                    let r = parseNumber(row['Avg Rating'] || 0);
+                    let rev = parseNumber(row['Total Reviews'] || 0);
+                    if ((!rev || rev <= 0) && row['Reviews'] && typeof row['Reviews'] === 'object') {
+                        r = parseNumber(row['Reviews']['Avg Rating'] || row['Reviews']['avg_rating'] || 0);
+                        rev = parseNumber(row['Reviews']['Total Reviews'] || row['Reviews']['total_reviews'] || 0);
+                    }
                     if (!isNaN(r) && !isNaN(rev) && rev > 0) { ratingSum += r * rev; reviewsSum += rev; }
                 });
-                const weightedAvgRating = reviewsSum > 0 ? (ratingSum / reviewsSum).toFixed(1) : '0';
+                const weightedAvgRating = reviewsSum > 0 ? (ratingSum / reviewsSum).toFixed(1) : '0.0';
                 const totalReviews = Math.round(reviewsSum).toLocaleString('en-US');
-                $('#ratings-reviews-badge').text(weightedAvgRating + ' ★ | ' + totalReviews);
+                const $revBadge = $('#ratings-reviews-badge');
+                $revBadge.text(weightedAvgRating + ' ★ | ' + totalReviews);
+                setBadgeExact($revBadge, reviewsSum);
             }
 
             // Combine channel search and type (B2C/B2B/Dropship) filters
@@ -4305,6 +4417,7 @@
 
             // Dot colors: same as chart's last-data-point logic (red/green/gray). Set on page load only.
             var lastDotColorByKey = {};
+            var lastDotPairByKey = {};
             function getMetricDotColor(channelName, metricKey) {
                 var k = snapshotChannelKey(channelName) + '_' + (metricKey || '');
                 return lastDotColorByKey[k] || DEFAULT_DOT_GRAY;
@@ -4495,7 +4608,10 @@
                 'cvr': 'CVR',
                 'total_views': 'views',
                 'inv_at_lp': 'Inv@LP',
+                'inv_at_sp': 'Inv@SP',
+                'inventory': 'inv',
                 'tat': 'TAT',
+                'reviews': 'Reviews',
             };
 
             // Show metric chart (for non-ad-breakdown columns)
@@ -4580,7 +4696,7 @@
                 // misread as 326. Fall back to parsing the visible text (supports K/M).
                 let badgeValue = parseFloat($(this).attr('data-exact-value'));
                 if (isNaN(badgeValue)) {
-                    badgeValue = parseBadgeDisplayValue($(this).find('span').first().text());
+                    badgeValue = parseBadgeDisplayValue($(this).find('span[id]').first().text());
                 }
                 showMetricChart('All', metricKey, badgeValue);
             });
@@ -4621,7 +4737,7 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     // Listing CVR / Ads CVR shift slowly inside a rolling window — show 2 decimals

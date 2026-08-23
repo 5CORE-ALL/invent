@@ -93,9 +93,34 @@
         }
         #summary-stats .d-flex { gap: 8px !important; }
         #summary-stats .badge {
+            display: inline-flex !important;
+            align-items: center;
             font-size: calc(1rem * 0.99) !important;
             padding: calc(0.5rem * 0.99) !important;
         }
+        /* Dashboard-standard KPI dots: green = up, red = down, gray = same / no prior */
+        #summary-stats .summary-trend-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 0.22rem;
+            margin-left: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+            vertical-align: 0.08em;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.85);
+            position: relative;
+            z-index: 2;
+        }
+        #summary-stats .summary-trend-dot:hover {
+            transform: scale(1.25);
+            box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.25);
+        }
+        #summary-stats .summary-trend-dot.up { background: #22c55e; }
+        #summary-stats .summary-trend-dot.down { background: #ef4444; }
+        #summary-stats .summary-trend-dot.flat,
+        #summary-stats .summary-trend-dot.none { background: #9ca3af; }
 
         /* Column visibility — 4 groups (Basic / Price / Ads / Other) */
         #column-dropdown-menu.show {
@@ -124,6 +149,11 @@
             min-height: 120px;
             display: flex;
             flex-direction: column;
+        }
+        #column-dropdown-menu .col-vis-group.col-vis-drop-over {
+            border-color: #0d6efd;
+            background: #eef5ff;
+            box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.25);
         }
         #column-dropdown-menu .col-vis-group-title {
             display: flex;
@@ -159,7 +189,10 @@
             margin: 0;
             padding: 0;
             border-radius: 4px;
+            cursor: grab;
         }
+        #column-dropdown-menu .col-vis-item:active { cursor: grabbing; }
+        #column-dropdown-menu .col-vis-item.col-vis-dragging { opacity: 0.55; }
         #column-dropdown-menu .col-vis-item > label {
             display: flex;
             align-items: center;
@@ -672,7 +705,8 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns">
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false" title="Columns">
                             <i class="fas fa-columns"></i>
                         </button>
                         <ul class="dropdown-menu" id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown">
@@ -714,7 +748,7 @@
 
                     <button id="clear-sprice-btn" class="btn btn-sm btn-danger"
                         title="Clear SPRICE for selected SKUs (use the left checkbox column)">
-                        <i class="fas fa-eraser"></i> Clear SPRICE
+                        <i class="fas fa-eraser"></i> Sprice
                     </button>
 
                     <span class="badge bg-info fs-6 p-2" id="total-sku-count-badge" style="color: black; font-weight: bold; display: none;">Total SKUs: 0</span>
@@ -728,30 +762,30 @@
                         <span class="badge bg-dark fs-6 p-2" id="rows-count-badge" style="color: white; font-weight: bold;" title="Number of rows currently shown (after filters)">Row: 0</span>
 
                         <!-- Financial Metrics -->
-                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer; display: none;" title="View trend">PFT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="30-day sales from real Amz orders (same source as /amazon/daily-sales). Click for trend.">Sales: ${{ number_format((float) ($amazonSalesL30 ?? 0)) }}</span>
+                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" data-live-value="0" data-format="money" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer; display: none;" title="View trend"><span class="summary-trend-dot none" data-metric="total_pft" title="Rolling history"></span>PFT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" data-live-value="{{ (float) ($amazonSalesL30 ?? 0) }}" data-format="money" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="30-day sales from real Amz orders (same source as /amazon/daily-sales). Click badge or dot for trend."><span class="summary-trend-dot none" data-metric="total_sales" title="Rolling history"></span>Sales: ${{ number_format((float) ($amazonSalesL30 ?? 0)) }}</span>
                         
                         <!-- Percentage Metrics -->
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" data-live-value="0" data-format="pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend"><span class="summary-trend-dot none" data-metric="gpft_pct" title="Rolling history"></span>GPFT: 0%</span>
 
                         <!-- Ads% (from /all-marketplace-master — Amz channel) -->
-                        <span class="badge fs-6 p-2" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Amz Ads% (Total Ad Spend / L30 Sales) — from /all-marketplace-master">Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: 0%</span>
-                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View GROI% rolling history">GROI: 0%</span>
-                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View NROI% rolling history — Net ROI = (Total PFT − Ad Spend) / COGS">NROI: 0%</span>
+                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" data-live-value="{{ $amazonAdsPercent !== null ? round((float) $amazonAdsPercent, 1) : 0 }}" data-format="pct" data-invert="1" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Amz Ads% (Total Ad Spend / L30 Sales). Lower is better. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="tcos_pct" title="Rolling history"></span>Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" data-live-value="0" data-format="pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend"><span class="summary-trend-dot none" data-metric="npft_pct" title="Rolling history"></span>PFT: 0%</span>
+                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" data-live-value="0" data-format="pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View GROI% rolling history"><span class="summary-trend-dot none" data-metric="groi_pct" title="Rolling history"></span>GROI: 0%</span>
+                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" data-live-value="0" data-format="pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View NROI% rolling history — Net ROI = (Total PFT − Ad Spend) / COGS"><span class="summary-trend-dot none" data-metric="nroi_pct" title="Rolling history"></span>NROI: 0%</span>
                         
                         <!-- Amz Metrics -->
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="total-qty-sold-badge" style="background-color: #20c997; color: black; font-weight: bold;" title="Total Amz units sold in the last 30 days from real Amz orders (Pacific, through yesterday) — same source as /amazon/daily-sales">Qty: {{ number_format((int) ($amazonUnitsSoldL30 ?? 0)) }}</span>
-                        <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Price: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Views: 0</span>
+                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="total_l30_orders" data-live-value="{{ (int) ($amazonUnitsSoldL30 ?? 0) }}" id="total-qty-sold-badge" style="background-color: #20c997; color: black; font-weight: bold; cursor:pointer;" title="Total Amz units sold in the last 30 days from real Amz orders (Pacific, through yesterday) — same source as /amazon/daily-sales. Click for trend."><span class="summary-trend-dot none" data-metric="total_l30_orders" title="Rolling history"></span>Qty: {{ number_format((int) ($amazonUnitsSoldL30 ?? 0)) }}</span>
+                        <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>CVR: 0%</span>
 
-                        <!-- Sold Filter Badges (Clickable + Hover for chart) -->
-                        <span class="badge bg-success fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="all" data-metric="sold_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            Sold >0: <span id="total-sold-count">0</span>
+                        <!-- Sold Filter Badges (badge click = filter; dot click = rolling history) -->
+                        <span class="badge bg-success fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="all" data-metric="sold_count" data-live-value="0" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Click dot for trend">
+                            <span class="summary-trend-dot none" data-metric="sold_count" title="Rolling history"></span>Sold >0: <span id="total-sold-count">0</span>
                         </span>
-                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            0 Sold: <span id="zero-sold-count">0</span>
+                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-live-value="0" data-invert="1" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Click dot for trend">
+                            <span class="summary-trend-dot none" data-metric="zero_sold_count" title="Rolling history"></span>0 Sold: <span id="zero-sold-count">0</span>
                         </span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'amazon-lmp-missing-badge', 'lmpChannelKey' => 'amazon'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'amazon-price-gt-lmp-badge', 'pglChannelKey' => 'amazon', 'pglPriceField' => 'price'])
@@ -1522,6 +1556,7 @@
             'prc_gt_lmp_count': 'Prc > LMP',
             'total_pft': 'PFT', 'total_sales': 'Sales',
             'gpft_pct': 'GPFT%', 'npft_pct': 'PFT%', 'groi_pct': 'GROI%', 'nroi_pct': 'NROI%',
+            'tcos_pct': 'Ads%', 'total_l30_orders': 'Qty',
         };
 
         // Metrics stored in badge stats table (daily counts/amounts)
@@ -1530,10 +1565,15 @@
             'missing_count', 'prc_gt_lmp_count',
             'total_pft', 'total_sales',
             'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct',
+            'tcos_pct', 'total_l30_orders',
         ];
 
-        const amzPctMetrics = ['gprofit', 'groi', 'npft', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct'];
+        const amzPctMetrics = ['gprofit', 'groi', 'npft', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct'];
         const amzDollarMetrics = ['l30_sales', 'total_pft', 'total_sales'];
+        /** Metrics where lower is better → invert 3-color (up=red, down=green) */
+        const amzBadgeInvertMetrics = { tcos_pct: true, zero_sold_count: true, prc_gt_lmp_count: true };
+        let amzBadgePrevDay = null;
+        let amzBadgePrevDayLoaded = false;
 
         /** Set false to silence [amazon-tabulator] browser console debug lines */
         const AMAZON_TABULATOR_DEBUG_LOG = true;
@@ -1672,13 +1712,110 @@
             return out.length ? out : src.slice(-n);
         }
 
+        function amzFmtBadgeVal(v, metricKey) {
+            const n = Number(v);
+            if (!isFinite(n)) return '—';
+            const key = (metricKey || '').toString();
+            const $b = $('#summary-stats .badge[data-metric="' + key + '"]').first();
+            const fmt = ($b.data('format') || '').toString();
+            if (fmt === 'money' || amzDollarMetrics.includes(key)) return '$' + Math.round(n).toLocaleString('en-US');
+            if (fmt === 'pct' || amzPctMetrics.includes(key)) return (/gpft|npft|groi|nroi|tcos/i.test(key) ? Math.round(n) : n.toFixed(1)) + '%';
+            return Math.round(n).toLocaleString('en-US');
+        }
+        function amzTrendClass(curr, prev, invert) {
+            if (!isFinite(curr) || !isFinite(prev)) return 'none';
+            const diff = curr - prev;
+            let cls = 'flat';
+            if (diff > 0.05) cls = 'up';
+            else if (diff < -0.05) cls = 'down';
+            if (invert && cls === 'up') cls = 'down';
+            else if (invert && cls === 'down') cls = 'up';
+            return cls;
+        }
+        function applyAmzSummaryTrendDot(metricKey, currentVal) {
+            const $dot = $('#summary-stats .summary-trend-dot[data-metric="' + metricKey + '"]');
+            if (!$dot.length) return;
+            const prev = amzBadgePrevDay && amzBadgePrevDay[metricKey];
+            const invert = !!amzBadgeInvertMetrics[metricKey];
+            if (!isFinite(currentVal) || prev == null || !isFinite(prev)) {
+                $dot.attr('class', 'summary-trend-dot none')
+                    .attr('title', 'Click for rolling history (no prior day yet)');
+                return;
+            }
+            const cls = amzTrendClass(currentVal, prev, invert);
+            const tip = (cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : 'Same'))
+                + ' vs prior day (' + amzFmtBadgeVal(prev, metricKey)
+                + ' → ' + amzFmtBadgeVal(currentVal, metricKey) + '). Click for rolling history.';
+            $dot.attr('class', 'summary-trend-dot ' + cls).attr('title', tip);
+        }
+        function syncAmzSummaryTrendDots() {
+            ensureAmzKpiDots();
+            $('#summary-stats [data-metric]').each(function() {
+                const metric = $(this).data('metric');
+                if (!metric || !$(this).find('.summary-trend-dot').addBack('.summary-trend-dot').length) return;
+                if ($(this).hasClass('summary-trend-dot')) return;
+                let live = parseFloat($(this).attr('data-live-value'));
+                if (!isFinite(live)) live = parseFloat($(this).data('live-value'));
+                applyAmzSummaryTrendDot(metric, live);
+            });
+        }
+        function loadAmzBadgePrevDay(done) {
+            if (amzBadgePrevDayLoaded) {
+                syncAmzSummaryTrendDots();
+                if (typeof done === 'function') done();
+                return;
+            }
+            $.ajax({
+                url: '/amazon-badge-prev-day',
+                method: 'GET',
+                success: function(resp) {
+                    amzBadgePrevDayLoaded = true;
+                    amzBadgePrevDay = (resp && resp.success && resp.metrics) ? resp.metrics : null;
+                    syncAmzSummaryTrendDots();
+                    if (typeof done === 'function') done();
+                },
+                error: function() {
+                    amzBadgePrevDayLoaded = true;
+                    amzBadgePrevDay = null;
+                    syncAmzSummaryTrendDots();
+                    if (typeof done === 'function') done();
+                }
+            });
+        }
+        function ensureAmzKpiDots() {
+            $('#summary-stats .d-flex > .badge').each(function() {
+                if (this.id === 'rows-count-badge') return;
+                const $b = $(this);
+                let $dot = $b.children('.summary-trend-dot').first();
+                if (!$dot.length) $dot = $b.find('.summary-trend-dot').first();
+                if (!$dot.length) {
+                    const metric = $b.attr('data-metric') || '';
+                    $dot = $('<span class="summary-trend-dot none" title="Rolling history"></span>');
+                    if (metric) $dot.attr('data-metric', metric);
+                    $b.prepend($dot);
+                } else if ($b.children().get(0) !== $dot.get(0)) {
+                    $b.prepend($dot);
+                }
+            });
+        }
+        function setAmzSummaryBadge($el, label, liveVal) {
+            if (!$el || !$el.length) return;
+            const $dot = $el.find('.summary-trend-dot').first().detach();
+            $el.text(label);
+            if ($dot.length) $el.prepend($dot);
+            else ensureAmzKpiDots();
+            if (liveVal != null && isFinite(liveVal)) {
+                $el.attr('data-live-value', liveVal);
+            }
+        }
+
         function showAmzMetricChart(metricKey) {
             amzChartMetricKey = metricKey;
             amzChartDays = 30;
             $('#amzChartRangeSelect').val('30');
             const label = amzMetricLabels[metricKey] || metricKey;
             const isBadge = amzBadgeStatMetrics.includes(metricKey);
-            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct'];
+            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'total_l30_orders'];
             const suffix = isBadge ? (badgeSnapshotMetrics.includes(metricKey) ? 'Daily Snapshot' : 'Daily Count') : 'Rolling L30';
             $('#amzChartModalTitle').text(`Amz - ${label} (${suffix})`);
             const modal = new bootstrap.Modal(document.getElementById('amzMetricChartModal'));
@@ -1732,8 +1869,23 @@
             loadAmzMetricChart();
         });
 
+        document.addEventListener('click', function(e) {
+            const el = e.target && e.target.closest ? e.target.closest('#summary-stats .summary-trend-dot') : null;
+            if (!el) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+            const m = el.getAttribute('data-metric')
+                || (el.closest('[data-metric]') && el.closest('[data-metric]').getAttribute('data-metric'));
+            if (m && (amzBadgeStatMetrics.indexOf(m) !== -1 || amzMetricLabels[m])) {
+                showAmzMetricChart(m);
+            }
+        }, true);
         // Badge click handler
-        $(document).on('click', '.amz-badge-chart', function() {
+        $(document).on('click', '.amz-badge-chart', function(e) {
+            if ($(e.target).closest('.summary-trend-dot').length) return;
+            const id = this.id || '';
+            if (id === '' && $(this).hasClass('sold-filter-badge')) return;
             showAmzMetricChart($(this).data('metric'));
         });
 
@@ -2676,9 +2828,12 @@
             if (typeof initAmazonPefPromoUi === 'function') {
                 initAmazonPefPromoUi();
             }
+            if (typeof ensureAmzKpiDots === 'function') ensureAmzKpiDots();
+            if (typeof loadAmzBadgePrevDay === 'function') loadAmzBadgePrevDay();
 
             // Sold filter badge click handlers (toggle: click again returns to "show all")
-            $('.sold-filter-badge').on('click', function() {
+            $('.sold-filter-badge').on('click', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
                 const filter = $(this).data('filter');
                 // "Sold >0" badge → 'sold', "0 Sold" badge → 'zero'
                 const targetVal = (filter === 'zero') ? 'zero' : 'sold';
@@ -4603,15 +4758,38 @@
                             const row = cell.getRow().getData();
                             const aL30 = parseFloat(row['A_L30']) || 0;
                             const sess30 = parseFloat(row['Sess30']) || 0;
-                            if (sess30 === 0) {
-                                return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
-                            }
-                            const cvr = (aL30 / sess30) * 100;
+                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                            const sess60 = parseFloat(row['sessions_l60']) || 0;
+                            const cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                            const sess45 = (sess30 + sess60) / 2;
+                            const cvr45 = sess45 === 0 ? 0 : (((aL30 + aL60) / 2) / sess45) * 100;
                             let color = '#e83e8c';
                             if (cvr <= 4) color = '#a00211';
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                             else if (cvr > 7 && cvr <= 13) color = '#28a745';
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span>`;
+                            const pctLabel = sess30 === 0 ? '0.0%' : (Math.round(cvr) + '%');
+                            let arrowHtml = '';
+                            if (!row.is_parent_summary) {
+                                const tol = 0.1;
+                                let arrowColor = '#ffc107';
+                                let arrowIcon = 'fa-minus';
+                                let tip = 'Same as CVR L45 ' + cvr45.toFixed(1) + '%';
+                                if (cvr === 0 || cvr < cvr45 - tol) {
+                                    arrowColor = '#a00211';
+                                    arrowIcon = 'fa-arrow-down';
+                                    tip = (cvr === 0 ? 'CVR L30 is 0 → Down' : 'Down vs CVR L45 ' + cvr45.toFixed(1) + '%');
+                                } else if (cvr > cvr45 + tol) {
+                                    arrowColor = '#28a745';
+                                    arrowIcon = 'fa-arrow-up';
+                                    tip = 'Up vs CVR L45 ' + cvr45.toFixed(1) + '%';
+                                }
+                                arrowHtml = ' <span title="' + escAttr(tip) + '" style="vertical-align:middle;">'
+                                    + '<i class="fas ' + arrowIcon + '" style="color:' + arrowColor
+                                    + ';font-size:12px;"></i></span>';
+                            }
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
+                                + '<span style="color:' + color + ';font-weight:600;">' + pctLabel + '</span>'
+                                + arrowHtml + '</span>';
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -4621,7 +4799,7 @@
                             };
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                         },
-                        width: 65
+                        width: 78
                     },
                     {
                         title: "NR/RL <span class='nr-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (NRL) rows'></span>",
@@ -5116,7 +5294,7 @@
                         width: 100
                     },
 
-                    // PRMT % / CPN % / CVR Disc. / Push Prc — same model + rules as /pricing-errors-fix
+                    // PRMT % / CVR Disc. / CVR Up/Dn / T Discounts / Push Prc
                     ...amazonPefPromoColumns(),
 
                     {
@@ -6751,7 +6929,7 @@
 
                 // Avg Price = orders Sales ÷ orders Qty (matches the daily-sales basis).
                 const avgPrice = SERVER_AMZ_QTY_L30 > 0 ? (SERVER_AMZ_SALES_L30 / SERVER_AMZ_QTY_L30) : 0;
-                $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
+                setAmzSummaryBadge($('#avg-price-badge'), 'Price: $' + avgPrice.toFixed(2));
 
                 let totalViews = 0;
                 data.forEach(row => {
@@ -6769,14 +6947,16 @@
                 // CVR = orders Qty ÷ store views × 100.
                 const avgCVR = totalViewsAll > 0 ? (SERVER_AMZ_QTY_L30 / totalViewsAll * 100) : 0;
                 const avgViews = totalSkuCount > 0 ? Math.round(totalViews / totalSkuCount) : 0;
-                $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
-                $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+                setAmzSummaryBadge($('#avg-cvr-badge'), 'CVR: ' + avgCVR.toFixed(1) + '%');
+                setAmzSummaryBadge($('#total-views-badge'), 'Views: ' + totalViews.toLocaleString());
                 // Qty Sold badge is driven from real Amazon orders (server-computed, same source as
                 // /amazon/daily-sales) so it matches that page — do NOT overwrite it with the per-SKU
                 // A_L30 sum here.
                 // Update sold counts
                 $('#total-sold-count').text(totalSoldCount.toLocaleString());
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
+                $('.sold-filter-badge[data-metric="sold_count"]').attr('data-live-value', totalSoldCount);
+                $('.sold-filter-badge[data-metric="zero_sold_count"]').attr('data-live-value', zeroSoldCount);
                 if (window.LmpMissingBadge) {
                     LmpMissingBadge.update('#amazon-lmp-missing-badge', allData, 'amazon');
                 }
@@ -6800,25 +6980,28 @@
 
                 // GROI% = (Total PFT / Total COGS) * 100
                 const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
-                $('#groi-percent-badge').text('GROI: ' + Math.round(groiPercent) + '%');
+                setAmzSummaryBadge($('#groi-percent-badge'), 'GROI: ' + Math.round(groiPercent) + '%', Math.round(groiPercent));
 
                 // NROI% = (Total PFT − Ad Spend) / COGS × 100
                 // Ad Spend estimated from channel Ads% × sales (same Ads% basis as the Ads badge).
                 const adSpendEst = (amazonAdsPercent / 100) * totalSalesAmt;
                 const nroiPercent = totalLpAmt > 0 ? ((totalPftAmt - adSpendEst) / totalLpAmt) * 100 : 0;
-                $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiPercent) + '%');
+                setAmzSummaryBadge($('#nroi-percent-badge'), 'NROI: ' + Math.round(nroiPercent) + '%', Math.round(nroiPercent));
                 
-                $('#total-pft-amt-badge').text('PFT: $' + Math.round(totalPftAmt));
+                setAmzSummaryBadge($('#total-pft-amt-badge'), 'PFT: $' + Math.round(totalPftAmt), Math.round(totalPftAmt));
                 // Sales badge = real-orders 30-day sales (matches /amazon/daily-sales). Not filter-dependent.
-                $('#total-sales-amt-badge').text('Sales: $' + Math.round(SERVER_AMZ_SALES_L30).toLocaleString('en-US'));
+                setAmzSummaryBadge($('#total-sales-amt-badge'), 'Sales: $' + Math.round(SERVER_AMZ_SALES_L30).toLocaleString('en-US'), Math.round(SERVER_AMZ_SALES_L30));
+                setAmzSummaryBadge($('#total-qty-sold-badge'), 'Qty: ' + Math.round(SERVER_AMZ_QTY_L30).toLocaleString('en-US'), SERVER_AMZ_QTY_L30);
+                setAmzSummaryBadge($('#amazon-ads-badge'), 'Ads: ' + (isFinite(amazonAdsPercent) ? (Math.round(amazonAdsPercent * 10) / 10) + '%' : 'N/A'), amazonAdsPercent);
                 
                 // AVG GPFT% = (Total_pft / Total_Sales) * 100 (Gross Profit % - before ads)
                 const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
-                $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
+                setAmzSummaryBadge($('#avg-gpft-badge'), 'GPFT: ' + Math.round(avgGpft) + '%', Math.round(avgGpft));
                 
                 // AVG PFT% (Net Profit %) = GPFT% − Ads%  (Ads% from /all-marketplace-master, Amazon channel)
                 const avgPft = avgGpft - amazonAdsPercent;
-                $('#avg-pft-badge').text('PFT: ' + Math.round(avgPft) + '%');
+                setAmzSummaryBadge($('#avg-pft-badge'), 'PFT: ' + Math.round(avgPft) + '%', Math.round(avgPft));
+                if (typeof syncAmzSummaryTrendDots === 'function') syncAmzSummaryTrendDots();
                 
                 // Save badge stats daily (fire-and-forget, once per page load)
                 // Only save when totalSkuCount > 0 (proof that real data was processed)
@@ -6839,7 +7022,9 @@
                         gpft_pct: Math.round(avgGpft),
                         npft_pct: Math.round(avgPft),
                         groi_pct: Math.round(groiPercent),
-                        nroi_pct: Math.round(nroiPercent)
+                        nroi_pct: Math.round(nroiPercent),
+                        tcos_pct: amazonAdsPercent,
+                        total_l30_orders: SERVER_AMZ_QTY_L30
                     });
                 }
             }
@@ -6863,7 +7048,8 @@
                 if (field === '_accept') return 'Push Prices';
                 if (field === 'push_prc') return 'Push Prc';
                 if (field === 'cvr_discount') return 'CVR Disc.';
-                if (field === 'cpn_pct') return 'CPN %';
+                if (field === 'cvr_up_dn') return 'CVR Up/Dn';
+                if (field === 't_discounts') return 'T Discounts';
                 if (field === 'prmt_pct') return 'PRMT %';
                 const raw = (def && def.title != null) ? def.title : field;
                 const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -6885,7 +7071,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|_accept|push_prc|prmt_pct|cpn_pct|cvr_discount|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|_accept|push_prc|prmt_pct|cvr_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|s\s*st|pls|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';
@@ -6917,6 +7103,72 @@
                 return 'other';
             }
 
+            const AMAZON_COL_CAT_STORAGE = 'amazon_tabulator_col_cats_v1';
+            function loadAmazonColCats() {
+                try {
+                    const raw = localStorage.getItem(AMAZON_COL_CAT_STORAGE);
+                    const parsed = raw ? JSON.parse(raw) : {};
+                    return (parsed && typeof parsed === 'object') ? parsed : {};
+                } catch (e) {
+                    return {};
+                }
+            }
+            function saveAmazonColCats(map) {
+                try { localStorage.setItem(AMAZON_COL_CAT_STORAGE, JSON.stringify(map || {})); } catch (e) { /* ignore */ }
+            }
+            function bindAmazonColVisDrag(li, groupEls) {
+                li.draggable = true;
+                li.addEventListener('dragstart', function(e) {
+                    e.stopPropagation();
+                    li.classList.add('col-vis-dragging');
+                    e.dataTransfer.setData('text/plain', li.dataset.field || '');
+                    e.dataTransfer.setData('text/col-vis-field', li.dataset.field || '');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                li.addEventListener('dragend', function() {
+                    li.classList.remove('col-vis-dragging');
+                    Object.keys(groupEls).forEach(function(k) {
+                        groupEls[k].classList.remove('col-vis-drop-over');
+                    });
+                });
+            }
+            function bindAmazonColVisDropZone(group, list, groupEls) {
+                [group, list].forEach(function(zone) {
+                    zone.addEventListener('dragover', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        group.classList.add('col-vis-drop-over');
+                        e.dataTransfer.dropEffect = 'move';
+                    });
+                    zone.addEventListener('dragleave', function(e) {
+                        if (!group.contains(e.relatedTarget)) group.classList.remove('col-vis-drop-over');
+                    });
+                    zone.addEventListener('drop', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        group.classList.remove('col-vis-drop-over');
+                        const field = e.dataTransfer.getData('text/col-vis-field')
+                            || e.dataTransfer.getData('text/plain');
+                        if (!field) return;
+                        const menu = document.getElementById('column-dropdown-menu');
+                        const li = menu ? menu.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]') : null;
+                        if (!li) return;
+                        const nextCat = group.dataset.category;
+                        if (!nextCat || li.dataset.group === nextCat) return;
+                        const fromGroup = li.closest('.col-vis-group');
+                        list.appendChild(li);
+                        li.dataset.group = nextCat;
+                        const cb = li.querySelector('input[type="checkbox"]');
+                        if (cb) cb.dataset.group = nextCat;
+                        const cats = loadAmazonColCats();
+                        cats[field] = nextCat;
+                        saveAmazonColCats(cats);
+                        syncAmazonGroupHeaderCheckbox(fromGroup);
+                        syncAmazonGroupHeaderCheckbox(group);
+                    });
+                });
+            }
+
             function syncAmazonGroupHeaderCheckbox(groupEl) {
                 if (!groupEl) return;
                 const headerCb = groupEl.querySelector('.col-vis-group-toggle');
@@ -6943,6 +7195,7 @@
                     .then(res => res.json())
                     .then(savedVisibility => {
                         const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                        const catOverrides = loadAmazonColCats();
 
                         const groupsLi = document.createElement("li");
                         groupsLi.className = "col-vis-full";
@@ -6974,6 +7227,7 @@
                             groupsWrap.appendChild(group);
                             lists[cat] = list;
                             groupEls[cat] = group;
+                            bindAmazonColVisDropZone(group, list, groupEls);
                         });
 
                         table.getColumns().forEach(col => {
@@ -6982,7 +7236,10 @@
                             if (!field) return;
 
                             const title = amazonColVisPlainTitle(def);
-                            const cat = classifyAmazonColumn(field, title);
+                            let cat = catOverrides[field];
+                            if (COL_VIS_CATEGORY_KEYS.indexOf(cat) === -1) {
+                                cat = classifyAmazonColumn(field, title);
+                            }
                             const isVisible = map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible();
 
                             const li = document.createElement("li");
@@ -7001,8 +7258,9 @@
 
                             label.appendChild(checkbox);
                             label.appendChild(document.createTextNode(' ' + title));
-                            label.title = title;
+                            label.title = title + ' (drag to another header)';
                             li.appendChild(label);
+                            bindAmazonColVisDrag(li, groupEls);
                             lists[cat].appendChild(li);
                         });
 

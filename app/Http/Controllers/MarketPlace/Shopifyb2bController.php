@@ -57,6 +57,14 @@ class Shopifyb2bController extends Controller
     }
 
     /**
+     * Public L30 snapshot for /all-marketplace-master Shopify B2B row.
+     */
+    public function l30SnapshotForMaster(): array
+    {
+        return $this->getShopifyB2bL30Snapshot();
+    }
+
+    /**
      * L30 sales snapshot from shopify_b2b_daily_data — same basis as /shopify-b2b/daily-sales.
      */
     private function getShopifyB2bL30Snapshot(): array

@@ -273,6 +273,7 @@
         border-radius: 7px;
         background: linear-gradient(135deg, #0d9488, #14b8a6);
         color: #fff;
+        text-decoration: none;
         font-size: 0.6rem;
         font-weight: 800;
         letter-spacing: 0.06em;
@@ -289,6 +290,8 @@
         transform: translateY(-1px);
         box-shadow: 0 3px 8px rgba(13, 148, 136, 0.5), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
         background: linear-gradient(135deg, #0f766e, #0d9488);
+        color: #fff;
+        text-decoration: none;
     }
     .task-summary-tm-badge:focus-visible {
         outline: 2px solid #0d9488;

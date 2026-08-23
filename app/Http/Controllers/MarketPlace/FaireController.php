@@ -524,6 +524,40 @@ class FaireController extends Controller
         }
     }
 
+    public static function applyFaireShopifyOrderFilter($query): void
+    {
+        $query->where('source_name', 'faire')
+            ->orWhere('source_name', 'LIKE', '%faire%')
+            ->orWhere('tags', 'LIKE', '%Faire%');
+    }
+
+    /** Last 30 Pacific days — same window as /faire-tabulator. */
+    public static function faireShopifyL30Start(): Carbon
+    {
+        return Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
+    }
+
+    /**
+     * Per-SKU AL30 qty + sales from shopify_raw_orders (Faire source).
+     * Replaces faire_daily_data Excel dumps so pricing / CVR move with live orders.
+     */
+    public static function queryFaireShopifyL30SalesBySku()
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return collect();
+        }
+
+        return DB::table('shopify_raw_orders')
+            ->where('order_date', '>=', self::faireShopifyL30Start())
+            ->where(fn ($q) => self::applyFaireShopifyOrderFilter($q))
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where('quantity', '>', 0)
+            ->selectRaw('sku, SUM(COALESCE(quantity, 0)) as al30, SUM(COALESCE(price, 0) * COALESCE(quantity, 0)) as sales')
+            ->groupBy('sku')
+            ->get();
+    }
+
     /**
      * Get daily data for Faire tabulator view
      */
@@ -537,11 +571,7 @@ class FaireController extends Controller
             $thirtyDaysAgo = \Carbon\Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
             $rows = DB::table('shopify_raw_orders')
                 ->where('order_date', '>=', $thirtyDaysAgo)
-                ->where(function ($q) {
-                    $q->where('source_name', 'faire')
-                      ->orWhere('source_name', 'LIKE', '%faire%')
-                      ->orWhere('tags', 'LIKE', '%Faire%');
-                })
+                ->where(fn ($q) => self::applyFaireShopifyOrderFilter($q))
                 ->orderBy('order_date', 'desc')
                 ->orderBy('id', 'desc')
                 ->get();
@@ -674,16 +704,10 @@ class FaireController extends Controller
     public function getFairePricingData(Request $request)
     {
         try {
-            // Same grain as /faire/daily-data (tabulator): include all rows so badge totals match Sales Data.
-            $salesAgg = FaireDailyData::query()
-                ->selectRaw(
-                    'sku, SUM(COALESCE(quantity, 0)) as al30, '
-                    . 'SUM(COALESCE(wholesale_price, 0) * COALESCE(quantity, 0)) as sales'
-                )
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->groupBy('sku')
-                ->get();
+            // Same grain as /faire/daily-data (tabulator): last 30 Pacific days from
+            // shopify_raw_orders. faire_daily_data is a manual Excel dump and stays frozen
+            // until someone re-uploads (it was stuck for a week).
+            $salesAgg = self::queryFaireShopifyL30SalesBySku();
 
             // Robust SKU normalizer (mirrors AliexpressController::normalizeAeSkuExact).
             // The previous `strtoupper(trim(str_replace(NBSP, ' ', $v)))` missed narrow NBSP

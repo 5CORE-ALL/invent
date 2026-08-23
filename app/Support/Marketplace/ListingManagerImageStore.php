@@ -351,10 +351,10 @@ class ListingManagerImageStore
 
     private static function storedFileExists(string $url): bool
     {
-        if (preg_match('#/listing-manager/media/([^/?#]+)#', $url, $m)) {
+        if (preg_match('~/listing-manager/media/([^/?#]+)~', $url, $m)) {
             return Storage::disk(self::DISK)->exists(self::DIR.'/'.basename(rawurldecode($m[1])));
         }
-        if (preg_match('#/storage/listing-manager/images/([^/?#]+)#', $url, $m)) {
+        if (preg_match('~/storage/listing-manager/images/([^/?#]+)~', $url, $m)) {
             return Storage::disk(self::DISK)->exists(self::DIR.'/'.basename(rawurldecode($m[1])));
         }
 

@@ -44,6 +44,14 @@ class AllMarketplaceMasterBadgeAggregator
             $missCount = self::rowNumber($row, 'Miss');
             $nmapCount = self::rowNumber($row, 'NMap');
             $adSpend = self::rowNumber($row, 'Total Ad Spend');
+            $channelName = strtolower(trim((string) ($row['Channel '] ?? $row['Channel'] ?? '')));
+            if ($adSpend <= 0 && str_contains($channelName, 'reverb')) {
+                $l30SalesForBump = self::rowNumber($row, 'L30 Sales');
+                $bumpPct = self::rowNumber($row, 'Ads%', 'TACOS %', 'TACOS');
+                if ($bumpPct > 0 && $l30SalesForBump > 0) {
+                    $adSpend = ($bumpPct / 100) * $l30SalesForBump;
+                }
+            }
             $views = self::rowNumber($row, 'Total Views');
 
             $totalL30Sales += $l30Sales;
@@ -61,6 +69,10 @@ class AllMarketplaceMasterBadgeAggregator
 
             $rating = self::rowNumber($row, 'Avg Rating');
             $reviews = self::rowNumber($row, 'Total Reviews');
+            if ($reviews <= 0 && isset($row['Reviews']) && is_array($row['Reviews'])) {
+                $rating = self::parseNumber($row['Reviews']['Avg Rating'] ?? $row['Reviews']['avg_rating'] ?? 0);
+                $reviews = self::parseNumber($row['Reviews']['Total Reviews'] ?? $row['Reviews']['total_reviews'] ?? 0);
+            }
             $sellerRating = self::rowNumber($row, 'Seller Avg Rating');
             $sellerReviews = self::rowNumber($row, 'Seller Total Reviews');
             if ($reviews > 0) {
@@ -79,10 +91,26 @@ class AllMarketplaceMasterBadgeAggregator
         $avgNpft = $avgGprofit - $avgAdsPercent;
         $netProfit = $totalPft - $totalAdSpend;
         $avgNroi = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0.0;
-        $cvrPct = $totalViews > 0 ? ($totalQty / $totalViews) * 100 : null;
+        $cvrUnits = 0.0;
+        $cvrViews = 0.0;
+        foreach ($rows as $row) {
+            $views = self::rowNumber($row, 'Total Views');
+            if ($views <= 0) {
+                continue;
+            }
+            if (array_key_exists('CVR', $row) && $row['CVR'] !== null && $row['CVR'] !== '') {
+                $cvrUnits += (self::parseNumber($row['CVR']) / 100.0) * $views;
+                $cvrViews += $views;
+            } else {
+                $cvrUnits += self::rowNumber($row, 'Qty');
+                $cvrViews += $views;
+            }
+        }
+        $cvrPct = $cvrViews > 0 ? ($cvrUnits / $cvrViews) * 100 : null;
 
         $inventoryValueAmazon = (float) ($extras['inventory_value_amazon'] ?? 0);
         $invAtLp = (float) ($extras['inv_at_lp'] ?? 0);
+        $invAtSp = (float) ($extras['inv_at_sp'] ?? 0);
         $shopifyInvSum = (float) ($extras['shopify_inv_sum'] ?? 0);
         $shopifyWeightedAvgLp = (float) ($extras['shopify_weighted_avg_lp'] ?? 0);
         $tat = $totalL30Sales > 0 ? $inventoryValueAmazon / $totalL30Sales : 0.0;
@@ -109,6 +137,7 @@ class AllMarketplaceMasterBadgeAggregator
             'missing_l' => (int) round($totalMiss),
             'inventory_value_amazon' => round($inventoryValueAmazon, 2),
             'inv_at_lp' => round($invAtLp, 2),
+            'inv_at_sp' => round($invAtSp, 2),
             'shopify_inv_sum' => round($shopifyInvSum, 2),
             'shopify_weighted_avg_lp' => round($shopifyWeightedAvgLp, 2),
             'tat' => round($tat, 2),

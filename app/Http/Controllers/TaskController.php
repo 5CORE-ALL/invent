@@ -1329,6 +1329,8 @@ class TaskController extends Controller
                 }
             }
 
+            $row['is_corrective_action'] = !empty($task->is_corrective_action) ? 1 : 0;
+
             return $row;
         })->values();
 

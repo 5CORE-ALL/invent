@@ -5541,6 +5541,13 @@ class OverallAmazonController extends Controller
                     'npft_pct' => (float) $row->npft_pct,
                     'groi_pct' => (float) $row->groi_pct,
                     'nroi_pct' => (float) $row->nroi_pct,
+                    'total_sales' => (float) $row->total_sales,
+                    'total_pft' => (float) $row->total_pft,
+                    'tcos_pct' => (float) $row->tcos_pct,
+                    'total_l30_orders' => (float) $row->total_l30_orders,
+                    'sold_count' => (float) $row->sold_count,
+                    'zero_sold_count' => (float) $row->zero_sold_count,
+                    'prc_gt_lmp_count' => (float) $row->prc_gt_lmp_count,
                 ],
             ]);
         } catch (\Throwable $e) {

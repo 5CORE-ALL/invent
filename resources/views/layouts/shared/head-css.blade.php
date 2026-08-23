@@ -117,13 +117,27 @@
         background-color: #dbeafe !important;
         color: #0f172a !important;
     }
+
+    /*
+     * Freeze header rows on every HTML table. --app-freeze-top is 0 inside a
+     * capped scroll wrapper and the topbar height for page-scroll tables
+     * (see public/js/freeze-table-headers.js).
+     */
+    table > thead > tr > th,
+    table > thead > tr > td {
+        position: sticky !important;
+        top: var(--app-freeze-top, 0px) !important;
+        z-index: 6 !important;
+        background-color: #dbeafe;
+        box-shadow: 0 1px 0 #93c5fd;
+    }
     .table-responsive > table > thead > tr > th,
     .table-container > table > thead > tr > th,
     .modal-body .table-responsive > table > thead > tr > th,
     #ebay-table > thead > tr > th,
     #sku-history-content .table-responsive > table > thead > tr > th {
         position: sticky !important;
-        top: 0 !important;
+        top: var(--app-freeze-top, 0px) !important;
         z-index: 6 !important;
         background-color: #dbeafe !important;
         box-shadow: 0 1px 0 #93c5fd;
@@ -131,7 +145,7 @@
     .tabulator .tabulator-header {
         position: sticky !important;
         top: 0 !important;
-        z-index: 6 !important;
+        z-index: 7 !important;
     }
 
     /*
@@ -197,6 +211,57 @@
         max-width: 50px !important;
         max-height: 50px !important;
         object-fit: cover !important;
+    }
+
+    /*
+     * KPI / summary badge trend dots — compact so more badges fit on a row.
+     * Used on Active Channel, marketplace tabulators, dashboard, PEF, LMP, etc.
+     */
+    .summary-trend-dot,
+    .kpi-status-dot,
+    .pef-kpi-dot,
+    .amz-vv-trend-dot {
+        display: inline-block !important;
+        width: 6px !important;
+        height: 6px !important;
+        min-width: 6px !important;
+        min-height: 6px !important;
+        border-radius: 50% !important;
+        margin-right: 0.22rem !important;
+        margin-left: 0 !important;
+        flex-shrink: 0 !important;
+        vertical-align: 0.08em;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
+        cursor: pointer;
+        position: relative;
+        z-index: 2;
+    }
+    .summary-trend-dot:hover,
+    .kpi-status-dot:hover,
+    .pef-kpi-dot:hover,
+    .amz-vv-trend-dot:hover {
+        transform: scale(1.35);
+    }
+    .summary-trend-dot.up,
+    .kpi-status-dot--green,
+    .pef-kpi-dot--green { background: #22c55e; }
+    .summary-trend-dot.down,
+    .kpi-status-dot--red,
+    .pef-kpi-dot--red { background: #ef4444; }
+    .summary-trend-dot.flat,
+    .summary-trend-dot.none,
+    .kpi-status-dot--gray,
+    .pef-kpi-dot--gray { background: #9ca3af; }
+
+    #summary-stats .badge,
+    .badge-chart-link,
+    .amz-badge-chart,
+    .tt-badge-chart,
+    .pef-metric-badge,
+    .dashboard-badge-panel__badges > .badge,
+    .ebay2-summary-badge-row .badge {
+        display: inline-flex;
+        align-items: center;
     }
 
 </style>

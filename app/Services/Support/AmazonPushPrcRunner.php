@@ -127,7 +127,6 @@ class AmazonPushPrcRunner
                     'sku' => $sku,
                     'sprice' => $task['effective'] ?? $task['std'],
                     'prmt_pct' => $task['prmt'] ?? 0,
-                    'cpn_pct' => $task['cpn'] ?? 0,
                     'record_push_prc' => 1,
                 ]);
                 $saveRes = $controller->saveSpriceToDatabase($saveReq);

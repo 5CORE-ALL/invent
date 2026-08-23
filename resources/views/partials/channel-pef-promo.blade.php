@@ -13,6 +13,7 @@
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
     $channelPromoShowZeroSoldDilRule = in_array($channelPromoChannel, ['ebay2op', 'aliexpress'], true);
     $channelPromoZeroSoldDilColorSlabs = in_array($channelPromoChannel, ['aliexpress'], true);
+    $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['ebay1', 'temu', 'temu2'], true);
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
 @endphp
 
@@ -152,6 +153,9 @@
         #ch-promo-sprice-vs-tpromo-btn:disabled {
             opacity: 0.65;
         }
+        @if(!empty($channelPromoShowCvrUpDn))
+        @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'css', 'cvrUpDnChannel' => $channelPromoChannel])
+        @endif
         .ch-promo-reload-push-switch {
             display: inline-flex;
             align-items: center;
@@ -491,12 +495,15 @@
                         @endif
                     </div>
                     @endunless
+                    @if(!empty($channelPromoShowCvrUpDn))
+                    @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'buttons', 'cvrUpDnChannel' => $channelPromoChannel])
+                    @endif
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3']))
                     @unless(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3'], true))
                     <div class="btn-group" role="group">
                     <button type="button" class="btn btn-sm" id="ch-promo-sprice-vs-tpromo-btn"
-                        title="Autofill S PRC = Std × (1 − T Promo/100). T Promo = PRMT% + CPN%. Selected SKUs if checked; otherwise all visible. Skips INV = 0. No marketplace push. S PRC &gt; LMP shows a red triangle.">
+                        title="Autofill S PRC = Std × (1 − T Promo/100). T Promo = PRMT% + CPN% + CVR Up/Dn. Selected SKUs if checked; otherwise all visible. Skips INV = 0. No marketplace push. S PRC &gt; LMP shows a red triangle.">
                         Sprice vs T promo
                     </button>
                     <button type="button" class="btn btn-sm" id="ch-promo-sprice-vs-tpromo-del-btn"
@@ -552,16 +559,19 @@
                     <p class="small text-muted mb-2" id="ch-promo-cvr-cpn-help">
                         @if($channelPromoChannel === 'ebay2op')
                             Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
+                            Change a slab to autofill rows below by <strong>−1</strong> each (min 0).
                             <strong>Save Rule</strong> stores the slabs.
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
                             (database only — no eBay coupon).
                         @elseif(in_array($channelPromoChannel, ['ebay2', 'ebay3'], true))
                             Map CVR% slabs to <strong>CPN %</strong>.
+                            Change a slab to autofill rows below by <strong>−1</strong> each (min 0).
                             <strong>Save Rule</strong> stores the slabs.
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
                             (database only — no eBay coupon).
                         @else
                             Map CVR% slabs to <strong>CPN %</strong>.
+                            Change a slab to autofill rows below by <strong>−1</strong> each (min 0).
                             <strong>Save Rule</strong> stores the slabs.
                             Apply then writes CPN% to the database only (no eBay coupon).
                         @endif
@@ -593,6 +603,10 @@
         </div>
     </div>
     @endunless
+
+    @if(!empty($channelPromoShowCvrUpDn))
+    @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'modals', 'cvrUpDnChannel' => $channelPromoChannel])
+    @endif
 
     <div class="modal fade" id="chPromoDilVsPrmtModal" tabindex="-1" aria-labelledby="chPromoDilVsPrmtModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-md">
@@ -2475,9 +2489,15 @@
             }
             return chPromoRound2(cpn);
         }
-        /** PRMT% + CPN% (T Promo). */
+        /** PRMT% + CPN% + CVR Up/Dn (T Promo / T Discounts). */
         function chPromoTPromoPct(d) {
-            return chPromoRound2(chPromoEbayPrmtUsed(d) + chPromoEbayCpnUsed(d));
+            const adj = (typeof computeCvrUpDnPct === 'function') ? (Number(computeCvrUpDnPct(d)) || 0) : 0;
+            return chPromoRound2(chPromoEbayPrmtUsed(d) + chPromoEbayCpnUsed(d) + adj);
+        }
+        function chPromoCvrUpDnEnabled() {
+            return CHANNEL_PROMO_CHANNEL === 'ebay1'
+                || CHANNEL_PROMO_CHANNEL === 'temu'
+                || CHANNEL_PROMO_CHANNEL === 'temu2';
         }
         function chPromoLastCouponPct(d) {
             return Math.round(Math.max(0, Number(d && d.PEF_COUPON_PCT) || 0));
@@ -3265,7 +3285,8 @@
             const cpn = overrides && overrides.cpn != null
                 ? Math.max(0, Number(overrides.cpn) || 0)
                 : Math.max(0, Number(d.cpn_pct != null ? d.cpn_pct : d._cpn_pct_applied) || 0);
-            const totalDisc = Math.min(99.99, prmt + cpn);
+            const adj = (typeof computeCvrUpDnPct === 'function') ? (Number(computeCvrUpDnPct(d)) || 0) : 0;
+            const totalDisc = Math.min(99.99, Math.max(0, prmt + cpn + adj));
             const price = totalDisc > 0
                 ? chPromoRound2(std * (1 - (totalDisc / 100)))
                 : chPromoRound2(std);
@@ -4186,6 +4207,21 @@
             });
         }
 
+        function cascadeChPromoCvrCpnFromInput(inputEl) {
+            const $inputs = $('#ch-promo-cvr-cpn-tbody .ch-promo-cvr-cpn-input');
+            const start = $inputs.index(inputEl);
+            if (start < 0) return;
+            const startVal = parseFloat($(inputEl).val());
+            if (!isFinite(startVal)) return;
+            $inputs.each(function(i) {
+                if (i < start) return;
+                const cpn = Math.max(0, startVal - (i - start));
+                $(this).val(cpn);
+                const key = String($(this).closest('tr').attr('data-key') || '');
+                const rule = chPromoCvrCpnRules.find(function(r) { return r.key === key; });
+                if (rule) rule.cpn = cpn;
+            });
+        }
         function renderChPromoCvrCpnModalTable() {
             const $tb = $('#ch-promo-cvr-cpn-tbody').empty();
             chPromoCvrCpnRules.forEach(function(r, idx) {
@@ -6695,7 +6731,7 @@
                         + ')')
                     : '')
                 + '\n\nS PRC = Std × (1 − T Promo/100)'
-                + '\nT Promo = PRMT% + CPN%'
+                + '\nT Promo = PRMT% + CPN% + CVR Up/Dn'
                 + '\nIf T Promo is 0 → S PRC = Std'
                 + '\nS PRC > LMP shows a red triangle. No marketplace push.'
             )) return;
@@ -7362,6 +7398,10 @@
                         applyChPromoFromCell(cell, 'cpn');
                     },
                 }]),
+                ...(chPromoCvrUpDnEnabled() && typeof cvrUpDnColumn === 'function' ? [cvrUpDnColumn()] : []),
+                ...(chPromoCvrUpDnEnabled() && typeof tDiscountsColumn === 'function'
+                    ? [tDiscountsColumn(function(d) { return chPromoTPromoPct(d); })]
+                    : []),
                 ...(!CHANNEL_PROMO_HIDE_CVR_CPN && CHANNEL_PROMO_CHANNEL === 'ebay2op'
                     ? [channelPromoPushCpnColumn()]
                     : []),
@@ -7846,6 +7886,7 @@
                     if (help) {
                         help.innerHTML = 'Map CVR% slabs to <strong>CPN %</strong>. '
                             + (CH_PEF_CVR_CPN_SKIP_ZERO ? 'There is no <strong>0%</strong> CVR slab. ' : '')
+                            + 'Change a slab to autofill rows below by <strong>−1</strong> each (min 0). '
                             + '<strong>Save Rule</strong> stores the slabs. '
                             + '<strong>Apply</strong> writes CPN% only on selected or visible SKUs with '
                             + '<strong>eBay sale (E L30) &gt; 0</strong> (database only — no eBay coupon).';
@@ -7916,6 +7957,10 @@
             if (!CHANNEL_PROMO_HIDE_CVR_CPN) {
                 $('#ch-promo-cvr-cpn-save-btn').off('click.chpromo').on('click.chpromo', saveChPromoCvrCpnRulesOnly);
                 $('#ch-promo-cvr-cpn-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoCvrCpn);
+                $(document).off('input.chPromoCvrCascade change.chPromoCvrCascade', '#ch-promo-cvr-cpn-tbody .ch-promo-cvr-cpn-input')
+                    .on('input.chPromoCvrCascade change.chPromoCvrCascade', '#ch-promo-cvr-cpn-tbody .ch-promo-cvr-cpn-input', function() {
+                        cascadeChPromoCvrCpnFromInput(this);
+                    });
             }
 
             $(document).off('change.chpromo', '.ch-pef-appr-cb').on('change.chpromo', '.ch-pef-appr-cb', function() {
@@ -8081,4 +8126,8 @@
         } else {
             initChannelPromoPricingUi();
         }
+
+        @if(!empty($channelPromoShowCvrUpDn))
+        @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'script', 'cvrUpDnChannel' => $channelPromoChannel])
+        @endif
 @endif

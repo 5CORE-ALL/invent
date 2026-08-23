@@ -8,39 +8,47 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * High-quality product image generation used only by the Raw Images page.
- * Claude studies the hero photo; OpenAI gpt-image-1 edits it into a raw-shoot still.
+ * Gemini edits the hero into a raw-shoot still. Claude can refine the prompt.
  */
 class RawImagesAiImageService
 {
     public function generateFromHeroBytes(string $heroBytes, string $prompt, string $sku): string
     {
-        $key = $this->openaiKey();
-        if ($key === null) {
-            throw new \RuntimeException('Set RAW_IMAGES_OPENAI_API_KEY or OPENAI_API_KEY in .env for this page.');
-        }
-
-        $png = $this->bytesToPng($heroBytes);
         $analysis = $this->analyzeHeroWithClaude($heroBytes, $sku);
         $fullPrompt = $this->buildGenerationPrompt($prompt, $analysis, $sku);
 
-        $tmpPng = tempnam(sys_get_temp_dir(), 'ri_hero_');
-        if ($tmpPng === false) {
-            throw new \RuntimeException('Could not create a temp file.');
-        }
-        file_put_contents($tmpPng, $png);
-
-        try {
-            $bytes = $this->editWithGptImage($tmpPng, $fullPrompt, $key)
-                ?? $this->generateWithDalle3Hd($fullPrompt, $key);
-
-            if (! is_string($bytes) || $bytes === '') {
-                throw new \RuntimeException('The image API did not return a file.');
+        $gemini = $this->geminiKey();
+        if ($gemini !== null) {
+            $bytes = $this->editWithGemini($heroBytes, $fullPrompt, $gemini);
+            if (is_string($bytes) && $bytes !== '') {
+                return $this->resizeToSquareJpeg($bytes, 2000);
             }
-
-            return $this->resizeToSquareJpeg($bytes, 2000);
-        } finally {
-            @unlink($tmpPng);
         }
+
+        $openai = $this->openaiKey();
+        if ($openai !== null) {
+            $png = $this->bytesToPng($heroBytes);
+            $tmpPng = tempnam(sys_get_temp_dir(), 'ri_hero_');
+            if ($tmpPng === false) {
+                throw new \RuntimeException('Could not create a temp file.');
+            }
+            file_put_contents($tmpPng, $png);
+            try {
+                $bytes = $this->editWithGptImage($tmpPng, $fullPrompt, $openai)
+                    ?? $this->generateWithDalle3Hd($fullPrompt, $openai);
+                if (is_string($bytes) && $bytes !== '') {
+                    return $this->resizeToSquareJpeg($bytes, 2000);
+                }
+            } finally {
+                @unlink($tmpPng);
+            }
+        }
+
+        if ($gemini === null && $openai === null) {
+            throw new \RuntimeException('Set GEMINI_API_KEY in .env for this page.');
+        }
+
+        return $this->composeStudioRawShoot($heroBytes, $analysis);
     }
 
     /**
@@ -48,7 +56,7 @@ class RawImagesAiImageService
      */
     private function analyzeHeroWithClaude(string $heroBytes, string $sku): array
     {
-        $apiKey = trim((string) (config('services.anthropic.key') ?: ''));
+        $apiKey = trim((string) (config('services.anthropic.key') ?: config('services.claude.key') ?: ''));
         if ($apiKey === '') {
             return [];
         }
@@ -86,8 +94,8 @@ class RawImagesAiImageService
                                 'type' => 'text',
                                 'text' => 'This is the product hero photo for SKU '.$sku.'. '
                                     .'Describe it for a photoreal raw-studio reshoot. Return ONLY JSON: '
-                                    .'{"product":"","finish":"","is_dark":true,"background":"","lighting":"","keep":""}. '
-                                    .'is_dark true if the product is dark (then recommend a light background) or false (darker/cream background). '
+                                    .'{"product":"","finish":"","is_dark":true,"bg_hex":"#F4F1EA","background":"","lighting":"","keep":""}. '
+                                    .'is_dark true if the product is dark (then use a light bg_hex) or false (use a slightly darker cream/gray bg_hex). '
                                     .'keep = what must stay identical (shape, ports, logo, color). No markdown.',
                             ],
                         ],
@@ -146,6 +154,347 @@ class RawImagesAiImageService
             .'Photoreal raw-shoot, square 2000x2000, natural lighting, no text, no watermark, no logo overlay, no mannequin hands, no extra products.';
 
         return trim(implode("\n", array_filter($parts)));
+    }
+
+    /**
+     * Claude cannot emit pixels. Build a 2000x2000 studio still from the real hero
+     * using Claude's light/dark + background guidance.
+     *
+     * @param  array<string, mixed>  $analysis
+     */
+    private function composeStudioRawShoot(string $heroBytes, array $analysis): string
+    {
+        $src = @imagecreatefromstring($heroBytes);
+        if (! $src) {
+            throw new \RuntimeException('Hero image could not be read.');
+        }
+
+        $size = 2000;
+        $isDark = filter_var($analysis['is_dark'] ?? null, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($isDark === null) {
+            $isDark = $this->averageLuma($src) < 90;
+        }
+
+        $hex = strtoupper(trim((string) ($analysis['bg_hex'] ?? '')));
+        if (! preg_match('/^#?[0-9A-F]{6}$/', $hex)) {
+            $hex = $isDark ? '#F3F0E8' : '#8A847C';
+        }
+        $rgb = $this->hexToRgb($hex);
+
+        $dst = imagecreatetruecolor($size, $size);
+        $this->fillStudioBackground($dst, $size, $rgb, $isDark);
+
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $scale = min(($size * 0.78) / max($w, 1), ($size * 0.78) / max($h, 1));
+        $nw = (int) max(1, round($w * $scale));
+        $nh = (int) max(1, round($h * $scale));
+        $x = (int) (($size - $nw) / 2);
+        $y = (int) (($size - $nh) / 2) - (int) round($size * 0.02);
+
+        $shadow = imagecolorallocatealpha($dst, 20, 18, 16, 100);
+        imagefilledellipse($dst, (int) ($size / 2), $y + $nh - 8, (int) ($nw * 0.72), (int) max(24, $nh * 0.08), $shadow);
+
+        imagecopyresampled($dst, $src, $x, $y, 0, 0, $nw, $nh, $w, $h);
+        imagedestroy($src);
+
+        ob_start();
+        imagejpeg($dst, null, 92);
+        $out = (string) ob_get_clean();
+        imagedestroy($dst);
+        if ($out === '') {
+            throw new \RuntimeException('Could not write the studio image.');
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{r:int,g:int,b:int}  $rgb
+     */
+    private function fillStudioBackground(\GdImage $dst, int $size, array $rgb, bool $lightBg): void
+    {
+        $base = $rgb;
+        $edge = $lightBg
+            ? [
+                'r' => max(0, $base['r'] - 22),
+                'g' => max(0, $base['g'] - 22),
+                'b' => max(0, $base['b'] - 20),
+            ]
+            : [
+                'r' => min(255, $base['r'] + 28),
+                'g' => min(255, $base['g'] + 26),
+                'b' => min(255, $base['b'] + 24),
+            ];
+
+        for ($y = 0; $y < $size; $y++) {
+            $t = $y / max($size - 1, 1);
+            $r = (int) round($base['r'] * (1 - $t) + $edge['r'] * $t);
+            $g = (int) round($base['g'] * (1 - $t) + $edge['g'] * $t);
+            $b = (int) round($base['b'] * (1 - $t) + $edge['b'] * $t);
+            $color = imagecolorallocate($dst, $r, $g, $b);
+            imageline($dst, 0, $y, $size, $y, $color);
+        }
+    }
+
+    /**
+     * @return array{r:int,g:int,b:int}
+     */
+    private function hexToRgb(string $hex): array
+    {
+        $hex = ltrim($hex, '#');
+
+        return [
+            'r' => (int) hexdec(substr($hex, 0, 2)),
+            'g' => (int) hexdec(substr($hex, 2, 2)),
+            'b' => (int) hexdec(substr($hex, 4, 2)),
+        ];
+    }
+
+    private function averageLuma(\GdImage $src): float
+    {
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $step = max(1, (int) floor(min($w, $h) / 24));
+        $sum = 0.0;
+        $n = 0;
+        for ($y = 0; $y < $h; $y += $step) {
+            for ($x = 0; $x < $w; $x += $step) {
+                $rgb = imagecolorat($src, $x, $y);
+                $r = ($rgb >> 16) & 0xFF;
+                $g = ($rgb >> 8) & 0xFF;
+                $b = $rgb & 0xFF;
+                $sum += 0.2126 * $r + 0.7152 * $g + 0.0722 * $b;
+                $n++;
+            }
+        }
+
+        return $n > 0 ? $sum / $n : 128.0;
+    }
+
+    private function geminiKey(): ?string
+    {
+        $key = trim((string) (config('services.raw_images_ai.gemini_key') ?: config('services.gemini.key') ?: ''));
+
+        return $key !== '' ? $key : null;
+    }
+
+    private function editWithGemini(string $heroBytes, string $prompt, string $key): ?string
+    {
+        $jpeg = $this->bytesToJpeg($heroBytes, 1600);
+        if ($jpeg === '') {
+            return null;
+        }
+
+        $model = (string) config('services.raw_images_ai.gemini_model', 'gemini-3.1-flash-image-preview');
+        $tried = [];
+
+        try {
+            $bytes = $this->geminiGenerateContent($key, $model, $jpeg, $prompt);
+            if (is_string($bytes) && $bytes !== '') {
+                return $bytes;
+            }
+        } catch (\Throwable $e) {
+            $tried[$model] = true;
+            $this->throwIfGeminiQuota($e->getMessage());
+            if (preg_match("/Did you mean '([^']+)'/", $e->getMessage(), $m)) {
+                $suggested = trim($m[1]);
+                if ($suggested !== '' && ! isset($tried[$suggested])) {
+                    try {
+                        $bytes = $this->geminiGenerateContent($key, $suggested, $jpeg, $prompt);
+                        if (is_string($bytes) && $bytes !== '') {
+                            return $bytes;
+                        }
+                    } catch (\Throwable $retry) {
+                        $this->throwIfGeminiQuota($retry->getMessage());
+                        throw new \RuntimeException($this->friendlyGeminiError($retry->getMessage()));
+                    }
+                }
+            }
+
+            throw new \RuntimeException($this->friendlyGeminiError($e->getMessage()));
+        }
+
+        return null;
+    }
+
+    private function throwIfGeminiQuota(string $message): void
+    {
+        if (! preg_match('/quota|resource.?exhausted|rate.?limit|free_tier/i', $message)) {
+            return;
+        }
+
+        throw new \RuntimeException($this->friendlyGeminiError($message));
+    }
+
+    private function friendlyGeminiError(string $message): string
+    {
+        if (preg_match('/free_tier|limit:\s*0/i', $message)) {
+            return 'Gemini blocked image generation on this API key (free-tier image quota is 0). '
+                .'Enable billing in Google AI Studio, create a new Gemini key, and set GEMINI_API_KEY.';
+        }
+
+        if (preg_match('/quota|resource.?exhausted|rate.?limit/i', $message)) {
+            $wait = '';
+            if (preg_match('/retry in\s+([0-9.]+)\s*s/i', $message, $m)) {
+                $wait = ' Wait about '.max(1, (int) ceil((float) $m[1])).' seconds, then try again.';
+            }
+
+            return 'Gemini rate limit hit.'.$wait
+                .' Image models need a billing-enabled Gemini key in GEMINI_API_KEY.';
+        }
+
+        $first = trim((string) preg_replace('/\s+/', ' ', $message));
+        if (strlen($first) > 240) {
+            $first = substr($first, 0, 237).'...';
+        }
+
+        return $first !== '' ? $first : 'Gemini image request failed.';
+    }
+
+    private function geminiGenerateContent(string $key, string $model, string $jpeg, string $prompt): ?string
+    {
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/'.$model.':generateContent';
+        $generationConfig = [
+            'responseModalities' => ['TEXT', 'IMAGE'],
+            'imageConfig' => [
+                'aspectRatio' => '1:1',
+            ],
+        ];
+        if (str_contains($model, '3.1') || str_contains($model, '3-pro') || str_contains($model, '3.x')) {
+            $generationConfig['imageConfig']['imageSize'] = '2K';
+        }
+
+        $response = Http::timeout(180)
+            ->withHeaders([
+                'x-goog-api-key' => $key,
+                'Content-Type' => 'application/json',
+            ])
+            ->post($url, [
+                'contents' => [[
+                    'role' => 'user',
+                    'parts' => [
+                        ['text' => $prompt],
+                        [
+                            'inline_data' => [
+                                'mime_type' => 'image/jpeg',
+                                'data' => base64_encode($jpeg),
+                            ],
+                        ],
+                    ],
+                ]],
+                'generationConfig' => $generationConfig,
+            ]);
+
+        if (! $response->successful()) {
+            $msg = trim((string) data_get($response->json(), 'error.message', ''));
+            throw new \RuntimeException($msg !== '' ? $msg : 'Gemini generateContent failed (HTTP '.$response->status().').');
+        }
+
+        return $this->bytesFromGeminiResponse($response->json());
+    }
+
+    private function geminiInteractions(string $key, string $model, string $jpeg, string $prompt): ?string
+    {
+        $response = Http::timeout(180)
+            ->withHeaders([
+                'x-goog-api-key' => $key,
+                'Content-Type' => 'application/json',
+            ])
+            ->post('https://generativelanguage.googleapis.com/v1beta/interactions', [
+                'model' => $model,
+                'input' => [
+                    ['type' => 'text', 'text' => $prompt],
+                    [
+                        'type' => 'image',
+                        'mime_type' => 'image/jpeg',
+                        'data' => base64_encode($jpeg),
+                    ],
+                ],
+            ]);
+
+        if (! $response->successful()) {
+            $msg = trim((string) data_get($response->json(), 'error.message', ''));
+            throw new \RuntimeException($msg !== '' ? $msg : 'Gemini interactions failed (HTTP '.$response->status().').');
+        }
+
+        return $this->bytesFromGeminiResponse($response->json());
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $json
+     */
+    private function bytesFromGeminiResponse(?array $json): ?string
+    {
+        if (! is_array($json)) {
+            return null;
+        }
+
+        $paths = [
+            'output_image.data',
+            'outputs.0.image.data',
+            'outputs.0.content.0.inline_data.data',
+            'outputs.0.content.0.inlineData.data',
+            'candidates.0.content.parts',
+        ];
+        foreach ($paths as $path) {
+            $value = data_get($json, $path);
+            if (is_string($value) && $value !== '') {
+                $bytes = base64_decode($value, true);
+                if (is_string($bytes) && $this->looksLikeImageBytes($bytes)) {
+                    return $bytes;
+                }
+            }
+            if (is_array($value)) {
+                $fromParts = $this->bytesFromGeminiParts($value);
+                if ($fromParts !== null) {
+                    return $fromParts;
+                }
+            }
+        }
+
+        return $this->bytesFromGeminiParts($json);
+    }
+
+    /**
+     * @param  array<string, mixed>|list<mixed>  $node
+     */
+    private function bytesFromGeminiParts(array $node): ?string
+    {
+        $b64 = (string) ($node['inlineData']['data'] ?? $node['inline_data']['data'] ?? '');
+        if ($b64 === '' && isset($node['data']) && is_string($node['data']) && strlen($node['data']) > 200) {
+            $b64 = $node['data'];
+        }
+        if ($b64 !== '') {
+            $bytes = base64_decode($b64, true);
+            if (is_string($bytes) && $this->looksLikeImageBytes($bytes)) {
+                return $bytes;
+            }
+        }
+
+        foreach ($node as $value) {
+            if (! is_array($value)) {
+                continue;
+            }
+            $found = $this->bytesFromGeminiParts($value);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    private function looksLikeImageBytes(string $bytes): bool
+    {
+        if (strlen($bytes) < 32) {
+            return false;
+        }
+
+        return str_starts_with($bytes, "\xFF\xD8\xFF")
+            || str_starts_with($bytes, "\x89PNG")
+            || str_starts_with($bytes, 'RIFF')
+            || str_starts_with($bytes, 'GIF8');
     }
 
     private function editWithGptImage(string $pngPath, string $prompt, string $key): ?string
