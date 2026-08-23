@@ -1072,6 +1072,16 @@ return [
         'project' => ($p = env('OPENAI_PROJECT')) === null || $p === '' ? null : trim($p),
     ],
 
+    // Raw Images page only — high-quality product image generation.
+    'raw_images_ai' => [
+        'openai_key' => \App\Support\OpenAiRequest::normalizeApiKey(
+            env('RAW_IMAGES_OPENAI_API_KEY', env('OPENAI_API_KEY'))
+        ),
+        'image_model' => env('RAW_IMAGES_OPENAI_IMAGE_MODEL', 'gpt-image-1'),
+        'image_quality' => env('RAW_IMAGES_OPENAI_IMAGE_QUALITY', 'high'),
+        'image_size' => env('RAW_IMAGES_OPENAI_IMAGE_SIZE', '1024x1024'),
+    ],
+
     'anthropic' => [
         'key' => env('ANTHROPIC_API_KEY', env('CLAUDE_API_KEY')),
         // Default model picked from the currently-available list returned by

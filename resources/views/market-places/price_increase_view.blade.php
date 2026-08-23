@@ -1192,6 +1192,12 @@
             font-size: 9px;
             font-weight: 700;
         }
+        #lmpModal .lmp-channel-icon.tiktok {
+            background: #111;
+            color: #fff;
+            font-size: 9px;
+            font-weight: 700;
+        }
         #lmpModal .lmp-channel-icon.bestbuy {
             background: #0046be;
             color: #fff;
@@ -3042,7 +3048,7 @@
             e.stopPropagation();
             e.preventDefault();
             const sku = $(this).data('sku');
-            const marketplace = $(this).data('marketplace'); // amazon | ebay | google | bestbuy | macy | reverb | temu
+            const marketplace = $(this).data('marketplace'); // amazon | ebay | google | bestbuy | macy | reverb | temu | aliexpress | tiktok
             if (sku) {
                 loadLmpCompetitorsModal(sku, marketplace || null, false);
             }
@@ -10266,7 +10272,7 @@
             const ch = isEdit
                 ? lmpEditState.channel
                 : (($('#lmpAddChannel').val() || lmpModalCache.filter || 'amazon').toLowerCase());
-            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
+            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress', tiktok: 'TikTok' };
             const label = labelMap[ch] || ch;
             const $box = $form.closest('.lmp-add-form-box');
             $box.find('strong').html(
@@ -10449,13 +10455,16 @@
             if (marketplace === 'macys' || marketplace === 'bestbuyusa') {
                 marketplace = marketplace === 'macys' ? 'macy' : 'bestbuy';
             }
+            if (marketplace === 'tiktok2' || marketplace === 'tiktok 2') {
+                marketplace = 'tiktok';
+            }
 
             // On Pull, keep the currently selected channel filter when possible
             let initialFilter;
             if (refreshFromApi && lmpModalCache && lmpModalCache.sku === sku && lmpModalCache.filter) {
                 initialFilter = lmpModalCache.filter;
             } else {
-                initialFilter = (marketplace === 'amazon' || marketplace === 'ebay' || marketplace === 'google' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb' || marketplace === 'temu' || marketplace === 'aliexpress')
+                initialFilter = (marketplace === 'amazon' || marketplace === 'ebay' || marketplace === 'google' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb' || marketplace === 'temu' || marketplace === 'aliexpress' || marketplace === 'tiktok')
                     ? marketplace
                     : 'all';
             }
@@ -10505,8 +10514,9 @@
             let reverbData = null;
             let temuData = null;
             let aliexpressData = null;
+            let tiktokData = null;
             let loaded = 0;
-            const totalNeeded = 8;
+            const totalNeeded = 9;
             let pullHadError = false;
 
             function tryRender() {
@@ -10514,7 +10524,7 @@
                 if (loaded < totalNeeded) return;
 
                 // Re-render LMP drawer in place with fresh Pull/DB data
-                const rows = buildLmpMergedRows(sku, amazonData, ebayData, googleData, bestbuyData, macyData, reverbData, temuData, aliexpressData);
+                const rows = buildLmpMergedRows(sku, amazonData, ebayData, googleData, bestbuyData, macyData, reverbData, temuData, aliexpressData, tiktokData);
                 lmpModalCache = { sku: sku, rows: rows, filter: initialFilter, showAdd: showAdd };
                 renderLmpMergedTable();
                 updateLmpPullBtnTitle(initialFilter);
@@ -10667,6 +10677,21 @@
                     tryRender();
                 }
             });
+
+            $.ajax({
+                url: '/tiktok/competitors',
+                method: 'GET',
+                data: { sku: sku },
+                timeout: 10000,
+                success: function(res) {
+                    tiktokData = res.success && res.competitors ? res : null;
+                    tryRender();
+                },
+                error: function() {
+                    tiktokData = null;
+                    tryRender();
+                }
+            });
         }
 
         // Pull live LMP (Amazon / eBay / Google) — same as pricing tabulators
@@ -10816,6 +10841,9 @@
             if (channel === 'aliexpress') {
                 return '<span class="lmp-channel-icon aliexpress" title="AliExpress">AE</span>';
             }
+            if (channel === 'tiktok') {
+                return '<span class="lmp-channel-icon tiktok" title="TikTok">TT</span>';
+            }
             if (channel === 'bestbuy') {
                 return '<span class="lmp-channel-icon bestbuy" title="Best Buy">BB</span>';
             }
@@ -10828,7 +10856,7 @@
             return '';
         }
 
-        function buildLmpMergedRows(sku, amazonRes, ebayRes, googleRes, bestbuyRes, macyRes, reverbRes, temuRes, aliexpressRes) {
+        function buildLmpMergedRows(sku, amazonRes, ebayRes, googleRes, bestbuyRes, macyRes, reverbRes, temuRes, aliexpressRes, tiktokRes) {
             const rows = [];
             const amzList = (amazonRes && amazonRes.competitors) ? amazonRes.competitors : [];
             const ebayList = (ebayRes && ebayRes.competitors) ? ebayRes.competitors : [];
@@ -10838,6 +10866,7 @@
             const reverbList = (reverbRes && reverbRes.competitors) ? reverbRes.competitors : [];
             const temuList = (temuRes && temuRes.competitors) ? temuRes.competitors : [];
             const aliexpressList = (aliexpressRes && aliexpressRes.competitors) ? aliexpressRes.competitors : [];
+            const tiktokList = (tiktokRes && tiktokRes.competitors) ? tiktokRes.competitors : [];
 
             amzList.forEach(function(amz) {
                 const price = parseFloat(amz.price) || 0;
@@ -11061,6 +11090,33 @@
                 });
             });
 
+            tiktokList.forEach(function(tt) {
+                const price = parseFloat(tt.price) || 0;
+                if (price <= 0) return;
+                let ship = parseFloat(tt.shipping_cost != null ? tt.shipping_cost : tt.delivery);
+                if (isNaN(ship) || ship < 0) ship = 0;
+                const totalPrice = parseFloat(tt.total_price);
+                rows.push({
+                    channel: 'tiktok',
+                    id: tt.id,
+                    sku: sku,
+                    price: price,
+                    shipCost: ship,
+                    totalPrice: (!isNaN(totalPrice) && totalPrice > 0) ? totalPrice : (price + ship),
+                    ignored: !!tt.ignored,
+                    link: tt.link || tt.product_link || '',
+                    extId: tt.product_id || '',
+                    image: tt.image || '',
+                    title: tt.product_title || tt.title || '',
+                    rating: tt.rating != null ? parseFloat(tt.rating) : null,
+                    reviews: tt.reviews != null ? parseInt(tt.reviews, 10) : null,
+                    old_price: null,
+                    delivery: ship,
+                    sourceSku: tt.sku || sku,
+                    source: 'TikTok',
+                });
+            });
+
             // Sort by channel L1 metric (Amazon/Google = item price; eBay/etc = P+S)
             rows.sort(function(a, b) {
                 const pa = lmpRankValue(a) || a.price || 0;
@@ -11260,6 +11316,8 @@
             const temuLowest = temuPrices.length ? Math.min.apply(null, temuPrices) : null;
             const aePrices = activeRanked('aliexpress');
             const aliexpressLowest = aePrices.length ? Math.min.apply(null, aePrices) : null;
+            const ttPrices = activeRanked('tiktok');
+            const tiktokLowest = ttPrices.length ? Math.min.apply(null, ttPrices) : null;
             const channelLowest = {
                 amazon: amzLowest,
                 ebay: ebayLowest,
@@ -11269,6 +11327,7 @@
                 reverb: reverbLowest,
                 temu: temuLowest,
                 aliexpress: aliexpressLowest,
+                tiktok: tiktokLowest,
             };
 
             const counts = {
@@ -11281,6 +11340,7 @@
                 reverb: allRows.filter(function(r) { return r.channel === 'reverb'; }).length,
                 temu: allRows.filter(function(r) { return r.channel === 'temu'; }).length,
                 aliexpress: allRows.filter(function(r) { return r.channel === 'aliexpress'; }).length,
+                tiktok: allRows.filter(function(r) { return r.channel === 'tiktok'; }).length,
             };
 
             let html = '';
@@ -11295,6 +11355,7 @@
                 { key: 'reverb', label: 'Reverb' },
                 { key: 'temu', label: 'Temu' },
                 { key: 'aliexpress', label: 'AliExpress' },
+                { key: 'tiktok', label: 'TikTok' },
             ].forEach(function(opt) {
                 const active = filter === opt.key ? ' active' : '';
                 let btnClass = 'btn-outline-secondary';
@@ -11307,6 +11368,7 @@
                     else if (opt.key === 'reverb') btnClass = 'btn-danger';
                     else if (opt.key === 'temu') btnClass = 'btn-warning';
                     else if (opt.key === 'aliexpress') btnClass = 'btn-danger';
+                    else if (opt.key === 'tiktok') btnClass = 'btn-dark';
                     else btnClass = 'btn-dark';
                 }
                 html += '<button type="button" class="btn ' + btnClass + active + ' lmp-channel-filter-btn" data-filter="' + opt.key + '">'
@@ -11356,6 +11418,10 @@
             if (aliexpressLowest != null) {
                 badgeParts.push('<span class="badge" style="background:#e43225;color:#fff;" title="AliExpress LMP">'
                     + 'AE $' + aliexpressLowest.toFixed(2) + '</span>');
+            }
+            if (tiktokLowest != null) {
+                badgeParts.push('<span class="badge" style="background:#111;color:#fff;" title="TikTok LMP">'
+                    + 'TT $' + tiktokLowest.toFixed(2) + '</span>');
             }
             if (badgeParts.length) {
                 html += '<div class="lmp-lowest-badges">' + badgeParts.join('') + '</div>';
@@ -11442,7 +11508,7 @@
                 const ratingCell = rrCells.ratingCell;
                 const reviewsCell = rrCells.reviewsCell;
                 const shipCost = getLmpRowShipCost(row);
-                const shipChannelLabel = ({ ebay: 'eBay', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', aliexpress: 'AliExpress', temu: 'Temu' })[row.channel];
+                const shipChannelLabel = ({ ebay: 'eBay', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', aliexpress: 'AliExpress', temu: 'Temu', tiktok: 'TikTok' })[row.channel];
                 const deliveryCell = (shipCost !== null)
                     ? formatLmpDelivery(
                         shipCost,
@@ -11524,7 +11590,7 @@
 
         function buildLmpAddFormHtml(sku, channel) {
             const ch = (channel || 'amazon').toLowerCase();
-            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
+            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress', tiktok: 'TikTok' };
             const label = labelMap[ch] || ch;
             let idField = '';
             if (ch === 'amazon') {
@@ -11534,14 +11600,15 @@
                 const idPlaceholder = ({ ebay: 'eBay item id', bestbuy: 'BestBuy item id', macy: 'Macy item id', reverb: 'Reverb item id' })[ch] || 'Item id';
                 idField = '<div class="col-4"><label class="form-label mb-0 small">Item ID</label>'
                     + '<input type="text" class="form-control" id="lmpAddId" placeholder="' + idPlaceholder + '" required></div>';
-            } else if (ch === 'google') {
+            } else if (ch === 'google' || ch === 'tiktok') {
+                const idPlaceholder = ch === 'tiktok' ? 'TikTok product ID' : 'Product ID';
                 idField = '<div class="col-4"><label class="form-label mb-0 small">Product ID</label>'
-                    + '<input type="text" class="form-control" id="lmpAddId" placeholder="Product ID" required></div>';
+                    + '<input type="text" class="form-control" id="lmpAddId" placeholder="' + idPlaceholder + '" required></div>';
             } else {
                 // Temu / AliExpress: no ASIN/item id
                 idField = '';
             }
-            const showShip = (ch === 'aliexpress');
+            const showShip = (ch === 'aliexpress' || ch === 'tiktok');
             const shipField = showShip
                 ? ('<div class="col-2"><label class="form-label mb-0 small">Ship</label>'
                     + '<input type="text" class="form-control" id="lmpAddShip" inputmode="decimal" placeholder="0.00" autocomplete="off" title="Shipping cost (Del)"></div>')
@@ -11555,7 +11622,7 @@
                 priceCol = 'col-2';
                 linkCol = 'col-3';
             }
-            const chLabel = ({ aliexpress: 'AliExpress' })[ch] || label;
+            const chLabel = ({ aliexpress: 'AliExpress', tiktok: 'TikTok' })[ch] || label;
             return '<div class="lmp-add-form-box">'
                 + '<div class="d-flex align-items-center justify-content-between mb-1">'
                 + '<strong style="font-size:12px;"><i class="fas fa-plus-circle text-success me-1"></i>Add ' + chLabel + ' LMP</strong>'
@@ -11568,6 +11635,7 @@
                 + '<option value="reverb"' + (ch === 'reverb' ? ' selected' : '') + '>Reverb</option>'
                 + '<option value="temu"' + (ch === 'temu' ? ' selected' : '') + '>Temu</option>'
                 + '<option value="aliexpress"' + (ch === 'aliexpress' ? ' selected' : '') + '>AliExpress</option>'
+                + '<option value="tiktok"' + (ch === 'tiktok' ? ' selected' : '') + '>TikTok</option>'
                 + '</select></div>'
                 + '<form id="lmpAddForm" class="row g-1 align-items-end" novalidate data-sku="' + String(sku || '').replace(/"/g, '&quot;') + '">'
                 + '<input type="hidden" id="lmpEditId" value="">'
@@ -11609,6 +11677,12 @@
         function extractReverbItemId(link) {
             const m = String(link || '').match(/reverb\.com\/item\/(\d+)/i)
                 || String(link || '').match(/\/item\/(\d+)/i);
+            return m ? m[1] : '';
+        }
+        function extractTiktokProductId(link) {
+            const m = String(link || '').match(/\/(?:pdp|product)\/(?:[^\/?]+\/)?(\d{8,})/i)
+                || String(link || '').match(/[?&]product_id=(\d{8,})/i)
+                || String(link || '').match(/(\d{15,})/);
             return m ? m[1] : '';
         }
 
@@ -11665,6 +11739,10 @@
                     if (ranked > 0 && (lowest == null || ranked < lowest)) lowest = ranked;
                 });
                 patchOvl30LmpCell(ch, lowest);
+                if (ch === 'tiktok') {
+                    patchOvl30LmpCell('tiktok2', lowest);
+                    patchOvl30LmpCell('tiktok 2', lowest);
+                }
             }, 400);
         }
 
@@ -11898,6 +11976,7 @@
             if (channel === 'bestbuy' && !idVal) idVal = extractBestbuyItemId(link);
             if (channel === 'macy' && !idVal) idVal = extractMacyItemId(link);
             if (channel === 'reverb' && !idVal) idVal = extractReverbItemId(link);
+            if (channel === 'tiktok' && !idVal) idVal = extractTiktokProductId(link);
             if (channel !== 'temu' && channel !== 'aliexpress' && !idVal) {
                 showToast(
                     channel === 'amazon' ? 'ASIN is required'
@@ -12007,6 +12086,23 @@
                     success: function(r) { done(!!(r.success || r.data), r.message || (isEdit ? 'Google LMP updated' : 'Google LMP added')); },
                     error: function(xhr) {
                         done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update Google LMP' : 'Failed to add Google LMP'));
+                    }
+                });
+                return;
+            }
+            if (channel === 'tiktok') {
+                let ship = parseLmpPriceInput($('#lmpAddShip').val());
+                if (isNaN(ship) || ship < 0) ship = 0;
+                $.ajax({
+                    url: isEdit ? '/tiktok/competitors/update' : '/tiktok/competitors',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: isEdit
+                        ? { id: editId, product_id: idVal, price: price, shipping_cost: ship, product_link: link || null }
+                        : { sku: sku, product_id: idVal, price: price, shipping_cost: ship, product_link: link || null, marketplace: 'tiktok', region: 'US' },
+                    success: function(r) { done(!!r.success, r.message || (isEdit ? 'TikTok LMP updated' : 'TikTok LMP added')); },
+                    error: function(xhr) {
+                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update TikTok LMP' : 'Failed to add TikTok LMP'));
                     }
                 });
                 return;
@@ -12182,7 +12278,8 @@
                 : (marketplace === 'google' ? '/google-lmp-delete'
                     : (marketplace === 'bestbuy' ? '/bestbuy-lmp-delete'
                         : (marketplace === 'macy' ? '/macy-lmp-delete'
-                            : (marketplace === 'reverb' ? '/reverb-lmp-delete' : '/ebay-lmp-delete'))));
+                            : (marketplace === 'reverb' ? '/reverb-lmp-delete'
+                                : (marketplace === 'tiktok' ? '/tiktok/competitors/delete' : '/ebay-lmp-delete')))));
             const payload = { id: id, _token: '{{ csrf_token() }}' };
             if ((marketplace === 'ebay' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb') && extId) {
                 payload.item_id = extId;
@@ -12455,7 +12552,7 @@
             const price = btn.attr('data-price') || btn.data('price');
             const extId = btn.attr('data-ext-id') || btn.data('ext-id') || '';
             const link = btn.attr('data-link') || btn.closest('tr').find('a.text-primary').attr('href') || '';
-            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
+            const labelMap = { amazon: 'Amz', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress', tiktok: 'TikTok' };
             const label = labelMap[marketplace] || marketplace;
 
             const selected = collectCheckedLmpRows();

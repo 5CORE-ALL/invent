@@ -2267,7 +2267,7 @@ class TikTokPricingController extends Controller
         try {
             $validated = $request->validate([
                 'sku'           => 'required|string',
-                'product_id'    => 'required|string',
+                'product_id'    => 'nullable|string',
                 'price'         => 'required|numeric|min:0.01',
                 'shipping_cost' => 'nullable|numeric|min:0',
                 'product_link'  => 'nullable|string',
@@ -2280,7 +2280,13 @@ class TikTokPricingController extends Controller
             ]);
 
             $sku = trim($validated['sku']);
-            $productId = trim($validated['product_id']);
+            $productId = $this->extractTiktokProductId(
+                $validated['product_id'] ?? null,
+                $validated['product_link'] ?? null
+            );
+            if ($productId === '') {
+                return response()->json(['error' => 'Product ID is required'], 422);
+            }
             $marketplace = strtolower($validated['marketplace'] ?? 'tiktok');
             $region = strtoupper($validated['region'] ?? 'US');
 
@@ -2349,7 +2355,7 @@ class TikTokPricingController extends Controller
         try {
             $validated = $request->validate([
                 'id'            => 'required|integer',
-                'product_id'    => 'required|string',
+                'product_id'    => 'nullable|string',
                 'price'         => 'required|numeric|min:0.01',
                 'shipping_cost' => 'nullable|numeric|min:0',
                 'product_link'  => 'nullable|string',
@@ -2365,7 +2371,13 @@ class TikTokPricingController extends Controller
                 return response()->json(['error' => 'Competitor not found'], 404);
             }
 
-            $productId = trim($validated['product_id']);
+            $productId = $this->extractTiktokProductId(
+                $validated['product_id'] ?? $lmp->product_id,
+                $validated['product_link'] ?? $lmp->product_link
+            );
+            if ($productId === '') {
+                return response()->json(['error' => 'Product ID is required'], 422);
+            }
             $region = strtoupper($validated['region'] ?? ($lmp->region ?: 'US'));
             $marketplace = $lmp->marketplace ?: 'tiktok';
 
@@ -2420,6 +2432,33 @@ class TikTokPricingController extends Controller
                 'error' => 'Failed to update competitor: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Prefer an explicit product_id; otherwise pull the numeric id from a TikTok Shop URL.
+     */
+    private function extractTiktokProductId(?string $productId, ?string $productLink): string
+    {
+        $id = trim((string) $productId);
+        if ($id !== '' && preg_match('/^\d{8,}$/', $id)) {
+            return substr($id, 0, 64);
+        }
+        if ($id !== '') {
+            return substr($id, 0, 64);
+        }
+
+        $link = trim((string) $productLink);
+        if ($link === '') {
+            return '';
+        }
+        if (preg_match('/\/(?:pdp|product)\/(?:[^\/?]+\/)?(\d{8,})/i', $link, $m)
+            || preg_match('/[?&]product_id=(\d{8,})/i', $link, $m)
+            || preg_match('/(\d{15,})/', $link, $m)
+        ) {
+            return substr($m[1], 0, 64);
+        }
+
+        return '';
     }
 
     /**

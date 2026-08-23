@@ -9,7 +9,48 @@ class ProductRawImage extends Model
 {
     public const KIND_RAW = 'raw';
 
+    public const KIND_RAW_AI = 'raw_ai';
+
     public const KIND_BATCH_COO = 'batch_coo';
+
+    public const KIND_BATCH_COO_AI = 'batch_coo_ai';
+
+    public static function aiKindFor(string $kind): string
+    {
+        return match ($kind) {
+            self::KIND_BATCH_COO, self::KIND_BATCH_COO_AI => self::KIND_BATCH_COO_AI,
+            default => self::KIND_RAW_AI,
+        };
+    }
+
+    public static function pageKindFor(string $kind): string
+    {
+        return match ($kind) {
+            self::KIND_BATCH_COO, self::KIND_BATCH_COO_AI => self::KIND_BATCH_COO,
+            default => self::KIND_RAW,
+        };
+    }
+
+    public static function isAiKind(string $kind): bool
+    {
+        return in_array($kind, [self::KIND_RAW_AI, self::KIND_BATCH_COO_AI], true);
+    }
+
+    public function isAiGenerated(): bool
+    {
+        if (self::isAiKind((string) $this->kind)) {
+            return true;
+        }
+
+        $hay = strtolower((string) $this->image_path.' '.(string) $this->original_name);
+
+        return str_contains($hay, 'ai_raw');
+    }
+
+    public function isBatchKind(): bool
+    {
+        return in_array((string) $this->kind, [self::KIND_BATCH_COO, self::KIND_BATCH_COO_AI], true);
+    }
 
     protected $table = 'product_raw_images';
 
@@ -28,7 +69,17 @@ class ProductRawImage extends Model
 
     public function getUrlAttribute(): string
     {
-        return Storage::disk('public')->url($this->image_path);
+        return '/storage/'.ltrim((string) $this->image_path, '/');
+    }
+
+    public function thumbUrl(): ?string
+    {
+        $path = $this->thumbPath();
+        if (! Storage::disk('public')->exists($path)) {
+            return null;
+        }
+
+        return '/storage/'.ltrim($path, '/');
     }
 
     public function isPreviewable(): bool
@@ -49,14 +100,22 @@ class ProductRawImage extends Model
         return in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'], true);
     }
 
+    public function thumbPath(): string
+    {
+        return 'image-cache/thumbs/'.$this->id.'.jpg';
+    }
+
     /**
-     * @return array{id:int,url:string,name:string,previewable:bool,size:int|null}
+     * @return array{id:int,url:string,thumb_url:string,name:string,previewable:bool,size:int|null}
      */
     public function toUiArray(): array
     {
+        $url = $this->url;
+
         return [
             'id' => (int) $this->id,
-            'url' => $this->url,
+            'url' => $url,
+            'thumb_url' => $this->thumbUrl() ?: $url,
             'name' => $this->original_name ?: basename((string) $this->image_path),
             'previewable' => $this->isPreviewable(),
             'size' => $this->file_size,

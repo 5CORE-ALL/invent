@@ -935,7 +935,7 @@
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label"><strong>Product Link</strong></label>
-                                    <input type="url" class="form-control" id="ttAddCompLink" placeholder="https://www.tiktok.com/shop/pdp/...">
+                                    <input type="text" class="form-control" id="ttAddCompLink" placeholder="https://www.tiktok.com/shop/pdp/...">
                                 </div>
                                 <div class="col-md-1">
                                     <label class="form-label"><strong>Region</strong></label>
@@ -5846,8 +5846,13 @@
                     success: function(response) {
                         if (response.success) {
                             ttRenderCompetitorsList(response.competitors, response.lowest_price);
+                            ttPatchLmpOnTable(
+                                response.lowest_price != null ? parseFloat(response.lowest_price) : null,
+                                parseInt(response.total_count, 10) || 0
+                            );
                         } else {
                             ttRenderCompetitorsList([], null);
+                            ttPatchLmpOnTable(null, 0);
                         }
                     },
                     error: function() {
@@ -5994,17 +5999,48 @@
                 ttLoadCompetitorsModal(sku, linkedSkus);
             });
 
+            function ttExtractProductIdFromLink(link) {
+                const m = String(link || '').match(/\/(?:pdp|product)\/(?:[^\/?]+\/)?(\d{8,})/i)
+                    || String(link || '').match(/[?&]product_id=(\d{8,})/i)
+                    || String(link || '').match(/(\d{15,})/);
+                return m ? m[1] : '';
+            }
+
+            function ttPatchLmpOnTable(lowestPrice, totalCount) {
+                if (typeof table === 'undefined' || !table) return;
+                const group = new Set((ttCurrentLinkedLmpSkus || []).map(function(s) {
+                    return String(s || '').trim().toUpperCase();
+                }));
+                if (ttCurrentLmpSku) group.add(String(ttCurrentLmpSku).trim().toUpperCase());
+                table.getRows().forEach(function(r) {
+                    const d = r.getData();
+                    if (!d || d.is_parent || d.is_parent_summary) return;
+                    const sku = String(d['(Child) sku'] || d.sku || '').trim().toUpperCase();
+                    if (!sku || !group.has(sku)) return;
+                    r.update({
+                        lmp_price: lowestPrice,
+                        lmp_entries_total: totalCount,
+                    });
+                });
+            }
+
             // Add / Update Competitor form
             $('#ttAddCompetitorForm').on('submit', function(e) {
                 e.preventDefault();
                 const editId = ttEditCompetitorId || $('#ttEditCompId').val();
                 const isEdit = !!editId;
+                let productId = $('#ttAddCompProductId').val().trim();
+                const productLink = $('#ttAddCompLink').val().trim() || null;
+                if (!productId && productLink) {
+                    productId = ttExtractProductIdFromLink(productLink);
+                    if (productId) $('#ttAddCompProductId').val(productId);
+                }
                 const payload = {
-                    product_id: $('#ttAddCompProductId').val().trim(),
+                    product_id: productId,
                     price: parseFloat($('#ttAddCompPrice').val()) || 0,
                     shipping_cost: parseFloat($('#ttAddCompShip').val()) || 0,
                     product_title: $('#ttAddCompTitle').val().trim() || null,
-                    product_link: $('#ttAddCompLink').val().trim() || null,
+                    product_link: productLink,
                     region: $('#ttAddCompRegion').val() || 'US',
                     marketplace: 'tiktok',
                     _token: '{{ csrf_token() }}',
@@ -6018,15 +6054,17 @@
                     alert('Product ID and Price are required.');
                     return;
                 }
+                const $btn = $('#ttCompSubmitBtn');
+                $btn.prop('disabled', true);
                 $.ajax({
                     url: isEdit ? '/tiktok/competitors/update' : '/tiktok/competitors',
                     method: 'POST',
                     data: payload,
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                     success: function(resp) {
                         if (resp.success) {
                             ttResetCompetitorForm(ttCurrentLmpSku);
                             ttLoadCompetitorsModal(ttCurrentLmpSku, ttCurrentLinkedLmpSkus);
-                            if (typeof table !== 'undefined' && table) table.replaceData();
                         } else {
                             alert(resp.error || (isEdit ? 'Failed to update competitor' : 'Failed to add competitor'));
                         }
@@ -6035,6 +6073,9 @@
                         const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
                             || (isEdit ? 'Failed to update competitor' : 'Failed to add competitor');
                         alert(msg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false);
                     }
                 });
             });

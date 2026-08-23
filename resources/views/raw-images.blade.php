@@ -1,9 +1,17 @@
 @php
-    $pageTitle = $pageTitle ?? 'Raw Images';
-    $pageSubtitle = $pageSubtitle ?? 'Upload original raw image files by SKU';
-    $dataUrl = $dataUrl ?? route('raw.images.data');
-    $uploadUrl = $uploadUrl ?? route('raw.images.upload');
-    $destroyBaseUrl = $destroyBaseUrl ?? url('/raw-images');
+    $isBatchCoo = ($kind ?? '') === \App\Models\ProductRawImage::KIND_BATCH_COO;
+    $pageTitle = $pageTitle ?? ($isBatchCoo ? 'Raw Images (Batch +COO)' : 'Raw Images');
+    $pageSubtitle = $pageSubtitle ?? ($isBatchCoo ? 'Upload batch and COO raw image files by SKU' : 'Upload original raw image files by SKU');
+    $dataUrl = $dataUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.data') : route('raw.images.data'));
+    $uploadUrl = $uploadUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.upload') : route('raw.images.upload'));
+    $destroyBaseUrl = $destroyBaseUrl ?? ($isBatchCoo ? url('/raw-images-batch-coo') : url('/raw-images'));
+    $bulkImportUrl = $bulkImportUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.bulk.import') : route('raw.images.bulk.import'));
+    $downloadUrl = $downloadUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.download') : route('raw.images.download'));
+    $templateUrl = $templateUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.template') : route('raw.images.template'));
+    $aiPromptUrl = $aiPromptUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt') : route('raw.images.ai.prompt'));
+    $aiPromptSaveUrl = $aiPromptSaveUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt.save') : route('raw.images.ai.prompt.save'));
+    $cachedImageUrl = $cachedImageUrl ?? route('raw.images.cached.image');
+    $savedAiPrompt = $savedAiPrompt ?? "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.";
 @endphp
 @extends('layouts.vertical', ['title' => $pageTitle, 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
@@ -160,8 +168,53 @@
 
     #missing-raw-images-badge { cursor: pointer; }
     #missing-raw-images-badge.active-filter { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc3545; }
+    #available-images-badge { cursor: pointer; }
+    #available-images-badge.active-filter { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #198754; }
+
+    .ri-card-actions {
+        display: flex;
+        gap: 4px;
+        padding: 0 6px 6px;
+    }
+    .ri-card-actions button,
+    .ri-card-actions a {
+        flex: 1;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #334155;
+        border-radius: 4px;
+        font-size: 10px;
+        padding: 2px 0;
+        text-align: center;
+        text-decoration: none;
+        cursor: pointer;
+        line-height: 1.4;
+    }
+    .ri-card-actions button:hover,
+    .ri-card-actions a:hover { background: #e0e7ff; color: #1d4ed8; }
 
     #rainbow-loader { display: none; text-align: center; padding: 40px; }
+
+    .ri-ai-btn,
+    .ri-ai-btn:hover,
+    .ri-ai-btn:focus,
+    .ri-ai-btn:active,
+    .ri-ai-btn:disabled {
+        background: linear-gradient(135deg, #7c3aed 0%, #2563eb 100%) !important;
+        border: none !important;
+        color: #fff !important;
+        --bs-btn-color: #fff;
+        --bs-btn-hover-color: #fff;
+        --bs-btn-active-color: #fff;
+        --bs-btn-disabled-color: #fff;
+        box-shadow: 0 1px 2px rgba(37, 99, 235, .25);
+    }
+    .ri-ai-btn i,
+    .ri-ai-btn:hover i,
+    .ri-ai-btn:focus i {
+        color: #fff !important;
+    }
+    .ri-ai-btn:hover, .ri-ai-btn:focus { filter: brightness(1.08); }
 </style>
 @endsection
 
@@ -179,7 +232,51 @@
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h4 class="card-title mb-0">{{ $pageTitle }}</h4>
                     <div class="d-flex align-items-center flex-wrap gap-2">
-                        <span class="badge bg-danger fs-6 p-2" id="missing-raw-images-badge" title="Click to show SKUs missing a raw image">
+                        <button type="button" class="btn btn-sm ri-ai-btn" id="riAiBtn" title="Ask AI">
+                            <i class="fas fa-wand-magic-sparkles me-1"></i> AI
+                        </button>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-warning dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-layer-group"></i> Bulk Update
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <a class="dropdown-item" href="#" id="bulkFromSheetBtn">
+                                        <i class="fas fa-file-excel me-2"></i>From Sheet
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="#" id="bulkFromDropboxBtn">
+                                        <i class="fab fa-dropbox me-2"></i>From Dropbox
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-primary" id="downloadSelectedBtn" title="Download raw images for selected SKUs">
+                            <i class="fas fa-download"></i> Download
+                        </button>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a class="dropdown-item" href="#" id="copySelectedSkusBtn">
+                                        <i class="fas fa-barcode me-2"></i>Copy selected SKUs
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="#" id="copySelectedUrlsBtn">
+                                        <i class="fas fa-link me-2"></i>Copy selected image URLs
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                        <span class="badge bg-secondary fs-6 p-2" id="selectedCountBadge">Selected: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="available-images-badge" title="Click to show SKUs that have a raw or AI image">
+                            Image: <span id="availableImagesCount">0</span>
+                        </span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-raw-images-badge" title="Click to show SKUs with inventory that are missing a raw image (0 INV excluded)">
                             Missing Raw Images: <span id="missingRawImagesCount">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2">
@@ -204,7 +301,8 @@
                                 <div class="col-md-2">
                                     <select id="filterRawImages" class="form-control form-control-sm">
                                         <option value="all">All SKUs</option>
-                                        <option value="missing">Missing Only</option>
+                                        <option value="available">Available Images</option>
+                                        <option value="missing">Missing Only (INV &gt; 0)</option>
                                     </select>
                                 </div>
                             </div>
@@ -228,7 +326,7 @@
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
                     <h5 class="modal-title" id="rawImageModalLabel">
-                        <i class="fas fa-image me-2"></i>{{ $pageTitle }} — <span id="modalSkuLabel"></span>
+                        <i class="fas fa-image me-2"></i><span id="modalKindLabel">{{ $pageTitle }}</span> — <span id="modalSkuLabel"></span>
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -238,7 +336,7 @@
                     <div class="mb-3 text-muted small">Parent: <span id="modalParentText">—</span></div>
                     <div id="rawImageGrid" class="ri-modal-grid"></div>
                     <input type="file" id="rawImageFileInput" class="d-none" accept="image/*,.dng,.cr2,.cr3,.nef,.arw,.raf,.orf,.rw2,.tif,.tiff,.heic" multiple>
-                    <div class="small text-muted mt-3">
+                    <div class="small text-muted mt-3" id="rawUploadHint">
                         JPG, PNG, WEBP, or camera RAW files. Max 50 MB each.
                     </div>
                     <div class="small text-success fw-semibold mt-1" id="rawUploadMsg" style="display:none;"></div>
@@ -246,6 +344,99 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="bulkSheetModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-file-excel me-2"></i>Bulk update from sheet</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 small mb-3">
+                        Use columns <strong>SKU</strong> and <strong>URL</strong> (Dropbox or any direct image link). Existing images are kept; new files are added.
+                    </div>
+                    <div class="mb-3">
+                        <a href="{{ $templateUrl }}" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-file-csv me-1"></i> Download CSV template
+                        </a>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Upload CSV / Excel</label>
+                        <input type="file" class="form-control form-control-sm" id="bulkSheetFile" accept=".csv,.xlsx,.xls,.txt">
+                    </div>
+                    <div class="text-center text-muted small mb-2">or</div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Google Sheet URL</label>
+                        <input type="url" class="form-control form-control-sm" id="bulkSheetUrl" placeholder="https://docs.google.com/spreadsheets/d/...">
+                        <div class="form-text">Sheet must be published or allow CSV export.</div>
+                    </div>
+                    <div id="bulkSheetResult" class="small"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-warning" id="bulkSheetSubmitBtn">
+                        <i class="fas fa-upload me-1"></i> Import
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="bulkDropboxModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fab fa-dropbox me-2"></i>Bulk update from Dropbox</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 small mb-3">
+                        Paste <strong>file</strong> share links (not folders). One per line as <code>SKU, URL</code>. If you paste only a URL, the filename is matched to a SKU. <code>dl=0</code> links are converted automatically.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Dropbox file links</label>
+                        <textarea class="form-control form-control-sm" id="bulkDropboxUrls" rows="8" placeholder="SKU-001, https://www.dropbox.com/s/.../image.jpg?dl=0"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Or upload a sheet of SKU + Dropbox URLs</label>
+                        <input type="file" class="form-control form-control-sm" id="bulkDropboxFile" accept=".csv,.xlsx,.xls,.txt">
+                    </div>
+                    <div id="bulkDropboxResult" class="small"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-warning" id="bulkDropboxSubmitBtn">
+                        <i class="fas fa-cloud-download-alt me-1"></i> Import
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="riAiModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-wand-magic-sparkles me-2"></i>AI prompt</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label fw-semibold" for="riAiPrompt">Prompt</label>
+                    <textarea class="form-control" id="riAiPrompt" rows="8" maxlength="8000">{{ $savedAiPrompt }}</textarea>
+                    <div class="form-text">Edits are saved automatically. This page uses a high-quality image API on selected rows only. Ctrl / ⌘ + Enter to save and close.</div>
+                    <div id="riAiSelectedHint" class="small mt-2 text-muted"></div>
+                    <div id="riAiResult" class="small mt-3"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn ri-ai-btn" id="riAiSubmitBtn">
+                        <i class="fas fa-save me-1"></i> Save and Close
+                    </button>
                 </div>
             </div>
         </div>
@@ -259,18 +450,90 @@
         const rawImagesDataUrl = @json($dataUrl);
         const rawImagesUploadUrl = @json($uploadUrl);
         const rawImagesDestroyBaseUrl = @json($destroyBaseUrl);
+        const rawImagesBulkImportUrl = @json($bulkImportUrl);
+        const rawImagesDownloadUrl = @json($downloadUrl);
+        const rawImagesAiPromptUrl = @json($aiPromptUrl);
+        const rawImagesAiPromptSaveUrl = @json($aiPromptSaveUrl);
+        const rawImagesCachedImageUrl = @json($cachedImageUrl ?? route('raw.images.cached.image'));
         const rawImagesPageTitle = @json($pageTitle);
+        const riImageWarm = new Set();
+
+        function cachedImageSrc(url, thumbUrl) {
+            if (thumbUrl && String(thumbUrl).indexOf('/storage/image-cache/') !== -1) {
+                return thumbUrl;
+            }
+            return url || thumbUrl || '';
+        }
+
+        function warmImage(url) {
+            if (!url || riImageWarm.has(url)) return url;
+            riImageWarm.add(url);
+            const img = new Image();
+            img.decoding = 'async';
+            img.src = url;
+            return url;
+        }
+
+        function rawImageCellHtml(row, source) {
+            const sku = row.SKU || '';
+            const isAi = source === 'ai';
+            const images = Array.isArray(isAi ? row.raw_ai_images : row.raw_images)
+                ? (isAi ? row.raw_ai_images : row.raw_images)
+                : [];
+            const title = isAi ? 'View AI raw images' : 'View / add raw images';
+            if (!images.length) {
+                if (isAi) {
+                    return '<span class="text-muted" title="Generate with the AI button">—</span>';
+                }
+                return '<button type="button" class="ri-cell-plus js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" data-source="manual" title="Add raw image">+</button>';
+            }
+            const first = images[0];
+            const count = images.length;
+            let inner;
+            if (first.previewable && (first.thumb_url || first.url)) {
+                inner = thumbHtml(cachedImageSrc(first.url, first.thumb_url), isAi ? 'Raw AI' : 'Raw');
+            } else {
+                inner = '<i class="fas fa-file-image" style="font-size:22px;color:#2c6ed5;"></i>';
+            }
+            return '<button type="button" class="btn btn-link p-0 js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" data-source="' + (isAi ? 'ai' : 'manual') + '" title="' + title + '" style="position:relative;display:inline-flex;">'
+                + inner
+                + (count > 1 ? '<span class="ri-cell-count">' + count + '</span>' : '')
+                + '</button>';
+        }
+
+        function thumbHtml(url, alt, href) {
+            if (!url) return '<span class="text-muted">—</span>';
+            const src = warmImage(url);
+            const fallback = href && href !== url ? href : '';
+            const img = '<img src="' + escapeHtml(src) + '" class="ri-cell-thumb" alt="' + escapeHtml(alt || '') + '" loading="lazy" decoding="async"'
+                + (fallback ? ' data-fallback="' + escapeHtml(fallback) + '"' : '')
+                + ' onerror="if(this.dataset.fallback){ var f=this.dataset.fallback; this.dataset.fallback=\'\'; this.src=f; } else { this.style.visibility=\'hidden\'; }">';
+            if (!href) return img;
+            return '<a href="' + escapeHtml(href) + '" target="_blank" title="Image Master / Images tab">' + img + '</a>';
+        }
+        let riAiSaveTimer = null;
+        let riAiLastSaved = @json($savedAiPrompt);
         let tableData = [];
         let table;
         let rawImageModal;
+        let bulkSheetModal;
+        let bulkDropboxModal;
+        let riAiModal;
         let missingFilterOn = false;
+        let imageFilterOn = false;
+        let currentModalSource = 'manual';
 
         document.addEventListener('DOMContentLoaded', function () {
             rawImageModal = new bootstrap.Modal(document.getElementById('rawImageModal'));
+            bulkSheetModal = new bootstrap.Modal(document.getElementById('bulkSheetModal'));
+            bulkDropboxModal = new bootstrap.Modal(document.getElementById('bulkDropboxModal'));
+            riAiModal = new bootstrap.Modal(document.getElementById('riAiModal'));
             initializeTabulator();
             setupSearchHandlers();
             setupModalHandlers();
             setupTableEvents();
+            setupBulkHandlers();
+            setupAiHandlers();
         });
 
         function initializeTabulator() {
@@ -283,6 +546,7 @@
                     if (response && Array.isArray(response.data)) {
                         tableData = response.data;
                         updateCounts();
+                        updateSelectedCount();
                         hideLoader();
                         return response.data;
                     }
@@ -334,7 +598,7 @@
                         formatter: function (cell) {
                             const value = cell.getValue();
                             if (!value) return '-';
-                            return '<img src="' + escapeHtml(value) + '" class="ri-cell-thumb" alt="Product">';
+                            return thumbHtml(cachedImageSrc(value), 'Product');
                         }
                     },
                     {
@@ -403,30 +667,37 @@
                         }
                     },
                     {
+                        title: 'Hero Image',
+                        field: 'hero_image',
+                        width: 90,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        formatter: function (cell) {
+                            const row = cell.getData();
+                            const value = cell.getValue();
+                            if (!value) return '<span class="text-muted">—</span>';
+                            const src = cachedImageSrc(value, row.hero_thumb);
+                            return thumbHtml(src, 'Hero', value);
+                        }
+                    },
+                    {
+                        title: 'Raw Images AI',
+                        field: 'has_raw_ai_image',
+                        width: 100,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        formatter: function (cell) {
+                            return rawImageCellHtml(cell.getData(), 'ai');
+                        }
+                    },
+                    {
                         title: 'Raw Images',
                         field: 'has_raw_image',
                         width: 90,
                         hozAlign: 'center',
                         headerSort: false,
                         formatter: function (cell) {
-                            const row = cell.getData();
-                            const sku = row.SKU || '';
-                            const images = Array.isArray(row.raw_images) ? row.raw_images : [];
-                            if (!images.length) {
-                                return '<button type="button" class="ri-cell-plus js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" title="Add raw image">+</button>';
-                            }
-                            const first = images[0];
-                            const count = images.length;
-                            let inner;
-                            if (first.previewable && first.url) {
-                                inner = '<img src="' + escapeHtml(first.url) + '" class="ri-cell-thumb" alt="Raw">';
-                            } else {
-                                inner = '<i class="fas fa-file-image" style="font-size:22px;color:#2c6ed5;"></i>';
-                            }
-                            return '<button type="button" class="btn btn-link p-0 js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" title="View / add raw images" style="position:relative;display:inline-flex;">'
-                                + inner
-                                + (count > 1 ? '<span class="ri-cell-count">' + count + '</span>' : '')
-                                + '</button>';
+                            return rawImageCellHtml(cell.getData(), 'manual');
                         }
                     }
                 ]
@@ -441,6 +712,11 @@
                     wrap.querySelectorAll('.ri-row-select').forEach(function (cb) {
                         cb.checked = e.target.checked;
                     });
+                    updateSelectedCount();
+                    return;
+                }
+                if (e.target.classList.contains('ri-row-select')) {
+                    updateSelectedCount();
                 }
             });
 
@@ -448,13 +724,13 @@
                 const copyBtn = e.target.closest('.copy-sku-btn');
                 if (copyBtn) {
                     e.preventDefault();
-                    copyToClipboard(copyBtn.getAttribute('data-sku') || '');
+                    copyToClipboard(copyBtn.getAttribute('data-sku') || '', null, 'SKU copied.');
                     return;
                 }
                 const openBtn = e.target.closest('.js-open-raw-modal');
                 if (openBtn) {
                     e.preventDefault();
-                    openRawImageModal(openBtn.getAttribute('data-sku'));
+                    openRawImageModal(openBtn.getAttribute('data-sku'), openBtn.getAttribute('data-source') || 'manual');
                 }
             });
         }
@@ -465,14 +741,24 @@
             document.getElementById('skuSearch').addEventListener('input', applyFilters);
             document.getElementById('filterRawImages').addEventListener('change', function () {
                 missingFilterOn = this.value === 'missing';
-                syncMissingBadge();
+                imageFilterOn = this.value === 'available';
+                syncBadges();
+                applyFilters();
+            });
+            document.getElementById('available-images-badge').addEventListener('click', function () {
+                const select = document.getElementById('filterRawImages');
+                select.value = select.value === 'available' ? 'all' : 'available';
+                missingFilterOn = false;
+                imageFilterOn = select.value === 'available';
+                syncBadges();
                 applyFilters();
             });
             document.getElementById('missing-raw-images-badge').addEventListener('click', function () {
                 const select = document.getElementById('filterRawImages');
                 select.value = select.value === 'missing' ? 'all' : 'missing';
                 missingFilterOn = select.value === 'missing';
-                syncMissingBadge();
+                imageFilterOn = false;
+                syncBadges();
                 applyFilters();
             });
         }
@@ -495,6 +781,12 @@
                 const del = e.target.closest('.ri-card-del');
                 if (del) {
                     deleteRawImage(del.getAttribute('data-id'));
+                    return;
+                }
+                const copyBtn = e.target.closest('.js-copy-image-url');
+                if (copyBtn) {
+                    e.preventDefault();
+                    copyToClipboard(copyBtn.getAttribute('data-url') || '', 'Image URL copied.');
                 }
             });
 
@@ -518,13 +810,25 @@
             });
         }
 
-        function openRawImageModal(sku) {
+        function openRawImageModal(sku, source) {
+            currentModalSource = source === 'ai' ? 'ai' : 'manual';
             const item = tableData.find(function (d) { return d.SKU === sku; });
+            const images = item
+                ? (currentModalSource === 'ai' ? (item.raw_ai_images || []) : (item.raw_images || []))
+                : [];
             document.getElementById('modalSku').value = sku || '';
             document.getElementById('modalSkuLabel').textContent = sku || '';
             document.getElementById('modalSkuText').textContent = sku || '';
             document.getElementById('modalParentText').textContent = (item && item.Parent) ? item.Parent : '—';
-            renderModalGrid(item ? (item.raw_images || []) : []);
+            const kindLabel = document.getElementById('modalKindLabel');
+            if (kindLabel) kindLabel.textContent = currentModalSource === 'ai' ? 'Raw Images AI' : rawImagesPageTitle;
+            const hint = document.getElementById('rawUploadHint');
+            if (hint) {
+                hint.textContent = currentModalSource === 'ai'
+                    ? 'These images are created by the AI button on selected rows.'
+                    : 'JPG, PNG, WEBP, or camera RAW files. Max 50 MB each.';
+            }
+            renderModalGrid(images);
             setUploadMsg('');
             setUploadErr('');
             rawImageModal.show();
@@ -536,28 +840,40 @@
             let html = '';
 
             list.forEach(function (img) {
+                const url = img.url || '';
+                const name = img.name || 'image';
                 html += '<div class="ri-card">';
                 html += '<button type="button" class="ri-card-del" data-id="' + escapeHtml(String(img.id)) + '" title="Remove"><i class="fas fa-times"></i></button>';
-                if (img.previewable && img.url) {
-                    html += '<a href="' + escapeHtml(img.url) + '" target="_blank"><img src="' + escapeHtml(img.url) + '" alt=""></a>';
+                if (img.previewable && url) {
+                    const thumb = cachedImageSrc(url, img.thumb_url);
+                    html += '<a href="' + escapeHtml(url) + '" target="_blank"><img src="' + escapeHtml(thumb) + '" alt=""></a>';
                 } else {
                     html += '<div class="ri-card-file"><i class="fas fa-file-image fa-2x"></i><span class="small">File</span></div>';
                 }
-                html += '<div class="ri-card-name" title="' + escapeHtml(img.name || '') + '">' + escapeHtml(img.name || 'image') + '</div>';
-                html += '</div>';
+                html += '<div class="ri-card-name" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</div>';
+                html += '<div class="ri-card-actions">';
+                html += '<a href="' + escapeHtml(url) + '" download="' + escapeHtml(name) + '" title="Download"><i class="fas fa-download"></i> Save</a>';
+                html += '<button type="button" class="js-copy-image-url" data-url="' + escapeHtml(url) + '" title="Copy URL"><i class="fas fa-copy"></i> Copy</button>';
+                html += '</div></div>';
             });
 
-            const plusClass = list.length ? 'ri-plus-tile ri-plus-tile-sm' : 'ri-plus-tile';
-            const plusLabel = list.length ? 'Add more' : 'Add raw image';
-            html += '<div class="' + plusClass + '" title="' + plusLabel + '">'
-                + '<span class="ri-plus-icon">+</span>'
-                + '<span class="small fw-semibold">' + plusLabel + '</span>'
-                + '</div>';
+            if (currentModalSource !== 'ai') {
+                const plusClass = list.length ? 'ri-plus-tile ri-plus-tile-sm' : 'ri-plus-tile';
+                const plusLabel = list.length ? 'Add more' : 'Add raw image';
+                html += '<div class="' + plusClass + '" title="' + plusLabel + '">'
+                    + '<span class="ri-plus-icon">+</span>'
+                    + '<span class="small fw-semibold">' + plusLabel + '</span>'
+                    + '</div>';
+            }
 
             grid.innerHTML = html;
         }
 
         function uploadRawFiles(fileList) {
+            if (currentModalSource === 'ai') {
+                setUploadErr('AI images are created with the AI button.');
+                return;
+            }
             const sku = document.getElementById('modalSku').value;
             if (!sku) {
                 setUploadErr('SKU is missing.');
@@ -591,7 +907,7 @@
                 }
                 setUploadErr('');
                 setUploadMsg(result.data.message || 'Uploaded.');
-                applyImagesToSku(sku, result.data.images || []);
+                applyImagesToSku(sku, result.data.images || [], 'manual');
             })
             .catch(function (err) {
                 setUploadMsg('');
@@ -619,33 +935,41 @@
                 }
                 setUploadErr('');
                 setUploadMsg(data.message || 'Removed.');
-                applyImagesToSku(sku, data.images || []);
+                applyImagesToSku(sku, data.images || [], data.source || currentModalSource);
             })
             .catch(function (err) {
                 setUploadErr('Delete failed: ' + err.message);
             });
         }
 
-        function applyImagesToSku(sku, images) {
+        function applyImagesToSku(sku, images, source) {
+            const isAi = (source || currentModalSource) === 'ai';
             const item = tableData.find(function (d) { return d.SKU === sku; });
+            const patch = isAi
+                ? {
+                    raw_ai_images: images,
+                    raw_ai_image_count: images.length,
+                    has_raw_ai_image: images.length > 0,
+                    raw_ai_image_url: images.length ? images[0].url : null
+                }
+                : {
+                    raw_images: images,
+                    raw_image_count: images.length,
+                    has_raw_image: images.length > 0,
+                    raw_image_url: images.length ? images[0].url : null
+                };
             if (item) {
-                item.raw_images = images;
-                item.raw_image_count = images.length;
-                item.has_raw_image = images.length > 0;
-                item.raw_image_url = images.length ? images[0].url : null;
+                Object.assign(item, patch);
             }
             if (table) {
                 const rows = table.searchRows('SKU', '=', sku);
                 rows.forEach(function (row) {
-                    row.update({
-                        raw_images: images,
-                        raw_image_count: images.length,
-                        has_raw_image: images.length > 0,
-                        raw_image_url: images.length ? images[0].url : null
-                    });
+                    row.update(patch);
                 });
             }
-            renderModalGrid(images);
+            if ((source || currentModalSource) === currentModalSource) {
+                renderModalGrid(images);
+            }
             updateCounts();
         }
 
@@ -670,9 +994,16 @@
             if (skuFilter) {
                 filters.push({ field: 'SKU', type: 'like', value: skuFilter });
             }
+            if (filterMode === 'available') {
+                filters.push(function (data) {
+                    if (data.SKU && String(data.SKU).toUpperCase().includes('PARENT')) return false;
+                    return hasAvailableImage(data);
+                });
+            }
             if (filterMode === 'missing') {
                 filters.push(function (data) {
                     if (data.SKU && String(data.SKU).toUpperCase().includes('PARENT')) return false;
+                    if (!hasPositiveInv(data.shopify_inv)) return false;
                     return !data.has_raw_image;
                 });
             }
@@ -681,28 +1012,42 @@
             if (filters.length) table.setFilter(filters);
         }
 
+        function hasAvailableImage(item) {
+            return !!(item && (item.has_raw_image || item.has_raw_ai_image));
+        }
+
         function updateCounts() {
             const parentSet = new Set();
             let skuCount = 0;
             let missing = 0;
+            let available = 0;
 
             tableData.forEach(function (item) {
                 if (item.Parent) parentSet.add(item.Parent);
                 if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
                     skuCount++;
-                    if (!item.has_raw_image) missing++;
+                    if (hasAvailableImage(item)) available++;
+                    if (hasPositiveInv(item.shopify_inv) && !item.has_raw_image) missing++;
                 }
             });
 
             document.getElementById('parentSearch').placeholder = 'Search Parent... (' + parentSet.size + ')';
             document.getElementById('skuSearch').placeholder = 'Search SKU... (' + skuCount + ')';
             document.getElementById('skuCountBadge').textContent = skuCount;
+            document.getElementById('availableImagesCount').textContent = available;
             document.getElementById('missingRawImagesCount').textContent = missing;
-            syncMissingBadge();
+            syncBadges();
         }
 
         function syncMissingBadge() {
-            document.getElementById('missing-raw-images-badge').classList.toggle('active-filter', missingFilterOn);
+            syncBadges();
+        }
+
+        function syncBadges() {
+            const missingEl = document.getElementById('missing-raw-images-badge');
+            const imageEl = document.getElementById('available-images-badge');
+            if (missingEl) missingEl.classList.toggle('active-filter', missingFilterOn);
+            if (imageEl) imageEl.classList.toggle('active-filter', imageFilterOn);
         }
 
         function hideLoader() {
@@ -710,9 +1055,432 @@
             if (loader) loader.style.display = 'none';
         }
 
-        function copyToClipboard(text) {
+        function setupBulkHandlers() {
+            document.getElementById('bulkFromSheetBtn').addEventListener('click', function (e) {
+                e.preventDefault();
+                document.getElementById('bulkSheetResult').innerHTML = '';
+                bulkSheetModal.show();
+            });
+            document.getElementById('bulkFromDropboxBtn').addEventListener('click', function (e) {
+                e.preventDefault();
+                document.getElementById('bulkDropboxResult').innerHTML = '';
+                bulkDropboxModal.show();
+            });
+            document.getElementById('bulkSheetSubmitBtn').addEventListener('click', function () {
+                submitBulkImport('sheet', {
+                    file: document.getElementById('bulkSheetFile').files[0] || null,
+                    sheetUrl: document.getElementById('bulkSheetUrl').value.trim(),
+                    resultEl: document.getElementById('bulkSheetResult'),
+                    button: this
+                });
+            });
+            document.getElementById('bulkDropboxSubmitBtn').addEventListener('click', function () {
+                submitBulkImport('dropbox', {
+                    file: document.getElementById('bulkDropboxFile').files[0] || null,
+                    urls: document.getElementById('bulkDropboxUrls').value.trim(),
+                    resultEl: document.getElementById('bulkDropboxResult'),
+                    button: this
+                });
+            });
+            document.getElementById('downloadSelectedBtn').addEventListener('click', downloadSelectedImages);
+            document.getElementById('copySelectedSkusBtn').addEventListener('click', function (e) {
+                e.preventDefault();
+                copySelectedSkus();
+            });
+            document.getElementById('copySelectedUrlsBtn').addEventListener('click', function (e) {
+                e.preventDefault();
+                copySelectedUrls();
+            });
+        }
+
+        function selectedRowsForAi() {
+            return selectedSkus().map(function (sku) {
+                const item = tableData.find(function (d) { return d.SKU === sku; }) || {};
+                return {
+                    sku: sku,
+                    hero_image: item.hero_image || item.image_path || ''
+                };
+            });
+        }
+
+        function updateAiSelectionHint() {
+            const hintEl = document.getElementById('riAiSelectedHint');
+            const n = selectedSkus().length;
+            if (!hintEl) return;
+            if (n === 0) {
+                hintEl.className = 'small mt-2 text-danger';
+                hintEl.textContent = 'Select one or more rows in the table. Run only works on selected images.';
+                return;
+            }
+            hintEl.className = 'small mt-2 text-muted';
+            hintEl.textContent = 'This will run only on ' + n + ' selected image' + (n === 1 ? '' : 's') + '.';
+        }
+
+        function applyAiBySku(bySku) {
+            if (!bySku || typeof bySku !== 'object') return;
+            Object.keys(bySku).forEach(function (sku) {
+                applyImagesToSku(sku, bySku[sku] || [], 'ai');
+            });
+        }
+
+        function setupAiHandlers() {
+            const promptEl = document.getElementById('riAiPrompt');
+            const resultEl = document.getElementById('riAiResult');
+            const submitBtn = document.getElementById('riAiSubmitBtn');
+
+            document.getElementById('riAiBtn').addEventListener('click', function () {
+                resultEl.innerHTML = '';
+                updateAiSelectionHint();
+                riAiModal.show();
+                setTimeout(function () { promptEl.focus(); }, 200);
+            });
+
+            promptEl.addEventListener('input', function () {
+                clearTimeout(riAiSaveTimer);
+                riAiSaveTimer = setTimeout(function () {
+                    saveAiPrompt(promptEl.value, false);
+                }, 500);
+            });
+
+            promptEl.addEventListener('keydown', function (e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    saveAndCloseAiPrompt();
+                }
+            });
+
+            submitBtn.addEventListener('click', function () {
+                saveAndCloseAiPrompt();
+            });
+
+            function saveAndCloseAiPrompt() {
+                const prompt = (promptEl.value || '').trim();
+                const selected = selectedRowsForAi();
+                updateAiSelectionHint();
+                if (prompt.length < 2) {
+                    resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Enter a prompt first.</div>';
+                    promptEl.focus();
+                    return;
+                }
+                if (selected.length > 8) {
+                    resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Select up to 8 SKUs at a time.</div>';
+                    return;
+                }
+
+                submitBtn.disabled = true;
+                resultEl.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>Saving…</div>';
+
+                saveAiPrompt(prompt, true)
+                    .then(function () {
+                        resultEl.innerHTML = '';
+                        riAiModal.hide();
+                        if (!selected.length) {
+                            return;
+                        }
+                        return runAiOnSelected(selected, prompt);
+                    })
+                    .catch(function (err) {
+                        resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(err.message || 'Could not save the prompt.') + '</div>';
+                    })
+                    .finally(function () {
+                        submitBtn.disabled = false;
+                    });
+            }
+        }
+
+        function runAiOnSelected(selected, prompt) {
+            return fetch(rawImagesAiPromptUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    prompt: prompt,
+                    selected: selected
+                })
+            })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                const d = result.data || {};
+                applyAiBySku(d.by_sku);
+                const errors = Array.isArray(d.errors) ? d.errors : [];
+                if (!result.ok || !d.success) {
+                    const extra = errors.length ? '\n' + errors.join('\n') : '';
+                    throw new Error((d.message || d.reply || 'AI request failed.') + extra);
+                }
+                applyAiAction(d.action || {});
+                if (errors.length) {
+                    alert((d.reply || 'Done.') + '\n' + errors.join('\n'));
+                    return;
+                }
+                if (d.reply) {
+                    alert(d.reply);
+                }
+            })
+            .catch(function (err) {
+                alert(err.message || 'AI request failed.');
+            });
+        }
+
+        function saveAiPrompt(prompt, force) {
+            const next = String(prompt || '');
+            if (!force && next === riAiLastSaved) {
+                return Promise.resolve();
+            }
+            riAiLastSaved = next;
+            return fetch(rawImagesAiPromptSaveUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ prompt: next })
+            }).then(function (res) {
+                if (!res.ok) {
+                    throw new Error('Could not save the prompt.');
+                }
+            });
+        }
+
+        function applyAiAction(action) {
+            const type = action && action.type ? String(action.type) : 'none';
+            const query = action && action.query ? String(action.query) : '';
+            const field = action && action.field ? String(action.field) : 'general';
+
+            if (type === 'filter_missing') {
+                document.getElementById('filterRawImages').value = 'missing';
+                missingFilterOn = true;
+                imageFilterOn = false;
+                syncBadges();
+                applyFilters();
+                return;
+            }
+            if (type === 'filter_all') {
+                document.getElementById('filterRawImages').value = 'all';
+                document.getElementById('general-search').value = '';
+                document.getElementById('parentSearch').value = '';
+                document.getElementById('skuSearch').value = '';
+                missingFilterOn = false;
+                imageFilterOn = false;
+                syncBadges();
+                applyFilters();
+                return;
+            }
+            if (type === 'search' && query) {
+                document.getElementById('general-search').value = field === 'general' ? query : '';
+                document.getElementById('parentSearch').value = field === 'parent' ? query : '';
+                document.getElementById('skuSearch').value = field === 'sku' ? query : '';
+                applyFilters();
+                return;
+            }
+            if (type === 'open_sheet') {
+                document.getElementById('bulkSheetResult').innerHTML = '';
+                bulkSheetModal.show();
+                return;
+            }
+            if (type === 'open_dropbox') {
+                document.getElementById('bulkDropboxResult').innerHTML = '';
+                bulkDropboxModal.show();
+                return;
+            }
+            if (type === 'download_selected') {
+                downloadSelectedImages();
+                return;
+            }
+            if (type === 'copy_skus') {
+                copySelectedSkus();
+                return;
+            }
+            if (type === 'copy_urls') {
+                copySelectedUrls();
+                return;
+            }
+            if (type === 'copy_missing') {
+                copyMissingSkus();
+            }
+        }
+
+        function copyMissingSkus() {
+            const skus = tableData.filter(function (item) {
+                if (!item.SKU || String(item.SKU).toUpperCase().includes('PARENT')) return false;
+                return hasPositiveInv(item.shopify_inv) && !item.has_raw_image;
+            }).map(function (item) { return item.SKU; });
+            if (!skus.length) {
+                alert('No missing SKUs with inventory.');
+                return;
+            }
+            copyToClipboard(skus.join('\n'), null, skus.length + ' missing SKU(s) copied.');
+        }
+
+        function submitBulkImport(source, opts) {
+            const form = new FormData();
+            form.append('source', source);
+            if (opts.file) form.append('file', opts.file);
+            if (opts.sheetUrl) form.append('sheet_url', opts.sheetUrl);
+            if (opts.urls) form.append('urls', opts.urls);
+
+            if (!opts.file && !opts.sheetUrl && !opts.urls) {
+                opts.resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Add a file, sheet URL, or Dropbox links first.</div>';
+                return;
+            }
+
+            opts.button.disabled = true;
+            opts.resultEl.innerHTML = '<div class="text-muted">Importing images… this can take a minute.</div>';
+
+            fetch(rawImagesBulkImportUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: form
+            })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                const d = result.data || {};
+                const errors = Array.isArray(d.errors) ? d.errors : [];
+                let html = '<div class="alert ' + (d.success ? 'alert-success' : 'alert-danger') + ' py-2 mb-0">';
+                html += escapeHtml(d.message || (d.success ? 'Imported.' : 'Import failed.'));
+                if (d.imported != null) html += ' Imported: ' + d.imported + ', skipped: ' + (d.skipped || 0) + '.';
+                if (errors.length) {
+                    html += '<ul class="mb-0 mt-2 ps-3">';
+                    errors.forEach(function (err) { html += '<li>' + escapeHtml(err) + '</li>'; });
+                    html += '</ul>';
+                }
+                html += '</div>';
+                opts.resultEl.innerHTML = html;
+                if (d.by_sku) {
+                    Object.keys(d.by_sku).forEach(function (sku) {
+                        applyImagesToSku(sku, d.by_sku[sku] || [], 'manual');
+                    });
+                }
+            })
+            .catch(function (err) {
+                opts.resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Import failed: ' + escapeHtml(err.message) + '</div>';
+            })
+            .finally(function () {
+                opts.button.disabled = false;
+            });
+        }
+
+        function selectedSkus() {
+            return Array.from(document.querySelectorAll('.ri-row-select:checked'))
+                .map(function (cb) { return cb.getAttribute('data-sku') || ''; })
+                .filter(Boolean);
+        }
+
+        function updateSelectedCount() {
+            const el = document.getElementById('selectedCountBadge');
+            if (el) el.textContent = 'Selected: ' + selectedSkus().length;
+            updateAiSelectionHint();
+        }
+
+        function downloadSelectedImages() {
+            const skus = selectedSkus();
+            if (!skus.length) {
+                alert('Select at least one SKU.');
+                return;
+            }
+
+            fetch(rawImagesDownloadUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ skus: skus })
+            })
+            .then(function (res) {
+                const type = res.headers.get('Content-Type') || '';
+                if (type.indexOf('application/json') !== -1) {
+                    return res.json().then(function (data) {
+                        throw new Error(data.message || 'Download failed.');
+                    });
+                }
+                if (!res.ok) throw new Error('Download failed.');
+                return res.blob();
+            })
+            .then(function (blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'raw-images.zip';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            })
+            .catch(function (err) {
+                alert(err.message || 'Download failed.');
+            });
+        }
+
+        function copySelectedSkus() {
+            const skus = selectedSkus();
+            if (!skus.length) {
+                alert('Select at least one SKU.');
+                return;
+            }
+            copyToClipboard(skus.join('\n'), null, skus.length + ' SKU(s) copied.');
+        }
+
+        function copySelectedUrls() {
+            const skus = selectedSkus();
+            if (!skus.length) {
+                alert('Select at least one SKU.');
+                return;
+            }
+            const urls = [];
+            skus.forEach(function (sku) {
+                const item = tableData.find(function (d) { return d.SKU === sku; });
+                const images = item && Array.isArray(item.raw_images) ? item.raw_images : [];
+                const aiImages = item && Array.isArray(item.raw_ai_images) ? item.raw_ai_images : [];
+                images.concat(aiImages).forEach(function (img) {
+                    if (img && img.url) urls.push(img.url);
+                });
+            });
+            if (!urls.length) {
+                alert('No raw image URLs on the selected SKUs.');
+                return;
+            }
+            copyToClipboard(urls.join('\n'), null, urls.length + ' URL(s) copied.');
+        }
+
+        function hasPositiveInv(value) {
+            const inv = parseFloat(value);
+            return !isNaN(inv) && inv > 0;
+        }
+
+        function flashAction(msg) {
+            const el = document.getElementById('selectedCountBadge');
+            if (!el) return;
+            el.textContent = msg;
+            setTimeout(updateSelectedCount, 1800);
+        }
+
+        function copyToClipboard(text, modalMsg, toolbarMsg) {
             if (!text) return;
-            navigator.clipboard.writeText(text).catch(function () {});
+            const done = function () {
+                if (modalMsg) setUploadMsg(modalMsg);
+                if (toolbarMsg) flashAction(toolbarMsg);
+            };
+            navigator.clipboard.writeText(text).then(done).catch(function () {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                ta.remove();
+                done();
+            });
         }
 
         function setUploadMsg(text) {

@@ -343,7 +343,7 @@ class FetchAliexpressMetrics extends Command
                 if ($failed <= 5) {
                     $this->warn("Views failed for {$productId}: ".($result['message'] ?? 'unknown error'));
                 }
-                usleep(120000);
+                usleep(80000);
 
                 continue;
             }

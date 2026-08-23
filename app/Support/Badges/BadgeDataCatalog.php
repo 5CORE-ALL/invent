@@ -103,11 +103,13 @@ class BadgeDataCatalog
             'raw-images' => [
                 'sku_count' => 'SKUs',
                 'with_raw_image' => 'With raw image',
+                'image' => 'Image',
                 'missing' => 'Missing Raw Images',
             ],
             'raw-images-batch-coo' => [
                 'sku_count' => 'SKUs',
                 'with_raw_image' => 'With raw image',
+                'image' => 'Image',
                 'missing' => 'Missing Raw Images',
             ],
             'video-ads-master' => [
