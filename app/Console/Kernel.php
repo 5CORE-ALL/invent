@@ -2270,12 +2270,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(90)
             ->runInBackground()
             ->appendOutputTo($log));
-        $ist($schedule->command('app:fetch-pls-product-views --days=30')
-            ->twiceDaily(10, 19)
-            ->name('fetch-pls-product-views')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log));
 
         $ist($schedule->command('sync:neweegg-sheet')
             ->twiceDaily(9, 18)
