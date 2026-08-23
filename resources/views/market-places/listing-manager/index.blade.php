@@ -6,45 +6,78 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --lc-blue: #2f6fed;
-            --lc-blue-dark: #1f54c4;
-            --lc-bg: #f5f7fb;
-            --lc-border: #e3e8ef;
-            --lc-text: #1f2937;
-            --lc-muted: #6b7280;
+            --lc-blue: #2563eb;
+            --lc-blue-dark: #1d4ed8;
+            --lc-bg: #f4f6fb;
+            --lc-border: #e4e9f2;
+            --lc-text: #0f172a;
+            --lc-muted: #64748b;
             --lc-danger: #dc2626;
-            --lc-warn: #ea580c;
+            --lc-warn: #d97706;
+            --lc-card: #ffffff;
+            --lc-soft: #f8fafc;
+            --lc-ink: #111827;
         }
-        .lm-page { background: var(--lc-bg); margin: -1.5rem; padding: 1rem 1.25rem 2rem; min-height: calc(100vh - 70px); }
-        .lm-card { background: #fff; border: 1px solid var(--lc-border); border-radius: 8px; }
-        .lm-header { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: .85rem; }
-        .lm-header h1 { margin: 0; font-size: 1.35rem; font-weight: 700; color: var(--lc-text); }
-        .lm-sync-meta { display: flex; gap: .85rem; flex-wrap: wrap; margin-top: .35rem; font-size: .78rem; color: var(--lc-muted); }
+        .content-page:has(.lm-page) .content { padding-top: 18px !important; padding-bottom: 6px !important; }
+        .content-page:has(.lm-page) .footer { padding-top: 8px; padding-bottom: 8px; }
+        .lm-page {
+            background:
+                radial-gradient(900px 280px at 0% -8%, rgba(37,99,235,.10), transparent 55%),
+                radial-gradient(700px 240px at 100% 0%, rgba(16,185,129,.08), transparent 50%),
+                var(--lc-bg);
+            margin: 0 -12px;
+            padding: 10px 12px 8px;
+            min-height: calc(100vh - 132px);
+            color: var(--lc-text);
+        }
+        .lm-card {
+            background: var(--lc-card); border: 1px solid rgba(15,23,42,.06);
+            border-radius: 14px; box-shadow: 0 8px 24px rgba(15, 23, 42, .05);
+            overflow: hidden;
+        }
+        .lm-header {
+            display: grid; grid-template-columns: minmax(180px, 1fr) auto auto;
+            gap: .75rem; margin: 0 0 .65rem; align-items: center;
+            padding: 2px 2px 0;
+        }
+        @media (max-width: 900px) {
+            .lm-header { grid-template-columns: 1fr; }
+        }
+        .lm-header h1 { margin: 0; font-size: 1.2rem; font-weight: 750; letter-spacing: -.02em; color: var(--lc-ink); line-height: 1.2; }
+        .lm-sync-meta { display: flex; gap: .7rem; flex-wrap: wrap; margin-top: .15rem; font-size: .74rem; color: var(--lc-muted); }
         .lm-sync-meta .off { color: #dc2626; font-weight: 600; }
         .lm-sync-meta .on { color: #15803d; font-weight: 600; }
-        .lm-actions { display: flex; gap: .45rem; align-items: center; flex-wrap: wrap; }
-        .btn-lc { border-radius: 6px; font-weight: 600; font-size: .84rem; padding: .42rem .85rem; border: 1px solid transparent; }
+        .lm-actions { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+        .btn-lc { border-radius: 9px; font-weight: 650; font-size: .8rem; padding: .36rem .75rem; border: 1px solid transparent; }
         .btn-lc-primary { background: var(--lc-blue); border-color: var(--lc-blue-dark); color: #fff !important; }
         .btn-lc-primary:hover { background: var(--lc-blue-dark); color: #fff !important; }
         .btn-lc-primary:disabled, .btn-lc:disabled { opacity: .55; cursor: not-allowed; }
         .btn-lc-ghost { background: #fff; border-color: var(--lc-border); color: var(--lc-text); }
         .btn-lc-danger { background: #fff; border-color: #fecaca; color: #b91c1c; }
         .btn-lc-danger:hover { background: #fef2f2; }
-        .lm-page-tabs { display: flex; gap: .4rem; margin-bottom: .85rem; }
+        .lm-page-tabs { display: inline-flex; gap: .15rem; margin: 0; padding: .15rem; background: #fff; border: 1px solid var(--lc-border); border-radius: 10px; }
         .lm-page-tab {
-            border: 1px solid var(--lc-border); background: #fff; color: #374151;
-            border-radius: 999px; padding: .4rem .95rem; font-size: .84rem; font-weight: 700; cursor: pointer;
+            border: none; background: transparent; color: #475569;
+            border-radius: 8px; padding: .32rem .8rem; font-size: .78rem; font-weight: 700; cursor: pointer;
         }
-        .lm-page-tab.active { background: var(--lc-blue); border-color: var(--lc-blue); color: #fff; }
+        .lm-page-tab.active { background: #0f172a; color: #fff; }
         .lm-panel { display: none; }
         .lm-panel.active { display: block; }
         .lm-filters {
-            display: grid; grid-template-columns: 1.3fr 1.1fr 1fr auto auto auto; gap: .5rem;
-            padding: .85rem 1rem; border-bottom: 1px solid var(--lc-border);
+            display: grid; grid-template-columns: 1.2fr 1fr .9fr auto auto auto auto; gap: .4rem;
+            padding: .55rem .75rem; border-bottom: 1px solid var(--lc-border); background: #fbfcfe;
+            align-items: center;
         }
         @media (max-width: 1100px) { .lm-filters { grid-template-columns: 1fr 1fr; } }
-        .lm-filters .form-control, .lm-filters .form-select { min-height: 36px; font-size: .84rem; border-radius: 6px; }
-        .lm-stock-tabs, .lm-channel-tabs { display: flex; gap: .45rem; padding: .75rem 1rem 0; flex-wrap: wrap; }
+        .lm-filters .form-control, .lm-filters .form-select { min-height: 32px; font-size: .8rem; border-radius: 8px; border-color: var(--lc-border); padding: .28rem .6rem; }
+        .lm-stats { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+        .lm-stat {
+            background: #f1f5f9; color: #334155; border-radius: 999px; padding: .2rem .55rem;
+            font-size: .72rem; font-weight: 700; white-space: nowrap;
+        }
+        .lm-stat strong { color: #0f172a; }
+        .lm-stock-tabs { display: none; }
+        .lm-channel-tabs { display: flex; gap: .45rem; padding: .45rem .75rem 0; flex-wrap: wrap; }
         .lm-stock-tab, .lm-channel-tab {
             border: none; background: transparent; color: #6b7280; border-bottom: 2px solid transparent;
             padding: .45rem .2rem; font-size: .92rem; font-weight: 700; cursor: pointer; margin-right: 1rem;
@@ -52,21 +85,30 @@
         .lm-stock-tab.active, .lm-channel-tab.active { color: var(--lc-blue); border-bottom-color: var(--lc-blue); }
         .lm-channel-tab .badge { background: #e5e7eb; color: #374151; margin-left: .25rem; }
         .lm-channel-tab.active .badge { background: #dbeafe; color: #1d4ed8; }
-        .lm-toolbar { display: flex; justify-content: space-between; gap: .75rem; flex-wrap: wrap; padding: .75rem 1rem; align-items: center; }
+        .lm-toolbar { display: flex; justify-content: space-between; gap: .5rem; flex-wrap: wrap; padding: .45rem .75rem; align-items: center; }
         .lm-info-box {
             background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a;
             border-radius: 8px; padding: .7rem .9rem; font-size: .8rem; margin: 0 1rem .75rem;
         }
         .lm-import-banner {
             background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;
-            border-radius: 8px; padding: .65rem .9rem; font-size: .8rem; margin-bottom: .85rem;
+            border-radius: 8px; padding: .4rem .7rem; font-size: .75rem; margin-bottom: .5rem;
         }
-        .lm-thumb { width: 42px; height: 42px; object-fit: contain; border: 1px solid var(--lc-border); border-radius: 4px; background: #fff; }
+        .lm-thumb { width: 32px; height: 32px; object-fit: contain; border: 1px solid var(--lc-border); border-radius: 7px; background: #fff; }
         .lm-thumb-empty {
-            width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center;
-            border: 1px solid var(--lc-border); border-radius: 4px; color: #9ca3af; background: #f9fafb;
+            width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+            border: 1px solid var(--lc-border); border-radius: 7px; color: #94a3b8; background: #f8fafc; font-size: .7rem;
         }
-        .lm-name-link { color: var(--lc-blue); font-weight: 600; text-decoration: none; cursor: pointer; }
+        .lm-qty-pill {
+            display: inline-flex; align-items: center; justify-content: center; min-width: 42px;
+            border-radius: 999px; padding: .18rem .55rem; font-size: .75rem; font-weight: 750;
+            background: #ecfdf5; color: #047857;
+        }
+        .lm-qty-pill.is-zero { background: #fff7ed; color: #c2410c; }
+        .lm-name-link {
+            color: var(--lc-blue); font-weight: 600; text-decoration: none; cursor: pointer;
+            display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+        }
         .lm-name-link:hover { text-decoration: underline; }
         .lm-status-pill {
             display: inline-block; border-radius: 999px; padding: .18rem .55rem;
@@ -76,24 +118,29 @@
         .lm-status-ready { background: #dbeafe; color: #1d4ed8; }
         .lm-status-active { background: #dcfce7; color: #166534; }
         .lm-status-failed { background: #fee2e2; color: #991b1b; }
-        .tabulator.lm-tabulator .tabulator-header { background: #f9fafb; border-color: var(--lc-border); }
+        .tabulator.lm-tabulator { border: none; }
+        .tabulator.lm-tabulator .tabulator-header { background: #f8fafc; border-color: var(--lc-border); }
         .tabulator.lm-tabulator .tabulator-header .tabulator-col-content {
-            padding: 10px 12px; font-size: .72rem; font-weight: 700; text-transform: uppercase; color: #4b5563;
+            padding: 7px 10px; font-size: .68rem; font-weight: 750; text-transform: uppercase; letter-spacing: .04em; color: #64748b;
         }
-        .tabulator.lm-tabulator .tabulator-row .tabulator-cell { padding: 10px 12px; font-size: .82rem; }
+        .tabulator.lm-tabulator .tabulator-row .tabulator-cell {
+            padding: 6px 10px; font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tabulator.lm-tabulator .tabulator-row { min-height: 38px; }
         .tabulator.lm-tabulator .tabulator-row:hover { background: #f8fafc !important; }
         .lm-toast-wrap { position: fixed; top: 1rem; right: 1rem; z-index: 3000; }
         .lm-channel-list { max-height: 320px; overflow: auto; }
         .lm-channel-row {
-            display: flex; align-items: center; gap: .75rem; padding: .7rem .85rem;
-            border: 1px solid var(--lc-border); border-radius: 8px; margin-bottom: .5rem; cursor: pointer;
+            display: flex; align-items: center; gap: .75rem; padding: .75rem .9rem;
+            border: 1px solid var(--lc-border); border-radius: 12px; margin-bottom: .5rem; cursor: pointer;
+            background: #fff; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
         }
-        .lm-channel-row.is-checked { border-color: var(--lc-blue); background: #eff6ff; }
+        .lm-channel-row.is-checked { border-color: #9bb8ee; background: #eef4ff; box-shadow: 0 0 0 3px rgba(61,111,216,.08); }
         .lm-channel-row img { width: 28px; height: 28px; object-fit: contain; border-radius: 4px; border: 1px solid var(--lc-border); }
 
         /* Full listing editor (LitCommerce-style) */
         .lc-editor-modal .modal-dialog { max-width: min(1180px, 96vw); margin: .75rem auto; }
-        .lc-editor-modal .modal-content { border-radius: 10px; border: 1px solid var(--lc-border); height: calc(100vh - 1.5rem); display: flex; flex-direction: column; }
+        .lc-editor-modal .modal-content { border-radius: 16px; border: 1px solid var(--lc-border); height: calc(100vh - 1.5rem); display: flex; flex-direction: column; box-shadow: 0 18px 50px rgba(28,42,58,.12); }
         .lc-editor-modal .modal-header { border-bottom: 1px solid var(--lc-border); padding: .85rem 1rem; flex-shrink: 0; }
         .lc-editor-modal .modal-title { font-size: 1rem; font-weight: 700; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .lc-editor-modal .modal-body { overflow: auto; flex: 1; padding: 0; }
@@ -205,7 +252,7 @@
 
         /* Product detail modal (LitCommerce All Products) */
         .lm-product-modal .modal-dialog { max-width: min(1100px, 96vw); margin: .6rem auto; }
-        .lm-product-modal .modal-content { height: calc(100vh - 1.2rem); display: flex; flex-direction: column; border-radius: 10px; }
+        .lm-product-modal .modal-content { height: calc(100vh - 1.2rem); display: flex; flex-direction: column; border-radius: 16px; box-shadow: 0 18px 50px rgba(28,42,58,.12); }
         .lm-product-modal .modal-header { flex-shrink: 0; border-bottom: 1px solid var(--lc-border); gap: .75rem; }
         .lm-product-modal .modal-title { font-size: 1rem; font-weight: 700; max-width: 62%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .lm-product-modal .modal-body { flex: 1; overflow: auto; padding: 0; }
@@ -239,6 +286,9 @@
         .lm-meta-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
         .lm-meta-table th, .lm-meta-table td { padding: .45rem .55rem; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
         .lm-meta-table th { width: 220px; color: #6b7280; font-weight: 600; }
+        .lm-var-current { background: #eef5ff; }
+        .lm-var-label { display: inline-block; background: #e8f1ff; color: #2b56b3; border-radius: 999px; padding: .1rem .5rem; font-size: .72rem; font-weight: 700; }
+        .lm-family-bar { display: flex; justify-content: space-between; gap: .75rem; align-items: center; flex-wrap: wrap; margin-bottom: .85rem; }
     </style>
 @endsection
 
@@ -251,8 +301,12 @@
             <h1 id="lm-page-title">Listing Manager</h1>
             <div class="lm-sync-meta" id="lm-sync-meta">
                 <span>Last sync <strong id="lm-last-sync">{{ $lastSyncHuman }}</strong></span>
-                <span>Auto Import: <span class="on">On</span></span>
+                <span>Inventory: <span class="on">Shopify</span></span>
             </div>
+        </div>
+        <div class="lm-page-tabs">
+            <button type="button" class="lm-page-tab active" data-panel="products">All Products</button>
+            <button type="button" class="lm-page-tab" data-panel="drafts">Channel Listings</button>
         </div>
         <div class="lm-actions" id="lm-header-actions-products">
             <button type="button" class="btn-lc btn-lc-ghost" id="lm-manage-channels-btn"><i class="fas fa-store me-1"></i>Add Marketplaces</button>
@@ -272,11 +326,6 @@
         </div>
     </div>
 
-    <div class="lm-page-tabs">
-        <button type="button" class="lm-page-tab active" data-panel="products">All Products</button>
-        <button type="button" class="lm-page-tab" data-panel="drafts">Channel Listings</button>
-    </div>
-
     {{-- Amazon catalog --}}
     <div class="lm-panel active" id="lm-panel-products">
         <div class="lm-card">
@@ -286,23 +335,24 @@
                 <select id="lm-product-type" class="form-select"><option value="all">Collection / Type</option></select>
                 <button type="button" class="btn-lc btn-lc-primary" id="lm-search-btn">Search</button>
                 <button type="button" class="btn-lc btn-lc-ghost" id="lm-clear-btn">Clear</button>
-            </div>
-            <div class="lm-stock-tabs">
-                <button type="button" class="lm-stock-tab active" data-stock="in">In Stock (<span id="lm-in-stock-count">0</span>)</button>
-                <button type="button" class="lm-stock-tab" data-stock="out">Out of Stock (<span id="lm-out-stock-count">0</span>)</button>
-                <button type="button" class="lm-stock-tab" data-stock="all">All (<span id="lm-all-count">0</span>)</button>
+                <div class="lm-stats">
+                    <span class="lm-stat">All listings <strong id="lm-all-count">0</strong></span>
+                    <span class="lm-stat">Shopify INV</span>
+                </div>
+                <div class="dropdown">
+                    <button class="btn-lc btn-lc-primary dropdown-toggle" data-bs-toggle="dropdown">List on Channel</button>
+                    <ul class="dropdown-menu">
+                        <li><button type="button" class="dropdown-item" id="lm-add-selected-drafts">Add selected to Channel Drafts</button></li>
+                        <li><button type="button" class="dropdown-item" id="lm-add-all-drafts">Add all visible to Channel Drafts</button></li>
+                    </ul>
+                </div>
             </div>
             <div class="lm-toolbar">
-                <div>
-                    <div class="dropdown">
-                        <button class="btn-lc btn-lc-primary dropdown-toggle" data-bs-toggle="dropdown">List Products On Channel</button>
-                        <ul class="dropdown-menu">
-                            <li><button type="button" class="dropdown-item" id="lm-add-selected-drafts">Add selected to Channel Drafts</button></li>
-                            <li><button type="button" class="dropdown-item" id="lm-add-all-drafts">Add all visible to Channel Drafts</button></li>
-                        </ul>
-                    </div>
-                    <div class="text-muted small mt-1"><span id="lm-selected-count">0</span> products selected</div>
-                </div>
+                <div class="text-muted small"><span id="lm-selected-count">0</span> products selected</div>
+            </div>
+            <div class="lm-stock-tabs" hidden>
+                <button type="button" class="lm-stock-tab" data-stock="all">All (<span id="lm-in-stock-count">0</span>)</button>
+                <button type="button" class="lm-stock-tab" data-stock="all">All (<span id="lm-out-stock-count">0</span>)</button>
             </div>
             <div id="lm-products-table" class="lm-tabulator"></div>
         </div>
@@ -351,7 +401,7 @@
             </div>
 
             <div class="lm-info-box" id="lm-drafts-help">
-                These listings are in <strong>Draft</strong> and not yet published to eBay. Review and <strong>complete all required fields</strong>
+                These listings are in <strong>Draft</strong> and not yet published. Review and <strong>complete all required fields</strong>
                 for products marked with <strong>Missing Info</strong> before publishing them to your store.
             </div>
 
@@ -374,6 +424,7 @@
                 <div id="lc-banners"></div>
                 <div class="lc-tabs" id="lc-tabs">
                     <button type="button" class="lc-tab active" data-pane="identifiers">Product Identifiers</button>
+                    <button type="button" class="lc-tab" data-pane="variations">Variations</button>
                     <button type="button" class="lc-tab" data-pane="title">Title &amp; Description</button>
                     <button type="button" class="lc-tab" data-pane="images">Images</button>
                     <button type="button" class="lc-tab" data-pane="pricing">Pricing</button>
@@ -387,11 +438,29 @@
                     <div class="row g-3">
                         <div class="col-md-6"><label class="form-label">SKU</label><input id="lc-sku" class="form-control" readonly></div>
                         <div class="col-md-6"><label class="form-label">ASIN / Source</label><input id="lc-asin" class="form-control" readonly></div>
+                        <div class="col-md-6"><label class="form-label">Brand</label><input id="lc-brand-id" class="form-control" placeholder="5 Core Inc"></div>
+                        <div class="col-md-6"><label class="form-label">Manufacturer</label><input id="lc-manufacturer" class="form-control" placeholder="5 Core Inc"></div>
                         <div class="col-md-6"><label class="form-label">UPC</label><input id="lc-upc" class="form-control" placeholder="Optional"></div>
                         <div class="col-md-6"><label class="form-label">EAN</label><input id="lc-ean" class="form-control" placeholder="Optional"></div>
                         <div class="col-md-6"><label class="form-label">ISBN</label><input id="lc-isbn" class="form-control" placeholder="Optional"></div>
                         <div class="col-md-6"><label class="form-label">ePID</label><input id="lc-epid" class="form-control" placeholder="Optional"></div>
                     </div>
+                </div>
+
+                <div class="lc-pane" data-pane="variations">
+                    <div class="lm-family-bar">
+                        <div>
+                            <div class="lc-section-title mb-0">Parent variations</div>
+                            <p class="lc-help mb-0">Siblings share <code id="lc-family-parent">—</code> from Product Master. Publish lists them as one variation family.</p>
+                        </div>
+                        <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lc-copy-siblings-btn">
+                            <i class="fas fa-copy me-1"></i>Copy listing details to siblings
+                        </button>
+                    </div>
+                    <table class="lm-list-table">
+                        <thead><tr><th>SKU</th><th>Pack</th><th>Title</th><th>ASIN</th><th>Qty</th><th>Price</th></tr></thead>
+                        <tbody id="lc-family-rows"></tbody>
+                    </table>
                 </div>
 
                 <div class="lc-pane" data-pane="title">
@@ -472,7 +541,7 @@
                             <input type="number" step="0.01" min="0" id="lc-price" class="form-control">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label">Quantity <span class="lc-req">*</span></label>
+                            <label class="form-label">Quantity <span class="lc-req">*</span> <span class="text-muted fw-normal">(Shopify)</span></label>
                             <input type="number" min="0" id="lc-qty" class="form-control">
                         </div>
                         <div class="col-md-4 d-flex align-items-end">
@@ -561,7 +630,8 @@
                     </div>
 
                     <div class="lc-section-title">Required Item Specifics</div>
-                    <div class="lc-specific-row"><span>Brand</span><input id="lc-brand" class="form-control" placeholder="5 Core"></div>
+                    <div class="lc-specific-row"><span>Brand</span><input id="lc-brand" class="form-control" placeholder="5 Core Inc"></div>
+                    <div class="lc-specific-row"><span>Manufacturer</span><input id="lc-manufacturer-specific" class="form-control" placeholder="5 Core Inc"></div>
                     <div class="lc-specific-row"><span>MPN</span><input id="lc-mpn" class="form-control" placeholder="SKU"></div>
                     <div class="lc-specific-row"><span>UPC</span><input id="lc-upc-specific" class="form-control" placeholder="From CP Master"></div>
                     <div class="lc-section-title mt-3">Recommended Item Specifics</div>
@@ -642,7 +712,7 @@
                 <button type="button" class="btn-lc btn-lc-danger" id="lc-delete-btn">Delete</button>
                 <div class="d-flex gap-2 ms-auto align-items-center">
                     <button type="button" class="btn-lc btn-lc-primary" id="lc-publish-btn" disabled>
-                        <i class="fas fa-cloud-upload-alt me-1"></i>Save &amp; Publish to eBay
+                        <i class="fas fa-cloud-upload-alt me-1"></i>Save &amp; Publish
                     </button>
                     <button type="button" class="btn-lc btn-lc-ghost" id="lc-save-close-btn" disabled>Save &amp; Close</button>
                     <button type="button" class="btn-lc btn-lc-ghost" id="lc-save-btn" disabled>Save Changes</button>
@@ -666,7 +736,11 @@
                     <label class="form-check-label fw-semibold" for="lm-select-all-channels">Select All</label>
                 </div>
                 <div class="lm-channel-list" id="lm-channel-list"></div>
-                <div class="lm-info-box mx-0">Products go to <strong>Drafts</strong>. Complete Category + Business Policies, then Save &amp; Publish to eBay.</div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="lm-include-siblings" checked>
+                    <label class="form-check-label" for="lm-include-siblings">Include parent variations (sibling SKUs)</label>
+                </div>
+                <div class="lm-info-box mx-0">Select only the marketplace you want (for example Temu 2). Products go to <strong>Drafts</strong>. Then open Channel Listings, complete required fields, and Save &amp; Publish.</div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-lc btn-lc-ghost" data-bs-dismiss="modal">Cancel</button>
@@ -735,7 +809,13 @@
                         </div>
                     </div>
                     <div class="lm-prod-pane" data-pane="variations">
-                        <table class="lm-list-table"><thead><tr><th>SKU</th><th>Title</th><th>ASIN</th><th>Qty</th><th>Price</th></tr></thead><tbody id="lm-prod-variations"></tbody></table>
+                        <div class="lm-family-bar">
+                            <div class="lc-help mb-0">Variations grouped by Product Master parent.</div>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-prod-copy-siblings-btn">
+                                <i class="fas fa-copy me-1"></i>Copy details to siblings
+                            </button>
+                        </div>
+                        <table class="lm-list-table"><thead><tr><th>SKU</th><th>Pack</th><th>Title</th><th>ASIN</th><th>Qty</th><th>Price</th></tr></thead><tbody id="lm-prod-variations"></tbody></table>
                     </div>
                     <div class="lm-prod-pane" data-pane="metafields">
                         <table class="lm-meta-table"><thead><tr><th>Attribute name</th><th>Attribute value</th></tr></thead><tbody id="lm-prod-metafields"></tbody></table>
@@ -768,7 +848,7 @@
     const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     let table = null;
     let draftsTable = null;
-    let stockFilter = 'in';
+    let stockFilter = 'all';
     let draftsTab = 'drafts';
     let allChannels = [];
     let pendingSkusForDraft = [];
@@ -825,6 +905,23 @@
         $('#lm-header-actions-drafts').toggleClass('d-none', name !== 'drafts');
         updatePageTitle();
         if (name === 'drafts') loadDrafts();
+        setTimeout(sizeLmTables, 40);
+    }
+
+    function sizeLmTables() {
+        const footer = document.querySelector('.footer');
+        const footerH = footer ? footer.offsetHeight : 32;
+        const gap = 14;
+        const fit = (instance, selector) => {
+            if (!instance) return;
+            const el = document.querySelector(selector);
+            if (!el || el.offsetParent === null) return;
+            const top = el.getBoundingClientRect().top;
+            const h = Math.max(280, Math.floor(window.innerHeight - top - footerH - gap));
+            instance.setHeight(h);
+        };
+        fit(table, '#lm-products-table');
+        fit(draftsTable, '#lm-drafts-table');
     }
 
     function updatePageTitle() {
@@ -842,7 +939,7 @@
             $('#lm-sync-meta').html('<span>Select a channel to manage drafts like LitCommerce</span>');
         } else {
             $('#lm-page-title').text('Listing Manager');
-            $('#lm-sync-meta').html('<span>Last sync <strong id="lm-last-sync">{{ $lastSyncHuman }}</strong></span><span>Auto Import: <span class="on">On</span></span>');
+            $('#lm-sync-meta').html('<span>Last sync <strong id="lm-last-sync">{{ $lastSyncHuman }}</strong></span><span>Inventory: <span class="on">Shopify</span></span>');
         }
     }
 
@@ -923,8 +1020,8 @@
         pendingSkusForDraft = skus;
         loadChannels().then(function () {
             const enabled = allChannels.filter(c => c.enabled);
-            renderChannelRows('#lm-channel-list', enabled, false, enabled.map(c => c.id));
-            $('#lm-select-all-channels').prop('checked', true);
+            renderChannelRows('#lm-channel-list', enabled, false, []);
+            $('#lm-select-all-channels').prop('checked', false);
             bootstrap.Modal.getOrCreateInstance(document.getElementById('lmListChannelModal')).show();
         });
     }
@@ -954,7 +1051,9 @@
             ['UPC', escapeHtml(p.upc || '—')],
             ['Manufacturer Part Number', escapeHtml(p.mpn || '—')],
             ['ASIN', escapeHtml(p.asin || '—')],
-            ['Vendor', escapeHtml(p.vendor || '—')],
+            ['Vendor / Brand', escapeHtml(p.vendor || '5 Core Inc')],
+            ['Manufacturer', escapeHtml(p.manufacturer || '5 Core Inc')],
+            ['Parent', escapeHtml(p.parent || p.sku || '—')],
             ['Product Type', escapeHtml(p.product_type || '—')],
             ['Tags', escapeHtml(p.tags || '—')],
             ['Collection', escapeHtml(p.collections || '—')],
@@ -963,7 +1062,7 @@
             ['MSRP', money(p.msrp)],
             ['Manage Stock', escapeHtml(p.manage_stock || 'Yes')],
             ['In Stock', escapeHtml(p.in_stock || '—')],
-            ['Quantity', p.quantity != null ? escapeHtml(String(p.quantity)) : '—'],
+            ['Shopify INV', p.quantity != null ? escapeHtml(String(p.quantity)) : '—'],
             ['Condition', escapeHtml(p.condition || '—')],
             ['Package Weight', escapeHtml(p.package_weight || '—')],
             ['Package Dimensions', escapeHtml(p.package_dimensions || '—')],
@@ -1032,13 +1131,14 @@
 
     function renderProductExtras(p) {
         const vars = p.variations || [];
-        $('#lm-prod-variations').html(vars.length ? vars.map(v => `<tr>
-            <td>${escapeHtml(v.sku || '')}</td>
+        $('#lm-prod-variations').html(vars.length ? vars.map(v => `<tr class="${v.is_current ? 'lm-var-current' : ''}">
+            <td><a href="#" class="lm-name-link lm-open-sibling" data-sku="${escapeHtml(v.sku || '')}">${escapeHtml(v.sku || '')}</a></td>
+            <td><span class="lm-var-label">${escapeHtml(v.variation_label || v.sku || '')}</span></td>
             <td>${escapeHtml(v.title || '')}</td>
             <td>${escapeHtml(v.asin || '—')}</td>
             <td>${v.quantity != null ? escapeHtml(String(v.quantity)) : '—'}</td>
             <td>${money(v.price)}</td>
-        </tr>`).join('') : '<tr><td colspan="5" class="text-muted">No variations</td></tr>');
+        </tr>`).join('') : '<tr><td colspan="6" class="text-muted">No parent variations in Product Master</td></tr>');
 
         const meta = p.metafields || [];
         $('#lm-prod-metafields').html(meta.length ? meta.map(m => `<tr>
@@ -1206,11 +1306,13 @@
 
     function collectDetails() {
         const images = editorImages.slice();
-        const brand = ($('#lc-brand').val() || '').trim() || '5 Core';
+        const brand = ($('#lc-brand').val() || $('#lc-brand-id').val() || '').trim() || '5 Core Inc';
+        const manufacturer = ($('#lc-manufacturer').val() || $('#lc-manufacturer-specific').val() || '').trim() || '5 Core Inc';
         const mpn = ($('#lc-mpn').val() || '').trim() || ($('#lc-sku').val() || '').trim();
         const upc = ($('#lc-upc').val() || $('#lc-upc-specific').val() || '').trim();
         const specifics = {
             Brand: brand,
+            Manufacturer: manufacturer,
             MPN: mpn,
             UPC: upc,
             'Speaker Size': $('#lc-spec-speaker').val() || '',
@@ -1222,6 +1324,7 @@
             condition: $('#lc-condition').val() || '',
             condition_description: $('#lc-condition-desc').val() || '',
             brand,
+            manufacturer,
             mpn,
             upc,
             ean: $('#lc-ean').val() || '',
@@ -1268,13 +1371,17 @@
         if (!d.images.length) errors.images.push('Images');
         if (!(price > 0)) errors.pricing.push('Price');
         if (qty === '' || qty === null) errors.pricing.push('Quantity');
-        if (!d.primary_category_id) errors.category.push('Category');
-        if (!d.condition) errors.category.push('Condition');
-        if (!d.shipping_policy_id) errors.policies.push('Shipping');
-        if (!d.payment_policy_id) errors.policies.push('Payment');
-        if (!d.return_policy_id) errors.policies.push('Return');
-        if (!d.location_country) errors.policies.push('Country');
-        if (!d.location_postal_code) errors.policies.push('Postal');
+        const channel = String((currentDraft && currentDraft.channel) || '').toLowerCase();
+        const isEbay = /ebay/.test(channel);
+        if (isEbay) {
+            if (!d.primary_category_id) errors.category.push('Category');
+            if (!d.condition) errors.category.push('Condition');
+            if (!d.shipping_policy_id) errors.policies.push('Shipping');
+            if (!d.payment_policy_id) errors.policies.push('Payment');
+            if (!d.return_policy_id) errors.policies.push('Return');
+            if (!d.location_country) errors.policies.push('Country');
+            if (!d.location_postal_code) errors.policies.push('Postal');
+        }
         return errors;
     }
 
@@ -1313,7 +1420,8 @@
         if (err.images.length) banners.push(['danger', 'Images tab is missing required information. Please fill in those required fields.']);
         if (err.pricing.length) banners.push(['danger', 'Pricing tab is missing required information. Please fill in those required fields.']);
         if (!(serverDraft && serverDraft.status === 'listed')) {
-            banners.push(['info', 'This is a draft listing and not yet published to your eBay channel.']);
+            const ch = escapeHtml((serverDraft && serverDraft.channel) || 'channel');
+            banners.push(['info', `This is a draft listing and not yet published to ${ch}.`]);
         }
         if (!String($('#lc-shipping-policy').val() || '').trim()) {
             banners.push(['warn', 'To use business policies, your account must be authorized by eBay. Click Refresh list of policies after creating them on eBay.']);
@@ -1333,8 +1441,10 @@
         if (listed) {
             $('#lc-publish-btn').prop('disabled', true).html('<i class="fas fa-check me-1"></i>Published');
         } else {
-            $('#lc-publish-btn').html('<i class="fas fa-cloud-upload-alt me-1"></i>Save &amp; Publish to eBay');
+            const ch = (serverDraft && serverDraft.channel) ? ` to ${serverDraft.channel}` : '';
+            $('#lc-publish-btn').html(`<i class="fas fa-cloud-upload-alt me-1"></i>Save &amp; Publish${ch ? escapeHtml(ch) : ''}`);
         }
+        renderFamilyRows(serverDraft);
     }
 
     function fillPolicySelect($el, rows, selected) {
@@ -1399,7 +1509,8 @@
         $('#lc-sku').val(draft.sku || '');
         $('#lc-asin').val(draft.asin || '');
         const sku = String(draft.sku || '').trim();
-        const defaultBrand = '5 Core';
+        const defaultBrand = '5 Core Inc';
+        const defaultManufacturer = '5 Core Inc';
         const upcVal = d.upc || (d.item_specifics && d.item_specifics.UPC) || '';
         $('#lc-upc').val(upcVal);
         $('#lc-ean').val(d.ean || '');
@@ -1427,8 +1538,15 @@
         $(`input[name="lc-format"][value="${d.listing_format || 'FixedPriceItem'}"]`).prop('checked', true);
         $('#lc-private-listing').prop('checked', !!d.private_listing);
         const specs = d.item_specifics || {};
-        $('#lc-brand').val(d.brand || specs.Brand || defaultBrand);
+        $('#lc-brand, #lc-brand-id').val(d.brand || specs.Brand || defaultBrand);
+        $('#lc-manufacturer, #lc-manufacturer-specific').val(d.manufacturer || specs.Manufacturer || defaultManufacturer);
         $('#lc-mpn').val(d.mpn || specs.MPN || sku);
+        $('#lc-brand, #lc-brand-id').off('input.brandSync').on('input.brandSync', function () {
+            $('#lc-brand, #lc-brand-id').not(this).val($(this).val());
+        });
+        $('#lc-manufacturer, #lc-manufacturer-specific').off('input.mfrSync').on('input.mfrSync', function () {
+            $('#lc-manufacturer, #lc-manufacturer-specific').not(this).val($(this).val());
+        });
         $('#lc-upc-specific').val(upcVal);
         // Keep Product Identifiers UPC and Required Item Specifics UPC in sync
         $('#lc-upc, #lc-upc-specific').off('input.upcSync').on('input.upcSync', function () {
@@ -1466,6 +1584,36 @@
             bootstrap.Modal.getOrCreateInstance(document.getElementById('lmListingEditorModal')).show();
         }).fail(function (xhr) {
             toast(xhr.responseJSON?.message || 'Could not load draft.', 'error');
+        });
+    }
+
+    function renderFamilyRows(draft) {
+        const family = (draft && draft.family) || {};
+        const kids = (draft && draft.variations && draft.variations.length) ? draft.variations : (family.children || []);
+        $('#lc-family-parent').text(family.parent || (draft && draft.sku) || '—');
+        $('#lc-family-rows').html(kids.length ? kids.map(v => `<tr class="${v.is_current ? 'lm-var-current' : ''}">
+            <td>${escapeHtml(v.sku || '')}</td>
+            <td><span class="lm-var-label">${escapeHtml(v.variation_label || '')}</span></td>
+            <td>${escapeHtml(v.title || '')}</td>
+            <td>${escapeHtml(v.asin || '—')}</td>
+            <td>${v.quantity != null ? escapeHtml(String(v.quantity)) : '—'}</td>
+            <td>${money(v.price)}</td>
+        </tr>`).join('') : '<tr><td colspan="6" class="text-muted">This SKU has no siblings on the same Product Master parent.</td></tr>');
+    }
+
+    function copyDraftToSiblings(id) {
+        if (!id) return;
+        const $btn = $('#lc-copy-siblings-btn').prop('disabled', true);
+        $.ajax({
+            url: "{{ url('/listing-manager/drafts') }}/" + id + '/copy-siblings',
+            method: 'POST',
+            success: function (res) {
+                toast(res.message || 'Copied to siblings.', 'success');
+                if (res.draft) fillEditor(res.draft);
+                loadDrafts();
+            },
+            error: xhr => toast(xhr.responseJSON?.message || 'Copy to siblings failed.', 'error'),
+            complete: () => $btn.prop('disabled', false),
         });
     }
 
@@ -1528,9 +1676,9 @@
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': csrf } });
 
         table = new Tabulator('#lm-products-table', {
-            layout: 'fitDataStretch',
-            height: '560px',
-            placeholder: 'No Amz products found. Click Import from Amz.',
+            layout: 'fitColumns',
+            height: Math.max(360, window.innerHeight - 280),
+            placeholder: 'No listings found. Click Import from Amz.',
             selectableRows: true,
             pagination: true,
             paginationSize: 100,
@@ -1539,15 +1687,15 @@
             ajaxParams: buildProductQuery,
             ajaxResponse: function (_u, _p, response) {
                 const meta = (response && response.meta) || {};
+                $('#lm-all-count').text(Number(meta.total || 0).toLocaleString());
                 $('#lm-in-stock-count').text(Number(meta.in_stock || 0).toLocaleString());
                 $('#lm-out-stock-count').text(Number(meta.out_of_stock || 0).toLocaleString());
-                $('#lm-all-count').text(Number(meta.total || 0).toLocaleString());
                 return (response && response.data) ? response.data : [];
             },
             columns: [
                 { formatter: 'rowSelection', titleFormatter: 'rowSelection', hozAlign: 'center', headerSort: false, width: 44 },
                 {
-                    title: '', field: 'thumbnail', width: 56, hozAlign: 'center', headerSort: false,
+                    title: '', field: 'thumbnail', width: 44, hozAlign: 'center', headerSort: false,
                     formatter: (cell) => {
                         const src = cell.getValue();
                         if (!src) return '<span class="lm-thumb-empty"><i class="fas fa-image"></i></span>';
@@ -1555,13 +1703,13 @@
                     }
                 },
                 {
-                    title: 'Name', field: 'name', minWidth: 280,
+                    title: 'Name', field: 'name', minWidth: 220, widthGrow: 4,
                     formatter: (cell) => {
                         const row = cell.getRow().getData();
                         const name = escapeHtml(cell.getValue() || '');
                         const sku = escapeHtml(String(row.sku || '').trim());
                         if (!sku) return name;
-                        return `<a href="#" class="lm-name-link lm-open-product" data-sku="${sku}">${name}</a>`;
+                        return `<a href="#" class="lm-name-link lm-open-product" data-sku="${sku}" title="${name}">${name}</a>`;
                     },
                     cellClick: (e, cell) => {
                         const a = e.target.closest('.lm-open-product');
@@ -1572,18 +1720,24 @@
                     }
                 },
                 { title: 'SKU', field: 'sku', minWidth: 140 },
-                { title: 'Origin', field: 'origin', width: 80, hozAlign: 'center', formatter: () => '<span style="color:#ff9900;font-weight:700"><i class="fab fa-amazon"></i></span>' },
-                { title: 'In Stock', field: 'in_stock', width: 90, hozAlign: 'center' },
-                { title: 'Qty', field: 'total_available', width: 90, hozAlign: 'center', sorter: 'number' },
+                { title: 'Origin', field: 'origin', width: 72, hozAlign: 'center', formatter: () => '<span style="color:#ff9900;font-weight:700"><i class="fab fa-amazon"></i></span>' },
+                {
+                    title: 'Shopify INV', field: 'total_available', width: 108, hozAlign: 'center', sorter: 'number',
+                    formatter: (cell) => {
+                        const n = Number(cell.getValue() ?? 0);
+                        return `<span class="lm-qty-pill ${n > 0 ? '' : 'is-zero'}">${escapeHtml(String(n))}</span>`;
+                    }
+                },
                 { title: 'Price', field: 'price', width: 90, hozAlign: 'right', formatter: c => c.getValue() == null ? '—' : ('$' + Number(c.getValue()).toFixed(2)) },
                 { title: 'Drafts', field: 'draft_channels', width: 80, hozAlign: 'center', formatter: c => Number(c.getValue()||0) ? `<span class="badge bg-primary">${c.getValue()}</span>` : '0' },
             ],
         });
         table.on('rowSelectionChanged', () => $('#lm-selected-count').text(table.getSelectedData().length));
+        table.on('tableBuilt', sizeLmTables);
 
         draftsTable = new Tabulator('#lm-drafts-table', {
-            layout: 'fitDataStretch',
-            height: '560px',
+            layout: 'fitColumns',
+            height: Math.max(360, window.innerHeight - 300),
             placeholder: 'No drafts yet. From All Products → List Products On Channel.',
             selectableRows: true,
             pagination: true,
@@ -1604,7 +1758,7 @@
             columns: [
                 { formatter: 'rowSelection', titleFormatter: 'rowSelection', hozAlign: 'center', headerSort: false, width: 44 },
                 {
-                    title: '', field: 'thumbnail', width: 56, hozAlign: 'center', headerSort: false,
+                    title: '', field: 'thumbnail', width: 44, hozAlign: 'center', headerSort: false,
                     formatter: (cell) => {
                         const src = cell.getValue();
                         if (!src) return '<span class="lm-thumb-empty"><i class="fas fa-image"></i></span>';
@@ -1623,7 +1777,7 @@
                     formatter: c => statusPill(c.getValue())
                 },
                 {
-                    title: 'Name', field: 'title', minWidth: 280,
+                    title: 'Name', field: 'title', minWidth: 220, widthGrow: 4,
                     formatter: (cell) => `<a class="lm-name-link lm-open-name">${escapeHtml(cell.getValue() || '')}</a>`,
                     cellClick: (e, cell) => {
                         if ($(e.target).hasClass('lm-open-name')) openEditor(cell.getRow().getData().id);
@@ -1639,6 +1793,9 @@
             ],
         });
         draftsTable.on('rowSelectionChanged', () => $('#lm-draft-selected-count').text(draftsTable.getSelectedData().length));
+        draftsTable.on('tableBuilt', sizeLmTables);
+        window.addEventListener('resize', sizeLmTables);
+        setTimeout(sizeLmTables, 80);
 
         $('.lm-page-tab').on('click', function () { showPanel($(this).data('panel')); });
         $('.lm-stock-tab').on('click', function () {
@@ -1706,7 +1863,7 @@
             $.ajax({
                 url: "{{ route('listing.manager.drafts.add') }}",
                 method: 'POST',
-                data: { skus: pendingSkusForDraft, channel_ids: channelIds },
+                data: { skus: pendingSkusForDraft, channel_ids: channelIds, include_siblings: $('#lm-include-siblings').is(':checked') ? 1 : 0 },
                 success: function (res) {
                     toast(res.message || 'Drafts added.', 'success');
                     bootstrap.Modal.getOrCreateInstance(document.getElementById('lmListChannelModal')).hide();
@@ -2036,6 +2193,23 @@
             });
         });
         $('#lc-publish-btn').on('click', publishDraft);
+        $('#lc-copy-siblings-btn').on('click', function () {
+            copyDraftToSiblings($('#lc-draft-id').val());
+        });
+        $('#lm-prod-copy-siblings-btn').on('click', function () {
+            const drafts = (currentProduct && currentProduct.drafts) || [];
+            const id = drafts[0] && drafts[0].id;
+            if (!id) {
+                toast('Create a channel listing first, then copy details to siblings.', 'error');
+                return;
+            }
+            copyDraftToSiblings(id);
+        });
+        $(document).on('click', '.lm-open-sibling', function (e) {
+            e.preventDefault();
+            const sku = $(this).data('sku');
+            if (sku) openProductModal(String(sku));
+        });
         $('#lc-delete-btn').on('click', function () {
             const id = $('#lc-draft-id').val();
             if (!id || !confirm('Delete this draft listing?')) return;

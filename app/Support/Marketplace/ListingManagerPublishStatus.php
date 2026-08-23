@@ -166,25 +166,30 @@ class ListingManagerPublishStatus
             $tabErrors['pricing'][] = 'Quantity cannot be negative.';
         }
 
-        $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
-        if ($categoryId === '') {
-            $tabErrors['category'][] = 'Primary category is required.';
-        }
-        $condition = trim((string) ($details['condition'] ?? ''));
-        if ($condition === '' || strcasecmp($condition, 'Please select') === 0) {
-            $tabErrors['category'][] = 'Condition is required.';
-        }
+        $channelKey = ListingChannelCounts::normalize((string) $channelName);
+        $isEbay = in_array($channelKey, ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'], true);
 
-        foreach (['shipping_policy_id' => 'Shipping Policy', 'payment_policy_id' => 'Payment Policy', 'return_policy_id' => 'Return Policy'] as $key => $label) {
-            if (trim((string) ($details[$key] ?? '')) === '') {
-                $tabErrors['business_policies'][] = "{$label} is required.";
+        if ($isEbay) {
+            $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+            if ($categoryId === '') {
+                $tabErrors['category'][] = 'Primary category is required.';
             }
-        }
-        if (trim((string) ($details['location_country'] ?? '')) === '') {
-            $tabErrors['business_policies'][] = 'Item location country is required.';
-        }
-        if (trim((string) ($details['location_postal_code'] ?? '')) === '') {
-            $tabErrors['business_policies'][] = 'Postal code is required.';
+            $condition = trim((string) ($details['condition'] ?? ''));
+            if ($condition === '' || strcasecmp($condition, 'Please select') === 0) {
+                $tabErrors['category'][] = 'Condition is required.';
+            }
+
+            foreach (['shipping_policy_id' => 'Shipping Policy', 'payment_policy_id' => 'Payment Policy', 'return_policy_id' => 'Return Policy'] as $key => $label) {
+                if (trim((string) ($details[$key] ?? '')) === '') {
+                    $tabErrors['business_policies'][] = "{$label} is required.";
+                }
+            }
+            if (trim((string) ($details['location_country'] ?? '')) === '') {
+                $tabErrors['business_policies'][] = 'Item location country is required.';
+            }
+            if (trim((string) ($details['location_postal_code'] ?? '')) === '') {
+                $tabErrors['business_policies'][] = 'Postal code is required.';
+            }
         }
 
         $missing = [];
@@ -245,12 +250,17 @@ class ListingManagerPublishStatus
         if (! is_array($specifics)) {
             $specifics = [];
         }
-        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc')) ?: '5 Core Inc';
+        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc')) ?: '5 Core Inc';
         $brand = trim((string) ($details['brand'] ?? ($specifics['Brand'] ?? ''))) ?: $defaultBrand;
+        $manufacturer = trim((string) ($details['manufacturer'] ?? ($specifics['Manufacturer'] ?? ''))) ?: $defaultManufacturer;
         $mpn = trim((string) ($details['mpn'] ?? ($specifics['MPN'] ?? '')));
         $upc = trim((string) ($details['upc'] ?? ($specifics['UPC'] ?? '')));
         if ($brand !== '') {
             $specifics['Brand'] = $brand;
+        }
+        if ($manufacturer !== '') {
+            $specifics['Manufacturer'] = $manufacturer;
         }
         if ($mpn !== '') {
             $specifics['MPN'] = $mpn;
@@ -266,6 +276,7 @@ class ListingManagerPublishStatus
             'condition_id' => '1000',
             'condition_description' => '',
             'brand' => '',
+            'manufacturer' => '',
             'mpn' => '',
             'upc' => '',
             'ean' => '',
@@ -303,6 +314,7 @@ class ListingManagerPublishStatus
             'private_listing' => false,
         ], $details, [
             'brand' => $brand,
+            'manufacturer' => $manufacturer,
             'mpn' => $mpn,
             'upc' => $upc,
             'image_url' => $imageUrl,
