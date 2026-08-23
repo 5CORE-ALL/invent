@@ -4059,11 +4059,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/raw-images', [RawImagesController::class, 'index'])->name('raw.images');
     Route::get('/raw-images-data', [RawImagesController::class, 'getData'])->name('raw.images.data');
     Route::post('/raw-images/upload', [RawImagesController::class, 'upload'])->name('raw.images.upload');
+    Route::post('/raw-images/bulk-import', [RawImagesController::class, 'bulkImport'])->name('raw.images.bulk.import');
+    Route::post('/raw-images/download', [RawImagesController::class, 'downloadSelected'])->name('raw.images.download');
+    Route::get('/raw-images/template', [RawImagesController::class, 'downloadTemplate'])->name('raw.images.template');
+    Route::get('/raw-images/cached-image', [RawImagesController::class, 'cachedImage'])->name('raw.images.cached.image');
+    Route::post('/raw-images/ai-prompt', [RawImagesController::class, 'aiPrompt'])->name('raw.images.ai.prompt');
+    Route::post('/raw-images/ai-prompt/save', [RawImagesController::class, 'saveAiPrompt'])->name('raw.images.ai.prompt.save');
     Route::delete('/raw-images/{id}', [RawImagesController::class, 'destroy'])->name('raw.images.destroy');
 
     Route::get('/raw-images-batch-coo', [RawImagesController::class, 'index'])->name('raw.images.batch.coo');
     Route::get('/raw-images-batch-coo-data', [RawImagesController::class, 'getData'])->name('raw.images.batch.coo.data');
     Route::post('/raw-images-batch-coo/upload', [RawImagesController::class, 'upload'])->name('raw.images.batch.coo.upload');
+    Route::post('/raw-images-batch-coo/bulk-import', [RawImagesController::class, 'bulkImport'])->name('raw.images.batch.coo.bulk.import');
+    Route::post('/raw-images-batch-coo/download', [RawImagesController::class, 'downloadSelected'])->name('raw.images.batch.coo.download');
+    Route::get('/raw-images-batch-coo/template', [RawImagesController::class, 'downloadTemplate'])->name('raw.images.batch.coo.template');
+    Route::post('/raw-images-batch-coo/ai-prompt', [RawImagesController::class, 'aiPrompt'])->name('raw.images.batch.coo.ai.prompt');
+    Route::post('/raw-images-batch-coo/ai-prompt/save', [RawImagesController::class, 'saveAiPrompt'])->name('raw.images.batch.coo.ai.prompt.save');
     Route::delete('/raw-images-batch-coo/{id}', [RawImagesController::class, 'destroy'])->name('raw.images.batch.coo.destroy');
 
     Route::get('/video-master', [VideoMasterController::class, 'index'])->name('video.master');

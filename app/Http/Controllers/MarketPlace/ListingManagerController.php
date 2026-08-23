@@ -8,6 +8,9 @@ use App\Models\ChannelMaster;
 use App\Models\Ebay2Metric;
 use App\Models\ListingManagerChannelDraft;
 use App\Models\ListingManagerEnabledChannel;
+use App\Models\ProductMaster;
+use App\Models\ProductRawImage;
+use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\ShopifyApiService;
@@ -113,8 +116,8 @@ class ListingManagerController extends Controller
             ]);
 
             $draftCounts = [];
-            if (Schema::hasTable('listing_manager_channel_drafts') && $rows->isNotEmpty()) {
-                $skus = $rows->pluck('seller_sku')->unique()->values()->all();
+            $skus = $rows->pluck('seller_sku')->unique()->values()->all();
+            if (Schema::hasTable('listing_manager_channel_drafts') && $skus !== []) {
                 $draftCounts = ListingManagerChannelDraft::query()
                     ->whereIn('seller_sku', $skus)
                     ->selectRaw('seller_sku, COUNT(*) as draft_count')
@@ -122,8 +125,9 @@ class ListingManagerController extends Controller
                     ->pluck('draft_count', 'seller_sku')
                     ->all();
             }
+            $imageLookups = $this->imageLookupsForSkus($skus);
 
-            $data = $rows->map(function (AmazonListingRaw $row) use ($draftCounts) {
+            $data = $rows->map(function (AmazonListingRaw $row) use ($draftCounts, $imageLookups) {
                 $raw = is_array($row->raw_data) ? $row->raw_data : [];
                 $rawName = '';
                 foreach ($raw as $k => $v) {
@@ -137,12 +141,27 @@ class ListingManagerController extends Controller
                 $price = $row->your_price !== null ? (float) $row->your_price : (isset($raw['price']) ? (float) $raw['price'] : null);
                 $listPrice = $row->list_price !== null ? (float) $row->list_price : null;
                 $thumb = trim((string) ($row->thumbnail_image ?: ($raw['image-url'] ?? $raw['image-url-1'] ?? '')));
+                $sku = (string) $row->seller_sku;
+                $hero = $imageLookups['hero'][$sku] ?? ($thumb !== '' ? $thumb : null);
+                $rawInfo = $imageLookups['raw'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
+                $rawAi = $imageLookups['raw_ai'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
+                $rawBatch = $imageLookups['raw_batch'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
 
                 return [
                     'id' => $row->id,
                     'thumbnail' => $thumb !== '' ? $thumb : null,
+                    'hero_image' => $hero,
+                    'raw_ai_image' => $rawAi['url'],
+                    'raw_ai_image_count' => (int) $rawAi['count'],
+                    'raw_ai_image_previewable' => (bool) $rawAi['previewable'],
+                    'raw_image' => $rawInfo['url'],
+                    'raw_image_count' => (int) $rawInfo['count'],
+                    'raw_image_previewable' => (bool) $rawInfo['previewable'],
+                    'raw_batch_image' => $rawBatch['url'],
+                    'raw_batch_image_count' => (int) $rawBatch['count'],
+                    'raw_batch_image_previewable' => (bool) $rawBatch['previewable'],
                     'name' => trim((string) ($row->item_name ?: $rawName ?: $row->seller_sku)),
-                    'sku' => $row->seller_sku,
+                    'sku' => $sku,
                     'asin' => $row->asin1 ?: ($raw['asin1'] ?? null),
                     'origin' => 'Amazon',
                     'manage_stock' => 'Yes',
@@ -155,7 +174,7 @@ class ListingManagerController extends Controller
                     'product_type' => $row->product_type,
                     'condition' => $row->condition_type_display,
                     'brand' => $row->brand,
-                    'draft_channels' => (int) ($draftCounts[$row->seller_sku] ?? 0),
+                    'draft_channels' => (int) ($draftCounts[$sku] ?? 0),
                 ];
             })->values();
 
@@ -216,10 +235,19 @@ class ListingManagerController extends Controller
         }
 
         $shopifyImages = array_values(array_filter(($shopify['images'] ?? []) ?: []));
-        // Prefer live Amazon Marketplace API images; fall back to Shopify main store.
-        $images = $amazonImages !== [] ? $amazonImages : $shopifyImages;
+        $imageLookups = $this->imageLookupsForSkus([$sku]);
+        $heroImage = $imageLookups['hero'][$sku] ?? null;
+        $pmImages = $imageLookups['pm_images'][$sku] ?? [];
+        // Prefer live Amazon Marketplace API images; fall back to Image Master / Shopify.
+        $images = $amazonImages !== [] ? $amazonImages : ($pmImages !== [] ? $pmImages : $shopifyImages);
         if ($images === [] && $shopifyImages !== []) {
             $images = $shopifyImages;
+        }
+        if ($heroImage && ($images === [] || ($images[0] ?? '') !== $heroImage)) {
+            $images = array_values(array_unique(array_merge([$heroImage], $images)));
+        }
+        if ($heroImage === null && $images !== []) {
+            $heroImage = $images[0];
         }
         $description = trim((string) (
             ($shopify['success'] ?? false) ? ($shopify['html'] ?? '') : ''
@@ -431,6 +459,7 @@ class ListingManagerController extends Controller
                 'meta_title' => (string) ($pm['meta_title'] ?? ''),
                 'short_description' => (string) ($pm['short_description'] ?? ''),
                 'images' => $images,
+                'hero_image' => $heroImage,
                 'amazon_images' => $amazonImages,
                 'shopify_images' => $shopifyImages,
                 'variations' => [[
@@ -728,8 +757,27 @@ class ListingManagerController extends Controller
         }
 
         $rows = $query->orderByDesc('updated_at')->limit(2000)->get();
+        $imageLookups = $this->imageLookupsForSkus($rows->pluck('seller_sku')->unique()->values()->all());
 
-        $data = $rows->map(fn (ListingManagerChannelDraft $d) => $this->serializeDraft($d))->values();
+        $data = $rows->map(function (ListingManagerChannelDraft $d) use ($imageLookups) {
+            $row = $this->serializeDraft($d);
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $rawInfo = $imageLookups['raw'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
+            $rawAi = $imageLookups['raw_ai'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
+            $rawBatch = $imageLookups['raw_batch'][$sku] ?? ['url' => null, 'count' => 0, 'previewable' => false];
+            $row['hero_image'] = $imageLookups['hero'][$sku] ?? ($row['thumbnail'] ?? null);
+            $row['raw_ai_image'] = $rawAi['url'];
+            $row['raw_ai_image_count'] = (int) $rawAi['count'];
+            $row['raw_ai_image_previewable'] = (bool) $rawAi['previewable'];
+            $row['raw_image'] = $rawInfo['url'];
+            $row['raw_image_count'] = (int) $rawInfo['count'];
+            $row['raw_image_previewable'] = (bool) $rawInfo['previewable'];
+            $row['raw_batch_image'] = $rawBatch['url'];
+            $row['raw_batch_image_count'] = (int) $rawBatch['count'];
+            $row['raw_batch_image_previewable'] = (bool) $rawBatch['previewable'];
+
+            return $row;
+        })->values();
 
         $baseMeta = ListingManagerChannelDraft::query();
         if ($channelId > 0) {
@@ -1591,5 +1639,191 @@ class ListingManagerController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * Image Master hero + Raw Images lookups for listing-manager columns.
+     *
+     * @param  list<string>  $skus
+     * @return array{hero: array<string, string>, raw: array<string, array{url: ?string, count: int, previewable: bool}>, raw_ai: array<string, array{url: ?string, count: int, previewable: bool}>, raw_batch: array<string, array{url: ?string, count: int, previewable: bool}>, pm_images: array<string, list<string>>}
+     */
+    private function imageLookupsForSkus(array $skus): array
+    {
+        $hero = [];
+        $raw = [];
+        $rawAi = [];
+        $rawBatch = [];
+        $pmImages = [];
+        $skus = array_values(array_filter(array_map(static fn ($s) => trim((string) $s), $skus)));
+        if ($skus === []) {
+            return ['hero' => $hero, 'raw' => $raw, 'raw_ai' => $rawAi, 'raw_batch' => $rawBatch, 'pm_images' => $pmImages];
+        }
+
+        $skuSet = array_fill_keys($skus, true);
+        $heroByNorm = [];
+        $pmByNorm = [];
+        $rawByNorm = [];
+        $rawAiByNorm = [];
+        $rawBatchByNorm = [];
+
+        if (Schema::hasTable('product_master')) {
+            $select = ['sku', 'Values'];
+            foreach (['main_image', 'image1', 'image2', 'image3', 'image4', 'image5', 'image6'] as $col) {
+                if (Schema::hasColumn('product_master', $col)) {
+                    $select[] = $col;
+                }
+            }
+            $pmRows = ProductMaster::query()->whereIn('sku', $skus)->get($select);
+            foreach ($pmRows as $pm) {
+                $sku = trim((string) $pm->sku);
+                if ($sku === '') {
+                    continue;
+                }
+                $urls = $this->productMasterImageUrls($pm);
+                if ($urls === []) {
+                    continue;
+                }
+                $pmImages[$sku] = $urls;
+                $hero[$sku] = $urls[0];
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm !== '') {
+                    $heroByNorm[$norm] = $urls[0];
+                    $pmByNorm[$norm] = $urls;
+                }
+            }
+        }
+
+        if (Schema::hasTable('shopify_skus')) {
+            $shopifyRows = ShopifySku::query()->whereIn('sku', $skus)->get(['sku', 'image_src']);
+            foreach ($shopifyRows as $row) {
+                $sku = trim((string) $row->sku);
+                $url = $this->normalizePublicImageUrl($row->image_src);
+                if ($sku === '' || ! $url) {
+                    continue;
+                }
+                if (! isset($hero[$sku])) {
+                    $hero[$sku] = $url;
+                }
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm !== '' && ! isset($heroByNorm[$norm])) {
+                    $heroByNorm[$norm] = $url;
+                }
+            }
+        }
+
+        if (Schema::hasTable('product_raw_images')) {
+            $hasKind = Schema::hasColumn('product_raw_images', 'kind');
+            foreach (ProductRawImage::query()->whereIn('sku', $skus)->orderBy('id')->get() as $img) {
+                $sku = trim((string) $img->sku);
+                if ($sku === '') {
+                    continue;
+                }
+                $isBatch = $hasKind && $img->isBatchKind();
+                if ($isBatch) {
+                    $this->accumulateRawLookup($rawBatch, $rawBatchByNorm, $sku, $img);
+                } elseif ($img->isAiGenerated()) {
+                    $this->accumulateRawLookup($rawAi, $rawAiByNorm, $sku, $img);
+                } else {
+                    $this->accumulateRawLookup($raw, $rawByNorm, $sku, $img);
+                }
+            }
+        }
+
+        foreach ($skus as $sku) {
+            if (! isset($skuSet[$sku])) {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm === '') {
+                continue;
+            }
+            if (! isset($hero[$sku]) && isset($heroByNorm[$norm])) {
+                $hero[$sku] = $heroByNorm[$norm];
+            }
+            if (! isset($pmImages[$sku]) && isset($pmByNorm[$norm])) {
+                $pmImages[$sku] = $pmByNorm[$norm];
+            }
+            if (! isset($raw[$sku]) && isset($rawByNorm[$norm])) {
+                $raw[$sku] = $rawByNorm[$norm];
+            }
+            if (! isset($rawAi[$sku]) && isset($rawAiByNorm[$norm])) {
+                $rawAi[$sku] = $rawAiByNorm[$norm];
+            }
+            if (! isset($rawBatch[$sku]) && isset($rawBatchByNorm[$norm])) {
+                $rawBatch[$sku] = $rawBatchByNorm[$norm];
+            }
+        }
+
+        return ['hero' => $hero, 'raw' => $raw, 'raw_ai' => $rawAi, 'raw_batch' => $rawBatch, 'pm_images' => $pmImages];
+    }
+
+    /**
+     * @param  array<string, array{url: ?string, count: int, previewable: bool}>  $map
+     * @param  array<string, array{url: ?string, count: int, previewable: bool}>  $byNorm
+     */
+    private function accumulateRawLookup(array &$map, array &$byNorm, string $sku, ProductRawImage $img): void
+    {
+        if (! isset($map[$sku])) {
+            $ui = $img->toUiArray();
+            $map[$sku] = [
+                'url' => $ui['url'] ?? null,
+                'count' => 0,
+                'previewable' => (bool) ($ui['previewable'] ?? false),
+            ];
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && ! isset($byNorm[$norm])) {
+                $byNorm[$norm] = $map[$sku];
+            }
+        }
+        $map[$sku]['count']++;
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && isset($byNorm[$norm])) {
+            $byNorm[$norm]['count'] = $map[$sku]['count'];
+        }
+    }
+
+    /**
+     * Same order as Image Master preview: main_image, image1–image6, Values.image_path.
+     *
+     * @return list<string>
+     */
+    private function productMasterImageUrls(ProductMaster $pm): array
+    {
+        $urls = [];
+        foreach (['main_image', 'image1', 'image2', 'image3', 'image4', 'image5', 'image6'] as $field) {
+            $url = $this->normalizePublicImageUrl($pm->{$field} ?? null);
+            if ($url && ! in_array($url, $urls, true)) {
+                $urls[] = $url;
+            }
+        }
+
+        $values = $pm->Values;
+        if (is_string($values)) {
+            $values = json_decode($values, true);
+        }
+        if (is_array($values)) {
+            $url = $this->normalizePublicImageUrl($values['image_path'] ?? null);
+            if ($url && ! in_array($url, $urls, true)) {
+                $urls[] = $url;
+            }
+        }
+
+        return $urls;
+    }
+
+    private function normalizePublicImageUrl(mixed $value): ?string
+    {
+        $v = trim((string) $value);
+        if ($v === '' || $v === '-') {
+            return null;
+        }
+        if (str_starts_with($v, '//')) {
+            return 'https:'.$v;
+        }
+        if (str_starts_with($v, 'http://') || str_starts_with($v, 'https://')) {
+            return $v;
+        }
+
+        return '/'.ltrim($v, '/');
     }
 }

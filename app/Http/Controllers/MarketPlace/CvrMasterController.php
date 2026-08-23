@@ -5716,7 +5716,7 @@ class CvrMasterController extends Controller
                     $lmpChannel = 'temu';
                     $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
                     $lmpPrice = $resolveTemuLmpPrice($rowSku) ?? $temuLmpPrice;
-                } elseif ($mp === 'tiktok') {
+                } elseif (in_array($mp, ['tiktok', 'tiktok2', 'tiktok 2'], true)) {
                     // Same tiktok_sku_competitors + Sku Link LMP groups as /tiktok-pricing
                     $lmpChannel = 'tiktok';
                     $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;

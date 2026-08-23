@@ -1530,17 +1530,18 @@
                         @csrf
                         <div class="mb-3">
                             <label for="viewDataFile" class="form-label fw-bold">
-                                <i class="fas fa-file-excel text-success me-1"></i>Choose Excel File
+                                <i class="fas fa-file-excel text-success me-1"></i>Choose View File(s)
                             </label>
-                            <input type="file" class="form-control" id="viewDataFile" name="file" accept=".xlsx,.xls,.csv" required>
+                            <input type="file" class="form-control" id="viewDataFile" name="files[]" accept=".xlsx,.xls,.csv,.tsv,.txt" multiple required>
                             <div class="form-text">
-                                Seller Center product analytics export (.xlsx / .xls / .csv, max 10MB).
-                                Writes to <code>temu_view_data</code> — this drives the <strong>Views</strong> column when the sheet has a row.
+                                Select <strong>multiple</strong> Seller Center daily exports (.xlsx / .xls / .csv / .tsv). Max 10MB each.
+                                Writes to <code>temu_view_data</code> — this drives the <strong>Views</strong> column.
                             </div>
+                            <div id="viewDataFileList" class="small text-muted mt-2"></div>
                         </div>
                         <div class="alert alert-info mb-0">
                             <i class="fas fa-info-circle me-1"></i>
-                            Replaces existing Temu 1 view data. Temu Ads API only returns ad clicks (often 0 with organic sales).
+                            Every upload replaces existing Temu 1 view data. Multi-file rows merge (same Date + Goods ID → last wins).
                             <a href="{{ route('temu.viewdata.sample') }}" class="alert-link">
                                 <i class="fas fa-download"></i> Download Sample
                             </a>
@@ -2775,27 +2776,32 @@
             $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
         }
 
+        function temuSkuFromCheckbox(el) {
+            return String($(el).attr('data-sku') || '').trim();
+        }
+
         $(document).on('change', '#select-all-checkbox', function() {
             const isChecked = $(this).prop('checked');
             if (!table) return;
 
             temuCurrentPageSkuRows().forEach(function(row) {
-                const sku = (row.getData() || {}).sku;
+                const sku = String((row.getData() || {}).sku || '').trim();
                 if (!sku) return;
                 if (isChecked) selectedSkus.add(sku);
                 else selectedSkus.delete(sku);
             });
 
             $('.sku-select-checkbox').each(function() {
-                const sku = $(this).data('sku');
-                $(this).prop('checked', selectedSkus.has(sku));
+                const sku = temuSkuFromCheckbox(this);
+                $(this).prop('checked', sku !== '' && selectedSkus.has(sku));
             });
             $(this).prop('indeterminate', false);
             updateSelectedCount();
         });
 
         $(document).on('change', '.sku-select-checkbox', function() {
-            const sku = $(this).data('sku');
+            const sku = temuSkuFromCheckbox(this);
+            if (!sku) return;
             if ($(this).prop('checked')) {
                 selectedSkus.add(sku);
             } else {
@@ -3196,7 +3202,7 @@
 
             let selectedCount = 0;
             pageRows.forEach(function(row) {
-                const sku = (row.getData() || {}).sku || '';
+                const sku = String((row.getData() || {}).sku || '').trim();
                 if (sku && selectedSkus.has(sku)) selectedCount++;
             });
 
@@ -3781,8 +3787,8 @@
             
             // Update checkboxes
             $('.sku-select-checkbox').each(function() {
-                const sku = $(this).data('sku');
-                $(this).prop('checked', selectedSkus.has(sku));
+                const sku = temuSkuFromCheckbox(this);
+                $(this).prop('checked', sku !== '' && selectedSkus.has(sku));
             });
             
             if (newlySelectedCount > 0 || selectedSkus.size > 0) {
@@ -5546,9 +5552,9 @@
                     headerSort: false,
                     visible: true,
                     formatter: function(cell) {
-                        const sku = cell.getRow().getData()['sku'];
+                        const sku = String(cell.getRow().getData()['sku'] || '');
                         const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isChecked}>`;
+                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku.replace(/"/g, '&quot;')}" ${isChecked}>`;
                     },
                     cellClick: function(e, cell) {
                         e.stopPropagation();
@@ -7204,8 +7210,8 @@
 
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
-                    const sku = $(this).data('sku');
-                    $(this).prop('checked', selectedSkus.has(sku));
+                    const sku = temuSkuFromCheckbox(this);
+                    $(this).prop('checked', sku !== '' && selectedSkus.has(sku));
                 });
                 updateSelectAllCheckbox();
             }, 100);
@@ -7228,8 +7234,8 @@
             if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
-                    const sku = $(this).data('sku');
-                    $(this).prop('checked', selectedSkus.has(sku));
+                    const sku = temuSkuFromCheckbox(this);
+                    $(this).prop('checked', sku !== '' && selectedSkus.has(sku));
                 });
                 updateSelectAllCheckbox();
             }, 100);
@@ -7342,6 +7348,19 @@
                 return;
             }
             table.download("csv", "temu_decrease_data_l30.csv");
+        });
+
+        $('#viewDataFile').on('change', function() {
+            const files = this.files || [];
+            const $list = $('#viewDataFileList');
+            if (!files.length) {
+                $list.text('');
+                return;
+            }
+            const names = Array.from(files).map(function(f, i) {
+                return (i + 1) + '. ' + f.name;
+            });
+            $list.html('<strong>' + files.length + ' file(s) selected:</strong><br>' + names.join('<br>'));
         });
 
         // Seller Center Views scrape / JSON import → temu_view_data

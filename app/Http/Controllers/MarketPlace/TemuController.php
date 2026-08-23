@@ -60,6 +60,7 @@ use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
 class TemuController extends Controller
 {
@@ -4862,93 +4863,18 @@ class TemuController extends Controller
     }
 
     /**
-     * Upload Temu 1 View Data (Seller Center product analytics export).
+     * Upload Temu 1 View Data (single or multiple Seller Center exports).
      * Writes to temu_view_data — used as /temu-decrease Views (product clicks).
      */
     public function uploadTemuViewData(Request $request)
     {
-        $request->validate([
-            'file' => 'required|mimes:xlsx,xls,csv|max:10240',
-        ]);
-
         try {
-            $file = $request->file('file');
-            $spreadsheet = IOFactory::load($file->getRealPath());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-            $headers = array_shift($rows);
+            $result = $this->replaceTemuViewTableFromUploads('temu_view_data', $this->collectTemuViewUploadFiles($request));
 
-            $headerMap = [];
-            foreach ($headers as $idx => $h) {
-                $headerMap[trim((string) $h)] = $idx;
-            }
-            $goodsIdCol = $headerMap['Goods ID'] ?? 1;
-
-            $imported = 0;
-            $skipped = 0;
-
-            DB::beginTransaction();
-            try {
-                $deletedCount = TemuViewData::query()->delete();
-
-                foreach ($rows as $rowIndex => $row) {
-                    if (empty($row[0]) && empty($row[1])) {
-                        $skipped++;
-                        continue;
-                    }
-
-                    $rowData = @array_combine($headers, $row);
-                    if (! is_array($rowData)) {
-                        $skipped++;
-                        continue;
-                    }
-
-                    $date = null;
-                    if (! empty($rowData['Date'])) {
-                        try {
-                            $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
-                        } catch (\Exception $e) {
-                            Log::warning('Could not parse date: '.$rowData['Date']);
-                        }
-                    }
-
-                    $ctr = 0;
-                    if (! empty($rowData['CTR'])) {
-                        $ctr = (float) str_replace('%', '', (string) $rowData['CTR']);
-                    }
-
-                    // Excel row is 1-based header + 1-based data → +2
-                    $excelRow = $rowIndex + 2;
-                    $goodsIdCell = $sheet->getCell(Coordinate::stringFromColumnIndex($goodsIdCol + 1).$excelRow);
-                    $goodsId = TemuGoodsIdHelper::fromSpreadsheetCell($goodsIdCell)
-                        ?? TemuGoodsIdHelper::normalizeKey($rowData['Goods ID'] ?? null);
-
-                    if ($goodsId === null || $goodsId === '') {
-                        $skipped++;
-                        continue;
-                    }
-
-                    TemuViewData::updateOrCreate(
-                        ['date' => $date, 'goods_id' => $goodsId],
-                        [
-                            'goods_name' => $rowData['Goods Name'] ?? null,
-                            'product_impressions' => ! empty($rowData['Product impressions']) ? (int) $rowData['Product impressions'] : 0,
-                            'visitor_impressions' => ! empty($rowData['Number of visitor impressions of the product']) ? (int) $rowData['Number of visitor impressions of the product'] : 0,
-                            'product_clicks' => ! empty($rowData['Product clicks']) ? (int) $rowData['Product clicks'] : 0,
-                            'visitor_clicks' => ! empty($rowData['Number of visitor clicks on the product']) ? (int) $rowData['Number of visitor clicks on the product'] : 0,
-                            'ctr' => $ctr,
-                        ]
-                    );
-                    $imported++;
-                }
-
-                DB::commit();
-
-                return back()->with('success', "Successfully imported $imported Temu 1 view records! ($skipped skipped, replaced $deletedCount existing rows)");
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
+            return back()->with(
+                'success',
+                "Truncated old temu_view_data ({$result['deleted']} rows). Imported {$result['imported']} new record(s) from {$result['files']} file(s). ({$result['skipped']} skipped)"
+            );
         } catch (\Exception $e) {
             Log::error('Error uploading Temu view data: '.$e->getMessage());
 
@@ -5271,10 +5197,28 @@ class TemuController extends Controller
      */
     public function uploadTemu2ViewData(Request $request)
     {
-        @set_time_limit(300);
+        try {
+            $result = $this->replaceTemuViewTableFromUploads('temu2_view_data', $this->collectTemuViewUploadFiles($request));
+
+            return back()->with(
+                'success',
+                "Truncated old temu2_view_data ({$result['deleted']} rows). Imported {$result['imported']} new record(s) from {$result['files']} file(s). ({$result['skipped']} skipped)"
+            );
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu 2 view data: '.$e->getMessage());
+
+            return back()->with('error', 'Error uploading file: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * @return list<\Illuminate\Http\UploadedFile>
+     */
+    private function collectTemuViewUploadFiles(Request $request): array
+    {
         $request->validate([
             'file' => 'nullable|file|max:10240',
-            'files' => 'nullable|array|max:30',
+            'files' => 'nullable|array|max:40',
             'files.*' => 'file|max:10240',
         ]);
 
@@ -5290,76 +5234,95 @@ class TemuController extends Controller
             $uploadFiles[] = $request->file('file');
         }
         if ($uploadFiles === []) {
-            return back()->with('error', 'Choose one or more view data files to upload.');
+            throw new \RuntimeException('Choose one or more view data files to upload.');
         }
 
         $allowed = ['xlsx', 'xls', 'csv', 'tsv', 'txt'];
         foreach ($uploadFiles as $f) {
             $ext = strtolower((string) $f->getClientOriginalExtension());
             if (! in_array($ext, $allowed, true)) {
-                return back()->with('error', 'Invalid file type for "'.$f->getClientOriginalName().'". Use .xlsx, .xls, .csv, or .tsv.');
+                throw new \RuntimeException('Invalid file type for "'.$f->getClientOriginalName().'". Use .xlsx, .xls, .csv, or .tsv.');
             }
         }
 
+        return $uploadFiles;
+    }
+
+    /**
+     * @param  list<\Illuminate\Http\UploadedFile>  $uploadFiles
+     * @return array{imported:int,skipped:int,files:int,deleted:int}
+     */
+    private function replaceTemuViewTableFromUploads(string $table, array $uploadFiles): array
+    {
+        @set_time_limit(300);
+        $this->ensureTemuViewIdAutoIncrement($table);
+
+        $now = now()->format('Y-m-d H:i:s');
+        $merged = [];
+        $skipped = 0;
+        $fileCount = 0;
+
+        foreach ($uploadFiles as $file) {
+            $parsed = $this->parseTemuViewDataUploadFile($file);
+            $fileCount++;
+            $skipped += (int) ($parsed['skipped'] ?? 0);
+            foreach ($parsed['rows'] as $row) {
+                $key = ((string) ($row['date'] ?? '')).'|'.((string) $row['goods_id']);
+                $row['created_at'] = $now;
+                $row['updated_at'] = $now;
+                $merged[$key] = $row;
+            }
+        }
+
+        if ($merged === []) {
+            throw new \RuntimeException('No valid view rows found in the uploaded file(s). Check that Goods ID and Product clicks columns exist.');
+        }
+
+        $nextId = 1;
+        $insertRows = [];
+        foreach ($merged as $row) {
+            $row['id'] = $nextId++;
+            $insertRows[] = $row;
+        }
+
+        $deletedCount = (int) DB::table($table)->count();
         try {
-            $now = now()->format('Y-m-d H:i:s');
-            // Keyed by date|goods_id so multi-file duplicates in THIS upload collapse (last wins)
-            $merged = [];
-            $skipped = 0;
-            $fileCount = 0;
-
-            foreach ($uploadFiles as $file) {
-                $parsed = $this->parseTemuViewDataUploadFile($file);
-                $fileCount++;
-                $skipped += (int) ($parsed['skipped'] ?? 0);
-                foreach ($parsed['rows'] as $row) {
-                    $key = ((string) ($row['date'] ?? '')).'|'.((string) $row['goods_id']);
-                    $row['created_at'] = $now;
-                    $row['updated_at'] = $now;
-                    $merged[$key] = $row;
-                }
-            }
-
-            if ($merged === []) {
-                throw new \RuntimeException('No valid view rows found in the uploaded file(s).');
-            }
-
-            $nextId = 1;
-            $insertRows = [];
-            foreach ($merged as $row) {
-                $row['id'] = $nextId++;
-                $insertRows[] = $row;
-            }
-
-            // Always wipe previous temu2_view_data before inserting this upload batch
-            $deletedCount = (int) DB::table('temu2_view_data')->count();
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+            DB::table($table)->truncate();
+        } catch (\Throwable $e) {
+            DB::table($table)->delete();
+        } finally {
             try {
-                DB::statement('SET FOREIGN_KEY_CHECKS=0');
-                DB::table('temu2_view_data')->truncate();
+                DB::statement('SET FOREIGN_KEY_CHECKS=1');
             } catch (\Throwable $e) {
-                DB::table('temu2_view_data')->delete();
-            } finally {
-                try {
-                    DB::statement('SET FOREIGN_KEY_CHECKS=1');
-                } catch (\Throwable $e) {
-                    // ignore
-                }
+                // ignore
             }
+        }
 
-            foreach (array_chunk($insertRows, 500) as $chunk) {
-                DB::table('temu2_view_data')->insert($chunk);
+        foreach (array_chunk($insertRows, 500) as $chunk) {
+            DB::table($table)->insert($chunk);
+        }
+
+        return [
+            'imported' => count($insertRows),
+            'skipped' => $skipped,
+            'files' => $fileCount,
+            'deleted' => $deletedCount,
+        ];
+    }
+
+    private function ensureTemuViewIdAutoIncrement(string $table): void
+    {
+        if (! Schema::hasTable($table)) {
+            throw new \RuntimeException($table.' table does not exist.');
+        }
+        try {
+            $col = DB::selectOne("SHOW COLUMNS FROM `{$table}` WHERE Field = 'id'");
+            if ($col && stripos((string) ($col->Extra ?? ''), 'auto_increment') === false) {
+                DB::statement("ALTER TABLE `{$table}` MODIFY COLUMN `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT");
             }
-
-            $imported = count($insertRows);
-
-            return back()->with(
-                'success',
-                "Truncated old temu2_view_data ({$deletedCount} rows). Imported {$imported} new record(s) from {$fileCount} file(s). ({$skipped} skipped)"
-            );
-        } catch (\Exception $e) {
-            Log::error('Error uploading Temu 2 view data: '.$e->getMessage());
-
-            return back()->with('error', 'Error uploading file: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            Log::warning("Could not fix AUTO_INCREMENT on {$table}: ".$e->getMessage());
         }
     }
 
@@ -5415,14 +5378,56 @@ class TemuController extends Controller
 
             return trim((string) $h);
         }, array_shift($rows));
+        if (isset($headers[0])) {
+            $headers[0] = preg_replace('/^\xEF\xBB\xBF/', '', $headers[0]);
+        }
 
         $headerMap = [];
         foreach ($headers as $idx => $h) {
-            if ($h !== '') {
-                $headerMap[$h] = (int) $idx;
+            $key = strtolower(trim(preg_replace('/\s+/', ' ', (string) $h)));
+            if ($key !== '') {
+                $headerMap[$key] = (int) $idx;
             }
         }
-        $goodsIdCol = $headerMap['Goods ID'] ?? 1;
+        $col = static function (array $aliases) use ($headerMap): ?int {
+            foreach ($aliases as $alias) {
+                $k = strtolower(trim(preg_replace('/\s+/', ' ', (string) $alias)));
+                if ($k !== '' && array_key_exists($k, $headerMap)) {
+                    return $headerMap[$k];
+                }
+            }
+
+            return null;
+        };
+
+        $goodsIdCol = $col(['Goods ID', 'Goods id', 'GoodsID', 'SPU ID', 'SPU id', 'Product ID', 'goods_id']) ?? 1;
+        $dateCol = $col(['Date', 'Stats date', 'Statistical date', 'Day']);
+        $nameCol = $col(['Goods Name', 'Goods name', 'Product name', 'Product Name']);
+        $impressionsCol = $col(['Product impressions', 'Goods impressions', 'Impressions']);
+        $visitorImpressionsCol = $col([
+            'Number of visitor impressions of the product',
+            'Visitor impressions',
+            'Unique impressions',
+        ]);
+        $clicksCol = $col(['Product clicks', 'Goods clicks', 'Clicks', 'Product Clicks']);
+        $visitorClicksCol = $col([
+            'Number of visitor clicks on the product',
+            'Visitor clicks',
+            'Unique clicks',
+        ]);
+        $ctrCol = $col(['CTR', 'Click through rate', 'Click-through rate']);
+
+        $valAt = static function (array $row, ?int $idx) {
+            if ($idx === null || ! array_key_exists($idx, $row)) {
+                return null;
+            }
+            $v = $row[$idx];
+            if ($v instanceof RichText) {
+                $v = $v->getPlainText();
+            }
+
+            return $v;
+        };
 
         $out = [];
         $skipped = 0;
@@ -5437,26 +5442,7 @@ class TemuController extends Controller
                 continue;
             }
 
-            if (count($row) < count($headers)) {
-                $row = array_pad($row, count($headers), null);
-            } elseif (count($row) > count($headers)) {
-                $row = array_slice($row, 0, count($headers));
-            }
-
-            $rowData = @array_combine($headers, $row);
-            if (! is_array($rowData)) {
-                $skipped++;
-                continue;
-            }
-
-            $date = null;
-            if (! empty($rowData['Date'])) {
-                try {
-                    $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
-                } catch (\Exception $e) {
-                    Log::warning('Could not parse Temu 2 view date: '.$rowData['Date']);
-                }
-            }
+            $date = $this->parseTemuViewDate($valAt($row, $dateCol) ?? ($row[0] ?? null));
 
             $goodsId = null;
             if ($sheet !== null) {
@@ -5465,31 +5451,64 @@ class TemuController extends Controller
                 $goodsId = TemuGoodsIdHelper::fromSpreadsheetCell($goodsIdCell);
             }
             if ($goodsId === null || $goodsId === '') {
-                $goodsId = TemuGoodsIdHelper::normalizeKey($rowData['Goods ID'] ?? null);
+                $goodsId = TemuGoodsIdHelper::normalizeKey($valAt($row, $goodsIdCol));
             }
             if ($goodsId === null || $goodsId === '') {
                 $skipped++;
                 continue;
             }
 
-            $ctr = 0;
-            if (! empty($rowData['CTR'])) {
-                $ctr = (float) str_replace('%', '', (string) $rowData['CTR']);
+            $ctrRaw = $valAt($row, $ctrCol);
+            $ctr = 0.0;
+            if ($ctrRaw !== null && $ctrRaw !== '') {
+                $ctr = (float) str_replace(['%', ','], '', (string) $ctrRaw);
             }
 
             $out[] = [
                 'date' => $date,
                 'goods_id' => $goodsId,
-                'goods_name' => $rowData['Goods Name'] ?? null,
-                'product_impressions' => ! empty($rowData['Product impressions']) ? (int) $rowData['Product impressions'] : 0,
-                'visitor_impressions' => ! empty($rowData['Number of visitor impressions of the product']) ? (int) $rowData['Number of visitor impressions of the product'] : 0,
-                'product_clicks' => ! empty($rowData['Product clicks']) ? (int) $rowData['Product clicks'] : 0,
-                'visitor_clicks' => ! empty($rowData['Number of visitor clicks on the product']) ? (int) $rowData['Number of visitor clicks on the product'] : 0,
+                'goods_name' => $valAt($row, $nameCol),
+                'product_impressions' => $this->parseTemuViewInt($valAt($row, $impressionsCol)),
+                'visitor_impressions' => $this->parseTemuViewInt($valAt($row, $visitorImpressionsCol)),
+                'product_clicks' => $this->parseTemuViewInt($valAt($row, $clicksCol)),
+                'visitor_clicks' => $this->parseTemuViewInt($valAt($row, $visitorClicksCol)),
                 'ctr' => $ctr,
             ];
         }
 
         return ['rows' => $out, 'skipped' => $skipped];
+    }
+
+    private function parseTemuViewDate($raw): ?string
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        if ($raw instanceof \DateTimeInterface) {
+            return Carbon::instance(\DateTimeImmutable::createFromInterface($raw))->format('Y-m-d');
+        }
+        if (is_numeric($raw) && (float) $raw > 20000 && (float) $raw < 80000) {
+            try {
+                return Carbon::instance(ExcelDate::excelToDateTimeObject((float) $raw))->format('Y-m-d');
+            } catch (\Throwable $e) {
+                // fall through
+            }
+        }
+        try {
+            return Carbon::parse(trim((string) $raw))->format('Y-m-d');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function parseTemuViewInt($raw): int
+    {
+        if ($raw === null || $raw === '') {
+            return 0;
+        }
+        $s = str_replace([',', ' ', '%'], '', (string) $raw);
+
+        return (int) $s;
     }
 
     /**

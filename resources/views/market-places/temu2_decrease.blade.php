@@ -2264,25 +2264,30 @@
             syncDiscountInputUi();
         });
 
+        function temu2SkuFromCheckbox(el) {
+            return String($(el).attr('data-sku') || '').trim();
+        }
+
         $(document).on('change', '#select-all-checkbox', function() {
             const isChecked = $(this).prop('checked');
             if (!table) return;
             temu2CurrentPageSkuRows().forEach(function(row) {
-                const sku = (row.getData() || {}).sku;
+                const sku = String((row.getData() || {}).sku || '').trim();
                 if (!sku) return;
                 if (isChecked) selectedSkus.add(sku);
                 else selectedSkus.delete(sku);
             });
             $('.sku-select-checkbox').each(function() {
-                const sku = $(this).data('sku');
-                $(this).prop('checked', selectedSkus.has(sku));
+                const sku = temu2SkuFromCheckbox(this);
+                $(this).prop('checked', sku !== '' && selectedSkus.has(sku));
             });
             $(this).prop('indeterminate', false);
             updateSelectedCount();
         });
 
         $(document).on('change', '.sku-select-checkbox', function() {
-            const sku = $(this).data('sku');
+            const sku = temu2SkuFromCheckbox(this);
+            if (!sku) return;
             if ($(this).prop('checked')) {
                 selectedSkus.add(sku);
             } else {
@@ -2738,7 +2743,7 @@
             }
             let selectedCount = 0;
             pageRows.forEach(function(row) {
-                const sku = (row.getData() || {}).sku || '';
+                const sku = String((row.getData() || {}).sku || '').trim();
                 if (sku && selectedSkus.has(sku)) selectedCount++;
             });
             if (selectedCount === 0) {
@@ -3038,8 +3043,8 @@
             
             // Update checkboxes
             $('.sku-select-checkbox').each(function() {
-                const sku = $(this).data('sku');
-                $(this).prop('checked', selectedSkus.has(sku));
+                const sku = temu2SkuFromCheckbox(this);
+                $(this).prop('checked', sku !== '' && selectedSkus.has(sku));
             });
             
             // Show selection mode if items found
@@ -4073,9 +4078,9 @@
                     headerSort: false,
                     visible: false,
                     formatter: function(cell) {
-                        const sku = cell.getRow().getData()['sku'];
+                        const sku = String(cell.getRow().getData()['sku'] || '');
                         const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isChecked}>`;
+                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku.replace(/"/g, '&quot;')}" ${isChecked}>`;
                     },
                     cellClick: function(e, cell) {
                         e.stopPropagation();
@@ -5567,8 +5572,8 @@
 
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
-                    const sku = $(this).data('sku');
-                    $(this).prop('checked', selectedSkus.has(sku));
+                    const sku = temu2SkuFromCheckbox(this);
+                    $(this).prop('checked', sku !== '' && selectedSkus.has(sku));
                 });
                 updateSelectAllCheckbox();
             }, 100);
@@ -5591,8 +5596,8 @@
             if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
-                    const sku = $(this).data('sku');
-                    $(this).prop('checked', selectedSkus.has(sku));
+                    const sku = temu2SkuFromCheckbox(this);
+                    $(this).prop('checked', sku !== '' && selectedSkus.has(sku));
                 });
                 updateSelectAllCheckbox();
             }, 100);

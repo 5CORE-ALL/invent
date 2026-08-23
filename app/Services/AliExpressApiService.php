@@ -1356,15 +1356,16 @@ class AliExpressApiService
         $lastMessage = $biz['message'] ?? null;
 
         if (! empty($biz['success'])) {
-            $parsed = $this->normalizeTrafficPayload($biz['data'] ?? []);
-            $viewed = $parsed['viewedCount'] ?? $parsed['viewed_count'] ?? $parsed['viewCount'] ?? null;
-            $orders = $parsed['outputOrder'] ?? $parsed['output_order'] ?? $parsed['orderCount'] ?? null;
-            $outputOrder = max(0, (int) ($orders ?? 0));
-            if ($viewed !== null && $viewed !== '') {
-                return $this->trafficResult(max(0, (int) $viewed), $outputOrder, 'business', $lastId);
+            $counts = $this->extractTrafficCounts($biz['data'] ?? []);
+            $outputOrder = $counts['orders'];
+            if ($counts['viewed'] !== null) {
+                return $this->trafficResult($counts['viewed'], $outputOrder, 'business', $lastId);
             }
-            if ($this->trafficPayloadHasMetrics($parsed)) {
-                // Explicit empty business payload (itemList empty) — still try daily.
+            // Official AE empty result: {"itemList":[],"success":true,"totalItem":0} — 0 views, not a failure.
+            if ($counts['empty']) {
+                return $this->trafficResult(0, $outputOrder, 'business', $lastId);
+            }
+            if ($this->trafficPayloadHasMetrics($counts['parsed'])) {
                 $lastMessage = $lastMessage ?: 'Business info returned no viewedCount.';
             }
         }
@@ -1383,7 +1384,8 @@ class AliExpressApiService
                 break;
             }
 
-            $parsed = $this->normalizeTrafficPayload($daily['data'] ?? []);
+            $counts = $this->extractTrafficCounts($daily['data'] ?? []);
+            $parsed = $counts['parsed'];
             $items = $parsed['itemList'] ?? $parsed['item_list'] ?? [];
             $gotDailyPayload = $gotDailyPayload || $this->trafficPayloadHasMetrics($parsed) || is_array($items);
             $pageSum = 0;
@@ -1394,20 +1396,20 @@ class AliExpressApiService
             $sum += $pageSum;
 
             $total = (int) ($parsed['totalItem'] ?? $parsed['total_item'] ?? 0);
+            if ($counts['empty'] || ($pageSum === 0 && $total === 0)) {
+                return $this->trafficResult($sum, $outputOrder, 'daily', $lastId);
+            }
             if ($total > 0 && $page * 50 >= $total) {
                 return $this->trafficResult(max(0, $sum), $outputOrder, 'daily', $lastId);
             }
-            if ($pageSum === 0 && $total === 0) {
-                break;
-            }
             if ($pageSum === 0) {
-                break;
+                return $this->trafficResult($sum, $outputOrder, 'daily', $lastId);
             }
             $page++;
             usleep(80000);
         }
 
-        if ($sum > 0 || $outputOrder > 0) {
+        if ($sum > 0 || $outputOrder > 0 || $gotDailyPayload) {
             return $this->trafficResult($sum, $outputOrder, $sum > 0 ? 'daily' : 'business', $lastId);
         }
 
@@ -1416,9 +1418,7 @@ class AliExpressApiService
             'views' => 0,
             'output_order' => 0,
             'cvr' => 0.0,
-            'message' => $lastMessage ?: ($gotDailyPayload
-                ? 'AliExpress returned 0 page views for this product.'
-                : 'AliExpress page-view API returned no views data (check TOP/AE-数据 permission).'),
+            'message' => $lastMessage ?: 'AliExpress page-view API returned no views data (check TOP/AE-数据 permission).',
             'request_id' => $lastId,
         ];
     }
@@ -1443,21 +1443,75 @@ class AliExpressApiService
 
     /**
      * @param  array<string, mixed>  $payload
+     * @return array{viewed: int|null, orders: int, empty: bool, parsed: array<string, mixed>}
+     */
+    private function extractTrafficCounts(array $payload): array
+    {
+        $parsed = $this->normalizeTrafficPayload($payload);
+        $viewed = $parsed['viewedCount'] ?? $parsed['viewed_count'] ?? $parsed['viewCount'] ?? null;
+        $orders = $parsed['outputOrder'] ?? $parsed['output_order'] ?? $parsed['orderCount'] ?? null;
+
+        return [
+            'viewed' => ($viewed !== null && $viewed !== '') ? max(0, (int) $viewed) : null,
+            'orders' => max(0, (int) ($orders ?? 0)),
+            'empty' => $this->isOfficialEmptyTraffic($parsed),
+            'parsed' => $parsed,
+        ];
+    }
+
+    /**
+     * Official AE-数据 empty body: {"itemList":[],"success":true,"totalItem":0}
+     *
+     * @param  array<string, mixed>  $parsed
+     */
+    private function isOfficialEmptyTraffic(array $parsed): bool
+    {
+        $success = $parsed['success'] ?? null;
+        $ok = $success === true || $success === 'true' || $success === 1 || $success === '1';
+        if (! $ok) {
+            return false;
+        }
+
+        $items = $parsed['itemList'] ?? $parsed['item_list'] ?? null;
+        if (is_array($items) && $this->normalizeList($items) === []) {
+            return true;
+        }
+
+        $total = $parsed['totalItem'] ?? $parsed['total_item'] ?? null;
+
+        return $total !== null && (int) $total === 0
+            && ! isset($parsed['viewedCount'])
+            && ! isset($parsed['viewed_count'])
+            && ! isset($parsed['viewCount']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    private function normalizeTrafficPayload(array $payload): array
+    private function normalizeTrafficPayload(array $payload, int $depth = 0): array
     {
         $payload = $this->normalizeApiRow($payload);
-        if (isset($payload['result'])) {
-            $result = $payload['result'];
-            if (is_string($result)) {
-                $decoded = json_decode($result, true);
+        if ($depth > 6) {
+            return $payload;
+        }
+
+        foreach (['result', 'data'] as $key) {
+            if (! isset($payload[$key])) {
+                continue;
+            }
+            $inner = $payload[$key];
+            if (is_string($inner)) {
+                $decoded = json_decode($inner, true);
                 if (is_array($decoded)) {
-                    return $this->normalizeTrafficPayload($decoded);
+                    return $this->normalizeTrafficPayload($decoded, $depth + 1);
                 }
             }
-            if (is_array($result)) {
-                return $this->normalizeTrafficPayload($result);
+            if (is_array($inner)) {
+                $nested = $this->normalizeTrafficPayload($inner, $depth + 1);
+                if ($this->trafficPayloadHasMetrics($nested)) {
+                    return array_merge($payload, $nested);
+                }
             }
         }
 
@@ -1595,6 +1649,7 @@ class AliExpressApiService
         ])));
 
         $last = null;
+        $attemptIndex = 0;
         foreach ($bases as $base) {
             // Try TOP hmac/md5 first, then also sha256 TOP-style sorted key+value (no /sync prefix)
             // for AliExpress SG hosts that reject Taobao TOP but accept datetime+session.
@@ -1612,8 +1667,15 @@ class AliExpressApiService
                     $attempt['sign'] = $this->signTopRestParams($attempt);
                 }
 
+                $client = $this->httpClient();
+                // Dead TOP hosts (taobao.com from some networks) used to stall 60s each and kill the job.
+                if ($attemptIndex > 0) {
+                    $client = $client->connectTimeout(8)->timeout(15);
+                }
+                $attemptIndex++;
+
                 try {
-                    $response = $this->httpClient()
+                    $response = $client
                         ->asForm()
                         ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded;charset=utf-8'])
                         ->post($base, $attempt);
