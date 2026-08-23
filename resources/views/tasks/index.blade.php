@@ -1701,26 +1701,6 @@
         border-left: 4px solid #198754 !important;
     }
 
-    #task-done-celebration {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 20000;
-        align-items: center;
-        justify-content: center;
-        pointer-events: none;
-        background: rgba(0, 0, 0, 0.28);
-    }
-    #task-done-celebration.is-visible {
-        display: flex;
-    }
-    #task-done-celebration img {
-        width: 220px;
-        height: auto;
-        border-radius: 12px;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-    }
-
     </style>
 @endsection
 
@@ -2181,10 +2161,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <div id="task-done-celebration" aria-hidden="true">
-        <img src="{{ asset('assets/images/task-done-celebration.gif') }}" alt="Task done">
     </div>
 @endsection
 
@@ -7532,22 +7508,6 @@
                 }
             };
 
-            function showTaskDoneCelebration() {
-                var el = document.getElementById('task-done-celebration');
-                var img = el ? el.querySelector('img') : null;
-                if (!el || !img) return;
-                el.classList.add('is-visible');
-                el.setAttribute('aria-hidden', 'false');
-                try {
-                    img.src = img.src.split('?')[0] + '?t=' + Date.now();
-                } catch (e) {}
-                clearTimeout(showTaskDoneCelebration._timer);
-                showTaskDoneCelebration._timer = setTimeout(function() {
-                    el.classList.remove('is-visible');
-                    el.setAttribute('aria-hidden', 'true');
-                }, 3000);
-            }
-
             $(document).on('change', '.status-select', function() {
                 var select = $(this);
                 newStatusValue = select.val();
@@ -7676,7 +7636,6 @@
                         $('#doneModal').modal('hide');
                         resetDoneModalUi();
                         table.replaceData();
-                        showTaskDoneCelebration();
 
                         var alertHtml = `
                             <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -7771,9 +7730,6 @@
                         success: function(response) {
                             // Update table data without page reload
                             table.replaceData();
-                            if (status === 'Done') {
-                                showTaskDoneCelebration();
-                            }
                             
                             // Show success message
                             var message = (status === 'Rework' && reworkReason) ? 'Task marked for rework' : 'Status updated successfully!';
