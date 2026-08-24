@@ -10,12 +10,16 @@ use App\Models\ListingManagerEnabledChannel;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
+use App\Services\Ebay2ApiService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
 use App\Services\ShopifyApiService;
+use App\Services\TikTok2ShopService;
+use App\Services\TikTokShopService;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerImageStore;
 use App\Support\Marketplace\ListingManagerEbayDescriptionBuilder;
+use App\Support\Marketplace\ListingManagerEditorProfile;
 use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\ListingManagerPublishStatus;
 use Carbon\Carbon;
@@ -474,13 +478,18 @@ class ListingManagerController extends Controller
         $rows = [];
         foreach ($family['children'] as $child) {
             $childSku = (string) $child['sku'];
-            $hydrated = ListingManagerAmazonHydrator::hydrate($childSku, false);
-            $listing = AmazonListingRaw::query()->where('seller_sku', $childSku)->first();
+            try {
+                $hydrated = ListingManagerAmazonHydrator::hydrate($childSku, false);
+                $listing = AmazonListingRaw::query()->where('seller_sku', $childSku)->first();
+            } catch (\Throwable $e) {
+                $hydrated = ['title' => $childSku, 'price' => null, 'quantity' => null, 'asin' => null];
+                $listing = null;
+            }
             $rows[] = [
                 'sku' => $childSku,
                 'title' => $hydrated['title'] ?: $childSku,
-                'price' => $hydrated['price'],
-                'quantity' => ListingManagerAmazonHydrator::shopifyQuantity($childSku, false) ?? $hydrated['quantity'],
+                'price' => $hydrated['price'] ?? null,
+                'quantity' => ListingManagerAmazonHydrator::shopifyQuantity($childSku, false) ?? ($hydrated['quantity'] ?? null),
                 'asin' => $hydrated['asin'] ?? $listing?->asin1,
                 'is_current' => (bool) $child['is_current'],
                 'variation_label' => $child['variation_label'],
@@ -893,8 +902,16 @@ class ListingManagerController extends Controller
     public function showDraft(int $id)
     {
         $draft = ListingManagerChannelDraft::query()->with('channel:id,channel,logo')->findOrFail($id);
-        $this->backfillDraftFromStore($draft);
-        $this->persistDraftImages($draft->fresh());
+        try {
+            $this->backfillDraftFromStore($draft);
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager showDraft backfill: '.$e->getMessage(), ['id' => $id]);
+        }
+        try {
+            $this->persistDraftImages($draft->fresh());
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager showDraft images: '.$e->getMessage(), ['id' => $id]);
+        }
 
         return response()->json([
             'success' => true,
@@ -990,6 +1007,21 @@ class ListingManagerController extends Controller
     public function searchCategories(Request $request)
     {
         $q = trim((string) $request->input('q', ''));
+        $channel = trim((string) $request->input('channel', ''));
+        $title = trim((string) $request->input('title', ''));
+        $description = trim((string) $request->input('description', ''));
+        $family = ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channel));
+
+        if ($family === 'tiktok') {
+            $key = ListingChannelCounts::normalize($channel);
+            $svc = in_array($key, ['tiktok2', 'tiktokshop2', 'tiktoktwo'], true)
+                ? app(TikTok2ShopService::class)
+                : app(TikTokShopService::class);
+            $result = $svc->searchListingCategories($q, $title, $description);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
         if (mb_strlen($q) < 2) {
             return response()->json(['success' => true, 'categories' => []]);
         }
@@ -1883,12 +1915,23 @@ class ListingManagerController extends Controller
             'updated_at' => $d->updated_at?->toDateTimeString(),
             'amazon_snapshot' => is_array($d->amazon_snapshot) ? $d->amazon_snapshot : [],
             'can_direct_publish' => ListingManagerPublishDispatcher::canDirectPublish($channelName),
+            'editor' => ListingManagerEditorProfile::forChannel($channelName),
         ];
 
         if ($full) {
             $payload['listing_details'] = $details;
-            $payload['family'] = ListingManagerFamily::forSku((string) $d->seller_sku);
-            $payload['variations'] = $this->variationRowsForSku((string) $d->seller_sku);
+            try {
+                $payload['family'] = ListingManagerFamily::forSku((string) $d->seller_sku);
+                $payload['variations'] = $this->variationRowsForSku((string) $d->seller_sku);
+            } catch (\Throwable $e) {
+                Log::warning('ListingManager serializeDraft family: '.$e->getMessage(), ['id' => $d->id]);
+                $payload['family'] = [
+                    'parent' => (string) $d->seller_sku,
+                    'children' => [],
+                    'skus' => [(string) $d->seller_sku],
+                ];
+                $payload['variations'] = [];
+            }
         }
 
         return $payload;

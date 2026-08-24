@@ -109,7 +109,16 @@ class ListingTemu2Controller extends Controller
         }
 
         try {
-            $result = $publisher->publishSkus($validatedSkus, ! $request->boolean('confirmed'));
+            $mode = strtolower(trim((string) $request->input('mode', 'variation'))) === 'single'
+                ? 'single'
+                : 'variation';
+            $parentHint = trim((string) $request->input('parent', $request->input('parent_hint', '')));
+            $result = $publisher->publishSkus(
+                $validatedSkus,
+                ! $request->boolean('confirmed'),
+                $mode,
+                $parentHint
+            );
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -143,7 +152,7 @@ class ListingTemu2Controller extends Controller
             ], 422);
         }
 
-        return response()->json($publisher->previewFromSkus($validatedSkus));
+        return response()->json($publisher->previewFromSkus($validatedSkus, $this->skuParentsFromPreviewRequest($request)));
     }
 
     public function import(Request $request)
@@ -234,5 +243,31 @@ class ListingTemu2Controller extends Controller
         };
 
         return new StreamedResponse($callback, 200, $headers);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function skuParentsFromPreviewRequest(Request $request): array
+    {
+        $raw = $request->input('sku_parents', $request->input('skuParents', []));
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($raw as $sku => $parent) {
+            if (is_array($parent)) {
+                $sku = $parent['sku'] ?? $sku;
+                $parent = $parent['parent'] ?? '';
+            }
+            $sku = trim((string) $sku);
+            $parent = trim((string) $parent);
+            if ($sku !== '') {
+                $out[$sku] = $parent;
+            }
+        }
+
+        return $out;
     }
 }

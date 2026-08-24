@@ -131,6 +131,7 @@ class ListingManagerPublishStatus
             'category' => [],
             'business_policies' => [],
             'auto_relist' => [],
+            'logistics' => [],
         ];
 
         $titleTrim = trim((string) $title);
@@ -167,7 +168,10 @@ class ListingManagerPublishStatus
         }
 
         $channelKey = ListingChannelCounts::normalize((string) $channelName);
-        $isEbay = in_array($channelKey, ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'], true);
+        $family = ListingManagerEditorProfile::family($channelKey);
+        $isEbay = $family === 'ebay';
+        $isTiktok = $family === 'tiktok';
+        $isTemu = $family === 'temu';
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
@@ -192,6 +196,22 @@ class ListingManagerPublishStatus
             }
         }
 
+        if ($isTiktok || $isTemu) {
+            $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+            if ($categoryId === '') {
+                $tabErrors['category'][] = $isTiktok
+                    ? 'TikTok category is required. Search and select a leaf category.'
+                    : 'Temu category ID is required.';
+            } elseif ($isTiktok && ! preg_match('/^\d+$/', $categoryId)) {
+                $tabErrors['category'][] = 'Select a TikTok category from search. “'.$categoryId.'” is not a TikTok category ID.';
+            }
+            $weightLb = trim((string) ($details['package_weight_lb'] ?? ''));
+            $weightOz = trim((string) ($details['package_weight_oz'] ?? ''));
+            if ($weightLb === '' && $weightOz === '') {
+                $tabErrors['logistics'][] = 'Package weight is required.';
+            }
+        }
+
         $missing = [];
         $banners = [];
         foreach ($tabErrors as $tab => $errors) {
@@ -201,8 +221,11 @@ class ListingManagerPublishStatus
             $missing = array_merge($missing, $errors);
             $label = match ($tab) {
                 'title_description' => 'Title & Description',
-                'business_policies' => 'Business Policies',
+                'pricing' => ($isEbay ? 'Pricing' : 'Price & Stock'),
+                'category' => $isTiktok ? 'TikTok Category' : ($isTemu ? 'Temu Category' : 'Category'),
+                'business_policies' => $family === 'ebay' ? 'Business Policies' : 'Warehouse & Package',
                 'auto_relist' => 'Auto Relist',
+                'logistics' => ($isTiktok ? 'Warehouse & Package' : 'Package'),
                 default => ucfirst(str_replace('_', ' ', $tab)),
             };
             $banners[] = "{$label} tab is missing required information. Please fill in those required fields.";
@@ -307,6 +330,7 @@ class ListingManagerPublishStatus
             'package_height' => '',
             'package_weight_lb' => '',
             'package_weight_oz' => '',
+            'warehouse_id' => '',
             'vat_percent' => '',
             'gallery_plus' => false,
             'best_offer' => false,

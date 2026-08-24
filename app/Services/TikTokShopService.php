@@ -2866,4 +2866,219 @@ class TikTokShopService
 
         return hash_hmac('sha256', $source, $secret);
     }
+
+    /**
+     * Seller Center-style category picker: keyword search + title recommendations.
+     *
+     * @return array{success: bool, categories: list<array{id: string, path: string, suggested?: bool, restricted?: bool}>, message?: string}
+     */
+    public function searchListingCategories(string $query, string $title = '', string $description = ''): array
+    {
+        $query = trim($query);
+        $title = trim($title);
+
+        try {
+            if (! $this->accessToken) {
+                return ['success' => false, 'categories' => [], 'message' => 'TikTok Shop is not connected. Open Connect and authorize the shop.'];
+            }
+
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+
+            $leaves = $this->listingCategoryLeaves();
+            $categories = [];
+
+            if ($query !== '') {
+                $q = mb_strtolower($query);
+                foreach ($leaves as $row) {
+                    $hay = mb_strtolower($row['path'].' '.$row['name']);
+                    if (! str_contains($hay, $q)) {
+                        continue;
+                    }
+                    $categories[] = [
+                        'id' => $row['id'],
+                        'path' => $row['path'],
+                        'restricted' => $row['restricted'],
+                    ];
+                    if (count($categories) >= 40) {
+                        break;
+                    }
+                }
+            } elseif ($title !== '') {
+                $categories = $this->recommendListingCategories($title, $description, $leaves);
+            }
+
+            return ['success' => true, 'categories' => $categories];
+        } catch (\Throwable $e) {
+            Log::warning('TikTok category search failed', ['error' => $e->getMessage()]);
+
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => 'TikTok category search failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @param  list<array{id: string, name: string, path: string, restricted: bool}>  $leaves
+     * @return list<array{id: string, path: string, suggested: bool, restricted: bool}>
+     */
+    protected function recommendListingCategories(string $title, string $description, array $leaves): array
+    {
+        $byId = [];
+        foreach ($leaves as $row) {
+            $byId[$row['id']] = $row;
+        }
+
+        try {
+            $response = $this->client->Product->useVersion('202309')->recommendCategory($title, $description, []);
+        } catch (\Throwable $e) {
+            Log::info('TikTok recommendCategory failed', ['error' => $e->getMessage()]);
+
+            return $this->searchListingCategories($title, '', '')['categories'] ?? [];
+        }
+
+        $ids = [];
+        $leafId = trim((string) ($response['leaf_category_id'] ?? $response['category_id'] ?? ''));
+        if ($leafId !== '') {
+            $ids[] = $leafId;
+        }
+        foreach (['categories', 'category_list', 'product_cates'] as $key) {
+            foreach ((array) ($response[$key] ?? []) as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $id = trim((string) ($row['id'] ?? $row['category_id'] ?? $row['cate_id'] ?? $row['leaf_category_id'] ?? ''));
+                if ($id !== '') {
+                    $ids[] = $id;
+                }
+            }
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($ids as $id) {
+            if (isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $path = $byId[$id]['path'] ?? $id;
+            $out[] = [
+                'id' => $id,
+                'path' => $path,
+                'suggested' => true,
+                'restricted' => (bool) ($byId[$id]['restricted'] ?? false),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{id: string, name: string, path: string, restricted: bool}>
+     */
+    protected function listingCategoryLeaves(): array
+    {
+        $cacheKey = $this->cachePrefix.'_listing_category_leaves_v1';
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
+        }
+
+        $response = $this->client->Product->useVersion('202309')->getCategories([
+            'locale' => 'en-US',
+            'category_version' => 'v1',
+        ]);
+        $raw = $response['categories'] ?? [];
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        $leaves = $this->flattenTikTokCategoryLeaves($raw);
+        if ($leaves !== []) {
+            Cache::put($cacheKey, $leaves, now()->addHours(12));
+        }
+
+        return $leaves;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $raw
+     * @return list<array{id: string, name: string, path: string, restricted: bool}>
+     */
+    protected function flattenTikTokCategoryLeaves(array $raw): array
+    {
+        $nodes = [];
+        $walk = function (array $items, array $ancestors) use (&$walk, &$nodes): void {
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $id = trim((string) ($item['id'] ?? $item['category_id'] ?? ''));
+                $name = trim((string) ($item['local_name'] ?? $item['name'] ?? $item['category_name'] ?? ''));
+                if ($id === '') {
+                    continue;
+                }
+                $pathParts = $ancestors;
+                if ($name !== '') {
+                    $pathParts[] = $name;
+                }
+                $statuses = $item['permission_statuses'] ?? [];
+                $restricted = is_array($statuses)
+                    && $statuses !== []
+                    && ! in_array('AVAILABLE', $statuses, true);
+                $nodes[$id] = [
+                    'id' => $id,
+                    'parent_id' => trim((string) ($item['parent_id'] ?? '0')),
+                    'name' => $name !== '' ? $name : $id,
+                    'path_parts' => $pathParts,
+                    'is_leaf' => (bool) ($item['is_leaf'] ?? empty($item['children'])),
+                    'restricted' => $restricted,
+                ];
+                $children = $item['children'] ?? $item['child_categories'] ?? null;
+                if (is_array($children) && $children !== []) {
+                    $nodes[$id]['is_leaf'] = false;
+                    $walk($children, $pathParts);
+                }
+            }
+        };
+        $walk($raw, []);
+
+        $hasNested = false;
+        foreach ($nodes as $node) {
+            if (count($node['path_parts']) > 1) {
+                $hasNested = true;
+                break;
+            }
+        }
+        if (! $hasNested) {
+            foreach ($nodes as $id => $node) {
+                $parts = [];
+                $guard = 0;
+                $cursor = $id;
+                while ($cursor !== '' && $cursor !== '0' && isset($nodes[$cursor]) && $guard < 12) {
+                    array_unshift($parts, $nodes[$cursor]['name']);
+                    $cursor = $nodes[$cursor]['parent_id'];
+                    $guard++;
+                }
+                $nodes[$id]['path_parts'] = $parts !== [] ? $parts : [$node['name']];
+            }
+        }
+
+        $leaves = [];
+        foreach ($nodes as $node) {
+            if (! $node['is_leaf']) {
+                continue;
+            }
+            $leaves[] = [
+                'id' => $node['id'],
+                'name' => $node['name'],
+                'path' => implode(' - ', $node['path_parts']),
+                'restricted' => $node['restricted'],
+            ];
+        }
+
+        return $leaves;
+    }
 }
