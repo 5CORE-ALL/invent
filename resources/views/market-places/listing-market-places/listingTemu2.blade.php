@@ -572,6 +572,18 @@
         .temu2-publish-status.is-skip { color: #64748b; }
         .temu2-publish-status.is-missing { color: #b45309; }
 
+        #temu2-publish-groups table tbody tr {
+            display: table-row;
+        }
+
+        #temu2-publish-groups .sku-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
         #temu2-publish-progress {
             font-size: 13px;
             color: #334155;
@@ -1285,14 +1297,38 @@
             }
 
             function listingRows() {
-                return (temu2ListingTable && temu2ListingTable.getData()) || allListingData || [];
+                if (allListingData && allListingData.length) {
+                    return allListingData;
+                }
+                return (temu2ListingTable && temu2ListingTable.getData()) || [];
+            }
+
+            function skuKey(sku) {
+                return String(sku || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+            }
+
+            function normalizePreviewChildren(children) {
+                if (Array.isArray(children)) {
+                    return children.filter(function (child) { return child && typeof child === 'object'; });
+                }
+                if (children && typeof children === 'object') {
+                    if (children.sku) {
+                        return [children];
+                    }
+                    return Object.keys(children).map(function (key) {
+                        return children[key];
+                    }).filter(function (child) { return child && typeof child === 'object'; });
+                }
+                return [];
             }
 
             function listingParentForSku(sku) {
                 sku = String(sku || '').trim();
+                const want = skuKey(sku);
                 const rows = listingRows();
                 for (let i = 0; i < rows.length; i++) {
-                    if (String(rows[i].sku || '').trim() === sku) {
+                    const rowSku = String(rows[i].sku || '').trim();
+                    if (rowSku === sku || skuKey(rowSku) === want) {
                         return String(rows[i].parent || '').trim();
                     }
                 }
@@ -1300,14 +1336,16 @@
             }
 
             function listingChildrenForParent(parent) {
-                parent = String(parent || '').trim().toUpperCase();
-                if (!parent) return [];
+                parent = String(parent || '').trim();
+                const parentWant = skuKey(parent);
+                if (!parentWant) return [];
                 const out = [];
                 const seen = {};
                 listingRows().forEach(function (row) {
                     const sku = String(row.sku || '').trim();
                     if (!sku || isParentSku(sku) || seen[sku]) return;
-                    if (String(row.parent || '').trim().toUpperCase() !== parent) return;
+                    const rowParent = String(row.parent || '').trim();
+                    if (skuKey(rowParent) !== parentWant && rowParent.toUpperCase() !== parent.toUpperCase()) return;
                     seen[sku] = true;
                     out.push(row);
                 });
@@ -1374,7 +1412,7 @@
                     listingChildrenForParent(parent).forEach(function (row) {
                         const childSku = String(row.sku || '').trim();
                         if (!childSku) return;
-                        if (byParent[key].children.some(function (c) { return c.sku === childSku; })) return;
+                        if (byParent[key].children.some(function (c) { return skuKey(c.sku) === skuKey(childSku); })) return;
                         byParent[key].children.push({
                             sku: childSku,
                             spec: childSku,
@@ -1384,7 +1422,7 @@
                             selected: true
                         });
                     });
-                    if (!byParent[key].children.some(function (c) { return c.sku === sku; })) {
+                    if (!byParent[key].children.some(function (c) { return skuKey(c.sku) === skuKey(sku); })) {
                         byParent[key].children.push({
                             sku: sku,
                             spec: sku,
@@ -1400,6 +1438,56 @@
                 });
             }
 
+            function mergePreviewGroups(groups, skus) {
+                const parentOrder = [];
+                const byParent = {};
+                const addChild = function (parent, child, overwrite) {
+                    parent = String(parent || '').trim() || 'Standalone';
+                    const key = parent.toUpperCase();
+                    if (!byParent[key]) {
+                        byParent[key] = { parent: parent, children: [], single_child: false };
+                        parentOrder.push(key);
+                    }
+                    const sku = String((child && child.sku) || '').trim();
+                    if (!sku) return;
+                    const existing = byParent[key].children.find(function (row) {
+                        return skuKey(row.sku) === skuKey(sku);
+                    });
+                    if (existing) {
+                        if (overwrite) Object.assign(existing, child);
+                        return;
+                    }
+                    byParent[key].children.push(child);
+                };
+                (groups || []).forEach(function (group) {
+                    const parent = String(group.parent || '').trim();
+                    if (group.single_child) {
+                        const key = (parent || 'Standalone').toUpperCase();
+                        if (!byParent[key]) {
+                            byParent[key] = { parent: parent || 'Standalone', children: [], single_child: true };
+                            parentOrder.push(key);
+                        } else {
+                            byParent[key].single_child = true;
+                        }
+                    }
+                    normalizePreviewChildren(group.children).forEach(function (child) {
+                        addChild(parent, child, true);
+                    });
+                });
+                fallbackGroupsFromTable(skus).forEach(function (group) {
+                    normalizePreviewChildren(group.children).forEach(function (child) {
+                        addChild(group.parent, child, false);
+                    });
+                });
+                return parentOrder.map(function (key) {
+                    const group = byParent[key];
+                    group.single_child = group.single_child || group.children.length <= 1;
+                    return group;
+                }).filter(function (group) {
+                    return group.children.length;
+                });
+            }
+
             function selectedPublishMode() {
                 const mode = String($('input[name="temu2-publish-mode"]:checked').val() || 'variation').toLowerCase();
                 return mode === 'single' ? 'single' : 'variation';
@@ -1412,14 +1500,14 @@
                     return;
                 }
                 const onlySingle = groups.every(function (group) {
-                    return (group.children || []).length <= 1 || group.single_child;
+                    return normalizePreviewChildren(group.children).length <= 1 || group.single_child;
                 });
                 $('input[name="temu2-publish-mode"][value="' + (onlySingle ? 'single' : 'variation') + '"]').prop('checked', true);
                 let html = '';
                 let canPublish = false;
                 groups.forEach(function (group, gi) {
                     const parent = String(group.parent || 'Standalone');
-                    const children = group.children || [];
+                    const children = normalizePreviewChildren(group.children);
                     const selectedCount = children.filter(function (child) {
                         return child.status === 'will_publish' && child.selected !== false;
                     }).length;
@@ -1501,22 +1589,28 @@
                 });
                 $('input[name="temu2-publish-mode"][value="' + (onlySingle ? 'single' : 'variation') + '"]').prop('checked', true);
                 showBsModal('temu2PublishModal');
+                renderPublishGroups(fallbackGroupsFromTable(unique));
                 $.ajax({
                     url: "{{ url('/listing_temu2/save-status') }}",
                     type: 'POST',
-                    data: { skus: unique, sku_parents: skuParentsMap(unique), preview: 1, channel: 'temu2' },
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    data: JSON.stringify({
+                        skus: unique,
+                        sku_parents: skuParentsMap(unique),
+                        preview: 1,
+                        channel: 'temu2'
+                    }),
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
                     success: function (response) {
-                        let groups = (response && response.groups) || [];
-                        const empty = !groups.length || groups.every(function (g) {
-                            return !g.children || !g.children.length;
-                        });
-                        if (empty) {
-                            groups = fallbackGroupsFromTable(unique);
-                        }
-                        renderPublishGroups(groups);
+                        renderPublishGroups(mergePreviewGroups((response && response.groups) || [], unique));
                     },
                     error: function (xhr) {
+                        const groups = mergePreviewGroups((xhr.responseJSON && xhr.responseJSON.groups) || [], unique);
+                        if (groups.length) {
+                            renderPublishGroups(groups);
+                            return;
+                        }
                         hideBsModal('temu2PublishModal');
                         let msg = 'Could not build variation preview.';
                         if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
@@ -1546,15 +1640,17 @@
                 return $.ajax({
                     url: "{{ url('/listing_temu2/save-status') }}",
                     type: 'POST',
-                    data: {
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    data: JSON.stringify({
                         skus: skus,
                         confirmed: 1,
                         publish: 1,
                         channel: 'temu2',
                         mode: selectedPublishMode(),
                         parent: parent || ''
-                    },
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    }),
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
                     timeout: 180000
                 });
             }

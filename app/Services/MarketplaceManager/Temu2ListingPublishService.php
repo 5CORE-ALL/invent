@@ -1098,26 +1098,66 @@ class Temu2ListingPublishService
             $rows[] = $parent;
         }
 
+        $marketplaceSkus = [$sku];
         foreach ($rows as $row) {
             $rowSku = trim((string) ($row->sku ?? ''));
+            if ($rowSku !== '') {
+                $marketplaceSkus[] = $rowSku;
+            }
+            $parentLabel = trim((string) ($row->parent ?? ''));
+            if ($parentLabel !== '') {
+                $marketplaceSkus[] = $parentLabel;
+            }
             $metric = $rowSku !== '' ? $this->metricRow($rowSku) : null;
             foreach ([
                 $metric?->description_master,
+                $metric?->goods_desc ?? null,
+                $metric?->goods_summary ?? null,
                 $row->description_1500 ?? null,
                 $row->product_description ?? null,
                 $row->description_html ?? null,
                 $row->description_1000 ?? null,
                 $row->description_800 ?? null,
                 $row->description_600 ?? null,
+                $row->description_v2_description ?? null,
+                $this->textFromMaybeList($row->description_v2_bullets ?? null),
+                $this->textFromMaybeList($row->description_v2_features ?? null),
             ] as $raw) {
                 $text = $this->cleanDescriptionText((string) $raw, $sku);
                 if ($text !== '') {
                     return $text;
                 }
             }
+
+            $fromBullets = $this->cleanDescriptionText(implode(' ', $this->resolveBullets($row, $rowSku !== '' ? $rowSku : $sku)), $sku);
+            if ($fromBullets !== '') {
+                return $fromBullets;
+            }
         }
 
-        return $this->descriptionFromOtherMarketplaces([$sku]);
+        $fromMaps = $this->descriptionFromOtherMarketplaces($marketplaceSkus);
+        if ($fromMaps !== '') {
+            return $fromMaps;
+        }
+
+        return $this->cleanDescriptionText($this->resolveTitle($product, $sku), $sku);
+    }
+
+    private function textFromMaybeList(mixed $value): string
+    {
+        if (is_array($value)) {
+            $parts = [];
+            array_walk_recursive($value, function ($item) use (&$parts) {
+                $text = trim(strip_tags((string) $item));
+                if ($text !== '') {
+                    $parts[] = $text;
+                }
+            });
+
+            return implode(' ', $parts);
+        }
+
+        return trim((string) $value);
     }
 
     private function cleanDescriptionText(string $raw, string $sku): string
@@ -1174,11 +1214,11 @@ class Temu2ListingPublishService
      */
     private function resolveBullets(ProductMaster $product, string $sku): array
     {
-        $bullets = [];
-        foreach (['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'] as $col) {
-            $line = trim(strip_tags((string) ($product->{$col} ?? '')));
-            if ($line !== '') {
-                $bullets[] = mb_substr($line, 0, 200);
+        $bullets = $this->bulletLinesFromProduct($product);
+        if ($bullets === []) {
+            $parent = $this->parentProductFor($product, $sku);
+            if ($parent) {
+                $bullets = $this->bulletLinesFromProduct($parent);
             }
         }
         if ($bullets === []) {
@@ -1198,6 +1238,22 @@ class Temu2ListingPublishService
         }
 
         return array_slice($bullets, 0, 5);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function bulletLinesFromProduct(ProductMaster $product): array
+    {
+        $bullets = [];
+        foreach (['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'] as $col) {
+            $line = trim(strip_tags((string) ($product->{$col} ?? '')));
+            if ($line !== '') {
+                $bullets[] = mb_substr($line, 0, 200);
+            }
+        }
+
+        return $bullets;
     }
 
     private function resolvePrice(string $sku): ?float
