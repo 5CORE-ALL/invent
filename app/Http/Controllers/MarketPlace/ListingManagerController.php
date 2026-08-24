@@ -1215,14 +1215,24 @@ class ListingManagerController extends Controller
     {
         $draft = ListingManagerChannelDraft::query()->with('channel:id,channel,logo')->findOrFail($id);
         $sku = trim((string) $draft->seller_sku);
+        $family = ListingManagerEditorProfile::family(ListingChannelCounts::normalize((string) ($draft->channel->channel ?? '')));
         $hydrated = ListingManagerAmazonHydrator::hydrate($sku);
         $local = is_array($hydrated['images'] ?? null) ? $hydrated['images'] : [];
-        $source = $local;
-        $from = 'Image Master / Product Master';
+        $shopify = [];
+        try {
+            $shopify = app(ShopifyApiService::class)->fetchProductImagesBySku($sku);
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager loadDraftImages Shopify gallery failed: '.$e->getMessage(), ['sku' => $sku]);
+        }
+        $amazon = [];
+        if (count($this->mergeDraftImageUrls($shopify, $local)) < 2) {
+            $amazon = $this->fetchLiveAmazonImages($sku, (string) ($draft->asin ?? ''), false);
+        }
+        $source = $this->mergeDraftImageUrls($shopify, $local, $amazon);
+        $from = $shopify !== [] ? 'main store' : ($local !== [] ? 'Image Master / Product Master' : 'Amazon');
 
-        if ($source === []) {
-            $source = $this->fetchLiveAmazonImages($sku, (string) ($draft->asin ?? ''), false);
-            $from = 'Amazon';
+        if ($family === 'tiktok') {
+            $source = array_slice($source, 0, 9);
         }
 
         if ($source === []) {
@@ -1364,6 +1374,33 @@ class ListingManagerController extends Controller
         }
 
         return array_values($images);
+    }
+
+    /**
+     * @param  list<mixed>  ...$groups
+     * @return list<string>
+     */
+    private function mergeDraftImageUrls(array ...$groups): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($groups as $group) {
+            foreach ($group as $url) {
+                $url = trim((string) $url);
+                if ($url === '') {
+                    continue;
+                }
+                $key = strtolower((string) preg_replace('/[?#].*$/', '', $url));
+                $key = (string) preg_replace('/_(grande|large|medium|small|pico|compact|master|\d+x\d+)(?=\.(jpe?g|png|webp|gif))/i', '', $key);
+                if ($key === '' || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $out[] = $url;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -1863,7 +1900,11 @@ class ListingManagerController extends Controller
         );
         $images = is_array($details['images'] ?? null) ? $details['images'] : [];
         $weightOk = ((float) ($details['package_weight_lb'] ?? 0) + ((float) ($details['package_weight_oz'] ?? 0) / 16)) > 0;
+        $family = ListingManagerEditorProfile::family(ListingChannelCounts::normalize((string) ($draft->channel->channel ?? '')));
         $needsImages = $images === [] && trim((string) ($details['image_url'] ?? '')) === '';
+        if ($family === 'tiktok' && count($images) < 2) {
+            $needsImages = true;
+        }
         if (! $needsImages && $weightOk) {
             return;
         }
@@ -1871,12 +1912,27 @@ class ListingManagerController extends Controller
         if ($needsImages) {
             $hydrated = ListingManagerAmazonHydrator::hydrate((string) $draft->seller_sku, false);
             $fetched = is_array($hydrated['images'] ?? null) ? $hydrated['images'] : [];
+            if ($family === 'tiktok') {
+                try {
+                    $shopify = app(ShopifyApiService::class)->fetchProductImagesBySku((string) $draft->seller_sku);
+                    $fetched = $this->mergeDraftImageUrls($shopify, $fetched);
+                } catch (\Throwable $e) {
+                    Log::warning('ListingManager ensureDraftMediaAndPackage Shopify gallery failed: '.$e->getMessage());
+                }
+                if (count($fetched) < 2) {
+                    $fetched = $this->mergeDraftImageUrls(
+                        $fetched,
+                        $this->fetchLiveAmazonImages((string) $draft->seller_sku, (string) ($draft->asin ?? ''), false)
+                    );
+                }
+                $fetched = array_slice($fetched, 0, 9);
+            }
             if ($fetched !== []) {
                 $stored = ListingManagerImageStore::localizeMany($fetched, (string) $draft->seller_sku);
                 if ($stored === []) {
                     $stored = $fetched;
                 }
-                if ($stored !== []) {
+                if ($stored !== [] && count($stored) > count($images)) {
                     $details['images'] = $stored;
                     $details['image_url'] = $stored[0];
                     $details['image_source_urls'] = ListingManagerImageStore::sourceUrlsForSku((string) $draft->seller_sku);

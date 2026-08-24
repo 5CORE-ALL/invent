@@ -1732,7 +1732,19 @@
             if (family === 'tiktok' && !String($('#lc-category-id').val() || '').trim()) {
                 searchCategories('');
             }
-            if (!editorImages.length && draft.id) {
+            if (family === 'tiktok' && editorImages.length < 2 && draft.id) {
+                $.ajax({
+                    url: "{{ url('/listing-manager/drafts') }}/" + draft.id + '/load-images',
+                    method: 'POST',
+                    timeout: 35000,
+                }).done(function (res) {
+                    const imgs = sanitizeEditorImages(res.images || []);
+                    if (imgs.length < 2) return;
+                    editorImages = imgs;
+                    if (res.draft) currentDraft = res.draft;
+                    refreshEditorUi(currentDraft);
+                });
+            } else if (!editorImages.length && draft.id) {
                 $.ajax({
                     url: "{{ url('/listing-manager/drafts') }}/" + draft.id + '/load-images',
                     method: 'POST',
@@ -2259,7 +2271,7 @@
             $.ajax({
                 url: "{{ url('/listing-manager/drafts') }}/" + id + '/load-images',
                 method: 'POST',
-                timeout: 25000,
+                timeout: 35000,
                 success: function (res) {
                     const imgs = sanitizeEditorImages(res.images || []);
                     if (!imgs.length) {

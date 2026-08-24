@@ -1815,6 +1815,127 @@ class ShopifyApiService
      * Read-only (GETs only). Tries the catalog/variant resolver first (exact, synced on production), then falls back
      * to a GraphQL SKU search so it still works when local Shopify mapping tables are not synced.
      *
+     * All main-store product images for a SKU (not just the variant hero).
+     *
+     * @return list<string>
+     */
+    public function fetchProductImagesBySku(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $productIds = $this->catalogShopifyProductIds($sku);
+        foreach ($productIds as $productId) {
+            $images = $this->fetchShopifyProductImageSrcs($productId);
+            if ($images !== []) {
+                $this->saveImageUrlsToShopifyCatalog('main', $sku, $images);
+
+                return $images;
+            }
+        }
+
+        $res = $this->fetchProductDescriptionHtml($sku);
+        $images = [];
+        foreach (($res['images'] ?? []) as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && preg_match('#^https?://#i', $url) && ! in_array($url, $images, true)) {
+                $images[] = $url;
+            }
+        }
+        if ($images !== []) {
+            $this->saveImageUrlsToShopifyCatalog('main', $sku, $images);
+        }
+
+        return $images;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function catalogShopifyProductIds(string $sku): array
+    {
+        $ids = [];
+        $push = function (mixed $id) use (&$ids): void {
+            $id = trim((string) $id);
+            if ($id === '') {
+                return;
+            }
+            if (preg_match('/(\d+)\s*$/', $id, $m)) {
+                $id = $m[1];
+            }
+            if ($id !== '' && ! in_array($id, $ids, true)) {
+                $ids[] = $id;
+            }
+        };
+
+        try {
+            if (Schema::hasTable('shopify_catalog_variants') && Schema::hasTable('shopify_catalog_products')) {
+                $row = DB::table('shopify_catalog_variants as v')
+                    ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+                    ->whereRaw('LOWER(TRIM(COALESCE(v.sku, \'\'))) = ?', [mb_strtolower($sku)])
+                    ->orderByDesc('v.synced_at')
+                    ->orderByDesc('v.id')
+                    ->select(['p.shopify_id', 'v.shopify_product_id'])
+                    ->first();
+                if ($row) {
+                    $push($row->shopify_id ?? null);
+                    $push($row->shopify_product_id ?? null);
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function fetchShopifyProductImageSrcs(string $productId): array
+    {
+        $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+        $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+        if (! $domain || ! $token || $productId === '') {
+            return [];
+        }
+        $domain = rtrim(preg_replace('#^https?://#', '', (string) $domain), '/');
+        $verify = env('FILESYSTEM_DRIVER') === 'local';
+        try {
+            $response = $this->retryOnRateLimit(function () use ($domain, $productId, $token, $verify) {
+                $req = Http::withHeaders(['X-Shopify-Access-Token' => $token, 'Content-Type' => 'application/json'])
+                    ->timeout(25)
+                    ->connectTimeout(8);
+                if ($verify) {
+                    $req = $req->withoutVerifying();
+                }
+
+                return $req->get("https://{$domain}/admin/api/2024-01/products/{$productId}.json");
+            });
+            if (! $response->successful()) {
+                return [];
+            }
+            $images = [];
+            foreach ($response->json('product.images') ?? [] as $row) {
+                $url = trim((string) ($row['src'] ?? $row['url'] ?? ''));
+                if ($url !== '' && ! in_array($url, $images, true)) {
+                    $images[] = $url;
+                }
+            }
+
+            return $images;
+        } catch (\Throwable $e) {
+            Log::warning('Shopify fetchShopifyProductImageSrcs failed', [
+                'product_id' => $productId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
      * @return array{success: bool, message: string, html?: string, images?: array<int,string>, title?: string, product_id?: string|int|null, source?: string}
      */
     public function fetchProductDescriptionHtml(string $sku): array
@@ -1876,7 +1997,7 @@ class ShopifyApiService
             $query = 'query($q: String!) { productVariants(first: 10, query: $q) { edges { node { sku product { id title descriptionHtml images(first: 30) { edges { node { url } } } } } } } }';
             $resp = $this->retryOnRateLimit(fn () => $headers()->timeout(60)->connectTimeout(25)->post(
                 "https://{$domain}/admin/api/2024-01/graphql.json",
-                ['query' => $query, 'variables' => ['q' => 'sku:'.$sku]]
+                ['query' => $query, 'variables' => ['q' => 'sku:'.json_encode($sku)]]
             ));
             $edges = $resp->json('data.productVariants.edges') ?? [];
             $chosen = null;
