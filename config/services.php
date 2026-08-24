@@ -960,6 +960,7 @@ return [
         'refresh_token' => env('TIKTOK_REFRESH_TOKEN'),
         'app_id' => env('TIKTOK_APP_ID'),
         'warehouse_id' => env('TIKTOK_WAREHOUSE_ID'),
+        'category_version' => env('TIKTOK_CATEGORY_VERSION', 'v2'),
     ],
 
     /*
@@ -981,6 +982,7 @@ return [
         'refresh_token' => env('TIKTOK2_REFRESH_TOKEN'),
         'app_id' => env('TIKTOK2_APP_ID'),
         'warehouse_id' => env('TIKTOK2_WAREHOUSE_ID'),
+        'category_version' => env('TIKTOK2_CATEGORY_VERSION', env('TIKTOK_CATEGORY_VERSION', 'v2')),
     ],
 
     /*

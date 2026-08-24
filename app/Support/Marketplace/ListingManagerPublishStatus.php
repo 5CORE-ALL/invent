@@ -207,7 +207,8 @@ class ListingManagerPublishStatus
             }
             $weightLb = trim((string) ($details['package_weight_lb'] ?? ''));
             $weightOz = trim((string) ($details['package_weight_oz'] ?? ''));
-            if ($weightLb === '' && $weightOz === '') {
+            $weightOk = ((float) $weightLb + ((float) $weightOz / 16)) > 0;
+            if (! $weightOk) {
                 $tabErrors['logistics'][] = 'Package weight is required.';
             }
         }

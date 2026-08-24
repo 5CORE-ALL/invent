@@ -292,6 +292,10 @@ class ListingManagerAmazonHydrator
             'package_height' => $hydrated['package_height'] ?: ($existingDetails['package_height'] ?? ''),
             'package_weight_lb' => $hydrated['package_weight_lb'] ?: ($existingDetails['package_weight_lb'] ?? ''),
             'package_weight_oz' => $hydrated['package_weight_oz'] ?: ($existingDetails['package_weight_oz'] ?? ''),
+            'warehouse_id' => trim((string) ($existingDetails['warehouse_id'] ?? ''))
+                ?: (in_array($key, ['tiktok2', 'tiktokshop2', 'tiktoktwo'], true)
+                    ? trim((string) config('services.tiktok2.warehouse_id', ''))
+                    : (str_contains($key, 'tiktok') ? trim((string) config('services.tiktok.warehouse_id', '')) : '')),
             'location_city' => $existingDetails['location_city'] ?? ($defaults['location_city'] ?? 'Bellefontaine'),
             'location_country' => $existingDetails['location_country'] ?? ($defaults['location_country'] ?? 'US'),
             'location_postal_code' => $existingDetails['location_postal_code'] ?? ($defaults['location_postal_code'] ?? '43311'),
@@ -517,13 +521,8 @@ class ListingManagerAmazonHydrator
 
         $images = [];
         $push = function ($url) use (&$images) {
-            $url = trim((string) $url);
+            $url = self::publicImageUrl($url);
             if ($url === '') {
-                return;
-            }
-            $isRemote = (bool) preg_match('#^https?://#i', $url);
-            $isStored = ListingManagerImageStore::isStored($url) || str_starts_with($url, '/storage/');
-            if (! $isRemote && ! $isStored) {
                 return;
             }
             if (! in_array($url, $images, true)) {
@@ -531,14 +530,41 @@ class ListingManagerAmazonHydrator
             }
         };
 
+        foreach (self::productImageTableUrls($sku) as $url) {
+            $push($url);
+        }
+
         foreach (['main_image', 'image_url', 'main_image_brand'] as $k) {
             $push($pm[$k] ?? null);
         }
         for ($i = 1; $i <= 20; $i++) {
             $push($pm['image'.$i] ?? null);
         }
+
+        $values = $pm['Values'] ?? $pm['values'] ?? [];
+        if (is_string($values)) {
+            $decoded = json_decode($values, true);
+            $values = is_array($decoded) ? $decoded : [];
+        }
+        if (is_array($values)) {
+            $push($values['image_path'] ?? null);
+            $push($values['main_image'] ?? null);
+            $push($values['cdn_url'] ?? null);
+        }
+
         foreach (self::imageMasterFromMetrics($sku) as $url) {
             $push($url);
+        }
+
+        if (Schema::hasTable('shopify_skus') && Schema::hasColumn('shopify_skus', 'image_src')) {
+            $push(DB::table('shopify_skus')->where('sku', $sku)->value('image_src'));
+        }
+
+        $parentSku = trim((string) ($pm['parent'] ?? $pm['parent_sku'] ?? ''));
+        if ($parentSku !== '' && strcasecmp($parentSku, $sku) !== 0) {
+            foreach (self::productImageTableUrls($parentSku) as $url) {
+                $push($url);
+            }
         }
 
         $push($listing?->thumbnail_image);
@@ -562,6 +588,69 @@ class ListingManagerAmazonHydrator
         // Live Amazon media is fetched via ListingManagerController::loadDraftImages.
 
         return $images;
+    }
+
+    /**
+     * Image Master rows (product_images) — local storage + Shopify CDN copies.
+     *
+     * @return list<string>
+     */
+    private static function productImageTableUrls(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! Schema::hasTable('product_images')) {
+            return [];
+        }
+
+        $query = DB::table('product_images')->where('sku', $sku)->orderBy('id');
+        if (Schema::hasColumn('product_images', 'cdn_url')) {
+            $query->select(['image_path', 'cdn_url']);
+        } else {
+            $query->select(['image_path']);
+        }
+
+        $out = [];
+        foreach ($query->get() as $row) {
+            foreach (['cdn_url', 'image_path'] as $col) {
+                $url = self::publicImageUrl($row->{$col} ?? null);
+                if ($url !== '' && ! in_array($url, $out, true)) {
+                    $out[] = $url;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    private static function publicImageUrl(mixed $value): string
+    {
+        $url = trim((string) $value);
+        if ($url === '' || $url === '-') {
+            return '';
+        }
+        if (str_starts_with($url, '//')) {
+            $url = 'https:'.$url;
+        }
+        if (! preg_match('#^https?://#i', $url) && (ListingManagerImageStore::isStored($url) || str_starts_with($url, '/storage/'))) {
+            $url = asset(ltrim($url, '/'));
+        }
+        $isRemote = (bool) preg_match('#^https?://#i', $url);
+        $isStored = ListingManagerImageStore::isStored($url) || str_starts_with($url, '/storage/');
+        if (! $isRemote && ! $isStored) {
+            $rel = ltrim(str_replace('\\', '/', $url), '/');
+            if (str_starts_with($rel, 'storage/')) {
+                $url = asset($rel);
+            } elseif (
+                preg_match('#^(products|product_images|image_master|listing-manager)/#i', $rel)
+                || preg_match('/\.(jpe?g|png|webp|gif|avif)(\?|$)/i', $rel)
+            ) {
+                $url = asset('storage/'.$rel);
+            } else {
+                return '';
+            }
+        }
+
+        return $url;
     }
 
     /**
@@ -623,7 +712,79 @@ class ListingManagerAmazonHydrator
             }
         }
 
+        self::applyProductMasterDimWt($out, $pm);
+
         return $out;
+    }
+
+    /**
+     * Dim / Wt from product_master.Values (l, w, h, wt_decl) used by Temu/TikTok publish.
+     *
+     * @param  array{length: string, width: string, height: string, weight_lb: string, weight_oz: string}  $out
+     * @param  array<string, mixed>  $pm
+     */
+    private static function applyProductMasterDimWt(array &$out, array $pm): void
+    {
+        $values = $pm['Values'] ?? $pm['values'] ?? [];
+        if (is_string($values)) {
+            $decoded = json_decode($values, true);
+            $values = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($values)) {
+            $values = [];
+        }
+
+        $num = static function (array $keys) use ($values, $pm): ?float {
+            foreach ($keys as $key) {
+                foreach ([$values[$key] ?? null, $pm[$key] ?? null] as $raw) {
+                    if ($raw === null || $raw === '') {
+                        continue;
+                    }
+                    if (is_numeric($raw) && (float) $raw > 0) {
+                        return (float) $raw;
+                    }
+                }
+            }
+
+            return null;
+        };
+
+        if ($out['length'] === '' || (float) $out['length'] <= 0) {
+            $n = $num(['l_decl', 'l', 'L', 'length', 'l1']);
+            if ($n !== null) {
+                $out['length'] = (string) $n;
+            }
+        }
+        if ($out['width'] === '' || (float) $out['width'] <= 0) {
+            $n = $num(['w_decl', 'w', 'W', 'width', 'w1']);
+            if ($n !== null) {
+                $out['width'] = (string) $n;
+            }
+        }
+        if ($out['height'] === '' || (float) $out['height'] <= 0) {
+            $n = $num(['h_decl', 'h', 'H', 'height', 'h1']);
+            if ($n !== null) {
+                $out['height'] = (string) $n;
+            }
+        }
+
+        $hasWeight = ((float) $out['weight_lb'] + ((float) $out['weight_oz'] / 16)) > 0;
+        if ($hasWeight) {
+            return;
+        }
+        $lb = $num(['wt_decl', 'wt_act', 'weight_lb', 'wt']);
+        if ($lb !== null) {
+            $out['weight_lb'] = (string) (int) floor($lb);
+            $out['weight_oz'] = (string) round(($lb - floor($lb)) * 16, 1);
+
+            return;
+        }
+        $kg = $num(['wt_act_kg', 'weight_kg', 'ctn_weight_kg']);
+        if ($kg !== null) {
+            $w = $kg * 2.20462;
+            $out['weight_lb'] = (string) (int) floor($w);
+            $out['weight_oz'] = (string) round(($w - floor($w)) * 16, 1);
+        }
     }
 
     private static function dimValue(mixed $v): string
@@ -703,6 +864,8 @@ class ListingManagerAmazonHydrator
                         preg_match('#^https?://#i', $url)
                         || ListingManagerImageStore::isStored($url)
                         || str_starts_with($url, '/storage/')
+                        || preg_match('#^(products|product_images|image_master)/#i', ltrim($url, '/'))
+                        || preg_match('/\.(jpe?g|png|webp|gif|avif)(\?|$)/i', $url)
                     );
                     if ($ok && ! in_array($url, $images, true)) {
                         $images[] = $url;

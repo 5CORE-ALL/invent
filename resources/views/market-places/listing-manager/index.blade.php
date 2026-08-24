@@ -1329,7 +1329,7 @@
         syncImagesHidden();
         const $grid = $('#lc-image-preview');
         if (!editorImages.length) {
-            $grid.html('<div class="text-muted small">No images yet — click <strong>Load Images From Main Store</strong> (fetches live Amz media) or Upload.</div>');
+            $grid.html('<div class="text-muted small">No images yet — click <strong>Load Images From Main Store</strong> or Upload.</div>');
             return;
         }
         $grid.html(editorImages.map((url, i) => `
@@ -1446,6 +1446,8 @@
             else if (isTiktok && !/^\d+$/.test(String(d.primary_category_id))) errors.category.push('Category');
             if (!String(d.package_weight_lb || '').trim() && !String(d.package_weight_oz || '').trim()) {
                 errors.policies.push('Weight');
+            } else if (!((parseFloat(d.package_weight_lb) || 0) + ((parseFloat(d.package_weight_oz) || 0) / 16) > 0)) {
+                errors.policies.push('Weight');
             }
         }
         return errors;
@@ -1560,25 +1562,37 @@
             $box.html('<div class="text-muted small p-3">Type a keyword such as speaker, or keep the product title to load TikTok suggestions.</div>');
             return;
         }
-        $box.html('<div class="text-muted small p-3">Searching TikTok categories…</div>');
-        if (family !== 'tiktok') {
-            $box.html('<div class="text-muted small p-3">Searching…</div>');
+        $box.html('<div class="text-muted small p-3">' + (family === 'tiktok' ? 'Searching TikTok Shop categories…' : 'Searching…') + '</div>');
+        const desc = String(getDescriptionValue() || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
+        if (window._lcCatXhr && window._lcCatXhr.abort) {
+            window._lcCatXhr.abort();
         }
-        $.getJSON("{{ route('listing.manager.ebay.categories') }}", { q, channel, title }, function (res) {
-            const rows = res.categories || [];
-            if (!rows.length) {
-                $box.html(`<div class="text-muted small p-3">${escapeHtml(res.message || 'No categories found.')}</div>`);
-                return;
+        window._lcCatXhr = $.ajax({
+            url: "{{ route('listing.manager.ebay.categories') }}",
+            method: family === 'tiktok' ? 'POST' : 'GET',
+            data: { q, channel, title, description: desc },
+            dataType: 'json',
+            timeout: 25000,
+            success: function (res) {
+                const rows = res.categories || [];
+                if (!rows.length) {
+                    $box.html(`<div class="text-muted small p-3">${escapeHtml(res.message || 'No categories found.')}</div>`);
+                    return;
+                }
+                $box.html(rows.map(r => `
+                    <button type="button" class="lc-cat-item" data-id="${escapeHtml(r.id)}" data-path="${escapeHtml(r.path)}">
+                        ${escapeHtml(r.path)}
+                        ${r.suggested ? '<span class="lc-suggested">Suggested</span>' : ''}
+                        ${r.restricted ? '<span class="badge bg-secondary ms-1">Restricted</span>' : ''}
+                    </button>
+                `).join(''));
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                    || (status === 'timeout' ? 'TikTok category search timed out. Try again.' : 'Category search failed.');
+                $box.html(`<div class="text-danger small p-3">${escapeHtml(msg)}</div>`);
             }
-            $box.html(rows.map(r => `
-                <button type="button" class="lc-cat-item" data-id="${escapeHtml(r.id)}" data-path="${escapeHtml(r.path)}">
-                    ${escapeHtml(r.path)}
-                    ${r.suggested ? '<span class="lc-suggested">Suggested</span>' : ''}
-                    ${r.restricted ? '<span class="badge bg-secondary ms-1">Restricted</span>' : ''}
-                </button>
-            `).join(''));
-        }).fail(function (xhr) {
-            $box.html(`<div class="text-danger small p-3">${escapeHtml(xhr.responseJSON?.message || 'Category search failed.')}</div>`);
         });
     }
 
@@ -1700,11 +1714,11 @@
         $('#lc-location-city').val(d.location_city || policyDefaults.location_city || 'Bellefontaine');
         $('#lc-location-country').val(d.location_country || policyDefaults.location_country || 'US');
         $('#lc-location-postal').val(d.location_postal_code || policyDefaults.location_postal_code || '43311');
-        $('#lc-pkg-l').val(d.package_length || '');
-        $('#lc-pkg-w').val(d.package_width || '');
-        $('#lc-pkg-h').val(d.package_height || '');
-        $('#lc-pkg-lb').val(d.package_weight_lb || '');
-        $('#lc-pkg-oz').val(d.package_weight_oz || '');
+        $('#lc-pkg-l').val(d.package_length ?? '');
+        $('#lc-pkg-w').val(d.package_width ?? '');
+        $('#lc-pkg-h').val(d.package_height ?? '');
+        $('#lc-pkg-lb').val(d.package_weight_lb ?? '');
+        $('#lc-pkg-oz').val(d.package_weight_oz ?? '');
         $('#lc-vat').val(d.vat_percent || '');
         $('#lc-auto-relist').prop('checked', !!d.auto_relist);
         $('#lc-warehouse-id').val(d.warehouse_id || '');
@@ -1714,6 +1728,23 @@
             $('#lc-editor-loading').hide();
             $('#lc-editor-body').show();
             refreshEditorUi(draft);
+            const family = (draft.editor && draft.editor.family) || '';
+            if (family === 'tiktok' && !String($('#lc-category-id').val() || '').trim()) {
+                searchCategories('');
+            }
+            if (!editorImages.length && draft.id) {
+                $.ajax({
+                    url: "{{ url('/listing-manager/drafts') }}/" + draft.id + '/load-images',
+                    method: 'POST',
+                    timeout: 20000,
+                }).done(function (res) {
+                    const imgs = sanitizeEditorImages(res.images || []);
+                    if (!imgs.length) return;
+                    editorImages = imgs;
+                    if (res.draft) currentDraft = res.draft;
+                    refreshEditorUi(currentDraft);
+                });
+            }
         };
         if (draft.editor && draft.editor.ebay) {
             loadPolicies({
@@ -2228,6 +2259,7 @@
             $.ajax({
                 url: "{{ url('/listing-manager/drafts') }}/" + id + '/load-images',
                 method: 'POST',
+                timeout: 25000,
                 success: function (res) {
                     const imgs = sanitizeEditorImages(res.images || []);
                     if (!imgs.length) {
