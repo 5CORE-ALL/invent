@@ -515,10 +515,6 @@ class ListingManagerAmazonHydrator
     private static function collectImages(?AmazonListingRaw $listing, array $raw, array $pm, string $sku): array
     {
         $cached = ListingManagerImageStore::cachedForSku($sku);
-        if ($cached !== []) {
-            return $cached;
-        }
-
         $images = [];
         $push = function ($url) use (&$images) {
             $url = self::publicImageUrl($url);
@@ -529,6 +525,10 @@ class ListingManagerAmazonHydrator
                 $images[] = $url;
             }
         };
+
+        foreach ($cached as $url) {
+            $push($url);
+        }
 
         foreach (self::productImageTableUrls($sku) as $url) {
             $push($url);
@@ -553,6 +553,10 @@ class ListingManagerAmazonHydrator
         }
 
         foreach (self::imageMasterFromMetrics($sku) as $url) {
+            $push($url);
+        }
+
+        foreach (self::shopifyCatalogImageUrls($sku) as $url) {
             $push($url);
         }
 
@@ -588,6 +592,50 @@ class ListingManagerAmazonHydrator
         // Live Amazon media is fetched via ListingManagerController::loadDraftImages.
 
         return $images;
+    }
+
+    /**
+     * Full Shopify product gallery stored on shopify_catalog_products.image_urls.
+     *
+     * @return list<string>
+     */
+    private static function shopifyCatalogImageUrls(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
+            return [];
+        }
+        if (! Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
+            return [];
+        }
+
+        try {
+            $raw = DB::table('shopify_catalog_variants as v')
+                ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+                ->whereRaw('LOWER(TRIM(COALESCE(v.sku, \'\'))) = ?', [mb_strtolower($sku)])
+                ->orderByDesc('v.synced_at')
+                ->value('p.image_urls');
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $decoded = is_string($raw) ? json_decode($raw, true) : $raw;
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($decoded as $item) {
+            $url = is_array($item)
+                ? trim((string) ($item['src'] ?? $item['url'] ?? $item['link'] ?? ''))
+                : trim((string) $item);
+            $url = self::publicImageUrl($url);
+            if ($url !== '' && ! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+        }
+
+        return $out;
     }
 
     /**
