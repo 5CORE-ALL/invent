@@ -8,9 +8,17 @@
     <style>
         #amz-ads-raw-wrap .tabulator {
             border: 1px solid #dee2e6; border-radius: 8px; font-size: 13px;
+            overflow: visible !important;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-tableholder {
+            overflow: visible !important;
         }
         #amz-ads-raw-wrap .tabulator .tabulator-header {
-            background: #f8f9fa; border-bottom: 1px solid #dee2e6;
+            position: sticky !important;
+            top: var(--tz-topbar-height, 70px) !important;
+            z-index: 24 !important;
+            background: #dbeafe; border-bottom: 1px solid #dee2e6;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
         }
         #amz-ads-raw-wrap .tabulator-col .tabulator-col-sorter { display: none !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
@@ -51,7 +59,7 @@
         }
         #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] { opacity: 0.4 !important; cursor: not-allowed !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-page-counter { margin: 0 0.5rem; font-size: 12px; color: #334155; }
-        #amz-ads-raw-wrap { overflow-x: auto; overflow-y: visible; }
+        #amz-ads-raw-wrap { overflow: visible; width: 100%; padding-bottom: 56px; }
         /* U% utilization colors */
         #amz-ads-raw-wrap .tabulator .tabulator-cell.green-bg { color: #16a34a !important; font-weight: 600; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell.pink-bg { color: #db2777 !important; font-weight: 600; }
@@ -207,7 +215,7 @@
                         <pre id="amz-raw-push-result-pre" class="mb-0 small bg-white border rounded p-2" style="white-space:pre-wrap;max-height:280px;overflow:auto;"></pre>
                     </div>
 
-                    <div id="amz-ads-raw-wrap">
+                    <div id="amz-ads-raw-wrap" data-no-freeze-header>
                         <div class="p-2 bg-light border rounded-top d-flex align-items-center gap-2">
                             <input type="search" id="amz-filter-search" class="form-control" placeholder="Search Campaign..." autocomplete="off" aria-label="Search by campaign name" maxlength="100">
                             <span id="amz-raw-source-label" class="badge bg-dark text-nowrap"></span>
@@ -719,7 +727,7 @@
                 columns: amzBuildColumns('sp_reports'),
                 ajaxURL: dataUrlTemplate + 'sp_reports',
                 ajaxRequestFunc: amzAjaxRequestFunc,
-                height: '650px',
+                height: false,
                 layout: 'fitColumns',
                 layoutColumnsOnNewData: true,
                 pagination: true,
