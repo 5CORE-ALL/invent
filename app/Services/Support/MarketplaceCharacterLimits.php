@@ -9,12 +9,13 @@ namespace App\Services\Support;
 class MarketplaceCharacterLimits
 {
     /**
-     * Title character limit by marketplace key or title tier (150, 100, 80, 60).
+     * Title character limit by marketplace key or title tier (75, 150, 100, 80, 60).
      */
     public static function titleLimit(string $marketplace, ?string $titleType = null): int
     {
         if ($titleType !== null && $titleType !== '') {
             return match ($titleType) {
+                '75' => 75,
                 '150' => 150,
                 '100' => 100,
                 '80' => 80,
@@ -105,6 +106,7 @@ class MarketplaceCharacterLimits
     private static function defaultTitleLimit(string $key): int
     {
         return match ($key) {
+            'amazon' => 75,
             'ebay', 'ebay1', 'ebay2', 'ebay3' => 80,
             'shopify_main', 'shopify_pls', 'shopify', 'doba' => 100,
             'macy', 'faire' => 60,

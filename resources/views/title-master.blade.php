@@ -439,6 +439,7 @@
             font-size: 9px;
             font-weight: 700;
         }
+        #title-master-table thead th.tm-mp-tier-col-th--75 { min-width: 48px; }
         #title-master-table thead th.tm-mp-tier-col-th--150 { min-width: 200px; }
         #title-master-table thead th.tm-mp-tier-col-th--100 { min-width: 110px; }
         #title-master-table thead th.tm-mp-tier-col-th--80 { min-width: 96px; }
@@ -851,8 +852,8 @@
 @section('content')
     @php
         $tmMpConfig = app(\App\Services\Support\AllMarketplaceChannelRegistry::class)->jsConfig('title');
-        $tmTierPills = ['150' => [], '100' => [], '80' => [], '60' => []];
-        $tmTierLabels = ['150' => '170', '100' => '100', '80' => '80', '60' => '60'];
+        $tmTierPills = ['75' => [], '150' => [], '100' => [], '80' => [], '60' => []];
+        $tmTierLabels = ['75' => '75', '150' => '170', '100' => '100', '80' => '80', '60' => '60'];
         foreach ($tmMpConfig['titleMeta'] ?? [] as $mpKey => $meta) {
             $tier = (string) ($meta['type'] ?? '150');
             if (array_key_exists($tier, $tmTierPills)) {
@@ -1005,7 +1006,7 @@
                                         <i class="fas fa-eye" aria-hidden="true"></i>
                                         <span class="visually-hidden">View</span>
                                     </th>
-                                    <th colspan="4" class="title-master-mp-group-th">Market Places</th>
+                                    <th colspan="{{ count($tmTierLabels) }}" class="title-master-mp-group-th">Market Places</th>
                                     <th rowspan="2" class="push-to-all-th" title="Push Title 170 to all Title-150 marketplaces">
                                         <div class="push-all-th-inner">
                                             <img src="{{ asset('images/title-master/distribute-all-icon.png') }}" alt="" class="tm-push-all-icon" width="20" height="20">
@@ -1884,7 +1885,7 @@
         function tmTitleText(item, mp) {
             if (!item) return '';
             const type = tmTitleType(mp);
-            if (type === '150') return titleMasterGetTitle170Text(item);
+            if (type === '75' || type === '150') return titleMasterGetTitle170Text(item);
             if (type === '100') return String(item.title100 || '').trim();
             if (type === '80') return String(item.title80 || '').trim();
             if (type === '60') return String(item.title60 || '').trim();
@@ -1910,6 +1911,7 @@
         }
 
         const TM_TIER_GROUPS = [
+            { type: '75', label: '75' },
             { type: '150', label: '170' },
             { type: '100', label: '100' },
             { type: '80', label: '80' },

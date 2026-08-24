@@ -3478,7 +3478,7 @@ PROMPT;
     }
 
     /**
-     * Push a single title (150, 100, or 80) to a single marketplace.
+     * Push a single title (75, 150, 100, 80, or 60) to a single marketplace.
      * Used by per-row buttons on Title Master screen.
      */
     public function pushSingleMarketplace(Request $request)
@@ -3488,7 +3488,7 @@ PROMPT;
         $request->validate([
             'sku' => 'required|string|max:255',
             'marketplace' => ['required', 'string', Rule::in($registry->titlePushKeys())],
-            'title_type' => 'required|string|in:150,100,80,60',
+            'title_type' => 'required|string|in:75,150,100,80,60',
             'title' => 'nullable|string|max:2000',
         ]);
 
@@ -3514,7 +3514,7 @@ PROMPT;
                 ->first();
 
             if ($product) {
-                if ($titleType === '150') {
+                if ($titleType === '150' || $titleType === '75') {
                     $title = $product->title150 ?? $product->amazon_title ?? '';
                 } elseif ($titleType === '80') {
                     $title = $product->title80 ?? '';

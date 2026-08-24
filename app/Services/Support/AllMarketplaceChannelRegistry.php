@@ -57,14 +57,14 @@ class AllMarketplaceChannelRegistry
     }
 
     /**
-     * Title Master: registry key → API push key + title tier (150/100/80/60).
+     * Title Master: registry key → API push key + title tier (75/150/100/80/60).
      *
      * @return array<string, array{push: string, type: string}>
      */
     public function titleMeta(): array
     {
         return [
-            'amazon' => ['push' => 'amazon', 'type' => '150'],
+            'amazon' => ['push' => 'amazon', 'type' => '75'],
             'ebay' => ['push' => 'ebay1', 'type' => '80'],
             'ebay2' => ['push' => 'ebay2', 'type' => '80'],
             'ebay3' => ['push' => 'ebay3', 'type' => '80'],
@@ -163,6 +163,7 @@ class AllMarketplaceChannelRegistry
         if ($master === 'title') {
             $config['titleMeta'] = $this->titleMeta();
             $config['titlePushByType'] = [
+                '75' => $this->titlePushKeysForType('75'),
                 '150' => $this->titlePushKeysForType('150'),
                 '100' => $this->titlePushKeysForType('100'),
                 '80' => $this->titlePushKeysForType('80'),

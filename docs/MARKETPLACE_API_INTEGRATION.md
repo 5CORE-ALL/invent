@@ -20,7 +20,7 @@ Reference implementation: `App\Services\ShopifyApiService` (rate limits, structu
 ### Title Master
 - **Registry:** `AllMarketplaceChannelRegistry::titleMeta()` — 24 channels, tiers 150/100/80/60
 - **Per-tile push:** `POST /api/marketplaces/push-single` → `ProductMasterController::pushSingleMarketplace` → `MarketplaceTitlePushService::push`
-- **Bulk Title 150:** `POST /api/marketplaces/push-title` → all `titlePushKeysForType('150')` (15 channels) via `MarketplaceTitlePushService` (not legacy direct service calls)
+- **Bulk Title 150:** `POST /api/marketplaces/push-title` → all `titlePushKeysForType('150')` (14 channels) via `MarketplaceTitlePushService` (Amazon is tier 75 and is not included)
 - **AI push:** `pushTitleToMarketplace` — saves metrics row **and** calls live API when channel is in `config/marketplaces.php` `api_title_push`
 - **Requires content:** non-empty PM tier (`title150`, `title100`, `title80`, or `title60` per marketplace)
 - **Pull:** Not implemented (titles edited in PM / AI)
