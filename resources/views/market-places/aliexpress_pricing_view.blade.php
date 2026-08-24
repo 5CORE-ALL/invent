@@ -164,17 +164,17 @@
 
                             <span class="badge bg-primary fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-sales-badge"
                                 data-metric="total_sales" style="color:#111;font-weight:700;cursor:pointer;"
-                                title="Click or hover (½s) for daily trend">Sales: $0</span>
+                                title="Click for daily trend">Sales: $0</span>
                             <span class="badge bg-info fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-gpft-badge"
                                 data-metric="avg_gpft" style="color:#111;font-weight:700;cursor:pointer;"
-                                title="Click or hover (½s) for daily trend">GPFT: 0%</span>
+                                title="Click for daily trend">GPFT: 0%</span>
                             <span class="badge bg-success fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-profit-badge"
                                 data-metric="total_pft" style="color:#111;font-weight:700;cursor:pointer;"
-                                title="Click or hover (½s) for daily trend">PFT: $0</span>
+                                title="Click for daily trend">PFT: $0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-roi-badge"
                                 data-metric="avg_roi"
                                 style="background-color:#6f42c1;color:#fff;font-weight:700;cursor:pointer;"
-                                title="Click or hover (½s) for daily trend">GROI: 0%</span>
+                                title="Click for daily trend">GROI: 0%</span>
 
                             <span class="badge bg-info fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-views-badge"
                                 data-metric="total_views" style="color:#111;font-weight:700;cursor:pointer;"
@@ -186,13 +186,13 @@
                             <span class="badge bg-success fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-sold-pct-badge"
                                 data-metric="more_sold" data-filter="more_sold"
                                 style="color:#111;font-weight:700;cursor:pointer;"
-                                title="Click to filter AL30 &gt; 0 (INV &gt; 0). Hover ½s for daily trend">
+                                title="Click to filter AL30 &gt; 0 (INV &gt; 0). Click again to clear.">
                                 Sold &gt;0: <span id="ae-more-sold-count">0</span>
                             </span>
                             <span class="badge bg-danger fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-zero-sold-badge"
                                 data-metric="zero_sold" data-filter="zero_sold"
                                 style="color:#fff;font-weight:700;cursor:pointer;"
-                                title="Click to filter AL30 = 0 (INV &gt; 0). Hover ½s for daily trend">
+                                title="Click to filter AL30 = 0 (INV &gt; 0). Click again to clear.">
                                 0 Sold: <span id="ae-zero-sold-count">0</span>
                             </span>
 
@@ -209,11 +209,6 @@
                     {{-- ── Row 2: Filter bar ── --}}
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
 
-                        <span class="badge bg-dark fs-6 p-2" id="ae-margin-badge" style="font-weight:700;"
-                            title="Take-home keep-rate from marketplace_percentages (marketplace = Aliexpress). Used as _margin in GROI / GPFT / SROI / SGPFT.">
-                            Margin: {{ number_format((float) ($marginPercent ?? 89), 2) }}%
-                        </span>
-
                         {{-- Row type filter (All Rows / Parents / SKUs) – same as Amazon --}}
                     <select id="ae-row-type-filter" class="form-select form-select-sm" style="width:120px;">
                         <option value="all">All Rows</option>
@@ -226,6 +221,13 @@
                             <option value="all">All Inventory</option>
                             <option value="zero">0 Inventory</option>
                             <option value="more" selected>More than 0</option>
+                        </select>
+
+                        <select id="ae-sold-filter" class="form-select form-select-sm" style="width:120px;"
+                            title="Filter by AliExpress sold (AL30). 0 sold / &gt; 0 sold require INV &gt; 0.">
+                            <option value="all">All</option>
+                            <option value="zero">0 sold</option>
+                            <option value="more">&gt; 0 sold</option>
                         </select>
 
                         {{-- GPFT% + CVR% (AliExpress API: outputOrder ÷ viewedCount) --}}
@@ -275,9 +277,7 @@
                                 <li><a class="ae-dropdown-item ae-dil-item active" href="#" data-color="all">
                                     <span class="ae-sc def"></span>All DIL</a></li>
                                 <li><a class="ae-dropdown-item ae-dil-item" href="#" data-color="red">
-                                    <span class="ae-sc red"></span>Red (&lt;16.7%)</a></li>
-                                <li><a class="ae-dropdown-item ae-dil-item" href="#" data-color="yellow">
-                                    <span class="ae-sc yellow"></span>Yellow (16.7–25%)</a></li>
+                                    <span class="ae-sc red"></span>Red (&lt;25%)</a></li>
                                 <li><a class="ae-dropdown-item ae-dil-item" href="#" data-color="green">
                                     <span class="ae-sc green"></span>Green (25–50%)</a></li>
                                 <li><a class="ae-dropdown-item ae-dil-item" href="#" data-color="pink">
@@ -300,9 +300,6 @@
                             <i class="fas fa-file-csv"></i>
                         </button>
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'aliexpress'])
-                        <a href="{{ route('aliexpress.lmp.sample') }}" class="btn btn-sm btn-outline-secondary">
-                            <i class="fas fa-download"></i> LMP sample
-                        </a>
                         <a href="{{ route('aliexpress.lmp') }}" class="btn btn-sm btn-outline-info">
                             <i class="fas fa-table"></i> LMP sheet
                         </a>
@@ -312,7 +309,7 @@
                             id="ae-target-roi-controls"
                             title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every checked row (back-solves so SROI column equals the target)">
                             <label for="ae-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                                <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
+                                <span style="font-size:1em;" aria-hidden="true">🎯</span> SGROI:
                             </label>
                             <input type="number" id="ae-target-roi-input" class="form-control form-control-sm text-end"
                                 placeholder="30" step="0.1" style="width: 56px;"
@@ -369,7 +366,7 @@
                     </div>
 
                     <div id="aliexpress-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                        <div id="aliexpress-pricing-table" style="flex: 1;"></div>
+                        <div id="aliexpress-pricing-table" data-ae-hide-parents="1" style="flex: 1;"></div>
                     </div>
                 </div>
             </div>
@@ -393,13 +390,14 @@
                             <option value="30" selected>30 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
                         </select>
                         <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal"></button>
                     </div>
                 </div>
                 <div class="modal-body p-2">
                     <!-- Line chart + stat panel -->
-                    <div id="aeBadgeLineWrap" style="display:none;height:38vh;align-items:stretch;">
+                    <div id="aeBadgeLineWrap" style="display:none;height:38vh;flex-direction:row;align-items:stretch;">
                         <div style="flex:1;min-width:0;position:relative;">
                             <canvas id="aeBadgeLineCanvas"></canvas>
                         </div>
@@ -418,10 +416,6 @@
                                 <div id="aeBadgeLowest"  style="font-size:13px;font-weight:700;color:#198754;">–</div>
                             </div>
                         </div>
-                    </div>
-                    <!-- Bar chart -->
-                    <div id="aeBadgeBarWrap" style="display:none;height:160px;margin-top:8px;">
-                        <canvas id="aeBadgeBarCanvas"></canvas>
                     </div>
                     <div id="aeBadgeLoading" class="text-center py-3" style="display:none;">
                         <div class="spinner-border spinner-border-sm text-primary"></div>
@@ -519,7 +513,6 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script>
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'aliexpress'])
         let table = null;
@@ -599,6 +592,12 @@
             if (typeof jQuery === 'undefined') return;
             $('#ae-sold-pct-badge').toggleClass('active-filter', aeMoreSoldActive);
             $('#ae-zero-sold-badge').toggleClass('active-filter', aeZeroSoldActive);
+            const $sold = $('#ae-sold-filter');
+            if ($sold.length) {
+                if (aeZeroSoldActive) $sold.val('zero');
+                else if (aeMoreSoldActive) $sold.val('more');
+                else $sold.val('all');
+            }
         }
 
         function aeApplyBadgeFilterFromUrl() {
@@ -855,180 +854,182 @@
         $('#play-forward').on('click', nextAeParent);
         $('#play-backward').on('click', previousAeParent);
 
+        function aeDbgLog(hypothesisId, location, message, data) {
+            // #region agent log
+            fetch('http://127.0.0.1:7459/ingest/02b94a65-ae60-4d7e-bef0-17c519b7f744',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1b30dc'},body:JSON.stringify({sessionId:'1b30dc',runId:'post-fix',hypothesisId:hypothesisId,location:location,message:message,data:data||{},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
+        }
+
+        let aeFullTableData = [];
+        let aeSwapData = false;
+        function aeRowsForType(rowType, rows) {
+            const src = Array.isArray(rows) ? rows : [];
+            if (rowType === 'parents') return src.filter(function(r) { return aeIsParentRow(r); });
+            if (rowType === 'all') return src;
+            return src.filter(function(r) { return !aeIsParentRow(r); });
+        }
+
         function aeIsParentRow(d) {
             if (!d) return false;
+            if (typeof d.getData === 'function') {
+                try { d = d.getData() || {}; } catch (e) { /* use original */ }
+            }
+            if (typeof window.isPmParentRowData === 'function' && window.isPmParentRowData(d)) return true;
             if (d.is_parent === true || d.is_parent === 1 || d.is_parent === '1' || d.is_parent === 'true') return true;
-            if (d.is_parent_summary === true || d.is_parent_row === true) return true;
-            // Hide summary rows whose SKU starts with PARENT (e.g. "PARENT 04 CS")
-            const sku = String(d.sku || '').trim().toUpperCase();
-            if (/^PARENT\b/.test(sku)) return true;
-            const p = String(d.parent || '').trim().toUpperCase();
-            return /^PARENT\b/.test(p);
+            if (d.is_parent_summary === true || d.is_parent_summary === 1 || d.is_parent_row === true) return true;
+            const sku = String(d.sku || d.SKU || d['(Child) sku'] || '').trim().toUpperCase();
+            return sku.includes('PARENT');
         }
 
         function applyFilters() {
             if (window.ParentExpand && ParentExpand.isExpanded()) {
+                aeDbgLog('A', 'aliexpress_pricing_view.blade.php:applyFilters', 'early return ParentExpand expanded', {});
                 ParentExpand.beforeFilters(function(){ applyFilters(); });
                 return;
             }
-            if (!table) return;
-            table.clearFilter();
-
-            // Play navigation: only show current parent's group
-            if (isAePlayActive && aePlayUniqueParents.length > 0 && currentAePlayParentIndex >= 0) {
-                const currentKey = aePlayUniqueParents[currentAePlayParentIndex];
-                if (currentKey) {
-                    table.addFilter(function(d) {
-                        const p = normalizeAeParentKey(d.parent);
-                        return p === currentKey || p === ('PARENT ' + currentKey);
-                    });
-                }
+            if (!table) {
+                aeDbgLog('A', 'aliexpress_pricing_view.blade.php:applyFilters', 'early return table missing', {});
                 return;
             }
 
             const skuSearch  = ($('#pricing-sku-search').val() || '').toLowerCase().trim();
             const rowType    = $('#ae-row-type-filter').val() || 'skus';
-            const invFilter  = $('#ae-inv-filter').val();
-            const gpftFilter = $('#ae-gpft-filter').val();
-            const cvrFilter = $('#ae-cvr-filter').val();
-            const roiFilter  = $('#ae-roi-filter').val();
-            const al30Filter = $('#ae-al30-filter').val();
+            const invFilter  = $('#ae-inv-filter').val() || 'all';
+            const gpftFilter = $('#ae-gpft-filter').val() || 'all';
+            const cvrFilter = $('#ae-cvr-filter').val() || 'all';
+            const roiFilter  = $('#ae-roi-filter').val() || 'all';
+            const al30Filter = $('#ae-al30-filter').val() || 'all';
+            const soldFilter = $('#ae-sold-filter').val() || 'all';
             const dilColor   = $('.ae-dil-item.active').data('color') || 'all';
-            // Parents / All: parent summary rows bypass metric filters (same as Amazon).
-            // SKUs: parent rows are removed by the dedicated filter below.
             const parentRowsBypass = (rowType === 'parents' || rowType === 'all');
-
-            if (skuSearch) {
-                table.addFilter(d => (d.sku || '').toLowerCase().includes(skuSearch));
+            const full = aeFullTableData.length ? aeFullTableData : allTableData;
+            const desired = aeRowsForType(rowType, full);
+            const current = table.getData() || [];
+            const currentParents = current.filter(function(r) { return aeIsParentRow(r); }).length;
+            const desiredParents = desired.filter(function(r) { return aeIsParentRow(r); }).length;
+            if (!aeSwapData && (rowType === 'all' || rowType === 'parents') && full.length && !full.some(function(r) { return aeIsParentRow(r); })) {
+                aeDbgLog('D', 'aliexpress_pricing_view.blade.php:applyFilters', 'reloading pricing-data with parents', { rowType: rowType });
+                aeSwapData = true;
+                table.setData('/aliexpress/pricing-data?include_parents=1').then(function() {
+                    aeSwapData = false;
+                    applyFilters();
+                }).catch(function() { aeSwapData = false; });
+                return;
             }
-
-            // Inventory filter
-            if (invFilter === 'zero') {
-                table.addFilter(d => {
-                    if (aeIsParentRow(d)) return parentRowsBypass;
-                    return (parseInt(d.inv, 10) || 0) === 0;
+            if (!aeSwapData && currentParents !== desiredParents) {
+                aeDbgLog('D', 'aliexpress_pricing_view.blade.php:applyFilters', 'swapping table data for rowType', {
+                    rowType: rowType, currentParents: currentParents, desiredParents: desiredParents, desiredCount: desired.length
                 });
-            } else if (invFilter === 'more') {
-                table.addFilter(d => {
-                    if (aeIsParentRow(d)) return parentRowsBypass;
-                    return (parseInt(d.inv, 10) || 0) > 0;
-                });
+                aeSwapData = true;
+                table.setData(desired).then(function() {
+                    aeSwapData = false;
+                    applyFilters();
+                }).catch(function() { aeSwapData = false; });
+                return;
             }
+            aeDbgLog('B', 'aliexpress_pricing_view.blade.php:applyFilters', 'rowType at filter time', {
+                rowType: rowType, rawVal: $('#ae-row-type-filter').val(), currentParents: currentParents, desiredParents: desiredParents
+            });
 
-            // GPFT filter
-            if (gpftFilter !== 'all') {
-                table.addFilter(function(d) {
-                    if (aeIsParentRow(d)) return parentRowsBypass;
+            let aeFilterArgLogged = 0;
+            table.setFilter(function(d) {
+                if (aeFilterArgLogged < 2) {
+                    aeFilterArgLogged++;
+                    aeDbgLog('C', 'aliexpress_pricing_view.blade.php:setFilter', 'filter callback arg', {
+                        argType: typeof d,
+                        keys: d && typeof d === 'object' ? Object.keys(d).slice(0, 12) : [],
+                        sku: d && d.sku,
+                        isParent: aeIsParentRow(d)
+                    });
+                }
+                if (!d) return false;
+                const isParent = aeIsParentRow(d);
+
+                if (isAePlayActive && aePlayUniqueParents.length > 0 && currentAePlayParentIndex >= 0) {
+                    const currentKey = aePlayUniqueParents[currentAePlayParentIndex];
+                    if (!currentKey) return true;
+                    const p = normalizeAeParentKey(d.parent);
+                    return p === currentKey || p === ('PARENT ' + currentKey);
+                }
+
+                if (rowType === 'parents' && !isParent) return false;
+                if (rowType !== 'parents' && rowType !== 'all' && isParent) return false;
+
+                if (skuSearch && !(String(d.sku || '').toLowerCase().includes(skuSearch))) return false;
+
+                if (isParent && parentRowsBypass) return true;
+
+                if (invFilter === 'zero' && (parseInt(d.inv, 10) || 0) !== 0) return false;
+                if (invFilter === 'more' && (parseInt(d.inv, 10) || 0) <= 0) return false;
+
+                if (gpftFilter !== 'all') {
                     const gpft = parseFloat(d.gpft) || 0;
-                    if (gpftFilter === 'negative') return gpft < 0;
-                    if (gpftFilter === '50plus')   return gpft >= 50;
-                    const [min, max] = gpftFilter.split('-').map(Number);
-                    return gpft >= min && gpft < max;
-                });
-            }
+                    if (gpftFilter === 'negative') { if (!(gpft < 0)) return false; }
+                    else if (gpftFilter === '50plus') { if (!(gpft >= 50)) return false; }
+                    else if (String(gpftFilter).includes('-')) {
+                        const [min, max] = gpftFilter.split('-').map(Number);
+                        if (!(gpft >= min && gpft < max)) return false;
+                    }
+                }
 
-            if (cvrFilter !== 'all') {
-                table.addFilter(function(d) {
-                    if (aeIsParentRow(d)) return parentRowsBypass;
+                if (cvrFilter !== 'all') {
                     const cvrRounded = Math.round((parseFloat(d.cvr) || 0) * 100) / 100;
-                    if (cvrFilter === '0-0') return cvrRounded === 0;
-                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
-                    if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
-                    if (cvrFilter === '13plus') return cvrRounded > 13;
-                    return true;
-                });
-            }
+                    if (cvrFilter === '0-0' && cvrRounded !== 0) return false;
+                    if (cvrFilter === '0-2' && !(cvrRounded > 0 && cvrRounded <= 2)) return false;
+                    if (cvrFilter === '2-4' && !(cvrRounded > 2 && cvrRounded <= 4)) return false;
+                    if (cvrFilter === '4-7' && !(cvrRounded > 4 && cvrRounded <= 7)) return false;
+                    if (cvrFilter === '7-13' && !(cvrRounded > 7 && cvrRounded <= 13)) return false;
+                    if (cvrFilter === '13plus' && !(cvrRounded > 13)) return false;
+                }
 
-            // ROI% filter
-            if (roiFilter !== 'all') {
-                table.addFilter(function(d) {
-                    if (aeIsParentRow(d)) return parentRowsBypass;
+                if (roiFilter !== 'all') {
                     const roi = parseFloat(d.groi) || 0;
-                    if (roiFilter === 'lt40')    return roi < 40;
-                    if (roiFilter === '40-75')   return roi >= 40 && roi < 75;
-                    if (roiFilter === '75-125')  return roi >= 75 && roi < 125;
-                    if (roiFilter === 'gt125')   return roi >= 125;
-                    return true;
-                });
-            }
+                    if (roiFilter === 'lt40' && !(roi < 40)) return false;
+                    if (roiFilter === '40-75' && !(roi >= 40 && roi < 75)) return false;
+                    if (roiFilter === '75-125' && !(roi >= 75 && roi < 125)) return false;
+                    if (roiFilter === 'gt125' && !(roi >= 125)) return false;
+                }
 
-            // AL30 filter (excludes 0 inventory rows, same as TikTok T L30)
-            if (al30Filter !== 'all') {
-                table.addFilter(function(d) {
-                    if (aeIsParentRow(d)) return parentRowsBypass;
+                if (al30Filter !== 'all') {
                     if ((parseInt(d.inv, 10) || 0) <= 0) return false;
                     const al30 = parseFloat(d.al30) || 0;
-                    if (al30Filter === '0')      return al30 === 0;
-                    if (al30Filter === '0-10')   return al30 > 0 && al30 <= 10;
-                    if (al30Filter === '10plus') return al30 > 10;
-                    return true;
-                });
-            }
+                    if (al30Filter === '0' && al30 !== 0) return false;
+                    if (al30Filter === '0-10' && !(al30 > 0 && al30 <= 10)) return false;
+                    if (al30Filter === '10plus' && !(al30 > 10)) return false;
+                }
 
-            // DIL% filter (identical to TikTok)
-            if (dilColor !== 'all') {
-                table.addFilter(function(d) {
-                    if (aeIsParentRow(d)) return parentRowsBypass;
-                    const inv   = parseFloat(d.inv)    || 0;
+                if (dilColor !== 'all') {
+                    const inv = parseFloat(d.inv) || 0;
                     const ovL30 = parseFloat(d.ov_l30) || 0;
-                    const dil   = inv === 0 ? 0 : (ovL30 / inv) * 100;
-                    if (dilColor === 'red')    return dil < 16.66;
-                    if (dilColor === 'yellow') return dil >= 16.66 && dil < 25;
-                    if (dilColor === 'green')  return dil >= 25 && dil < 50;
-                    if (dilColor === 'pink')   return dil >= 50;
-                    return true;
-                });
-            }
+                    const dil = inv === 0 ? 0 : (ovL30 / inv) * 100;
+                    if (dilColor === 'red' && !(dil < 25)) return false;
+                    if (dilColor === 'green' && !(dil >= 25 && dil < 50)) return false;
+                    if (dilColor === 'pink' && !(dil >= 50)) return false;
+                }
 
-            // Badge-click filters — Sold % ignores INV = 0
-            if (aeZeroSoldActive) {
-                table.addFilter(d => {
-                    if (aeIsParentRow(d)) return parentRowsBypass;
-                    return (parseInt(d.inv, 10) || 0) > 0 && (parseFloat(d.al30) || 0) === 0;
-                });
-            }
-            if (aeMoreSoldActive) {
-                table.addFilter(d => {
-                    if (aeIsParentRow(d)) return parentRowsBypass;
-                    return (parseInt(d.inv, 10) || 0) > 0 && (parseFloat(d.al30) || 0) > 0;
-                });
-            }
-            if (lmpMissingFilterActive && window.LmpMissingBadge) {
-                table.addFilter(function(data) {
-                    if (aeIsParentRow(data)) return parentRowsBypass;
-                    return !LmpMissingBadge.isParentRow(data) && !LmpMissingBadge.hasLmp(data);
-                });
-            }
-            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
-                table.addFilter(function(data) {
-                    if (aeIsParentRow(data)) return parentRowsBypass;
-                    return PriceGtLmpBadge.hasRedTriangle(data, 'price');
-                });
-            }
-            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
-                table.addFilter(function(data) {
-                    if (aeIsParentRow(data)) return parentRowsBypass;
-                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
-                });
-            }
-            if (blueTriangleFilterActive) {
-                table.addFilter(function(data) {
-                    if (aeIsParentRow(data)) return parentRowsBypass;
-                    return aeHasBlueTriangle(data);
-                });
-            }
+                if (soldFilter === 'zero') {
+                    if (!((parseInt(d.inv, 10) || 0) > 0 && (parseFloat(d.al30) || 0) === 0)) return false;
+                } else if (soldFilter === 'more') {
+                    if (!((parseInt(d.inv, 10) || 0) > 0 && (parseFloat(d.al30) || 0) > 0)) return false;
+                }
 
-            // Belt-and-suspenders: hide PARENT* rows if any remain in SKUs mode
-            if (rowType === 'parents') {
-                table.addFilter(function(d) { return aeIsParentRow(d); });
-            } else if (rowType === 'skus') {
-                table.addFilter(function(d) { return !aeIsParentRow(d); });
-            }
+                if (lmpMissingFilterActive && window.LmpMissingBadge) {
+                    if (LmpMissingBadge.isParentRow(d) || LmpMissingBadge.hasLmp(d)) return false;
+                }
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                    if (!PriceGtLmpBadge.hasRedTriangle(d, 'price')) return false;
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                    if (!PriceLt80LmpBadge.hasPurpleTriangle(d, 'price')) return false;
+                }
+                if (blueTriangleFilterActive && !aeHasBlueTriangle(d)) return false;
+
+                return true;
+            });
 
             try { table.setPage(1); } catch (e) {}
         }
+
 
         if (window.LmpMissingBadge) {
             LmpMissingBadge.bind({
@@ -1080,6 +1081,7 @@
                 priceLt80LmpFilterActive = false;
                 lmpMissingFilterActive = false;
                 aeZeroSoldActive = aeMoreSoldActive = false;
+                aeSyncFilterBadgeActiveClasses();
             }
             applyFilters();
         });
@@ -1250,21 +1252,38 @@
         $(document).ready(function() {
             table = new Tabulator("#aliexpress-pricing-table", {
                 ajaxURL: "/aliexpress/pricing-data",
+                filterMode: "local",
+                paginationMode: "local",
+                initialFilter: [
+                    function(data) { return !aeIsParentRow(data); }
+                ],
                 ajaxResponse: function(url, params, response) {
                     const rows = Array.isArray(response) ? response : [];
                     rows.forEach(function(r) {
                         if (!r || typeof r !== 'object') return;
-                        const sku = String(r.sku || '').trim().toUpperCase();
-                        if (r.is_parent === true || r.is_parent === 1 || r.is_parent === '1' || /^PARENT\b/.test(sku)) {
+                        const sku = String(r.sku || r.SKU || '').trim().toUpperCase();
+                        if (r.is_parent === true || r.is_parent === 1 || r.is_parent === '1' || r.is_parent === 'true'
+                            || r.is_parent_summary || r.is_parent_row || /\bPARENT\b/.test(sku)) {
                             r.is_parent = true;
+                            r.is_parent_summary = true;
+                            r.is_parent_row = true;
                         }
                     });
+                    aeFullTableData = rows;
                     allTableData = rows;
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     summaryDataCache = normalizeRows(rows);
-                    updateSummary(summaryDataCache);
+                    try { updateSummary(summaryDataCache); } catch (e) { console.error(e); }
+                    const rowType = $('#ae-row-type-filter').val() || 'skus';
+                    const visibleRows = aeRowsForType(rowType, rows);
+                    aeDbgLog('E', 'aliexpress_pricing_view.blade.php:ajaxResponse', 'stripped parents from table payload', {
+                        total: rows.length,
+                        parentNamed: rows.filter(function(r) { return aeIsParentRow(r); }).length,
+                        returned: visibleRows.length,
+                        rowType: rowType
+                    });
                     setTimeout(aeApplyBadgeFilterFromUrl, 0);
-                    return rows;
+                    return visibleRows;
                 },
                 layout: "fitDataStretch",
                 height: "calc(100vh - 260px)",
@@ -1480,7 +1499,7 @@
                             const ovL30 = parseFloat(row.ov_l30) || 0;
                             if (inv === 0) return `<span style="color:#6c757d;">0%</span>`;
                             const dil = (ovL30 / inv) * 100;
-                            let color = dil < 16.66 ? '#a00211' : dil < 25 ? '#ffc107' : dil < 50 ? '#28a745' : '#e83e8c';
+                            let color = dil < 25 ? '#a00211' : dil < 50 ? '#28a745' : '#e83e8c';
                             return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
                         }
                     },
@@ -1695,7 +1714,7 @@
                         hozAlign: "right",
                         editor: "number",
                         editorParams: { min: 0, step: 0.01 },
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) when a promo or coupon exists. If PRMT% and cvr% are both 0, S PRC stays at the live AliExpress Price (does not copy Amazon Std). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -1720,14 +1739,21 @@
                         }
                     },
                     {
-                        title: "SROI",
+                        title: "SGROI",
                         field: "sroi",
                         sorter: "number",
                         hozAlign: "right",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue());
+                            let v = parseFloat(cell.getValue());
+                            if (typeof chPromoSpriceFromStdTPromo === 'function' && typeof chPromoLp === 'function') {
+                                const sprice = chPromoSpriceFromStdTPromo(d);
+                                const lp = chPromoLp(d);
+                                if (sprice > 0 && lp > 0 && typeof chPromoTakehomeMargin === 'function') {
+                                    v = ((sprice * chPromoTakehomeMargin(d) - lp - chPromoShipCost(d)) / lp) * 100;
+                                }
+                            }
                             if (isNaN(v) || v === 0) return '0%';
                             // Same color ranges as GROI
                             let color;
@@ -1746,7 +1772,13 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue());
+                            let v = parseFloat(cell.getValue());
+                            if (typeof chPromoSpriceFromStdTPromo === 'function' && typeof chPromoTakehomeMargin === 'function') {
+                                const sprice = chPromoSpriceFromStdTPromo(d);
+                                if (sprice > 0) {
+                                    v = ((sprice * chPromoTakehomeMargin(d) - chPromoLp(d) - chPromoShipCost(d)) / sprice) * 100;
+                                }
+                            }
                             if (isNaN(v) || v === 0) return '0%';
                             // Same color coding as GPFT
                             let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
@@ -1755,25 +1787,33 @@
                     },
                 ],
                 dataLoaded: function(data) {
-                    allTableData = Array.isArray(data) ? data : [];
+                    if (aeFullTableData.length) {
+                        allTableData = aeFullTableData;
+                    } else {
+                        allTableData = Array.isArray(data) ? data : [];
+                    }
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
-                    updateSummary(data);
                     if (!$('#ae-row-type-filter').val()) {
                         $('#ae-row-type-filter').val('skus');
                     }
                     setTimeout(function() {
-                        if (typeof applyFilters === 'function') applyFilters();
+                        try {
+                            if (typeof applyFilters === 'function') applyFilters();
+                        } catch (e) { console.error(e); }
+                        try { updateSummary(); } catch (e) { console.error(e); }
+                        if (typeof window.chPromoAutofitColumns === 'function') {
+                            window.chPromoAutofitColumns(table);
+                        }
                     }, 0);
-                    if (typeof window.chPromoAutofitColumns === 'function') {
-                        window.chPromoAutofitColumns(table);
-                    }
                 },
                 tableBuilt: function() {
                     if (!$('#ae-row-type-filter').val()) {
                         $('#ae-row-type-filter').val('skus');
                     }
                     setTimeout(function() {
-                        if (typeof applyFilters === 'function') applyFilters();
+                        try {
+                            if (typeof applyFilters === 'function') applyFilters();
+                        } catch (e) { console.error(e); }
                     }, 50);
                 },
                 dataFiltered: function(filters, rows) {
@@ -1784,6 +1824,18 @@
                 },
                 renderComplete: function() {
                     updateSummary();
+                    // #region agent log
+                    try {
+                        const visible = table.getData('active') || [];
+                        const visibleParents = visible.filter(function(r) { return aeIsParentRow(r); }).map(function(r) { return r.sku; }).slice(0, 8);
+                        aeDbgLog('D', 'aliexpress_pricing_view.blade.php:renderComplete', 'visible parent rows after render', {
+                            visibleCount: visible.length,
+                            visibleParentCount: visibleParents.length,
+                            visibleParentSkus: visibleParents,
+                            rowType: $('#ae-row-type-filter').val()
+                        });
+                    } catch (e) {}
+                    // #endregion
                 }
             });
 
@@ -1791,6 +1843,7 @@
                 ParentExpand.configure({
                     parentField: 'parent',
                     skuField: 'sku',
+                    isParentRow: aeIsParentRow,
                     getTable: () => table,
                     getDataset: () => allTableData,
                     onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
@@ -1805,6 +1858,13 @@
             $('#ae-gpft-filter, #ae-cvr-filter').on('change',   function() { applyFilters(); });
             $('#ae-roi-filter').on('change',    function() { applyFilters(); });
             $('#ae-al30-filter').on('change',   function() { applyFilters(); });
+            $('#ae-sold-filter').on('change', function() {
+                const v = $(this).val() || 'all';
+                aeZeroSoldActive = (v === 'zero');
+                aeMoreSoldActive = (v === 'more');
+                aeSyncFilterBadgeActiveClasses();
+                applyFilters();
+            });
 
             // DIL dropdown (identical to TikTok manual dropdown)
             $(document).on('click', '.ae-dil-toggle', function(e) {
@@ -2146,12 +2206,14 @@
                 aeHideBadgeChartModal();
 
                 const filterKey = String($(this).data('filter') || '').toLowerCase();
+                const wasZero = aeZeroSoldActive;
+                const wasMore = aeMoreSoldActive;
                 aeZeroSoldActive = aeMoreSoldActive = false;
 
                 if (filterKey === 'zero_sold') {
-                    aeZeroSoldActive = !aeZeroSoldActive;
+                    aeZeroSoldActive = !wasZero;
                 } else if (filterKey === 'more_sold') {
-                    aeMoreSoldActive = !aeMoreSoldActive;
+                    aeMoreSoldActive = !wasMore;
                 }
 
                 aeSyncFilterBadgeActiveClasses();
@@ -2450,131 +2512,181 @@
                 });
             });
 
-            // ── Badge Trend Chart (mirrors TikTok ttBadgeChart) ──────
+            // ── Badge trend chart (line only — same as Shein / eBay 3) ──────
             let aeBadgeLineChart = null;
-            let aeBadgeBarChart  = null;
             let aeBadgeMetric    = '';
             let aeBadgeDays      = 30;
             let aeBadgeAjax      = null;
 
-            const aeDollarMetrics  = ['total_pft','total_sales','total_cogs'];
-            const aeCountMetrics   = ['total_sku','total_al30','zero_sold','more_sold'];
-            const aePercentMetrics = ['avg_gpft','avg_roi'];
+            const aeDollarMetrics  = ['total_pft', 'total_sales', 'total_cogs'];
+            const aePercentMetrics = ['avg_gpft', 'avg_roi', 'avg_dil', 'cvr'];
 
             const aeBadgeLabels = {
-                total_pft: 'Profit',   total_sales: 'Sales',   total_al30: 'AL30',
-                avg_gpft: 'GPFT%',            avg_roi: 'GROI%',
-                total_cogs: 'COGS',           total_sku: 'Total SKU',       zero_sold: '0 Sold',          more_sold: 'Sold %',
+                total_pft: 'Profit',
+                total_sales: 'Sales',
+                total_al30: 'AL30',
+                avg_gpft: 'GPFT%',
+                avg_roi: 'GROI%',
+                avg_dil: 'DIL%',
+                total_cogs: 'COGS',
+                total_sku: 'SKU',
+                zero_sold: '0 Sold',
+                more_sold: 'Sold >0',
+                total_views: 'Views',
+                cvr: 'CVR%',
+                missing_count: 'Missing',
+                map_count: 'Map',
+                nmap_count: 'N Map',
             };
 
             function aeFormatChartVal(v) {
-                const n = Number(v) || 0;
-                if (aeDollarMetrics.includes(aeBadgeMetric))  return '$' + Math.round(n).toLocaleString('en-US');
-                if (aePercentMetrics.includes(aeBadgeMetric)) return Math.round(n) + '%';
-                return Math.round(n).toLocaleString('en-US');
+                const n = Number(v);
+                const x = Number.isFinite(n) ? n : 0;
+                if (aeDollarMetrics.includes(aeBadgeMetric)) {
+                    return '$' + Math.round(x).toLocaleString('en-US');
+                }
+                if (aePercentMetrics.includes(aeBadgeMetric)) {
+                    if (aeBadgeMetric === 'avg_dil' || aeBadgeMetric === 'cvr') {
+                        return (Math.round(x * 10) / 10) + '%';
+                    }
+                    return Math.round(x) + '%';
+                }
+                return Math.round(x).toLocaleString('en-US');
             }
 
-            function aeRenderCharts(points) {
+            function aeBadgeChartModalTitle() {
+                const part = aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric;
+                const daily = (aeBadgeMetric === 'total_sales' || aeBadgeMetric === 'total_al30' || aeBadgeMetric === 'total_pft')
+                    ? 'Daily orders'
+                    : 'Daily snapshot';
+                return 'Aliexpress – ' + part + ' Trend (' + daily + ')';
+            }
+
+            function aeRenderLineChart(points) {
                 if (!Array.isArray(points) || !points.length) return false;
 
-                const labels = points.map(p => p.date);
-                const values = points.map(p => Number(p.value) || 0);
-                const sorted = [...values].sort((a, b) => a - b);
-                const mid    = Math.floor(sorted.length / 2);
-                const median = sorted.length % 2 ? sorted[mid] : (sorted[mid-1] + sorted[mid]) / 2;
-                const highest = sorted[sorted.length - 1];
-                const lowest  = sorted[0];
+                const labels = points.map(function(p) { return p.date; });
+                const values = points.map(function(p) { return Number(p.value) || 0; });
+                const sorted = values.slice().sort(function(a, b) { return a - b; });
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                const dataMin = sorted[0];
+                const dataMax = sorted[sorted.length - 1];
 
-                $('#aeBadgeHighest').text(aeFormatChartVal(highest));
+                $('#aeBadgeHighest').text(aeFormatChartVal(dataMax));
                 $('#aeBadgeMedian').text(aeFormatChartVal(median));
-                $('#aeBadgeLowest').text(aeFormatChartVal(lowest));
+                $('#aeBadgeLowest').text(aeFormatChartVal(dataMin));
 
                 const lineCtx = document.getElementById('aeBadgeLineCanvas');
-                const barCtx  = document.getElementById('aeBadgeBarCanvas');
                 if (!lineCtx || typeof Chart === 'undefined') return false;
 
                 if (aeBadgeLineChart) aeBadgeLineChart.destroy();
-                if (aeBadgeBarChart)  aeBadgeBarChart.destroy();
 
-                const label = aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric;
+                const range = dataMax - dataMin || 1;
+                const pad = range * 0.1 || 1;
+                const yMin = Math.min(0, dataMin - pad);
+                const yMax = dataMax + pad;
 
-                // Point colors: green=UP red=DOWN vs previous day
-                const dotColors = values.map((v, i) => {
+                const dotColors = values.map(function(v, i) {
                     if (i === 0) return '#6c757d';
-                    return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? '#dc3545' : '#6c757d';
+                    return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#28a745' : '#6c757d');
                 });
-                const labelColors = values.map(v => v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d');
+                // Same as dots: green = up vs prior day, red = down. Never paint every positive value red.
+                const labelColors = dotColors.slice();
 
-                // Register datalabels plugin globally if available
-                if (typeof ChartDataLabels !== 'undefined') {
-                    Chart.register(ChartDataLabels);
-                }
+                const medianLinePlugin = {
+                    id: 'aeBadgeMedianLine',
+                    afterDraw: function(chart) {
+                        const yScale = chart.scales.y;
+                        const xScale = chart.scales.x;
+                        const c = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(median);
+                        c.save();
+                        c.setLineDash([6, 4]);
+                        c.strokeStyle = '#6c757d';
+                        c.lineWidth = 1.2;
+                        c.beginPath();
+                        c.moveTo(xScale.left, yPixel);
+                        c.lineTo(xScale.right, yPixel);
+                        c.stroke();
+                        c.restore();
+                    }
+                };
 
-                // ── Line chart with value labels on each point ──────────
+                const valueLabelsPlugin = {
+                    id: 'aeBadgeValueLabels',
+                    afterDatasetsDraw: function(chart) {
+                        const dataset = chart.data.datasets[0];
+                        const meta = chart.getDatasetMeta(0);
+                        const c = chart.ctx;
+                        if (!dataset || !meta || !meta.data) return;
+                        c.save();
+                        c.font = 'bold 9px Inter, system-ui, sans-serif';
+                        c.textAlign = 'center';
+                        c.textBaseline = 'bottom';
+                        meta.data.forEach(function(point, i) {
+                            if (point == null || point.skip) return;
+                            const txt = aeFormatChartVal(dataset.data[i]);
+                            const offsetY = (i % 2 === 0) ? -8 : -16;
+                            const py = point.y + offsetY;
+                            c.lineJoin = 'round';
+                            c.lineWidth = 3;
+                            c.strokeStyle = 'rgba(255,255,255,0.92)';
+                            c.strokeText(txt, point.x, py);
+                            c.fillStyle = labelColors[i] || '#6c757d';
+                            c.fillText(txt, point.x, py);
+                        });
+                        c.restore();
+                    }
+                };
+
                 aeBadgeLineChart = new Chart(lineCtx.getContext('2d'), {
                     type: 'line',
-                    plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : [],
                     data: {
                         labels: labels,
                         datasets: [{
-                            label: label,
                             data: values,
-                            borderColor: '#adb5bd',
-                            backgroundColor: 'rgba(173,181,189,0.08)',
+                            backgroundColor: 'rgba(0, 168, 168, 0.08)',
+                            borderColor: '#00a8a8',
+                            borderWidth: 1.5,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
                             pointBackgroundColor: dotColors,
                             pointBorderColor: dotColors,
-                            pointRadius: 5, pointHoverRadius: 7,
-                            borderWidth: 2, tension: 0.2, fill: true
+                            pointBorderWidth: 1.5
                         }]
                     },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
                     options: {
-                        responsive: true, maintainAspectRatio: false,
-                        layout: { padding: { top: 24 } },
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 22, left: 2, right: 2, bottom: 2 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const idx = ctx.dataIndex;
+                                        const va = ctx.raw;
+                                        const parts = [(aeBadgeLabels[aeBadgeMetric] || 'Value') + ': ' + aeFormatChartVal(va)];
+                                        if (idx > 0) {
+                                            const diff = va - values[idx - 1];
+                                            parts.push('vs prior: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + aeFormatChartVal(Math.abs(diff)));
+                                        }
+                                        return parts;
+                                    }
+                                }
+                            }
+                        },
                         scales: {
                             y: {
-                                min: lowest >= 0 ? 0 : undefined,
-                                ticks: { callback: v => aeFormatChartVal(v), font: { size: 11 } },
-                                grid: { color: 'rgba(0,0,0,0.05)' }
+                                min: yMin,
+                                max: yMax,
+                                ticks: { font: { size: 9 }, callback: function(v) { return aeFormatChartVal(v); } }
                             },
-                            x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
-                        },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { callbacks: { label: ctx => label + ': ' + aeFormatChartVal(ctx.parsed.y) } },
-                            datalabels: typeof ChartDataLabels !== 'undefined' ? {
-                                align: 'top', anchor: 'end',
-                                font: { size: 10, weight: '600' },
-                                color: ctx => labelColors[ctx.dataIndex],
-                                formatter: v => aeFormatChartVal(v),
-                                clip: false
-                            } : false
-                        }
-                    }
-                });
-
-                // ── Bar chart ────────────────────────────────────────────
-                aeBadgeBarChart = new Chart(barCtx.getContext('2d'), {
-                    type: 'bar',
-                    plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : [],
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: label,
-                            data: values,
-                            backgroundColor: values.map(v => v >= median ? 'rgba(13,110,253,0.7)' : 'rgba(13,110,253,0.4)'),
-                            borderRadius: 3
-                        }]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        scales: {
-                            y: { ticks: { callback: v => aeFormatChartVal(v), font: { size: 10 } }, beginAtZero: false },
-                            x: { ticks: { maxRotation: 45, font: { size: 9 } } }
-                        },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { callbacks: { label: ctx => label + ': ' + aeFormatChartVal(ctx.parsed.y) } },
-                            datalabels: { display: false }
+                            x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } } }
                         }
                     }
                 });
@@ -2584,7 +2696,7 @@
             function aeLoadChart() {
                 if (!aeBadgeMetric) return;
                 if (aeBadgeAjax) aeBadgeAjax.abort();
-                $('#aeBadgeNoData,#aeBadgeLineWrap,#aeBadgeBarWrap').hide();
+                $('#aeBadgeNoData,#aeBadgeLineWrap').hide();
                 $('#aeBadgeLoading').show();
 
                 aeBadgeAjax = $.ajax({
@@ -2595,9 +2707,8 @@
                         aeBadgeAjax = null;
                         $('#aeBadgeLoading').hide();
                         const pts = (res && res.success && Array.isArray(res.data)) ? res.data : [];
-                if (aeRenderCharts(pts)) {
-                            $('#aeBadgeLineWrap').css('display','flex');
-                            $('#aeBadgeBarWrap').show();
+                        if (aeRenderLineChart(pts)) {
+                            $('#aeBadgeLineWrap').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
                         } else {
                             $('#aeBadgeNoData').show();
                         }
@@ -2614,25 +2725,10 @@
                 aeBadgeMetric = metricKey;
                 aeBadgeDays   = 30;
                 $('#aeBadgeChartRange').val('30');
-                $('#aeBadgeChartTitle').text('Aliexpress – ' + (aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric) + ' Trend');
+                $('#aeBadgeChartTitle').text(aeBadgeChartModalTitle());
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('aeBadgeChartModal')).show();
                 aeLoadChart();
             }
-
-            $(document).on('mouseenter', '.ae-hover-chart', function() {
-                const metric = $(this).data('metric');
-                if (!metric) return;
-                aeClearBadgeHoverTimer();
-                aeBadgeHoverTimer = setTimeout(function() {
-                    aeOpenBadgeChartModal(metric);
-                }, 500);
-            });
-            $(document).on('mouseleave', '.ae-hover-chart', function() {
-                aeClearBadgeHoverTimer();
-            });
-            $(document).on('mousedown', '.ae-hover-chart.ae-filter-badge', function() {
-                aeClearBadgeHoverTimer();
-            });
 
             $(document).on('click', '.ae-badge-chart', function(e) {
                 if ($(this).hasClass('ae-filter-badge')) return;
@@ -2642,9 +2738,11 @@
             });
 
             $(document).on('change', '#aeBadgeChartRange', function() {
-                const d = parseInt($(this).val(), 10) || 30;
+                const raw = $(this).val();
+                const d = raw === '0' ? 0 : (parseInt(raw, 10) || 30);
                 if (d === aeBadgeDays) return;
                 aeBadgeDays = d;
+                $('#aeBadgeChartTitle').text(aeBadgeChartModalTitle());
                 aeLoadChart();
             });
         });

@@ -90,12 +90,29 @@
             font-size: 14px; color: #64748b;
         }
 
-        /* Parent summary rows — light yellow (same pattern as /faire-pricing fr-parent-row) */
-        .tabulator-row.tt-parent-row,
+        /* Parent summary rows — same cream + height as /amazon-tabulator-view */
+        .tabulator-row.parent-row,
+        .tabulator-row.tt-parent-row {
+            background-color: #fffef2 !important;
+            font-weight: bold !important;
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+        }
+        .tabulator-row.parent-row .tabulator-cell,
         .tabulator-row.tt-parent-row .tabulator-cell {
-            background-color: #fff3cd !important;
-            font-weight: 700 !important;
-            min-height: 48px !important;
+            background-color: #fffef2 !important;
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+            overflow: hidden !important;
+            vertical-align: middle !important;
+        }
+        .tabulator-row.parent-row .tabulator-cell[tabulator-field="(Child) sku"],
+        .tabulator-row.tt-parent-row .tabulator-cell[tabulator-field="(Child) sku"] {
+            color: #212529 !important;
         }
 
         /* Column visibility dropdown — 4 category panels (basics · pricing · advt · other) */
@@ -345,9 +362,9 @@
                     <input type="text" id="sku-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search SKU..." style="width: 150px;">
 
                     <select id="row-type-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
-                        <option value="all" selected>All Rows</option>
+                        <option value="all">All Rows</option>
                         <option value="parent">Parent Rows</option>
-                        <option value="sku">SKU Rows</option>
+                        <option value="sku" selected>SKU Rows</option>
                     </select>
 
                     <select id="inventory-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
@@ -380,12 +397,12 @@
                         <option value="13plus">13%+</option>
                     </select>
 
-                    <select id="roi-filter" class="form-select form-select-sm flex-shrink-0" style="width: 100px;">
+                    <select id="roi-filter" class="form-select form-select-sm flex-shrink-0" style="width: 120px;"
+                        title="GROI standard: Red &lt;60%, Gray 60–90%, Green ≥90%">
                         <option value="all">ROI %</option>
-                        <option value="lt40">&lt;40%</option>
-                        <option value="40-75">40 to 75%</option>
-                        <option value="75-125">75 to 125%</option>
-                        <option value="gt125">125%+</option>
+                        <option value="red">Red &lt;60%</option>
+                        <option value="gray">Gray 60–90%</option>
+                        <option value="green">Green ≥90%</option>
                     </select>
 
                     <select id="ad-click-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
@@ -429,9 +446,9 @@
 
                     {{-- Export only — TikTok 1 & 2 are API-only (no sheet upload). --}}
                     <div class="btn-group">
-                        <button type="button" class="btn btn-sm btn-info dropdown-toggle" data-bs-toggle="dropdown"
-                            aria-expanded="false" title="CSV actions">
-                            <i class="fas fa-file-excel"></i> CSV
+                        <button type="button" class="btn btn-sm btn-info" data-bs-toggle="dropdown"
+                            aria-expanded="false" title="Export CSV">
+                            <i class="fas fa-file-excel"></i>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li>
@@ -622,12 +639,9 @@
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" data-metric="sold_count"
                             style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
                             title="Click to filter">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2 tt-badge-chart" data-metric="avg_roi"
-                            id="roi-percent-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="Click for daily trend">ROI%: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" data-metric="missing_count"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter">Missing L: 0</span>
+                        <span class="badge fs-6 p-2 tt-badge-chart" data-metric="avg_roi"
+                            id="roi-percent-badge" style="background-color:#6c757d;color:#fff;font-weight:bold;cursor:pointer;"
+                            title="ROI% = Σ PFT ÷ Σ COGS. Red &lt;60%, gray 60–90%, green ≥90% (GROI standard). Click for daily trend.">ROI%: 0%</span>
                         <span class="badge fs-6 p-2" id="tiktok-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
@@ -642,9 +656,6 @@
                             'pltChannelKey' => (str_contains($tiktokPageTitle ?? '', 'TikTok 2') || (($tiktokPricingClientConfig['summaryChannel'] ?? '') === 'tiktok2')) ? 'tiktok2' : 'tiktok',
                             'pltPriceField' => 'TT Price'
                         ])
-                        <span class="badge fs-6 p-2" id="inv-tt-stock-badge" data-metric="nmap_count"
-                            style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;"
-                            title="Click to filter">N Map: 0</span>
                         <span class="badge fs-6 p-2 tt-badge-chart" data-metric="total_spend_30"
                             id="tt-spend-30-badge"
                             style="color: black; font-weight: bold; cursor: pointer; background-color: #9ec5fe;"
@@ -1081,7 +1092,7 @@
 
         function linkedLmpSkuFormatter(cell) {
             const row = cell.getRow().getData();
-            const isParent = row.is_parent || (row.Parent && String(row.Parent).startsWith('PARENT '));
+            const isParent = ttIsParentRow(row);
             if (isParent) return '';
             const rowSku = rowSkuForLinkLmp(row);
             let skus = row.linked_lmp_skus || [];
@@ -1105,7 +1116,7 @@
 
         function linkedLmpSkuAddFormatter(cell) {
             const row = cell.getRow().getData();
-            const isParent = row.is_parent || (row.Parent && String(row.Parent).startsWith('PARENT '));
+            const isParent = ttIsParentRow(row);
             if (isParent) return '';
             const rowSku = rowSkuForLinkLmp(row);
             if (!rowSku) return '';
@@ -1340,30 +1351,61 @@
                 DEFAULT_TIKTOK_MARGIN_FACTOR;
         }
 
-        /** Parsed abs(INV−TT Stock) from MAP; null if not legacy Diff| / N Map|. N Map badge uses only > 3. */
-        function ttAbsDiffFromMapValue(mapValue) {
-            if (mapValue == null || typeof mapValue !== 'string') return null;
-            const v = mapValue.trim();
-            let rest = '';
-            if (v.startsWith('N Map|')) {
-                rest = v.slice('N Map|'.length);
-            } else if (v.startsWith('Diff|')) {
-                rest = v.slice('Diff|'.length);
-            } else {
-                return null;
+        /** GROI standard as 3 colors: red <60, gray 60-90, green >=90 (yellow->gray, pink->green). */
+        function ttRoiVisualBand(v) {
+            if (window.MetricPctColors) {
+                const band = MetricPctColors.groiBand(v);
+                if (band === 'red') return 'red';
+                if (band === 'green' || band === 'pink') return 'green';
+                return 'gray';
             }
-            const n = parseFloat(String(rest).trim());
-            return Number.isFinite(n) ? Math.abs(n) : null;
+            const n = parseFloat(v);
+            if (!isFinite(n)) return 'gray';
+            if (n < 60) return 'red';
+            if (n < 90) return 'gray';
+            return 'green';
         }
-
-        function ttIsStrictNMapMapValue(mapValue, isMissing) {
-            if (isMissing) return false;
-            const d = ttAbsDiffFromMapValue(mapValue);
-            return d !== null && d > 3;
+        function ttRoiBandColors(band) {
+            if (band === 'red') return { bg: '#dc3545', fg: '#fff', text: '#dc3545' };
+            if (band === 'green') return { bg: '#28a745', fg: '#fff', text: '#28a745' };
+            return { bg: '#6c757d', fg: '#fff', text: '#6c757d' };
+        }
+        function applyTtRoiBadgeStyle(avgRoi, hasCogs) {
+            const $el = $('#roi-percent-badge');
+            if (!$el.length) return;
+            const band = (hasCogs && isFinite(avgRoi)) ? ttRoiVisualBand(avgRoi) : 'gray';
+            const c = ttRoiBandColors(band);
+            $el.css({ backgroundColor: c.bg, color: c.fg }).removeClass('bg-secondary bg-danger bg-success');
         }
 
         function ttIsParentRow(data) {
-            return data && (data.is_parent === true || (data.Parent && String(data.Parent).startsWith('PARENT ')));
+            if (!data) return false;
+            if (data.is_parent_summary === true || data.is_parent === true || data.is_parent_row === true) return true;
+            const sku = String(data['(Child) sku'] || data.Child_sku || data.sku || '');
+            const parent = String(data.Parent || data.parent || '');
+            return sku.toUpperCase().indexOf('PARENT ') === 0 || parent.toUpperCase().indexOf('PARENT ') === 0;
+        }
+        function ttListingViews(data) {
+            if (!data) return 0;
+            const stored = parseFloat(data.t_views);
+            if (Number.isFinite(stored) && stored > 0) return stored;
+            const video = parseInt(data.video_views, 10) || parseInt(data.views, 10) || 0;
+            return video
+                + (parseInt(data.ads_views, 10) || 0)
+                + (parseInt(data.affl_views, 10) || 0);
+        }
+        function ttListingCvr(data) {
+            if (!data) return 0;
+            const raw = (data.cvr != null && data.cvr !== '' && data.cvr !== '-')
+                ? data.cvr
+                : data['CVR%'];
+            const stored = parseFloat(raw);
+            if (Number.isFinite(stored) && raw !== '' && raw !== '-') {
+                return stored;
+            }
+            const views = ttListingViews(data);
+            const sold = parseFloat(data['TT L30']) || 0;
+            return views > 0 ? (sold / views) * 100 : 0;
         }
         function ttLivePrice(data) {
             return parseFloat(data && (data['TT Price'] != null ? data['TT Price'] : data.Price)) || 0;
@@ -1387,33 +1429,6 @@
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: blueTriangleFilterActive ? '2px' : ''
             });
-        }
-
-        function ttRowIsMissing(d) {
-            if (ttIsParentRow(d)) return false;
-            return String(d.Missing || '').trim().toUpperCase() === 'M';
-        }
-
-        function ttNegInvZeroMarketplaceIsMap(d) {
-            const inv = parseFloat(d.INV);
-            const ttStock = parseFloat(d['TT Stock']);
-            return Number.isFinite(inv) && inv < 0 && Number.isFinite(ttStock) && ttStock === 0;
-        }
-
-        function ttRowIsMap(d) {
-            if (ttIsParentRow(d)) return false;
-            if (ttRowIsMissing(d)) return false;
-            if (ttNegInvZeroMarketplaceIsMap(d)) return true;
-            const mapValue = d.MAP;
-            if (mapValue === 'Map') return true;
-            const diff = ttAbsDiffFromMapValue(mapValue);
-            return diff !== null && diff <= 3;
-        }
-
-        function ttRowIsNMap(d) {
-            if (ttIsParentRow(d)) return false;
-            if (ttNegInvZeroMarketplaceIsMap(d)) return false;
-            return ttIsStrictNMapMapValue(d.MAP, ttRowIsMissing(d));
         }
 
         // ---- Edit Links (Buyer / Seller) ----
@@ -1511,9 +1526,6 @@
                 total_cogs: 'COGS',
                 zero_sold_count: '0 Sold',
                 sold_count: '> 0 Sold',
-                missing_count: 'Missing L',
-                nmap_count: 'N Map',
-                inv_tt_stock_count: 'N Map',
                 total_spend_30: 'Spend 30',
                 total_spend_1: 'Spend 1',
                 total_ads_views_30: 'adsViews 30',
@@ -2117,7 +2129,7 @@
             // Toggle Utilized Columns - Show only columns that match tiktok/utilized page (like temu-decrease Show Ads Columns)
             let utilizedColumnsVisible = false;
             let originalColumnVisibilityUtilized = {};
-            const utilizedColumnFields = ['(Child) sku', 'INV', 'L30', 'TT Dil%', 'TT L30', 'NR',
+            const utilizedColumnFields = ['(Child) sku', 'INV', 'L30', 'TT Dil%', 'TT L30', 'cvr', 'NR',
                 'variation_req', 'video_req', 'video_uploaded', 'nrp', 'ad_cvr_pct', 'ads_price', 'budget', 'spend',
                 'ad_sold', 'ad_clicks', 'acos', 'status', 'campaign_name'
             ];
@@ -2176,8 +2188,7 @@
             // Select all checkbox handler
             $(document).on('change', '#select-all-checkbox', function() {
                 const isChecked = $(this).prop('checked');
-                const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent
-                    .startsWith('PARENT ')));
+                const filteredData = table.getData('active').filter(row => !ttIsParentRow(row));
 
                 filteredData.forEach(row => {
                     if (isChecked) {
@@ -2257,7 +2268,7 @@
                     const rd = r.getData();
                     const sku = rd['(Child) sku'];
                     if (!sku || !selectedSkus.has(sku)) return;
-                    if (rd.Parent && String(rd.Parent).startsWith('PARENT ')) return;
+                    if (ttIsParentRow(rd)) return;
                     const res = opts.computeSprice(rd);
                     if (!res || res.skipReason) {
                         if (res && res.skipReason) skipped.push({ sku: sku, reason: res.skipReason });
@@ -2390,8 +2401,6 @@
 
             let zeroSoldFilterActive = false;
             let moreSoldFilterActive = false;
-            let missingFilterActive = false;
-            let invTTStockFilterActive = false;
             let priceGtLmpFilterActive = false;
             let priceLt80LmpFilterActive = false;
             let adsBadgeFilter = null;
@@ -2412,14 +2421,6 @@
                     active: moreSoldFilterActive,
                     sel: '#more-sold-count-badge',
                     glow: 'rgba(14, 165, 233, 0.75)'
-                }, {
-                    active: missingFilterActive,
-                    sel: '#missing-count-badge',
-                    glow: 'rgba(220, 53, 69, 0.8)'
-                }, {
-                    active: invTTStockFilterActive,
-                    sel: '#inv-tt-stock-badge',
-                    glow: 'rgba(167, 29, 42, 0.85)'
                 }];
                 badges.forEach(function(b) {
                     const $el = $(b.sel);
@@ -2437,8 +2438,6 @@
             function ttClearSummaryBadgeFilters() {
                 zeroSoldFilterActive = false;
                 moreSoldFilterActive = false;
-                missingFilterActive = false;
-                invTTStockFilterActive = false;
             }
 
             function ttOnSummaryFilterBadgeClick(type) {
@@ -2446,23 +2445,9 @@
                 if (type === 'zero-sold') {
                     zeroSoldFilterActive = !zeroSoldFilterActive;
                     moreSoldFilterActive = false;
-                    missingFilterActive = false;
-                    invTTStockFilterActive = false;
                 } else if (type === 'more-sold') {
                     moreSoldFilterActive = !moreSoldFilterActive;
                     zeroSoldFilterActive = false;
-                    missingFilterActive = false;
-                    invTTStockFilterActive = false;
-                } else if (type === 'missing') {
-                    missingFilterActive = !missingFilterActive;
-                    invTTStockFilterActive = false;
-                    zeroSoldFilterActive = false;
-                    moreSoldFilterActive = false;
-                } else if (type === 'nmap') {
-                    invTTStockFilterActive = !invTTStockFilterActive;
-                    missingFilterActive = false;
-                    zeroSoldFilterActive = false;
-                    moreSoldFilterActive = false;
                 }
                 adsBadgeFilter = null;
                 $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
@@ -2477,14 +2462,6 @@
             $('#more-sold-count-badge').on('click', function(e) {
                 e.stopPropagation();
                 ttOnSummaryFilterBadgeClick('more-sold');
-            });
-            $('#missing-count-badge').on('click', function(e) {
-                e.stopPropagation();
-                ttOnSummaryFilterBadgeClick('missing');
-            });
-            $('#inv-tt-stock-badge').on('click', function(e) {
-                e.stopPropagation();
-                ttOnSummaryFilterBadgeClick('nmap');
             });
 
             // Ads section badge filter (like tiktok utilized page) - toggle on click
@@ -2528,8 +2505,7 @@
             function updateSelectAllCheckbox() {
                 if (!table) return;
 
-                const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith(
-                    'PARENT ')));
+                const filteredData = table.getData('active').filter(row => !ttIsParentRow(row));
 
                 if (filteredData.length === 0) {
                     $('#select-all-checkbox').prop('checked', false);
@@ -2769,13 +2745,36 @@
                     var data = Array.isArray(response) ? response : (response && response.data);
                     if (data && Array.isArray(data)) {
                         data.forEach(function(row) {
-                            // Only backend-inserted parent summary rows have Parent = "PARENT {name}" (with space)
-                            if (row.Parent && String(row.Parent).startsWith('PARENT ')) {
+                            if (row.is_parent_summary || row.is_parent
+                                || (row.Parent && String(row.Parent).startsWith('PARENT '))
+                                || (row['(Child) sku'] && String(row['(Child) sku']).startsWith('PARENT '))) {
                                 row.is_parent = true;
-                                if (!row['(Child) sku'] || row['(Child) sku'] === '') row[
-                                    '(Child) sku'] = row.Parent;
-                                if (!row.Child_sku || row.Child_sku === '') row.Child_sku = row
-                                    .Parent;
+                                row.is_parent_summary = true;
+                                if (!row['(Child) sku'] || row['(Child) sku'] === '') {
+                                    row['(Child) sku'] = row.Parent && String(row.Parent).startsWith('PARENT ')
+                                        ? row.Parent
+                                        : ('PARENT ' + String(row.Parent || '').trim());
+                                }
+                                if (!row.Child_sku || row.Child_sku === '') row.Child_sku = row['(Child) sku'];
+                                if (row.Parent && String(row.Parent).startsWith('PARENT ')) {
+                                    row.Parent = String(row.Parent).slice(7).trim();
+                                    row.parent = row.Parent;
+                                }
+                            }
+                            const tViews = (parseInt(row.video_views, 10) || parseInt(row.views, 10) || 0)
+                                + (parseInt(row.ads_views, 10) || 0)
+                                + (parseInt(row.affl_views, 10) || 0);
+                            if (row.t_views == null || row.t_views === '' || row.t_views === '-'
+                                || (parseFloat(row.t_views) || 0) <= 0) {
+                                row.t_views = tViews;
+                            }
+                            if (row['CVR%'] == null || row['CVR%'] === '' || row['CVR%'] === '-') {
+                                const sold = parseFloat(row['TT L30']) || 0;
+                                const views = parseFloat(row.t_views) || tViews;
+                                row['CVR%'] = views > 0 ? Math.round((sold / views) * 10000) / 100 : 0;
+                            }
+                            if (row.cvr == null || row.cvr === '' || row.cvr === '-') {
+                                row.cvr = row['CVR%'];
                             }
                         });
                         allTableData = data;
@@ -2802,8 +2801,19 @@
                 initialSort: [],
                 rowFormatter: function(row) {
                     const d = row.getData();
-                    if (d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '))) {
-                        row.getElement().classList.add('tt-parent-row');
+                    const el = row.getElement();
+                    if (ttIsParentRow(d)) {
+                        el.style.backgroundColor = '#fffef2';
+                        el.style.fontWeight = 'bold';
+                        el.style.minHeight = '48px';
+                        el.classList.add('parent-row');
+                        el.classList.add('tt-parent-row');
+                    } else {
+                        el.style.backgroundColor = '';
+                        el.style.fontWeight = '';
+                        el.style.minHeight = '';
+                        el.classList.remove('parent-row');
+                        el.classList.remove('tt-parent-row');
                     }
                 },
                 columns: [{
@@ -2816,7 +2826,8 @@
                         visible: true,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const sku = rowData['(Child) sku'];
+                            if (ttIsParentRow(rowData)) return '';
+                            const sku = rowData['(Child) sku'] || '';
                             const isChecked = selectedSkus.has(sku) ? 'checked' : '';
                             return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
                         }
@@ -2826,13 +2837,14 @@
                         field: "image_path",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            if (rowData.Parent && String(rowData.Parent).startsWith('PARENT '))
-                                return '<span style="color:#6c757d;">-</span>';
+                            if (ttIsParentRow(rowData) && (!cell.getValue() || cell.getValue() === '-'))
+                                return '';
                             const value = cell.getValue();
                             if (value && value !== '-') {
                                 const esc = (v) => String(v).replace(/"/g, '&quot;').replace(/</g,
                                     '&lt;');
-                                return `<img src="${esc(value)}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling && (this.nextElementSibling.style.display='inline');"><span style="display:none; font-size:10px; color:#999;">No image</span>`;
+                                const imgSize = ttIsParentRow(rowData) ? 28 : 50;
+                                return `<img src="${esc(value)}" alt="Product" style="width: ${imgSize}px; height: ${imgSize}px; object-fit: cover; border-radius: 4px;" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling && (this.nextElementSibling.style.display='inline');"><span style="display:none; font-size:10px; color:#999;">No image</span>`;
                             }
                             return '';
                         },
@@ -2844,11 +2856,21 @@
                         field: "Parent",
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search Parent...",
-                        cssClass: "text-muted",
+                        cssClass: "text-primary",
                         tooltip: true,
                         frozen: true,
                         width: 150,
-                        visible: true
+                        visible: true,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            let s = String(row.Parent != null ? row.Parent : (row.parent || '')).trim();
+                            if (s.toUpperCase().indexOf('PARENT ') === 0) s = s.slice(7).trim();
+                            if (!s && row['(Child) sku']) {
+                                const sku = String(row['(Child) sku']).trim();
+                                if (sku.toUpperCase().indexOf('PARENT ') === 0) s = sku.slice(7).trim();
+                            }
+                            return s || '—';
+                        }
                     },
                     (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                     {
@@ -2863,24 +2885,17 @@
                             const row = cell.getRow();
                             const rowData = row.getData();
                             const cellVal = cell.getValue();
-                            const isParentRow = rowData.is_parent === true ||
-                                (rowData.Parent && String(rowData.Parent).startsWith('PARENT ')) ||
-                                (cellVal && String(cellVal).startsWith('PARENT '));
+                            const isParentRow = ttIsParentRow(rowData)
+                                || (cellVal && String(cellVal).startsWith('PARENT '));
                             const safe = (s) => (s == null ? '' : String(s)).replace(/</g, '&lt;')
                                 .replace(/"/g, '&quot;');
                             if (isParentRow) {
-                                // Prefer Parent field so "PARENT X" always shows (backend sets Parent = "PARENT {name}")
-                                const text = (rowData.Parent != null && rowData.Parent !== '') ?
-                                    String(rowData.Parent) :
-                                    (cellVal && String(cellVal).startsWith('PARENT ')) ? String(
-                                        cellVal) :
-                                    (rowData['(Child) sku'] != null && rowData['(Child) sku'] !==
-                                        '') ? String(rowData['(Child) sku']) :
-                                    (rowData.Child_sku != null && rowData.Child_sku !== '') ?
-                                    String(rowData.Child_sku) :
-                                    'PARENT';
-                                return '<span class="fw-bold" style="color:#0d6efd;font-size:14px;display:inline-block;padding:4px 8px;background:rgba(13,110,253,0.12);border-radius:4px;">' +
-                                    safe(text) + '</span>';
+                                let text = String(cellVal || rowData['(Child) sku'] || rowData.Child_sku || '');
+                                if (text.toUpperCase().indexOf('PARENT ') !== 0) {
+                                    const name = String(rowData.Parent || rowData.parent || '').trim();
+                                    text = name ? ('PARENT ' + name) : 'PARENT';
+                                }
+                                return '<span style="font-weight:bold;color:#212529;">' + safe(text) + '</span>';
                             }
                             const sku = cellVal ?? rowData['(Child) sku'] ?? rowData['Child_sku'] ??
                                 '';
@@ -2900,7 +2915,7 @@
                         tooltip: "Double-click to add / edit links",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
-                            const isParent = d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '));
+                            const isParent = ttIsParentRow(d);
                             if (isParent) return '';
                             const b = d['B Link'] || '';
                             const s = d['S Link'] || '';
@@ -2919,7 +2934,7 @@
                         },
                         cellDblClick: function(e, cell) {
                             const d = cell.getRow().getData();
-                            const isParent = d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '));
+                            const isParent = ttIsParentRow(d);
                             if (isParent) return;
                             openTiktokEditLinksModal(cell.getRow());
                         }
@@ -2945,8 +2960,7 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             const cellVal = cell.getValue();
                             if (isParent && (cellVal === null || cellVal === undefined ||
                                     cellVal === '' || cellVal === '-'))
@@ -2979,14 +2993,38 @@
                         formatter: function(cell) {
                             const raw = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (isParent && (raw === null || raw === undefined || raw === '' ||
                                     raw === '-')) return '<span style="color:#6c757d;">-</span>';
                             const value = parseFloat(raw || 0);
                             if (isParent && isNaN(value))
                             return '<span style="color:#6c757d;">-</span>';
                             return `<span style="font-weight: 700;">${value}</span>`;
+                        }
+                    },
+                    {
+                        title: "CVR",
+                        field: "cvr",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 55,
+                        headerTooltip: "CVR = TT L30 ÷ T views (video + ads + affl)",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = ttIsParentRow(rowData);
+                            const views = ttListingViews(rowData);
+                            const cvr = ttListingCvr(rowData);
+                            if (isParent && views === 0 && (cell.getValue() === null ||
+                                    cell.getValue() === undefined || cell.getValue() === '' ||
+                                    cell.getValue() === '-')) {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            let color = '#a00211';
+                            if (views <= 0) color = '#6c757d';
+                            else if (cvr > 3 && cvr <= 7) color = '#ffc107';
+                            else if (cvr > 7 && cvr <= 13) color = '#28a745';
+                            else if (cvr > 13) color = '#e83e8c';
+                            return `<span style="color:${color};font-weight:600;">${Math.round(cvr)}%</span>`;
                         }
                     },
                     {
@@ -2998,7 +3036,7 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const raw = cell.getValue();
-                            if (rowData.Parent && String(rowData.Parent).startsWith('PARENT ') && (
+                            if (ttIsParentRow(rowData) && (
                                     raw === '-' || raw === null || raw === undefined))
                             return '<span style="color:#6c757d;">-</span>';
                             const value = parseFloat(raw || 0);
@@ -3019,31 +3057,13 @@
                         formatter: function(cell) {
                             const raw = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (isParent && (raw === '-' || raw === null || raw === undefined ||
                                     raw === '')) return '<span style="color:#6c757d;">-</span>';
                             const value = parseFloat(raw || 0);
                             if (isParent && isNaN(value))
                             return '<span style="color:#6c757d;">-</span>';
                             return `$${value.toFixed(2)}`;
-                        }
-                    },
-                    {
-                        title: "Missing L",
-                        field: "Missing",
-                        hozAlign: "center",
-                        width: 70,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            const rowData = cell.getRow().getData();
-                            if (rowData.Parent && String(rowData.Parent).startsWith('PARENT ') && (
-                                    value === '-' || value === null))
-                            return '<span style="color:#6c757d;">-</span>';
-                            if (value === 'M') {
-                                return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
-                            }
-                            return '';
                         }
                     },
                     {
@@ -3076,8 +3096,7 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const value = cell.getValue();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (value === null || value === undefined || value === '' || value ===
                                 '-') return '<span style="color:#6c757d;">-</span>';
                             const pct = parseFloat(value);
@@ -3226,46 +3245,13 @@
                         }
                     },
                     {
-                        title: "MAP",
-                        field: "MAP",
-                        hozAlign: "center",
-                        width: 90,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
-                            const isMissing = String(rowData.Missing || '').trim().toUpperCase() ===
-                                'M';
-                            if (isParent && (!value || value === '-'))
-                            return '<span style="color:#6c757d;">-</span>';
-                            if (!isParent && isMissing) return '';
-                            if (value === 'Map') {
-                                return '<span style="color: #28a745; font-weight: bold;">Map</span>';
-                            } else if (value && (value.startsWith('N Map|') || value.startsWith('Diff|'))) {
-                                const d = ttAbsDiffFromMapValue(value);
-                                if (d !== null && d <= 3) {
-                                    return '<span style="color: #28a745; font-weight: bold;">Map</span>';
-                                }
-                                if (value.startsWith('N Map|')) {
-                                    const signed = value.split('|')[1] || '';
-                                    return `<span style="color: #dc3545; font-weight: bold;">N Map (${signed})</span>`;
-                                }
-                                const diff = value.split('|')[1] || '';
-                                return `<span style="color: #dc3545; font-weight: bold;">N Map (+${diff})</span>`;
-                            }
-                            return isParent ? '<span style="color:#6c757d;">-</span>' : '';
-                        }
-                    },
-                    {
                         title: "Video Views",
                         field: "video_views",
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             const value = parseInt(cell.getValue(), 10) || 0;
                             if (isParent && !cell.getValue())
                             return '<span style="color:#6c757d;">-</span>';
@@ -3280,8 +3266,7 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             const value = parseInt(cell.getValue(), 10) || 0;
                             if (isParent && !cell.getValue())
                             return '<span style="color:#6c757d;">-</span>';
@@ -3296,8 +3281,7 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             const value = parseInt(cell.getValue(), 10) || 0;
                             if (isParent && !cell.getValue())
                             return '<span style="color:#6c757d;">-</span>';
@@ -3320,11 +3304,8 @@
                         },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
-                            const totalViews = (parseInt(rowData.video_views, 10) || 0) + (parseInt(
-                                rowData.ads_views, 10) || 0) + (parseInt(rowData.affl_views,
-                                10) || 0);
+                            const isParent = ttIsParentRow(rowData);
+                            const totalViews = ttListingViews(rowData);
                             if (isParent && totalViews === 0)
                             return '<span style="color:#6c757d;">-</span>';
                             return totalViews.toLocaleString();
@@ -3435,9 +3416,9 @@
                         headerTooltip: "Target ROAS (in_roas) from tiktok_campaign_reports. Editable.",
                         editable: function(cell) {
                             const d = cell.getRow().getData();
-                            if (d.is_parent_summary || d.is_parent) return false;
+                            if (ttIsParentRow(d)) return false;
                             const sku = String(d['(Child) sku'] || d.sku || '');
-                            return !!sku && !String(d.Parent || '').toUpperCase().startsWith('PARENT');
+                            return !!sku;
                         },
                         formatter: function(cell) {
                             const v = parseFloat(cell.getValue() || 0);
@@ -3466,7 +3447,7 @@
                         headerTooltip: "Ad sold L30 from tiktok_gmv_ads, matched by SKU (latest upload batch).",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             const raw = cell.getValue();
                             if (isParent && (raw === '-' || raw === null || raw === undefined)) {
                                 return '<span style="color:#6c757d;">-</span>';
@@ -3596,13 +3577,13 @@
                         sorter: "number",
                         editable: function(cell) {
                             const d = cell.getRow().getData();
-                            if (d.is_parent_summary || d.is_parent) return false;
+                            if (ttIsParentRow(d)) return false;
                             const sku = String(d['(Child) sku'] || d.sku || d.SKU || '');
-                            return !!sku && !String(d.Parent || '').toUpperCase().startsWith('PARENT');
+                            return !!sku;
                         },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary || rowData.is_parent) return '';
+                            if (ttIsParentRow(rowData)) return '';
                             const value = cell.getValue();
                             const std = parseFloat(value) || 0;
                             if (!value || std <= 0) return '';
@@ -3622,8 +3603,7 @@
                             const raw = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const sku = rowData['(Child) sku'] || '';
-                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase()
-                                .startsWith('PARENT');
+                            const isParent = ttIsParentRow(rowData);
                             if (isParent && (raw === null || raw === undefined || raw === '' ||
                                     raw === '-')) return '<span style="color:#6c757d;">-</span>';
                             const value = parseFloat(raw || 0);
@@ -3658,7 +3638,7 @@
                         field: "lmp_price",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 100,
+                        width: 80,
                         visible: true,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -3668,7 +3648,7 @@
                                 });
                                 if (avgHtml !== null) return avgHtml;
                             }
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (isParent) return '';
 
                             const lmpPrice = parseFloat(cell.getValue() || 0);
@@ -3678,13 +3658,11 @@
                             const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
                             const linkedSkusAttr = escapeHtmlAttr(JSON.stringify(linkedSkus));
 
-                            // No competitors mapped yet — show a "+ Add" entry to seed the modal.
+                            // Same compact UI as /amazon-tabulator-view: $7.47 (1) or N/A
                             if (!lmpPrice && totalCompetitors === 0) {
                                 return `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
-                                    style="color:#6c757d;text-decoration:none;font-size:11px;cursor:pointer;"
-                                    title="No competitors — click to add one">
-                                    <i class="fa fa-plus-circle"></i> Add
-                                </a>`;
+                                    style="color:#999;text-decoration:none;cursor:pointer;font-weight:600;"
+                                    title="No competitors — click to add">N/A</a>`;
                             }
 
                             const currentPrice = parseFloat(rowData['TT Price'] || 0);
@@ -3692,21 +3670,37 @@
                             const lmpBase = parseFloat(rowData.lmp_base_price || 0) || lmpPrice;
                             const lmpShip = parseFloat(rowData.lmp_shipping || 0) || 0;
                             const shipTip = lmpShip > 0
-                                ? ` title="$${lmpBase.toFixed(2)} + $${lmpShip.toFixed(2)} ship"`
+                                ? ('$' + lmpBase.toFixed(2) + ' + $' + lmpShip.toFixed(2) + ' ship')
                                 : '';
 
-                            let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1;">';
                             if (lmpPrice) {
-                                html += `<span style="color:${priceColor};font-weight:700;font-size:14px;"${shipTip}>$${lmpPrice.toFixed(2)}</span>`;
+                                let html = '<span style="color:' + priceColor + ';font-weight:600;"'
+                                    + (shipTip ? (' title="' + escapeHtmlAttr(shipTip) + '"') : '') + '>'
+                                    + '$' + lmpPrice.toFixed(2);
+                                if (totalCompetitors > 0) {
+                                    html += ' <a href="#" class="view-tt-lmp-competitors" data-sku="' + skuAttr
+                                        + '" data-linked-skus="' + linkedSkusAttr + '"'
+                                        + ' title="View ' + totalCompetitors + ' competitor'
+                                        + (totalCompetitors === 1 ? '' : 's') + '"'
+                                        + ' style="color:#007bff;text-decoration:none;cursor:pointer;font-weight:600;">'
+                                        + '(' + totalCompetitors + ')</a>';
+                                }
+                                html += '</span>';
+                                return html;
                             }
+
                             if (totalCompetitors > 0) {
-                                html += `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
-                                    style="color:#ff0050;text-decoration:none;font-size:11px;cursor:pointer;">
-                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
-                                </a>`;
+                                return '<a href="#" class="view-tt-lmp-competitors" data-sku="' + skuAttr
+                                    + '" data-linked-skus="' + linkedSkusAttr + '"'
+                                    + ' title="View ' + totalCompetitors + ' competitor'
+                                    + (totalCompetitors === 1 ? '' : 's') + '"'
+                                    + ' style="color:#007bff;text-decoration:none;cursor:pointer;font-weight:600;">'
+                                    + '(' + totalCompetitors + ')</a>';
                             }
-                            html += '</div>';
-                            return html;
+
+                            return `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
+                                style="color:#999;text-decoration:none;cursor:pointer;font-weight:600;"
+                                title="No competitors — click to add">N/A</a>`;
                         }
                     },
                     {
@@ -3727,7 +3721,7 @@
                         },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (isParent) return '';
                             const lmp = parseFloat(rowData.lmp_price || 0);
                             const price = parseFloat(rowData['TT Price'] || 0);
@@ -3745,8 +3739,7 @@
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (value === null || value === undefined || value === '' || value ===
                                 '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                             const percent = parseFloat(value);
@@ -3765,8 +3758,7 @@
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (value === null || value === undefined || value === '' || value ===
                                 '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                             const percent = parseFloat(value);
@@ -3786,8 +3778,7 @@
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (value === null || value === undefined || value === '' || value ===
                                 '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                             const percent = parseFloat(value);
@@ -3806,15 +3797,14 @@
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (value === null || value === undefined || value === '' || value ===
                                 '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                             const percent = parseFloat(value);
                             if (isNaN(percent)) return isParent ?
                                 '<span style="color:#6c757d;">-</span>' : '';
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                            const c = ttRoiBandColors(ttRoiVisualBand(percent));
+                            return `<span style="color:${c.text};font-weight:700;">${percent.toFixed(0)}%</span>`;
                         },
                         width: 50
                     },
@@ -3827,8 +3817,7 @@
                         formatter: function(cell) {
                             const raw = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (isParent && (raw === null || raw === undefined || raw === '' ||
                                     raw === '-')) return '<span style="color:#6c757d;">-</span>';
                             const value = parseFloat(raw || 0);
@@ -3855,8 +3844,7 @@
                         visible: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             const profit = parseFloat(rowData.Profit || 0);
                             const ttl30 = parseFloat(rowData['TT L30'] || 0);
                             const value = ttl30 * profit;
@@ -3876,8 +3864,7 @@
                         formatter: function(cell) {
                             const raw = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (isParent && (raw === null || raw === undefined || raw === '' ||
                                     raw === '-')) return '<span style="color:#6c757d;">-</span>';
                             const value = parseFloat(raw || 0);
@@ -3909,8 +3896,7 @@
                         formatter: function(cell) {
                             const raw = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (isParent && (raw === '-' || raw === null || raw === undefined ||
                                     raw === '')) return '<span style="color:#6c757d;">-</span>';
                             const value = parseFloat(raw || 0);
@@ -3973,7 +3959,7 @@
                         width: 55,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            const isParent = ttIsParentRow(rowData);
                             if (isParent) return '<span style="color:#6c757d;">-</span>';
 
                             const sku = rowData['(Child) sku'];
@@ -4089,7 +4075,7 @@
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const rowData = row.getData();
-                            if (rowData.Parent && String(rowData.Parent).startsWith('PARENT '))
+                            if (ttIsParentRow(rowData))
                                 return '<span style="color:#6c757d;">-</span>';
                             const sku = rowData['(Child) sku'];
                             const value = (cell.getValue()?.trim()) || 'Not Req';
@@ -4113,7 +4099,7 @@
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const rowData = row.getData();
-                            if (rowData.Parent && String(rowData.Parent).startsWith('PARENT '))
+                            if (ttIsParentRow(rowData))
                                 return '<span style="color:#6c757d;">-</span>';
                             const sku = rowData['(Child) sku'];
                             const value = (cell.getValue()?.trim()) || 'Not Req';
@@ -4137,7 +4123,7 @@
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const rowData = row.getData();
-                            if (rowData.Parent && String(rowData.Parent).startsWith('PARENT '))
+                            if (ttIsParentRow(rowData))
                                 return '<span style="color:#6c757d;">-</span>';
                             const sku = rowData['(Child) sku'];
                             const val = cell.getValue();
@@ -4161,7 +4147,7 @@
                         },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            if (rowData.is_parent || (rowData.Parent && String(rowData.Parent).startsWith('PARENT '))) {
+                            if (ttIsParentRow(rowData)) {
                                 return '<span style="color:#6c757d;">-</span>';
                             }
                             let value = cell.getValue();
@@ -4839,6 +4825,8 @@
                 const roiFilter = $('#roi-filter').val();
                 const adClickFilter = $('#ad-click-filter').val();
                 const dilFilter = $('#dil-filter').val() || 'all';
+                // Same as /amazon-tabulator-view: All / Parent keep summary rows; SKUs hides them.
+                const parentRowsBypassDataFilters = (rowTypeFilter === 'parent' || rowTypeFilter === 'all');
 
                 table.clearFilter();
 
@@ -4853,15 +4841,15 @@
                     });
                 }
 
-                // Inventory filter (parent rows always visible)
+                // Inventory filter
                 if (inventoryFilter === 'zero') {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         return parseFloat(data.INV) === 0;
                     });
                 } else if (inventoryFilter === 'more') {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         return parseFloat(data.INV) > 0;
                     });
                 }
@@ -4870,12 +4858,12 @@
                 const tiktokStockFilter = $('#tiktok-stock-filter').val();
                 if (tiktokStockFilter === 'zero') {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         return parseFloat(data['TT Stock']) === 0;
                     });
                 } else if (tiktokStockFilter === 'more') {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         return parseFloat(data['TT Stock']) > 0;
                     });
                 }
@@ -4883,7 +4871,7 @@
                 // GPFT filter (parent rows always visible) — slabs match ebay-tabulator-view
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         const gpft = parseFloat(data['GPFT%']) || 0;
                         if (gpftFilter === 'negative') return gpft < 0;
                         if (gpftFilter === '0-10')     return gpft >= 0 && gpft < 10;
@@ -4897,10 +4885,8 @@
 
                 if (cvrFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
-                        const sold = parseFloat(data['TT L30']) || 0;
-                        const views = parseFloat(data.t_views) || 0;
-                        const cvrPercent = views > 0 ? (sold / views) * 100 : 0;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
+                        const cvrPercent = ttListingCvr(data);
                         const cvrRounded = Math.round(cvrPercent * 100) / 100;
                         if (cvrFilter === '0-0') return cvrRounded === 0;
                         if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
@@ -4914,13 +4900,12 @@
                 // ROI % filter (parent rows always visible)
                 if (roiFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         const roi = parseFloat(data['ROI%']);
                         if (isNaN(roi)) return false;
-                        if (roiFilter === 'lt40') return roi < 40;
-                        if (roiFilter === '40-75') return roi >= 40 && roi < 75;
-                        if (roiFilter === '75-125') return roi >= 75 && roi < 125;
-                        if (roiFilter === 'gt125') return roi >= 125;
+                        if (roiFilter === 'red' || roiFilter === 'lt40') return roi < 60;
+                        if (roiFilter === 'gray' || roiFilter === '40-75') return roi >= 60 && roi < 90;
+                        if (roiFilter === 'green' || roiFilter === '75-125' || roiFilter === 'gt125') return roi >= 90;
                         return true;
                     });
                 }
@@ -4928,7 +4913,7 @@
                 // Ad Click filter (parent rows always visible)
                 if (adClickFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data
                             .hasCampaign === 1;
                         const clicks = parseInt(data.ad_clicks, 10) || 0;
@@ -4943,7 +4928,7 @@
                 const tl30Filter = $('#tl30-filter').val();
                 if (tl30Filter !== 'all') {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         const inv = parseFloat(data.INV) || 0;
                         if (inv <= 0) return false;
                         const ttL30 = parseFloat(data['TT L30']) || 0;
@@ -4956,7 +4941,7 @@
                 // DIL filter — same as amazon-tabulator-view (L30 / INV * 100)
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         const inv = parseFloat(data['INV']) || 0;
                         const l30 = parseFloat(data['L30']) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
@@ -4971,7 +4956,7 @@
                 // 0 Sold filter (parent rows always visible)
                 if (zeroSoldFilterActive) {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         return parseFloat(data['TT L30']) === 0;
                     });
                 }
@@ -4979,18 +4964,11 @@
                 // > 0 Sold filter (parent rows always visible)
                 if (moreSoldFilterActive) {
                     table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
+                        if (isParentRow(data)) return parentRowsBypassDataFilters;
                         return parseFloat(data['TT L30']) > 0;
                     });
                 }
 
-                // Missing L filter (parent rows always visible)
-                if (missingFilterActive) {
-                    table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
-                        return ttRowIsMissing(data);
-                    });
-                }
                 if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                     table.addFilter(function(data) {
                         return PriceGtLmpBadge.hasRedTriangle(data, 'TT Price');
@@ -5007,14 +4985,6 @@
                     });
                 }
 
-                // N Map filter — |INV − TT Stock| > 3 only (≤3 is Map)
-                if (invTTStockFilterActive) {
-                    table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
-                        return ttRowIsNMap(data);
-                    });
-                }
-
                 // Ads section badge filter (parent rows always visible)
                 if (typeof utilizedColumnsVisible !== 'undefined' && utilizedColumnsVisible && adsBadgeFilter) {
                     switch (adsBadgeFilter) {
@@ -5022,7 +4992,7 @@
                             break;
                         case 'campaign':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 const hasCampaign = data.hasCampaign === true || data.hasCampaign ===
                                     'true' || data.hasCampaign === 1;
                                 return hasCampaign;
@@ -5030,7 +5000,7 @@
                             break;
                         case 'ad-sku':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 const hasCampaign = data.hasCampaign === true || data.hasCampaign ===
                                     'true' || data.hasCampaign === 1;
                                 const inv = parseFloat(data.INV) || 0;
@@ -5039,7 +5009,7 @@
                             break;
                         case 'missing':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 const hasCampaign = data.hasCampaign === true || data.hasCampaign ===
                                     'true' || data.hasCampaign === 1;
                                 const nr = (data.NR || '').trim();
@@ -5049,7 +5019,7 @@
                             break;
                         case 'nra-missing':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 const hasCampaign = data.hasCampaign === true || data.hasCampaign ===
                                     'true' || data.hasCampaign === 1;
                                 const nr = (data.NR || '').trim();
@@ -5058,46 +5028,46 @@
                             break;
                         case 'zero-inv':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 return parseFloat(data.INV) <= 0;
                             });
                             break;
                         case 'nra':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 return (data.NR || '').trim() === 'NRA';
                             });
                             break;
                         case 'ra':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 return (data.NR || '').trim() === 'RA';
                             });
                             break;
                         case 'total-spend':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 const spend = parseFloat(data.spend) || 0;
                                 return spend > 0;
                             });
                             break;
                         case 'total-spend-l30':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 const spendL30 = parseFloat(data.spend_l30) || 0;
                                 return spendL30 > 0;
                             });
                             break;
                         case 'total-spend-l7':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 const spendL7 = parseFloat(data.spend_l7) || 0;
                                 return spendL7 > 0;
                             });
                             break;
                         case 'budget':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 const b = data.budget;
                                 return b !== null && b !== undefined && b !== '' && (parseFloat(b) || 0) >
                                 0;
@@ -5105,7 +5075,7 @@
                             break;
                         case 'ad-clicks':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 const clicks = parseInt(data.ad_clicks, 10) || 0;
                                 return clicks > 0;
                             });
@@ -5114,7 +5084,7 @@
                         case 'avg-acos':
                         case 'roas':
                             table.addFilter(function(data) {
-                                if (isParentRow(data)) return true;
+                                if (isParentRow(data)) return parentRowsBypassDataFilters;
                                 const spend = parseFloat(data.spend) || 0;
                                 const outRoas = parseFloat(data.out_roas) || 0;
                                 return spend > 0 && outRoas > 0;
@@ -5204,8 +5174,6 @@
                     totalL30 = 0,
                     zeroSoldCount = 0,
                     moreSoldCount = 0;
-                let missingCount = 0,
-                    invTTStockCount = 0;
 
                 data.forEach(row => {
                     const l30 = parseFloat(row['TT L30']) || 0;
@@ -5233,8 +5201,6 @@
                     } else {
                         moreSoldCount++;
                     }
-                    if (ttRowIsMissing(row)) missingCount++;
-                    if (ttRowIsNMap(row)) invTTStockCount++;
                 });
 
                 const avgGpft = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
@@ -5248,7 +5214,7 @@
                 $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
                 $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
                 $('#roi-percent-badge').text(`ROI%: ${Math.round(avgRoi)}%`);
-                $('#missing-count-badge').text(`Missing L: ${missingCount}`);
+                applyTtRoiBadgeStyle(avgRoi, totalCogs > 0);
                 if (window.PriceGtLmpBadge && table) {
                     const ttChannel = (TTP_CFG && TTP_CFG.summaryChannel === 'tiktok2') ? 'tiktok2' : 'tiktok';
                     PriceGtLmpBadge.update('#tiktok-price-gt-lmp-badge', table.getData(), ttChannel, 'TT Price');
@@ -5264,7 +5230,6 @@
                     '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
                 );
                 if (typeof syncTtTriangleBadgeState === 'function') syncTtTriangleBadgeState();
-                $('#inv-tt-stock-badge').text('N Map: ' + invTTStockCount.toLocaleString());
 
                 let sumSpend30 = 0,
                     sumSpend1 = 0,
@@ -5339,7 +5304,7 @@
                 if (!table) return;
                 const data = table.getData('all').filter(row => {
                     const sku = row['(Child) sku'] || '';
-                    return sku && !String(row.Parent || '').startsWith('PARENT ');
+                    return sku && !ttIsParentRow(row);
                 });
                 const processedSkus = new Set();
                 const zeroInvSkus = new Set();
@@ -5439,8 +5404,8 @@
 
                 // advt
                 if (
-                    /^(ad_cvr_pct|ads_cvr_30|ads_roas|target_roas|ads_acos_pct|ads_price|budget|spend|spend_30|spend_1|ad_sold|ad_clicks|ads_clicks_30|ads_clicks_1|ads_views_30|ads_views_1|acos|status|campaign_name|video_views|ads_views|affl_views|t_views|TACOS%|gmv_ad_sold_l30|gmv_ad_sold_l1|gmv_ad_sales_l30|gmv_ad_sales_l1|gmv_spend_l30|gmv_spend_l1|gmv_budget|gmv_status|gmv_approval)$/i.test(f) ||
-                    /\b(ads?\s*cvr|target\s*roas|^roas$|budget|spend|ad\s*sold|ad\s*clicks|ads\s*clicks|adsviews|ads\s*view|acos|campaign|video\s*views|ads\s*views|affl\s*views|^t\s*views$|tacos|gmv)\b/i.test(tl) ||
+                    /^(ad_cvr_pct|ads_cvr_30|ads_roas|target_roas|ads_acos_pct|ads_price|budget|spend|spend_30|spend_1|ad_sold|ad_clicks|ads_clicks_30|ads_clicks_1|ads_views_30|ads_views_1|acos|status|campaign_name|video_views|ads_views|affl_views|TACOS%|gmv_ad_sold_l30|gmv_ad_sold_l1|gmv_ad_sales_l30|gmv_ad_sales_l1|gmv_spend_l30|gmv_spend_l1|gmv_budget|gmv_status|gmv_approval)$/i.test(f) ||
+                    /\b(ads?\s*cvr|target\s*roas|^roas$|budget|spend|ad\s*sold|ad\s*clicks|ads\s*clicks|adsviews|ads\s*view|acos|campaign|video\s*views|ads\s*views|affl\s*views|tacos|gmv)\b/i.test(tl) ||
                     /^status$/i.test(tl) ||
                     /^price$/i.test(tl) // ads Price column
                 ) {
@@ -5449,8 +5414,8 @@
 
                 // basics — product / inventory / listing (Ship checkbox lives here)
                 if (
-                    /^(image_path|Parent|\(Child\) sku|links_column|INV|L30|TT Dil%|TT L30|TT Stock|TT Ship|Ship_productmaster|Missing|MAP|NR|variation_req|video_req|video_uploaded|nrp)$/i.test(f) ||
-                    /\b(image|parent|sku|links|inv|ov\s*l30|^dil$|tt\s*l30|tt\s*stock|tt\s*1?\s*ship|bb\s*ship|^ship$|missing\s*l?|map|nra|variation|video\s*req|video\s*uploaded|nr\/?req)\b/i.test(tl)
+                    /^(image_path|Parent|\(Child\) sku|links_column|INV|L30|TT Dil%|TT L30|TT Stock|TT Ship|Ship_productmaster|NR|variation_req|video_req|video_uploaded|nrp|CVR%|cvr|t_views)$/i.test(f) ||
+                    /\b(image|parent|sku|links|inv|ov\s*l30|^dil$|tt\s*l30|tt\s*stock|tt\s*1?\s*ship|bb\s*ship|^ship$|nra|variation|video\s*req|video\s*uploaded|nr\/?req|^cvr%?$|^t\s*views$)\b/i.test(tl)
                 ) {
                     return 'basics';
                 }
@@ -5537,6 +5502,9 @@
                 // Mark ship-column migration done so later toggles are honored.
                 visibility.ship_col_migrated = true;
                 visibility.lmp_col_migrated = true;
+                visibility.cvr_col_migrated = true;
+                visibility.cvr_basics_migrated = true;
+                visibility.t_views_basics_migrated = true;
 
                 fetch(TTP_CFG.columnSet, {
                     method: 'POST',
@@ -5614,6 +5582,34 @@
                                 }
                             });
                         } catch (e) {}
+                        // Listing CVR (TT L30 ÷ T views) — force into the Dil / TT L30 cluster.
+                        try {
+                            const v = visibility && typeof visibility === 'object' ? visibility : {};
+                            const cvrMigrated = v.cvr_basics_migrated === true || v.cvr_basics_migrated === 1 ||
+                                v.cvr_basics_migrated === '1' || v.cvr_basics_migrated === 'true';
+                            const cvrCol = table.getColumn('cvr') || table.getColumn('CVR%');
+                            if (cvrCol) {
+                                const on = v.cvr === true || v.cvr === 1 || v.cvr === '1' || v.cvr === 'true' ||
+                                    v['CVR%'] === true || v['CVR%'] === 1 || v['CVR%'] === '1' ||
+                                    v['CVR%'] === 'true';
+                                if (!cvrMigrated || on || v.cvr === undefined) {
+                                    cvrCol.show();
+                                }
+                            }
+                        } catch (e) {}
+                        // T Views (video + ads + affl) — same listing cluster as CVR.
+                        try {
+                            const v = visibility && typeof visibility === 'object' ? visibility : {};
+                            const viewsMigrated = v.t_views_basics_migrated === true || v.t_views_basics_migrated === 1 ||
+                                v.t_views_basics_migrated === '1' || v.t_views_basics_migrated === 'true';
+                            const viewsCol = table.getColumn('t_views');
+                            if (viewsCol) {
+                                const on = v.t_views === true || v.t_views === 1 || v.t_views === '1' || v.t_views === 'true';
+                                if (!viewsMigrated || on || v.t_views === undefined) {
+                                    viewsCol.show();
+                                }
+                            }
+                        } catch (e) {}
                         // Checkbox column always first & visible
                         try {
                             const selectCol = table.getColumn('_select');
@@ -5630,6 +5626,7 @@
                     skuField: '(Child) sku',
                     getTable: () => table,
                     getDataset: () => allTableData,
+                    isParentRow: ttIsParentRow,
                     onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
                     onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
                 });
@@ -5978,7 +5975,7 @@
                 $('#ttLmpDataList').html(html);
             }
 
-            // "View N" / "+ Add" trigger inside the LMP column
+            // "$price (N)" / "N/A" trigger inside the LMP column
             $(document).on('click', '.view-tt-lmp-competitors', function(e) {
                 e.preventDefault();
                 const sku = $(this).attr('data-sku') || $(this).data('sku');

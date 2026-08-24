@@ -4984,13 +4984,9 @@ class ChannelMasterController extends Controller
     /**
      * Yesterday-only Active Channel page (GPFT / GROI from Pacific yesterday, not L30).
      */
-    public function yesterdayMarketplaceMaster(Request $request)
+    public function yesterdayMarketplaceMaster()
     {
-        if (! $request->boolean('embed')) {
-            return redirect()->route('all.marketplace.master', ['tab' => 'yesterday']);
-        }
-
-        return view('channels.yesterday-marketplace-master', ['embed' => true]);
+        return view('channels.yesterday-marketplace-master');
     }
 
     public function l7MarketplaceMaster()
@@ -5381,6 +5377,8 @@ class ChannelMasterController extends Controller
      */
     public function getViewChannelDataFast(Request $request)
     {
+        @ini_set('memory_limit', '512M');
+
         try {
             $hasCalculatedRows = \App\Models\ChannelMasterCalculatedData::query()->exists();
 
@@ -5647,13 +5645,15 @@ class ChannelMasterController extends Controller
 
             return response()->json($payload);
             
-        } catch (\Exception $e) {
-            \Log::error('Error fetching fast channel data: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            \Log::error('Error fetching fast channel data: '.$e->getMessage(), [
+                'exception' => $e,
+            ]);
             // Only fall back to the heavy live path when the cache table is empty.
             if (\App\Models\ChannelMasterCalculatedData::query()->exists()) {
                 return response()->json([
                     'status' => 500,
-                    'message' => 'Error loading channel data: ' . $e->getMessage(),
+                    'message' => 'Error loading channel data: '.$e->getMessage(),
                     'data' => [],
                 ], 500);
             }

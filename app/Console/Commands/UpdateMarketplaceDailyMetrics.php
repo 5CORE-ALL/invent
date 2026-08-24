@@ -40,6 +40,7 @@ use App\Models\EbayPromotedListingReport;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class UpdateMarketplaceDailyMetrics extends Command
 {
@@ -47,21 +48,78 @@ class UpdateMarketplaceDailyMetrics extends Command
     protected $description = 'Update daily metrics for all marketplace channels';
 
 
+    /** @var \Illuminate\Support\Collection<int, ProductMaster>|null */
+    protected $productMastersCache = null;
+
     /**
-     * Load ProductMaster in chunks of 50 (never Model::all()).
+     * Load ProductMaster once, keeping only sku / LP / ship fields.
+     * Full Values JSON is discarded after extracting those keys so the command
+     * does not hold every product row in memory twice.
      */
     protected function productMastersChunked(): \Illuminate\Support\Collection
     {
+        if ($this->productMastersCache !== null) {
+            return $this->productMastersCache;
+        }
+
+        $columns = ['id', 'sku', 'Values'];
+        foreach (['lp', 'ship', 'ship_bb'] as $col) {
+            if (Schema::hasColumn('product_master', $col)) {
+                $columns[] = $col;
+            }
+        }
+
         $all = collect();
-        \App\Models\ProductMaster::query()
+        ProductMaster::query()
+            ->select($columns)
             ->orderBy('id')
-            ->chunkById(50, function ($rows) use (&$all) {
+            ->chunkById(100, function ($rows) use (&$all) {
                 foreach ($rows as $row) {
+                    $values = is_array($row->Values)
+                        ? $row->Values
+                        : (is_string($row->Values) ? json_decode($row->Values, true) : []);
+                    $slim = [];
+                    if (is_array($values)) {
+                        foreach ($values as $k => $v) {
+                            $lk = strtolower((string) $k);
+                            if (in_array($lk, ['lp', 'ship', 'ship_bb'], true)) {
+                                $slim[$k] = $v;
+                            }
+                        }
+                    }
+                    $row->Values = $slim;
                     $all->push($row);
                 }
             });
 
-        return $all;
+        return $this->productMastersCache = $all;
+    }
+
+    /**
+     * marketplace_daily_metrics.id is the PK but AUTO_INCREMENT was dropped on
+     * this database, so Eloquent inserts fail with "Field 'id' doesn't have a
+     * default value". Restore it before writing rows.
+     */
+    protected function ensureMarketplaceDailyMetricsIdAutoIncrement(): void
+    {
+        if (! Schema::hasTable('marketplace_daily_metrics') || ! Schema::hasColumn('marketplace_daily_metrics', 'id')) {
+            return;
+        }
+
+        $col = DB::selectOne("SHOW COLUMNS FROM marketplace_daily_metrics WHERE Field = 'id'");
+        $extra = strtolower((string) ($col->Extra ?? ''));
+        if (str_contains($extra, 'auto_increment')) {
+            return;
+        }
+
+        $next = ((int) DB::table('marketplace_daily_metrics')->max('id')) + 1;
+        if ($next < 1) {
+            $next = 1;
+        }
+
+        DB::statement('ALTER TABLE marketplace_daily_metrics MODIFY id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT');
+        DB::statement('ALTER TABLE marketplace_daily_metrics AUTO_INCREMENT = '.$next);
+        $this->warn('Restored AUTO_INCREMENT on marketplace_daily_metrics.id (next = '.$next.').');
     }
 
     /**
@@ -88,7 +146,11 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     public function handle()
     {
+        @ini_set('memory_limit', '512M');
+
         $date = $this->option('date') ? Carbon::parse($this->option('date')) : Carbon::today();
+
+        $this->ensureMarketplaceDailyMetricsIdAutoIncrement();
         
         $this->info("Updating marketplace daily metrics for: " . $date->format('Y-m-d'));
 
@@ -886,8 +948,9 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
         $margin = $percentage / 100.0;
 
-        $productMastersBySku = $this->productMastersChunked()->keyBy('sku');
-        $productMastersByNormalized = $this->productMastersChunked()->keyBy(function ($pm) {
+        $allPms = $this->productMastersChunked();
+        $productMastersBySku = $allPms->keyBy('sku');
+        $productMastersByNormalized = $allPms->keyBy(function ($pm) {
             $sku = strtoupper(trim((string) ($pm->sku ?? '')));
             $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
             $sku = preg_replace('/\s+/', ' ', $sku);

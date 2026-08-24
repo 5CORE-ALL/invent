@@ -196,6 +196,8 @@ class ChannelPromoPricingService
 
         $row['prmt_pct'] = $prmt !== null ? (string) $prmt : null;
         $row['cpn_pct'] = $cpn !== null ? (string) $cpn : null;
+        $row['PEF_PRMT_PCT'] = is_numeric($prmt) ? (float) $prmt : null;
+        $row['PEF_CPN_PCT'] = is_numeric($cpn) ? (float) $cpn : null;
         $row['zero_sold_prmt'] = $zeroSold !== null ? (string) $zeroSold : null;
         $row['dsc'] = $dsc !== null && $dsc !== '' ? (string) $dsc : null;
         $row['appr'] = $promo['appr'] ?? false;

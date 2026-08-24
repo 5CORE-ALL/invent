@@ -770,6 +770,8 @@ class AliexpressController extends Controller
             'sku'         => $key,
             'parent'      => $key,
             'is_parent'   => true,
+            'is_parent_summary' => true,
+            'is_parent_row' => true,
             'image'       => null,
             'price'       => '-',
             'missing'     => '-',
@@ -1432,6 +1434,19 @@ class AliexpressController extends Controller
     public function getPricingData(Request $request)
     {
         try {
+            // #region agent log
+            $__dbgEntry = json_encode([
+                'sessionId' => '1b30dc',
+                'runId' => 'post-fix',
+                'hypothesisId' => 'E',
+                'location' => 'AliexpressController.php:getPricingData:entry',
+                'message' => 'getPricingData called',
+                'data' => ['include_parents' => $request->boolean('include_parents')],
+                'timestamp' => (int) round(microtime(true) * 1000),
+            ])."\n";
+            @file_put_contents(base_path('.cursor/debug-1b30dc.log'), $__dbgEntry, FILE_APPEND);
+            @file_put_contents(storage_path('logs/debug-1b30dc.log'), $__dbgEntry, FILE_APPEND);
+            // #endregion
             $normalizeSku = fn ($value) => $this->normalizeAeSkuExact((string) $value);
 
             $normalizeLmpSku = static function ($value) {
@@ -1580,6 +1595,11 @@ class AliexpressController extends Controller
             foreach ($allNormalizedSkus as $normalizedSku) {
                 $sale = $salesBySku->get($normalizedSku);
                 $productMaster = $productMastersBySku->get($normalizedSku);
+                $pmSku = $productMaster->sku ?? '';
+                if (stripos((string) $normalizedSku, 'PARENT') !== false
+                    || stripos((string) $pmSku, 'PARENT') !== false) {
+                    continue;
+                }
                 $metaRecord = $viewMetaBySku->get($normalizedSku);
                 $meta = $metaRecord ? ($metaRecord->value ?? []) : [];
 
@@ -1736,8 +1756,40 @@ class AliexpressController extends Controller
                 return $cmp !== 0 ? $cmp : strnatcasecmp($a['sku'], $b['sku']);
             });
 
-            // Insert parent summary rows after each group (mirrors TikTok insertTikTokParentRows)
-            $rows = $this->insertAeParentRows($rows);
+            // SKUs is the default view — do not inject "PARENT …" summary rows unless asked.
+            $includeParents = $request->boolean('include_parents');
+            if ($includeParents) {
+                $rows = $this->insertAeParentRows($rows);
+            }
+            // #region agent log
+            $__dbgParent = 0;
+            $__dbgSample = [];
+            foreach ($rows as $__r) {
+                $__sku = strtoupper(trim((string) ($__r['sku'] ?? '')));
+                if (! empty($__r['is_parent']) || str_starts_with($__sku, 'PARENT')) {
+                    $__dbgParent++;
+                    if (count($__dbgSample) < 5) {
+                        $__dbgSample[] = $__sku;
+                    }
+                }
+            }
+            $__dbgLine = json_encode([
+                'sessionId' => '1b30dc',
+                'runId' => 'post-fix',
+                'hypothesisId' => 'E',
+                'location' => 'AliexpressController.php:pricing-data',
+                'message' => 'pricing-data parent injection gate',
+                'data' => [
+                    'include_parents' => $includeParents,
+                    'total' => count($rows),
+                    'parentCount' => $__dbgParent,
+                    'sample' => $__dbgSample,
+                ],
+                'timestamp' => (int) round(microtime(true) * 1000),
+            ])."\n";
+            @file_put_contents(base_path('.cursor/debug-1b30dc.log'), $__dbgLine, FILE_APPEND);
+            @file_put_contents(storage_path('logs/debug-1b30dc.log'), $__dbgLine, FILE_APPEND);
+            // #endregion
 
             // Auto-save daily snapshot (non-blocking, same as TikTok)
             $this->saveDailySnapshot($rows);
@@ -1815,6 +1867,8 @@ class AliexpressController extends Controller
             $margin     = $percentage / 100;
 
             $updatedCount = 0;
+            $lastSgpft = null;
+            $lastSroi = null;
             foreach ($updates as $update) {
                 $sku    = $update['sku']    ?? null;
                 $sprice = $update['sprice'] ?? null;
@@ -1850,9 +1904,16 @@ class AliexpressController extends Controller
                 $view->value = $stored;
                 $view->save();
                 $updatedCount++;
+                $lastSgpft = $sgpft;
+                $lastSroi = $sroi;
             }
 
-            return response()->json(['success' => true, 'updated' => $updatedCount]);
+            return response()->json([
+                'success' => true,
+                'updated' => $updatedCount,
+                'sgpft_percent' => $lastSgpft,
+                'sroi_percent' => $lastSroi,
+            ]);
         } catch (\Exception $e) {
             Log::error('AliExpress SPRICE save failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
@@ -1867,14 +1928,23 @@ class AliexpressController extends Controller
     private function saveDailySnapshot(array $rows): void
     {
         try {
-            $today = now()->toDateString();
+            $today = now('America/Los_Angeles')->toDateString();
 
-            // All non-parent child rows (including missing — needed for missing_count)
-            $allChildRows = collect($rows)->filter(fn($r) => !($r['is_parent'] ?? false));
+            // Real child SKUs only — never parent summaries (their profit is already AL30×unit).
+            $allChildRows = collect($rows)->filter(function ($r) {
+                if (! empty($r['is_parent'])) {
+                    return false;
+                }
+                $sku = strtoupper(trim((string) ($r['sku'] ?? '')));
+                if ($sku === '' || str_starts_with($sku, 'PARENT')) {
+                    return false;
+                }
+
+                return true;
+            })->unique(function ($r) {
+                return strtoupper(trim((string) ($r['sku'] ?? '')));
+            })->values();
             if ($allChildRows->isEmpty()) return;
-
-            // Non-missing rows for financial metrics
-            $listedRows = $allChildRows->filter(fn($r) => ($r['missing'] ?? '') !== 'M');
 
             $totalSales  = 0; $totalProfit = 0; $totalAl30 = 0;
             $gpftSum     = 0; $gpftCount   = 0;
@@ -1884,8 +1954,8 @@ class AliexpressController extends Controller
             $missingCount= 0; $mapCount    = 0; $nmapCount = 0;
             $zeroSold    = 0; $moreSold    = 0;
 
-            // Financial metrics — listed rows only (non-missing)
-            foreach ($listedRows as $r) {
+            // Same math as JS updateSummary — every child row, including missing.
+            foreach ($allChildRows as $r) {
                 $profit = (float) ($r['profit'] ?? 0);
                 $lp     = (float) ($r['lp']     ?? 0);
                 $gpft   = (float) ($r['gpft']   ?? 0);
@@ -1897,12 +1967,11 @@ class AliexpressController extends Controller
                 $totalProfit += $al30r * $profit;
                 $totalCogs   += $lp * $al30r;
 
-                if ($gpft !== 0.0) { $gpftSum += $gpft; $gpftCount++; }
-                if ($groi !== 0.0) { $roiSum  += $groi; $roiCount++;  }
+                $gpftSum += $gpft; $gpftCount++;
+                $roiSum  += $groi; $roiCount++;
             }
 
-            // ALL child rows — matches JS updateSummary exactly
-            // (totalAl30, zeroSold, moreSold, DIL, missing, map all from all rows)
+            // 0 Sold / Sold >0 badges only count INV > 0 (same as JS).
             foreach ($allChildRows as $r) {
                 $inv   = (float) ($r['inv']    ?? 0);
                 $ovL30 = (float) ($r['ov_l30'] ?? 0);
@@ -1913,10 +1982,12 @@ class AliexpressController extends Controller
                 $aeStock = (float) ($r['ae_stock'] ?? 0);
 
                 $totalAl30 += $al30;
-                if ($al30 === 0.0) {
-                    $zeroSold++;
-                } else {
-                    $moreSold++;
+                if ($inv > 0) {
+                    if ($al30 === 0.0) {
+                        $zeroSold++;
+                    } else {
+                        $moreSold++;
+                    }
                 }
                 if ($inv > 0) {
                     $dilSum += ($ovL30 / $inv) * 100;
@@ -1986,7 +2057,7 @@ class AliexpressController extends Controller
     {
         try {
             $metric = (string) $request->input('metric', 'avg_gpft');
-            $days   = max(1, (int) $request->input('days', 30));
+            $days   = max(0, (int) $request->input('days', 30));
 
             $validMetrics = [
                 'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
@@ -1997,18 +2068,29 @@ class AliexpressController extends Controller
                 return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
             }
 
-            $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
-            $rows = AmazonChannelSummary::where('channel', 'aliexpress')
-                ->where('snapshot_date', '>=', $startDate)
-                ->orderBy('snapshot_date', 'asc')
-                ->get(['snapshot_date', 'summary_data']);
+            if (in_array($metric, ['total_sales', 'total_al30', 'total_pft'], true)) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->aliexpressDailyOrderChartPoints($metric, $days),
+                ]);
+            }
+
+            $query = AmazonChannelSummary::where('channel', 'aliexpress')
+                ->orderBy('snapshot_date', 'asc');
+            if ($days > 0) {
+                $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $query->where('snapshot_date', '>=', $startDate);
+            }
+            $rows = $query->get(['snapshot_date', 'summary_data']);
 
             $data = [];
             foreach ($rows as $row) {
                 $sd    = is_array($row->summary_data)
                        ? $row->summary_data
                        : (json_decode($row->summary_data ?? '{}', true) ?: []);
-                $value = (float) ($sd[$metric] ?? 0);
+                $value = $metric === 'cvr'
+                    ? (float) ($sd['cvr'] ?? $sd['cvr_pct'] ?? 0)
+                    : (float) ($sd[$metric] ?? 0);
                 $data[] = [
                     'date'  => optional($row->snapshot_date)->format('M d'),
                     'value' => $value,
@@ -2020,6 +2102,122 @@ class AliexpressController extends Controller
             Log::error('AliExpress badge chart data error: ' . $e->getMessage());
             return response()->json(['success' => false, 'data' => []], 500);
         }
+    }
+
+    /**
+     * Daily Sales / AL30 / Profit from aliexpress_daily_data (not L30 snapshots).
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function aliexpressDailyOrderChartPoints(string $metric, int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->startOfDay();
+        $start = $days > 0 ? $end->copy()->subDays(max(0, $days - 1)) : null;
+
+        if (! Schema::hasTable('aliexpress_daily_data')) {
+            return $this->aliexpressFillDailyChartPoints([], $start, $end, $metric);
+        }
+
+        $excludedStatuses = ['refund', 'return', 'cancel', 'closed'];
+        $query = AliexpressDailyData::query()
+            ->whereNotNull('order_date')
+            ->where(function ($q) use ($excludedStatuses) {
+                foreach ($excludedStatuses as $status) {
+                    $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ['%'.$status.'%']);
+                }
+            });
+        if ($start) {
+            $query->where('order_date', '>=', $start->copy()->timezone('UTC')->startOfDay());
+        }
+
+        $needPft = $metric === 'total_pft';
+        $margin = 0.0;
+        $productMasters = collect();
+        if ($needPft) {
+            $margin = ((float) $this->resolveAliexpressMarginPercent()) / 100.0;
+            $productMasters = ProductMaster::query()->get()->keyBy(function ($item) {
+                return strtoupper(trim((string) $item->sku));
+            });
+        }
+
+        $byDate = [];
+        foreach ($query->get(['order_date', 'quantity', 'product_total', 'supply_price', 'order_amount', 'sku_code']) as $row) {
+            $day = optional($row->order_date)->timezone($tz)->toDateString();
+            if ($day === null || $day === '') {
+                continue;
+            }
+            $line = (float) ($row->product_total ?? 0);
+            if ($line <= 0) {
+                $line = (float) ($row->supply_price ?? 0);
+            }
+            if ($line <= 0) {
+                $line = (float) ($row->order_amount ?? 0);
+            }
+            $qty = max(0, (int) ($row->quantity ?? 0));
+            if (! isset($byDate[$day])) {
+                $byDate[$day] = ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0];
+            }
+            $byDate[$day]['sales'] += $line;
+            $byDate[$day]['qty'] += $qty;
+
+            if ($needPft) {
+                $lineQty = $qty > 0 ? $qty : 1;
+                $unitPrice = $lineQty > 0 ? ($line / $lineQty) : 0.0;
+                $sku = strtoupper(trim((string) ($row->sku_code ?? '')));
+                $lp = 0.0;
+                $ship = 0.0;
+                if ($sku !== '' && isset($productMasters[$sku])) {
+                    $pm = $productMasters[$sku];
+                    $values = is_array($pm->Values)
+                        ? $pm->Values
+                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($pm->lp) ? (float) $pm->lp : 0.0);
+                    $ship = isset($values['ae_ship']) ? (float) $values['ae_ship']
+                        : (isset($values['ship']) ? (float) $values['ship']
+                        : (isset($pm->ship) ? (float) $pm->ship : 0.0));
+                }
+                $byDate[$day]['pft'] += (($unitPrice * $margin) - $lp - $ship) * $lineQty;
+            }
+        }
+
+        if ($start === null) {
+            $keys = array_keys($byDate);
+            $start = $keys !== []
+                ? Carbon::parse(min($keys), $tz)->startOfDay()
+                : $end->copy()->subDays(29);
+        }
+
+        return $this->aliexpressFillDailyChartPoints($byDate, $start, $end, $metric);
+    }
+
+    /**
+     * @param  array<string, array{sales: float, qty: int, pft?: float}>  $byDate
+     * @return list<array{date: string, value: float}>
+     */
+    private function aliexpressFillDailyChartPoints(array $byDate, ?Carbon $start, Carbon $end, string $metric): array
+    {
+        if ($start === null) {
+            $start = $end->copy()->subDays(29);
+        }
+        $data = [];
+        for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
+            $key = $cursor->toDateString();
+            $bucket = $byDate[$key] ?? ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0];
+            if ($metric === 'total_al30') {
+                $value = (float) $bucket['qty'];
+            } elseif ($metric === 'total_pft') {
+                $value = round((float) ($bucket['pft'] ?? 0), 2);
+            } else {
+                $value = round((float) $bucket['sales'], 2);
+            }
+            $data[] = [
+                'date' => $cursor->format('M d'),
+                'value' => $value,
+            ];
+        }
+
+        return $data;
     }
 
     /**

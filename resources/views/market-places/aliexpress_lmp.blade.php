@@ -12,7 +12,7 @@
                     <h4 class="mb-0">AliExpress LMP</h4>
                     <div class="d-flex gap-2">
                         <a href="{{ route('aliexpress.lmp.sample') }}" class="btn btn-outline-secondary btn-sm">
-                            <i class="fa fa-download me-1"></i> Sample file
+                            <i class="fas fa-download me-1"></i> LMP sample
                         </a>
                         <a href="{{ route('aliexpress.pricing.view') }}" class="btn btn-outline-primary btn-sm">
                             <i class="fa fa-arrow-left me-1"></i> Aliexpress Analytics
